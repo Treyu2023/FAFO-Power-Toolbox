@@ -1,6 +1,6 @@
 @{
     RootModule        = 'FAFO.Verifone.psm1'
-    ModuleVersion     = '1.2.0'
+    ModuleVersion     = '1.3.0'
     GUID              = 'e2f9a4b1-7c58-4d2e-9a01-3b6c8d5e4f70'
     Author            = 'FAFO Power Toolbox'
     CompanyName       = 'FAFO'
@@ -29,9 +29,13 @@
         'Export-FAFOVerifonePriceChange',
         'Save-FAFOVerifoneBackup',
         'Export-FAFOVerifoneSnapshot',
+        'Get-FAFOVerifoneLibraryShellPath',
         'Get-FAFOVerifoneLibraryRoot',
+        'Set-FAFOVerifoneSitesRoot',
+        'Initialize-FAFOVerifoneSitesLink',
         'Get-FAFOVerifoneSitePath',
         'Get-FAFOVerifoneLibrarySite',
+        'Update-FAFOVerifoneLibraryIndex',
         'Show-FAFOVerifoneLibrary',
         'Add-FAFOVerifoneLibraryBackup',
         'Open-FAFOVerifoneLibrarySite',

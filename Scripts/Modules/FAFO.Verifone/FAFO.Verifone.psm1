@@ -1,16 +1,23 @@
-# FAFO.Verifone.psm1
+﻿# FAFO.Verifone.psm1
 # Verifone POS backup analysis, site library, scripted edits, health + explore
-# Version: 1.2.0
+# Version: 1.3.0
 #
 # Design:
 #   1) Detect/load backup XML sets into structured objects (PLU/Dept focused)
-#   2) Site library: VerifoneLibrary\{MOC}\{Customer}\{Location}\
-#        original\  = immutable first ingest (never edit)
-#        working\   = current state after script replay
-#        scripts\   = ordered edit scripts (not full tree copies)
-#   3) Rollback = restore original + replay scripts 1..N (precise, cheap)
-#   4) System Health Report (surface) → interactive drill-down (PLUs/Depts)
-#   5) Pricing helpers + snapshot JSON for future HTML/Python UI
+#   2) Site library (LOCAL ONLY, never git):
+#        {VerifoneSitesRoot}\{Customer}\{Site}\
+#          original\   = immutable first ingest (never edit)
+#          working\    = current state after script replay
+#          scripts\    = ordered edit scripts (not full tree copies)
+#          files\      = extra raw drops, photos notes, misc site files
+#          punchlists\ = pre-reload punch list working copies for this site
+#          site.json   = identity + paths for future apps / prefill
+#   3) Repo shell VerifoneLibrary\ holds templates + launchers only.
+#      VerifoneLibrary\Sites is a MKLINK /J junction to VerifoneSitesRoot.
+#   4) Path registry: %LOCALAPPDATA%\FAFO\local-paths.json (shared by all apps)
+#   5) Rollback = restore original + replay scripts 1..N (precise, cheap)
+#   6) System Health Report (surface) → interactive drill-down (PLUs/Depts)
+#   7) Pricing helpers + snapshot JSON for future HTML/Python UI
 
 $script:FAFOVerifoneSession = $null
 
@@ -123,7 +130,7 @@ function ConvertFrom-FAFOVerifoneItemNode {
         [System.Xml.XmlElement]$Node,
         [string]$SourceFile
     )
-    # SMS/Commander-style aliases — PLU identity separate from UPC when both exist
+    # SMS/Commander-style aliases - PLU identity separate from UPC when both exist
     $plu = Get-FAFOVerifoneXmlField $Node @('PLU', 'Plu', 'PluNumber', 'ItemCode', 'Code', 'Sku', 'Id', 'Number')
     $upc = Get-FAFOVerifoneXmlField $Node @('UPC', 'Upc', 'Barcode', 'ScanCode', 'EAN')
     if (-not $plu -and $upc) { $plu = $upc }
@@ -903,7 +910,7 @@ function Show-FAFOVerifoneHealthReport {
 
     Write-Host 'Health flags' -ForegroundColor Yellow
     if ($h.Flags.Count -eq 0) {
-        Write-Host '  (none) — looking clean' -ForegroundColor Green
+        Write-Host '  (none) - looking clean' -ForegroundColor Green
     }
     else {
         $i = 1
@@ -954,7 +961,7 @@ function Show-FAFOVerifoneHealthReport {
 |----------|-------|------:|------|
 $flagLines
 "@
-        # Avoid serializing huge sample graphs into report raw if needed — full object is fine for now
+        # Avoid serializing huge sample graphs into report raw if needed - full object is fine for now
         $raw = $h | Select-Object OverallStatus, GeneratedAt, BackupPath, LibraryPath, Store, Counts, Pricing, Flags, TopDepartments, ScriptStatus, IsDirty
         Write-FAFOReport -Name 'Verifone-Health' -Content $md -RawObject $raw | Out-Null
     }
@@ -1024,7 +1031,7 @@ function Show-FAFOVerifoneHealthFlag {
     }
 
     if (Get-Command Out-GridView -ErrorAction SilentlyContinue) {
-        $sel = $view | Out-GridView -Title "Health flag: $Id — $($flag.Title)" -PassThru
+        $sel = $view | Out-GridView -Title "Health flag: $Id - $($flag.Title)" -PassThru
         if ($PassThru) { return $sel }
         return $sel
     }
@@ -1115,7 +1122,7 @@ function Show-FAFOVerifoneDepartment {
     if ($DrillIntoItems -or $sel) {
         foreach ($d in @($sel)) {
             if (-not $d) { continue }
-            Write-Host ("Department {0} — {1} ({2} items)" -f $d.Id, $d.Name, $d.ItemCount) -ForegroundColor Cyan
+            Write-Host ("Department {0} - {1} ({2} items)" -f $d.Id, $d.Name, $d.ItemCount) -ForegroundColor Cyan
             Show-FAFOVerifoneItem -DepartmentId $d.Id | Out-Null
         }
     }
@@ -1633,17 +1640,15 @@ function Export-FAFOVerifoneSnapshot {
 
 #endregion
 
-#region Site library (MOC / Customer / Location) + scripted rollback
+#region Site library (Customer / Site) + scripted rollback
 
-function Get-FAFOVerifoneLibraryRoot {
+function Get-FAFOVerifoneLibraryShellPath {
     <#
     .SYNOPSIS
-      Root of the on-disk Verifone backup library (under the toolbox by default).
+      Repo shell folder (templates, launchers). Does NOT hold site backup XML.
     #>
     [CmdletBinding()]
-    param(
-        [string]$ToolboxRoot
-    )
+    param([string]$ToolboxRoot)
     if (-not $ToolboxRoot) {
         if ($env:FAFO_TOOLBOX_ROOT -and (Test-Path $env:FAFO_TOOLBOX_ROOT)) {
             $ToolboxRoot = $env:FAFO_TOOLBOX_ROOT
@@ -1652,32 +1657,231 @@ function Get-FAFOVerifoneLibraryRoot {
             $ToolboxRoot = Get-FAFOToolboxRoot
         }
         else {
-            # Scripts\Modules\FAFO.Verifone -> toolbox root
             $ToolboxRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
         }
     }
-    $root = Join-Path $ToolboxRoot 'VerifoneLibrary'
+    $shell = Join-Path $ToolboxRoot 'VerifoneLibrary'
+    if (-not (Test-Path -LiteralPath $shell)) {
+        New-Item -Path $shell -ItemType Directory -Force | Out-Null
+    }
+    return (Resolve-Path -LiteralPath $shell).Path
+}
+
+function Get-FAFOVerifoneLibraryRoot {
+    <#
+    .SYNOPSIS
+      Root of the on-disk Verifone site data library (local only, never git).
+    .DESCRIPTION
+      Resolves from (first match):
+        1) -LibraryRoot parameter
+        2) $env:FAFO_VERIFONE_SITES_ROOT
+        3) %LOCALAPPDATA%\FAFO\local-paths.json → VerifoneSitesRoot
+        4) VerifoneLibrary\Sites junction target (if present)
+        5) Default %LOCALAPPDATA%\FAFO\VerifoneSites
+      Layout: {root}\{Customer}\{Site}\original|working|scripts|files|punchlists
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$ToolboxRoot,
+        [string]$LibraryRoot
+    )
+    if ($LibraryRoot) {
+        if (-not (Test-Path -LiteralPath $LibraryRoot)) {
+            New-Item -Path $LibraryRoot -ItemType Directory -Force | Out-Null
+        }
+        return (Resolve-Path -LiteralPath $LibraryRoot).Path
+    }
+
+    if (-not $ToolboxRoot) {
+        if ($env:FAFO_TOOLBOX_ROOT -and (Test-Path $env:FAFO_TOOLBOX_ROOT)) {
+            $ToolboxRoot = $env:FAFO_TOOLBOX_ROOT
+        }
+        elseif (Get-Command Get-FAFOToolboxRoot -ErrorAction SilentlyContinue) {
+            $ToolboxRoot = Get-FAFOToolboxRoot
+        }
+        else {
+            $ToolboxRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+        }
+    }
+
+    $root = $null
+    if (Get-Command Get-FAFOLocalPaths -ErrorAction SilentlyContinue) {
+        $local = Get-FAFOLocalPaths -ToolboxRoot $ToolboxRoot
+        $root = $local.VerifoneSitesRoot
+    }
+    elseif ($env:FAFO_VERIFONE_SITES_ROOT) {
+        $root = $env:FAFO_VERIFONE_SITES_ROOT
+    }
+
+    if (-not $root) {
+        $link = Join-Path $ToolboxRoot 'VerifoneLibrary\Sites'
+        if (Test-Path -LiteralPath $link) {
+            try {
+                $item = Get-Item -LiteralPath $link -Force
+                if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    if ($item.Target) {
+                        $root = @($item.Target)[0]
+                    }
+                }
+                else {
+                    $root = $link
+                }
+            }
+            catch {
+                $root = $link
+            }
+        }
+    }
+
+    if (-not $root) {
+        $root = Join-Path $env:LOCALAPPDATA 'FAFO\VerifoneSites'
+    }
+
     if (-not (Test-Path -LiteralPath $root)) {
         New-Item -Path $root -ItemType Directory -Force | Out-Null
     }
     return (Resolve-Path -LiteralPath $root).Path
 }
 
+function Set-FAFOVerifoneSitesRoot {
+    <#
+    .SYNOPSIS
+      Choose the local directory where Customer\Site backup data is stored.
+    .DESCRIPTION
+      Saves to %LOCALAPPDATA%\FAFO\local-paths.json so every FAFO app can find it.
+      Creates VerifoneLibrary\Sites as a directory junction (mklink /J) into the repo
+      so tools can use a stable relative path without putting backups on GitHub.
+    .EXAMPLE
+      Set-FAFOVerifoneSitesRoot -Browse
+      Set-FAFOVerifoneSitesRoot -Path 'D:\FAFO\VerifoneSites'
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Path')]
+    param(
+        [Parameter(ParameterSetName = 'Path', Position = 0)]
+        [string]$Path,
+
+        [Parameter(ParameterSetName = 'Browse')]
+        [switch]$Browse,
+
+        [switch]$SkipLink,
+        [string]$ToolboxRoot
+    )
+
+    if (-not $ToolboxRoot) {
+        if (Get-Command Get-FAFOToolboxRoot -ErrorAction SilentlyContinue) {
+            $ToolboxRoot = Get-FAFOToolboxRoot
+        }
+        else {
+            $ToolboxRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+        }
+    }
+
+    if ($Browse -or [string]::IsNullOrWhiteSpace($Path)) {
+        if (Get-Command Select-FAFOFolder -ErrorAction SilentlyContinue) {
+            $picked = Select-FAFOFolder -Description 'Select folder for Verifone site backups (Customer\Site data - local only, not GitHub)' -InitialDirectory $Path
+            if (-not $picked) { throw 'Folder selection cancelled.' }
+            $Path = $picked
+        }
+        else {
+            $Path = Read-Host 'Path for Verifone site backups (Customer\Site)'
+            if ([string]::IsNullOrWhiteSpace($Path)) { throw 'No path provided.' }
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -Path $Path -ItemType Directory -Force | Out-Null
+    }
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+
+    # Standard subfolder markers
+    $readme = Join-Path $resolved 'README-LOCAL-ONLY.txt'
+    if (-not (Test-Path -LiteralPath $readme)) {
+        @(
+            'FAFO Verifone site data (LOCAL ONLY)'
+            '===================================='
+            'This folder is intentionally outside (or linked into) the git repo.'
+            'Do not copy site XML backups into GitHub.'
+            ''
+            'Layout:'
+            '  {Customer}\{Site}\'
+            '    original\    sealed SMS/XML backup'
+            '    working\     editable working tree'
+            '    scripts\     scripted edits / rollback log'
+            '    files\       extra drops, photos, misc'
+            '    punchlists\  pre-reload punch list copies'
+            '    site.json    identity for apps / prefill'
+            ''
+            'Configure with: Set-FAFOVerifoneSitesRoot -Browse'
+            'Or: VerifoneLibrary\Setup-SitesDataDirectory.bat'
+        ) -join [Environment]::NewLine | Out-File -FilePath $readme -Encoding utf8
+    }
+
+    if (Get-Command Save-FAFOLocalPaths -ErrorAction SilentlyContinue) {
+        Save-FAFOLocalPaths -VerifoneSitesRoot $resolved -ToolboxRoot $ToolboxRoot | Out-Null
+    }
+    else {
+        $env:FAFO_VERIFONE_SITES_ROOT = $resolved
+    }
+
+    $link = $null
+    if (-not $SkipLink) {
+        $shell = Get-FAFOVerifoneLibraryShellPath -ToolboxRoot $ToolboxRoot
+        $linkPath = Join-Path $shell 'Sites'
+        if (Get-Command Initialize-FAFODirectoryJunction -ErrorAction SilentlyContinue) {
+            $link = Initialize-FAFODirectoryJunction -LinkPath $linkPath -TargetPath $resolved
+        }
+        else {
+            if (-not (Test-Path -LiteralPath $linkPath)) {
+                $null = cmd /c "mklink /J `"$linkPath`" `"$resolved`""
+            }
+            $link = [PSCustomObject]@{ LinkPath = $linkPath; TargetPath = $resolved; Ok = (Test-Path $linkPath) }
+        }
+    }
+
+    Write-FAFOVerifoneHost "Verifone site data root: $resolved" 'Green'
+    if ($link) {
+        Write-FAFOVerifoneHost "Repo junction: $($link.LinkPath) -> $($link.TargetPath)" 'Cyan'
+    }
+    Write-FAFOVerifoneHost 'This path is machine-local and is not committed to git.' 'DarkGray'
+
+    [PSCustomObject]@{
+        VerifoneSitesRoot = $resolved
+        Link              = $link
+        ConfigPath        = if (Get-Command Get-FAFOLocalPathsConfigPath -ErrorAction SilentlyContinue) { Get-FAFOLocalPathsConfigPath } else { $null }
+        Layout            = '{Customer}\{Site}\{original|working|scripts|files|punchlists}'
+    }
+}
+
+function Initialize-FAFOVerifoneSitesLink {
+    <#
+    .SYNOPSIS
+      Ensure VerifoneLibrary\Sites junction exists for the configured local data root.
+    #>
+    [CmdletBinding()]
+    param([string]$ToolboxRoot)
+    $root = Get-FAFOVerifoneLibraryRoot -ToolboxRoot $ToolboxRoot
+    return Set-FAFOVerifoneSitesRoot -Path $root -ToolboxRoot $ToolboxRoot
+}
+
 function Get-FAFOVerifoneSitePath {
     <#
     .SYNOPSIS
-      Build library path: Library\MOC\Customer\Location
+      Build library path: {LibraryRoot}\{Customer}\{Site}
+    .DESCRIPTION
+      MOC is stored in site.json metadata only (not in the folder path).
+      -Location is the Site folder name.
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$MOC,
+        [string]$MOC,
         [Parameter(Mandatory)][string]$Customer,
         [Parameter(Mandatory)][string]$Location,
+        [Alias('Site')][string]$SiteName,
         [string]$LibraryRoot = (Get-FAFOVerifoneLibraryRoot)
     )
-    $p = Join-Path $LibraryRoot (ConvertTo-FAFOSafeName $MOC 'Unknown-MOC')
-    $p = Join-Path $p (ConvertTo-FAFOSafeName $Customer 'Unknown-Customer')
-    $p = Join-Path $p (ConvertTo-FAFOSafeName $Location 'Unknown-Location')
+    $site = if ($SiteName) { $SiteName } else { $Location }
+    $p = Join-Path $LibraryRoot (ConvertTo-FAFOSafeName $Customer 'Unknown-Customer')
+    $p = Join-Path $p (ConvertTo-FAFOSafeName $site 'Unknown-Site')
     return $p
 }
 
@@ -1721,9 +1925,11 @@ function Write-FAFOVerifoneSiteMeta {
         [string]$IngestedAt = (Get-Date).ToString('o')
     )
     $meta = [PSCustomObject]@{
+        Schema       = 'FAFO.Verifone.Site/1'
         MOC          = $Store.MOC
         Customer     = $Store.Customer
         Location     = $Store.Location
+        Site         = $Store.Location
         Name         = $Store.Name
         SiteId       = $Store.SiteId
         Version      = $Store.Version
@@ -1735,9 +1941,24 @@ function Write-FAFOVerifoneSiteMeta {
         OriginalPath = Join-Path $SitePath 'original'
         WorkingPath  = Join-Path $SitePath 'working'
         ScriptsPath  = Join-Path $SitePath 'scripts'
+        FilesPath    = Join-Path $SitePath 'files'
+        PunchlistsPath = Join-Path $SitePath 'punchlists'
+        # Prefill hooks for future apps (punch list, network notes, etc.)
+        Prefill      = [PSCustomObject]@{
+            SiteName     = $Store.Name
+            Customer     = $Store.Customer
+            StoreNumber  = $Store.SiteId
+            Address      = $Store.Address
+            BrandOrMOC   = $Store.MOC
+        }
+    }
+    foreach ($d in @($meta.OriginalPath, $meta.WorkingPath, $meta.ScriptsPath, $meta.FilesPath, $meta.PunchlistsPath)) {
+        if (-not (Test-Path -LiteralPath $d)) {
+            New-Item -Path $d -ItemType Directory -Force | Out-Null
+        }
     }
     $metaPath = Join-Path $SitePath 'site.json'
-    $meta | ConvertTo-Json -Depth 6 | Out-File -FilePath $metaPath -Encoding utf8
+    $meta | ConvertTo-Json -Depth 8 | Out-File -FilePath $metaPath -Encoding utf8
     return $meta
 }
 
@@ -1831,18 +2052,22 @@ function Resolve-FAFOVerifoneLibraryContext {
     $original = Join-Path $sitePath 'original'
     $working = Join-Path $sitePath 'working'
     $scripts = Join-Path $sitePath 'scripts'
-    foreach ($d in @($original, $working, $scripts)) {
+    $files = Join-Path $sitePath 'files'
+    $punchlists = Join-Path $sitePath 'punchlists'
+    foreach ($d in @($original, $working, $scripts, $files, $punchlists)) {
         if (-not (Test-Path -LiteralPath $d)) {
             New-Item -Path $d -ItemType Directory -Force | Out-Null
         }
     }
     [PSCustomObject]@{
-        SitePath     = $sitePath
-        OriginalPath = $original
-        WorkingPath  = $working
-        ScriptsPath  = $scripts
-        Meta         = $meta
-        MetaPath     = $metaPath
+        SitePath       = $sitePath
+        OriginalPath   = $original
+        WorkingPath    = $working
+        ScriptsPath    = $scripts
+        FilesPath      = $files
+        PunchlistsPath = $punchlists
+        Meta           = $meta
+        MetaPath       = $metaPath
     }
 }
 
@@ -1871,13 +2096,14 @@ function Add-FAFOVerifoneLibraryBackup {
     <#
     .SYNOPSIS
       Ingest a Verifone backup into the site library BEFORE edits.
-      Path: VerifoneLibrary\{MOC}\{Customer}\{Location}\original|working|scripts
+      Path: {SitesRoot}\{Customer}\{Site}\original|working|scripts|files|punchlists
     .DESCRIPTION
       Reads site identity from the backup XML when possible. Optional -MOC/-Customer/-Location
       overrides fill gaps or force placement. Original is stored immutable; working starts as a copy.
+      Site data lives in the local VerifoneSitesRoot (junction: VerifoneLibrary\Sites) - not on GitHub.
     .EXAMPLE
       Add-FAFOVerifoneLibraryBackup -Path 'D:\FromUSB\StoreBackup'
-      Add-FAFOVerifoneLibraryBackup -Path (Get-FAFOVerifoneDemoBackupPath)
+      Add-FAFOVerifoneLibraryBackup -Path (Get-FAFOVerifoneDemoBackupPath) -Customer 'Demo Customer LLC' -Location 'Main Street 12'
     #>
     [CmdletBinding()]
     param(
@@ -1886,6 +2112,7 @@ function Add-FAFOVerifoneLibraryBackup {
         [string]$MOC,
         [string]$Customer,
         [string]$Location,
+        [Alias('Site')][string]$SiteName,
         [switch]$Force,
         [string]$LibraryRoot = (Get-FAFOVerifoneLibraryRoot)
     )
@@ -1895,13 +2122,16 @@ function Add-FAFOVerifoneLibraryBackup {
     }
     $source = (Resolve-Path -LiteralPath $Path).Path
 
+    # Ensure sites root + junction exist (best effort)
+    try { Initialize-FAFOVerifoneSitesLink | Out-Null } catch { }
+
     # Probe identity without polluting final session path yet
     $probe = Import-FAFOVerifoneBackup -Path $source
     $store = $probe.Store
 
     $useMoc = if ($MOC) { $MOC } else { $store.MOC }
     $useCustomer = if ($Customer) { $Customer } else { $store.Customer }
-    $useLocation = if ($Location) { $Location } else { $store.Location }
+    $useLocation = if ($SiteName) { $SiteName } elseif ($Location) { $Location } else { $store.Location }
 
     # Reflect overrides onto store for metadata
     $store.MOC = $useMoc
@@ -1912,6 +2142,8 @@ function Add-FAFOVerifoneLibraryBackup {
     $original = Join-Path $sitePath 'original'
     $working = Join-Path $sitePath 'working'
     $scripts = Join-Path $sitePath 'scripts'
+    $files = Join-Path $sitePath 'files'
+    $punchlists = Join-Path $sitePath 'punchlists'
 
     if ((Test-Path -LiteralPath (Join-Path $original '*')) -and -not $Force) {
         throw "Library site already has an original backup at:`n  $sitePath`nUse -Force to replace original (destroys prior original + scripts), or Open-FAFOVerifoneLibrarySite to work with it."
@@ -1921,9 +2153,9 @@ function Add-FAFOVerifoneLibraryBackup {
         Remove-Item -LiteralPath $sitePath -Recurse -Force
     }
 
-    New-Item -Path $original -ItemType Directory -Force | Out-Null
-    New-Item -Path $working -ItemType Directory -Force | Out-Null
-    New-Item -Path $scripts -ItemType Directory -Force | Out-Null
+    foreach ($d in @($original, $working, $scripts, $files, $punchlists)) {
+        New-Item -Path $d -ItemType Directory -Force | Out-Null
+    }
 
     # Immutable original
     Copy-Item -Path (Join-Path $source '*') -Destination $original -Recurse -Force
@@ -1944,26 +2176,30 @@ function Add-FAFOVerifoneLibraryBackup {
     $session = Import-FAFOVerifoneBackup -Path $working
     $ctx = Resolve-FAFOVerifoneLibraryContext -SitePath $sitePath
     $ctx = [PSCustomObject]@{
-        SitePath     = $ctx.SitePath
-        OriginalPath = $ctx.OriginalPath
-        WorkingPath  = $ctx.WorkingPath
-        ScriptsPath  = $ctx.ScriptsPath
-        Meta         = $meta
-        MetaPath     = $ctx.MetaPath
+        SitePath       = $ctx.SitePath
+        OriginalPath   = $ctx.OriginalPath
+        WorkingPath    = $ctx.WorkingPath
+        ScriptsPath    = $ctx.ScriptsPath
+        FilesPath      = $ctx.FilesPath
+        PunchlistsPath = $ctx.PunchlistsPath
+        Meta           = $meta
+        MetaPath       = $ctx.MetaPath
     }
     Set-FAFOVerifoneSessionLibrary -LibraryContext $ctx
 
     Write-FAFOVerifoneHost 'Ingested into library (original sealed, working ready):' 'Green'
     Write-FAFOVerifoneHost "  $sitePath" 'Green'
-    Write-FAFOVerifoneHost ("  MOC={0} | Customer={1} | Location={2}" -f $useMoc, $useCustomer, $useLocation) 'Gray'
+    Write-FAFOVerifoneHost ("  Customer={0} | Site={1} | MOC={2}" -f $useCustomer, $useLocation, $useMoc) 'Gray'
 
     [PSCustomObject]@{
-        SitePath     = $sitePath
-        OriginalPath = $original
-        WorkingPath  = $working
-        ScriptsPath  = $scripts
-        Meta         = $meta
-        Session      = $session
+        SitePath       = $sitePath
+        OriginalPath   = $original
+        WorkingPath    = $working
+        ScriptsPath    = $scripts
+        FilesPath      = $files
+        PunchlistsPath = $punchlists
+        Meta           = $meta
+        Session        = $session
     }
 }
 
@@ -2009,12 +2245,14 @@ function Open-FAFOVerifoneLibrarySite {
     $session = Import-FAFOVerifoneBackup -Path $loadPath
     if (Test-Path -LiteralPath $ctx.MetaPath) {
         $ctx = [PSCustomObject]@{
-            SitePath     = $ctx.SitePath
-            OriginalPath = $ctx.OriginalPath
-            WorkingPath  = $ctx.WorkingPath
-            ScriptsPath  = $ctx.ScriptsPath
-            Meta         = (Get-Content -LiteralPath $ctx.MetaPath -Raw | ConvertFrom-Json)
-            MetaPath     = $ctx.MetaPath
+            SitePath       = $ctx.SitePath
+            OriginalPath   = $ctx.OriginalPath
+            WorkingPath    = $ctx.WorkingPath
+            ScriptsPath    = $ctx.ScriptsPath
+            FilesPath      = $ctx.FilesPath
+            PunchlistsPath = $ctx.PunchlistsPath
+            Meta           = (Get-Content -LiteralPath $ctx.MetaPath -Raw | ConvertFrom-Json)
+            MetaPath       = $ctx.MetaPath
         }
     }
     Set-FAFOVerifoneSessionLibrary -LibraryContext $ctx
@@ -2133,7 +2371,7 @@ function Save-FAFOVerifoneEditScript {
     # Persist working tree (not original)
     Save-FAFOVerifoneWorkingCopy | Out-Null
 
-    # Clear pending — they are now scripted history
+    # Clear pending - they are now scripted history
     $s.PriceChanges.Clear()
     $s.IsDirty = $false
 
@@ -2318,9 +2556,13 @@ Export-ModuleMember -Function @(
     'Save-FAFOVerifoneBackup',
     'Export-FAFOVerifoneSnapshot',
     # Library + scripted rollback
+    'Get-FAFOVerifoneLibraryShellPath',
     'Get-FAFOVerifoneLibraryRoot',
+    'Set-FAFOVerifoneSitesRoot',
+    'Initialize-FAFOVerifoneSitesLink',
     'Get-FAFOVerifoneSitePath',
     'Get-FAFOVerifoneLibrarySite',
+    'Update-FAFOVerifoneLibraryIndex',
     'Show-FAFOVerifoneLibrary',
     'Add-FAFOVerifoneLibraryBackup',
     'Open-FAFOVerifoneLibrarySite',

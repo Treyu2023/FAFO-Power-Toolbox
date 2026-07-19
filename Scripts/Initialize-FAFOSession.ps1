@@ -13,8 +13,9 @@ else {
 
 $env:FAFO_TOOLBOX_ROOT = $ToolboxRoot
 
-$secretsModule = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Secrets\FAFO.Secrets.psd1'
-$toolboxModule = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Toolbox\FAFO.Toolbox.psd1'
+$secretsModule  = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Secrets\FAFO.Secrets.psd1'
+$toolboxModule  = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Toolbox\FAFO.Toolbox.psd1'
+$verifoneModule = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Verifone\FAFO.Verifone.psd1'
 
 if (-not (Test-Path $secretsModule)) {
     throw "FAFO.Secrets module not found: $secretsModule"
@@ -25,6 +26,13 @@ if (-not (Test-Path $toolboxModule)) {
 
 Import-Module $secretsModule -Force
 Import-Module $toolboxModule -Force
+
+if (Test-Path $verifoneModule) {
+    Import-Module $verifoneModule -Force
+}
+else {
+    Write-Warning "FAFO.Verifone module not found (optional): $verifoneModule"
+}
 
 Initialize-FAFOEnvironment -Names @(
     'XAI_API_KEY',
@@ -44,3 +52,6 @@ if (-not $health.OverallOk) {
 }
 
 Write-Host "Helpers: Invoke-FAFOSystemDiagnostics | Write-FAFOStatusReport -IncludeHealth | Invoke-FAFOGrokDiag | Get-FAFOReport | Open-FAFOPath -Which Device" -ForegroundColor DarkGray
+Write-Host "Verifone: Set-FAFOVerifoneSitesRoot -Browse | Add-FAFOVerifoneLibraryBackup | Show-FAFOVerifoneLibrary | Show-FAFOVerifoneHealthReport" -ForegroundColor DarkGray
+Write-Host "Sites:    Customer\\Site under local VerifoneSitesRoot (junction VerifoneLibrary\\Sites) — not git" -ForegroundColor DarkGray
+Write-Host "Demo:     Add-FAFOVerifoneLibraryBackup -Path (Get-FAFOVerifoneDemoBackupPath) -Customer 'Demo Customer LLC' -Location 'Main Street 12' -Force" -ForegroundColor DarkGray

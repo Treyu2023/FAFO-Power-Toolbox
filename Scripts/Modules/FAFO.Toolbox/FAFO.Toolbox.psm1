@@ -1,6 +1,6 @@
 # FAFO.Toolbox.psm1
-# Paths, logging, safe file ops, health, and report helpers for FAFO Power Toolbox
-# Version: 1.2.0
+# Paths, logging, safe file ops, health, device profiles, and report helpers
+# Version: 1.4.0
 
 #region Paths & configuration
 
@@ -91,6 +91,234 @@ function Get-FAFOCommonPaths {
         PackLogsScript  = Join-Path $viewer '_pack_logs.ps1'
         BindConfig      = Join-Path $ToolboxRoot 'shared\aitoolbox-bind.json'
         VersionFile     = Join-Path $ToolboxRoot 'VERSION'
+        # Machine-local path registry (all apps read this; never commit)
+        LocalPathsConfig = Join-Path $env:LOCALAPPDATA 'FAFO\local-paths.json'
+        # Default Verifone site data root if user has not chosen one yet
+        VerifoneSitesDefault = Join-Path $env:LOCALAPPDATA 'FAFO\VerifoneSites'
+        # Repo shell for Verifone tools (templates/launchers only — backups live elsewhere)
+        VerifoneLibraryShell = Join-Path $ToolboxRoot 'VerifoneLibrary'
+        # Junction inside repo that points at VerifoneSitesRoot (local-only data)
+        VerifoneSitesLink    = Join-Path $ToolboxRoot 'VerifoneLibrary\Sites'
+    }
+}
+
+function Get-FAFOLocalPathsConfigPath {
+    <#
+    .SYNOPSIS
+      Path to the machine-local FAFO path registry (%LOCALAPPDATA%\FAFO\local-paths.json).
+    #>
+    [CmdletBinding()]
+    param()
+    Join-Path $env:LOCALAPPDATA 'FAFO\local-paths.json'
+}
+
+function Get-FAFOLocalPaths {
+    <#
+    .SYNOPSIS
+      Read machine-local directory settings shared by all FAFO apps.
+    .DESCRIPTION
+      Source of truth: %LOCALAPPDATA%\FAFO\local-paths.json (never in git).
+      Keys currently used:
+        VerifoneSitesRoot  - Customer\Site backup library (XML, punch lists, etc.)
+    .NOTES
+      Env overrides: FAFO_VERIFONE_SITES_ROOT
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$ToolboxRoot = (Get-FAFOToolboxRoot)
+    )
+
+    $paths = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
+    $cfgPath = $paths.LocalPathsConfig
+    $cfg = $null
+    if (Test-Path -LiteralPath $cfgPath) {
+        try {
+            $cfg = Get-Content -LiteralPath $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        catch {
+            $cfg = $null
+        }
+    }
+
+    $verifoneRoot = $null
+    if ($env:FAFO_VERIFONE_SITES_ROOT -and (Test-Path -LiteralPath $env:FAFO_VERIFONE_SITES_ROOT)) {
+        $verifoneRoot = (Resolve-Path -LiteralPath $env:FAFO_VERIFONE_SITES_ROOT).Path
+    }
+    elseif ($cfg -and $cfg.VerifoneSitesRoot -and -not [string]::IsNullOrWhiteSpace([string]$cfg.VerifoneSitesRoot)) {
+        $verifoneRoot = [string]$cfg.VerifoneSitesRoot
+    }
+    else {
+        $verifoneRoot = $paths.VerifoneSitesDefault
+    }
+
+    [PSCustomObject]@{
+        ConfigPath           = $cfgPath
+        ConfigExists         = [bool](Test-Path -LiteralPath $cfgPath)
+        VerifoneSitesRoot    = $verifoneRoot
+        VerifoneSitesDefault = $paths.VerifoneSitesDefault
+        VerifoneLibraryShell = $paths.VerifoneLibraryShell
+        VerifoneSitesLink    = $paths.VerifoneSitesLink
+        ToolboxRoot          = $ToolboxRoot
+        DeviceId             = $paths.DeviceId
+        Machine              = $env:COMPUTERNAME
+        Raw                  = $cfg
+    }
+}
+
+function Save-FAFOLocalPaths {
+    <#
+    .SYNOPSIS
+      Persist machine-local directory settings for all FAFO apps.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$VerifoneSitesRoot,
+        [string]$ToolboxRoot = (Get-FAFOToolboxRoot)
+    )
+
+    $current = Get-FAFOLocalPaths -ToolboxRoot $ToolboxRoot
+    $cfgPath = $current.ConfigPath
+    $dir = Split-Path -Parent $cfgPath
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    }
+
+    $existing = @{}
+    if ($current.Raw) {
+        $current.Raw.PSObject.Properties | ForEach-Object { $existing[$_.Name] = $_.Value }
+    }
+
+    if ($PSBoundParameters.ContainsKey('VerifoneSitesRoot') -and $VerifoneSitesRoot) {
+        $resolved = $VerifoneSitesRoot
+        if (Test-Path -LiteralPath $VerifoneSitesRoot) {
+            $resolved = (Resolve-Path -LiteralPath $VerifoneSitesRoot).Path
+        }
+        $existing['VerifoneSitesRoot'] = $resolved
+        $env:FAFO_VERIFONE_SITES_ROOT = $resolved
+    }
+
+    $existing['Version'] = 1
+    $existing['UpdatedAt'] = (Get-Date).ToString('o')
+    $existing['Machine'] = $env:COMPUTERNAME
+    $existing['DeviceId'] = $current.DeviceId
+    $existing['ToolboxRoot'] = $ToolboxRoot
+
+    $obj = [PSCustomObject]$existing
+    $obj | ConvertTo-Json -Depth 6 | Out-File -FilePath $cfgPath -Encoding utf8
+    Write-FAFOLog -Level Info -Message "Saved local paths config: $cfgPath" -ToolboxRoot $ToolboxRoot
+    return Get-FAFOLocalPaths -ToolboxRoot $ToolboxRoot
+}
+
+function Select-FAFOFolder {
+    <#
+    .SYNOPSIS
+      Show a Windows folder picker dialog (or fall back to Read-Host).
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Description = 'Select a folder',
+        [string]$InitialDirectory
+    )
+
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dialog.Description = $Description
+        $dialog.ShowNewFolderButton = $true
+        if ($InitialDirectory -and (Test-Path -LiteralPath $InitialDirectory)) {
+            $dialog.SelectedPath = (Resolve-Path -LiteralPath $InitialDirectory).Path
+        }
+        $result = $dialog.ShowDialog()
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {
+            return $dialog.SelectedPath
+        }
+        return $null
+    }
+    catch {
+        Write-Host $Description -ForegroundColor Cyan
+        $typed = Read-Host 'Folder path (blank to cancel)'
+        if ([string]::IsNullOrWhiteSpace($typed)) { return $null }
+        return $typed.Trim().Trim('"')
+    }
+}
+
+function Initialize-FAFODirectoryJunction {
+    <#
+    .SYNOPSIS
+      Create or refresh a directory junction (MKLINK /J) from LinkPath to TargetPath.
+    .DESCRIPTION
+      Junctions do not require admin on modern Windows and keep large local data
+      out of git while apps still open a stable path inside the repo.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$LinkPath,
+        [Parameter(Mandatory)][string]$TargetPath
+    )
+
+    if (-not (Test-Path -LiteralPath $TargetPath)) {
+        New-Item -Path $TargetPath -ItemType Directory -Force | Out-Null
+    }
+    $target = (Resolve-Path -LiteralPath $TargetPath).Path
+
+    $linkParent = Split-Path -Parent $LinkPath
+    if (-not (Test-Path -LiteralPath $linkParent)) {
+        New-Item -Path $linkParent -ItemType Directory -Force | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $LinkPath) {
+        $item = Get-Item -LiteralPath $LinkPath -Force
+        $isLink = [bool]($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+        if ($isLink) {
+            # Refresh if target differs
+            $currentTarget = $null
+            try {
+                # .NET Target property on DirectoryInfo for junctions (PS 5.1+)
+                if ($item.Target) {
+                    $currentTarget = @($item.Target)[0]
+                }
+            }
+            catch { }
+            if ($currentTarget) {
+                try {
+                    $cur = (Resolve-Path -LiteralPath $currentTarget -ErrorAction SilentlyContinue).Path
+                    if ($cur -and ($cur -ieq $target)) {
+                        return [PSCustomObject]@{
+                            LinkPath   = $LinkPath
+                            TargetPath = $target
+                            Created    = $false
+                            Refreshed  = $false
+                            Ok         = $true
+                        }
+                    }
+                }
+                catch { }
+            }
+            $null = cmd /c "rmdir `"$LinkPath`"" 2>$null
+        }
+        else {
+            # Real folder already there — do not destroy user data
+            $kids = @(Get-ChildItem -LiteralPath $LinkPath -Force -ErrorAction SilentlyContinue)
+            if ($kids.Count -gt 0) {
+                throw "Link path exists as a real non-empty folder (not a junction):`n  $LinkPath`nMove/rename it, then re-run setup."
+            }
+            Remove-Item -LiteralPath $LinkPath -Force -ErrorAction Stop
+        }
+    }
+
+    $out = cmd /c "mklink /J `"$LinkPath`" `"$target`"" 2>&1
+    $ok = Test-Path -LiteralPath $LinkPath
+    if (-not $ok) {
+        throw "Failed to create junction:`n  $LinkPath -> $target`n$out"
+    }
+
+    [PSCustomObject]@{
+        LinkPath   = $LinkPath
+        TargetPath = $target
+        Created    = $true
+        Refreshed  = $true
+        Ok         = $true
+        Message    = ($out | Out-String).Trim()
     }
 }
 
@@ -101,6 +329,7 @@ function Initialize-FAFOPaths {
     )
 
     $paths = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
+    $local = Get-FAFOLocalPaths -ToolboxRoot $ToolboxRoot
     foreach ($dir in @(
             $paths.DeviceRoot,
             $paths.Markdown,
@@ -108,9 +337,10 @@ function Initialize-FAFOPaths {
             $paths.Archive,
             $paths.PcReports,
             $paths.Logs,
-            $paths.Backups
+            $paths.Backups,
+            $local.VerifoneSitesRoot
         )) {
-        if (-not (Test-Path -LiteralPath $dir)) {
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
         }
     }
@@ -139,17 +369,30 @@ function Initialize-FAFOPaths {
         # Junction is optional (needs permissions); pack still works offline via logs-data.js
     }
 
+    # Best-effort repo junction so apps can use VerifoneLibrary\Sites
+    try {
+        if (Test-Path -LiteralPath $paths.VerifoneLibraryShell) {
+            Initialize-FAFODirectoryJunction -LinkPath $paths.VerifoneSitesLink -TargetPath $local.VerifoneSitesRoot | Out-Null
+        }
+    }
+    catch {
+        # Junction is optional; apps can still use VerifoneSitesRoot absolute path
+    }
+
     [PSCustomObject]@{
-        ToolboxRoot  = $paths.ToolboxRoot
-        DeviceId     = $paths.DeviceId
-        DeviceRoot   = $paths.DeviceRoot
-        MarkdownDir  = $paths.Markdown
-        RawDir       = $paths.Raw
-        ArchiveDir   = $paths.Archive
-        PcReportsDir = $paths.PcReports
-        LogsDir      = $paths.Logs
-        BackupsDir   = $paths.Backups
-        ViewerDir    = $paths.PcReportViewer
+        ToolboxRoot        = $paths.ToolboxRoot
+        DeviceId           = $paths.DeviceId
+        DeviceRoot         = $paths.DeviceRoot
+        MarkdownDir        = $paths.Markdown
+        RawDir             = $paths.Raw
+        ArchiveDir         = $paths.Archive
+        PcReportsDir       = $paths.PcReports
+        LogsDir            = $paths.Logs
+        BackupsDir         = $paths.Backups
+        ViewerDir          = $paths.PcReportViewer
+        VerifoneSitesRoot  = $local.VerifoneSitesRoot
+        VerifoneSitesLink  = $paths.VerifoneSitesLink
+        LocalPathsConfig   = $paths.LocalPathsConfig
     }
 }
 
@@ -820,32 +1063,38 @@ function Compress-FAFOReport {
 function Open-FAFOPath {
     [CmdletBinding()]
     param(
-        [ValidateSet('Root', 'Device', 'Reports', 'Markdown', 'Raw', 'PcReports', 'Logs', 'Backups', 'Archive', 'Server', 'Scripts', 'SecretsStore', 'Viewer')]
+        [ValidateSet('Root', 'Device', 'Reports', 'Markdown', 'Raw', 'PcReports', 'Logs', 'Backups', 'Archive', 'Server', 'Scripts', 'SecretsStore', 'Viewer', 'VerifoneSites', 'VerifoneLibrary')]
         [string]$Which = 'Root',
         [string]$ToolboxRoot = (Get-FAFOToolboxRoot)
     )
 
     $paths = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
+    $local = Get-FAFOLocalPaths -ToolboxRoot $ToolboxRoot
     $map = @{
-        Root         = $paths.ToolboxRoot
-        Device       = $paths.DeviceRoot
-        Reports      = $paths.Reports
-        Markdown     = $paths.Markdown
-        Raw          = $paths.Raw
-        PcReports    = $paths.PcReports
-        Logs         = $paths.Logs
-        Backups      = $paths.Backups
-        Archive      = $paths.Archive
-        Server       = $paths.Server
-        Scripts      = $paths.Scripts
-        SecretsStore = $paths.SecretsStore
-        Viewer       = $paths.PcReportViewer
+        Root            = $paths.ToolboxRoot
+        Device          = $paths.DeviceRoot
+        Reports         = $paths.Reports
+        Markdown        = $paths.Markdown
+        Raw             = $paths.Raw
+        PcReports       = $paths.PcReports
+        Logs            = $paths.Logs
+        Backups         = $paths.Backups
+        Archive         = $paths.Archive
+        Server          = $paths.Server
+        Scripts         = $paths.Scripts
+        SecretsStore    = $paths.SecretsStore
+        Viewer          = $paths.PcReportViewer
+        VerifoneSites   = $local.VerifoneSitesRoot
+        VerifoneLibrary = $paths.VerifoneLibraryShell
     }
 
     $target = $map[$Which]
     if (-not (Test-Path -LiteralPath $target)) {
-        if ($Which -in @('Logs', 'Backups', 'Archive', 'Markdown', 'Raw', 'Reports', 'Device', 'PcReports')) {
+        if ($Which -in @('Logs', 'Backups', 'Archive', 'Markdown', 'Raw', 'Reports', 'Device', 'PcReports', 'VerifoneSites')) {
             Initialize-FAFOPaths -ToolboxRoot $ToolboxRoot | Out-Null
+            if ($Which -eq 'VerifoneSites') {
+                $target = (Get-FAFOLocalPaths -ToolboxRoot $ToolboxRoot).VerifoneSitesRoot
+            }
         }
         else {
             throw "Path not found: $target"
@@ -859,12 +1108,374 @@ function Open-FAFOPath {
 
 #endregion
 
+#region Device profiles & connection testing (field tech)
+
+# Session-selected profile (set by Select-FAFODeviceProfile)
+$script:FAFOSelectedDeviceProfile = $null
+
+function Get-FAFODeviceProfileCatalog {
+    <#
+    .SYNOPSIS
+      Built-in petro/POS device profiles with sensible field defaults.
+    .NOTES
+      IPs/ports are starting points — site networks vary. Always confirm on-site.
+    #>
+    @(
+        [PSCustomObject]@{
+            Id              = 'gilbarco-passport'
+            Name            = 'Gilbarco Passport'
+            Vendor          = 'Gilbarco'
+            Category        = 'POS / Back Office'
+            DefaultIP       = '192.168.1.50'
+            SuggestedRange  = '192.168.1.0/24 (store LAN)'
+            CommonPorts     = @(80, 443, 7001, 8080)
+            PortNotes       = '80/443 web UI; 7001 common Passport service; 8080 alternate web'
+            Notes           = 'Passport POS / Manager workstation. Confirm IP with site router or Passport network config.'
+        }
+        [PSCustomObject]@{
+            Id              = 'gilbarco-flexpay4'
+            Name            = 'Gilbarco FlexPay 4'
+            Vendor          = 'Gilbarco'
+            Category        = 'Outdoor Payment Terminal'
+            DefaultIP       = '192.168.1.100'
+            SuggestedRange  = '192.168.1.0/24 (forecourt / OPT VLAN if used)'
+            CommonPorts     = @(80, 443, 22, 10001)
+            PortNotes       = '80/443 device web; 22 SSH (if enabled); 10001 site/host style TCP'
+            Notes           = 'FlexPay IV outdoor terminal. May sit on a separate forecourt switch/VLAN.'
+        }
+        [PSCustomObject]@{
+            Id              = 'verifone-common'
+            Name            = 'Verifone (common defaults)'
+            Vendor          = 'Verifone'
+            Category        = 'POS / Site Controller'
+            DefaultIP       = '192.168.1.60'
+            SuggestedRange  = '192.168.1.0/24 (store LAN)'
+            CommonPorts     = @(80, 443, 5015, 9001)
+            PortNotes       = '80/443 web/admin; 5015 common Verifone service; 9001 site-dependent'
+            Notes           = 'Generic Verifone baseline (Commander/Ruby-class sites). Verify model-specific ports on site docs.'
+        }
+        [PSCustomObject]@{
+            Id              = 'omnia-2000'
+            Name            = 'OMNIA 2000'
+            Vendor          = 'Gilbarco'
+            Category        = 'ATG / Tank Gauge'
+            DefaultIP       = '192.168.1.20'
+            SuggestedRange  = '192.168.1.0/24 (back room / ATG)'
+            CommonPorts     = @(10001, 80, 443)
+            PortNotes       = '10001 TLS-style ATG TCP (common); 80/443 web if enabled'
+            Notes           = 'OMNIA 2000 automatic tank gauge. Serial-to-IP converters may change the IP; port 10001 is the usual first check.'
+        }
+        [PSCustomObject]@{
+            Id              = 'omnia-3000'
+            Name            = 'OMNIA 3000'
+            Vendor          = 'Gilbarco'
+            Category        = 'ATG / Tank Gauge'
+            DefaultIP       = '192.168.1.30'
+            SuggestedRange  = '192.168.1.0/24 (back room / ATG)'
+            CommonPorts     = @(10001, 80, 443)
+            PortNotes       = '10001 TLS-style ATG TCP (common); 80/443 web if enabled'
+            Notes           = 'OMNIA 3000 automatic tank gauge. Same network habits as 2000; confirm firmware/web features per site.'
+        }
+    )
+}
+
+function Get-FAFODeviceProfile {
+    <#
+    .SYNOPSIS
+      List built-in device profiles, or return one by name/id.
+    .EXAMPLE
+      Get-FAFODeviceProfile
+      Get-FAFODeviceProfile -Name 'OMNIA 3000'
+      Get-FAFODeviceProfile -Name passport
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Name,
+        [switch]$Selected
+    )
+
+    if ($Selected) {
+        if ($script:FAFOSelectedDeviceProfile) {
+            return $script:FAFOSelectedDeviceProfile
+        }
+        Write-Warning 'No device profile selected. Use Select-FAFODeviceProfile first.'
+        return $null
+    }
+
+    $all = Get-FAFODeviceProfileCatalog
+
+    if (-not $Name) {
+        return $all
+    }
+
+    $q = $Name.Trim()
+    $match = $all | Where-Object {
+        $_.Name -eq $q -or
+        $_.Id -eq $q -or
+        $_.Name -like "*$q*" -or
+        $_.Id -like "*$q*"
+    }
+
+    if (-not $match) {
+        Write-Warning "No device profile matched '$Name'. Use Get-FAFODeviceProfile to list names."
+        return @()
+    }
+
+    # Prefer exact name/id, then first partial
+    $exact = @($match | Where-Object { $_.Name -eq $q -or $_.Id -eq $q })
+    if ($exact.Count -eq 1) { return $exact[0] }
+    if ($match.Count -eq 1) { return $match[0] }
+    return $match
+}
+
+function Select-FAFODeviceProfile {
+    <#
+    .SYNOPSIS
+      Select a device profile by name, or interactively from a menu.
+    .EXAMPLE
+      Select-FAFODeviceProfile -Name 'Gilbarco Passport'
+      Select-FAFODeviceProfile   # interactive menu
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Name
+    )
+
+    $all = @(Get-FAFODeviceProfileCatalog)
+    $chosen = $null
+
+    if ($Name) {
+        $result = Get-FAFODeviceProfile -Name $Name
+        if ($result -is [System.Array] -and $result.Count -gt 1) {
+            Write-Host "Multiple matches for '$Name':" -ForegroundColor Yellow
+            $result | ForEach-Object { Write-Host "  - $($_.Name) [$($_.Id)]" }
+            throw "Ambiguous profile name '$Name'. Be more specific."
+        }
+        if (-not $result -or ($result -is [System.Array] -and $result.Count -eq 0)) {
+            throw "Profile not found: $Name"
+        }
+        $chosen = if ($result -is [System.Array]) { $result[0] } else { $result }
+    }
+    else {
+        Write-Host ''
+        Write-Host 'FAFO Device Profiles' -ForegroundColor Cyan
+        Write-Host '-------------------'
+        for ($i = 0; $i -lt $all.Count; $i++) {
+            $p = $all[$i]
+            Write-Host ("[{0}] {1,-28}  default {2,-15}  ports {3}" -f ($i + 1), $p.Name, $p.DefaultIP, ($p.CommonPorts -join ','))
+        }
+        Write-Host ''
+        $raw = Read-Host 'Select profile number (or blank to cancel)'
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            Write-Host 'Selection cancelled.' -ForegroundColor Yellow
+            return $null
+        }
+        $num = 0
+        if (-not [int]::TryParse($raw, [ref]$num) -or $num -lt 1 -or $num -gt $all.Count) {
+            throw "Invalid selection: $raw"
+        }
+        $chosen = $all[$num - 1]
+    }
+
+    $script:FAFOSelectedDeviceProfile = $chosen
+    $env:FAFO_DEVICE_PROFILE = $chosen.Id
+    $env:FAFO_DEVICE_IP = $chosen.DefaultIP
+
+    Write-Host ("Selected: {0}  |  Default IP: {1}  |  Ports: {2}" -f `
+            $chosen.Name, $chosen.DefaultIP, ($chosen.CommonPorts -join ', ')) -ForegroundColor Green
+    Write-FAFOLog -Level Info -Message "Device profile selected: $($chosen.Name) ($($chosen.Id))" -NoFile:$false
+
+    return $chosen
+}
+
+function Get-FAFOConnectionTest {
+    <#
+    .SYNOPSIS
+      Test reachability of any host: ICMP ping + TCP port check(s).
+    .DESCRIPTION
+      Independent of device profiles — pass any IP and port(s).
+      Optionally use -ProfileName / -UseSelectedProfile for default IP/ports.
+    .EXAMPLE
+      Get-FAFOConnectionTest -IPAddress 192.168.1.20 -Port 10001
+      Get-FAFOConnectionTest -IPAddress 10.0.0.5 -Port 80,443
+      Get-FAFOConnectionTest -ProfileName 'OMNIA 2000'
+      Get-FAFOConnectionTest -UseSelectedProfile
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Manual')]
+    param(
+        [Parameter(ParameterSetName = 'Manual', Mandatory)]
+        [Alias('ComputerName', 'Host', 'IP')]
+        [string]$IPAddress,
+
+        [Parameter(ParameterSetName = 'Manual')]
+        [int[]]$Port = @(80),
+
+        [Parameter(ParameterSetName = 'Profile')]
+        [string]$ProfileName,
+
+        [Parameter(ParameterSetName = 'Selected')]
+        [switch]$UseSelectedProfile,
+
+        [Parameter(ParameterSetName = 'Profile')]
+        [Parameter(ParameterSetName = 'Selected')]
+        [string]$OverrideIP,
+
+        [int]$TimeoutMs = 3000,
+
+        [switch]$SkipPing
+    )
+
+    $profileUsed = $null
+    $targetIp = $IPAddress
+    $ports = @($Port)
+
+    if ($PSCmdlet.ParameterSetName -eq 'Profile') {
+        $profileUsed = Get-FAFODeviceProfile -Name $ProfileName
+        if (-not $profileUsed -or ($profileUsed -is [System.Array] -and $profileUsed.Count -ne 1)) {
+            if ($profileUsed -is [System.Array] -and $profileUsed.Count -gt 1) {
+                throw "Ambiguous profile '$ProfileName'. Pick an exact name."
+            }
+            throw "Profile not found: $ProfileName"
+        }
+        if ($profileUsed -is [System.Array]) { $profileUsed = $profileUsed[0] }
+        $targetIp = if ($OverrideIP) { $OverrideIP } else { $profileUsed.DefaultIP }
+        $ports = @($profileUsed.CommonPorts)
+    }
+    elseif ($PSCmdlet.ParameterSetName -eq 'Selected') {
+        $profileUsed = Get-FAFODeviceProfile -Selected
+        if (-not $profileUsed) {
+            throw 'No profile selected. Run Select-FAFODeviceProfile first, or pass -IPAddress/-Port.'
+        }
+        $targetIp = if ($OverrideIP) { $OverrideIP } else { $profileUsed.DefaultIP }
+        $ports = @($profileUsed.CommonPorts)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($targetIp)) {
+        throw 'IPAddress is required.'
+    }
+    if (-not $ports -or $ports.Count -eq 0) {
+        $ports = @(80)
+    }
+
+    $pingOk = $null
+    $pingMs = $null
+    $pingError = $null
+
+    if (-not $SkipPing) {
+        try {
+            # -Count 1, quiet; TimeoutSeconds best-effort (PS7+)
+            $pingParams = @{
+                ComputerName = $targetIp
+                Count        = 1
+                Quiet        = $true
+                ErrorAction  = 'Stop'
+            }
+            if ((Get-Command Test-Connection).Parameters.ContainsKey('TimeoutSeconds')) {
+                $pingParams['TimeoutSeconds'] = [Math]::Max(1, [int][Math]::Ceiling($TimeoutMs / 1000.0))
+            }
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $pingOk = Test-Connection @pingParams
+            $sw.Stop()
+            $pingMs = [int]$sw.ElapsedMilliseconds
+        }
+        catch {
+            $pingOk = $false
+            $pingError = $_.Exception.Message
+        }
+    }
+
+    $results = foreach ($p in $ports) {
+        $tcpOk = $false
+        $tcpMs = $null
+        $tcpError = $null
+        $swTcp = [System.Diagnostics.Stopwatch]::StartNew()
+        try {
+            $client = [System.Net.Sockets.TcpClient]::new()
+            $async = $client.BeginConnect($targetIp, [int]$p, $null, $null)
+            $waited = $async.AsyncWaitHandle.WaitOne($TimeoutMs, $false)
+            if (-not $waited) {
+                $tcpOk = $false
+                $tcpError = "TCP timeout after ${TimeoutMs}ms"
+                try { $client.Close() } catch { }
+            }
+            else {
+                try {
+                    $client.EndConnect($async)
+                    $tcpOk = $client.Connected
+                }
+                catch {
+                    $tcpOk = $false
+                    $tcpError = $_.Exception.Message
+                }
+                finally {
+                    try { $client.Close() } catch { }
+                    try { $client.Dispose() } catch { }
+                }
+            }
+        }
+        catch {
+            $tcpOk = $false
+            $tcpError = $_.Exception.Message
+        }
+        finally {
+            $swTcp.Stop()
+            $tcpMs = [int]$swTcp.ElapsedMilliseconds
+        }
+
+        [PSCustomObject]@{
+            IPAddress     = $targetIp
+            Port          = [int]$p
+            PingOk        = $pingOk
+            PingMs        = $pingMs
+            PingError     = $pingError
+            TcpOk         = $tcpOk
+            TcpMs         = $tcpMs
+            TcpError      = $tcpError
+            OverallOk     = ($(if ($SkipPing) { $tcpOk } else { $pingOk -and $tcpOk }))
+            ProfileName   = if ($profileUsed) { $profileUsed.Name } else { $null }
+            TestedAt      = Get-Date
+            TimeoutMs     = $TimeoutMs
+        }
+    }
+
+    $list = @($results)
+    $open = @($list | Where-Object TcpOk | ForEach-Object { $_.Port })
+    $summary = 'FAIL'
+    if ($list.Count -gt 0 -and ($list | Where-Object TcpOk).Count -eq $list.Count) {
+        $summary = 'ALL_TCP_OK'
+    }
+    elseif ($open.Count -gt 0) {
+        $summary = 'PARTIAL'
+    }
+
+    Write-Host ("Connection test {0}:{1}  ping={2}  tcp_open=[{3}]  ({4})" -f `
+            $targetIp,
+        ($ports -join ','),
+        $(if ($SkipPing) { 'skipped' } elseif ($pingOk) { 'ok' } else { 'fail' }),
+        ($open -join ','),
+        $summary
+    ) -ForegroundColor $(if ($summary -eq 'ALL_TCP_OK') { 'Green' } elseif ($summary -eq 'PARTIAL') { 'Yellow' } else { 'Red' })
+
+    Write-FAFOLog -Level Info -Message ("ConnectionTest {0} ports={1} result={2}" -f $targetIp, ($ports -join ','), $summary)
+
+    # Single port → single object; multi → array (caller friendly)
+    if ($list.Count -eq 1) { return $list[0] }
+    return $list
+}
+
+#endregion
+
 Export-ModuleMember -Function @(
     # Paths & config
     'Get-FAFOToolboxRoot',
     'Set-FAFOToolboxRoot',
     'Get-FAFODeviceId',
     'Get-FAFOCommonPaths',
+    'Get-FAFOLocalPathsConfigPath',
+    'Get-FAFOLocalPaths',
+    'Save-FAFOLocalPaths',
+    'Select-FAFOFolder',
+    'Initialize-FAFODirectoryJunction',
     'Initialize-FAFOPaths',
     'Get-FAFOEnvironment',
     # Logging
@@ -885,5 +1496,10 @@ Export-ModuleMember -Function @(
     'Get-FAFOReport',
     'Remove-FAFOReport',
     'Compress-FAFOReport',
-    'Open-FAFOPath'
+    'Open-FAFOPath',
+    # Device profiles & connectivity
+    'Get-FAFODeviceProfile',
+    'Select-FAFODeviceProfile',
+    'Get-FAFOConnectionTest'
 )
+
