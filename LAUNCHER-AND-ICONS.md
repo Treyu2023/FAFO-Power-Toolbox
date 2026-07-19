@@ -55,11 +55,15 @@ Windows shortcuts prefer **`.ico`**. The HTML launcher still shows PNG/GIF/etc.
 ```powershell
 .\Scripts\Set-FAFOToolIcon.ps1 -ToolId image-compare -SourcePath "D:\icons\compare.png"
 .\Scripts\Set-FAFOToolIcon.ps1 -ListTools
+
+# Auto-grab icons you already selected (library + icon-sources.json) into assets/tool-icons
+.\Scripts\Set-FAFOToolIcon.ps1 -PublishShared -ScanLibrary
+# or double-click Publish-Shared-Icons.bat
 ```
 
 **Publish personal → shared**
 
-If you set icons while the server was offline, open **Edit Icons** → **Publish Shared** once the server is up.
+If you set icons while the server was offline, open **Edit Icons** → **Publish Shared** once the server is up — or run `-PublishShared` above. Selections are stored in `assets/tool-icons/icon-sources.json` so re-publish can re-copy from your library.
 
 ### Reset
 

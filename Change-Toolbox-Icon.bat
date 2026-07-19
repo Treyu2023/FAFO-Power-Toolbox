@@ -9,6 +9,8 @@ echo.
 echo  Shared icons live in: assets\tool-icons\
 echo  Supported: .png .gif .jpg .webp .ico .svg .bmp
 echo.
+echo  Tip: to re-publish ALL already-selected tool icons, run Publish-Shared-Icons.bat
+echo.
 if exist "%LIB%" start "" explorer "%LIB%"
 echo.
 set /p ICO=Full path to image/GIF/ICO: 
