@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Startup & Service Manager — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(167,139,250,.2);--accent:#a78bfa;--ok:#4ade80;--danger:#f87171;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#1a1030,var(--bg) 60%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.95)}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.wrap{max-width:1200px;margin:0 auto;padding:24px}
+.tabs{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+.tab{padding:8px 16px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;background:rgba(0,0,0,.2)}
+.tab.active{border-color:var(--accent);background:rgba(167,139,250,.15);color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top}
+.mono{font-family:Consolas,monospace;font-size:11px;word-break:break-all}
+.btn{padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(167,139,250,.1);color:var(--accent);cursor:pointer;font-size:10px}
+.btn.danger{color:var(--danger);border-color:rgba(248,113,113,.3)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.tw{max-height:500px;overflow:auto}
+.tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(167,139,250,.15);color:var(--accent)}
+</style>
+</head>
+<body>
+<nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span style="color:var(--accent)">STARTUP & SERVICE MANAGER</span></nav>
+<div class="wrap">
+<h1 style="font-size:22px;margin-bottom:4px">Startup & Service Manager</h1>
+<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Control what runs at boot — startup folders, registry, scheduled tasks, and Windows services.</p>
+<div class="tabs">
+<button class="tab active" data-tab="startup">Startup (<span id="cStartup">0</span>)</button>
+<button class="tab" data-tab="tasks">Scheduled Tasks (<span id="cTasks">0</span>)</button>
+<button class="tab" data-tab="services">Services (<span id="cSvc">0</span>)</button>
+</div>
+<div class="panel"><div class="ph"><span id="tabTitle">Startup Items</span><button class="btn" id="btnRefresh">Refresh</button></div>
+<div class="tw" id="tableWrap"></div></div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+let data=null,tab='startup';
+async function api(p,o={}){const r=await fetch(API+p,{headers:{'Content-Type':'application/json'},...o});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||r.statusText);return r.json()}
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+async function load(){data=await api('/startup/overview');
+document.getElementById('cStartup').textContent=data.startup_count;
+document.getElementById('cTasks').textContent=data.task_count;
+document.getElementById('cSvc').textContent=data.service_count;render()}
+function render(){
+  let rows='',title='';
+  if(tab==='startup'){title='Startup Items';rows=data.startup.map(i=>`<tr><td><strong>${esc(i.name)}</strong></td><td class="tag">${esc(i.category)}</td><td>${esc(i.location)}</td><td class="mono">${esc(i.command)}</td><td><button class="btn danger" data-id="${esc(i.id)}" data-act="disable">Disable</button></td></tr>`).join('')}
+  else if(tab==='tasks'){title='Scheduled Tasks';rows=data.tasks.map(i=>`<tr><td><strong>${esc(i.name)}</strong></td><td>${esc(i.schedule)}</td><td class="mono">${esc(i.command)}</td><td>${i.enabled?'On':'Off'}</td><td><button class="btn danger" data-id="${esc(i.id)}" data-act="disable">Disable</button></td></tr>`).join('')}
+  else{title='Services';rows=data.services.map(i=>`<tr><td><strong>${esc(i.display_name||i.name)}</strong></td><td class="mono">${esc(i.name)}</td><td>${esc(i.state)}</td><td>${esc(i.start_type)}</td><td>${i.enabled?'<button class="btn danger" data-id="'+esc(i.id)+'" data-act="disable">Disable</button>':'<button class="btn" data-id="'+esc(i.id)+'" data-act="enable">Enable</button>'}</td></tr>`).join('')}
+  document.getElementById('tabTitle').textContent=title;
+  document.getElementById('tableWrap').innerHTML=`<table><thead><tr><th>Name</th><th>Type</th><th>Info</th><th>Command/State</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">None found</td></tr>'}</tbody></table>`;
+  document.querySelectorAll('[data-act]').forEach(b=>b.onclick=async()=>{if(!confirm('Change this item?'))return;await api('/startup/'+(b.dataset.act),{method:'POST',body:JSON.stringify({item_id:b.dataset.id})});load()});
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');tab=t.dataset.tab;render()});
+document.getElementById('btnRefresh').onclick=load;load();
+</script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+</body>
+</html>

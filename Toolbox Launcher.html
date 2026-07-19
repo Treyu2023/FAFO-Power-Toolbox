@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI HTML Toolbox</title>
+    <link rel="icon" id="pageFavicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧰</text></svg>">
+    <link rel="stylesheet" href="shared/aitoolbox-ui.css">
+    <style>
+        :root {
+            --bg: #050508;
+            --panel: #0c0c12;
+            --accent: #00f3ff;
+            --text: #e8e8ec;
+            --muted: #888;
+            --glow: 0 0 12px rgba(0, 243, 255, 0.45);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            min-height: 100vh;
+            background: radial-gradient(ellipse at 50% 0%, #12121f 0%, var(--bg) 55%);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            padding: 28px 24px 48px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        h1 {
+            font-weight: 300;
+            letter-spacing: 4px;
+            font-size: 28px;
+            color: var(--accent);
+            text-shadow: var(--glow);
+        }
+        .subtitle { color: var(--muted); font-size: 13px; margin-top: 8px; }
+        .toolbar-top {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 8px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+        .btn:hover, .btn.active { background: var(--accent); color: #000; box-shadow: var(--glow); }
+
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .tool-card {
+            background: linear-gradient(145deg, rgba(20,20,28,0.95), rgba(10,10,16,0.98));
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 14px;
+            padding: 18px 16px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), box-shadow 0.3s, border-color 0.3s;
+            position: relative;
+            overflow: hidden;
+            animation: ui-fade-in-up 0.5s ease both;
+        }
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0.35;
+        }
+        .tool-card:hover {
+            transform: translateY(-6px) scale(1.02);
+            border-color: var(--accent);
+            box-shadow: var(--glow), 0 12px 32px rgba(0,0,0,0.5);
+        }
+        .tool-card.featured {
+            border-color: rgba(255, 200, 0, 0.5);
+            background: linear-gradient(145deg, #14141f, #0c0c14);
+        }
+        .tool-card .icon-wrap {
+            width: 96px;
+            height: 96px;
+            margin: 0 auto 14px;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000;
+            border: 2px solid rgba(0, 243, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tool-card img.icon { width: 100%; height: 100%; object-fit: cover; }
+        .tool-card .icon-fallback {
+            font-size: 42px;
+            line-height: 1;
+        }
+        .tool-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+        .tool-card p {
+            font-size: 11px;
+            color: var(--muted);
+            line-height: 1.4;
+            min-height: 32px;
+        }
+        .tool-card .cat {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent);
+            margin-top: 10px;
+            opacity: 0.7;
+        }
+
+        body.edit-mode .tool-card::after {
+            content: '✎ Change Icon';
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--accent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        body.edit-mode .tool-card:hover::after { opacity: 1; }
+
+        .hint-bar {
+            text-align: center;
+            margin-top: 32px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .hint-bar span { color: var(--accent); }
+
+        .server-banner {
+            max-width: 720px; margin: 0 auto 24px; padding: 14px 20px;
+            background: var(--panel); border-radius: 10px;
+            border: 1px solid rgba(0, 243, 255, 0.25);
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+            justify-content: center; font-size: 13px;
+        }
+        .server-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; transition: all 0.3s; }
+        .server-dot.on { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
+        .server-dot.off { background: #ff4466; box-shadow: 0 0 8px #ff4466; }
+        .server-dot.waiting { background: #ffc800; box-shadow: 0 0 10px #ffc800; animation: ui-pulse-glow 1.2s ease infinite; }
+
+        .server-banner { flex-direction: column; align-items: stretch; max-width: 780px; }
+        .server-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .server-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        .server-hint { font-size: 11px; color: var(--muted); text-align: center; width: 100%; margin-top: 4px; min-height: 16px; }
+        .server-hint.warn { color: #ffc800; }
+        .server-hint.ok { color: #00ff88; }
+        #btnStartServer:disabled { opacity: 0.5; cursor: wait; }
+
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>AI HTML TOOLBOX</h1>
+        <p class="subtitle">Local tools — backend on <code style="color:var(--accent)">127.0.0.87:18765</code> (unique, no FAFO clash). Custom icons stick between sessions. <span id="appVersion" style="opacity:0.65"></span></p>
+    </header>
+
+    <div class="server-banner animate-in" id="serverBanner" data-tip-title="Backend" data-tip="Green = full power (rename, Explorer tags, ffmpeg, VSR). Yellow = starting. Click ▶ Start Server here — same control exists in Media Library, VSR, and File Organizer. Dot turns green automatically.">
+        <div class="server-row">
+            <span class="server-dot off" id="serverDot"></span>
+            <span id="serverText">Checking backend…</span>
+        </div>
+        <div class="server-actions" id="serverActions">
+            <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from this page (protocol + HTA). Waits up to ~90s for green. Also available inside Media Library, VSR, and File Organizer.">▶ Start Server</button>
+            <button class="ui-btn ghost" id="btnStartConsole" data-tip-title="Console mode" data-tip="Visible cmd window running the server — use if silent Start is blocked by the browser.">🖥 Console</button>
+            <button class="ui-btn ghost" id="btnOpenToolboxFolder" data-tip-title="Open Folder" data-tip="Opens the toolbox folder so you can double-click START SERVER.bat (always works).">📂 Open Folder</button>
+            <button class="ui-btn ghost" id="btnSetupOnce" data-tip-title="Setup Once" data-tip="Run once: registers aitoolbox://start and a desktop shortcut so ▶ Start Server works more reliably from the browser.">⚙ Setup Once</button>
+            <button class="ui-btn ghost" id="btnRecheckServer" data-tip="Ping the server again without launching">↻ Recheck</button>
+        </div>
+        <div class="server-hint" id="serverHint"></div>
+    </div>
+
+    <div class="get-started animate-in animate-in-delay-1" id="getStartedPanel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+            <h3>🚀 Get Started — your workflow in 4 steps</h3>
+            <div style="display:flex;gap:8px;">
+                <button class="ui-btn" id="btnTakeTour" data-tip="Interactive spotlight tour — highlights each area as you go">🎓 Take the Tour</button>
+                <button class="ui-btn ghost" id="btnDismissStarted" data-tip="Hide this panel — use 🎓 Get Started in the toolbar to bring it back">Dismiss</button>
+            </div>
+        </div>
+        <div class="get-started-steps">
+            <div class="get-started-step" data-tip-title="Step 1" data-tip="Click ▶ Start Server in the banner (or inside Media Library / VSR / File Organizer). Green = ready. If blocked: Open Folder → START SERVER.bat, or run SETUP once.">
+                <div class="num">1</div>
+                <strong>Start the server</strong><br>
+                Click <strong>▶ Start Server</strong> above — also works from Media Library / VSR — green when ready
+            </div>
+            <div class="get-started-step" data-tip-title="Step 2" data-tip="Add watched folders, tag files, batch rename, pair before/after videos. Server can be started from the library page itself if you skipped step 1.">
+                <div class="num">2</div>
+                <strong>Catalog in Media Library</strong><br>
+                Add folders, tag, search & pair files
+            </div>
+            <div class="get-started-step" data-tip-title="Step 3" data-tip="Point at VSR output folders. Smart matching finds pairs even when names change. Confirm renames or check Trust to skip.">
+                <div class="num">3</div>
+                <strong>Run VSR Pipeline</strong><br>
+                Auto-rename upscale & interp outputs
+            </div>
+            <div class="get-started-step" data-tip-title="Step 4" data-tip="Open saved pairs in the video or image comparator. Slider, blend, sync playback — no readme required.">
+                <div class="num">4</div>
+                <strong>Compare results</strong><br>
+                Open pairs in video or image comparators
+            </div>
+        </div>
+    </div>
+
+    <div class="toolbar-top animate-in animate-in-delay-2">
+        <button class="ui-btn" id="btnGetStarted" data-tip-title="Tutorial" data-tip="Replay the interactive walkthrough or show the quick-start panel above.">🎓 Get Started</button>
+        <button class="ui-btn" id="btnEditIcons" data-tip-title="Custom icons" data-tip="Switch to edit mode, click any tool, upload a PNG. Icons persist in IndexedDB — no more generic Chrome file icons.">✎ Edit Icons</button>
+        <button class="ui-btn ghost" id="btnResetIcons" style="display:none;" data-tip="Remove all custom PNG icons and restore emoji defaults">Reset Icons</button>
+        <button class="ui-btn ghost" id="btnShowStarted" style="display:none;" data-tip="Show the 4-step quick-start panel">Show Quick Start</button>
+        <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and runtime events — copy log when reporting issues">🐛 Debug</button>
+    </div>
+
+    <div class="tool-grid" id="toolGrid"></div>
+
+    <p class="hint-bar">
+        <span>Tip:</span> Pin this launcher to your taskbar. In Chrome: ⋮ → More tools → Create shortcut → Open as window.
+        Custom PNG icons are stored locally in IndexedDB.
+    </p>
+
+    <input type="file" id="iconPicker" accept="image/png,image/jpeg,image/webp,image/gif">
+
+    <script src="shared/aitoolbox-config.js"></script>
+    <script src="shared/aitoolbox-version.js"></script>
+    <script src="shared/aitoolbox-debug.js"></script>
+    <script src="shared/aitoolbox-core.js"></script>
+    <script src="shared/aitoolbox-api.js"></script>
+    <script src="shared/aitoolbox-ui.js"></script>
+    <script>
+        const TOOLS = [
+            {
+                id: 'ip-profile-switcher',
+                name: 'IP Profile Switcher',
+                desc: 'One-click switch between saved IP setups (home/office/lab/DHCP)',
+                path: 'System Tools/IP Profile Switcher.html',
+                category: 'System',
+                emoji: '🌐',
+                featured: true
+            },
+            {
+                id: 'pc-reports-log-viewer',
+                name: 'PC Reports & Log Viewer',
+                desc: 'Plain-English PC/BIOS reports, G502 SE USB fixes, and color-coded log viewer',
+                path: 'System Tools/PC Reports and Log Viewer/index.html',
+                category: 'System',
+                emoji: '📋',
+                featured: true
+            },
+            {
+                id: 'log-viewer',
+                name: 'Log Viewer',
+                desc: 'Color-coded raw logs (.txt / .md / JSON) — filter, search, copy',
+                path: 'System Tools/PC Reports and Log Viewer/index.html#logs',
+                category: 'System',
+                emoji: '📜',
+                featured: true
+            },
+            {
+                id: 'media-library',
+                name: 'Media Library Manager',
+                desc: 'Browse, preview, pair & search 7k+ files — thumbnail grid',
+                path: 'Movie File Manager/Media Library Manager.html',
+                category: 'Library',
+                emoji: '🗂️',
+                featured: true
+            },
+            {
+                id: 'file-organizer',
+                name: 'File Organizer',
+                desc: 'Rename, tag, rank, merge same-named folders — metadata focus',
+                path: 'Movie File Manager/File Organizer.html',
+                category: 'Library',
+                emoji: '✏️',
+                featured: true
+            },
+            {
+                id: 'vsr-pipeline',
+                name: 'VSR Pipeline Manager',
+                desc: 'Two-stage upscale/interp naming, smart match, dupes, tag rules',
+                path: 'Movie File Manager/VSR Pipeline Manager.html',
+                category: 'Pipeline',
+                emoji: '⚡',
+                featured: true
+            },
+            {
+                id: 'video-compare',
+                name: 'Video Comparator',
+                desc: 'Side-by-side upscaled video comparison with sync',
+                path: 'Video Tools/Video Comparison Slider Tool.html',
+                category: 'Video',
+                emoji: '🎬'
+            },
+            {
+                id: 'image-compare',
+                name: 'Image Comparator',
+                desc: 'Before/after image slider with blend & loupe',
+                path: 'Image tools/Image Comparitor With Slider.html',
+                category: 'Image',
+                emoji: '🖼️'
+            },
+            {
+                id: 'video-wall',
+                name: 'FAFO Video Wall',
+                desc: '8-up dynamic video wall from a folder',
+                path: 'Video Tools/GEMPlayHTML.html',
+                category: 'Video',
+                emoji: '📺'
+            },
+            {
+                id: 'image-cropper',
+                name: 'Image Cropper',
+                desc: 'Convert & crop for Chrome store resolutions',
+                path: 'Image tools/image Converter_Cropper for chrome store resolution.html',
+                category: 'Image',
+                emoji: '✂️'
+            },
+            {
+                id: 'loan-calc',
+                name: 'Loan Calculator',
+                desc: 'Amortization schedule calculator',
+                path: 'Accounting Tools and calculators/Amoritization loan calculator2.html',
+                category: 'Finance',
+                emoji: '💰'
+            },
+            {
+                id: 'ghost-device-cleaner',
+                name: 'Ghost Device Cleaner',
+                desc: 'Selection-capable ghost device manager — purge pesky residual devices',
+                path: 'GhostDeviceCleaner/Clear-GhostDevices.html',
+                category: 'System',
+                emoji: '👻'
+            },
+            {
+                id: 'lan-task-manager',
+                name: 'LAN & Task Manager',
+                desc: 'Live processes, network connections, LAN discovery, ping, traceroute, telnet & port scan',
+                path: 'System Tools/LAN Task Manager.html',
+                category: 'System',
+                emoji: '📡',
+                featured: true
+            },
+            {
+                id: 'malware-defender',
+                name: 'Malware Defender',
+                desc: 'Open-source threat DB, malware scan, expired AV remnant removal & quarantine',
+                path: 'System Tools/Malware Defender.html',
+                category: 'System',
+                emoji: '🛡️',
+                featured: true
+            },
+            {
+                id: 'health-dashboard',
+                name: 'System Health Dashboard',
+                desc: 'Mission control — CPU, memory, disk, security & startup at a glance',
+                path: 'System Tools/System Health Dashboard.html',
+                category: 'System',
+                emoji: '📊',
+                featured: true
+            },
+            {
+                id: 'startup-manager',
+                name: 'Startup & Service Manager',
+                desc: 'Boot items, registry Run keys, scheduled tasks & Windows services',
+                path: 'System Tools/Startup Service Manager.html',
+                category: 'System',
+                emoji: '🚀'
+            },
+            {
+                id: 'disk-analyzer',
+                name: 'Disk Space Analyzer',
+                desc: 'Drive usage, largest files, heavy folders & junk candidates',
+                path: 'System Tools/Disk Space Analyzer.html',
+                category: 'System',
+                emoji: '💾'
+            },
+            {
+                id: 'hosts-blocker',
+                name: 'Hosts & DNS Blocker',
+                desc: 'Block ads, trackers & malware domains via Steven Black open feeds',
+                path: 'System Tools/Hosts DNS Blocker.html',
+                category: 'System',
+                emoji: '🔒'
+            },
+            {
+                id: 'media-converter',
+                name: 'Batch Media Converter',
+                desc: 'FFmpeg batch convert video, audio & GIF — MP4, WebM, MP3 presets',
+                path: 'System Tools/Batch Media Converter.html',
+                category: 'Video',
+                emoji: '🔄',
+                featured: true
+            },
+            {
+                id: 'duplicate-finder',
+                name: 'Duplicate File Manager',
+                desc: 'Scan, compare, merge & remove duplicate files — images, docs, media & more',
+                path: 'File Tools/Duplicate File Manager.html',
+                category: 'Files',
+                emoji: '🗑️',
+                featured: true
+            },
+            {
+                id: 'git-manager',
+                name: 'Git Repository Manager',
+                desc: 'Discover, organize, pull, push & clone repos — integrates with GitHub Desktop',
+                path: 'Developer Tools/Git Repository Manager.html',
+                category: 'Developer',
+                emoji: '🔀',
+                featured: true
+            },
+            {
+                id: 'bloodmoon-survivor',
+                name: 'Bloodmoon Survivor',
+                desc: 'Vampire survival arena — auto weapons, level-up upgrades, bosses & 4 hunters',
+                path: 'Bloodmoon Survivor.html',
+                category: 'Games',
+                emoji: '🦇'
+            }
+        ];
+
+        const grid = document.getElementById('toolGrid');
+        const iconPicker = document.getElementById('iconPicker');
+        let editMode = false;
+        let editingToolId = null;
+
+        async function renderTools() {
+            grid.innerHTML = '';
+            for (const tool of TOOLS) {
+                let customIcon = null;
+                try {
+                    customIcon = await AIToolbox.getLauncherIcon(tool.id);
+                } catch (e) {
+                    customIcon = null;
+                }
+                const card = document.createElement('div');
+                card.className = 'tool-card' + (tool.featured ? ' featured' : '');
+                card.dataset.toolId = tool.id;
+                card.dataset.tipTitle = tool.name;
+                card.dataset.tip = tool.desc + (tool.featured ? ' · Featured workflow tool' : '');
+                card.innerHTML = `
+                    <div class="icon-wrap">
+                        ${customIcon
+                            ? `<img class="icon" src="${customIcon}" alt="">`
+                            : `<span class="icon-fallback">${tool.emoji}</span>`}
+                    </div>
+                    <h3>${tool.name}</h3>
+                    <p>${tool.desc}</p>
+                    <div class="cat">${tool.category}</div>`;
+
+                card.addEventListener('click', () => {
+                    if (editMode) {
+                        editingToolId = tool.id;
+                        iconPicker.click();
+                    } else {
+                        // Support hash routes (e.g. Log Viewer → index.html#logs)
+                        window.location.href = tool.path;
+                    }
+                });
+                grid.appendChild(card);
+            }
+            try { AIToolboxUI.initTooltips(grid); } catch (e) { /* ignore */ }
+            // Cache-bust notice in console for debugging missing cards
+            console.info('[AI Toolbox] Tools rendered:', TOOLS.length, TOOLS.map(t => t.id));
+        }
+
+        const LAUNCHER_TUTORIAL = [
+            { target: '#serverBanner', title: 'Welcome to AI HTML Toolbox', body: 'Everything runs locally. Click <strong>▶ Start Server</strong> for renames, Explorer tags, ffmpeg, and VSR. You can also start the server from <strong>Media Library</strong>, <strong>VSR</strong>, or <strong>File Organizer</strong> — green pill means ready.' },
+            { target: '#getStartedPanel', title: 'Quick Start Panel', body: 'These 4 steps are your whole workflow. Dismiss anytime — this panel comes back via 🎓 Get Started.' },
+            { target: '[data-tool-id="media-library"]', title: 'Media Library', body: 'Your catalog hub: watch folders, tag thousands of files, batch rename, and save before/after pairs.' },
+            { target: '[data-tool-id="vsr-pipeline"]', title: 'VSR Pipeline', body: 'After VSR upscales/interpolates, this tool matches outputs to sources and renames them. Confirm each batch or check <em>Trust</em> to skip.' },
+            { target: '#btnEditIcons', title: 'Custom Icons', body: 'Upload PNGs so taskbar shortcuts look professional — not generic Chrome icons. Stored in IndexedDB.' },
+            { target: '#toolGrid', title: 'You\'re Ready', body: 'Click any tool to open it. Hover anything with a glow for tooltips. First visits to Library & VSR have their own tours too.' },
+        ];
+
+        function showGetStartedPanel() {
+            const panel = document.getElementById('getStartedPanel');
+            panel.classList.remove('collapsed');
+            document.getElementById('btnShowStarted').style.display = 'none';
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function hideGetStartedPanel() {
+            document.getElementById('getStartedPanel').classList.add('collapsed');
+            document.getElementById('btnShowStarted').style.display = 'inline-block';
+        }
+
+        function startLauncherTutorial(force) {
+            AIToolboxUI.startTutorial(LAUNCHER_TUTORIAL, 'launcher', null, { force: !!force });
+        }
+
+        document.getElementById('btnGetStarted').onclick = () => {
+            showGetStartedPanel();
+            startLauncherTutorial(true);
+        };
+        document.getElementById('btnTakeTour').onclick = () => startLauncherTutorial(true);
+        document.getElementById('btnDismissStarted').onclick = hideGetStartedPanel;
+        document.getElementById('btnShowStarted').onclick = showGetStartedPanel;
+        document.getElementById('btnDebug').onclick = () => {
+            const DBG = window.AIToolboxDebug;
+            const next = !DBG?.enabled();
+            DBG?.setEnabled(next);
+            if (next) DBG?.boot(); else DBG?.shutdown();
+            const btn = document.getElementById('btnDebug');
+            btn.classList.toggle('debug-on', next);
+            btn.textContent = next ? '🐛 Debug ON' : '🐛 Debug';
+        };
+
+        document.getElementById('btnEditIcons').addEventListener('click', e => {
+            editMode = !editMode;
+            document.body.classList.toggle('edit-mode', editMode);
+            e.target.classList.toggle('active', editMode);
+            e.target.textContent = editMode ? '✓ Done Editing' : '✎ Edit Icons';
+            document.getElementById('btnResetIcons').style.display = editMode ? 'inline-block' : 'none';
+        });
+
+        document.getElementById('btnResetIcons').addEventListener('click', async () => {
+            if (!confirm('Reset all custom icons to defaults?')) return;
+            for (const t of TOOLS) await AIToolbox.setLauncherIcon(t.id, null).catch(() => {});
+            const db = await AIToolbox.openDB();
+            const tx = db.transaction(AIToolbox.STORES.launcher, 'readwrite');
+            TOOLS.forEach(t => tx.objectStore(AIToolbox.STORES.launcher).delete(t.toolId));
+            await new Promise(r => tx.oncomplete = r);
+            renderTools();
+        });
+
+        iconPicker.addEventListener('change', async e => {
+            const file = e.target.files[0];
+            if (!file || !editingToolId) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                await AIToolbox.setLauncherIcon(editingToolId, reader.result);
+                editingToolId = null;
+                iconPicker.value = '';
+                renderTools();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function loadVersion() {
+            const v = window.AITOOLBOX_VERSION;
+            if (v) document.getElementById('appVersion').textContent = 'v' + v;
+        }
+
+        function updateLauncherStepColors(serverOn) {
+            document.querySelectorAll('.get-started-step').forEach((el, i) => {
+                el.classList.remove('step-active', 'step-done');
+                if (serverOn) {
+                    if (i === 0) el.classList.add('step-done');
+                    else if (i === 1) el.classList.add('step-active');
+                } else if (i === 0) el.classList.add('step-active');
+            });
+        }
+
+        let serverStarting = false;
+
+        function launchServerFile(filename) {
+            return AIToolboxAPI.launchToolboxFile(filename);
+        }
+
+        function showServerHelpModal() {
+            const batPath = (AIToolboxAPI.toolboxFileUrl('START SERVER.bat') || '')
+                .replace(/^file:\/\//i, '').replace(/\//g, '\\');
+            UI().confirmAction({
+                title: 'Server did not start from browser',
+                body: `<p>Browsers often <strong>block</strong> launching programs. Use one of these — they always work:</p>
+                    <ol style="margin:12px 0 12px 18px;line-height:1.7;font-size:12px">
+                        <li>Click <strong>📂 Open Folder</strong> → double-click <code>START SERVER.bat</code></li>
+                        <li>Or run <strong>SETUP (run once).bat</strong> first — then ▶ Start Server works in browser</li>
+                        <li>Or use Desktop shortcut <em>AI Toolbox - Start Server</em> (after setup)</li>
+                        <li>Media Library / VSR also have <strong>▶ Start Server</strong> in-app</li>
+                    </ol>
+                    <p style="font-size:11px;color:#888">Path:<br><code style="word-break:break-all">${batPath}</code></p>`,
+                confirmText: '📂 Open Folder',
+                cancelText: 'Close',
+            }).then(r => { if (r.confirmed) AIToolboxAPI.openToolboxFolder(); });
+        }
+
+        function setServerUi(state, hint, hintClass) {
+            const dot = document.getElementById('serverDot');
+            const hintEl = document.getElementById('serverHint');
+            dot.className = 'server-dot ' + (state === 'on' ? 'on' : state === 'wait' ? 'waiting' : 'off');
+            if (hint != null) hintEl.textContent = hint;
+            hintEl.className = 'server-hint' + (hintClass ? ' ' + hintClass : '');
+            document.getElementById('btnStartServer').disabled = serverStarting;
+            document.getElementById('serverActions').style.opacity = state === 'on' ? '0.85' : '1';
+        }
+
+        async function checkServer(force) {
+            const on = await AIToolboxAPI.isOnline(!!force, serverStarting ? 3000 : 2000);
+            const h = on ? await AIToolboxAPI.health().catch(() => ({})) : {};
+            if (h.version) document.getElementById('appVersion').textContent = 'v' + h.version;
+            updateLauncherStepColors(on);
+            const btnStart = document.getElementById('btnStartServer');
+            const ep = (h.endpoint) || (AIToolboxAPI.getEndpointLabel ? AIToolboxAPI.getEndpointLabel() : '127.0.0.87:18765');
+            if (on) {
+                serverStarting = false;
+                setServerUi('on', 'Server connected @ ' + ep + ' — full features unlocked', 'ok');
+                btnStart.textContent = '✓ Server Running';
+                btnStart.disabled = true;
+                document.getElementById('serverText').innerHTML =
+                    `<strong>Power mode active</strong> — ${ep}${h.ffmpeg ? ' · ffmpeg ✓' : ''}${h.version ? ' · v' + h.version : ''}`;
+            } else if (!serverStarting) {
+                btnStart.textContent = '▶ Start Server';
+                btnStart.disabled = false;
+                setServerUi('off', 'Will bind ' + ep + ' (unique — not FAFO :8765)', '');
+                document.getElementById('serverText').innerHTML =
+                    '<strong>Browser-only mode</strong> — click <strong>▶ Start Server</strong> (every major tool has this now)';
+            }
+            return on;
+        }
+
+        async function launchServer(mode) {
+            if (serverStarting || AIToolboxAPI.isServerLaunching()) return;
+            serverStarting = true;
+            setServerUi('wait', 'Starting server… waiting for green dot (up to 90s)', 'warn');
+            document.getElementById('serverText').innerHTML = '<strong>Starting…</strong> — launching Python backend';
+            document.getElementById('btnStartServer').disabled = true;
+
+            try {
+                const result = await AIToolboxAPI.startServer({
+                    mode: mode || 'tray',
+                    waitMs: 90000,
+                    onStatus: (msg) => {
+                        document.getElementById('serverText').innerHTML = '<strong>' + msg + '</strong>';
+                    },
+                });
+                serverStarting = false;
+                document.getElementById('btnStartServer').disabled = false;
+                if (result.ok) {
+                    await checkServer(true);
+                    AIToolboxUI.toast('Server online — power mode active', 'ok');
+                } else {
+                    setServerUi('off', 'Browser blocked launch — use 📂 Open Folder → START SERVER.bat (or run SETUP once)', 'warn');
+                    document.getElementById('serverText').innerHTML = '<strong>Not connected</strong> — double-click <code>START SERVER.bat</code> in toolbox folder';
+                    showServerHelpModal();
+                }
+            } catch (e) {
+                serverStarting = false;
+                document.getElementById('btnStartServer').disabled = false;
+                setServerUi('off', 'Start failed: ' + (e.message || e), 'warn');
+                showServerHelpModal();
+            }
+        }
+
+        document.getElementById('btnStartServer').addEventListener('click', () => launchServer('tray'));
+
+        document.getElementById('btnStartConsole').addEventListener('click', () => {
+            launchServer('console');
+        });
+
+        document.getElementById('btnOpenToolboxFolder').addEventListener('click', () => {
+            AIToolboxAPI.openToolboxFolder();
+        });
+
+        document.getElementById('btnSetupOnce').addEventListener('click', () => {
+            AIToolboxAPI.runSetupOnce();
+            AIToolboxUI.toast('Run the setup window — then try Start Server again', 'ok');
+        });
+
+        document.getElementById('btnRecheckServer').addEventListener('click', async () => {
+            setServerUi('wait', 'Checking…', '');
+            const on = await checkServer(true);
+            if (!on) setServerUi('off', 'Still offline — click Start Server or use Console mode', 'warn');
+        });
+
+        renderTools();
+        loadVersion();
+        checkServer();
+        setInterval(checkServer, 4000);
+        AIToolboxUI.initTooltips();
+        if (AIToolboxUI.isTutorialDone('launcher')) hideGetStartedPanel();
+        else setTimeout(() => startLauncherTutorial(false), 700);
+    </script>
+</body>
+</html>

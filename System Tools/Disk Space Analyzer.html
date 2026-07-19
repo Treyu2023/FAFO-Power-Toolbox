@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Disk Space Analyzer — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(52,211,153,.2);--accent:#34d399;--warn:#fbbf24;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#0a1f1a,var(--bg) 60%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border)}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.wrap{max-width:1200px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.bar{height:8px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent);border-radius:4px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--accent);font-size:12px;text-transform:uppercase;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.inp{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;min-width:280px}
+.btn{padding:8px 14px;border:1px solid var(--accent);background:rgba(52,211,153,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.mono{font-family:Consolas,monospace;font-size:11px}
+.tw{max-height:400px;overflow:auto}
+.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;margin-top:8px}
+</style>
+</head>
+<body>
+<nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span style="color:var(--accent)">DISK SPACE ANALYZER</span></nav>
+<div class="wrap">
+<h1 style="font-size:22px">Disk Space Analyzer</h1>
+<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">Find what's eating your drives — large files, heavy folders, and junk candidates.</p>
+<div class="grid" id="drives"></div>
+<div class="panel"><div class="ph"><span>Deep scan</span>
+<span style="display:flex;gap:8px"><input class="inp" id="scanPath" placeholder="Folder path e.g. C:\Users\You\Downloads"><button class="btn" id="btnScan">Scan</button></span></div>
+<div style="padding:16px 18px"><div class="log" id="log"></div></div></div>
+<div class="panel"><div class="ph">Largest files</div><div class="tw" id="largeFiles"><div style="padding:24px;text-align:center;color:var(--muted)">Run a scan</div></div></div>
+<div class="panel"><div class="ph">Top folders · Junk candidates <span id="junkInfo" style="color:var(--muted);font-weight:400"></span></div><div class="tw" id="folders"></div></div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+async function loadOverview(){
+  const d=await(await fetch(API+'/disk/overview')).json();
+  document.getElementById('drives').innerHTML=d.drives.map(dr=>`<div class="card"><div style="font-size:11px;color:var(--muted)">${esc(dr.mount)}</div><div style="font-size:20px;font-weight:700;margin:4px 0">${dr.used_human} / ${dr.total_human}</div><div style="font-size:11px;color:var(--muted)">${dr.free_human} free</div><div class="bar"><span style="width:${dr.percent}%;background:${dr.percent>85?'#f87171':'var(--accent)'}"></span></div></div>`).join('');
+  if(d.user_folders[0])document.getElementById('scanPath').value=d.user_folders.find(f=>f.name==='Downloads')?.path||d.user_folders[0].path;
+}
+document.getElementById('btnScan').onclick=()=>{
+  const path=document.getElementById('scanPath').value.trim();if(!path)return;
+  const log=document.getElementById('log');log.textContent='Scanning…';
+  const es=new EventSource(API+'/disk/scan/stream?path='+encodeURIComponent(path)+'&min_size_mb=5');
+  es.onmessage=ev=>{const d=JSON.parse(ev.data);
+    if(d.error){log.textContent='Error: '+d.error;es.close();return}
+    if(d.done){const r=d.result;log.textContent=`Scanned ${r.scanned_files} files — ${r.large_count} large, ${r.junk_count} junk`;
+      document.getElementById('largeFiles').innerHTML='<table><thead><tr><th>Size</th><th>File</th><th>Folder</th></tr></thead><tbody>'+r.large_files.map(f=>`<tr><td><strong>${esc(f.size_human)}</strong></td><td>${esc(f.name)}</td><td class="mono">${esc(f.folder)}</td></tr>`).join('')+'</tbody></table>';
+      document.getElementById('junkInfo').textContent=`(${r.junk_size_human} reclaimable)`;
+      document.getElementById('folders').innerHTML='<table><thead><tr><th>Folder</th><th>Size</th></tr></thead><tbody>'+r.top_folders.map(f=>`<tr><td class="mono">${esc(f.path)}</td><td>${esc(f.size_human)}</td></tr>`).join('')+'</tbody></table>';
+      es.close();return}
+    if(d.message)log.textContent=d.message};
+};
+loadOverview();
+</script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+</body>
+</html>

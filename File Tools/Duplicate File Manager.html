@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duplicate File Manager</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+    <style>
+        :root {
+            --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
+            --accent: #00f3ff; --accent2: #ff6b35; --accent3: #7c5cff;
+            --text: #e8e8ec; --muted: #777; --danger: #ff4466; --ok: #00ff88;
+            --glow: 0 0 10px rgba(0,243,255,0.4);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: radial-gradient(ellipse at 20% 0%, #12121f 0%, var(--bg) 55%);
+            color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh; display: flex; flex-direction: column; min-width: 1100px;
+        }
+        .nav-bar {
+            padding: 8px 16px; background: var(--panel); border-bottom: 1px solid rgba(255,107,53,0.25);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .nav-bar h1 { font-size: 15px; color: var(--accent2); margin-right: auto; letter-spacing: 0.5px; }
+        .nav-link {
+            font-size: 11px; padding: 5px 12px; border-radius: 5px; text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.15); color: var(--muted);
+        }
+        .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+        .nav-link.active { background: rgba(255,107,53,0.15); border-color: var(--accent2); color: var(--accent2); }
+        .server-pill { font-size: 10px; padding: 4px 12px; border-radius: 12px; font-weight: 700; text-transform: uppercase; }
+        .server-pill.online { background: rgba(0,255,136,0.15); color: var(--ok); border: 1px solid var(--ok); }
+        .server-pill.offline { background: rgba(255,68,102,0.12); color: var(--danger); border: 1px solid var(--danger); }
+
+        .main {
+            flex: 1; display: grid;
+            grid-template-columns: minmax(240px, 300px) 1fr minmax(320px, 400px);
+            min-height: 0;
+        }
+        .sidebar, .detail-panel { background: var(--panel); overflow-y: auto; }
+        .sidebar { border-right: 1px solid rgba(255,255,255,0.06); }
+        .detail-panel { border-left: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; }
+        .section { padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .section h3 {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--muted); margin-bottom: 10px;
+        }
+        .hint { font-size: 10px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+        label.field-label {
+            display: block; font-size: 10px; color: var(--muted);
+            text-transform: uppercase; margin: 10px 0 5px;
+        }
+        input[type="text"], select {
+            width: 100%; background: #000; border: 1px solid rgba(255,107,53,0.3);
+            color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 12px;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--accent2); box-shadow: 0 0 8px rgba(255,107,53,0.2); }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stat {
+            background: rgba(255,107,53,0.08); border: 1px solid rgba(255,107,53,0.2);
+            border-radius: 8px; padding: 10px; font-size: 11px;
+        }
+        .stat strong { display: block; font-size: 16px; color: var(--accent2); margin-top: 4px; }
+
+        .center { display: flex; flex-direction: column; min-width: 0; }
+        .toolbar {
+            padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 11px;
+        }
+        .groups-wrap { flex: 1; overflow: auto; padding: 12px; }
+        .dup-group {
+            border: 1px solid rgba(255,107,53,0.35); border-radius: 10px;
+            padding: 12px; margin-bottom: 10px; background: rgba(255,107,53,0.06);
+            cursor: pointer; transition: border-color 0.2s, transform 0.2s;
+        }
+        .dup-group:hover { border-color: var(--accent2); }
+        .dup-group.active { border-color: var(--accent); box-shadow: var(--glow); transform: translateY(-1px); }
+        .dup-group h4 { font-size: 13px; color: #fff; margin-bottom: 6px; }
+        .dup-meta { font-size: 10px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+        .dup-meta span { color: var(--accent2); }
+        .empty {
+            text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
+        }
+
+        .detail-head { padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .detail-head h2 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+        .detail-list { flex: 1; overflow: auto; padding: 10px 14px; }
+        .file-row {
+            display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: start;
+            padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 8px; background: rgba(0,0,0,0.25);
+        }
+        .file-row.keeper { border-color: rgba(0,255,136,0.35); background: rgba(0,255,136,0.06); }
+        .file-row label { font-size: 12px; font-weight: 600; word-break: break-all; cursor: pointer; }
+        .file-path { font-size: 10px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+        .file-meta { font-size: 10px; color: var(--accent3); text-align: right; white-space: nowrap; }
+        .detail-actions {
+            padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+
+        .compare-panel {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 200;
+            display: none; flex-direction: column;
+        }
+        .compare-panel.open { display: flex; }
+        .compare-top {
+            padding: 12px 16px; background: var(--panel); border-bottom: 1px solid rgba(0,243,255,0.2);
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        }
+        .compare-top h3 { color: var(--accent); font-size: 14px; margin-right: auto; }
+        .compare-body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; min-height: 0; }
+        .compare-pane {
+            background: var(--panel); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+        }
+        .compare-pane header {
+            padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 11px; color: var(--muted);
+        }
+        .compare-pane header strong { color: #fff; display: block; margin-bottom: 4px; word-break: break-all; }
+        .compare-content { flex: 1; overflow: auto; padding: 10px; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .compare-content img, .compare-content video { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .compare-content pre {
+            width: 100%; height: 100%; overflow: auto; font-size: 11px; line-height: 1.45;
+            background: #000; border-radius: 6px; padding: 10px; white-space: pre-wrap; word-break: break-word;
+        }
+        .compare-meta { font-size: 11px; color: var(--muted); line-height: 1.6; padding: 8px; }
+        .progress-bar {
+            height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; margin-top: 8px;
+        }
+        .progress-bar > span {
+            display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent2), var(--accent));
+            transition: width 0.2s;
+        }
+        .scan-status { font-size: 10px; color: var(--muted); margin-top: 8px; min-height: 28px; word-break: break-all; }
+        .launch-banner {
+            display: none; padding: 10px 14px; background: rgba(255,179,71,0.1);
+            border-bottom: 1px solid rgba(255,179,71,0.3); font-size: 12px;
+            align-items: center; gap: 12px; flex-wrap: wrap;
+        }
+        .launch-banner.visible { display: flex; }
+        .launch-banner strong { color: #ffb347; }
+        .launch-banner .path { color: var(--muted); font-size: 11px; word-break: break-all; flex: 1; min-width: 200px; }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <h1>🗑️ Duplicate File Manager</h1>
+        <span class="server-pill offline" id="serverStatus" data-tip-title="Backend" data-tip="Green = scan ready. Offline: use ▶ Start Server here, or in Launcher / Media Library, or START SERVER.bat.">Server …</span>
+        <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launch the Python backend from this page. Wait for green, then scan.">▶ Start Server</button>
+        <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
+        <a class="nav-link" href="../Movie File Manager/Media Library Manager.html">🗂️ Media Library</a>
+        <span class="nav-link active">🗑️ Duplicates</span>
+        <button class="ui-btn ghost" id="btnDebug">🐛 Debug</button>
+    </nav>
+
+    <div class="main">
+        <aside class="sidebar">
+            <div class="section">
+                <h3>Scan folder</h3>
+                <p class="hint">Find exact and near-exact duplicates across common Windows file types — images, video, audio, documents, archives, and code.</p>
+                <label class="field-label">Folder path</label>
+                <input type="text" id="folderPath" placeholder="C:\Users\You\Downloads">
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="ui-btn" id="btnPickFolder" style="flex:1;">📂 Pick Folder</button>
+                    <button class="ui-btn primary" id="btnScan" style="flex:1;">↻ Scan</button>
+                </div>
+                <div class="progress-bar"><span id="scanProgress"></span></div>
+                <div class="scan-status" id="scanStatus">Start the server (▶ Start Server above), pick a folder, then scan.</div>
+            </div>
+            <div class="section">
+                <h3>Options</h3>
+                <label class="field-label">File types</label>
+                <select id="fileTypes">
+                    <option value="all">All common types</option>
+                    <option value="media">Images + video + audio</option>
+                    <option value="images">Images only</option>
+                    <option value="video">Video only</option>
+                    <option value="audio">Audio only</option>
+                    <option value="documents">Documents</option>
+                    <option value="archives">Archives</option>
+                    <option value="code">Code / text</option>
+                </select>
+                <label class="field-label">Match mode</label>
+                <select id="matchMode">
+                    <option value="quick">Quick — size + partial hash</option>
+                    <option value="full">Full — exact byte match (SHA-256)</option>
+                </select>
+                <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:12px;cursor:pointer;">
+                    <input type="checkbox" id="deepVideo"> Deep video match (first-frame hash)
+                </label>
+            </div>
+            <div class="section">
+                <h3>Summary</h3>
+                <div class="stat-grid">
+                    <div class="stat">Groups<strong id="statGroups">0</strong></div>
+                    <div class="stat">Files scanned<strong id="statScanned">0</strong></div>
+                    <div class="stat">Recoverable<strong id="statWasted">0 B</strong></div>
+                    <div class="stat">Selected<strong id="statSelected">—</strong></div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="center">
+            <div class="launch-banner" id="launchBanner">
+                <span>Opened from <strong>Media Library</strong></span>
+                <span class="path" id="launchBannerPath"></span>
+                <a class="nav-link" href="../Movie File Manager/Media Library Manager.html" id="launchBannerBack">← Back to Library</a>
+            </div>
+            <div class="toolbar">
+                <span id="toolbarInfo">No scan yet</span>
+                <button class="ui-btn ghost" id="btnOpenFolder" disabled>📂 Open folder</button>
+                <button class="ui-btn ghost" id="btnRefresh" disabled>↻ Rescan</button>
+            </div>
+            <div class="groups-wrap" id="groupsWrap">
+                <div class="empty" id="emptyState">
+                    Scan a folder to list duplicate groups.<br>
+                    Each group shows files that match — pick a keeper, compare copies, then merge or delete the rest.
+                </div>
+            </div>
+        </section>
+
+        <aside class="detail-panel">
+            <div class="detail-head" id="detailHead">
+                <h2>Select a duplicate group</h2>
+                <p class="hint" style="margin:0;">Choose which copy to keep. Merge sends extras to Recycle Bin.</p>
+            </div>
+            <div class="detail-list" id="detailList"></div>
+            <div class="detail-actions">
+                <button class="ui-btn" id="btnCompare" disabled data-tip="Side-by-side preview for two selected files">⇄ Compare</button>
+                <button class="ui-btn primary" id="btnMerge" disabled data-tip="Keep the selected file, send all other copies to Recycle Bin">⊕ Merge group</button>
+                <button class="ui-btn danger" id="btnDeleteSelected" disabled data-tip="Delete checked copies only">✕ Delete selected</button>
+            </div>
+        </aside>
+    </div>
+
+    <div class="compare-panel" id="comparePanel">
+        <div class="compare-top">
+            <h3>Compare view</h3>
+            <button class="ui-btn ghost" id="btnCloseCompare">Close</button>
+        </div>
+        <div class="compare-body">
+            <div class="compare-pane">
+                <header><strong id="cmpLeftName">—</strong><span id="cmpLeftPath"></span></header>
+                <div class="compare-content" id="cmpLeft"></div>
+            </div>
+            <div class="compare-pane">
+                <header><strong id="cmpRightName">—</strong><span id="cmpRightPath"></span></header>
+                <div class="compare-content" id="cmpRight"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script>
+        const API = () => window.AIToolboxAPI;
+        const UI = () => window.AIToolboxUI;
+
+        let scanResult = null;
+        let activeGroupIndex = -1;
+        let keeperPath = null;
+        let compareSelection = new Set();
+        let deleteSelection = new Set();
+        let scanning = false;
+
+        function fmtBytes(n) {
+            if (!n) return '0 B';
+            const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            let v = n;
+            while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+            return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${u[i]}`;
+        }
+
+        function fmtDate(ts) {
+            if (!ts) return '—';
+            return new Date(ts * 1000).toLocaleString();
+        }
+
+        let serverStarting = false;
+
+        async function pollServer() {
+            if (serverStarting) return false;
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            const on = await API().isOnline();
+            el.textContent = on ? '● Server online' : '○ Offline — click to start';
+            el.className = 'server-pill ' + (on ? 'online' : 'offline');
+            if (btn) {
+                btn.style.display = on ? 'none' : '';
+                btn.disabled = false;
+                btn.textContent = '▶ Start Server';
+            }
+            document.getElementById('btnScan').disabled = scanning || !on;
+            document.getElementById('btnPickFolder').disabled = !on;
+            return on;
+        }
+
+        async function launchServerFromApp() {
+            if (serverStarting || API().isServerLaunching?.()) return;
+            if (await API().isOnline(true, 2000)) {
+                await pollServer();
+                UI().toast('Server already online', 'ok');
+                return;
+            }
+            serverStarting = true;
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            el.textContent = '◌ Starting…';
+            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+            try {
+                const result = await API().startServer({ mode: 'tray', waitMs: 90000 });
+                serverStarting = false;
+                if (result.ok) UI().toast('Server online — ready to scan', 'ok');
+                else UI().toast('Start blocked — use Launcher or START SERVER.bat', 'warn');
+                await pollServer();
+            } catch (e) {
+                serverStarting = false;
+                UI().toast('Start failed: ' + (e.message || e), 'warn');
+                await pollServer();
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('statGroups').textContent = scanResult?.duplicate_groups ?? 0;
+            document.getElementById('statScanned').textContent = scanResult?.scanned ?? 0;
+            document.getElementById('statWasted').textContent = fmtBytes(scanResult?.wasted_bytes ?? 0);
+            document.getElementById('statSelected').textContent = activeGroupIndex >= 0 ? `#${activeGroupIndex + 1}` : '—';
+        }
+
+        function renderGroups() {
+            const wrap = document.getElementById('groupsWrap');
+            const groups = scanResult?.groups || [];
+            if (!groups.length) {
+                wrap.innerHTML = '<div class="empty">No duplicate groups found for this folder and filter set.</div>';
+                return;
+            }
+            wrap.innerHTML = groups.map((g, i) => {
+                const sample = g.items[0];
+                return `
+                    <div class="dup-group${i === activeGroupIndex ? ' active' : ''}" data-index="${i}">
+                        <h4>${sample.name} <span style="color:var(--muted);font-weight:400;">+${g.count - 1} copies</span></h4>
+                        <div class="dup-meta">
+                            <span>${g.count} files</span>
+                            <span>${fmtBytes(g.total_bytes)} total</span>
+                            <span>${fmtBytes(g.wasted_bytes)} recoverable</span>
+                            <span>${g.kind || 'file'}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+            wrap.querySelectorAll('.dup-group').forEach(el => {
+                el.onclick = () => selectGroup(Number(el.dataset.index));
+            });
+        }
+
+        function selectGroup(index) {
+            activeGroupIndex = index;
+            const group = scanResult.groups[index];
+            keeperPath = group.suggested_keep || group.items[0]?.path || null;
+            compareSelection.clear();
+            deleteSelection.clear();
+            renderGroups();
+            renderDetail(group);
+            updateStats();
+            updateActionButtons();
+        }
+
+        function renderDetail(group) {
+            document.getElementById('detailHead').innerHTML = `
+                <h2>${group.items[0].name}</h2>
+                <p class="hint" style="margin:0;">${group.count} copies · ${fmtBytes(group.wasted_bytes)} recoverable if merged to one keeper.</p>`;
+            const list = document.getElementById('detailList');
+            list.innerHTML = group.items.map(item => {
+                const isKeeper = item.path === keeperPath;
+                const cmpChecked = compareSelection.has(item.path) ? 'checked' : '';
+                const delChecked = deleteSelection.has(item.path) ? 'checked' : '';
+                return `
+                    <div class="file-row${isKeeper ? ' keeper' : ''}" data-path="${encodeURIComponent(item.path)}">
+                        <input type="radio" name="keeper" ${isKeeper ? 'checked' : ''} data-keeper="${encodeURIComponent(item.path)}">
+                        <label>
+                            ${item.name}
+                            <div class="file-path">${item.path}</div>
+                        </label>
+                        <div class="file-meta">
+                            ${fmtBytes(item.size)}<br>${fmtDate(item.mtime)}
+                            <div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end;">
+                                <label style="font-size:9px;color:var(--muted);display:flex;align-items:center;gap:4px;">
+                                    <input type="checkbox" class="cmp-chk" data-path="${encodeURIComponent(item.path)}" ${cmpChecked}> cmp
+                                </label>
+                                <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:4px;">
+                                    <input type="checkbox" class="del-chk" data-path="${encodeURIComponent(item.path)}" ${delChecked}${isKeeper ? ' disabled' : ''}> del
+                                </label>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            list.querySelectorAll('input[data-keeper]').forEach(r => {
+                r.onchange = () => {
+                    keeperPath = decodeURIComponent(r.dataset.keeper);
+                    renderDetail(group);
+                    updateActionButtons();
+                };
+            });
+            list.querySelectorAll('.cmp-chk').forEach(c => {
+                c.onchange = () => {
+                    const p = decodeURIComponent(c.dataset.path);
+                    if (c.checked) {
+                        if (compareSelection.size >= 2) {
+                            const first = compareSelection.values().next().value;
+                            compareSelection.clear();
+                            compareSelection.add(first);
+                            list.querySelectorAll('.cmp-chk').forEach(x => {
+                                if (decodeURIComponent(x.dataset.path) !== first) x.checked = false;
+                            });
+                        }
+                        compareSelection.add(p);
+                    } else compareSelection.delete(p);
+                    updateActionButtons();
+                };
+            });
+            list.querySelectorAll('.del-chk').forEach(c => {
+                c.onchange = () => {
+                    const p = decodeURIComponent(c.dataset.path);
+                    if (c.checked) deleteSelection.add(p);
+                    else deleteSelection.delete(p);
+                    updateActionButtons();
+                };
+            });
+        }
+
+        function updateActionButtons() {
+            const hasGroup = activeGroupIndex >= 0;
+            document.getElementById('btnCompare').disabled = !hasGroup || compareSelection.size !== 2;
+            document.getElementById('btnMerge').disabled = !hasGroup || !keeperPath;
+            document.getElementById('btnDeleteSelected').disabled = !hasGroup || deleteSelection.size === 0;
+        }
+
+        async function runScan() {
+            const folder = document.getElementById('folderPath').value.trim();
+            if (!folder) {
+                UI().toast('Enter or pick a folder path', 'warn');
+                return;
+            }
+            if (!(await API().isOnline(true))) {
+                UI().toast('Start server first (▶ Start Server on this page)', 'warn');
+                return;
+            }
+
+            scanning = true;
+            activeGroupIndex = -1;
+            keeperPath = null;
+            compareSelection.clear();
+            deleteSelection.clear();
+            document.getElementById('detailList').innerHTML = '';
+            document.getElementById('btnScan').disabled = true;
+            document.getElementById('scanProgress').style.width = '0%';
+            document.getElementById('scanStatus').textContent = 'Scanning…';
+
+            const opts = {
+                deep: document.getElementById('deepVideo').checked,
+                matchMode: document.getElementById('matchMode').value,
+                fileTypes: document.getElementById('fileTypes').value,
+            };
+
+            try {
+                scanResult = await API().scanDuplicatesStream(folder, opts, (count, file) => {
+                    document.getElementById('scanStatus').textContent = `Hashing ${count}: ${file}`;
+                    document.getElementById('scanProgress').style.width = Math.min(95, count % 100) + '%';
+                });
+                document.getElementById('scanProgress').style.width = '100%';
+                document.getElementById('scanStatus').textContent =
+                    `Done — ${scanResult.scanned} files, ${scanResult.duplicate_groups} duplicate groups.`;
+                document.getElementById('toolbarInfo').textContent =
+                    `${scanResult.duplicate_groups} groups · ${fmtBytes(scanResult.wasted_bytes)} recoverable`;
+                document.getElementById('btnOpenFolder').disabled = false;
+                document.getElementById('btnRefresh').disabled = false;
+                renderGroups();
+                updateStats();
+                if (scanResult.groups.length) selectGroup(0);
+                UI().toast('Scan complete', 'ok');
+            } catch (e) {
+                document.getElementById('scanStatus').textContent = 'Scan failed: ' + e.message;
+                UI().toast(e.message, 'error');
+            } finally {
+                scanning = false;
+                pollServer();
+            }
+        }
+
+        async function mergeGroup() {
+            const group = scanResult?.groups?.[activeGroupIndex];
+            if (!group || !keeperPath) return;
+            const others = group.items.map(i => i.path).filter(p => p !== keeperPath);
+            const preview = `Keep:\n${keeperPath}\n\nSend to Recycle Bin (${others.length}):\n${others.slice(0, 8).join('\n')}${others.length > 8 ? '\n…' : ''}`;
+            const r = await UI().confirmAction({
+                title: 'Merge duplicate group',
+                body: `<pre style="font-size:11px;white-space:pre-wrap;color:#ccc">${preview}</pre>`,
+                confirmText: 'Merge to Recycle Bin',
+                cancelText: 'Cancel',
+                trustKey: 'dup_merge_group',
+            });
+            if (!r.confirmed) return;
+
+            try {
+                const result = await API().mergeDuplicateGroup({
+                    keepPath: keeperPath,
+                    groupPaths: group.items.map(i => i.path),
+                    toTrash: true,
+                    dryRun: false,
+                });
+                UI().toast(`Merged — ${result.deleted} removed, ${fmtBytes(result.bytes_freed)} freed`, 'ok');
+                await runScan();
+            } catch (e) {
+                UI().toast(e.message, 'error');
+            }
+        }
+
+        async function deleteSelected() {
+            const paths = [...deleteSelection].filter(p => p !== keeperPath);
+            if (!paths.length) return;
+            const r = await UI().confirmAction({
+                title: 'Delete selected copies',
+                body: `<p>Send <strong>${paths.length}</strong> file(s) to Recycle Bin?</p>`,
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+                trustKey: 'dup_delete_selected',
+            });
+            if (!r.confirmed) return;
+            try {
+                const result = await API().deleteDuplicateFiles({
+                    keepPath: keeperPath,
+                    deletePaths: paths,
+                    toTrash: true,
+                });
+                UI().toast(`Deleted ${result.deleted} file(s)`, 'ok');
+                await runScan();
+            } catch (e) {
+                UI().toast(e.message, 'error');
+            }
+        }
+
+        async function renderComparePane(container, item) {
+            container.innerHTML = '<span style="color:#666">Loading…</span>';
+            const kind = item.kind || 'other';
+            const url = API().fileServeUrl(item.path);
+            if (kind === 'image') {
+                container.innerHTML = `<img src="${url}" alt="">`;
+                return;
+            }
+            if (kind === 'video') {
+                container.innerHTML = `<video src="${url}" controls></video>`;
+                return;
+            }
+            if (kind === 'audio') {
+                container.innerHTML = `<audio src="${url}" controls style="width:100%"></audio>`;
+                return;
+            }
+            try {
+                const info = await API().getFileInfo(item.path);
+                const textKinds = new Set(['code', 'document', 'other']);
+                if (textKinds.has(kind) || /\.(txt|md|json|xml|html?|css|js|ts|py|ps1|csv|log|ini|cfg|bat|cmd|sql|ya?ml)$/i.test(item.path)) {
+                    const t = await API().getFileText(item.path);
+                    container.innerHTML = `<pre>${escapeHtml(t.text)}</pre>`;
+                    return;
+                }
+                container.innerHTML = `<div class="compare-meta">
+                    <div><strong>Size:</strong> ${fmtBytes(info.size)}</div>
+                    <div><strong>Modified:</strong> ${fmtDate(info.mtime)}</div>
+                    <div><strong>Type:</strong> ${info.mime}</div>
+                    <div><strong>Quick hash:</strong> ${info.hash_quick}</div>
+                    <div style="margin-top:12px;color:#888">No inline preview for this file type. Use Open folder to inspect in Explorer.</div>
+                </div>`;
+            } catch (e) {
+                container.innerHTML = `<div class="compare-meta">Could not preview: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        async function openCompare() {
+            const paths = [...compareSelection];
+            if (paths.length !== 2) return;
+            const group = scanResult.groups[activeGroupIndex];
+            const left = group.items.find(i => i.path === paths[0]);
+            const right = group.items.find(i => i.path === paths[1]);
+            document.getElementById('cmpLeftName').textContent = left.name;
+            document.getElementById('cmpRightName').textContent = right.name;
+            document.getElementById('cmpLeftPath').textContent = left.path;
+            document.getElementById('cmpRightPath').textContent = right.path;
+            document.getElementById('comparePanel').classList.add('open');
+            await Promise.all([
+                renderComparePane(document.getElementById('cmpLeft'), left),
+                renderComparePane(document.getElementById('cmpRight'), right),
+            ]);
+        }
+
+        document.getElementById('btnScan').onclick = runScan;
+        document.getElementById('btnRefresh').onclick = runScan;
+        document.getElementById('btnPickFolder').onclick = async () => {
+            try {
+                const r = await API().pickFolderOnly();
+                document.getElementById('folderPath').value = r.path || '';
+            } catch (e) {
+                UI().toast(e.message, 'warn');
+            }
+        };
+        document.getElementById('btnOpenFolder').onclick = async () => {
+            const folder = document.getElementById('folderPath').value.trim();
+            if (!folder) return;
+            const base = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+            await fetch(`${base}/open-folder?path=${encodeURIComponent(folder)}`);
+        };
+        document.getElementById('btnMerge').onclick = mergeGroup;
+        document.getElementById('btnDeleteSelected').onclick = deleteSelected;
+        document.getElementById('btnCompare').onclick = openCompare;
+        document.getElementById('btnCloseCompare').onclick = () => {
+            document.getElementById('comparePanel').classList.remove('open');
+            document.getElementById('cmpLeft').innerHTML = '';
+            document.getElementById('cmpRight').innerHTML = '';
+        };
+        document.getElementById('btnDebug').onclick = () => {
+            const DBG = window.AIToolboxDebug;
+            const next = !DBG?.enabled();
+            DBG?.setEnabled(next);
+            if (next) DBG?.boot(); else DBG?.shutdown();
+            const btn = document.getElementById('btnDebug');
+            btn.classList.toggle('debug-on', next);
+            btn.textContent = next ? '🐛 Debug ON' : '🐛 Debug';
+        };
+
+        async function applyLaunchParams() {
+            const params = new URLSearchParams(location.search);
+            const folder = params.get('folder');
+            if (!folder) return;
+
+            document.getElementById('folderPath').value = folder;
+            const types = params.get('types');
+            if (types) document.getElementById('fileTypes').value = types;
+            const match = params.get('match');
+            if (match) document.getElementById('matchMode').value = match;
+            if (params.get('deep') === '1') document.getElementById('deepVideo').checked = true;
+
+            if (params.get('from') === 'library') {
+                const banner = document.getElementById('launchBanner');
+                banner.classList.add('visible');
+                const label = params.get('label');
+                document.getElementById('launchBannerPath').textContent = label
+                    ? `Folder for: ${label} — ${folder}`
+                    : folder;
+            }
+
+            if (params.get('scan') !== '1') return;
+
+            document.getElementById('scanStatus').textContent = 'Auto-scan queued — waiting for server…';
+            const tryScan = async () => {
+                if (scanning) return;
+                if (!(await API().isOnline(true))) return false;
+                document.getElementById('btnScan').disabled = false;
+                await runScan();
+                return true;
+            };
+            if (!(await tryScan())) {
+                const iv = setInterval(async () => {
+                    if (await tryScan()) clearInterval(iv);
+                }, 2000);
+                setTimeout(() => clearInterval(iv), 120000);
+            }
+        }
+
+        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
+        document.getElementById('serverStatus')?.addEventListener('click', () => {
+            if (!serverStarting) launchServerFromApp();
+        });
+        pollServer();
+        setInterval(pollServer, 5000);
+        UI().initTooltips();
+        updateStats();
+        applyLaunchParams();
+    </script>
+</body>
+</html>

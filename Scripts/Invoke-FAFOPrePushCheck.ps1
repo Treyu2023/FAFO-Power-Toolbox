@@ -1,0 +1,219 @@
+# Invoke-FAFOPrePushCheck.ps1
+# Lightweight hygiene gate before git commit / push.
+# Exit 0 = pass, 1 = fail.
+
+[CmdletBinding()]
+param(
+    [string]$ToolboxRoot = $env:FAFO_TOOLBOX_ROOT
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $ToolboxRoot) {
+    $ToolboxRoot = Split-Path -Parent $PSScriptRoot
+}
+if (-not (Test-Path -LiteralPath $ToolboxRoot)) {
+    throw "Toolbox root not found: $ToolboxRoot"
+}
+
+$fail = [System.Collections.Generic.List[string]]::new()
+$warn = [System.Collections.Generic.List[string]]::new()
+
+function Add-Fail([string]$Message) { $fail.Add($Message) | Out-Null }
+function Add-Warn([string]$Message) { $warn.Add($Message) | Out-Null }
+
+Write-Host "=== FAFO Pre-Push Check ===" -ForegroundColor Cyan
+Write-Host "Root: $ToolboxRoot"
+
+# --- 1) .gitignore presence & required patterns ---
+$gitignorePath = Join-Path $ToolboxRoot '.gitignore'
+$requiredPatterns = @(
+    'server/security_config.json',
+    'Reports/',
+    'Logs/',
+    'Backups/',
+    'Secrets/',
+    '.env'
+)
+
+if (-not (Test-Path -LiteralPath $gitignorePath)) {
+    Add-Fail '.gitignore is missing at toolbox root'
+}
+else {
+    $gi = Get-Content -LiteralPath $gitignorePath -Raw -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrWhiteSpace($gi)) {
+        Add-Fail '.gitignore exists but is empty'
+    }
+    else {
+        foreach ($pat in $requiredPatterns) {
+            # Flexible match: allow Backups/ or backups/, trailing slash optional
+            $escaped = [regex]::Escape($pat) -replace '\\/', '[\\/]'
+            $escaped = $escaped -replace '\\\*\\\*', '.*'
+            if ($gi -notmatch $escaped -and $gi -notmatch [regex]::Escape($pat.TrimEnd('/'))) {
+                # Case-insensitive contains fallback for Windows
+                if ($gi -notlike "*$($pat.TrimEnd('/'))*") {
+                    Add-Fail ".gitignore missing required pattern: $pat"
+                }
+            }
+        }
+    }
+}
+
+# --- 2) Sensitive paths that must not be tracked / staged ---
+$blockedRelative = @(
+    'Reports',
+    'Logs',
+    'Backups',
+    'backups',
+    'terminals',
+    'server\security_config.json'
+)
+
+$gitDir = Join-Path $ToolboxRoot '.git'
+$hasGit = Test-Path -LiteralPath $gitDir
+
+function Test-PathLooksSecret([string]$RelativePath, [string]$FullPath) {
+    $name = Split-Path -Leaf $RelativePath
+    $rel = $RelativePath -replace '/', '\'
+
+    # Allow the FAFO.Secrets *module* (code); block only secret *stores*
+    if ($rel -match '(?i)Modules\\FAFO\.Secrets') {
+        return $false
+    }
+
+    if ($rel -match '(^|\\)Secrets(\\|$)' -or $rel -match '(?i)FAFO\\Secrets(\\|$)' -or
+        $rel -match '(^|\\)Reports(\\|$)' -or $rel -match '(^|\\)Logs(\\|$)' -or
+        $rel -match '(^|\\)Backups(\\|$)' -or $rel -match '(^|\\)backups(\\|$)' -or
+        $rel -match '(^|\\)terminals(\\|$)') {
+        return $true
+    }
+    if ($name -ieq 'security_config.json') { return $true }
+    if ($name -match '(?i)(^\.env$|\.pem$|\.pfx$|credentials\.json|token\.json)') { return $true }
+    if ($name -match '(?i)(api_key|auth_key)') { return $true }
+    if ($name -match '(?i)\.xml$' -and $rel -match '(?i)Secrets') { return $true }
+    if ($name -match '(?i)\.(db|log)$') { return $true }
+    return $false
+}
+
+function Test-FileContentSecretish([string]$FullPath) {
+    # Only scan small text-ish files
+    try {
+        $item = Get-Item -LiteralPath $FullPath -ErrorAction Stop
+        if ($item.Length -gt 512KB) { return $false }
+        $ext = $item.Extension.ToLowerInvariant()
+        if ($ext -notin @('.json', '.env', '.txt', '.md', '.yml', '.yaml', '.toml', '.ini', '.cfg', '.ps1', '.py', '.js', '.html', '')) {
+            return $false
+        }
+        $text = Get-Content -LiteralPath $FullPath -Raw -ErrorAction Stop
+        if ($text -match '(?im)^\s*abuse_ch_auth_key\s*[:=]\s*["'']?[A-Za-z0-9]{16,}') { return $true }
+        if ($text -match '(?im)(api[_-]?key|auth[_-]?key|secret[_-]?key)\s*[:=]\s*["''][^"'']{12,}["'']') { return $true }
+        if ($text -match '-----BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY-----') { return $true }
+        if ($text -match '(?i)xai-[A-Za-z0-9]{20,}') { return $true }
+    }
+    catch {
+        return $false
+    }
+    return $false
+}
+
+# On-disk blocked trees present under root (informational if gitignored)
+foreach ($rel in $blockedRelative) {
+    $p = Join-Path $ToolboxRoot $rel
+    if (Test-Path -LiteralPath $p) {
+        # ok if ignored; checked via git below when available
+    }
+}
+
+# security_config.json must not contain a real key
+$secCfg = Join-Path $ToolboxRoot 'server\security_config.json'
+if (Test-Path -LiteralPath $secCfg) {
+    try {
+        $cfgText = Get-Content -LiteralPath $secCfg -Raw
+        if ($cfgText -match '(?i)"abuse_ch_auth_key"\s*:\s*"[^"]{8,}"') {
+            Add-Fail 'server/security_config.json still contains a plaintext abuse_ch_auth_key value'
+        }
+    }
+    catch {
+        Add-Warn "Could not read server/security_config.json: $($_.Exception.Message)"
+    }
+}
+
+# --- 3) Git staged / tracked checks (if repo exists) ---
+if ($hasGit) {
+    Push-Location $ToolboxRoot
+    try {
+        $staged = @(git diff --cached --name-only 2>$null | Where-Object { $_ })
+        $tracked = @(git ls-files 2>$null | Where-Object { $_ })
+        $unstaged = @(git diff --name-only 2>$null | Where-Object { $_ })
+        $untracked = @(git ls-files --others --exclude-standard 2>$null | Where-Object { $_ })
+
+        $toScan = @($staged + $tracked + $unstaged + $untracked | Select-Object -Unique)
+        Write-Host "Scanning paths (staged=$($staged.Count) tracked=$($tracked.Count) untracked=$($untracked.Count))" -ForegroundColor Gray
+
+        foreach ($rel in $toScan) {
+            if ([string]::IsNullOrWhiteSpace($rel)) { continue }
+            $full = Join-Path $ToolboxRoot ($rel -replace '/', '\')
+            $inGitIndex = ($staged -contains $rel) -or ($tracked -contains $rel)
+            $inWorking = ($untracked -contains $rel) -or ($unstaged -contains $rel)
+
+            if (Test-PathLooksSecret $rel $full) {
+                if ($inGitIndex) {
+                    Add-Fail "Sensitive path is staged or tracked: $rel"
+                }
+                elseif ($untracked -contains $rel) {
+                    Add-Fail "Sensitive untracked file is not ignored: $rel"
+                }
+            }
+
+            if ($inGitIndex -and (Test-Path -LiteralPath $full -PathType Leaf)) {
+                if (Test-FileContentSecretish $full) {
+                    Add-Fail "Secret-like content in tracked/staged file: $rel"
+                }
+            }
+            elseif ($inWorking -and -not $inGitIndex -and (Test-Path -LiteralPath $full -PathType Leaf)) {
+                if (Test-FileContentSecretish $full) {
+                    Add-Fail "Secret-like content in untracked (not ignored) file: $rel"
+                }
+            }
+        }
+
+        # Explicit: Reports/Logs/Backups must never be tracked
+        foreach ($prefix in @('Reports/', 'Logs/', 'Backups/', 'backups/', 'terminals/')) {
+            $hit = @($tracked + $staged | Where-Object {
+                    $_ -like ($prefix + '*') -or
+                    $_ -like ($prefix.Replace('/', '\') + '*') -or
+                    $_ -eq $prefix.TrimEnd('/') -or
+                    $_ -eq $prefix.TrimEnd('\').TrimEnd('/')
+                })
+            if ($hit.Count -gt 0) {
+                Add-Fail "Blocked tree has git entries under ${prefix}: $($hit.Count) file(s) e.g. $($hit[0])"
+            }
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+else {
+    Add-Warn 'No .git directory yet — skipped staged/tracked scan. Run again after git init.'
+    # Without git, still fail if security_config has plaintext (already checked)
+    # and if .gitignore missing patterns (already checked)
+}
+
+# --- Results ---
+Write-Host ''
+if ($warn.Count -gt 0) {
+    Write-Host "Warnings ($($warn.Count)):" -ForegroundColor Yellow
+    $warn | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+}
+
+if ($fail.Count -gt 0) {
+    Write-Host "FAILED ($($fail.Count)):" -ForegroundColor Red
+    $fail | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+    Write-Host ''
+    Write-Host 'Fix the issues above before committing or pushing.' -ForegroundColor Red
+    exit 1
+}
+
+Write-Host 'PASSED — safe to commit (still review git status yourself).' -ForegroundColor Green
+exit 0

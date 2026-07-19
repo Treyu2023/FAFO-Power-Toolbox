@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro AI Image Comparator</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --text-color: #e0e0e0;
+            --neon-accent: #00f3ff;
+            --neon-glow: 0 0 8px rgba(0, 243, 255, 0.6), 0 0 16px rgba(0, 243, 255, 0.4);
+            --dark-panel: #0a0a0a;
+            --border-color: rgba(0, 243, 255, 0.3);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .control-panel {
+            flex: 0 0 auto;
+            padding: 16px 20px;
+            background: var(--dark-panel);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
+            text-align: center;
+        }
+
+        h2 {
+            color: var(--neon-accent);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            margin: 0 0 12px 0;
+            font-weight: 400;
+            letter-spacing: 1px;
+        }
+
+        .mode-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-bottom: 12px;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .radio-label input[type="radio"] {
+            accent-color: var(--neon-accent);
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .drop-zones-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 10px;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            padding: 14px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #000;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            background: rgba(0, 243, 255, 0.05);
+            border-color: var(--neon-accent);
+            box-shadow: var(--neon-glow);
+        }
+
+        .drop-zone p { margin: 0 0 8px 0; font-weight: bold; }
+        .drop-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .status-text { margin-top: 8px; font-size: 12px; color: #888; word-break: break-all; }
+        .folder-hint { font-size: 10px; color: #666; margin-top: 4px; }
+
+        .recent-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            justify-content: center;
+            margin-top: 6px;
+            min-height: 22px;
+        }
+
+        .recent-chip {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: rgba(0,0,0,0.5);
+            cursor: pointer;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .recent-chip:hover { border-color: var(--neon-accent); color: var(--neon-accent); }
+
+        .btn {
+            background: transparent;
+            border: 1px solid var(--neon-accent);
+            color: var(--neon-accent);
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+
+        .btn:hover, .btn.active {
+            background: var(--neon-accent);
+            color: #000;
+            box-shadow: var(--neon-glow);
+        }
+
+        .btn-sm { padding: 4px 10px; font-size: 10px; }
+
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            align-items: center;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: rgba(255,255,255,0.03);
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .toolbar-group label { font-size: 11px; color: #aaa; }
+        select, input[type="range"] { accent-color: var(--neon-accent); cursor: pointer; }
+        select {
+            background: transparent;
+            color: var(--neon-accent);
+            border: 1px solid var(--neon-accent);
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        select option { background: var(--dark-panel); color: var(--text-color); }
+
+        .hint { font-size: 12px; color: #aaa; }
+        .hint span { color: var(--neon-accent); font-weight: bold; }
+
+        .viewer-container {
+            flex: 1 1 auto;
+            position: relative;
+            background: #020202;
+            cursor: crosshair;
+            overflow: hidden;
+            display: none;
+        }
+
+        .res-badge {
+            position: absolute;
+            top: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            color: var(--neon-accent);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            font-weight: bold;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            z-index: 20;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
+        }
+
+        .res-left { left: 20px; }
+        .res-right { right: 20px; }
+        .res-label { color: #888; font-size: 11px; display: block; margin-bottom: 2px; text-transform: uppercase; }
+
+        .zoom-badge {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: var(--neon-accent);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .transform-layer {
+            position: absolute;
+            top: 0; left: 0;
+            transform-origin: 0 0;
+            will-change: transform;
+        }
+
+        .media-stack { position: relative; }
+        .img-after, .img-before {
+            display: block;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .img-before {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            clip-path: inset(0 50% 0 0);
+            will-change: clip-path, opacity;
+        }
+
+        .viewer-container[data-orient="vertical"] .img-before {
+            clip-path: inset(0 0 50% 0);
+        }
+
+        .viewer-container[data-mode="blend"] .img-before { clip-path: none; }
+        .viewer-container[data-mode="difference"] .img-before { clip-path: none; mix-blend-mode: difference; }
+        .viewer-container[data-mode="side"] .media-stack { display: flex; gap: 4px; }
+        .viewer-container[data-mode="side"] .img-before,
+        .viewer-container[data-mode="side"] .img-after { position: static; width: 50%; clip-path: none; object-fit: contain; }
+        .viewer-container[data-mode="side"] .slider-line { display: none; }
+
+        .slider-line {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: var(--neon-accent);
+            box-shadow: var(--neon-glow);
+            pointer-events: none;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+
+        .viewer-container[data-orient="vertical"] .slider-line {
+            width: 100%;
+            height: auto;
+            left: 0 !important;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .slider-button {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 36px; height: 36px;
+            background: var(--bg-color);
+            border: 2px solid var(--neon-accent);
+            border-radius: 50%;
+            box-shadow: var(--neon-glow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center center;
+        }
+
+        .slider-button::before, .slider-button::after {
+            content: '';
+            border: solid var(--neon-accent);
+            border-width: 0 2px 2px 0;
+            display: inline-block;
+            padding: 4px;
+        }
+
+        .slider-button::before { transform: rotate(135deg); margin-right: 4px; }
+        .slider-button::after { transform: rotate(-45deg); margin-left: 4px; }
+
+        .loupe {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            border: 2px solid var(--neon-accent);
+            border-radius: 50%;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 25;
+            display: none;
+            box-shadow: var(--neon-glow), 0 0 0 4px rgba(0,0,0,0.5);
+        }
+
+        .loupe.active { display: block; }
+        .loupe canvas { width: 100%; height: 100%; }
+
+        .settings-modal {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(0.95);
+            background: var(--dark-panel);
+            border: 2px solid var(--neon-accent);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9), var(--neon-glow);
+            padding: 20px 25px;
+            border-radius: 8px;
+            z-index: 100;
+            width: 360px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .settings-modal.active { opacity: 1; pointer-events: all; transform: translate(-50%, -50%) scale(1); }
+        .settings-modal h3 { margin: 0; color: var(--neon-accent); text-align: center; font-size: 15px; }
+        .settings-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: bold; }
+        .settings-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0; }
+        .color-picker { width: 40px; height: 25px; padding: 0; border: none; background: transparent; cursor: pointer; }
+
+        .pair-library {
+            position: absolute; top: 60px; right: 15px; width: 260px; max-height: calc(100% - 120px);
+            background: rgba(10,10,10,0.95); border: 2px solid var(--border-color);
+            border-radius: 8px; z-index: 35; display: flex; flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8), var(--neon-glow);
+            transition: transform 0.3s, opacity 0.3s;
+        }
+        .pair-library.collapsed { transform: translateX(calc(100% + 20px)); opacity: 0; pointer-events: none; }
+        .pair-header {
+            padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .pair-header h3 { margin: 0; font-size: 13px; color: var(--neon-accent); }
+        .pair-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .pair-item {
+            padding: 8px 10px; margin-bottom: 6px; border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-size: 11px;
+        }
+        .pair-item:hover, .pair-item.active { border-color: var(--neon-accent); background: rgba(0,243,255,0.08); }
+        .pair-item .pair-name { font-weight: bold; color: var(--neon-accent); margin-bottom: 3px; }
+        .pair-item .pair-code { font-size: 10px; color: #ffb347; font-family: Consolas, monospace; margin-bottom: 4px; }
+        .pair-item.pinned { border-color: rgba(255,179,71,0.45); }
+        .pair-item .pair-files { color: #888; font-size: 10px; line-height: 1.3; }
+        .pair-quick { display: flex; gap: 6px; margin-bottom: 8px; }
+        .pair-quick input {
+            flex: 1; background: #000; border: 1px solid rgba(0,243,255,0.3);
+            color: var(--text-color); padding: 6px 8px; border-radius: 5px; font-size: 11px;
+            font-family: Consolas, monospace;
+        }
+        .pair-actions { display: flex; gap: 4px; margin-top: 6px; }
+        .pair-actions .btn { flex: 1; font-size: 9px; padding: 3px 6px; }
+        .pair-footer { padding: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
+        .toast {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--neon-accent); color: #000; padding: 8px 16px; border-radius: 20px;
+            font-weight: bold; font-size: 14px; z-index: 50; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <h2>Pro AI Image Comparator</h2>
+
+        <div class="mode-toggle">
+            <label class="radio-label">
+                <input type="radio" name="mode" value="separate" checked> Separate Files (Input & Output)
+            </label>
+            <label class="radio-label">
+                <input type="radio" name="mode" value="sbs"> Single Side-By-Side File
+            </label>
+        </div>
+
+        <div class="drop-zones-container">
+            <div id="dz-before" class="drop-zone mode-sep">
+                <p>1. Original (Before)</p>
+                <div class="drop-actions">
+                    <button class="btn" data-browse="before">Browse</button>
+                    <button class="btn btn-sm" data-pin="before" title="Remember folder for Before">📁 Pin Folder</button>
+                </div>
+                <input type="file" id="file-before" accept="image/*" hidden>
+                <div class="status-text" id="status-before">Awaiting file...</div>
+                <div class="folder-hint" id="folder-before">No pinned folder</div>
+                <div class="recent-row" id="recent-before"></div>
+            </div>
+
+            <div id="dz-after" class="drop-zone mode-sep">
+                <p>2. Upscaled (After)</p>
+                <div class="drop-actions">
+                    <button class="btn" data-browse="after">Browse</button>
+                    <button class="btn btn-sm" data-pin="after" title="Remember folder for After">📁 Pin Folder</button>
+                </div>
+                <input type="file" id="file-after" accept="image/*" hidden>
+                <div class="status-text" id="status-after">Awaiting file...</div>
+                <div class="folder-hint" id="folder-after">No pinned folder</div>
+                <div class="recent-row" id="recent-after"></div>
+            </div>
+
+            <div id="dz-sbs" class="drop-zone mode-sbs" style="display:none;">
+                <p>Side-By-Side Output</p>
+                <div class="drop-actions">
+                    <button class="btn" data-browse="sbs">Browse</button>
+                    <button class="btn btn-sm" data-pin="sbs" title="Remember folder for SBS">📁 Pin Folder</button>
+                </div>
+                <input type="file" id="file-sbs" accept="image/*" hidden>
+                <div class="status-text" id="status-sbs">Awaiting file...</div>
+                <div class="folder-hint" id="folder-sbs">No pinned folder</div>
+                <div class="recent-row" id="recent-sbs"></div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <button class="btn" id="btn-settings">⚙ Settings</button>
+            <button class="btn" id="btn-swap">Swap A/B</button>
+            <button class="btn" id="btn-fit">Fit to Screen</button>
+            <button class="btn" id="btn-100">1:1</button>
+            <button class="btn" id="btn-export">📷 Snapshot</button>
+            <div class="toolbar-group">
+                <label>Compare:</label>
+                <select id="compare-mode">
+                    <option value="slider">Slider</option>
+                    <option value="blend">Blend</option>
+                    <option value="difference">Difference</option>
+                    <option value="side">Side by Side</option>
+                </select>
+            </div>
+            <div class="toolbar-group" id="blend-controls" style="display:none;">
+                <label>Before Opacity:</label>
+                <input type="range" id="blend-opacity" min="0" max="100" value="50" style="width:80px;">
+            </div>
+            <div class="toolbar-group">
+                <label>Split:</label>
+                <select id="split-orient">
+                    <option value="horizontal">Horizontal ↔</option>
+                    <option value="vertical">Vertical ↕</option>
+                </select>
+            </div>
+            <button class="btn" id="btn-loupe">Loupe</button>
+            <button class="btn" id="btn-pairs">📋 Pairs</button>
+            <button class="btn" id="btn-save-pair">💾 Save Pair</button>
+            <div class="hint">
+                <span>L-Drag:</span> Slider |
+                <span>R-Drag:</span> Pan |
+                <span>Scroll:</span> Zoom
+            </div>
+        </div>
+    </div>
+
+    <div class="viewer-container" id="viewerContainer" data-mode="slider" data-orient="horizontal">
+        <div class="toast" id="toastMsg"></div>
+
+        <div class="pair-library collapsed" id="pairLibrary">
+            <div class="pair-header">
+                <h3>Locked Pairs</h3>
+                <button class="btn btn-sm" id="btn-close-pairs">✕</button>
+            </div>
+            <div style="padding:8px 8px 0;">
+                <div class="pair-quick">
+                    <input type="text" id="pairCodeInput" placeholder="UP-0001" title="Type pair code and press Enter">
+                    <button class="btn btn-sm" id="btn-load-code">Load</button>
+                </div>
+                <p style="font-size:9px;color:#666;margin-bottom:6px;">Pinned pairs persist in the server database across reboots.</p>
+            </div>
+            <div class="pair-list" id="pairList"></div>
+            <div class="pair-footer">
+                <label style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" id="chkLockPair" checked> 🔒 Lock pair (pin for quick access)
+                </label>
+                <button class="btn" id="btn-save-pair-side" style="width:100%;">💾 Save & Lock Current Pair</button>
+            </div>
+        </div>
+
+        <div class="res-badge res-left">
+            <span class="res-label" id="lbl-left">Before</span>
+            <span id="res-text-left">-- x --</span>
+        </div>
+        <div class="res-badge res-right">
+            <span class="res-label" id="lbl-right">After</span>
+            <span id="res-text-right">-- x --</span>
+        </div>
+        <div class="zoom-badge" id="zoomBadge">100%</div>
+
+        <div class="transform-layer" id="transformLayer">
+            <div class="media-stack" id="mediaStack">
+                <img id="img-after" class="img-after" alt="After" />
+                <img id="img-before" class="img-before" alt="Before" />
+            </div>
+            <div class="slider-line" id="sliderLine">
+                <div class="slider-button"></div>
+            </div>
+        </div>
+
+        <div class="loupe" id="loupe"><canvas id="loupeCanvas" width="180" height="180"></canvas></div>
+    </div>
+
+    <div class="settings-modal" id="settingsModal">
+        <h3>Display Settings</h3>
+        <div class="settings-row">
+            <span>Theme:</span>
+            <select id="set-theme">
+                <option value="oled">OLED Black</option>
+                <option value="dark">Studio Dark</option>
+                <option value="cyber">Cyber Forge</option>
+            </select>
+        </div>
+        <div class="settings-row">
+            <span>Accent Color:</span>
+            <input type="color" id="set-color" class="color-picker" value="#00f3ff">
+        </div>
+        <div class="settings-row">
+            <span>Image Sharpening:</span>
+            <input type="range" id="set-sharpen" min="0" max="2" step="0.1" value="0" style="width:100px;">
+        </div>
+        <div class="settings-row">
+            <span>Contrast Boost:</span>
+            <input type="range" id="set-contrast" min="100" max="200" step="5" value="100" style="width:100px;">
+        </div>
+        <div class="settings-row">
+            <span>Saturation:</span>
+            <input type="range" id="set-saturate" min="0" max="200" step="5" value="100" style="width:100px;">
+        </div>
+        <div class="settings-divider"></div>
+        <div class="settings-row">
+            <span>Loupe Zoom:</span>
+            <select id="set-loupe-zoom">
+                <option value="2">2×</option>
+                <option value="3" selected>3×</option>
+                <option value="5">5×</option>
+                <option value="8">8×</option>
+            </select>
+        </div>
+        <button class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script>
+        const DB_NAME = 'AIImageComparator';
+        const DB_VER = 1;
+
+        const viewerContainer = document.getElementById('viewerContainer');
+        const transformLayer = document.getElementById('transformLayer');
+        const mediaStack = document.getElementById('mediaStack');
+        const imgBefore = document.getElementById('img-before');
+        const imgAfter = document.getElementById('img-after');
+        const sliderLine = document.getElementById('sliderLine');
+        const sliderButton = document.querySelector('.slider-button');
+        const radioMode = document.getElementsByName('mode');
+        const loupe = document.getElementById('loupe');
+        const loupeCanvas = document.getElementById('loupeCanvas');
+        const loupeCtx = loupeCanvas.getContext('2d');
+        const zoomBadge = document.getElementById('zoomBadge');
+
+        let scale = 1, translateX = 0, translateY = 0;
+        let isDraggingSlider = false, isPanning = false, panStartX = 0, panStartY = 0;
+        let fileCacheBefore = null, fileCacheAfter = null;
+        let isSwapped = false, loupeEnabled = false, sliderPercent = 0.5;
+        let activePairId = null;
+        let knownBeforePath = null;
+        let knownAfterPath = null;
+        const LAST_PAIR_KEY = 'image-comparator-last-pair';
+        const pairLibrary = document.getElementById('pairLibrary');
+        const pairList = document.getElementById('pairList');
+        const toastMsg = document.getElementById('toastMsg');
+        let fsSupported = 'showOpenFilePicker' in window;
+
+        function normalizePair(p) {
+            return AIToolboxAPI.normalizePair ? AIToolboxAPI.normalizePair(p) : p;
+        }
+
+        function showToast(msg) {
+            toastMsg.innerText = msg;
+            toastMsg.style.opacity = '1';
+            setTimeout(() => toastMsg.style.opacity = '0', 1800);
+        }
+
+        function rememberPair(pair) {
+            if (!pair?.id) return;
+            activePairId = pair.id;
+            localStorage.setItem(LAST_PAIR_KEY, pair.id);
+            if (pair.pairCode || pair.pair_code) {
+                localStorage.setItem(LAST_PAIR_KEY + '-code', pair.pairCode || pair.pair_code);
+            }
+        }
+
+        // --- IndexedDB for folder handles & recents ---
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, DB_VER);
+                req.onupgradeneeded = e => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+                    if (!db.objectStoreNames.contains('recents')) db.createObjectStore('recents');
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function idbGet(store, key) {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const req = db.transaction(store).objectStore(store).get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function idbSet(store, key, value) {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).put(value, key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function ensureDirPermission(handle) {
+            if (!handle) return false;
+            if (await handle.queryPermission({ mode: 'read' }) === 'granted') return true;
+            return (await handle.requestPermission({ mode: 'read' })) === 'granted';
+        }
+
+        async function pinFolder(slot) {
+            if (!('showDirectoryPicker' in window)) {
+                alert('Folder pinning requires Chrome or Edge. Files will still open from your last browser location.');
+                return;
+            }
+            try {
+                const dir = await window.showDirectoryPicker({ mode: 'read' });
+                await idbSet('handles', `dir-${slot}`, dir);
+                updateFolderHint(slot, dir.name);
+            } catch (e) { if (e.name !== 'AbortError') console.warn(e); }
+        }
+
+        async function updateFolderHint(slot, name) {
+            const el = document.getElementById(`folder-${slot}`);
+            if (name) el.textContent = `Pinned: ${name}`;
+            else {
+                const h = await idbGet('handles', `dir-${slot}`);
+                el.textContent = h ? `Pinned: ${h.name}` : 'No pinned folder';
+            }
+        }
+
+        async function addRecent(slot, fileHandle, fileName) {
+            const key = `recent-${slot}`;
+            let list = (await idbGet('recents', key)) || [];
+            list = list.filter(r => r.name !== fileName);
+            if (fileHandle) list.unshift({ name: fileName, handle: fileHandle });
+            else list.unshift({ name: fileName, blob: true });
+            list = list.slice(0, 8);
+            await idbSet('recents', key, list);
+            renderRecents(slot, list);
+        }
+
+        async function renderRecents(slot, list) {
+            const row = document.getElementById(`recent-${slot}`);
+            row.innerHTML = '';
+            if (!list) list = (await idbGet('recents', `recent-${slot}`)) || [];
+            list.forEach((item, i) => {
+                const chip = document.createElement('span');
+                chip.className = 'recent-chip';
+                chip.title = item.name;
+                chip.textContent = item.name;
+                chip.addEventListener('click', async () => {
+                    if (item.handle) {
+                        try {
+                            if (await ensureDirPermission(item.handle)) {
+                                const file = await item.handle.getFile();
+                                ingestFile(slot, file, item.name);
+                            }
+                        } catch (e) { console.warn(e); }
+                    }
+                });
+                row.appendChild(chip);
+            });
+        }
+
+        async function pickFile(slot) {
+            const accept = { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.tiff'] };
+            if (fsSupported) {
+                try {
+                    const opts = { types: [{ accept }], multiple: false };
+                    const dirHandle = await idbGet('handles', `dir-${slot}`);
+                    if (dirHandle && await ensureDirPermission(dirHandle)) opts.startIn = dirHandle;
+                    const [handle] = await window.showOpenFilePicker(opts);
+                    const file = await handle.getFile();
+                    await addRecent(slot, handle, file.name);
+                    ingestFile(slot, file, file.name);
+                    return;
+                } catch (e) { if (e.name !== 'AbortError') console.warn(e); return; }
+            }
+            document.getElementById(slot === 'before' ? 'file-before' : slot === 'after' ? 'file-after' : 'file-sbs').click();
+        }
+
+        function ingestFile(slot, file, name) {
+            const st = document.getElementById(`status-${slot}`);
+            st.innerText = `Loaded: ${name || file.name}`;
+            st.style.color = 'var(--neon-accent)';
+
+            if (slot === 'before') { fileCacheBefore = file; checkSeparateReady(); }
+            else if (slot === 'after') { fileCacheAfter = file; checkSeparateReady(); }
+            else processSbsFile(file);
+        }
+
+        // --- UI toggles ---
+        radioMode.forEach(radio => {
+            radio.addEventListener('change', e => {
+                const isSep = e.target.value === 'separate';
+                document.querySelectorAll('.mode-sep').forEach(el => el.style.display = isSep ? 'block' : 'none');
+                document.querySelectorAll('.mode-sbs').forEach(el => el.style.display = isSep ? 'none' : 'block');
+                viewerContainer.style.display = 'none';
+                fileCacheBefore = null; fileCacheAfter = null;
+                ['before', 'after', 'sbs'].forEach(s => {
+                    document.getElementById(`status-${s}`).innerText = 'Awaiting file...';
+                });
+                isSwapped = false;
+                updateLabels();
+            });
+        });
+
+        document.querySelectorAll('[data-browse]').forEach(btn => {
+            btn.addEventListener('click', e => { e.stopPropagation(); pickFile(btn.dataset.browse); });
+        });
+        document.querySelectorAll('[data-pin]').forEach(btn => {
+            btn.addEventListener('click', e => { e.stopPropagation(); pinFolder(btn.dataset.pin); });
+        });
+
+        function setupDropZone(dzId, slot, fileInputId, callback) {
+            const dz = document.getElementById(dzId);
+            const fi = document.getElementById(fileInputId);
+            dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+            dz.addEventListener('dragleave', e => { e.preventDefault(); dz.classList.remove('dragover'); });
+            dz.addEventListener('drop', e => {
+                e.preventDefault(); dz.classList.remove('dragover');
+                if (e.dataTransfer.files.length) callback(e.dataTransfer.files[0]);
+            });
+            fi.addEventListener('change', e => {
+                if (e.target.files.length) callback(e.target.files[0]);
+                fi.value = '';
+            });
+        }
+
+        setupDropZone('dz-before', 'before', 'file-before', file => ingestFile('before', file));
+        setupDropZone('dz-after', 'after', 'file-after', file => ingestFile('after', file));
+        setupDropZone('dz-sbs', 'sbs', 'file-sbs', file => processSbsFile(file));
+
+        function checkSeparateReady() {
+            if (fileCacheBefore && fileCacheAfter) {
+                const urlB = URL.createObjectURL(fileCacheBefore);
+                const urlA = URL.createObjectURL(fileCacheAfter);
+                const iB = new Image(), iA = new Image();
+                let loaded = 0;
+                iB.onload = () => { loaded++; if (loaded === 2) finalizeLoad(urlB, urlA, iB.width, iB.height, iA.width, iA.height); };
+                iA.onload = () => { loaded++; if (loaded === 2) finalizeLoad(urlB, urlA, iB.width, iB.height, iA.width, iA.height); };
+                iB.src = urlB; iA.src = urlA;
+            }
+        }
+
+        function processSbsFile(file) {
+            const imgUrl = URL.createObjectURL(file);
+            const rawImg = new Image();
+            rawImg.onload = () => {
+                const w = rawImg.width, h = rawImg.height, halfW = Math.floor(w / 2);
+                const cvsLeft = document.createElement('canvas');
+                cvsLeft.width = halfW; cvsLeft.height = h;
+                cvsLeft.getContext('2d').drawImage(rawImg, 0, 0, halfW, h, 0, 0, halfW, h);
+                const cvsRight = document.createElement('canvas');
+                cvsRight.width = halfW; cvsRight.height = h;
+                cvsRight.getContext('2d').drawImage(rawImg, halfW, 0, halfW, h, 0, 0, halfW, h);
+                cvsLeft.toBlob(bLeft => {
+                    cvsRight.toBlob(bRight => {
+                        finalizeLoad(URL.createObjectURL(bLeft), URL.createObjectURL(bRight), halfW, h, halfW, h);
+                        URL.revokeObjectURL(imgUrl);
+                    }, 'image/png');
+                }, 'image/png');
+            };
+            rawImg.src = imgUrl;
+            addRecent('sbs', null, file.name);
+        }
+
+        function finalizeLoad(urlB, urlA, wB, hB, wA, hA) {
+            imgBefore.src = urlB;
+            imgAfter.src = urlA;
+            imgBefore.dataset.res = `${wB} x ${hB}`;
+            imgAfter.dataset.res = `${wA} x ${hA}`;
+            updateResolutionUI();
+            imgAfter.onload = () => {
+                viewerContainer.style.display = 'block';
+                applyCompareMode();
+                fitToScreen();
+                setSliderPosition(0.5);
+            };
+        }
+
+        function updateResolutionUI() {
+            document.getElementById('res-text-left').innerText = isSwapped ? imgAfter.dataset.res : imgBefore.dataset.res;
+            document.getElementById('res-text-right').innerText = isSwapped ? imgBefore.dataset.res : imgAfter.dataset.res;
+        }
+
+        function updateLabels() {
+            document.getElementById('lbl-left').innerText = isSwapped ? 'After' : 'Before';
+            document.getElementById('lbl-right').innerText = isSwapped ? 'Before' : 'After';
+        }
+
+        function setSliderPosition(percent) {
+            sliderPercent = Math.max(0, Math.min(1, percent));
+            const mode = viewerContainer.dataset.mode;
+            const orient = viewerContainer.dataset.orient;
+            if (mode === 'slider') {
+                if (orient === 'vertical') {
+                    const bottomInset = (1 - sliderPercent) * 100;
+                    imgBefore.style.clipPath = `inset(0 0 ${bottomInset}% 0)`;
+                    sliderLine.style.top = `${sliderPercent * 100}%`;
+                    sliderLine.style.left = '0';
+                } else {
+                    const rightInset = (1 - sliderPercent) * 100;
+                    imgBefore.style.clipPath = `inset(0 ${rightInset}% 0 0)`;
+                    sliderLine.style.left = `${sliderPercent * 100}%`;
+                    sliderLine.style.top = '0';
+                }
+            }
+        }
+
+        function applyCompareMode() {
+            const mode = document.getElementById('compare-mode').value;
+            viewerContainer.dataset.mode = mode;
+            document.getElementById('blend-controls').style.display = mode === 'blend' ? 'flex' : 'none';
+            sliderLine.style.display = mode === 'slider' ? 'block' : 'none';
+            if (mode === 'blend') {
+                imgBefore.style.opacity = document.getElementById('blend-opacity').value / 100;
+                imgBefore.style.clipPath = 'none';
+            } else if (mode === 'slider') {
+                imgBefore.style.opacity = 1;
+                setSliderPosition(sliderPercent);
+            } else {
+                imgBefore.style.opacity = 1;
+                imgBefore.style.clipPath = mode === 'side' || mode === 'difference' ? 'none' : imgBefore.style.clipPath;
+            }
+            applyImageFilters();
+        }
+
+        function applyImageFilters() {
+            const sharpen = document.getElementById('set-sharpen').value;
+            const contrast = document.getElementById('set-contrast').value;
+            const saturate = document.getElementById('set-saturate').value;
+            const filter = `contrast(${contrast}%) saturate(${saturate}%)`;
+            const sharpFilter = sharpen > 0 ? ` drop-shadow(0 0 0 rgba(0,0,0,${sharpen * 0.3}))` : '';
+            imgBefore.style.filter = filter;
+            imgAfter.style.filter = filter;
+        }
+
+        document.getElementById('compare-mode').addEventListener('change', applyCompareMode);
+        document.getElementById('blend-opacity').addEventListener('input', e => {
+            if (viewerContainer.dataset.mode === 'blend') imgBefore.style.opacity = e.target.value / 100;
+        });
+        document.getElementById('split-orient').addEventListener('change', e => {
+            viewerContainer.dataset.orient = e.target.value;
+            setSliderPosition(sliderPercent);
+        });
+
+        function applyTransform() {
+            transformLayer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            const invScale = 1 / scale;
+            sliderButton.style.transform = `translate(-50%, -50%) scale(${invScale})`;
+            sliderLine.style.width = viewerContainer.dataset.orient === 'vertical' ? '100%' : `${Math.max(1, 2 * invScale)}px`;
+            if (viewerContainer.dataset.orient === 'vertical') sliderLine.style.height = `${Math.max(1, 2 * invScale)}px`;
+            zoomBadge.textContent = `${Math.round(scale * 100)}%`;
+        }
+
+        function fitToScreen() {
+            if (!imgAfter.naturalWidth) return;
+            const rect = viewerContainer.getBoundingClientRect();
+            const sX = rect.width / imgAfter.naturalWidth;
+            const sY = rect.height / imgAfter.naturalHeight;
+            scale = Math.min(sX, sY) * 0.95;
+            translateX = (rect.width - imgAfter.naturalWidth * scale) / 2;
+            translateY = (rect.height - imgAfter.naturalHeight * scale) / 2;
+            applyTransform();
+        }
+
+        viewerContainer.addEventListener('contextmenu', e => e.preventDefault());
+
+        viewerContainer.addEventListener('mousedown', e => {
+            e.preventDefault();
+            if (e.button === 0 && viewerContainer.dataset.mode === 'slider') {
+                isDraggingSlider = true;
+                updateSliderFromEvent(e);
+            } else if (e.button === 2) {
+                isPanning = true;
+                panStartX = e.clientX - translateX;
+                panStartY = e.clientY - translateY;
+                viewerContainer.style.cursor = 'grabbing';
+            }
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (isDraggingSlider) updateSliderFromEvent(e);
+            else if (isPanning) {
+                translateX = e.clientX - panStartX;
+                translateY = e.clientY - panStartY;
+                applyTransform();
+            }
+            if (loupeEnabled && imgAfter.naturalWidth) updateLoupe(e);
+        });
+
+        window.addEventListener('mouseup', e => {
+            if (e.button === 0) isDraggingSlider = false;
+            if (e.button === 2) { isPanning = false; viewerContainer.style.cursor = 'crosshair'; }
+        });
+
+        function updateSliderFromEvent(e) {
+            const rect = transformLayer.getBoundingClientRect();
+            if (viewerContainer.dataset.orient === 'vertical') {
+                setSliderPosition((e.clientY - rect.top) / rect.height);
+            } else {
+                setSliderPosition((e.clientX - rect.left) / rect.width);
+            }
+        }
+
+        viewerContainer.addEventListener('wheel', e => {
+            e.preventDefault();
+            if (!imgAfter.src) return;
+            const oldScale = scale;
+            scale *= Math.exp((e.deltaY < 0 ? 1 : -1) * 0.1);
+            scale = Math.max(0.1, Math.min(scale, 50));
+            const rect = transformLayer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const ratio = scale / oldScale;
+            translateX -= mouseX * (ratio - 1);
+            translateY -= mouseY * (ratio - 1);
+            applyTransform();
+        }, { passive: false });
+
+        function updateLoupe(e) {
+            const rect = transformLayer.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / scale;
+            const y = (e.clientY - rect.top) / scale;
+            const z = parseFloat(document.getElementById('set-loupe-zoom').value);
+            const sz = 180 / z;
+            loupe.style.left = `${e.clientX - viewerContainer.getBoundingClientRect().left - 90}px`;
+            loupe.style.top = `${e.clientY - viewerContainer.getBoundingClientRect().top - 90}px`;
+            loupeCtx.clearRect(0, 0, 180, 180);
+            try {
+                loupeCtx.drawImage(imgAfter, x - sz / 2, y - sz / 2, sz, sz, 0, 0, 180, 180);
+                loupeCtx.strokeStyle = 'rgba(0,243,255,0.5)';
+                loupeCtx.lineWidth = 1;
+                loupeCtx.strokeRect(0, 0, 180, 180);
+            } catch (err) { /* cross-origin or not ready */ }
+        }
+
+        document.getElementById('btn-loupe').addEventListener('click', e => {
+            loupeEnabled = !loupeEnabled;
+            e.target.classList.toggle('active', loupeEnabled);
+            loupe.classList.toggle('active', loupeEnabled);
+        });
+
+        document.getElementById('btn-fit').addEventListener('click', fitToScreen);
+        document.getElementById('btn-100').addEventListener('click', () => {
+            const rect = viewerContainer.getBoundingClientRect();
+            scale = 1;
+            translateX = (rect.width - imgAfter.naturalWidth) / 2;
+            translateY = (rect.height - imgAfter.naturalHeight) / 2;
+            applyTransform();
+        });
+
+        document.getElementById('btn-swap').addEventListener('click', () => {
+            if (!imgAfter.src) return;
+            const tempSrc = imgBefore.src;
+            imgBefore.src = imgAfter.src;
+            imgAfter.src = tempSrc;
+            isSwapped = !isSwapped;
+            updateLabels();
+            updateResolutionUI();
+            if (document.getElementById('dz-before').style.display !== 'none') {
+                const sB = document.getElementById('status-before');
+                const sA = document.getElementById('status-after');
+                const t = sB.innerText; sB.innerText = sA.innerText; sA.innerText = t;
+            }
+        });
+
+        document.getElementById('btn-export').addEventListener('click', () => {
+            if (!imgAfter.naturalWidth) return;
+            const cvs = document.createElement('canvas');
+            cvs.width = imgAfter.naturalWidth;
+            cvs.height = imgAfter.naturalHeight;
+            const ctx = cvs.getContext('2d');
+            ctx.drawImage(imgAfter, 0, 0);
+            if (viewerContainer.dataset.mode === 'slider') {
+                const orient = viewerContainer.dataset.orient;
+                ctx.save();
+                if (orient === 'vertical') {
+                    ctx.beginPath();
+                    ctx.rect(0, 0, cvs.width, cvs.height * sliderPercent);
+                    ctx.clip();
+                } else {
+                    ctx.beginPath();
+                    ctx.rect(0, 0, cvs.width * sliderPercent, cvs.height);
+                    ctx.clip();
+                }
+                ctx.drawImage(imgBefore, 0, 0);
+                ctx.restore();
+                ctx.strokeStyle = '#00f3ff';
+                ctx.lineWidth = 3;
+                if (orient === 'vertical') ctx.moveTo(0, cvs.height * sliderPercent), ctx.lineTo(cvs.width, cvs.height * sliderPercent);
+                else ctx.moveTo(cvs.width * sliderPercent, 0), ctx.lineTo(cvs.width * sliderPercent, cvs.height);
+                ctx.stroke();
+            } else if (viewerContainer.dataset.mode === 'blend') {
+                ctx.globalAlpha = document.getElementById('blend-opacity').value / 100;
+                ctx.drawImage(imgBefore, 0, 0);
+            }
+            const a = document.createElement('a');
+            a.download = `comparison-${Date.now()}.png`;
+            a.href = cvs.toDataURL('image/png');
+            a.click();
+        });
+
+        // Settings
+        const settingsModal = document.getElementById('settingsModal');
+        document.getElementById('btn-settings').addEventListener('click', () => settingsModal.classList.add('active'));
+        document.getElementById('btn-close-settings').addEventListener('click', () => settingsModal.classList.remove('active'));
+
+        document.getElementById('set-color').addEventListener('input', e => {
+            document.documentElement.style.setProperty('--neon-accent', e.target.value);
+            document.documentElement.style.setProperty('--border-color', e.target.value + '4d');
+        });
+        document.getElementById('set-theme').addEventListener('change', e => {
+            const root = document.documentElement.style;
+            if (e.target.value === 'oled') { root.setProperty('--bg-color', '#050505'); root.setProperty('--dark-panel', '#0a0a0a'); }
+            else if (e.target.value === 'dark') { root.setProperty('--bg-color', '#1a1a1a'); root.setProperty('--dark-panel', '#242424'); }
+            else { root.setProperty('--bg-color', '#0b0c10'); root.setProperty('--dark-panel', '#1f2833'); }
+        });
+        ['set-sharpen', 'set-contrast', 'set-saturate'].forEach(id => {
+            document.getElementById(id).addEventListener('input', applyImageFilters);
+        });
+
+        async function resolvePairUrls(pair) {
+            const p = normalizePair(pair);
+            if (p.beforeMediaId && p.afterMediaId) {
+                return {
+                    before: AIToolboxAPI.mediaFileUrl(p.beforeMediaId),
+                    after: AIToolboxAPI.mediaFileUrl(p.afterMediaId),
+                    beforeName: p.beforeName,
+                    afterName: p.afterName,
+                    beforePath: p.beforePath,
+                    afterPath: p.afterPath,
+                };
+            }
+            if (p.beforePath && p.afterPath) {
+                return {
+                    before: AIToolboxAPI.fileServeUrl(p.beforePath),
+                    after: AIToolboxAPI.fileServeUrl(p.afterPath),
+                    beforeName: p.beforeName,
+                    afterName: p.afterName,
+                    beforePath: p.beforePath,
+                    afterPath: p.afterPath,
+                };
+            }
+            throw new Error('Pair has no resolvable file paths');
+        }
+
+        function loadImagesFromUrls(urlB, urlA, nameB, nameA) {
+            document.getElementById('status-before').innerText = `Loaded: ${nameB || 'Before'}`;
+            document.getElementById('status-after').innerText = `Loaded: ${nameA || 'After'}`;
+            document.getElementById('status-before').style.color = 'var(--neon-accent)';
+            document.getElementById('status-after').style.color = 'var(--neon-accent)';
+            document.querySelector('input[name="mode"][value="separate"]').checked = true;
+            document.querySelectorAll('.mode-sep').forEach(el => el.style.display = 'block');
+            document.querySelectorAll('.mode-sbs').forEach(el => el.style.display = 'none');
+            const iB = new Image(), iA = new Image();
+            iB.crossOrigin = iA.crossOrigin = 'anonymous';
+            let loaded = 0;
+            const done = () => {
+                loaded++;
+                if (loaded === 2) finalizeLoad(urlB, urlA, iB.width, iB.height, iA.width, iA.height);
+            };
+            iB.onload = done;
+            iA.onload = done;
+            iB.src = urlB;
+            iA.src = urlA;
+        }
+
+        async function saveCurrentPair() {
+            if (!fileCacheBefore || !fileCacheAfter) {
+                showToast('Load both images first!');
+                return;
+            }
+            const defaultName = `${fileCacheBefore.name} ↔ ${fileCacheAfter.name}`;
+            const name = prompt('Name this pair:', defaultName.slice(0, 80));
+            if (!name) return;
+            const pinned = document.getElementById('chkLockPair')?.checked !== false;
+            try {
+                if (await AIToolboxAPI.isOnline()) {
+                    const bq = await AIToolboxAPI.queryMedia({ search: fileCacheBefore.name, limit: 10 });
+                    const aq = await AIToolboxAPI.queryMedia({ search: fileCacheAfter.name, limit: 10 });
+                    const bm = (bq.items || []).find(m => m.name === fileCacheBefore.name);
+                    const am = (aq.items || []).find(m => m.name === fileCacheAfter.name);
+                    let pair;
+                    if (bm && am) {
+                        pair = await AIToolboxAPI.savePair({
+                            name, kind: 'image', beforeMediaId: bm.id, afterMediaId: am.id, pinned,
+                        });
+                    } else if (knownBeforePath && knownAfterPath) {
+                        pair = await AIToolboxAPI.savePairFromPaths({
+                            beforePath: knownBeforePath, afterPath: knownAfterPath, name, kind: 'image', pinned,
+                        });
+                    } else {
+                        showToast('Add files to Media Library first, or load a server pair.');
+                        return;
+                    }
+                    rememberPair(pair);
+                    knownBeforePath = pair.beforePath || knownBeforePath;
+                    knownAfterPath = pair.afterPath || knownAfterPath;
+                    renderPairList();
+                    showToast(`Locked ${pair.pairCode || pair.id}: ${name}`);
+                    return;
+                }
+            } catch (e) {
+                console.warn(e);
+                showToast('Server save failed: ' + e.message);
+            }
+            showToast('Start server first (▶ Start Server in Media Library / Launcher) to save pairs.');
+        }
+
+        async function loadPair(pair) {
+            const p = normalizePair(pair);
+            try {
+                if (await AIToolboxAPI.isOnline() && (p.beforeMediaId || p.beforePath)) {
+                    const urls = await resolvePairUrls(p);
+                    knownBeforePath = urls.beforePath;
+                    knownAfterPath = urls.afterPath;
+                    loadImagesFromUrls(urls.before, urls.after, urls.beforeName, urls.afterName);
+                    rememberPair(p);
+                    renderPairList();
+                    showToast(`Loaded ${p.pairCode || p.name}`);
+                    return;
+                }
+                const files = await AIToolbox.resolvePairFiles(p);
+                fileCacheBefore = files.beforeFile;
+                fileCacheAfter = files.afterFile;
+                document.getElementById('status-before').innerText = `Loaded: ${files.beforeFile.name}`;
+                document.getElementById('status-after').innerText = `Loaded: ${files.afterFile.name}`;
+                rememberPair(p);
+                checkSeparateReady();
+                renderPairList();
+                showToast(`Loaded: ${p.name}`);
+            } catch (e) {
+                showToast('Could not load pair — ' + e.message);
+                console.warn(e);
+            }
+        }
+
+        async function togglePairPin(pair, e) {
+            e?.stopPropagation();
+            if (!(await AIToolboxAPI.isOnline())) {
+                showToast('Start server first (▶ Start Server in Media Library / Launcher)');
+                return;
+            }
+            const p = normalizePair(pair);
+            await AIToolboxAPI.updatePair(p.id, { pinned: !p.pinned });
+            renderPairList();
+        }
+
+        async function deletePair(id) {
+            if (await AIToolboxAPI.isOnline()) await AIToolboxAPI.deletePair(id);
+            else await AIToolbox.deletePair(id);
+            if (activePairId === id) activePairId = null;
+            renderPairList();
+        }
+
+        async function renderPairList() {
+            let pairs = [];
+            if (await AIToolboxAPI.isOnline()) {
+                pairs = await AIToolboxAPI.listPairs('image');
+            } else {
+                pairs = (await AIToolbox.listPairs()).filter(p => p.kind === 'image');
+            }
+            pairList.innerHTML = '';
+            if (!pairs.length) {
+                pairList.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:20px;">No locked pairs yet.<br>Pair files in Media Library or save here with server online.</div>';
+                return;
+            }
+            pairs.forEach(pair => {
+                const p = normalizePair(pair);
+                const div = document.createElement('div');
+                div.className = 'pair-item' + (p.id === activePairId ? ' active' : '') + (p.pinned ? ' pinned' : '');
+                const code = p.pairCode ? `<div class="pair-code">${p.pinned ? '★ ' : ''}${p.pairCode}</div>` : '';
+                div.innerHTML = `
+                    ${code}
+                    <div class="pair-name">${p.name}</div>
+                    <div class="pair-files">B: ${p.beforeName || '—'}<br>A: ${p.afterName || '—'}</div>
+                    <div class="pair-actions">
+                        <button class="btn load-btn">Load</button>
+                        <button class="btn pin-btn">${p.pinned ? 'Unpin' : 'Pin'}</button>
+                        <button class="btn del-btn">Delete</button>
+                    </div>`;
+                div.querySelector('.load-btn').addEventListener('click', e => { e.stopPropagation(); loadPair(p); });
+                div.querySelector('.pin-btn').addEventListener('click', e => togglePairPin(p, e));
+                div.querySelector('.del-btn').addEventListener('click', e => {
+                    e.stopPropagation();
+                    if (confirm(`Delete "${p.name}"?`)) deletePair(p.id);
+                });
+                div.addEventListener('click', () => loadPair(p));
+                pairList.appendChild(div);
+            });
+        }
+
+        async function loadPairByCode(code) {
+            const c = (code || '').trim().toUpperCase();
+            if (!c) return;
+            if (!(await AIToolboxAPI.isOnline())) {
+                showToast('Start server first (▶ Start Server in Media Library / Launcher)');
+                return;
+            }
+            const pair = await AIToolboxAPI.getPair(c);
+            if (!pair) { showToast('Pair not found: ' + c); return; }
+            await loadPair(pair);
+            pairLibrary.classList.remove('collapsed');
+        }
+
+        async function loadPairFromUrl() {
+            const params = new URLSearchParams(location.search);
+            const pairRef = params.get('pair');
+            if (pairRef) {
+                if (params.get('server') === '1' && await AIToolboxAPI.isOnline()) {
+                    const pair = await AIToolboxAPI.getPair(pairRef);
+                    if (pair && pair.kind === 'image') {
+                        await loadPair(pair);
+                        return;
+                    }
+                }
+                const pair = await AIToolbox.getPair(pairRef);
+                if (pair && pair.kind === 'image') { await loadPair(pair); return; }
+            }
+
+            const last = localStorage.getItem(LAST_PAIR_KEY);
+            if (last && await AIToolboxAPI.isOnline()) {
+                try {
+                    const pair = await AIToolboxAPI.getPair(last);
+                    if (pair && pair.kind === 'image') await loadPair(pair);
+                } catch (e) { /* ignore */ }
+            }
+        }
+
+        document.getElementById('btn-save-pair').addEventListener('click', saveCurrentPair);
+        document.getElementById('btn-save-pair-side').addEventListener('click', saveCurrentPair);
+        document.getElementById('btn-load-code').addEventListener('click', () => loadPairByCode(document.getElementById('pairCodeInput').value));
+        document.getElementById('pairCodeInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') loadPairByCode(e.target.value);
+        });
+        document.getElementById('btn-pairs').addEventListener('click', () => {
+            pairLibrary.classList.toggle('collapsed');
+            if (!pairLibrary.classList.contains('collapsed')) renderPairList();
+        });
+        document.getElementById('btn-close-pairs').addEventListener('click', () => pairLibrary.classList.add('collapsed'));
+
+        // Init pinned folders & recents
+        ['before', 'after', 'sbs'].forEach(async slot => {
+            await updateFolderHint(slot);
+            await renderRecents(slot);
+        });
+        loadPairFromUrl();
+    </script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+</body>
+</html>

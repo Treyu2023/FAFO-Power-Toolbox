@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>System Health Dashboard — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(0,243,255,.18);--accent:#00f3ff;--ok:#4ade80;--warn:#fbbf24;--danger:#f87171;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#0f172a,var(--bg) 60%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.95);position:sticky;top:0;z-index:10}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.nav .t{color:var(--accent);letter-spacing:1px;font-size:14px}
+.wrap{max-width:1200px;margin:0 auto;padding:24px}
+h1{font-size:24px;margin-bottom:6px} .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}
+.card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.card .val{font-size:28px;font-weight:700;margin:6px 0}
+.card .hint{font-size:11px;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
+.pb{padding:16px 18px}
+.issue{padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:12px;border:1px solid var(--border)}
+.issue.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3)}
+.issue.info{background:rgba(0,243,255,.06)}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.link{padding:8px 14px;border:1px solid var(--border);border-radius:8px;color:var(--accent);text-decoration:none;font-size:12px}
+.link:hover{background:rgba(0,243,255,.1)}
+.btn{background:rgba(0,243,255,.12);border:1px solid var(--accent);color:var(--accent);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border)}
+.status.ok{color:var(--ok)} .status.bad{color:var(--danger)}
+.bar{height:6px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent);border-radius:4px}
+</style>
+</head>
+<body>
+<nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span class="t">SYSTEM HEALTH DASHBOARD</span><span id="pill" class="status bad">Offline</span></nav>
+<div class="wrap">
+<h1>Mission Control</h1>
+<p class="sub">Unified view of CPU, memory, disk, security, and startup health across your toolbox.</p>
+<button class="btn" id="btnRefresh">Refresh dashboard</button>
+<div id="healthBadge" style="margin:16px 0"></div>
+<div class="grid" id="stats"></div>
+<div class="panel"><div class="ph">Issues & alerts</div><div class="pb" id="issues">Loading…</div></div>
+<div class="panel"><div class="ph">Quick launch</div><div class="pb links">
+<a class="link" href="LAN Task Manager.html">📡 LAN & Task Manager</a>
+<a class="link" href="Malware Defender.html">🛡️ Malware Defender</a>
+<a class="link" href="Startup Service Manager.html">🚀 Startup Manager</a>
+<a class="link" href="Disk Space Analyzer.html">💾 Disk Analyzer</a>
+<a class="link" href="Hosts DNS Blocker.html">🔒 DNS Blocker</a>
+</div></div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error('API error');return r.json()}
+function bar(pct){return `<div class="bar"><span style="width:${Math.min(100,pct)}%"></span></div>`}
+async function load(){
+  try{await fetch(API+'/health',{signal:AbortSignal.timeout(2000)});document.getElementById('pill').className='status ok';document.getElementById('pill').textContent='Connected'}catch{document.getElementById('pill').className='status bad';document.getElementById('pill').textContent='Server offline';document.getElementById('issues').innerHTML='<div class="issue warn">Server offline — use <strong>▶ Start Server</strong> on this page (or Launcher), backend at <code>127.0.0.87:18765</code>, then Refresh.</div>';return}
+  const d=await api('/health/dashboard');
+  document.getElementById('healthBadge').innerHTML=`<span class="status ${d.healthy?'ok':'bad'}">${d.healthy?'SYSTEM HEALTHY':'ATTENTION NEEDED'}</span> <span style="color:var(--muted);font-size:12px;margin-left:10px">${new Date(d.timestamp).toLocaleString()}</span>`;
+  const s=d.system;
+  document.getElementById('stats').innerHTML=[
+    {l:'CPU',v:s.cpu_percent+'%',h:bar(s.cpu_percent)},
+    {l:'Memory',v:s.memory_percent+'%',h:`${s.memory_used_human} used`+bar(s.memory_percent)},
+    {l:'Disk C:',v:s.disk_percent+'%',h:bar(s.disk_percent)},
+    {l:'Processes',v:s.process_count,h:`↑${s.net_send_human} ↓${s.net_recv_human}`},
+    {l:'Threat DB',v:(d.security.threat_hashes||0).toLocaleString(),h:d.security.last_intel_update?'Updated '+new Date(d.security.last_intel_update).toLocaleDateString():'Not updated'},
+    {l:'Quarantined',v:d.security.quarantine_count,h:'Malware Defender'},
+    {l:'Startup items',v:d.startup.startup_items,h:`${d.startup.scheduled_tasks} tasks`},
+    {l:'Services',v:d.startup.running_services+'/'+d.startup.services,h:`${d.startup.auto_services} auto-start`}
+  ].map(c=>`<div class="card"><div class="lbl">${c.l}</div><div class="val">${c.v}</div><div class="hint">${c.h||''}</div></div>`).join('');
+  document.getElementById('issues').innerHTML=d.issues.length?d.issues.map(i=>`<div class="issue ${i.level}">${i.message} <span style="color:var(--muted)">(${i.source})</span></div>`).join(''):'<div style="color:var(--ok)">No issues flagged ✓</div>';
+}
+document.getElementById('btnRefresh').onclick=load;load();
+</script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+</body>
+</html>

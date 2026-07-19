@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Processor for Promo Tiles</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { max-width: 900px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        #preview { border: 1px solid #ccc; margin-top: 20px; display: block; background-color: #000; }
+        button { margin-top: 10px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        select { padding: 8px; margin-right: 10px; }
+        label { margin-right: 5px; font-weight: bold; }
+        .options { margin-top: 15px; }
+        .mode-options { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Image Processor for Promo Tiles</h2>
+        <p>Select an image file and choose the desired output size. Two modes are available:</p>
+        <ul>
+            <li><strong>Cover (Crop):</strong> Scales the image to cover the entire canvas, centrally cropping excess portions.</li>
+            <li><strong>Contain (Letterbox):</strong> Scales the image to fit within the canvas while preserving the full image, adding solid black bars (OLED-friendly) on the sides or top/bottom as needed.</li>
+        </ul>
+        <p>Export as JPEG or 24-bit PNG with no transparency.</p>
+        
+        <input type="file" id="fileInput" accept="image/*">
+        
+        <div class="options">
+            <label for="sizeSelect">Output Size:</label>
+            <select id="sizeSelect">
+                <option value="small">Small Promo Tile (440×280)</option>
+                <option value="marquee">Marquee Promo Tile (1400×560)</option>
+                <option value="custom">Custom Size (1280×800)</option>
+                <option value="newsize">New Size (850×400)</option>
+            </select>
+            
+            <label for="formatSelect">Export Format:</label>
+            <select id="formatSelect">
+                <option value="jpeg">JPEG</option>
+                <option value="png">24-bit PNG (no alpha)</option>
+            </select>
+        </div>
+        
+        <div class="mode-options">
+            <label for="modeSelect">Scaling Mode:</label>
+            <select id="modeSelect">
+                <option value="cover">Cover (Crop)</option>
+                <option value="contain">Contain (Letterbox with black bars)</option>
+            </select>
+        </div>
+        
+        <canvas id="preview"></canvas>
+        
+        <div style="margin-top: 10px;">
+            <button id="exportBtn">Export Processed Image</button>
+        </div>
+        
+        <a id="downloadLink" style="display: none;"></a>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const ctx = preview.getContext('2d');
+        const sizeSelect = document.getElementById('sizeSelect');
+        const modeSelect = document.getElementById('modeSelect');
+        const formatSelect = document.getElementById('formatSelect');
+        const exportBtn = document.getElementById('exportBtn');
+        const downloadLink = document.getElementById('downloadLink');
+
+        let img = new Image();
+
+        const sizes = {
+            small: { width: 440, height: 280, name: 'small_promo' },
+            marquee: { width: 1400, height: 560, name: 'marquee_promo' },
+            custom: { width: 1280, height: 800, name: '1280x800' },
+            newsize: { width: 850, height: 400, name: '850x400' }
+        };
+
+        function updateCanvasDimensions() {
+            const selected = sizeSelect.value;
+            preview.width = sizes[selected].width;
+            preview.height = sizes[selected].height;
+            drawPreview();
+        }
+
+        function drawPreview() {
+            if (!img.src) return;
+            
+            ctx.fillStyle = '#000000'; // Black background for letterbox
+            ctx.fillRect(0, 0, preview.width, preview.height);
+            
+            const mode = modeSelect.value;
+            const imgRatio = img.width / img.height;
+            const canvasRatio = preview.width / preview.height;
+            
+            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+            
+            if (mode === 'cover') {
+                // Cover: scale to cover, crop excess
+                if (imgRatio > canvasRatio) {
+                    drawHeight = preview.height;
+                    drawWidth = drawHeight * imgRatio;
+                    offsetX = (preview.width - drawWidth) / 2;
+                } else {
+                    drawWidth = preview.width;
+                    drawHeight = drawWidth / imgRatio;
+                    offsetY = (preview.height - drawHeight) / 2;
+                }
+            } else {
+                // Contain: scale to fit, add black bars
+                if (imgRatio > canvasRatio) {
+                    drawWidth = preview.width;
+                    drawHeight = drawWidth / imgRatio;
+                    offsetY = (preview.height - drawHeight) / 2;
+                } else {
+                    drawHeight = preview.height;
+                    drawWidth = drawHeight * imgRatio;
+                    offsetX = (preview.width - drawWidth) / 2;
+                }
+            }
+            
+            ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        }
+
+        function exportImage() {
+            const selected = sizeSelect.value;
+            const outputWidth = sizes[selected].width;
+            const outputHeight = sizes[selected].height;
+            const mode = modeSelect.value;
+            
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = outputWidth;
+            outputCanvas.height = outputHeight;
+            const outCtx = outputCanvas.getContext('2d');
+            
+            // Black background (OLED-friendly true black)
+            outCtx.fillStyle = '#000000';
+            outCtx.fillRect(0, 0, outputWidth, outputHeight);
+            
+            const imgRatio = img.width / img.height;
+            const canvasRatio = outputWidth / outputHeight;
+            
+            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+            
+            if (mode === 'cover') {
+                // Cover with central crop
+                let sx = 0, sy = 0, sWidth = img.width, sHeight = img.height;
+                if (imgRatio > canvasRatio) {
+                    sHeight = img.height;
+                    sWidth = sHeight * canvasRatio;
+                    sx = (img.width - sWidth) / 2;
+                } else {
+                    sWidth = img.width;
+                    sHeight = sWidth / canvasRatio;
+                    sy = (img.height - sHeight) / 2;
+                }
+                outCtx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, outputWidth, outputHeight);
+            } else {
+                // Contain with letterboxing
+                if (imgRatio > canvasRatio) {
+                    drawWidth = outputWidth;
+                    drawHeight = drawWidth / imgRatio;
+                    offsetY = (outputHeight - drawHeight) / 2;
+                } else {
+                    drawHeight = outputHeight;
+                    drawWidth = drawHeight * imgRatio;
+                    offsetX = (outputWidth - drawWidth) / 2;
+                }
+                outCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+            }
+            
+            const format = formatSelect.value === 'jpeg' ? 'image/jpeg' : 'image/png';
+            const quality = format === 'image/jpeg' ? 0.95 : undefined;
+            const fileExt = format === 'image/jpeg' ? 'jpg' : 'png';
+            
+            outputCanvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                downloadLink.href = url;
+                downloadLink.download = `processed_${sizes[selected].name}_${mode}.${fileExt}`;
+                downloadLink.click();
+                URL.revokeObjectURL(url);
+            }, format, quality);
+        }
+
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    img.src = ev.target.result;
+                    img.onload = () => {
+                        updateCanvasDimensions();
+                    };
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        sizeSelect.addEventListener('change', updateCanvasDimensions);
+        modeSelect.addEventListener('change', drawPreview);
+        exportBtn.addEventListener('click', exportImage);
+
+        // Initial setup
+        updateCanvasDimensions();
+    </script>
+</body>
+</html>

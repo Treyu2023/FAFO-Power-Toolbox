@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IP Profile Switcher — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root {
+  --bg: #050508; --panel: #0c0f16; --border: rgba(0, 243, 255, 0.2);
+  --accent: #00f3ff; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+  --text: #e8e8ec; --muted: #7a8499;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: radial-gradient(ellipse at 40% -10%, #0c1a24 0%, var(--bg) 55%);
+  color: var(--text); min-height: 100vh;
+}
+.nav {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 20px; border-bottom: 1px solid var(--border);
+}
+.nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 22px 18px 48px; }
+h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.45; }
+.grid2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+}
+.ph {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  color: var(--accent); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; font-weight: 700;
+}
+.pb { padding: 14px 16px; }
+.btn {
+  border: 1px solid var(--accent); background: rgba(0,243,255,.1);
+  color: var(--accent); border-radius: 8px; padding: 8px 14px;
+  font-size: 12px; font-weight: 700; cursor: pointer; margin: 0 8px 8px 0;
+}
+.btn:hover { background: rgba(0,243,255,.2); }
+.btn.primary { background: linear-gradient(135deg, #00c6d6, #7c5cff); border: none; color: #041018; }
+.btn.ok { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.1); }
+.btn.danger { border-color: var(--bad); color: var(--bad); background: rgba(248,113,113,.08); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.inp, .sel, .ta {
+  width: 100%; background: rgba(0,0,0,.35); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 9px 11px; font-size: 13px; margin-bottom: 10px;
+}
+.sel option { background: #0c0f16; color: var(--text); }
+label.field {
+  display: block; font-size: 11px; color: var(--muted); margin: 0 0 4px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 600px) { .row2 { grid-template-columns: 1fr; } }
+.stat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 8px;
+  background: rgba(0,243,255,.08); border: 1px solid var(--border);
+  font-size: 12px; margin: 0 8px 8px 0;
+}
+.stat b { color: var(--accent); font-weight: 600; }
+.banner {
+  display: none; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px;
+  font-size: 13px; border: 1px solid rgba(251,191,36,.35);
+  background: rgba(251,191,36,.1); color: #fcd34d; line-height: 1.45;
+}
+.banner.show { display: block; }
+.banner.err { border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.1); color: #fecaca; }
+.banner.ok { border-color: rgba(74,222,128,.35); background: rgba(74,222,128,.1); color: #bbf7d0; }
+.profiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
+}
+.card {
+  position: relative; border: 1px solid var(--border); border-radius: 14px; padding: 14px;
+  background: linear-gradient(160deg, rgba(20,24,36,.95), rgba(8,10,16,.98));
+  min-height: 150px; display: flex; flex-direction: column; gap: 8px;
+}
+.card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  border-radius: 14px 0 0 14px; background: var(--c, var(--accent));
+}
+.card h3 { font-size: 15px; padding-left: 6px; }
+.card .meta { font-size: 12px; color: var(--muted); padding-left: 6px; line-height: 1.4; }
+.card .mode {
+  display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-left: 6px;
+}
+.card .mode.static { background: rgba(124,92,255,.2); color: #c4b5fd; }
+.card .mode.dhcp { background: rgba(74,222,128,.15); color: var(--ok); }
+.card .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; padding-left: 6px; }
+.card .actions .btn { margin: 0; flex: 1; min-width: 70px; }
+.mono { font-family: Consolas, ui-monospace, monospace; font-size: 12px; }
+.empty {
+  color: var(--muted); font-size: 13px; padding: 20px; text-align: center;
+  border: 1px dashed var(--border); border-radius: 12px;
+}
+.adapter-pill {
+  display: block; width: 100%; text-align: left;
+  border: 1px solid var(--border); background: rgba(0,0,0,.25);
+  color: var(--text); border-radius: 10px; padding: 10px 12px;
+  margin-bottom: 8px; cursor: pointer;
+}
+.adapter-pill:hover, .adapter-pill.active {
+  border-color: var(--accent); background: rgba(0,243,255,.08);
+}
+.adapter-pill strong { display: block; font-size: 13px; }
+.adapter-pill span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 50;
+  max-width: 380px; padding: 12px 14px; border-radius: 10px;
+  background: #121820; border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0,0,0,.45); font-size: 13px; display: none;
+}
+.toast.show { display: block; }
+fieldset.box {
+  border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+  margin: 0 0 12px;
+}
+fieldset.box legend {
+  padding: 0 8px; color: var(--accent); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <span style="color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.08em">IP PROFILE SWITCHER</span>
+</nav>
+
+<div class="wrap">
+  <h1>IP Profile Switcher</h1>
+  <p class="sub">
+    Save multiple network setups and switch with one click.
+    Adapters load from the toolbox server. Profiles are stored in this browser <strong>and</strong> on the server when available.
+  </p>
+
+  <div id="adminWarn" class="banner">
+    ⚠ Applying an IP requires Administrator. Restart the toolbox server <strong>as Administrator</strong>, then Apply again.
+    You can also use <strong>Download apply script</strong> on a setup card and run it elevated.
+  </div>
+  <div id="statusBanner" class="banner"></div>
+  <div class="pb" style="padding:0 0 14px" id="statusBar"></div>
+
+  <div class="panel">
+    <div class="ph">Saved setups — one-click apply</div>
+    <div class="pb">
+      <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button type="button" class="btn" id="btnExport">⬇ Export setups file</button>
+        <button type="button" class="btn" id="btnImport">⬆ Import setups file</button>
+        <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+        <span style="font-size:11px;color:var(--muted);line-height:1.4">
+          Portable file lives at <code style="color:var(--accent)">AI HTML TOOLBOX\data\ip_profiles.json</code>
+          — copy that file (or the whole Toolbox folder) to another PC.
+        </span>
+      </div>
+      <div id="profiles" class="profiles"></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <div class="panel">
+        <div class="ph">Create / edit setup</div>
+        <div class="pb">
+          <input type="hidden" id="profId">
+
+          <fieldset class="box">
+            <legend>Basics</legend>
+            <label class="field" for="profName">Setup name</label>
+            <input class="inp" id="profName" placeholder="Home · Office · Lab static…" autocomplete="off">
+
+            <label class="field" for="profAdapter">Network adapter</label>
+            <select class="sel" id="profAdapter"></select>
+            <input class="inp mono" id="profAdapterCustom" placeholder="Or type adapter name exactly (e.g. ETH_CABLE_CONNECTION)" style="display:none">
+            <button type="button" class="btn" id="btnToggleAdapterType" style="margin-bottom:8px">Type adapter name manually</button>
+
+            <label class="chk" style="display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;font-size:12px;color:var(--text);cursor:pointer">
+              <input type="checkbox" id="optAutoSelect" checked style="margin-top:2px">
+              <span><strong>Auto-select active adapter</strong><br>
+              <span style="color:var(--muted);font-size:11px">On load/refresh, pick the live connection (prefers Ethernet when available).</span></span>
+            </label>
+            <label class="chk" style="display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;font-size:12px;color:var(--text);cursor:pointer">
+              <input type="checkbox" id="optPreferEthernet" checked style="margin-top:2px">
+              <span><strong>Prefer Ethernet over Wi‑Fi</strong><br>
+              <span style="color:var(--muted);font-size:11px">When several adapters are up, choose Ethernet / cable first.</span></span>
+            </label>
+            <label class="chk" style="display:flex;align-items:flex-start;gap:8px;margin:0 0 12px;font-size:12px;color:var(--text);cursor:pointer">
+              <input type="checkbox" id="profUseActiveOnApply" style="margin-top:2px">
+              <span><strong>This setup always uses the active adapter</strong><br>
+              <span style="color:var(--muted);font-size:11px">When you Apply, ignore the saved name and use whichever adapter is active now.</span></span>
+            </label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px">
+              <div id="activeHint" style="font-size:12px;color:var(--muted);flex:1;min-height:18px"></div>
+              <button type="button" class="btn ok" id="btnSelectActive" style="margin:0">Select active now</button>
+            </div>
+
+            <label class="field" for="profMode">Mode</label>
+            <select class="sel" id="profMode">
+              <option value="static">Static IP</option>
+              <option value="dhcp">Automatic (DHCP)</option>
+            </select>
+          </fieldset>
+
+          <fieldset class="box" id="staticFields">
+            <legend>Static address</legend>
+            <div class="row2">
+              <div>
+                <label class="field" for="profIp">IP address</label>
+                <input class="inp mono" id="profIp" placeholder="192.168.1.50" autocomplete="off">
+              </div>
+              <div>
+                <label class="field" for="profPrefix">Subnet prefix</label>
+                <input class="inp mono" id="profPrefix" type="number" min="8" max="32" value="24">
+              </div>
+            </div>
+            <div class="row2">
+              <div>
+                <label class="field" for="profMask">Subnet mask</label>
+                <input class="inp mono" id="profMask" value="255.255.255.0" placeholder="255.255.255.0">
+              </div>
+              <div>
+                <label class="field" for="profGw">Gateway</label>
+                <input class="inp mono" id="profGw" placeholder="192.168.1.1" autocomplete="off">
+              </div>
+            </div>
+            <label class="field" for="profDns">DNS (comma-separated)</label>
+            <input class="inp mono" id="profDns" placeholder="1.1.1.1, 8.8.8.8" autocomplete="off">
+          </fieldset>
+
+          <div class="row2">
+            <div>
+              <label class="field" for="profColor">Card color</label>
+              <input class="inp" id="profColor" type="color" value="#00f3ff" style="height:40px;padding:4px">
+            </div>
+            <div>
+              <label class="field" for="profNotes">Notes</label>
+              <input class="inp" id="profNotes" placeholder="Optional" autocomplete="off">
+            </div>
+          </div>
+
+          <button type="button" class="btn primary" id="btnSave">Save setup</button>
+          <button type="button" class="btn" id="btnNew">Clear form</button>
+          <button type="button" class="btn ok" id="btnApplyForm">Apply this setup now</button>
+          <button type="button" class="btn" id="btnDownloadForm">Download apply script</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="ph">This computer — live adapters</div>
+        <div class="pb" id="adapters">Loading…</div>
+      </div>
+      <div class="panel">
+        <div class="ph">Quick capture</div>
+        <div class="pb">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+            Snapshot the current IP of an adapter into a new saved setup.
+          </p>
+          <label class="field" for="captureAdapter">Adapter to capture</label>
+          <select class="sel" id="captureAdapter"></select>
+          <label class="field" for="captureName">Name for saved setup</label>
+          <input class="inp" id="captureName" placeholder="Home (auto-captured)" autocomplete="off">
+          <button type="button" class="btn ok" id="btnCapture">Capture current IP → save setup</button>
+          <button type="button" class="btn" id="btnRefresh">↻ Refresh adapters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+const LS_KEY = 'aitoolbox_ip_profiles_v1';
+const LS_OPTS = 'aitoolbox_ip_profile_opts_v1';
+const ACTIVE_TOKEN = '__ACTIVE_ADAPTER__';
+let adapters = [];
+let profiles = [];
+let serverOnline = false;
+let ipApiOnline = false; // new /api/ip/* routes
+let useManualAdapter = false;
+let userPickedAdapter = false; // don't fight manual choice until refresh/auto on
+
+function toast(msg, ok) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = ok === false ? 'rgba(248,113,113,.5)' : 'rgba(0,243,255,.35)';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+function uid() {
+  return 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+function prefixToMask(p) {
+  p = Math.max(0, Math.min(32, parseInt(p, 10) || 24));
+  const bits = '1'.repeat(p) + '0'.repeat(32 - p);
+  const o = [];
+  for (let i = 0; i < 32; i += 8) o.push(parseInt(bits.slice(i, i + 8), 2));
+  return o.join('.');
+}
+function maskToPrefix(mask) {
+  try {
+    const bits = mask.split('.').map(n => parseInt(n, 10)).map(n => n.toString(2).padStart(8, '0')).join('');
+    if (!/^1*0*$/.test(bits)) return 24;
+    return bits.split('1').length - 1;
+  } catch { return 24; }
+}
+function showBanner(msg, kind) {
+  const b = document.getElementById('statusBanner');
+  b.innerHTML = msg;
+  b.className = 'banner show' + (kind ? ' ' + kind : '');
+}
+function hideBanner() {
+  const b = document.getElementById('statusBanner');
+  b.className = 'banner';
+  b.textContent = '';
+}
+
+async function api(path, opts = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const r = await fetch(API + path, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      ...opts,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const detail = data.detail;
+      const msg = typeof detail === 'string' ? detail
+        : Array.isArray(detail) ? detail.map(x => x.msg || JSON.stringify(x)).join('; ')
+        : (data.message || r.statusText || 'Request failed');
+      const err = new Error(msg);
+      err.status = r.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/* ---------- localStorage profiles (always works) ---------- */
+function loadLocalProfiles() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function saveLocalProfiles(list) {
+  profiles = list;
+  localStorage.setItem(LS_KEY, JSON.stringify(list));
+}
+function upsertLocal(p) {
+  const list = loadLocalProfiles();
+  const i = list.findIndex(x => x.id === p.id);
+  if (i >= 0) list[i] = p; else list.push(p);
+  saveLocalProfiles(list);
+  return p;
+}
+function deleteLocal(id) {
+  saveLocalProfiles(loadLocalProfiles().filter(x => x.id !== id));
+}
+
+/* ---------- normalize adapters from either API ---------- */
+function normalizeAdapters(rawList) {
+  return (rawList || []).map(a => {
+    // /api/ip/adapters shape
+    if (a.ipv4 && Array.isArray(a.ipv4) && a.ipv4[0] && a.ipv4[0].address !== undefined) {
+      return {
+        name: a.name,
+        is_up: !!a.is_up,
+        mac: a.mac || '',
+        ipv4: a.ipv4.map(x => ({
+          address: x.address || x.addr,
+          netmask: x.netmask,
+          prefix: x.prefix != null ? x.prefix : maskToPrefix(x.netmask || '255.255.255.0'),
+        })),
+      };
+    }
+    // /api/network/interfaces shape: ipv4: [{addr, netmask, broadcast}]
+    const ipv4 = (a.ipv4 || []).map(x => ({
+      address: x.addr || x.address,
+      netmask: x.netmask,
+      prefix: maskToPrefix(x.netmask || '255.255.255.0'),
+    })).filter(x => x.address);
+    return {
+      name: a.name,
+      is_up: !!a.is_up,
+      mac: a.mac || '',
+      ipv4,
+    };
+  }).filter(a => a.name && !/^loopback/i.test(a.name));
+}
+
+function adapterLabel(a) {
+  const ip = (a.ipv4 && a.ipv4[0] && a.ipv4[0].address) || 'no IPv4';
+  return `${a.name} — ${ip} (${a.is_up ? 'up' : 'down'})`;
+}
+
+function loadOpts() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_OPTS) || '{}') || {};
+  } catch { return {}; }
+}
+function saveOpts() {
+  localStorage.setItem(LS_OPTS, JSON.stringify({
+    autoSelect: !!document.getElementById('optAutoSelect').checked,
+    preferEthernet: !!document.getElementById('optPreferEthernet').checked,
+  }));
+}
+function isEthernetName(name) {
+  const n = (name || '').toLowerCase();
+  if (/wi-?fi|wireless|wlan|bluetooth|loopback|virtual|vethernet|hyper-v|wsl|docker|vpn|tap|tun|mullvad|nord|hamachi/.test(n)) {
+    return false;
+  }
+  return /eth|ethernet|lan|cable|realtek.*pcie|intel.*ethernet|i226|i225|i219|killer e/.test(n)
+    || /^local area connection(?!\*)/i.test(name || '');
+}
+/** Score higher = better "active" candidate */
+function scoreAdapter(a, preferEthernet) {
+  let s = 0;
+  if (a.is_up) s += 100;
+  const ip = a.ipv4 && a.ipv4[0] && a.ipv4[0].address;
+  if (ip && !ip.startsWith('169.254.') && ip !== '0.0.0.0') s += 50;
+  if (ip && ip.startsWith('169.254.')) s += 5; // link-local, weak
+  if (preferEthernet && isEthernetName(a.name)) s += 40;
+  if (preferEthernet && /wi-?fi|wireless|wlan/i.test(a.name)) s -= 20;
+  // Prefer common primary names
+  if (/ETH_CABLE|Ethernet/i.test(a.name)) s += 10;
+  return s;
+}
+function pickActiveAdapter(preferEthernet) {
+  if (!adapters.length) return null;
+  const pref = preferEthernet !== false;
+  const ranked = [...adapters].sort((a, b) => scoreAdapter(b, pref) - scoreAdapter(a, pref));
+  const best = ranked[0];
+  if (!best || scoreAdapter(best, pref) < 100) {
+    // nothing "up" — still return best available
+    return best || null;
+  }
+  return best;
+}
+function applyActiveSelection(force) {
+  const auto = document.getElementById('optAutoSelect').checked;
+  const preferEth = document.getElementById('optPreferEthernet').checked;
+  const active = pickActiveAdapter(preferEth);
+  const hint = document.getElementById('activeHint');
+
+  if (!active) {
+    hint.textContent = 'No active adapter detected yet.';
+    return null;
+  }
+
+  const ip = (active.ipv4 && active.ipv4[0] && active.ipv4[0].address) || 'no IPv4';
+  hint.innerHTML = 'Active now: <strong class="mono" style="color:var(--ok)">' + esc(active.name) +
+    '</strong> · ' + esc(ip) +
+    (isEthernetName(active.name) ? ' · Ethernet' : '') +
+    (auto ? ' · auto-select ON' : ' · auto-select OFF');
+
+  if (!auto && !force) return active;
+  if (userPickedAdapter && !force) return active;
+  if (useManualAdapter && !force) return active;
+
+  const selA = document.getElementById('profAdapter');
+  const selC = document.getElementById('captureAdapter');
+  if ([...selA.options].some(o => o.value === active.name)) {
+    selA.value = active.name;
+    selC.value = active.name;
+  }
+  document.getElementById('profAdapterCustom').value = active.name;
+
+  // highlight in list
+  document.querySelectorAll('.adapter-pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.name === active.name);
+  });
+  return active;
+}
+
+function fillAdapterSelects() {
+  const selA = document.getElementById('profAdapter');
+  const selC = document.getElementById('captureAdapter');
+  const prevA = selA.value;
+  const prevC = selC.value;
+  const preferEth = document.getElementById('optPreferEthernet').checked;
+  const auto = document.getElementById('optAutoSelect').checked;
+
+  if (!adapters.length) {
+    selA.innerHTML = '<option value="">— no adapters loaded —</option>';
+    selC.innerHTML = '<option value="">— no adapters loaded —</option>';
+    return;
+  }
+  // Sort: active ethernet-ish first for easier scanning
+  const ordered = [...adapters].sort((a, b) => scoreAdapter(b, preferEth) - scoreAdapter(a, preferEth));
+  const opts = ordered.map(a => {
+    const mark = scoreAdapter(a, preferEth) >= 150 ? ' ★' : (a.is_up ? ' ●' : '');
+    return `<option value="${esc(a.name)}">${esc(adapterLabel(a))}${mark}</option>`;
+  }).join('');
+  selA.innerHTML = opts;
+  selC.innerHTML = opts;
+
+  if (auto || !prevA) {
+    applyActiveSelection(true);
+  } else {
+    if (prevA && [...selA.options].some(o => o.value === prevA)) selA.value = prevA;
+    if (prevC && [...selC.options].some(o => o.value === prevC)) selC.value = prevC;
+    applyActiveSelection(false);
+  }
+}
+
+function renderAdapters() {
+  const box = document.getElementById('adapters');
+  if (!adapters.length) {
+    box.innerHTML = `<div class="empty">
+      No adapters listed yet.<br><br>
+      1) Click <strong>▶ Start Server</strong> above<br>
+      2) Click <strong>↻ Refresh adapters</strong><br>
+      3) Or use <strong>Type adapter name manually</strong> in the form
+    </div>`;
+    return;
+  }
+  box.innerHTML = adapters.map(a => {
+    const ips = (a.ipv4 || []).map(x => x.address + (x.prefix != null ? '/' + x.prefix : '')).join(', ') || '—';
+    return `<button type="button" class="adapter-pill" data-name="${esc(a.name)}">
+      <strong>${esc(a.name)} ${a.is_up ? '🟢' : '⚪'}</strong>
+      <span class="mono">${esc(ips)}</span>
+      ${a.mac ? `<span>MAC ${esc(a.mac)}</span>` : ''}
+    </button>`;
+  }).join('');
+  // mark likely-active
+  const preferEth = document.getElementById('optPreferEthernet').checked;
+  const active = pickActiveAdapter(preferEth);
+  box.querySelectorAll('.adapter-pill').forEach(btn => {
+    if (active && btn.dataset.name === active.name) {
+      btn.classList.add('active');
+      btn.style.borderColor = 'var(--ok)';
+    }
+    btn.onclick = () => {
+      userPickedAdapter = true;
+      document.getElementById('profAdapter').value = btn.dataset.name;
+      document.getElementById('captureAdapter').value = btn.dataset.name;
+      document.getElementById('profAdapterCustom').value = btn.dataset.name;
+      box.querySelectorAll('.adapter-pill').forEach(b => {
+        b.classList.remove('active');
+        b.style.borderColor = '';
+      });
+      btn.classList.add('active');
+      btn.style.borderColor = 'var(--accent)';
+    };
+  });
+  applyActiveSelection(false);
+}
+
+function getSelectedAdapter() {
+  // Profile flag: always resolve active at read/apply time
+  if (document.getElementById('profUseActiveOnApply').checked) {
+    const active = pickActiveAdapter(document.getElementById('optPreferEthernet').checked);
+    if (active) return active.name;
+  }
+  if (useManualAdapter) {
+    return document.getElementById('profAdapterCustom').value.trim();
+  }
+  return document.getElementById('profAdapter').value.trim();
+}
+
+/** Resolve adapter for apply — honors profile.useActiveOnApply / ACTIVE_TOKEN */
+function resolveAdapterForApply(p) {
+  if (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN) {
+    const active = pickActiveAdapter(document.getElementById('optPreferEthernet').checked);
+    if (!active) throw new Error('No active adapter to apply to');
+    return active.name;
+  }
+  return (p.adapter || '').trim();
+}
+
+function formFromProfile(p) {
+  document.getElementById('profId').value = p.id || '';
+  document.getElementById('profName').value = p.name || '';
+  document.getElementById('profMode').value = p.mode || 'static';
+  document.getElementById('profIp').value = p.ip || '';
+  document.getElementById('profPrefix').value = p.prefix != null ? p.prefix : 24;
+  document.getElementById('profMask').value = p.netmask || prefixToMask(p.prefix || 24);
+  document.getElementById('profGw').value = p.gateway || '';
+  document.getElementById('profDns').value = Array.isArray(p.dns) ? p.dns.join(', ') : (p.dns || '');
+  document.getElementById('profColor').value = p.color || '#00f3ff';
+  document.getElementById('profNotes').value = p.notes || '';
+  document.getElementById('profUseActiveOnApply').checked = !!(p.useActiveOnApply || p.adapter === ACTIVE_TOKEN);
+
+  const name = (p.adapter === ACTIVE_TOKEN ? '' : p.adapter) || '';
+  if (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN) {
+    userPickedAdapter = false;
+    applyActiveSelection(true);
+  }
+  const has = adapters.some(a => a.name === name);
+  if (name && !has) {
+    useManualAdapter = true;
+    document.getElementById('profAdapter').style.display = 'none';
+    document.getElementById('profAdapterCustom').style.display = 'block';
+    document.getElementById('profAdapterCustom').value = name;
+    document.getElementById('btnToggleAdapterType').textContent = 'Pick from adapter list';
+  } else {
+    useManualAdapter = false;
+    document.getElementById('profAdapter').style.display = 'block';
+    document.getElementById('profAdapterCustom').style.display = 'none';
+    if (name) document.getElementById('profAdapter').value = name;
+    document.getElementById('btnToggleAdapterType').textContent = 'Type adapter name manually';
+  }
+  toggleStatic();
+}
+
+function readForm() {
+  const mode = document.getElementById('profMode').value;
+  const dnsRaw = document.getElementById('profDns').value.trim();
+  const dns = dnsRaw ? dnsRaw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean) : [];
+  const prefix = parseInt(document.getElementById('profPrefix').value, 10) || 24;
+  let mask = document.getElementById('profMask').value.trim() || prefixToMask(prefix);
+  const id = document.getElementById('profId').value || uid();
+  const useActive = document.getElementById('profUseActiveOnApply').checked;
+  const adapter = useActive ? ACTIVE_TOKEN : getSelectedAdapter();
+  // When useActive, still store last known concrete name for display
+  const active = pickActiveAdapter(document.getElementById('optPreferEthernet').checked);
+  return {
+    id,
+    name: document.getElementById('profName').value.trim(),
+    adapter: useActive ? ACTIVE_TOKEN : adapter,
+    adapterLabel: useActive ? (active ? active.name : 'Active adapter') : adapter,
+    useActiveOnApply: useActive,
+    mode,
+    ip: document.getElementById('profIp').value.trim(),
+    prefix,
+    netmask: mask,
+    gateway: document.getElementById('profGw').value.trim(),
+    dns,
+    color: document.getElementById('profColor').value,
+    notes: document.getElementById('profNotes').value.trim(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function toggleStatic() {
+  const mode = document.getElementById('profMode').value;
+  document.getElementById('staticFields').style.display = mode === 'static' ? 'block' : 'none';
+}
+
+function validateProfile(p) {
+  if (!p.name) return 'Give this setup a name';
+  if (!p.useActiveOnApply && p.adapter !== ACTIVE_TOKEN && !p.adapter) {
+    return 'Choose or type a network adapter name (or enable “always uses the active adapter”)';
+  }
+  if (p.mode === 'static' && !p.ip) return 'Enter an IP address for static mode';
+  return null;
+}
+
+function buildNetshScript(p) {
+  let adapter;
+  try {
+    adapter = resolveAdapterForApply(p);
+  } catch (e) {
+    adapter = p.adapterLabel || p.adapter || 'Ethernet';
+  }
+  adapter = String(adapter).replace(/"/g, '');
+  const lines = [
+    '@echo off',
+    ':: IP Profile: ' + (p.name || 'unnamed'),
+    ':: Run this file as Administrator',
+    'echo Applying IP profile: ' + (p.name || ''),
+    'echo Adapter: ' + adapter,
+  ];
+  if (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN) {
+    lines.push('echo (Resolved active adapter at download time — re-download if your link changed)');
+  }
+  if (p.mode === 'dhcp') {
+    lines.push(`netsh interface ip set address name="${adapter}" source=dhcp`);
+    lines.push(`netsh interface ip set dns name="${adapter}" source=dhcp`);
+  } else {
+    const mask = p.netmask || prefixToMask(p.prefix || 24);
+    if (p.gateway) {
+      lines.push(`netsh interface ip set address name="${adapter}" source=static addr=${p.ip} mask=${mask} gateway=${p.gateway} gwmetric=1`);
+    } else {
+      lines.push(`netsh interface ip set address name="${adapter}" source=static addr=${p.ip} mask=${mask}`);
+    }
+    if (p.dns && p.dns.length) {
+      lines.push(`netsh interface ip set dns name="${adapter}" source=static addr=${p.dns[0]} register=primary validate=no`);
+      p.dns.slice(1).forEach((d, i) => {
+        lines.push(`netsh interface ip add dns name="${adapter}" addr=${d} index=${i + 2} validate=no`);
+      });
+    }
+  }
+  lines.push('echo.');
+  lines.push('netsh interface ip show config name="' + adapter + '"');
+  lines.push('echo.');
+  lines.push('pause');
+  return lines.join('\r\n');
+}
+
+function downloadScript(p) {
+  const text = buildNetshScript(p);
+  const blob = new Blob([text], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Apply_' + (p.name || 'IP').replace(/[^\w\-]+/g, '_') + '.bat';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Downloaded apply script — right-click → Run as administrator', true);
+}
+
+function renderProfiles() {
+  const box = document.getElementById('profiles');
+  if (!profiles.length) {
+    box.innerHTML = '<div class="empty">No setups yet. Fill the form and click <strong>Save setup</strong>, or capture your current IP.</div>';
+    return;
+  }
+  box.innerHTML = profiles.map(p => {
+    const adName = (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN)
+      ? '★ Active adapter (auto)'
+      : (p.adapterLabel || p.adapter || '—');
+    const detail = p.mode === 'dhcp'
+      ? `DHCP on <span class="mono">${esc(adName)}</span>`
+      : `<span class="mono">${esc(p.ip)}${p.prefix != null ? '/' + p.prefix : ''}</span><br>GW ${esc(p.gateway || '—')} · DNS ${esc((p.dns || []).join(', ') || '—')}<br><span class="mono">${esc(adName)}</span>`;
+    return `<div class="card" style="--c:${esc(p.color || '#00f3ff')}">
+      <h3>${esc(p.name)} <span class="mode ${esc(p.mode)}">${esc(p.mode)}</span></h3>
+      <div class="meta">${detail}${p.notes ? '<br>' + esc(p.notes) : ''}</div>
+      <div class="actions">
+        <button type="button" class="btn primary" data-act="apply" data-id="${esc(p.id)}">Apply</button>
+        <button type="button" class="btn" data-act="edit" data-id="${esc(p.id)}">Edit</button>
+        <button type="button" class="btn" data-act="bat" data-id="${esc(p.id)}">.bat</button>
+        <button type="button" class="btn danger" data-act="del" data-id="${esc(p.id)}">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('button[data-act]').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const p = profiles.find(x => x.id === id);
+      if (!p) return;
+      if (btn.dataset.act === 'edit') { formFromProfile(p); toast('Loaded into form — fields are editable', true); return; }
+      if (btn.dataset.act === 'bat') { downloadScript(p); return; }
+      if (btn.dataset.act === 'del') {
+        if (!confirm('Delete setup “' + p.name + '”?')) return;
+        deleteLocal(id);
+        if (ipApiOnline) {
+          try { await api('/ip/profiles/' + encodeURIComponent(id), { method: 'DELETE' }); } catch (_) {}
+        }
+        profiles = loadLocalProfiles();
+        renderProfiles();
+        toast('Deleted', true);
+        return;
+      }
+      if (btn.dataset.act === 'apply') {
+        await applyProfile(p, btn);
+      }
+    };
+  });
+}
+
+async function applyProfile(p, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+  try {
+    // Resolve active adapter at apply time if requested
+    let payload = { ...p };
+    try {
+      const resolved = resolveAdapterForApply(p);
+      payload = { ...p, adapter: resolved, useActiveOnApply: false };
+    } catch (e) {
+      throw e;
+    }
+
+    if (ipApiOnline) {
+      try { await api('/ip/profiles', { method: 'POST', body: JSON.stringify(payload) }); } catch (_) {}
+      const r = await api('/ip/apply', {
+        method: 'POST',
+        body: JSON.stringify({ profile_id: payload.id, profile: payload }),
+      });
+      document.getElementById('adminWarn').classList.remove('show');
+      const via = (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN)
+        ? ' via active adapter <strong class="mono">' + esc(payload.adapter) + '</strong>'
+        : '';
+      showBanner('Applied “' + esc(r.profile_name || p.name) + '”' + via + ' successfully.', 'ok');
+      toast('IP setup applied → ' + payload.adapter, true);
+      userPickedAdapter = false;
+      await loadAdapters();
+      return;
+    }
+    document.getElementById('adminWarn').classList.add('show');
+    downloadScript(payload);
+    showBanner(
+      'Server IP-apply API not ready. Downloaded <strong>.bat</strong> for <span class="mono">' +
+      esc(payload.adapter) + '</span> — right-click → Run as administrator.',
+      ''
+    );
+  } catch (e) {
+    if (e.status === 403) document.getElementById('adminWarn').classList.add('show');
+    try { downloadScript(p); } catch (_) {}
+    showBanner((e.message || 'Apply failed') + ' — downloaded .bat as backup.', 'err');
+    toast(e.message || 'Apply failed', false);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Apply'; }
+  }
+}
+
+async function loadAdapters() {
+  // Try new endpoint, then existing network/interfaces (works on current server)
+  try {
+    const a = await api('/ip/adapters');
+    adapters = normalizeAdapters(a.adapters);
+    ipApiOnline = true;
+    serverOnline = true;
+  } catch (e1) {
+    ipApiOnline = false;
+    try {
+      const n = await api('/network/interfaces');
+      adapters = normalizeAdapters(n.interfaces);
+      serverOnline = true;
+    } catch (e2) {
+      serverOnline = false;
+      adapters = [];
+      showBanner(
+        'Cannot reach toolbox server at <code>' + esc(API) + '</code>. ' +
+        'Click <strong>▶ Start Server</strong>, then <strong>↻ Refresh adapters</strong>. ' +
+        'You can still type an adapter name and save setups offline.',
+        'err'
+      );
+    }
+  }
+  fillAdapterSelects();
+  renderAdapters();
+  updateStatusBar();
+}
+
+async function syncProfilesFromServer() {
+  if (!ipApiOnline) {
+    profiles = loadLocalProfiles();
+    renderProfiles();
+    return;
+  }
+  try {
+    const p = await api('/ip/profiles');
+    const remote = p.profiles || [];
+    // Merge: local wins on same id if newer
+    const local = loadLocalProfiles();
+    const map = new Map();
+    remote.forEach(r => map.set(r.id, r));
+    local.forEach(l => {
+      const r = map.get(l.id);
+      if (!r || (l.updated_at || '') >= (r.updated_at || '')) map.set(l.id, l);
+    });
+    profiles = [...map.values()];
+    saveLocalProfiles(profiles);
+    // push local-only to server best-effort
+    for (const prof of profiles) {
+      try { await api('/ip/profiles', { method: 'POST', body: JSON.stringify(prof) }); } catch (_) {}
+    }
+  } catch {
+    profiles = loadLocalProfiles();
+  }
+  renderProfiles();
+}
+
+function updateStatusBar() {
+  const parts = [];
+  parts.push(`<span class="stat"><b>Server</b> ${serverOnline ? 'online' : 'offline'}</span>`);
+  parts.push(`<span class="stat"><b>IP API</b> ${ipApiOnline ? 'ready' : 'needs restart'}</span>`);
+  parts.push(`<span class="stat"><b>Adapters</b> ${adapters.length}</span>`);
+  parts.push(`<span class="stat"><b>Setups</b> ${profiles.length}</span>`);
+  parts.push(`<span class="stat"><b>API</b> ${esc(API)}</span>`);
+  parts.push(`<span class="stat"><b>Portable file</b> data\\ip_profiles.json</span>`);
+  document.getElementById('statusBar').innerHTML = parts.join('');
+}
+
+async function refresh() {
+  await loadAdapters();
+  await syncProfilesFromServer();
+  if (serverOnline && adapters.length) {
+    // soft clear error banner if we recovered
+    const b = document.getElementById('statusBanner');
+    if (b.classList.contains('err') && b.textContent.includes('Cannot reach')) hideBanner();
+  }
+  if (serverOnline && !ipApiOnline) {
+    showBanner(
+      'Adapters loaded from network API. For one-click Apply, <strong>restart the toolbox server</strong> ' +
+      '(as Administrator) so the new IP profile routes load. Until then, use <strong>.bat</strong> / Download apply script.',
+      ''
+    );
+  }
+}
+
+// --- events ---
+document.getElementById('profMode').onchange = toggleStatic;
+document.getElementById('profPrefix').oninput = () => {
+  document.getElementById('profMask').value = prefixToMask(document.getElementById('profPrefix').value);
+};
+document.getElementById('btnToggleAdapterType').onclick = () => {
+  useManualAdapter = !useManualAdapter;
+  document.getElementById('profAdapter').style.display = useManualAdapter ? 'none' : 'block';
+  document.getElementById('profAdapterCustom').style.display = useManualAdapter ? 'block' : 'none';
+  document.getElementById('btnToggleAdapterType').textContent = useManualAdapter
+    ? 'Pick from adapter list' : 'Type adapter name manually';
+  if (useManualAdapter && !document.getElementById('profAdapterCustom').value) {
+    document.getElementById('profAdapterCustom').value = document.getElementById('profAdapter').value || 'ETH_CABLE_CONNECTION';
+  }
+};
+document.getElementById('btnNew').onclick = () => {
+  document.getElementById('profId').value = '';
+  document.getElementById('profName').value = '';
+  document.getElementById('profIp').value = '';
+  document.getElementById('profGw').value = '';
+  document.getElementById('profDns').value = '';
+  document.getElementById('profNotes').value = '';
+  document.getElementById('profPrefix').value = 24;
+  document.getElementById('profMask').value = '255.255.255.0';
+  document.getElementById('profMode').value = 'static';
+  toggleStatic();
+};
+document.getElementById('btnSave').onclick = async () => {
+  const body = readForm();
+  const err = validateProfile(body);
+  if (err) { toast(err, false); showBanner(err, 'err'); return; }
+  upsertLocal(body);
+  if (ipApiOnline) {
+    try { await api('/ip/profiles', { method: 'POST', body: JSON.stringify(body) }); } catch (e) {
+      toast('Saved locally (server save failed: ' + e.message + ')', false);
+      profiles = loadLocalProfiles();
+      renderProfiles();
+      return;
+    }
+  }
+  document.getElementById('profId').value = body.id;
+  profiles = loadLocalProfiles();
+  renderProfiles();
+  hideBanner();
+  toast('Saved “' + body.name + '”', true);
+};
+document.getElementById('btnApplyForm').onclick = async () => {
+  const body = readForm();
+  const err = validateProfile(body);
+  if (err) { toast(err, false); return; }
+  upsertLocal(body);
+  document.getElementById('profId').value = body.id;
+  profiles = loadLocalProfiles();
+  renderProfiles();
+  await applyProfile(body, null);
+};
+document.getElementById('btnDownloadForm').onclick = () => {
+  const body = readForm();
+  const err = validateProfile(body);
+  if (err) { toast(err, false); return; }
+  downloadScript(body);
+};
+document.getElementById('btnCapture').onclick = async () => {
+  const adapter = document.getElementById('captureAdapter').value || getSelectedAdapter();
+  if (!adapter) { toast('Pick an adapter first', false); return; }
+  const a = adapters.find(x => x.name === adapter);
+  const ip0 = a && a.ipv4 && a.ipv4[0];
+  const name = document.getElementById('captureName').value.trim() ||
+    (ip0 ? `${adapter} · ${ip0.address}` : `${adapter} snapshot`);
+  let body;
+  if (ipApiOnline) {
+    try {
+      body = await api('/ip/profiles/capture', {
+        method: 'POST',
+        body: JSON.stringify({ adapter, name }),
+      });
+    } catch (e) {
+      toast('Server capture failed, using local snapshot', false);
+    }
+  }
+  if (!body) {
+    body = {
+      id: uid(),
+      name,
+      adapter,
+      mode: 'static',
+      ip: (ip0 && ip0.address) || '',
+      prefix: (ip0 && ip0.prefix) || 24,
+      netmask: (ip0 && ip0.netmask) || prefixToMask((ip0 && ip0.prefix) || 24),
+      gateway: '',
+      dns: [],
+      color: '#4ade80',
+      notes: 'Captured ' + new Date().toLocaleString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  upsertLocal(body);
+  formFromProfile(body);
+  profiles = loadLocalProfiles();
+  renderProfiles();
+  toast('Captured as “' + body.name + '”', true);
+};
+document.getElementById('btnRefresh').onclick = () => {
+  userPickedAdapter = false; // allow auto-select again after refresh
+  refresh();
+};
+
+// --- Portable export / import ---
+document.getElementById('btnExport').onclick = async () => {
+  try {
+    let blob;
+    if (ipApiOnline) {
+      blob = await api('/ip/profiles/export');
+    } else {
+      blob = {
+        format: 'aitoolbox-ip-profiles',
+        version: 1,
+        exported_at: new Date().toISOString(),
+        profiles: loadLocalProfiles(),
+        toolbox_relative_path: 'data/ip_profiles.json',
+        instructions: 'Place at <AI HTML TOOLBOX>/data/ip_profiles.json or use Import in IP Profile Switcher.',
+      };
+    }
+    // Keep localStorage in sync
+    if (blob.profiles) saveLocalProfiles(blob.profiles);
+    const text = JSON.stringify(blob, null, 2);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    a.download = 'ip_profiles.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Exported ip_profiles.json — copy into Toolbox\\data\\ on the other PC', true);
+  } catch (e) {
+    toast(e.message || 'Export failed', false);
+  }
+};
+document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = async (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const blob = JSON.parse(text);
+    const list = blob.profiles || (Array.isArray(blob) ? blob : null);
+    if (!list) throw new Error('File has no profiles array');
+    // Merge into localStorage
+    const map = new Map(loadLocalProfiles().map(p => [p.id, p]));
+    list.forEach(p => {
+      if (!p || !p.name) return;
+      const id = p.id || uid();
+      map.set(id, { ...p, id, updated_at: new Date().toISOString() });
+    });
+    saveLocalProfiles([...map.values()]);
+    profiles = loadLocalProfiles();
+    if (ipApiOnline) {
+      try {
+        await api('/ip/profiles/import', {
+          method: 'POST',
+          body: JSON.stringify({ profiles: list, merge: true }),
+        });
+      } catch (e) {
+        toast('Imported locally; server file update failed: ' + e.message, false);
+        renderProfiles();
+        return;
+      }
+    }
+    renderProfiles();
+    updateStatusBar();
+    toast('Imported ' + list.length + ' setup(s)', true);
+  } catch (e) {
+    toast(e.message || 'Import failed', false);
+  }
+};
+
+// Persist auto-select options + re-apply when toggled
+(function initOpts() {
+  const o = loadOpts();
+  document.getElementById('optAutoSelect').checked = o.autoSelect !== false; // default ON
+  document.getElementById('optPreferEthernet').checked = o.preferEthernet !== false; // default ON
+})();
+document.getElementById('optAutoSelect').onchange = () => {
+  saveOpts();
+  if (document.getElementById('optAutoSelect').checked) {
+    userPickedAdapter = false;
+    applyActiveSelection(true);
+  }
+};
+document.getElementById('optPreferEthernet').onchange = () => {
+  saveOpts();
+  fillAdapterSelects();
+};
+document.getElementById('profAdapter').onchange = () => { userPickedAdapter = true; };
+document.getElementById('captureAdapter').onchange = () => { userPickedAdapter = true; };
+document.getElementById('btnSelectActive').onclick = () => {
+  userPickedAdapter = false;
+  const a = applyActiveSelection(true);
+  if (a) toast('Selected active: ' + a.name, true);
+  else toast('No active adapter found', false);
+};
+
+toggleStatic();
+// Ensure fields are not accidentally disabled
+document.querySelectorAll('input, select, textarea, button').forEach(el => {
+  el.disabled = false;
+});
+refresh();
+setInterval(() => { loadAdapters().catch(() => {}); }, 20000);
+</script>
+<script>
+(function(){
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>';
+    const nav = document.querySelector('nav, .nav');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+    }
+  }
+  ensureBar();
+})();
+</script>
+</body>
+</html>

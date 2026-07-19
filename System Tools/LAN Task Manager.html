@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAN & Task Manager — AI HTML Toolbox</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+    <style>
+        :root {
+            --bg: #04060d;
+            --panel: #0a0f1a;
+            --panel2: #111827;
+            --border: rgba(56, 189, 248, 0.18);
+            --accent: #38bdf8;
+            --accent2: #818cf8;
+            --accent3: #34d399;
+            --warn: #fbbf24;
+            --danger: #f87171;
+            --text: #e2e8f0;
+            --muted: #64748b;
+            --glow: 0 0 20px rgba(56, 189, 248, 0.25);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: radial-gradient(ellipse 120% 80% at 50% -20%, #0f172a 0%, var(--bg) 55%);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .toolbox-nav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 20px; background: rgba(4, 6, 13, 0.95);
+            border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+        .toolbox-nav a { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+        .toolbox-nav .title { font-size: 15px; letter-spacing: 1px; color: var(--accent); }
+        .status-pill {
+            display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+            padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+        }
+        .status-pill.online { color: var(--accent3); border-color: rgba(52, 211, 153, 0.4); }
+        .status-pill.offline { color: var(--danger); border-color: rgba(248, 113, 113, 0.4); }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+        .app { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 48px); }
+        .sidebar {
+            background: var(--panel); border-right: 1px solid var(--border);
+            padding: 16px 10px; display: flex; flex-direction: column; gap: 4px;
+        }
+        .nav-btn {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            border: none; background: transparent; color: var(--muted);
+            border-radius: 10px; cursor: pointer; font-size: 13px; text-align: left;
+            transition: all .2s;
+        }
+        .nav-btn:hover { background: rgba(56, 189, 248, 0.08); color: var(--text); }
+        .nav-btn.active { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid var(--border); }
+        .nav-btn .icon { font-size: 16px; width: 22px; text-align: center; }
+
+        .main { padding: 20px 24px 40px; overflow: auto; }
+        .view { display: none; animation: fadeIn .35s ease; }
+        .view.active { display: block; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+        .page-header { margin-bottom: 20px; }
+        .page-header h1 { font-size: 22px; font-weight: 600; color: #f8fafc; margin-bottom: 4px; }
+        .page-header p { color: var(--muted); font-size: 13px; }
+
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px; margin-bottom: 20px;
+        }
+        .stat-card {
+            background: linear-gradient(145deg, var(--panel2), var(--panel));
+            border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
+            position: relative; overflow: hidden;
+        }
+        .stat-card::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: .5;
+        }
+        .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+        .stat-value { font-size: 26px; font-weight: 700; margin: 6px 0 2px; color: #f1f5f9; }
+        .stat-sub { font-size: 12px; color: var(--muted); }
+        .stat-bar { height: 4px; background: rgba(255,255,255,.06); border-radius: 4px; margin-top: 10px; overflow: hidden; }
+        .stat-bar > span { display: block; height: 100%; border-radius: 4px; transition: width .4s; }
+
+        .panel {
+            background: var(--panel2); border: 1px solid var(--border);
+            border-radius: 14px; margin-bottom: 16px; overflow: hidden;
+        }
+        .panel-head {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
+            background: rgba(0,0,0,.2);
+        }
+        .panel-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); }
+        .panel-body { padding: 14px 18px; }
+
+        .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .inp, .sel {
+            background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
+            padding: 8px 12px; border-radius: 8px; font-size: 13px; min-width: 140px;
+        }
+        .inp:focus, .sel:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+        .btn {
+            background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35);
+            color: var(--accent); padding: 8px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+            transition: all .2s;
+        }
+        .btn:hover { background: var(--accent); color: #0f172a; }
+        .btn.danger { border-color: rgba(248,113,113,.4); color: var(--danger); background: rgba(248,113,113,.08); }
+        .btn.danger:hover { background: var(--danger); color: #fff; }
+        .btn.sm { padding: 5px 10px; font-size: 11px; }
+        .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+        .data-table-wrap { overflow: auto; max-height: 520px; }
+        table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        table.data-table th {
+            position: sticky; top: 0; background: #0f172a; z-index: 2;
+            text-align: left; padding: 10px 12px; color: var(--muted);
+            font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        table.data-table td {
+            padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.04);
+            vertical-align: middle;
+        }
+        table.data-table tr:hover td { background: rgba(56, 189, 248, 0.05); }
+        table.data-table tr.selected td { background: rgba(129, 140, 248, 0.12); }
+        .mono { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 11px; }
+        .tag {
+            display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600;
+        }
+        .tag.ok { background: rgba(52,211,153,.15); color: var(--accent3); }
+        .tag.warn { background: rgba(251,191,36,.15); color: var(--warn); }
+        .tag.err { background: rgba(248,113,113,.15); color: var(--danger); }
+        .tag.info { background: rgba(56,189,248,.12); color: var(--accent); }
+
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 900px) { .app { grid-template-columns: 1fr; } .sidebar { flex-direction: row; flex-wrap: wrap; } .chart-row { grid-template-columns: 1fr; } }
+        canvas.spark { width: 100%; height: 80px; }
+
+        /* Traceroute visual */
+        .trace-path { display: flex; flex-direction: column; gap: 0; padding: 10px 0; }
+        .trace-hop {
+            display: grid; grid-template-columns: 48px 1fr auto; gap: 14px; align-items: center;
+            padding: 12px 0; position: relative;
+        }
+        .trace-hop:not(:last-child)::before {
+            content: ''; position: absolute; left: 23px; top: 44px; bottom: -4px;
+            width: 2px; background: linear-gradient(180deg, var(--accent), var(--accent2)); opacity: .35;
+        }
+        .hop-num {
+            width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            background: rgba(56, 189, 248, 0.12); border: 2px solid var(--accent); font-weight: 700; font-size: 14px;
+            z-index: 1;
+        }
+        .hop-num.timeout { border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,.1); }
+        .hop-info h4 { font-size: 14px; margin-bottom: 2px; }
+        .hop-info .ip { color: var(--accent); font-family: monospace; font-size: 12px; }
+        .hop-latency { text-align: right; min-width: 100px; }
+        .latency-bars { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; }
+        .lat-bar { width: 28px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+        .lat-bar span { display: block; height: 100%; background: var(--accent3); border-radius: 3px; }
+
+        /* Ping visual */
+        .ping-results { display: flex; flex-direction: column; gap: 8px; }
+        .ping-row {
+            display: grid; grid-template-columns: 32px 1fr 80px; gap: 12px; align-items: center;
+            padding: 10px 14px; background: rgba(0,0,0,.25); border-radius: 10px; border: 1px solid var(--border);
+        }
+        .ping-ico { font-size: 18px; text-align: center; }
+        .ping-bar-wrap { height: 8px; background: rgba(255,255,255,.06); border-radius: 4px; overflow: hidden; }
+        .ping-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent3), var(--accent)); transition: width .5s; }
+
+        /* LAN map */
+        .lan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+        .lan-device {
+            padding: 14px; border-radius: 12px; border: 1px solid var(--border);
+            background: rgba(0,0,0,.2); transition: transform .2s, border-color .2s;
+        }
+        .lan-device:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .lan-device .dev-ip { font-family: monospace; color: var(--accent); font-size: 14px; font-weight: 600; }
+        .lan-device .dev-meta { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+        .tool-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 1100px) { .tool-grid-2 { grid-template-columns: 1fr; } }
+
+        .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+        .server-banner {
+            background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.3);
+            color: #fecaca; padding: 12px 18px; border-radius: 10px; margin-bottom: 16px; font-size: 13px;
+        }
+        .server-banner a { color: var(--accent); }
+        .detail-drawer {
+            position: fixed; right: 0; top: 48px; bottom: 0; width: min(420px, 100vw);
+            background: var(--panel); border-left: 1px solid var(--border);
+            transform: translateX(100%); transition: transform .3s; z-index: 90;
+            overflow: auto; padding: 20px;
+        }
+        .detail-drawer.open { transform: translateX(0); }
+        .detail-drawer h3 { color: var(--accent); margin-bottom: 14px; }
+        .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; font-size: 12px; margin-bottom: 16px; }
+        .kv dt { color: var(--muted); }
+        .kv dd { word-break: break-all; }
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 80; }
+        .overlay.show { display: block; }
+        .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <nav class="toolbox-nav">
+        <a href="../Toolbox Launcher.html">← Toolbox</a>
+        <span class="title">LAN & TASK MANAGER</span>
+        <span id="serverStatus" class="status-pill offline"><span class="status-dot"></span> Server offline</span>
+    </nav>
+
+    <div id="serverBanner" class="server-banner" style="display:none;margin:16px 24px 0;">
+        Python server required for live monitoring. Use <strong>▶ Start Server</strong> above (backend <code>127.0.0.87:18765</code> — separate from FAFO on :8765), or <code>START SERVER.bat</code>.
+        <a href="#" id="retryServer">Retry connection</a>
+    </div>
+
+    <div class="app">
+        <aside class="sidebar">
+            <button class="nav-btn active" data-view="dashboard"><span class="icon">📊</span> Dashboard</button>
+            <button class="nav-btn" data-view="processes"><span class="icon">⚙️</span> Task Manager</button>
+            <button class="nav-btn" data-view="connections"><span class="icon">🔗</span> Connections</button>
+            <button class="nav-btn" data-view="lan"><span class="icon">🌐</span> LAN Devices</button>
+            <button class="nav-btn" data-view="tools"><span class="icon">🛠️</span> Network Tools</button>
+            <button class="nav-btn" data-view="diagnostics"><span class="icon">🩺</span> Diagnostics</button>
+        </aside>
+
+        <main class="main">
+            <!-- DASHBOARD -->
+            <section id="view-dashboard" class="view active">
+                <div class="page-header">
+                    <h1>System Dashboard</h1>
+                    <p>Real-time CPU, memory, disk, and network activity across your machine</p>
+                </div>
+                <div class="stats-grid" id="dashStats"></div>
+                <div class="chart-row">
+                    <div class="panel">
+                        <div class="panel-head"><h2>Network throughput</h2><span id="netRateLabel" class="stat-sub"></span></div>
+                        <div class="panel-body"><canvas class="spark" id="chartNet" height="80"></canvas></div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-head"><h2>CPU load</h2></div>
+                        <div class="panel-body"><canvas class="spark" id="chartCpu" height="80"></canvas></div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h2>Network interfaces</h2></div>
+                    <div class="panel-body data-table-wrap">
+                        <table class="data-table" id="ifaceTable">
+                            <thead><tr><th>Interface</th><th>Status</th><th>IPv4</th><th>MAC</th><th>Speed</th><th>Sent</th><th>Recv</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROCESSES -->
+            <section id="view-processes" class="view">
+                <div class="page-header">
+                    <h1>Task Manager</h1>
+                    <p>All running processes — CPU, memory, threads, and active network connections</p>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2>Processes</h2>
+                        <div class="toolbar">
+                            <input class="inp" id="procSearch" placeholder="Search name, PID, path…" style="min-width:200px">
+                            <select class="sel" id="procSort">
+                                <option value="cpu">Sort: CPU</option>
+                                <option value="memory">Sort: Memory</option>
+                                <option value="connections">Sort: Connections</option>
+                                <option value="name">Sort: Name</option>
+                                <option value="pid">Sort: PID</option>
+                            </select>
+                            <button class="btn" id="btnRefreshProcs">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="data-table-wrap">
+                        <table class="data-table" id="procTable">
+                            <thead><tr>
+                                <th>PID</th><th>Name</th><th>CPU %</th><th>Memory</th><th>Threads</th><th>Net</th><th>User</th><th>Status</th><th></th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONNECTIONS -->
+            <section id="view-connections" class="view">
+                <div class="page-header">
+                    <h1>Network Connections</h1>
+                    <p>Every socket — which app is talking to which remote host</p>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2>Active connections</h2>
+                        <div class="toolbar">
+                            <input class="inp" id="connSearch" placeholder="Filter IP, port, process…">
+                            <select class="sel" id="connKind">
+                                <option value="all">All</option>
+                                <option value="inet">IPv4/IPv6</option>
+                                <option value="tcp">TCP</option>
+                                <option value="udp">UDP</option>
+                            </select>
+                            <button class="btn" id="btnRefreshConn">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="data-table-wrap">
+                        <table class="data-table" id="connTable">
+                            <thead><tr>
+                                <th>Process</th><th>PID</th><th>Status</th><th>Local</th><th>Remote</th><th>Host</th><th>Type</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h2>Listening ports (local services)</h2></div>
+                    <div class="data-table-wrap">
+                        <table class="data-table" id="listenTable">
+                            <thead><tr><th>Port</th><th>Address</th><th>Process</th><th>PID</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- LAN -->
+            <section id="view-lan" class="view">
+                <div class="page-header">
+                    <h1>LAN Device Discovery</h1>
+                    <p>Scan your local subnet and ARP table to find devices on your network</p>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2>Discovery scan</h2>
+                        <div class="toolbar">
+                            <input class="inp" id="subnetInp" placeholder="Subnet e.g. 192.168.1.0/24 (auto if empty)" style="min-width:260px">
+                            <button class="btn" id="btnDiscover">Scan LAN</button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div id="lanSummary" class="stat-sub" style="margin-bottom:14px;"></div>
+                        <div class="lan-grid" id="lanGrid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TOOLS -->
+            <section id="view-tools" class="view">
+                <div class="page-header">
+                    <h1>Network Troubleshooting Tools</h1>
+                    <p>Visual ping, traceroute, telnet, DNS lookup, and port scanner</p>
+                </div>
+                <div class="tool-grid-2">
+                    <div class="panel">
+                        <div class="panel-head"><h2>Ping</h2></div>
+                        <div class="panel-body">
+                            <div class="toolbar" style="margin-bottom:14px;">
+                                <input class="inp" id="pingHost" placeholder="Host or IP" value="8.8.8.8">
+                                <input class="inp" id="pingCount" type="number" value="4" min="1" max="20" style="width:70px;min-width:70px">
+                                <button class="btn" id="btnPing">Ping</button>
+                            </div>
+                            <div id="pingResults" class="ping-results"></div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-head"><h2>Telnet / Port test</h2></div>
+                        <div class="panel-body">
+                            <div class="toolbar" style="margin-bottom:14px;">
+                                <input class="inp" id="telHost" placeholder="Host" value="google.com">
+                                <input class="inp" id="telPort" type="number" value="443" style="width:80px;min-width:80px">
+                                <button class="btn" id="btnTelnet">Test port</button>
+                            </div>
+                            <div id="telResult"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2>Traceroute — visual path</h2>
+                        <div class="toolbar">
+                            <input class="inp" id="traceHost" placeholder="Destination host" value="1.1.1.1">
+                            <input class="inp" id="traceHops" type="number" value="30" min="1" max="64" style="width:70px;min-width:70px" title="Max hops">
+                            <button class="btn" id="btnTrace">Trace route</button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div id="traceVisual" class="trace-path"></div>
+                    </div>
+                </div>
+                <div class="tool-grid-2">
+                    <div class="panel">
+                        <div class="panel-head"><h2>DNS lookup</h2></div>
+                        <div class="panel-body">
+                            <div class="toolbar" style="margin-bottom:14px;">
+                                <input class="inp" id="dnsHost" placeholder="Hostname or IP (IPs auto reverse)" value="google.com">
+                                <select class="sel" id="dnsType">
+                                    <option value="AUTO" selected>Auto</option>
+                                    <option value="A">Forward A</option>
+                                    <option value="AAAA">Forward AAAA</option>
+                                    <option value="CANONICAL">FQDN</option>
+                                    <option value="REVERSE">Reverse PTR</option>
+                                </select>
+                                <button class="btn" id="btnDns">Lookup</button>
+                            </div>
+                            <div id="dnsModeHint" class="stat-sub" style="margin-bottom:8px;min-height:16px;"></div>
+                            <div id="dnsResult"></div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-head"><h2>Port scanner</h2></div>
+                        <div class="panel-body">
+                            <div class="toolbar" style="margin-bottom:14px;">
+                                <input class="inp" id="scanHost" placeholder="Target host" value="127.0.0.1">
+                                <input class="inp" id="scanPorts" placeholder="Ports (empty = common)" style="min-width:180px">
+                                <button class="btn" id="btnScan">Scan</button>
+                            </div>
+                            <div id="scanResult"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DIAGNOSTICS -->
+            <section id="view-diagnostics" class="view">
+                <div class="page-header">
+                    <h1>Quick Diagnostics</h1>
+                    <p>Automated health check — gateway, DNS, resource pressure</p>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2>System health</h2>
+                        <button class="btn" id="btnDiag">Run diagnostics</button>
+                    </div>
+                    <div class="panel-body" id="diagResult"><div class="empty">Click Run diagnostics to start</div></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="overlay" id="overlay"></div>
+    <aside class="detail-drawer" id="procDrawer">
+        <button class="btn sm" id="closeDrawer" style="margin-bottom:12px;">Close</button>
+        <h3 id="drawerTitle">Process</h3>
+        <dl class="kv" id="drawerKv"></dl>
+        <h3 style="font-size:12px;color:var(--muted);margin-bottom:8px;">CONNECTIONS</h3>
+        <div id="drawerConns"></div>
+        <div style="margin-top:16px;display:flex;gap:8px;">
+            <button class="btn danger sm" id="btnKillProc">End process</button>
+            <button class="btn danger sm" id="btnForceKill">Force kill</button>
+        </div>
+    </aside>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script>
+    (function () {
+        'use strict';
+        const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+        let online = false;
+        let pollTimer = null;
+        let selectedPid = null;
+        const history = { netUp: [], netDown: [], cpu: [] };
+        const MAX_HIST = 60;
+
+        async function api(path, opts = {}) {
+            const r = await fetch(API + path, {
+                headers: { 'Content-Type': 'application/json' },
+                ...opts,
+            });
+            if (!r.ok) {
+                const e = await r.json().catch(() => ({}));
+                throw new Error(e.detail || r.statusText);
+            }
+            return r.json();
+        }
+
+        async function checkServer() {
+            try {
+                const r = await fetch(API + '/health', { signal: AbortSignal.timeout(2000) });
+                online = r.ok;
+            } catch { online = false; }
+            const pill = document.getElementById('serverStatus');
+            const banner = document.getElementById('serverBanner');
+            pill.className = 'status-pill ' + (online ? 'online' : 'offline');
+            pill.innerHTML = '<span class="status-dot"></span> ' + (online ? 'Server connected' : 'Server offline');
+            banner.style.display = online ? 'none' : 'block';
+            return online;
+        }
+
+        function $(id) { return document.getElementById(id); }
+
+        // Navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+                btn.classList.add('active');
+                $('view-' + btn.dataset.view).classList.add('active');
+                refreshCurrentView();
+            });
+        });
+
+        function refreshCurrentView() {
+            const active = document.querySelector('.nav-btn.active')?.dataset.view;
+            if (!online) return;
+            if (active === 'dashboard') loadDashboard();
+            else if (active === 'processes') loadProcesses();
+            else if (active === 'connections') loadConnections();
+        }
+
+        function barColor(pct) {
+            if (pct > 85) return 'var(--danger)';
+            if (pct > 60) return 'var(--warn)';
+            return 'var(--accent3)';
+        }
+
+        function renderDashStats(o) {
+            const el = $('dashStats');
+            const items = [
+                { label: 'CPU', value: o.cpu.percent.toFixed(1) + '%', sub: o.cpu.cores_logical + ' logical cores', pct: o.cpu.percent },
+                { label: 'Memory', value: o.memory.used_human, sub: o.memory.percent.toFixed(1) + '% of ' + o.memory.total_human, pct: o.memory.percent },
+                { label: 'Disk', value: o.disk.used_human, sub: o.disk.percent.toFixed(1) + '% used', pct: o.disk.percent },
+                { label: 'Network ↑', value: o.network.send_rate_human, sub: 'Total sent: ' + formatBytes(o.network.bytes_sent), pct: Math.min(100, o.network.send_rate_bps / 1e6 * 10) },
+                { label: 'Network ↓', value: o.network.recv_rate_human, sub: 'Total recv: ' + formatBytes(o.network.bytes_recv), pct: Math.min(100, o.network.recv_rate_bps / 1e6 * 10) },
+                { label: 'Processes', value: o.process_count, sub: o.hostname, pct: 0 },
+            ];
+            el.innerHTML = items.map(it => `
+                <div class="stat-card">
+                    <div class="stat-label">${it.label}</div>
+                    <div class="stat-value">${it.value}</div>
+                    <div class="stat-sub">${it.sub}</div>
+                    ${it.pct ? `<div class="stat-bar"><span style="width:${Math.min(100,it.pct)}%;background:${barColor(it.pct)}"></span></div>` : ''}
+                </div>`).join('');
+
+            history.netUp.push(o.network.send_rate_bps);
+            history.netDown.push(o.network.recv_rate_bps);
+            history.cpu.push(o.cpu.percent);
+            [history.netUp, history.netDown, history.cpu].forEach(a => { while (a.length > MAX_HIST) a.shift(); });
+            drawSpark('chartNet', [history.netUp, history.netDown], ['#34d399', '#38bdf8']);
+            drawSpark('chartCpu', [history.cpu], ['#818cf8']);
+            $('netRateLabel').textContent = `↑ ${o.network.send_rate_human}  ↓ ${o.network.recv_rate_human}`;
+        }
+
+        function formatBytes(n) {
+            const u = ['B','KB','MB','GB','TB'];
+            let i = 0; n = Number(n);
+            while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+            return (i ? n.toFixed(1) : n) + ' ' + u[i];
+        }
+
+        function drawSpark(id, series, colors) {
+            const c = $(id);
+            if (!c) return;
+            const ctx = c.getContext('2d');
+            const w = c.parentElement.clientWidth - 36;
+            c.width = w; c.height = 80;
+            ctx.clearRect(0, 0, w, 80);
+            series.forEach((data, si) => {
+                if (!data.length) return;
+                const max = Math.max(...data, 1);
+                ctx.beginPath();
+                ctx.strokeStyle = colors[si];
+                ctx.lineWidth = 2;
+                data.forEach((v, i) => {
+                    const x = (i / (MAX_HIST - 1)) * w;
+                    const y = 75 - (v / max) * 70;
+                    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+                });
+                ctx.stroke();
+            });
+        }
+
+        async function loadDashboard() {
+            const o = await api('/network/overview');
+            renderDashStats(o);
+            const ifaces = await api('/network/interfaces');
+            const tb = $('ifaceTable').querySelector('tbody');
+            tb.innerHTML = ifaces.interfaces.map(i => `
+                <tr>
+                    <td><strong>${esc(i.name)}</strong></td>
+                    <td><span class="tag ${i.is_up ? 'ok' : 'err'}">${i.is_up ? 'UP' : 'DOWN'}</span></td>
+                    <td class="mono">${esc((i.ipv4||[]).map(v=>v.addr).join(', ') || '—')}</td>
+                    <td class="mono">${esc(i.mac || '—')}</td>
+                    <td>${i.speed_mbps ? i.speed_mbps + ' Mbps' : '—'}</td>
+                    <td>${formatBytes(i.bytes_sent)}</td>
+                    <td>${formatBytes(i.bytes_recv)}</td>
+                </tr>`).join('');
+        }
+
+        async function loadProcesses() {
+            const search = $('procSearch').value.trim();
+            const sort = $('procSort').value;
+            const data = await api(`/network/processes?sort_by=${sort}&search=${encodeURIComponent(search)}&limit=300`);
+            const tb = $('procTable').querySelector('tbody');
+            tb.innerHTML = data.processes.map(p => `
+                <tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
+                    <td class="mono">${p.pid}</td>
+                    <td><strong>${esc(p.name)}</strong></td>
+                    <td>${p.cpu_percent.toFixed(1)}</td>
+                    <td>${esc(p.memory_human)} <span class="tag info">${p.memory_percent}%</span></td>
+                    <td>${p.threads}</td>
+                    <td>${p.connections ? `<span class="tag warn">${p.connections}</span>` : '0'}</td>
+                    <td class="mono" style="font-size:10px">${esc(p.username)}</td>
+                    <td><span class="tag ${p.status === 'running' ? 'ok' : 'info'}">${esc(p.status)}</span></td>
+                    <td><button class="btn sm btn-detail" data-pid="${p.pid}">Details</button></td>
+                </tr>`).join('');
+            tb.querySelectorAll('.btn-detail').forEach(b => b.addEventListener('click', e => {
+                e.stopPropagation();
+                openProcessDetail(+b.dataset.pid);
+            }));
+            tb.querySelectorAll('tr[data-pid]').forEach(tr => tr.addEventListener('click', () => openProcessDetail(+tr.dataset.pid)));
+        }
+
+        async function openProcessDetail(pid) {
+            selectedPid = pid;
+            const d = await api('/network/processes/' + pid);
+            $('drawerTitle').textContent = d.name + ' (PID ' + pid + ')';
+            const rows = [
+                ['Status', d.status], ['User', d.username], ['CPU', d.cpu_percent.toFixed(1) + '%'],
+                ['Memory', d.memory.rss_human], ['Threads', d.threads], ['Path', d.exe || '—'],
+                ['CWD', d.cwd || '—'],
+            ];
+            if (d.io) rows.push(['Disk read', d.io.read_human], ['Disk write', d.io.write_human]);
+            $('drawerKv').innerHTML = rows.map(([k,v]) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`).join('');
+            $('drawerConns').innerHTML = d.connections.length
+                ? '<table class="data-table"><tr><th>Status</th><th>Local</th><th>Remote</th></tr>' +
+                  d.connections.map(c => `<tr><td>${esc(c.status)}</td><td class="mono">${esc(c.local)}</td><td class="mono">${esc(c.remote)}</td></tr>`).join('') + '</table>'
+                : '<div class="empty">No network connections</div>';
+            $('procDrawer').classList.add('open');
+            $('overlay').classList.add('show');
+            loadProcesses();
+        }
+
+        async function killProcess(force) {
+            if (!selectedPid) return;
+            if (!confirm(`${force ? 'Force kill' : 'End'} process ${selectedPid}?`)) return;
+            await api('/network/processes/kill', { method: 'POST', body: JSON.stringify({ pid: selectedPid, force }) });
+            closeDrawer();
+            loadProcesses();
+        }
+
+        function closeDrawer() {
+            $('procDrawer').classList.remove('open');
+            $('overlay').classList.remove('show');
+            selectedPid = null;
+        }
+
+        async function loadConnections() {
+            const search = $('connSearch').value.trim();
+            const kind = $('connKind').value;
+            const data = await api(`/network/connections?kind=${kind}&search=${encodeURIComponent(search)}&limit=500`);
+            const tb = $('connTable').querySelector('tbody');
+            tb.innerHTML = data.connections.map(c => `
+                <tr>
+                    <td><strong>${esc(c.process || '—')}</strong></td>
+                    <td class="mono">${c.pid || '—'}</td>
+                    <td><span class="tag ${c.status === 'ESTABLISHED' ? 'ok' : 'info'}">${esc(c.status)}</span></td>
+                    <td class="mono">${esc(c.local)}</td>
+                    <td class="mono">${esc(c.remote || '—')}</td>
+                    <td>${esc(c.remote_host || '—')}</td>
+                    <td>${esc(c.type)}</td>
+                </tr>`).join('') || '<tr><td colspan="7" class="empty">No connections (try running as admin for full list)</td></tr>';
+
+            const listen = await api('/network/listening');
+            $('listenTable').querySelector('tbody').innerHTML = listen.ports.map(p => `
+                <tr>
+                    <td class="mono"><strong>${p.port}</strong></td>
+                    <td class="mono">${esc(p.address)}</td>
+                    <td>${esc(p.process || '—')}</td>
+                    <td class="mono">${p.pid || '—'}</td>
+                </tr>`).join('');
+        }
+
+        async function discoverLan() {
+            const subnet = $('subnetInp').value.trim();
+            $('lanGrid').innerHTML = '<div class="empty"><span class="loading"></span> Scanning… this may take a minute</div>';
+            const data = await api('/network/discover', { method: 'POST', body: JSON.stringify({ subnet, timeout_ms: 400 }) });
+            $('lanSummary').innerHTML = `Gateway: <strong>${esc(data.gateway || '—')}</strong> · Devices: <strong>${data.device_count}</strong> · Online: <strong>${data.online_count}</strong>`;
+            $('lanGrid').innerHTML = data.devices.length ? data.devices.map(d => `
+                <div class="lan-device">
+                    <div class="dev-ip">${esc(d.ip)}</div>
+                    <div class="dev-meta">
+                        ${d.host ? esc(d.host) + '<br>' : ''}
+                        ${d.mac ? 'MAC: ' + esc(d.mac) + '<br>' : ''}
+                        <span class="tag ${d.status === 'online' ? 'ok' : 'info'}">${esc(d.status)}</span>
+                        ${d.latency_ms != null ? ' · ' + d.latency_ms + ' ms' : ''}
+                    </div>
+                </div>`).join('') : '<div class="empty">No devices found</div>';
+        }
+
+        async function runPing() {
+            const host = $('pingHost').value.trim();
+            $('pingResults').innerHTML = '<div class="empty"><span class="loading"></span> Pinging…</div>';
+            const r = await api('/network/ping', { method: 'POST', body: JSON.stringify({ host, count: +$('pingCount').value || 4, timeout_ms: 1500 }) });
+            const maxMs = Math.max(...r.replies.filter(x => x.ok && x.time_ms).map(x => x.time_ms), 100);
+            $('pingResults').innerHTML = `
+                <div class="stat-sub" style="margin-bottom:10px;">
+                    ${r.success ? '<span class="tag ok">Reachable</span>' : '<span class="tag err">Unreachable</span>'}
+                    ${r.stats ? ` · min ${r.stats.min_ms}ms · avg ${r.stats.avg_ms}ms · max ${r.stats.max_ms}ms` : ''}
+                    · ${r.elapsed_sec}s
+                </div>` +
+                r.replies.map((p, i) => `
+                <div class="ping-row">
+                    <div class="ping-ico">${p.ok ? '✓' : '✗'}</div>
+                    <div>
+                        <div class="mono">${esc(p.from || host)} — ${p.ok ? p.time_ms + ' ms' : esc(p.error || 'timeout')}</div>
+                        <div class="ping-bar-wrap"><div class="ping-bar" style="width:${p.ok ? Math.min(100, (p.time_ms/maxMs)*100) : 0}%"></div></div>
+                    </div>
+                    <div style="text-align:right;color:var(--muted)">#${i+1}</div>
+                </div>`).join('');
+        }
+
+        async function runTrace() {
+            const host = $('traceHost').value.trim();
+            $('traceVisual').innerHTML = '<div class="empty"><span class="loading"></span> Tracing route to ' + esc(host) + '…</div>';
+            const r = await api('/network/traceroute', { method: 'POST', body: JSON.stringify({ host, max_hops: +$('traceHops').value || 30, timeout_ms: 3000 }) });
+            const maxLat = Math.max(...r.hops.flatMap(h => h.times_ms || []), 50);
+            $('traceVisual').innerHTML = r.hops.length ? r.hops.map(h => `
+                <div class="trace-hop">
+                    <div class="hop-num ${h.timeout ? 'timeout' : ''}">${h.hop}</div>
+                    <div class="hop-info">
+                        <h4>${h.timeout ? 'Request timed out' : esc(h.host || h.ip || 'Unknown')}</h4>
+                        <div class="ip">${esc(h.ip || '—')}</div>
+                    </div>
+                    <div class="hop-latency">
+                        ${h.times_ms?.length ? h.times_ms.map(t => t + ' ms').join(' / ') : '—'}
+                        <div class="latency-bars">
+                            ${(h.times_ms || []).map(t => `<div class="lat-bar"><span style="width:${Math.min(100,(t/maxLat)*100)}%"></span></div>`).join('')}
+                        </div>
+                    </div>
+                </div>`).join('') : '<div class="empty">No hops returned</div>';
+        }
+
+        async function runTelnet() {
+            const host = $('telHost').value.trim();
+            const port = +$('telPort').value;
+            $('telResult').innerHTML = '<span class="loading"></span>';
+            const r = await api('/network/telnet', { method: 'POST', body: JSON.stringify({ host, port, timeout_sec: 5 }) });
+            $('telResult').innerHTML = `
+                <div class="kv" style="margin:0">
+                    <dt>Status</dt><dd><span class="tag ${r.open ? 'ok' : 'err'}">${r.open ? 'OPEN' : 'CLOSED'}</span></dd>
+                    <dt>Resolved</dt><dd class="mono">${esc(r.resolved_ip || '—')}</dd>
+                    <dt>Latency</dt><dd>${r.latency_ms != null ? r.latency_ms + ' ms' : '—'}</dd>
+                    <dt>Service</dt><dd>${esc(r.service_hint || '—')}</dd>
+                    ${r.error ? `<dt>Error</dt><dd>${esc(r.error)}</dd>` : ''}
+                </div>`;
+        }
+
+        function isIpAddress(s) {
+            if (!s) return false;
+            if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) {
+                return s.split('.').every(n => +n >= 0 && +n <= 255);
+            }
+            return s.includes(':');
+        }
+
+        function syncDnsMode() {
+            const host = $('dnsHost').value.trim();
+            const sel = $('dnsType');
+            const hint = $('dnsModeHint');
+            if (isIpAddress(host)) {
+                if (sel.value !== 'REVERSE') sel.value = 'AUTO';
+                if (hint) hint.textContent = 'IP detected — reverse lookup';
+            } else if (hint) {
+                hint.textContent = host ? 'Hostname — forward lookup' : '';
+            }
+        }
+
+        function renderDnsRecord(rec) {
+            const label = rec.label ? `<span class="stat-sub" style="margin-right:6px">${esc(rec.label)}</span>` : '';
+            return `<div style="margin:6px 0">${label}<span class="tag info">${esc(rec.type)}</span> <span class="mono">${esc(rec.value)}</span></div>`;
+        }
+
+        async function runDns() {
+            const host = $('dnsHost').value.trim();
+            if (!host) {
+                $('dnsResult').innerHTML = '<span class="tag warn">Enter a hostname or IP address</span>';
+                return;
+            }
+            if (!(await checkServer())) {
+                $('dnsResult').innerHTML = '<span class="tag err">Server offline — use ▶ Start Server in the Launcher/Media Library (or START SERVER.bat), then Retry.</span>';
+                return;
+            }
+            let record_type = $('dnsType').value;
+            if (isIpAddress(host)) record_type = 'AUTO';
+            $('dnsResult').innerHTML = '<span class="loading"></span> Looking up…';
+            try {
+                const r = await api('/network/dns', { method: 'POST', body: JSON.stringify({ host, record_type }) });
+                const hasData = (r.records?.length || r.reverse?.ptr || r.reverse?.mac);
+                if (r.error && !hasData) {
+                    $('dnsResult').innerHTML = `<span class="tag err">${esc(r.error)}</span>`;
+                    return;
+                }
+                const mode = r.query_mode === 'reverse'
+                    ? `<div class="stat-sub" style="margin-bottom:10px"><span class="tag ok">Reverse lookup</span> for <span class="mono">${esc(r.host)}</span>${r.reverse?.sources?.length ? ' · via ' + esc(r.reverse.sources.join(', ')) : ''}</div>`
+                    : `<div class="stat-sub" style="margin-bottom:10px"><span class="tag info">Forward lookup</span> for <span class="mono">${esc(r.host)}</span></div>`;
+                let html = mode;
+                if (r.note) html += `<div class="stat-sub" style="margin-bottom:10px;color:var(--warn)">${esc(r.note)}</div>`;
+                if (r.error && hasData) html += `<div class="stat-sub" style="margin-bottom:10px;color:var(--muted)">${esc(r.error)}</div>`;
+                if (r.reverse) {
+                    html += `<div class="kv" style="margin:12px 0">
+                        <dt>Hostname (PTR)</dt><dd class="mono">${esc(r.reverse.ptr || '—')}</dd>
+                        <dt>Aliases</dt><dd>${r.reverse.aliases?.length ? r.reverse.aliases.map(a => `<span class="mono">${esc(a)}</span>`).join('<br>') : '—'}</dd>
+                        <dt>MAC (ARP)</dt><dd class="mono">${esc(r.reverse.mac || '—')}</dd>
+                        <dt>IPs</dt><dd class="mono">${esc((r.reverse.ips || []).join(', ') || '—')}</dd>
+                    </div>`;
+                }
+                html += (r.records || []).map(renderDnsRecord).join('');
+                if (r.forward_records?.length) {
+                    html += `<div class="stat-sub" style="margin:12px 0 6px">Forward records for resolved hostname</div>`;
+                    html += r.forward_records.map(renderDnsRecord).join('');
+                }
+                $('dnsResult').innerHTML = html || '<div class="empty">No records found</div>';
+            } catch (e) {
+                $('dnsResult').innerHTML = `<span class="tag err">Lookup failed: ${esc(e.message)}</span>`;
+            }
+        }
+
+        async function runScan() {
+            const host = $('scanHost').value.trim();
+            const portsStr = $('scanPorts').value.trim();
+            const ports = portsStr ? portsStr.split(/[,\s]+/).map(Number).filter(n => n > 0) : null;
+            $('scanResult').innerHTML = '<span class="loading"></span> Scanning…';
+            const r = await api('/network/portscan', { method: 'POST', body: JSON.stringify({ host, ports, timeout_sec: 1 }) });
+            $('scanResult').innerHTML = `
+                <div class="stat-sub" style="margin-bottom:10px;">Scanned ${r.scanned} ports · <strong>${r.open_count} open</strong></div>
+                ${r.open.length ? r.open.map(p => `<span class="tag ok" style="margin:4px">${p.port} ${esc(p.service)}</span>`).join('') : '<span class="tag info">No open ports in scan range</span>'}`;
+        }
+
+        async function runDiag() {
+            $('diagResult').innerHTML = '<div class="empty"><span class="loading"></span> Running diagnostics…</div>';
+            const r = await api('/network/diagnostics');
+            const issues = r.issues.map(i => `<div style="margin:6px 0"><span class="tag ${i.level === 'error' ? 'err' : i.level === 'warn' ? 'warn' : 'info'}">${i.level}</span> ${esc(i.message)}</div>`).join('');
+            $('diagResult').innerHTML = `
+                <div style="margin-bottom:14px">
+                    <span class="tag ${r.healthy ? 'ok' : 'warn'}">${r.healthy ? 'HEALTHY' : 'ISSUES DETECTED'}</span>
+                    <span class="stat-sub" style="margin-left:10px">${esc(r.timestamp)}</span>
+                </div>
+                <div class="kv">
+                    <dt>Gateway</dt><dd class="mono">${esc(r.gateway || '—')}</dd>
+                    <dt>Gateway ping</dt><dd>${r.gateway_ping ? (r.gateway_ping.success ? '<span class="tag ok">OK</span> ' + (r.gateway_ping.stats?.avg_ms || '') + ' ms avg' : '<span class="tag err">Failed</span>') : '—'}</dd>
+                    <dt>DNS test</dt><dd>${r.dns_test.records?.length ? '<span class="tag ok">Resolved</span> ' + r.dns_test.records.map(x=>x.value).join(', ') : '<span class="tag err">' + esc(r.dns_test.error || 'Failed') + '</span>'}</dd>
+                    <dt>CPU</dt><dd>${r.overview.cpu.percent}%</dd>
+                    <dt>Memory</dt><dd>${r.overview.memory.percent}%</dd>
+                </div>
+                ${issues || '<div class="stat-sub">No issues flagged</div>'}`;
+        }
+
+        function esc(s) {
+            if (!s) return '';
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        // Events
+        $('btnRefreshProcs').addEventListener('click', loadProcesses);
+        $('procSearch').addEventListener('input', debounce(loadProcesses, 300));
+        $('procSort').addEventListener('change', loadProcesses);
+        $('btnRefreshConn').addEventListener('click', loadConnections);
+        $('connSearch').addEventListener('input', debounce(loadConnections, 300));
+        $('connKind').addEventListener('change', loadConnections);
+        $('btnDiscover').addEventListener('click', discoverLan);
+        $('btnPing').addEventListener('click', runPing);
+        $('btnTrace').addEventListener('click', runTrace);
+        $('btnTelnet').addEventListener('click', runTelnet);
+        $('btnDns').addEventListener('click', runDns);
+        $('dnsHost').addEventListener('input', syncDnsMode);
+        $('dnsHost').addEventListener('keydown', e => { if (e.key === 'Enter') runDns(); });
+        syncDnsMode();
+        $('btnScan').addEventListener('click', runScan);
+        $('btnDiag').addEventListener('click', runDiag);
+        $('closeDrawer').addEventListener('click', closeDrawer);
+        $('overlay').addEventListener('click', closeDrawer);
+        $('btnKillProc').addEventListener('click', () => killProcess(false));
+        $('btnForceKill').addEventListener('click', () => killProcess(true));
+        $('retryServer').addEventListener('click', e => { e.preventDefault(); init(); });
+
+        function debounce(fn, ms) {
+            let t;
+            return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+        }
+
+        function startPolling() {
+            clearInterval(pollTimer);
+            pollTimer = setInterval(() => {
+                const v = document.querySelector('.nav-btn.active')?.dataset.view;
+                if (v === 'dashboard') loadDashboard().catch(() => {});
+            }, 2500);
+        }
+
+        async function init() {
+            if (await checkServer()) {
+                await loadDashboard();
+                startPolling();
+            }
+        }
+
+        init();
+    })();
+    </script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+</body>
+</html>

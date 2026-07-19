@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Organizer — Rename & Tag</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+    <style>
+        :root {
+            --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
+            --accent: #00f3ff; --accent2: #7c5cff; --accent3: #ffb347;
+            --text: #e8e8ec; --muted: #777;
+            --danger: #ff4466; --ok: #00ff88;
+            --glow: 0 0 10px rgba(0,243,255,0.4);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: radial-gradient(ellipse at 80% 0%, #1a1428 0%, var(--bg) 55%);
+            color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh; display: flex; flex-direction: column; min-width: 1000px;
+        }
+        .nav-bar {
+            padding: 8px 16px; background: var(--panel); border-bottom: 1px solid rgba(124,92,255,0.25);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .nav-bar h1 { font-size: 15px; color: var(--accent3); margin-right: auto; letter-spacing: 0.5px; }
+        .nav-link {
+            font-size: 11px; padding: 5px 12px; border-radius: 5px; text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.15); color: var(--muted); cursor: pointer;
+            background: transparent;
+        }
+        .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+        .nav-link.active { background: rgba(255,179,71,0.15); border-color: var(--accent3); color: var(--accent3); }
+        .btn {
+            background: transparent; border: 1px solid var(--accent); color: var(--accent);
+            padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 700;
+            text-transform: uppercase; transition: all 0.15s; white-space: nowrap;
+        }
+        .btn:hover { background: var(--accent); color: #000; box-shadow: var(--glow); }
+        .btn.orange { border-color: var(--accent3); color: var(--accent3); }
+        .btn.orange:hover { background: var(--accent3); color: #000; }
+        .btn.purple { border-color: var(--accent2); color: var(--accent2); }
+        .btn.purple:hover { background: var(--accent2); color: #fff; }
+        .server-pill { font-size: 10px; padding: 4px 12px; border-radius: 12px; font-weight: 700; text-transform: uppercase; }
+        .server-pill.online { background: rgba(0,255,136,0.15); color: var(--ok); border: 1px solid var(--ok); }
+        .server-pill.offline { background: rgba(255,68,102,0.12); color: var(--danger); border: 1px solid var(--danger); cursor: pointer; }
+        .server-pill.waiting { background: rgba(255,200,0,0.12); color: #ffc800; border: 1px solid #ffc800; }
+        #btnStartServer:disabled { opacity: 0.55; cursor: wait; }
+
+        .main {
+            flex: 1; display: grid;
+            grid-template-columns: minmax(220px, 280px) 1fr minmax(280px, 340px);
+            min-height: 0;
+        }
+        .sidebar { background: var(--panel); border-right: 1px solid rgba(255,255,255,0.06); overflow-y: auto; }
+        .sidebar-section { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .sidebar-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+        .hint-box { font-size: 10px; color: var(--muted); line-height: 1.45; margin-bottom: 8px; }
+        .vf-item, .filter-chip {
+            padding: 7px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; margin-bottom: 3px;
+            border: 1px solid transparent; display: flex; justify-content: space-between; align-items: center;
+        }
+        .vf-item:hover, .filter-chip:hover { background: rgba(255,179,71,0.08); border-color: rgba(255,179,71,0.25); }
+        .vf-item.active, .filter-chip.active { background: rgba(255,179,71,0.15); border-color: var(--accent3); }
+        .vf-sources { font-size: 9px; color: var(--muted); margin-top: 2px; }
+        .vf-count { font-size: 10px; color: var(--accent3); }
+
+        .center { display: flex; flex-direction: column; min-width: 0; }
+        .toolbar {
+            padding: 10px 14px; background: var(--panel2); display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .toolbar input, .toolbar select {
+            background: #000; border: 1px solid rgba(255,179,71,0.3); color: var(--text);
+            padding: 6px 10px; border-radius: 5px; font-size: 12px;
+        }
+        .toolbar input { flex: 1; min-width: 140px; }
+        .batch-bar {
+            padding: 8px 14px; background: rgba(255,179,71,0.1); border-bottom: 1px solid rgba(255,179,71,0.25);
+            display: none; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 11px;
+        }
+        .batch-bar.visible { display: flex; }
+
+        .file-table-wrap { flex: 1; overflow: auto; }
+        .file-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .file-table th {
+            position: sticky; top: 0; background: #0a0a10; text-align: left; padding: 8px 10px;
+            font-size: 10px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.08);
+            z-index: 2;
+        }
+        .file-table td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+        .file-table tr { cursor: pointer; }
+        .file-table tr:hover td { background: rgba(255,255,255,0.03); }
+        .file-table tr.selected td { background: rgba(255,179,71,0.12); }
+        .file-table tr.active-row td { border-left: 3px solid var(--accent3); }
+        .fname { font-weight: 600; word-break: break-all; }
+        .fpath { font-size: 10px; color: var(--muted); }
+        .fsource { font-size: 10px; color: var(--accent2); }
+        .inline-input {
+            width: 100%; background: #000; border: 1px solid rgba(255,179,71,0.25); color: var(--text);
+            padding: 4px 6px; border-radius: 4px; font-size: 11px;
+        }
+        .inline-input:focus { outline: none; border-color: var(--accent3); }
+        .rank-stars { display: flex; gap: 2px; }
+        .rank-star {
+            cursor: pointer; font-size: 14px; color: #444; user-select: none;
+        }
+        .rank-star.on { color: #ffc107; }
+        .tag-mini { font-size: 9px; padding: 1px 5px; border-radius: 6px; background: rgba(0,243,255,0.12); color: var(--accent); margin: 1px; display: inline-block; }
+        .tag-editor {
+            display: flex; flex-wrap: wrap; gap: 5px; min-height: 28px; padding: 4px 0 6px;
+        }
+        .tag-editor .tag {
+            font-size: 11px; padding: 3px 8px; border-radius: 10px; background: rgba(0,243,255,0.2);
+            display: flex; align-items: center; gap: 4px; color: var(--accent);
+        }
+        .tag-editor .tag button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 12px; padding: 0; line-height: 1; }
+        .tag-input-wrap { position: relative; }
+        .tag-input-wrap input {
+            width: 100%; background: #000; border: 1px solid rgba(255,179,71,0.3); color: var(--text);
+            padding: 7px 10px; border-radius: 5px; font-size: 12px;
+        }
+        .tag-input-wrap input:focus { outline: none; border-color: var(--accent3); }
+        .tag-suggestions {
+            position: absolute; top: 100%; left: 0; right: 0; background: var(--panel2);
+            border: 1px solid rgba(0,243,255,0.3); border-radius: 0 0 6px 6px; z-index: 30;
+            max-height: 140px; overflow-y: auto; display: none;
+        }
+        .tag-suggestions.show { display: block; }
+        .tag-suggestions div { padding: 6px 10px; font-size: 12px; cursor: pointer; }
+        .tag-suggestions div:hover, .tag-suggestions div.active { background: rgba(0,243,255,0.15); color: var(--accent); }
+        .tag-suggestions .hint { color: var(--muted); cursor: default; font-size: 11px; }
+        .tag-library-box {
+            margin-top: 8px; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.06); max-height: 140px; overflow-y: auto;
+        }
+        .tag-library-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;
+        }
+        .tag-library-head span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+        .tag-library-head input {
+            width: 100px; background: #000; border: 1px solid rgba(255,255,255,0.12); color: var(--text);
+            padding: 3px 6px; border-radius: 4px; font-size: 10px;
+        }
+        .tag-lib-cloud { display: flex; flex-wrap: wrap; gap: 5px; }
+        .tag-lib-chip {
+            font-size: 10px; padding: 4px 8px; border-radius: 999px; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: var(--text);
+        }
+        .tag-lib-chip:hover { border-color: var(--accent); color: var(--accent); }
+        .tag-lib-chip.on { border-color: var(--accent3); color: var(--accent3); background: rgba(255,179,71,0.12); }
+        .tag-lib-empty { font-size: 10px; color: var(--muted); font-style: italic; width: 100%; text-align: center; padding: 8px; }
+
+        .detail-panel { background: var(--panel); border-left: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; overflow: hidden; }
+        .preview-box {
+            background: #000; min-height: 180px; height: 220px; display: flex; flex-direction: column;
+            align-items: stretch; justify-content: center; position: relative;
+        }
+        .preview-box video, .preview-box img { width: 100%; flex: 1; object-fit: contain; min-height: 0; }
+        .capture-bar {
+            padding: 8px; background: rgba(0,0,0,0.85); border-top: 1px solid rgba(255,179,71,0.3);
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .capture-btn {
+            flex: 1; padding: 10px 12px; font-size: 12px; font-weight: 700;
+            background: linear-gradient(135deg, rgba(255,179,71,0.25), rgba(255,140,0,0.15));
+            border: 2px solid var(--accent3); color: var(--accent3); border-radius: 8px; cursor: pointer;
+        }
+        .capture-btn:hover { background: var(--accent3); color: #000; }
+        .capture-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .detail-form { padding: 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        .field label { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+        .field input, .field textarea, .field select {
+            width: 100%; background: #000; border: 1px solid rgba(255,179,71,0.25);
+            color: var(--text); padding: 8px; border-radius: 5px; font-size: 12px;
+        }
+        .field textarea { min-height: 56px; resize: vertical; }
+        .list-footer {
+            padding: 8px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex; justify-content: space-between;
+        }
+        .breadcrumb { font-size: 10px; color: var(--accent3); padding: 6px 14px; background: rgba(255,179,71,0.06); }
+        .breadcrumb span { cursor: pointer; }
+        .breadcrumb span:hover { text-decoration: underline; }
+        .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+        .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; display: none; align-items: center; justify-content: center; }
+        .modal-bg.active { display: flex; }
+        .modal { background: var(--panel); border: 2px solid var(--accent3); border-radius: 10px; padding: 20px; width: 400px; max-width: 95vw; }
+        .modal h2 { font-size: 16px; color: var(--accent3); margin-bottom: 14px; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <h1>✏️ File Organizer</h1>
+        <span class="server-pill offline" id="serverStatus" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = full power. Offline = click this pill or ▶ Start Server to launch the Python backend from this page (same as Media Library / Launcher).">Server …</span>
+        <button class="btn" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from File Organizer. Waits for green. If blocked: Launcher → Console / Open Folder → START SERVER.bat, or SETUP (run once).bat.">▶ Start Server</button>
+        <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
+        <a class="nav-link" href="Media Library Manager.html">🗂️ Media Library</a>
+        <span class="nav-link active">✏️ File Organizer</span>
+        <a class="nav-link" href="VSR Pipeline Manager.html">⚡ VSR Pipeline</a>
+        <button class="btn" id="btnRescan">↻ Rescan</button>
+        <button class="ui-btn ghost" id="btnDebug">🐛 Debug</button>
+    </nav>
+
+    <div class="main">
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3>🔗 Combined Folders</h3>
+                <p class="hint-box">Folders with the <strong>same name</strong> under different watched locations are merged here — browse all copies as one master tree.</p>
+                <div id="virtualFolderList"></div>
+            </div>
+            <div class="sidebar-section" id="vfBrowseSection" style="display:none;">
+                <h3>Subfolders</h3>
+                <div class="breadcrumb" id="vfBreadcrumb"></div>
+                <div id="vfSubfolders"></div>
+                <div id="vfSources" style="font-size:10px;color:var(--muted);margin-top:8px;"></div>
+            </div>
+            <div class="sidebar-section">
+                <h3>Organize by</h3>
+                <div class="filter-chip" data-cat="">All categories</div>
+                <div id="categoryFilters"></div>
+                <div style="margin-top:10px;"></div>
+                <div class="filter-chip" data-st="">All statuses</div>
+                <div id="statusFilters"></div>
+                <div style="margin-top:10px;"></div>
+                <div class="filter-chip" data-rank="0">Any rank</div>
+                <div class="filter-chip" data-rank="3">★★★+ only</div>
+                <div class="filter-chip" data-rank="4">★★★★+ only</div>
+            </div>
+        </aside>
+
+        <section class="center">
+            <div class="toolbar">
+                <input type="search" id="searchInput" placeholder="Search name, path, tags, category…">
+                <select id="filterType">
+                    <option value="">All types</option>
+                    <option value="video">Videos</option>
+                    <option value="image">Images</option>
+                </select>
+                <select id="sortBy">
+                    <option value="rank">Sort: Rank</option>
+                    <option value="name">Sort: Name</option>
+                    <option value="path">Sort: Path</option>
+                    <option value="category">Sort: Category</option>
+                    <option value="mtime">Sort: Date</option>
+                </select>
+                <button class="btn" id="btnSelectPage">Select Page</button>
+            </div>
+            <div class="batch-bar" id="batchBar">
+                <strong><span id="selCount">0</span> selected</strong>
+                <select id="batchCategory" class="inline-input" style="width:auto;">
+                    <option value="">Set category…</option>
+                    <option>Raw</option><option>Source</option><option>Upscaled</option><option>VSR</option>
+                    <option>Interpolated</option><option>Reference</option><option>Export</option><option>Archive</option>
+                </select>
+                <select id="batchStatus" class="inline-input" style="width:auto;">
+                    <option value="">Set status…</option>
+                    <option>To Review</option><option>Approved</option><option>Best</option>
+                    <option>WIP</option><option>Favorite</option><option>Reject</option>
+                </select>
+                <button class="btn orange" id="btnBatchMeta">Apply Meta</button>
+                <button class="btn" id="btnBatchTag">+ Tags</button>
+                <button class="btn purple" id="btnBatchRename">Batch Rename</button>
+                <button class="btn" id="btnCopyPaths">Copy Paths</button>
+                <button class="btn" id="btnClearSel">Clear</button>
+            </div>
+            <div class="file-table-wrap">
+                <table class="file-table">
+                    <thead>
+                        <tr>
+                            <th style="width:28px;"></th>
+                            <th style="width:72px;">Rank</th>
+                            <th>File</th>
+                            <th style="width:100px;">Category</th>
+                            <th style="width:100px;">Status</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fileTableBody"></tbody>
+                </table>
+                <div class="empty" id="emptyState" style="display:none;">No files match. Add folders in Media Library and rescan.</div>
+            </div>
+            <div class="list-footer">
+                <span id="listStats">0 items</span>
+                <span>
+                    <button class="btn" id="btnPrev" style="padding:3px 10px;">◀</button>
+                    Page <span id="pageNum">1</span> / <span id="pageTotal">1</span>
+                    <button class="btn" id="btnNext" style="padding:3px 10px;">▶</button>
+                </span>
+            </div>
+        </section>
+
+        <aside class="detail-panel">
+            <div class="preview-box" id="previewBox">
+                <span style="color:#555;font-size:12px;text-align:center;padding:20px;">Select a file to preview</span>
+            </div>
+            <div class="capture-bar" id="captureBar" style="display:none;">
+                <button type="button" class="capture-btn" id="btnCapture" disabled>📷 Capture Frame → Thumbnail</button>
+            </div>
+            <div class="detail-form" id="detailForm" style="display:none;">
+                <div class="field">
+                    <label>Filename (Enter to rename on disk)</label>
+                    <input type="text" id="detailName">
+                </div>
+                <div class="field">
+                    <label>Rank</label>
+                    <div class="rank-stars" id="detailRank"></div>
+                </div>
+                <div class="field">
+                    <label>Category</label>
+                    <select id="detailCategory">
+                        <option value=""></option>
+                        <option>Raw</option><option>Source</option><option>Upscaled</option><option>VSR</option>
+                        <option>Interpolated</option><option>Reference</option><option>Export</option><option>Archive</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Status</label>
+                    <select id="detailStatus">
+                        <option value=""></option>
+                        <option>To Review</option><option>Approved</option><option>Best</option>
+                        <option>WIP</option><option>Favorite</option><option>Reject</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Tags</label>
+                    <div class="tag-editor" id="detailTags"></div>
+                    <div class="tag-input-wrap">
+                        <input type="text" id="tagInput" placeholder="Type tag… Enter to add · ↑↓ autocomplete" autocomplete="off">
+                        <div class="tag-suggestions" id="tagSuggestions"></div>
+                    </div>
+                    <div class="tag-library-box">
+                        <div class="tag-library-head">
+                            <span>All tags <span id="tagLibCount"></span></span>
+                            <input type="search" id="tagLibFilter" placeholder="Filter…" autocomplete="off">
+                        </div>
+                        <div class="tag-lib-cloud" id="tagLibrary"></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Notes</label>
+                    <textarea id="detailNotes"></textarea>
+                </div>
+                <button class="btn orange" id="btnSave" style="width:100%;">Save Metadata</button>
+            </div>
+        </aside>
+    </div>
+
+    <div class="modal-bg" id="renameModal">
+        <div class="modal">
+            <h2>Batch Rename</h2>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Tokens: {orig} {tags} {tag} {n} {ext}</p>
+            <input type="text" id="renamePattern" class="inline-input" value="{orig}_tagged" style="padding:10px;">
+            <div class="modal-actions">
+                <button class="btn" id="btnRenameCancel">Cancel</button>
+                <button class="btn orange" id="btnRenameApply">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-bg" id="tagModal">
+        <div class="modal">
+            <h2>Batch Add Tags</h2>
+            <input type="text" id="batchTagInput" class="inline-input" placeholder="tag1, tag2 — or click from library below" style="padding:10px;" autocomplete="off">
+            <div class="tag-lib-cloud" id="batchTagLibrary" style="margin-top:10px;max-height:120px;overflow:auto;"></div>
+            <div class="modal-actions">
+                <button class="btn" id="btnTagCancel">Cancel</button>
+                <button class="btn orange" id="btnTagApply">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script>
+        const PAGE_SIZE = 100;
+        const API = () => window.AIToolboxAPI;
+        const UI = () => window.AIToolboxUI;
+        const CATEGORIES = ['Raw','Source','Upscaled','VSR','Interpolated','Reference','Export','Archive'];
+        const STATUSES = ['To Review','Approved','Best','WIP','Favorite','Reject'];
+
+        let serverOn = false;
+        let items = [];
+        let total = 0;
+        let page = 0;
+        let selected = new Set();
+        let current = null;
+        let previewVideo = null;
+        let virtualRoot = null;
+        let virtualSubpath = '';
+        let filterCategory = '';
+        let filterStatus = '';
+        let filterRankMin = 0;
+        let dirNames = {};
+
+        async function init() {
+            UI().initTooltips();
+            await updateServer();
+            setInterval(updateServer, 5000);
+            await refreshVirtualFolders();
+            await refreshFacets();
+            await loadItems();
+            await refreshKnownTags();
+        }
+
+        let serverStarting = false;
+
+        async function updateServer() {
+            if (serverStarting) return;
+            serverOn = await API().isOnline();
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            el.textContent = serverOn ? '● Online' : '○ Offline — click to start';
+            el.className = 'server-pill ' + (serverOn ? 'online' : 'offline');
+            if (btn) {
+                btn.style.display = serverOn ? 'none' : '';
+                btn.disabled = false;
+                btn.textContent = '▶ Start Server';
+            }
+        }
+
+        async function launchServerFromApp() {
+            if (serverStarting || API().isServerLaunching?.()) return;
+            if (await API().isOnline(true, 2000)) {
+                await updateServer();
+                return;
+            }
+            serverStarting = true;
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            el.textContent = '◌ Starting…';
+            el.className = 'server-pill waiting';
+            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+            try {
+                const result = await API().startServer({ mode: 'tray', waitMs: 90000 });
+                serverStarting = false;
+                if (!result.ok && btn) {
+                    btn.disabled = false;
+                    btn.textContent = '▶ Start Server';
+                    el.textContent = '○ Start failed';
+                    el.className = 'server-pill offline';
+                }
+                await updateServer();
+            } catch (e) {
+                serverStarting = false;
+                if (btn) { btn.disabled = false; btn.textContent = '▶ Start Server'; }
+                await updateServer();
+            }
+        }
+
+        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
+        document.getElementById('serverStatus')?.addEventListener('click', () => {
+            if (!serverOn && !serverStarting) launchServerFromApp();
+        });
+
+        async function refreshFacets() {
+            const f = await API().getMetaFacets().catch(() => ({ categories: [], statuses: [] }));
+            const catEl = document.getElementById('categoryFilters');
+            const stEl = document.getElementById('statusFilters');
+            catEl.innerHTML = '';
+            stEl.innerHTML = '';
+            [...new Set([...CATEGORIES, ...(f.categories || [])])].forEach(c => {
+                const d = document.createElement('div');
+                d.className = 'filter-chip' + (filterCategory === c ? ' active' : '');
+                d.dataset.cat = c;
+                d.textContent = c;
+                d.onclick = () => { filterCategory = filterCategory === c ? '' : c; refreshFacets(); loadItems(); };
+                catEl.appendChild(d);
+            });
+            [...new Set([...STATUSES, ...(f.statuses || [])])].forEach(s => {
+                const d = document.createElement('div');
+                d.className = 'filter-chip' + (filterStatus === s ? ' active' : '');
+                d.dataset.st = s;
+                d.textContent = s;
+                d.onclick = () => { filterStatus = filterStatus === s ? '' : s; refreshFacets(); loadItems(); };
+                stEl.appendChild(d);
+            });
+            document.querySelectorAll('[data-rank]').forEach(el => {
+                const r = parseInt(el.dataset.rank, 10);
+                el.classList.toggle('active', filterRankMin === r);
+                el.onclick = () => { filterRankMin = filterRankMin === r ? 0 : r; refreshFacets(); loadItems(); };
+            });
+            document.querySelector('[data-cat=""]').classList.toggle('active', !filterCategory);
+            document.querySelector('[data-cat=""]').onclick = () => { filterCategory = ''; refreshFacets(); loadItems(); };
+            document.querySelector('[data-st=""]').classList.toggle('active', !filterStatus);
+            document.querySelector('[data-st=""]').onclick = () => { filterStatus = ''; refreshFacets(); loadItems(); };
+        }
+
+        async function refreshVirtualFolders() {
+            const list = document.getElementById('virtualFolderList');
+            if (!serverOn) {
+                list.innerHTML = '<div class="hint-box">Start server for combined folders (▶ Start Server on this page).</div>';
+                return;
+            }
+            const vfs = await API().listVirtualFolders();
+            list.innerHTML = '';
+            if (!vfs.length) {
+                list.innerHTML = '<div class="hint-box">No nested folders yet. Files must live inside subfolders (e.g. <code>ProjectA/clips/…</code>).</div>';
+                return;
+            }
+            const allBtn = document.createElement('div');
+            allBtn.className = 'vf-item' + (!virtualRoot ? ' active' : '');
+            allBtn.innerHTML = '<span>All locations</span>';
+            allBtn.onclick = () => { virtualRoot = null; virtualSubpath = ''; refreshVirtualFolders(); loadItems(); hideVfBrowse(); };
+            list.appendChild(allBtn);
+            vfs.forEach(vf => {
+                const div = document.createElement('div');
+                div.className = 'vf-item' + (virtualRoot === vf.name ? ' active' : '');
+                const srcs = (vf.sources || []).map(s => s.dir_name).join(', ');
+                div.innerHTML = `<div><div>📁 ${vf.name}</div><div class="vf-sources">${srcs}</div></div><span class="vf-count">${vf.total}</span>`;
+                div.onclick = () => selectVirtualRoot(vf.name);
+                list.appendChild(div);
+            });
+        }
+
+        function hideVfBrowse() {
+            document.getElementById('vfBrowseSection').style.display = 'none';
+        }
+
+        async function selectVirtualRoot(name) {
+            virtualRoot = name;
+            virtualSubpath = '';
+            await refreshVirtualFolders();
+            await refreshVfBrowse();
+            page = 0;
+            await loadItems();
+        }
+
+        async function refreshVfBrowse() {
+            const sec = document.getElementById('vfBrowseSection');
+            if (!virtualRoot || !serverOn) { sec.style.display = 'none'; return; }
+            sec.style.display = 'block';
+            const idx = await API().listVirtualFolderIndex(virtualRoot, virtualSubpath);
+            const crumbs = [{ name: virtualRoot, path: '' }, ...(idx.breadcrumb || [])];
+            document.getElementById('vfBreadcrumb').innerHTML = crumbs.map((c, i) => {
+                const sep = i > 0 ? ' / ' : '';
+                return `${sep}<span data-path="${c.path}">${c.name}</span>`;
+            }).join('');
+            document.getElementById('vfBreadcrumb').querySelectorAll('[data-path]').forEach(el => {
+                el.onclick = () => { virtualSubpath = el.dataset.path; refreshVfBrowse(); loadItems(); };
+            });
+            let html = '';
+            if (virtualSubpath) {
+                const parent = virtualSubpath.includes('/') ? virtualSubpath.replace(/\/[^/]+$/, '') : '';
+                html += `<div class="vf-item" data-up="${parent}">⬆ ..</div>`;
+            }
+            (idx.subfolders || []).forEach(f => {
+                const p = virtualSubpath ? `${virtualSubpath}/${f.name}` : f.name;
+                html += `<div class="vf-item" data-path="${p}"><span>📁 ${f.name}</span><span class="vf-count">${f.count}</span></div>`;
+            });
+            document.getElementById('vfSubfolders').innerHTML = html || '<div class="hint-box">No subfolders</div>';
+            document.getElementById('vfSubfolders').querySelectorAll('[data-path]').forEach(el => {
+                el.onclick = () => { virtualSubpath = el.dataset.path; refreshVfBrowse(); loadItems(); };
+            });
+            document.getElementById('vfSubfolders').querySelector('[data-up]')?.addEventListener('click', e => {
+                virtualSubpath = e.currentTarget.dataset.up;
+                refreshVfBrowse();
+                loadItems();
+            });
+            const srcHtml = (idx.sources || []).map(s => `${s.dir_name}: ${s.count}`).join(' · ');
+            document.getElementById('vfSources').textContent = srcHtml ? `Sources: ${srcHtml}` : '';
+        }
+
+        async function loadItems() {
+            try {
+                const res = await API().queryMedia({
+                    search: document.getElementById('searchInput').value,
+                    type: document.getElementById('filterType').value || null,
+                    virtualRoot: virtualRoot || undefined,
+                    pathPrefix: virtualRoot ? virtualSubpath : undefined,
+                    folderOnly: !!virtualRoot,
+                    category: filterCategory || undefined,
+                    status: filterStatus || undefined,
+                    rankMin: filterRankMin || undefined,
+                    sort: document.getElementById('sortBy').value,
+                    page, limit: PAGE_SIZE,
+                });
+                items = res.items || [];
+                total = res.total || 0;
+                const dirs = await API().listDirectories();
+                dirNames = Object.fromEntries(dirs.map(d => [d.id, d.name]));
+                renderTable();
+                refreshKnownTags();
+            } catch (e) {
+                UI().toast('Load failed: ' + e.message, 'warn');
+            }
+        }
+
+        function rankStarsHtml(rank, clickable, itemId) {
+            let h = '';
+            for (let i = 1; i <= 5; i++) {
+                h += `<span class="rank-star ${i <= rank ? 'on' : ''}" data-r="${i}" data-id="${itemId || ''}">${i <= rank ? '★' : '☆'}</span>`;
+            }
+            return h;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('fileTableBody');
+            const empty = document.getElementById('emptyState');
+            tbody.innerHTML = '';
+            if (!items.length) {
+                empty.style.display = 'block';
+            } else {
+                empty.style.display = 'none';
+            }
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = (selected.has(item.id) ? 'selected ' : '') + (current?.id === item.id ? 'active-row' : '');
+                const rel = item.relativePath || item.rel_path || '';
+                const src = dirNames[item.dirId || item.dir_id] || '?';
+                tr.innerHTML = `
+                    <td><input type="checkbox" ${selected.has(item.id) ? 'checked' : ''}></td>
+                    <td><div class="rank-stars">${rankStarsHtml(item.rank || 0, true, item.id)}</div></td>
+                    <td>
+                        <div class="fname">${item.name}</div>
+                        <div class="fpath">${rel}</div>
+                        <div class="fsource">📂 ${src}</div>
+                    </td>
+                    <td><select class="inline-input row-cat" data-id="${item.id}">
+                        <option value=""></option>${CATEGORIES.map(c => `<option ${item.category===c?'selected':''}>${c}</option>`).join('')}
+                        ${item.category && !CATEGORIES.includes(item.category) ? `<option selected>${item.category}</option>` : ''}
+                    </select></td>
+                    <td><select class="inline-input row-st" data-id="${item.id}">
+                        <option value=""></option>${STATUSES.map(s => `<option ${item.status===s?'selected':''}>${s}</option>`).join('')}
+                        ${item.status && !STATUSES.includes(item.status) ? `<option selected>${item.status}</option>` : ''}
+                    </select></td>
+                    <td>${(item.tags||[]).map(t => `<span class="tag-mini">${t}</span>`).join('')}</td>`;
+                tr.querySelector('input').onclick = e => { e.stopPropagation(); toggleSel(item.id); };
+                tr.querySelectorAll('.rank-star').forEach(st => {
+                    st.onclick = e => { e.stopPropagation(); setRank(item.id, parseInt(st.dataset.r, 10)); };
+                });
+                tr.querySelector('.row-cat').onchange = e => { e.stopPropagation(); patchItem(item.id, { category: e.target.value }); };
+                tr.querySelector('.row-st').onchange = e => { e.stopPropagation(); patchItem(item.id, { status: e.target.value }); };
+                tr.onclick = () => selectItem(item);
+                tbody.appendChild(tr);
+            });
+            const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            document.getElementById('listStats').textContent = `${total.toLocaleString()} items` + (virtualRoot ? ` · merged: ${virtualRoot}` : '');
+            document.getElementById('pageNum').textContent = page + 1;
+            document.getElementById('pageTotal').textContent = pages;
+            document.getElementById('batchBar').classList.toggle('visible', selected.size > 0);
+            document.getElementById('selCount').textContent = selected.size;
+        }
+
+        function toggleSel(id) {
+            if (selected.has(id)) selected.delete(id); else selected.add(id);
+            renderTable();
+        }
+
+        async function setRank(id, rank) {
+            await patchItem(id, { rank });
+        }
+
+        async function patchItem(id, patch) {
+            try {
+                const updated = await API().updateMedia(id, { ...patch, write_file_tags: true });
+                const merged = updated || patch;
+                const it = items.find(x => x.id === id);
+                if (it) Object.assign(it, merged);
+                if (current?.id === id) {
+                    Object.assign(current, merged);
+                    if ('rank' in merged) renderDetailRank(current.rank || 0);
+                    if ('category' in merged) document.getElementById('detailCategory').value = current.category || '';
+                    if ('status' in merged) document.getElementById('detailStatus').value = current.status || '';
+                }
+                if (updated?.file_write && updated.file_write.ok === false) {
+                    UI().toast('Catalog ok; Explorer file write failed', 'warn');
+                }
+                renderTable();
+            } catch (e) { UI().toast('Save failed: ' + e.message, 'warn'); }
+        }
+
+        function renderDetailRank(rank) {
+            const el = document.getElementById('detailRank');
+            el.innerHTML = rankStarsHtml(rank, true, 'detail');
+            el.querySelectorAll('.rank-star').forEach(st => {
+                st.onclick = () => {
+                    const r = parseInt(st.dataset.r, 10);
+                    renderDetailRank(r);
+                    el.dataset.rank = r;
+                };
+            });
+            el.dataset.rank = rank;
+        }
+
+        let allKnownTags = [];
+        let tagSuggestIdx = -1;
+
+        function getDetailTags() {
+            const el = document.getElementById('detailTags');
+            return el._tags ? [...el._tags] : [];
+        }
+
+        function renderDetailTags(tags) {
+            const el = document.getElementById('detailTags');
+            const list = Array.isArray(tags) ? [...tags] : [];
+            el._tags = list;
+            el.innerHTML = '';
+            list.forEach((t, i) => {
+                const span = document.createElement('span');
+                span.className = 'tag';
+                span.innerHTML = `${escapeHtml(t)} <button type="button" title="Remove">×</button>`;
+                span.querySelector('button').onclick = () => {
+                    list.splice(i, 1);
+                    renderDetailTags(list);
+                    renderTagLibrary();
+                };
+                el.appendChild(span);
+            });
+            renderTagLibrary();
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        async function refreshKnownTags() {
+            try {
+                allKnownTags = await API().getAllTags() || [];
+            } catch {
+                allKnownTags = [];
+            }
+            // Merge tags from loaded page items
+            items.forEach(it => (it.tags || []).forEach(t => {
+                if (!allKnownTags.some(x => x.toLowerCase() === String(t).toLowerCase())) allKnownTags.push(t);
+            }));
+            allKnownTags.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            renderTagLibrary();
+        }
+
+        function renderTagLibrary() {
+            const box = document.getElementById('tagLibrary');
+            const countEl = document.getElementById('tagLibCount');
+            const q = (document.getElementById('tagLibFilter')?.value || '').trim().toLowerCase();
+            const currentTags = getDetailTags();
+            const list = allKnownTags.filter(t => !q || t.toLowerCase().includes(q));
+            if (countEl) countEl.textContent = allKnownTags.length ? `(${allKnownTags.length})` : '';
+            if (!box) return;
+            if (!list.length) {
+                box.innerHTML = `<div class="tag-lib-empty">${allKnownTags.length ? 'No tags match filter' : 'Tags you save appear here for one-click reuse'}</div>`;
+                return;
+            }
+            box.innerHTML = list.map(t => {
+                const on = currentTags.some(x => x.toLowerCase() === t.toLowerCase());
+                return `<button type="button" class="tag-lib-chip ${on ? 'on' : ''}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`;
+            }).join('');
+            box.querySelectorAll('.tag-lib-chip').forEach(btn => {
+                btn.onclick = () => {
+                    const tags = getDetailTags();
+                    const tag = btn.dataset.tag;
+                    const idx = tags.findIndex(x => x.toLowerCase() === tag.toLowerCase());
+                    if (idx >= 0) tags.splice(idx, 1);
+                    else tags.push(tag);
+                    renderDetailTags(tags);
+                };
+            });
+        }
+
+        function renderTagSuggestions(query) {
+            const box = document.getElementById('tagSuggestions');
+            const q = (query || '').trim().toLowerCase();
+            const onVideo = new Set(getDetailTags().map(t => t.toLowerCase()));
+            let matches = allKnownTags.filter(t => !onVideo.has(t.toLowerCase()));
+            if (q) {
+                matches = matches.filter(t => t.toLowerCase().includes(q));
+                matches.sort((a, b) => {
+                    const ap = a.toLowerCase().startsWith(q) ? 0 : 1;
+                    const bp = b.toLowerCase().startsWith(q) ? 0 : 1;
+                    return ap - bp || a.localeCompare(b, undefined, { sensitivity: 'base' });
+                });
+            }
+            matches = matches.slice(0, 12);
+            if (!matches.length) {
+                if (q) {
+                    box.innerHTML = `<div class="hint">Press Enter to create “${escapeHtml(query.trim())}”</div>`;
+                    box.classList.add('show');
+                } else {
+                    box.classList.remove('show');
+                    box.innerHTML = '';
+                }
+                return;
+            }
+            box.innerHTML = matches.map((t, i) =>
+                `<div data-tag="${escapeHtml(t)}" class="${i === tagSuggestIdx ? 'active' : ''}">${escapeHtml(t)}</div>`
+            ).join('');
+            box.querySelectorAll('[data-tag]').forEach(div => {
+                div.onmousedown = (e) => {
+                    e.preventDefault();
+                    addDetailTag(div.dataset.tag);
+                };
+            });
+            box.classList.add('show');
+        }
+
+        function addDetailTag(tag) {
+            const t = String(tag || '').trim();
+            if (!t) return;
+            const tags = getDetailTags();
+            if (!tags.some(x => x.toLowerCase() === t.toLowerCase())) tags.push(t);
+            if (!allKnownTags.some(x => x.toLowerCase() === t.toLowerCase())) {
+                allKnownTags.push(t);
+                allKnownTags.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            }
+            document.getElementById('tagInput').value = '';
+            tagSuggestIdx = -1;
+            document.getElementById('tagSuggestions').classList.remove('show');
+            renderDetailTags(tags);
+        }
+
+        function addTagsFromInput() {
+            const raw = document.getElementById('tagInput').value;
+            raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(addDetailTag);
+            document.getElementById('tagInput').value = '';
+            document.getElementById('tagSuggestions').classList.remove('show');
+        }
+
+        async function renderBatchTagLibrary() {
+            await refreshKnownTags();
+            const box = document.getElementById('batchTagLibrary');
+            if (!box) return;
+            if (!allKnownTags.length) {
+                box.innerHTML = '<div class="tag-lib-empty">No tags in library yet</div>';
+                return;
+            }
+            box.innerHTML = allKnownTags.map(t =>
+                `<button type="button" class="tag-lib-chip" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`
+            ).join('');
+            box.querySelectorAll('.tag-lib-chip').forEach(btn => {
+                btn.onclick = () => {
+                    const input = document.getElementById('batchTagInput');
+                    const cur = input.value.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+                    if (!cur.some(x => x.toLowerCase() === btn.dataset.tag.toLowerCase())) cur.push(btn.dataset.tag);
+                    input.value = cur.join(', ');
+                    btn.classList.add('on');
+                };
+            });
+        }
+
+        async function selectItem(item) {
+            current = item;
+            document.getElementById('detailForm').style.display = 'flex';
+            document.getElementById('detailName').value = item.name;
+            document.getElementById('detailCategory').value = item.category || '';
+            document.getElementById('detailStatus').value = item.status || '';
+            renderDetailTags(item.tags || []);
+            document.getElementById('detailNotes').value = item.notes || '';
+            renderDetailRank(item.rank || 0);
+            await refreshKnownTags();
+            await loadPreview(item);
+            renderTable();
+        }
+
+        async function loadPreview(item) {
+            const box = document.getElementById('previewBox');
+            const cap = document.getElementById('captureBar');
+            const btn = document.getElementById('btnCapture');
+            box.innerHTML = '';
+            if (previewVideo) { previewVideo.pause(); previewVideo = null; }
+            if (!serverOn) {
+                box.innerHTML = '<span style="color:#888;padding:20px;text-align:center;">Start server to preview (▶ Start Server)</span>';
+                cap.style.display = 'none';
+                return;
+            }
+            const url = API().mediaFileUrl(item.id);
+            if (item.type === 'video') {
+                previewVideo = document.createElement('video');
+                previewVideo.src = url;
+                previewVideo.controls = true;
+                previewVideo.playsInline = true;
+                box.appendChild(previewVideo);
+                cap.style.display = 'flex';
+                btn.disabled = false;
+                btn.onclick = captureFrame;
+            } else {
+                const img = document.createElement('img');
+                img.src = url;
+                box.appendChild(img);
+                cap.style.display = 'none';
+            }
+        }
+
+        async function captureFrame() {
+            if (!current || current.type !== 'video' || !serverOn) return;
+            const btn = document.getElementById('btnCapture');
+            btn.disabled = true;
+            try {
+                const ts = previewVideo ? previewVideo.currentTime : 0;
+                await API().captureThumbnail(current.id, ts);
+                UI().toast('Thumbnail saved to catalog + sidecar', 'ok');
+                await loadItems();
+            } catch (e) {
+                UI().toast('Capture failed: ' + e.message, 'warn');
+            }
+            btn.disabled = false;
+        }
+
+        async function saveDetail() {
+            if (!current) return;
+            const newName = document.getElementById('detailName').value.trim();
+            const tags = getDetailTags();
+            const patch = {
+                tags,
+                notes: document.getElementById('detailNotes').value.trim(),
+                rank: parseInt(document.getElementById('detailRank').dataset.rank || '0', 10),
+                category: document.getElementById('detailCategory').value,
+                status: document.getElementById('detailStatus').value,
+            };
+            try {
+                if (newName && newName !== current.name) {
+                    const ok = await UI().confirmAction({
+                        title: 'Rename on disk?',
+                        body: `Rename <strong>${current.name}</strong> → <strong>${newName}</strong>`,
+                        preview: [{ from: current.name, to: newName }],
+                        confirmText: 'Rename',
+                    });
+                    if (!ok.confirmed) return;
+                    current = await API().renameMedia(current.id, newName);
+                }
+                patch.write_file_tags = true;
+                current = await API().updateMedia(current.id, patch);
+                const fw = current.file_write;
+                if (fw && fw.ok === false) {
+                    UI().toast('Saved catalog; file metadata write failed: ' + (fw.errors || []).join('; '), 'warn');
+                } else if (fw && fw.ok) {
+                    UI().toast('Saved + wrote Explorer tags/rating', 'ok');
+                } else {
+                    UI().toast('Saved', 'ok');
+                }
+                await loadItems();
+                await refreshKnownTags();
+                selectItem(current);
+            } catch (e) { UI().toast(e.message, 'warn'); }
+        }
+
+        document.getElementById('searchInput').oninput = () => { page = 0; loadItems(); };
+        document.getElementById('filterType').onchange = () => { page = 0; loadItems(); };
+        document.getElementById('sortBy').onchange = () => { page = 0; loadItems(); };
+        document.getElementById('btnPrev').onclick = () => { if (page > 0) { page--; loadItems(); } };
+        document.getElementById('btnNext').onclick = () => {
+            if (page < Math.ceil(total / PAGE_SIZE) - 1) { page++; loadItems(); }
+        };
+        document.getElementById('btnSelectPage').onclick = () => { items.forEach(i => selected.add(i.id)); renderTable(); };
+        document.getElementById('btnClearSel').onclick = () => { selected.clear(); renderTable(); };
+        document.getElementById('btnSave').onclick = saveDetail;
+        document.getElementById('detailName').addEventListener('keydown', e => { if (e.key === 'Enter') saveDetail(); });
+
+        document.getElementById('btnBatchMeta').onclick = async () => {
+            const cat = document.getElementById('batchCategory').value;
+            const st = document.getElementById('batchStatus').value;
+            if (!cat && !st) { UI().toast('Pick category or status', 'warn'); return; }
+            const patch = {};
+            if (cat) patch.category = cat;
+            if (st) patch.status = st;
+            await API().batchUpdateMeta([...selected], patch);
+            selected.clear();
+            UI().toast('Batch metadata applied', 'ok');
+            await loadItems();
+        };
+        document.getElementById('btnBatchTag').onclick = async () => {
+            document.getElementById('tagModal').classList.add('active');
+            await renderBatchTagLibrary();
+        };
+        document.getElementById('btnTagCancel').onclick = () => document.getElementById('tagModal').classList.remove('active');
+        document.getElementById('btnTagApply').onclick = async () => {
+            const tags = document.getElementById('batchTagInput').value.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+            if (tags.length) {
+                await API().batchAddTags([...selected], tags);
+                document.getElementById('tagModal').classList.remove('active');
+                document.getElementById('batchTagInput').value = '';
+                selected.clear();
+                await loadItems();
+                await refreshKnownTags();
+            }
+        };
+
+        // Tag autocomplete + library for detail panel
+        const tagInput = document.getElementById('tagInput');
+        tagInput.addEventListener('input', () => {
+            tagSuggestIdx = -1;
+            renderTagSuggestions(tagInput.value);
+        });
+        tagInput.addEventListener('focus', () => renderTagSuggestions(tagInput.value));
+        tagInput.addEventListener('keydown', e => {
+            const box = document.getElementById('tagSuggestions');
+            const items = box.classList.contains('show') ? [...box.querySelectorAll('[data-tag]')] : [];
+            if (e.key === 'ArrowDown' && items.length) {
+                e.preventDefault();
+                tagSuggestIdx = (tagSuggestIdx + 1) % items.length;
+                renderTagSuggestions(tagInput.value);
+            } else if (e.key === 'ArrowUp' && items.length) {
+                e.preventDefault();
+                tagSuggestIdx = tagSuggestIdx <= 0 ? items.length - 1 : tagSuggestIdx - 1;
+                renderTagSuggestions(tagInput.value);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (tagSuggestIdx >= 0 && items[tagSuggestIdx]) addDetailTag(items[tagSuggestIdx].dataset.tag);
+                else addTagsFromInput();
+            } else if (e.key === 'Escape') {
+                box.classList.remove('show');
+            } else if (e.key === 'Tab' && tagSuggestIdx >= 0 && items[tagSuggestIdx]) {
+                e.preventDefault();
+                addDetailTag(items[tagSuggestIdx].dataset.tag);
+            }
+        });
+        document.getElementById('tagLibFilter').addEventListener('input', renderTagLibrary);
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.tag-input-wrap')) {
+                document.getElementById('tagSuggestions').classList.remove('show');
+            }
+        });
+        document.getElementById('btnBatchRename').onclick = () => document.getElementById('renameModal').classList.add('active');
+        document.getElementById('btnRenameCancel').onclick = () => document.getElementById('renameModal').classList.remove('active');
+        document.getElementById('btnRenameApply').onclick = async () => {
+            const pattern = document.getElementById('renamePattern').value.trim();
+            if (!pattern) return;
+            await API().batchRename([...selected], pattern);
+            document.getElementById('renameModal').classList.remove('active');
+            selected.clear();
+            await loadItems();
+        };
+        document.getElementById('btnCopyPaths').onclick = async () => {
+            try {
+                const res = await API().resolvePaths([...selected]);
+                const text = (res.paths || []).filter(p => p.path).map(p => p.path).join('\r\n');
+                await navigator.clipboard.writeText(text);
+                UI().toast(`Copied ${(res.paths||[]).filter(p=>p.path).length} paths`, 'ok');
+            } catch (e) { UI().toast(e.message, 'warn'); }
+        };
+        document.getElementById('btnRescan').onclick = async () => {
+            const dirs = await API().listDirectories();
+            for (const d of dirs) await API().scanDirectory(d.id);
+            UI().toast('Rescan complete', 'ok');
+            await refreshVirtualFolders();
+            await loadItems();
+        };
+        document.getElementById('btnDebug').onclick = () => {
+            const d = window.AIToolboxDebug;
+            d?.setEnabled(!d?.enabled());
+            d?.enabled() ? d.boot() : d?.shutdown();
+        };
+
+        init();
+    </script>
+</body>
+</html>

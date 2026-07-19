@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git Repository Manager — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root{
+  --bg:#050508;--panel:#0c0f16;--panel2:#111827;--border:rgba(167,139,250,.22);
+  --accent:#a78bfa;--accent2:#818cf8;--ok:#4ade80;--warn:#fbbf24;--danger:#f87171;
+  --info:#60a5fa;--text:#e2e8f0;--muted:#64748b;--glow:0 0 14px rgba(167,139,250,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 20% -10%,#1e1b4b,var(--bg) 55%);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.92);position:sticky;top:0;z-index:20;backdrop-filter:blur(8px)}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.nav .title{color:var(--accent);letter-spacing:1.5px;font-size:13px;font-weight:700}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border)}
+.pill.ok{color:var(--ok)}.pill.bad{color:var(--danger)}.pill.warn{color:var(--warn)}
+.layout{display:grid;grid-template-columns:260px 1fr 320px;flex:1;min-height:0}
+@media(max-width:1100px){.layout{grid-template-columns:220px 1fr}.detail{display:none}}
+@media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{position:fixed;left:-280px;transition:.25s;z-index:15;height:100%}.sidebar.open{left:0}}
+.sidebar{background:var(--panel);border-right:1px solid var(--border);padding:16px 12px;overflow-y:auto}
+.sidebar h3{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:14px 8px 8px}
+.group-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;cursor:pointer;font-size:13px;border:1px solid transparent;margin-bottom:4px;transition:.15s}
+.group-item:hover,.group-item.active{background:rgba(167,139,250,.1);border-color:var(--border)}
+.group-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.group-count{margin-left:auto;font-size:11px;color:var(--muted)}
+.main{display:flex;flex-direction:column;min-width:0}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border);align-items:center;background:rgba(12,15,22,.6)}
+.search{flex:1;min-width:200px;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:10px;font-size:13px}
+.search:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+.btn{padding:8px 14px;border:1px solid var(--accent);background:rgba(167,139,250,.12);color:var(--accent);border-radius:9px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;transition:.15s}
+.btn:hover{background:var(--accent);color:#0f0a1a;box-shadow:var(--glow)}
+.btn.ghost{border-color:var(--border);color:var(--text);background:transparent}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent);background:rgba(167,139,250,.08)}
+.btn.sm{padding:5px 10px;font-size:11px}
+.btn.danger{border-color:var(--danger);color:var(--danger);background:rgba(248,113,113,.08)}
+.repo-grid{flex:1;overflow-y:auto;padding:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-content:start}
+.repo-card{background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;transition:.2s;position:relative}
+.repo-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--glow)}
+.repo-card.selected{border-color:var(--accent);box-shadow:var(--glow)}
+.repo-card.pinned::before{content:'★';position:absolute;top:10px;right:12px;color:var(--warn);font-size:12px}
+.repo-name{font-weight:700;font-size:15px;margin-bottom:4px;padding-right:20px}
+.repo-path{font-size:10px;color:var(--muted);font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px}
+.repo-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.tag{font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);text-transform:uppercase;letter-spacing:.04em}
+.tag.clean{color:var(--ok);border-color:rgba(74,222,128,.3)}
+.tag.dirty{color:var(--warn);border-color:rgba(251,191,36,.3)}
+.tag.ahead{color:var(--info);border-color:rgba(96,165,250,.3)}
+.tag.behind{color:var(--danger);border-color:rgba(248,113,113,.3)}
+.tag.diverged{color:var(--warn)}
+.repo-actions{display:flex;gap:6px;flex-wrap:wrap}
+.detail{background:var(--panel);border-left:1px solid var(--border);padding:18px;overflow-y:auto}
+.detail h2{font-size:18px;margin-bottom:6px;word-break:break-word}
+.detail .path{font-size:11px;color:var(--muted);font-family:Consolas,monospace;margin-bottom:16px;word-break:break-all}
+.detail-section{margin-bottom:18px}
+.detail-section h4{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px}
+.detail-actions{display:flex;flex-wrap:wrap;gap:8px}
+.commit-box{background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;line-height:1.5}
+.url-list{display:flex;flex-direction:column;gap:6px}
+.url-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:9px;font-size:11px}
+.url-item .name{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.url-item .url{color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-bg.show{display:flex}
+.modal{background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal h3{color:var(--accent);margin-bottom:14px;font-size:16px}
+.modal label{display:block;font-size:11px;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.06em}
+.modal input,.modal select,.modal textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:9px;font-size:13px}
+.modal .row{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+.empty{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted)}
+.empty .icon{font-size:48px;margin-bottom:12px;opacity:.5}
+.log-bar{padding:8px 18px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);font-family:Consolas,monospace;min-height:32px;background:rgba(0,0,0,.2)}
+.tool-badge{font-size:10px;color:var(--muted);margin-left:8px}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <span class="title">GIT REPOSITORY MANAGER</span>
+  <span>
+    <span id="gitPill" class="pill bad">Checking…</span>
+    <span id="ghPill" class="pill bad">GitHub Desktop</span>
+  </span>
+</nav>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h3>Collections</h3>
+    <div id="groupList"></div>
+    <h3>Saved URLs</h3>
+    <div id="savedUrls" class="url-list"></div>
+    <button class="btn sm ghost" style="width:100%;margin-top:8px" id="btnAddUrl">+ Save URL</button>
+  </aside>
+
+  <section class="main">
+    <div class="toolbar">
+      <input class="search" id="search" placeholder="Search repositories…" type="search">
+      <button class="btn" id="btnScan">Scan PC</button>
+      <button class="btn" id="btnClone">Clone URL</button>
+      <button class="btn ghost" id="btnNewRepo">New Repo</button>
+      <button class="btn ghost sm" id="btnRefresh">Refresh</button>
+    </div>
+    <div class="repo-grid" id="repoGrid">
+      <div class="empty"><div class="icon">📂</div><p>Scan your PC or clone a repository to get started.</p></div>
+    </div>
+    <div class="log-bar" id="logBar">Ready</div>
+  </section>
+
+  <aside class="detail" id="detailPanel">
+    <p style="color:var(--muted);font-size:13px;padding-top:40px;text-align:center">Select a repository to view details and run actions.</p>
+  </aside>
+</div>
+
+<div class="modal-bg" id="modalClone">
+  <div class="modal">
+    <h3>Clone Repository</h3>
+    <label>Repository URL</label>
+    <input id="cloneUrl" placeholder="https://github.com/user/repo or user/repo">
+    <label>Clone into folder (optional)</label>
+    <input id="cloneDir" placeholder="Leave blank for default clone folder">
+    <label>Collection</label>
+    <select id="cloneGroup"></select>
+    <div class="row">
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" id="btnDoClone">Clone</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalNew">
+  <div class="modal">
+    <h3>Initialize New Repository</h3>
+    <label>Folder path</label>
+    <input id="newPath" placeholder="C:\Users\You\projects\my-new-app">
+    <label>Collection</label>
+    <select id="newGroup"></select>
+    <div class="row">
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" id="btnDoInit">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalUrl">
+  <div class="modal">
+    <h3>Save Repository URL</h3>
+    <label>URL</label>
+    <input id="saveUrl" placeholder="https://github.com/user/repo">
+    <label>Display name (optional)</label>
+    <input id="saveName" placeholder="Auto-detected from URL">
+    <div class="row">
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" id="btnDoSaveUrl">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+let state={repos:[],groups:[],savedUrls:[],activeGroup:'all',selected:null,filter:''};
+
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+function log(msg){document.getElementById('logBar').textContent=msg}
+
+async function api(path,opts={}){
+  const r=await fetch(API+path,{headers:{'Content-Type':'application/json'},...opts});
+  if(!r.ok){const e=await r.json().catch(()=>({detail:r.statusText}));throw new Error(e.detail||'API error')}
+  return r.json();
+}
+
+async function post(path,body){return api(path,{method:'POST',body:JSON.stringify(body)})}
+
+async function checkTooling(){
+  try{
+    await fetch(API+'/health',{signal:AbortSignal.timeout(2000)});
+    const t=await api('/git/tooling');
+    const gp=document.getElementById('gitPill');
+    const hp=document.getElementById('ghPill');
+    if(t.git_path){gp.className='pill ok';gp.textContent=t.git_version||'Git ready'}
+    else{gp.className='pill bad';gp.textContent='Git not found'}
+    if(t.github_desktop_available){hp.className='pill ok';hp.textContent='GitHub Desktop'}
+    else{hp.className='pill warn';hp.textContent='No GitHub Desktop'}
+  }catch{
+    document.getElementById('gitPill').className='pill bad';
+    document.getElementById('gitPill').textContent='Server offline';
+  }
+}
+
+function stateLabel(s){
+  const m={clean:'Clean',dirty:'Modified',ahead:'Ahead',behind:'Behind',diverged:'Diverged'};
+  return m[s]||s;
+}
+
+function filteredRepos(){
+  let list=state.repos;
+  if(state.activeGroup==='pinned')list=list.filter(r=>r.pinned);
+  else if(state.activeGroup!=='all')list=list.filter(r=>r.group_id===state.activeGroup);
+  const q=state.filter.toLowerCase();
+  if(q)list=list.filter(r=>(r.name+r.path+r.branch+r.remote_url).toLowerCase().includes(q));
+  return list;
+}
+
+function renderGroups(){
+  const counts={};
+  state.repos.forEach(r=>{counts[r.group_id]=(counts[r.group_id]||0)+1});
+  const pinned=state.repos.filter(r=>r.pinned).length;
+  let html=`<div class="group-item ${state.activeGroup==='all'?'active':''}" data-g="all"><span class="group-dot" style="background:var(--accent)"></span>All Repositories<span class="group-count">${state.repos.length}</span></div>`;
+  html+=`<div class="group-item ${state.activeGroup==='pinned'?'active':''}" data-g="pinned"><span class="group-dot" style="background:var(--warn)"></span>Pinned<span class="group-count">${pinned}</span></div>`;
+  state.groups.filter(g=>!['default','pinned'].includes(g.id)).forEach(g=>{
+    html+=`<div class="group-item ${state.activeGroup===g.id?'active':''}" data-g="${esc(g.id)}"><span class="group-dot" style="background:${esc(g.color||'#818cf8')}"></span>${esc(g.name)}<span class="group-count">${counts[g.id]||0}</span></div>`;
+  });
+  document.getElementById('groupList').innerHTML=html;
+  document.querySelectorAll('.group-item').forEach(el=>el.onclick=()=>{state.activeGroup=el.dataset.g;renderGroups();renderRepos()});
+}
+
+function renderSavedUrls(){
+  const el=document.getElementById('savedUrls');
+  if(!state.savedUrls.length){el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px">No saved URLs yet</div>';return}
+  el.innerHTML=state.savedUrls.map(u=>`
+    <div class="url-item" title="${esc(u.url)}">
+      <div style="flex:1;min-width:0">
+        <div class="name">${esc(u.name)}</div>
+        <div class="url">${esc(u.url)}</div>
+      </div>
+      <button class="btn sm" data-clone-url="${esc(u.url)}">Clone</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-clone-url]').forEach(b=>b.onclick=e=>{e.stopPropagation();quickClone(b.dataset.cloneUrl)});
+}
+
+function renderRepos(){
+  const list=filteredRepos();
+  const grid=document.getElementById('repoGrid');
+  if(!list.length){
+    grid.innerHTML='<div class="empty"><div class="icon">🔍</div><p>No repositories match. Try scanning your PC or cloning a URL.</p></div>';
+    return;
+  }
+  grid.innerHTML=list.map(r=>`
+    <div class="repo-card ${r.pinned?'pinned':''} ${state.selected===r.path?'selected':''}" data-path="${esc(r.path)}">
+      <div class="repo-name">${esc(r.name)}</div>
+      <div class="repo-path" title="${esc(r.path)}">${esc(r.path)}</div>
+      <div class="repo-meta">
+        <span class="tag">${esc(r.branch)}</span>
+        <span class="tag ${esc(r.state)}">${stateLabel(r.state)}${r.dirty_count?' · '+r.dirty_count:''}${r.ahead?' ↑'+r.ahead:''}${r.behind?' ↓'+r.behind:''}</span>
+      </div>
+      <div class="repo-actions">
+        <button class="btn sm" data-act="pull" data-path="${esc(r.path)}">Pull</button>
+        <button class="btn sm" data-act="push" data-path="${esc(r.path)}">Push</button>
+        <button class="btn sm ghost" data-act="fetch" data-path="${esc(r.path)}">Fetch</button>
+      </div>
+    </div>`).join('');
+
+  grid.querySelectorAll('.repo-card').forEach(card=>{
+    card.onclick=e=>{
+      if(e.target.closest('button'))return;
+      state.selected=card.dataset.path;
+      renderRepos();
+      renderDetail(card.dataset.path);
+    };
+  });
+  grid.querySelectorAll('[data-act]').forEach(btn=>btn.onclick=e=>{
+    e.stopPropagation();
+    gitAction(btn.dataset.act,btn.dataset.path);
+  });
+}
+
+function renderDetail(path){
+  const r=state.repos.find(x=>x.path===path);
+  const panel=document.getElementById('detailPanel');
+  if(!r){panel.innerHTML='<p style="color:var(--muted)">Not found</p>';return}
+  const g=state.groups.find(x=>x.id===r.group_id);
+  panel.innerHTML=`
+    <h2>${esc(r.name)} ${r.pinned?'★':''}</h2>
+    <div class="path">${esc(r.path)}</div>
+    <div class="detail-section">
+      <h4>Status</h4>
+      <div class="repo-meta">
+        <span class="tag">${esc(r.branch)}</span>
+        <span class="tag ${esc(r.state)}">${stateLabel(r.state)}</span>
+      </div>
+      ${r.remote_url?`<p style="font-size:11px;color:var(--muted);margin-top:8px;word-break:break-all">${esc(r.remote_url)}</p>`:''}
+    </div>
+    <div class="detail-section">
+      <h4>Last commit</h4>
+      <div class="commit-box">${r.last_commit?`<strong>${esc(r.last_commit_hash)}</strong> ${esc(r.last_commit)}<br><span style="color:var(--muted)">${esc(r.last_commit_when)}</span>`:'No commits yet'}</div>
+    </div>
+    <div class="detail-section">
+      <h4>Organize</h4>
+      <select id="detailGroup" style="width:100%;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:8px;font-size:12px">
+        ${state.groups.map(g=>`<option value="${esc(g.id)}" ${g.id===r.group_id?'selected':''}>${esc(g.name)}</option>`).join('')}
+      </select>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn sm ghost" id="btnPin">${r.pinned?'Unpin':'Pin'}</button>
+        <button class="btn sm danger" id="btnHide">Hide</button>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Actions</h4>
+      <div class="detail-actions">
+        <button class="btn" data-act="pull">Pull</button>
+        <button class="btn" data-act="push">Push</button>
+        <button class="btn ghost" data-act="fetch">Fetch</button>
+        <button class="btn ghost" data-act="folder">Open Folder</button>
+        <button class="btn ghost" data-act="gh">GitHub Desktop</button>
+      </div>
+    </div>`;
+
+  document.getElementById('detailGroup').onchange=async e=>{
+    await post('/git/organize',{path:r.path,group_id:e.target.value});
+    r.group_id=e.target.value;
+    renderGroups();renderRepos();
+  };
+  document.getElementById('btnPin').onclick=async()=>{
+    await post('/git/organize',{path:r.path,pinned:!r.pinned});
+    r.pinned=!r.pinned;
+    renderGroups();renderRepos();renderDetail(path);
+  };
+  document.getElementById('btnHide').onclick=async()=>{
+    if(!confirm('Hide this repo from the manager?'))return;
+    await post('/git/hide',{path:r.path});
+    state.selected=null;
+    await loadRepos();
+  };
+  panel.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>gitAction(b.dataset.act,r.path));
+}
+
+async function gitAction(act,path){
+  log(`${act}… ${path.split(/[/\\]/).pop()}`);
+  try{
+    if(act==='folder'){await post('/git/open-folder',{path});log('Opened folder');return}
+    if(act==='gh'){await post('/git/open-github-desktop',{path});log('Opened in GitHub Desktop');return}
+    const r=await post('/git/'+act,{path});
+    if(r.repo){
+      const idx=state.repos.findIndex(x=>x.path===path);
+      if(idx>=0)state.repos[idx]=r.repo;
+      renderRepos();
+      if(state.selected===path)renderDetail(path);
+    }
+    log(r.ok?(r.output||act+' complete'):'Error: '+(r.output||'failed'));
+  }catch(e){log('Error: '+e.message)}
+}
+
+async function loadRepos(){
+  log('Loading repositories…');
+  const d=await api('/git/repos');
+  state.repos=d.repos||[];
+  state.groups=d.groups||[];
+  state.savedUrls=d.saved_urls||[];
+  renderGroups();
+  renderSavedUrls();
+  renderRepos();
+  if(state.selected)renderDetail(state.selected);
+  log(`Loaded ${state.repos.length} repositories`);
+  fillGroupSelects();
+}
+
+function fillGroupSelects(){
+  ['cloneGroup','newGroup'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.innerHTML=state.groups.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
+  });
+}
+
+function openModal(id){document.getElementById(id).classList.add('show')}
+function closeModals(){document.querySelectorAll('.modal-bg').forEach(m=>m.classList.remove('show'))}
+
+async function quickClone(url){
+  document.getElementById('cloneUrl').value=url;
+  openModal('modalClone');
+}
+
+document.getElementById('btnScan').onclick=()=>{
+  log('Scanning for git repositories…');
+  const es=new EventSource(API+'/git/scan/stream');
+  es.onmessage=ev=>{
+    const d=JSON.parse(ev.data);
+    if(d.error){log('Scan error: '+d.error);es.close();return}
+    if(d.done){log(`Scan complete — ${d.result.found} repos found`);es.close();loadRepos();return}
+    if(d.message)log(d.message);
+  };
+};
+
+document.getElementById('btnRefresh').onclick=loadRepos;
+document.getElementById('btnClone').onclick=()=>openModal('modalClone');
+document.getElementById('btnNewRepo').onclick=()=>openModal('modalNew');
+document.getElementById('btnAddUrl').onclick=()=>openModal('modalUrl');
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
+document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)closeModals()});
+
+document.getElementById('btnDoClone').onclick=()=>{
+  const url=document.getElementById('cloneUrl').value.trim();
+  const dir=document.getElementById('cloneDir').value.trim();
+  const group=document.getElementById('cloneGroup').value;
+  if(!url)return;
+  closeModals();
+  log('Cloning '+url+'…');
+  let q=API+'/git/clone/stream?url='+encodeURIComponent(url)+'&group_id='+encodeURIComponent(group);
+  if(dir)q+='&target_dir='+encodeURIComponent(dir);
+  const es=new EventSource(q);
+  es.onmessage=ev=>{
+    const d=JSON.parse(ev.data);
+    if(d.error){log('Clone error: '+d.error);es.close();return}
+    if(d.done){log('Cloned to '+d.result.path);es.close();loadRepos();return}
+    if(d.message)log(d.message);
+  };
+};
+
+document.getElementById('btnDoInit').onclick=async()=>{
+  const path=document.getElementById('newPath').value.trim();
+  const group=document.getElementById('newGroup').value;
+  if(!path)return;
+  closeModals();
+  try{
+    const r=await post('/git/init',{path,group_id:group});
+    log('Created repo at '+r.path);
+    await loadRepos();
+    state.selected=r.path;
+    renderDetail(r.path);
+  }catch(e){log('Error: '+e.message)}
+};
+
+document.getElementById('btnDoSaveUrl').onclick=async()=>{
+  const url=document.getElementById('saveUrl').value.trim();
+  const name=document.getElementById('saveName').value.trim();
+  if(!url)return;
+  closeModals();
+  try{
+    await post('/git/saved-urls',{url,name});
+    log('URL saved');
+    await loadRepos();
+  }catch(e){log('Error: '+e.message)}
+};
+
+document.getElementById('search').oninput=e=>{state.filter=e.target.value;renderRepos()};
+
+checkTooling();
+loadRepos().catch(e=>log('Start server first (▶ Start Server in Launcher/Media Library, or START SERVER.bat): '+e.message));
+</script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+</body>
+</html>

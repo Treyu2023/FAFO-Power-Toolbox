@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FAFO Dynamic Video Wall</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html { 
+            width: 100%; 
+            height: 100%; 
+            background-color: #0b0b0c; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+        #setupOverlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(11, 11, 12, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            transition: opacity 0.5s ease;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #1d4ed8; }
+        #wallGrid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            width: 100vw;
+            height: 100vh;
+            gap: 6px;
+            padding: 6px;
+        }
+        .video-container {
+            position: relative;
+            background: #141416;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid #27272a;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Automatically scales without cropping or distorting */
+            background: #000;
+        }
+        .video-label {
+            position: absolute;
+            bottom: 4px;
+            left: 4px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 2px 6px;
+            font-size: 11px;
+            border-radius: 4px;
+            max-width: 90%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            pointer-events: none;
+            color: #a1a1aa;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="setupOverlay">
+        <h1 style="margin-bottom: 20px; font-weight: 400; letter-spacing: 1px;">FAFO VIDEO WALL</h1>
+        <button class="btn" id="loadDirectoryBtn">Select Media Directory</button>
+    </div>
+
+    <div id="wallGrid">
+        <div class="video-container"><video id="vid0" autoplay muted></video><div class="video-label" id="lbl0"></div></div>
+        <div class="video-container"><video id="vid1" autoplay muted></video><div class="video-label" id="lbl1"></div></div>
+        <div class="video-container"><video id="vid2" autoplay muted></video><div class="video-label" id="lbl2"></div></div>
+        <div class="video-container"><video id="vid3" autoplay muted></video><div class="video-label" id="lbl3"></div></div>
+        <div class="video-container"><video id="vid4" autoplay muted></video><div class="video-label" id="lbl4"></div></div>
+        <div class="video-container"><video id="vid5" autoplay muted></video><div class="video-label" id="lbl5"></div></div>
+        <div class="video-container"><video id="vid6" autoplay muted></video><div class="video-label" id="lbl6"></div></div>
+        <div class="video-container"><video id="vid7" autoplay muted></video><div class="video-label" id="lbl7"></div></div>
+    </div>
+
+    <script>
+        let videoFiles = [];
+        const totalSlots = 8;
+
+        document.getElementById('loadDirectoryBtn').addEventListener('click', async () => {
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                videoFiles = [];
+
+                // Scan directory for targeted formats
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file') {
+                        const nameLower = entry.name.toLowerCase();
+                        if (nameLower.endsWith('.mp4') || nameLower.endsWith('.webm') || nameLower.endsWith('.mkv') || nameLower.endsWith('.mov')) {
+                            videoFiles.push(entry);
+                        }
+                    }
+                }
+
+                if (videoFiles.length === 0) {
+                    alert("No supported video files (.mp4, .webm, .mkv, .mov) found in this directory.");
+                    return;
+                }
+
+                // Hide the configuration overlay
+                document.getElementById('setupOverlay').style.opacity = '0';
+                setTimeout(() => document.getElementById('setupOverlay').style.display = 'none', 500);
+
+                // Initialize all slots
+                for (let i = 0; i < totalSlots; i++) {
+                    setupPlayer(i);
+                }
+
+            } catch (err) {
+                console.warn("Directory access declined or failed:", err);
+            }
+        });
+
+        async function setupPlayer(slotId) {
+            const videoEl = document.getElementById(`vid${slotId}`);
+            const labelEl = document.getElementById(`lbl${slotId}`);
+
+            // Clean up previous tracking references to avoid memory leak build-ups
+            if (videoEl.src) {
+                URL.revokeObjectURL(videoEl.src);
+            }
+
+            // Pick a truly random file out of the collected array
+            const randomEntry = videoFiles[Math.floor(Math.random() * videoFiles.length)];
+            
+            try {
+                const file = await randomEntry.getFile();
+                const fileUrl = URL.createObjectURL(file);
+                
+                labelEl.textContent = randomEntry.name;
+                videoEl.src = fileUrl;
+                
+                // Explicitly trigger execution
+                videoEl.play().catch(e => console.log("Autoplay block protection caught:", e));
+            } catch (error) {
+                console.error(`Error loading file into slot ${slotId}, skipping instantly:`, error);
+                // Immediately pick another file if this file is corrupt or locked
+                setupPlayer(slotId);
+            }
+
+            // The Anti-Freeze Engine: Bind both natural finishes and decoding errors to cycle the slot
+            videoEl.onended = () => setupPlayer(slotId);
+            videoEl.onerror = () => {
+                console.warn(`Playback stalled or errored on slot ${slotId}. Forcing next generation.`);
+                setupPlayer(slotId);
+            };
+        }
+    </script>
+</body>
+</html>
