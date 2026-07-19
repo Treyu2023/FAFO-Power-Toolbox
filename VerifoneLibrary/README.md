@@ -65,6 +65,8 @@ Open **Commander Site Console** from the Toolbox Launcher (category Verifone). W
 1. Sync your machine-local backup folder into a site index (SQLite)
 2. Show visual cards + tech flags (MOP 28, DCR REWARDS, C-Site, pre/post snapshots)
 3. Generate a **pre-filled Pre-Reload Punch List** per site (master stays untouched)
+4. **Site survey** tab — network config + credentials (from `possecurity` when present) + fueling positions
+5. **Aerial layout** — drag/resize pumps, tanks, manholes, building, parking, driveway; saved under `survey\site-survey.json` (local only)
 
 Product name is **Commander**; XML namespaces may still say Sapphire historically.
 

@@ -276,6 +276,10 @@ class VfPunchBody(BaseModel):
     path: str | None = None
 
 
+class VfSurveyBody(BaseModel):
+    survey: dict | None = None
+
+
 @app.get("/api/verifone/status")
 def verifone_status():
     return vf.status(ROOT)
@@ -348,6 +352,34 @@ def verifone_set_root(body: VfRootBody):
     if not body.path:
         raise HTTPException(400, "path required")
     return {"ok": True, **vf.set_sites_root(body.path, ROOT)}
+
+
+@app.get("/api/verifone/sites/{site_id}/survey")
+def verifone_get_survey(site_id: str):
+    try:
+        survey = vf.get_survey(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    return {"ok": True, "survey": survey}
+
+
+@app.put("/api/verifone/sites/{site_id}/survey")
+def verifone_put_survey(site_id: str, body: VfSurveyBody):
+    if not body.survey:
+        raise HTTPException(400, "survey object required")
+    try:
+        result = vf.save_survey(site_id, body.survey)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    return result
+
+
+@app.post("/api/verifone/sites/{site_id}/survey/export-md")
+def verifone_export_survey_md(site_id: str):
+    try:
+        return vf.export_survey_markdown(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
 
 
 @app.post("/api/verifone/punch-list")

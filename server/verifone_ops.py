@@ -310,6 +310,128 @@ def _config_modules(mod_root: ET.Element | None) -> dict[str, dict[str, str]]:
     return out
 
 
+def _decode_gemcom_passwd(raw: str | None) -> str:
+    """
+    gemcomPasswd is often hex-encoded ASCII password padded with zeros.
+    Example: 33303238... -> '3028'. Returns '' if not decodable.
+    """
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    # already short plaintext-looking
+    if re.fullmatch(r"[A-Za-z0-9!@#$%^&*._\-]{1,12}", s) and not re.fullmatch(r"[0-9A-Fa-f]{16,}", s):
+        return s
+    if not re.fullmatch(r"[0-9A-Fa-f]+", s):
+        return ""
+    try:
+        if len(s) % 2:
+            s = s[:-1]
+        raw_bytes = bytes.fromhex(s)
+        # stop at first NUL
+        raw_bytes = raw_bytes.split(b"\x00")[0]
+        text = raw_bytes.decode("ascii", errors="ignore").strip()
+        # keep printable
+        text = "".join(ch for ch in text if 32 <= ord(ch) < 127)
+        return text
+    except (ValueError, UnicodeError):
+        return ""
+
+
+def _extract_employees(sec_root: ET.Element | None) -> list[dict[str, Any]]:
+    """Employee/login rows from possecurity.xml (passwords when gemcomPasswd decodes)."""
+    out: list[dict[str, Any]] = []
+    if sec_root is None:
+        return out
+    for el in sec_root.iter():
+        if _local(el.tag) != "employee":
+            continue
+        raw_pwd = el.attrib.get("gemcomPasswd") or el.attrib.get("password") or ""
+        decoded = _decode_gemcom_passwd(raw_pwd)
+        out.append(
+            {
+                "sysId": el.attrib.get("sysid") or "",
+                "name": el.attrib.get("name") or "",
+                "number": el.attrib.get("number") or "",
+                "securityLevel": el.attrib.get("securityLevel") or "",
+                "isCashier": el.attrib.get("isCashier") or "",
+                "password": decoded,
+                "passwordRawPresent": bool(raw_pwd),
+                "passwordDecoded": bool(decoded),
+                "source": "possecurity.xml",
+            }
+        )
+    return out
+
+
+def _extract_positions(modules: dict[str, dict[str, str]], equipment_stub: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per fueling position map from DCR position assignments + enabled fuel channels."""
+    positions: list[dict[str, Any]] = []
+    dcr_pos = modules.get("dcrPositions") or {}
+    # Map position number -> channel
+    assigned: dict[int, str] = {}
+    for k, v in dcr_pos.items():
+        m = re.match(r"dcrPosition(\d+)$", k, re.I)
+        if m and v and str(v).strip():
+            assigned[int(m.group(1))] = str(v).strip()
+
+    # Fuel channel position counts
+    fuel_meta = {c["channel"]: c for c in (equipment_stub.get("dispenserChannels") or [])}
+    dcr_meta = {c["channel"]: c for c in (equipment_stub.get("dcrChannels") or [])}
+
+    # Build position rows for assigned DCR positions
+    for pos in sorted(assigned.keys()):
+        ch = assigned[pos]
+        # Channel 01 -> dcrChannel01 / FuelChannel01 guess
+        ch_num = None
+        m = re.search(r"(\d+)", ch)
+        if m:
+            ch_num = int(m.group(1))
+        fuel_key = f"FuelChannel{ch_num:02d}" if ch_num is not None else ""
+        dcr_key = f"dcrChannel{ch_num:02d}" if ch_num is not None else ""
+        fuel = fuel_meta.get(fuel_key) or {}
+        dcr = dcr_meta.get(dcr_key) or {}
+        positions.append(
+            {
+                "position": pos,
+                "dcrChannel": ch,
+                "fuelChannel": fuel_key,
+                "dispenserBrand": fuel.get("brand") or "",
+                "dispenserDriver": fuel.get("driverType") or "",
+                "dcrBrand": dcr.get("brand") or "",
+                "dcrDriver": dcr.get("driverType") or "",
+                "portName": fuel.get("portName") or dcr.get("portName") or "",
+                "pumpSoftwareVersion": "",  # not typically in SMS; tech-fill
+                "crindSoftwareVersion": "",
+                "notes": "",
+            }
+        )
+
+    # If no DCR positions but fuel channel has totalFuelingPositions, synthesize 1..N
+    if not positions:
+        for fuel in equipment_stub.get("dispenserChannels") or []:
+            try:
+                n = int(fuel.get("positions") or 0)
+            except ValueError:
+                n = 0
+            for i in range(1, min(n, 32) + 1):
+                positions.append(
+                    {
+                        "position": i,
+                        "dcrChannel": "",
+                        "fuelChannel": fuel.get("channel") or "",
+                        "dispenserBrand": fuel.get("brand") or "",
+                        "dispenserDriver": fuel.get("driverType") or "",
+                        "dcrBrand": "",
+                        "dcrDriver": "",
+                        "portName": fuel.get("portName") or "",
+                        "pumpSoftwareVersion": "",
+                        "crindSoftwareVersion": "",
+                        "notes": "",
+                    }
+                )
+    return positions
+
+
 def _extract_equipment(mod_root: ET.Element | None, sap: ET.Element | None, dcr_cfg: ET.Element | None) -> dict[str, Any]:
     """
     Build equipment summary from managed modules + related files.
@@ -492,11 +614,18 @@ def _extract_equipment(mod_root: ET.Element | None, sap: ET.Element | None, dcr_
             }
         )
 
+    stub = {
+        "dispenserChannels": fuel_channels,
+        "dcrChannels": dcr_channels,
+    }
+    positions = _extract_positions(modules, stub)
+
     return {
         "dispenserBrands": dispenser_brands,
         "dispenserChannels": fuel_channels,
         "dcrBrands": dcr_brands,
         "dcrChannels": dcr_channels,
+        "fuelingPositions": positions,
         "tankMonitorType": "" if _is_none_device(tank_type) else tank_type,
         "tlsDeviceType": "" if _is_none_device(tls_type) else tls_type,
         "carWashType": "" if _is_none_device(cw_type) else cw_type,
@@ -552,6 +681,7 @@ def build_dossier(export_path: Path, root: Path) -> dict[str, Any]:
     pop = load("popcfg.xml")
     mod = load("managedmodulecfg.xml")
     sap = load("sapphireprop.xml")
+    sec = load("possecurity.xml")
 
     site_id = _text(si, "site") or _text(reg, "site") or _text(pay, "site")
     service_id = _text(si, "storeServiceID")
@@ -636,6 +766,7 @@ def build_dossier(export_path: Path, root: Path) -> dict[str, Any]:
 
     pop_enabled = _text(pop, "isPopEnable")
     equipment = _extract_equipment(mod, sap, dcr_site)
+    employees = _extract_employees(sec)
     # only configured modules (not full template catalog)
     modules = [m["name"] for m in equipment.get("configuredModules") or []]
 
@@ -742,6 +873,7 @@ def build_dossier(export_path: Path, root: Path) -> dict[str, Any]:
         "mobileFeatureEnabled": mobile_feature or "",
         "managedModules": modules[:40],
         "equipment": equipment,
+        "employees": employees,
         "techFlags": flags,
         "xmlFileCount": xml_count,
         "relativePath": rel,
@@ -1251,3 +1383,277 @@ def status(toolbox_root: Path) -> dict[str, Any]:
             toolbox_root / "VerifoneLibrary" / "Templates" / "Pre-Reload-Punch-List-MASTER.xml"
         ).is_file(),
     }
+
+
+# --- On-site survey (network, credentials, layout) — local only ---
+
+def _survey_path_for_export(export_path: Path) -> Path:
+    survey_dir = export_path / "survey"
+    survey_dir.mkdir(parents=True, exist_ok=True)
+    return survey_dir / "site-survey.json"
+
+
+def default_layout(positions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Starter aerial mockup: building + pump row + tanks/manholes placeholders."""
+    items: list[dict[str, Any]] = [
+        {"id": "bldg1", "type": "building", "x": 320, "y": 80, "w": 280, "h": 160, "label": "Store / building", "color": "#475569"},
+        {"id": "park1", "type": "parking", "x": 40, "y": 40, "w": 200, "h": 120, "label": "Parking", "color": "#64748b"},
+        {"id": "drive1", "type": "driveway", "x": 80, "y": 300, "w": 760, "h": 70, "label": "Driveway", "color": "#334155"},
+    ]
+    # pumps from positions
+    pos_list = positions or []
+    if not pos_list:
+        pos_list = [{"position": i} for i in range(1, 5)]
+    start_x = 160
+    for i, p in enumerate(pos_list[:16]):
+        n = p.get("position") or (i + 1)
+        items.append(
+            {
+                "id": f"pump{n}",
+                "type": "pump",
+                "x": start_x + (i % 8) * 90,
+                "y": 420 + (i // 8) * 90,
+                "w": 56,
+                "h": 56,
+                "label": f"Pump {n}",
+                "color": "#0ea5e9",
+                "meta": {"position": n},
+            }
+        )
+    items.extend(
+        [
+            {"id": "tank1", "type": "tank", "x": 820, "y": 100, "w": 70, "h": 70, "label": "Tank 1", "color": "#f59e0b"},
+            {"id": "tank2", "type": "tank", "x": 900, "y": 100, "w": 70, "h": 70, "label": "Tank 2", "color": "#f59e0b"},
+            {"id": "mh1", "type": "manhole", "x": 840, "y": 200, "w": 36, "h": 36, "label": "MH-1", "color": "#a78bfa"},
+            {"id": "mh2", "type": "manhole", "x": 900, "y": 200, "w": 36, "h": 36, "label": "MH-2", "color": "#a78bfa"},
+            {"id": "reg1", "type": "register", "x": 400, "y": 130, "w": 40, "h": 40, "label": "Reg 1", "color": "#34d399"},
+        ]
+    )
+    return {"width": 1000, "height": 700, "grid": 20, "items": items}
+
+
+def build_survey_template(dossier: dict[str, Any]) -> dict[str, Any]:
+    """Prefill survey fields from dossier; passwords/credentials from backup when available."""
+    eq = dossier.get("equipment") or {}
+    employees = dossier.get("employees") or []
+    net = eq.get("network") or {}
+    nic = eq.get("paymentNic") or {}
+    mnsp = eq.get("mnsp") or {}
+    positions = eq.get("fuelingPositions") or []
+
+    accounts = []
+    for e in employees:
+        accounts.append(
+            {
+                "name": e.get("name") or "",
+                "number": e.get("number") or "",
+                "securityLevel": e.get("securityLevel") or "",
+                "isCashier": e.get("isCashier") or "",
+                "password": e.get("password") or "",
+                "passwordDecoded": bool(e.get("passwordDecoded")),
+                "passwordRawPresent": bool(e.get("passwordRawPresent")),
+                "source": e.get("source") or "backup",
+                "notes": "" if e.get("password") else "Enter password on-site if not in backup",
+            }
+        )
+
+    # Ensure blank manager/config client rows for tech fill even if missing
+    if not any("MANAGER" in (a.get("name") or "").upper() for a in accounts):
+        accounts.append(
+            {
+                "name": "Config Client / Manager",
+                "number": "",
+                "securityLevel": "",
+                "isCashier": "",
+                "password": "",
+                "passwordDecoded": False,
+                "passwordRawPresent": False,
+                "source": "manual",
+                "notes": "Fill on-site (often not fully present in SMS XML)",
+            }
+        )
+
+    return {
+        "schema": "FAFO.Commander.SiteSurvey/1",
+        "product": "Commander",
+        "securityNotice": (
+            "Contains site credentials. Stored ONLY next to this export under survey\\site-survey.json. "
+            "Do not commit to git or share outside the tech team."
+        ),
+        "exportId": dossier.get("id") or "",
+        "customer": dossier.get("customer") or "",
+        "siteId": dossier.get("siteId") or "",
+        "displayName": dossier.get("displayName") or "",
+        "softwareVersion": dossier.get("softwareVersion") or "",
+        "updatedAt": None,
+        "siteInfo": {
+            "address": "",
+            "city": "",
+            "state": "",
+            "zip": dossier.get("postalCode") or "",
+            "phone": dossier.get("storePhone") or "",
+            "hours": "",
+            "contactName": "",
+            "contactPhone": "",
+            "brand": dossier.get("brand") or "",
+            "serviceId": dossier.get("serviceId") or "",
+            "helpDesk": dossier.get("helpDeskPhone") or "",
+            "techNotes": "",
+        },
+        "network": {
+            "lanIp": "",
+            "subnet": "",
+            "gateway": "",
+            "dns1": "8.8.8.8",
+            "dns2": "8.8.4.4",
+            "paymentNicIp": nic.get("emvIpOrHost") or "",
+            "paymentNicSubnet": "",
+            "paymentNicGateway": "",
+            "isolatedPaymentNic": "",
+            "mnspVariant": "",
+            "mnspRouter": mnsp.get("hostaddr") or nic.get("mnspRouter") or "",
+            "mnspPort": mnsp.get("port") or "",
+            "staticRoutes": "; ".join(
+                f"{r.get('name')}: {r.get('host')}" + (f":{r.get('port')}" if r.get("port") else "")
+                for r in (eq.get("hostRoutes") or [])
+            ),
+            "dailyMsgServer": net.get("DailyMsg.server.IP") or "",
+            "remoteServer": net.get("remote.server.hostname") or "",
+            "remoteServerPort": net.get("remote.server.port") or "",
+            "emvIp": nic.get("emvIpOrHost") or "",
+            "internetPathNotes": "",
+            "notes": "",
+        },
+        "credentials": {
+            "configClientUser": "",
+            "configClientPassword": "",
+            "csrPassword": "",
+            "maintenanceMenuPassword": "",
+            "accounts": accounts,
+            "notes": (
+                "SMS backups often include employee rows + gemcomPasswd (hex). "
+                "Decoded values shown when possible; confirm live on site."
+            ),
+        },
+        "forecourt": {
+            "dispenserBrands": eq.get("dispenserBrands") or [],
+            "dcrBrands": eq.get("dcrBrands") or [],
+            "tankMonitorType": eq.get("tankMonitorType") or "",
+            "carWashType": eq.get("carWashType") or "",
+            "positions": positions,
+            "notes": "Fill pump/CRIND firmware per position on-site when not in SMS export.",
+        },
+        "layout": default_layout(positions),
+    }
+
+
+def get_survey(site_key: str) -> dict[str, Any]:
+    row = get_site(site_key)
+    if not row:
+        raise FileNotFoundError("Site export not found")
+    export_path = Path(row["path"])
+    survey_file = _survey_path_for_export(export_path)
+    dossier = row.get("dossier") or {}
+    if not dossier.get("employees") and not dossier.get("equipment"):
+        # rebuild lightweight if old index
+        try:
+            root = Path(row.get("root_path") or export_path.parent)
+            dossier = build_dossier(export_path, root)
+        except Exception:
+            dossier = row.get("dossier") or {}
+
+    template = build_survey_template(dossier)
+    if survey_file.is_file():
+        try:
+            saved = json.loads(survey_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            saved = {}
+        # merge: saved wins for filled fields; keep template structure
+        merged = _deep_merge(template, saved)
+        merged["path"] = str(survey_file)
+        merged["hasSaved"] = True
+        return merged
+
+    template["path"] = str(survey_file)
+    template["hasSaved"] = False
+    return template
+
+
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for k, v in (overlay or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def save_survey(site_key: str, survey: dict[str, Any]) -> dict[str, Any]:
+    row = get_site(site_key)
+    if not row:
+        raise FileNotFoundError("Site export not found")
+    export_path = Path(row["path"])
+    survey_file = _survey_path_for_export(export_path)
+    survey = dict(survey or {})
+    survey["schema"] = "FAFO.Commander.SiteSurvey/1"
+    survey["exportId"] = row.get("id") or site_key
+    survey["updatedAt"] = datetime.now().isoformat()
+    survey["path"] = str(survey_file)
+    # never write outside export
+    survey_file.parent.mkdir(parents=True, exist_ok=True)
+    survey_file.write_text(json.dumps(survey, indent=2), encoding="utf-8")
+    return {"ok": True, "path": str(survey_file), "updatedAt": survey["updatedAt"]}
+
+
+def export_survey_markdown(site_key: str) -> dict[str, Any]:
+    survey = get_survey(site_key)
+    row = get_site(site_key)
+    export_path = Path(row["path"]) if row else Path(".")
+    out_path = export_path / "survey" / "site-survey.md"
+    sb: list[str] = []
+    sb.append(f"# Site survey — {survey.get('displayName') or survey.get('siteId')}")
+    sb.append("")
+    sb.append(f"Customer: {survey.get('customer')}  ")
+    sb.append(f"Site ID: {survey.get('siteId')}  ")
+    sb.append(f"Software: {survey.get('softwareVersion')}  ")
+    sb.append(f"Updated: {survey.get('updatedAt') or '(not saved yet)'}")
+    sb.append("")
+    sb.append("> Local only — may contain passwords. Do not put in git.")
+    sb.append("")
+    si = survey.get("siteInfo") or {}
+    sb.append("## Site info")
+    for k, v in si.items():
+        sb.append(f"- **{k}**: {v}")
+    sb.append("")
+    net = survey.get("network") or {}
+    sb.append("## Network config")
+    for k, v in net.items():
+        sb.append(f"- **{k}**: {v}")
+    sb.append("")
+    cred = survey.get("credentials") or {}
+    sb.append("## Credentials")
+    sb.append(f"- Config Client user: {cred.get('configClientUser')}")
+    sb.append(f"- Config Client password: {cred.get('configClientPassword')}")
+    sb.append(f"- CSR password: {cred.get('csrPassword')}")
+    sb.append("")
+    sb.append("| Name | Number | Level | Password | Source |")
+    sb.append("| --- | --- | --- | --- | --- |")
+    for a in cred.get("accounts") or []:
+        sb.append(
+            f"| {a.get('name')} | {a.get('number')} | {a.get('securityLevel')} | {a.get('password')} | {a.get('source')} |"
+        )
+    sb.append("")
+    sb.append("## Forecourt positions")
+    sb.append("| Pos | Fuel ch | DCR ch | Disp brand | DCR brand | Pump FW | CRIND FW | Notes |")
+    sb.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+    for p in (survey.get("forecourt") or {}).get("positions") or []:
+        sb.append(
+            f"| {p.get('position')} | {p.get('fuelChannel')} | {p.get('dcrChannel')} | "
+            f"{p.get('dispenserBrand')} | {p.get('dcrBrand')} | "
+            f"{p.get('pumpSoftwareVersion')} | {p.get('crindSoftwareVersion')} | {p.get('notes')} |"
+        )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(sb), encoding="utf-8")
+    return {"ok": True, "path": str(out_path)}
+

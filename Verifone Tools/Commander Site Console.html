@@ -151,6 +151,32 @@
       box-shadow: var(--glow); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50;
     }
     .toast.show { opacity: 1; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+    .field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 3px; }
+    .field input, .field textarea, .field select {
+      width: 100%; background: #070b10; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 7px 8px; font-size: 12px;
+    }
+    .field textarea { min-height: 56px; resize: vertical; }
+    .warn-box {
+      background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fcd34d; border-radius: 10px; padding: 10px; font-size: 12px; margin-bottom: 10px;
+    }
+    .layout-wrap { display: grid; grid-template-columns: 150px 1fr; gap: 10px; }
+    @media (max-width: 900px) { .layout-wrap { grid-template-columns: 1fr; } }
+    .palette { display: flex; flex-direction: column; gap: 6px; }
+    .palette button { text-align: left; }
+    .canvas-box {
+      position: relative; background: #0a1018; border: 1px solid var(--line);
+      border-radius: 12px; overflow: auto; max-height: 560px;
+    }
+    #siteCanvas {
+      display: block; background-image:
+        linear-gradient(rgba(56,189,248,.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56,189,248,.06) 1px, transparent 1px);
+      background-size: 20px 20px; cursor: default; touch-action: none;
+    }
+    .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -199,6 +225,8 @@
     let activeTab = 'overview';
     let fileCache = null;
     let openFileName = null;
+    let survey = null;
+    let layoutState = { selectedId: null, drag: null, resize: null, tool: 'select' };
 
     const el = (id) => document.getElementById(id);
     function toast(msg, ms = 3200) {
@@ -303,6 +331,7 @@
       selectedGroupKey = groupKey;
       fileCache = null;
       openFileName = null;
+      survey = null;
       activeTab = 'overview';
       el('btnPunch').disabled = !id;
       renderCards(el('search').value);
@@ -325,6 +354,8 @@
         ['overview', 'Overview'],
         ['equipment', 'Equipment'],
         ['network', 'Network'],
+        ['survey', 'Site survey'],
+        ['layout', 'Aerial layout'],
         ['files', 'XML files'],
       ];
       const tabHtml = tabs.map(([k, lab]) =>
@@ -335,6 +366,8 @@
       if (activeTab === 'overview') body = renderOverview(s, d, eq);
       else if (activeTab === 'equipment') body = renderEquipment(eq, d);
       else if (activeTab === 'network') body = renderNetwork(eq, d);
+      else if (activeTab === 'survey') body = '<div class="empty">Loading survey…</div>';
+      else if (activeTab === 'layout') body = '<div class="empty">Loading layout…</div>';
       else if (activeTab === 'files') body = renderFilesShell();
 
       el('detail').innerHTML = `
@@ -355,10 +388,11 @@
         t.addEventListener('click', async () => {
           activeTab = t.dataset.tab;
           renderDetail();
-          if (activeTab === 'files') await loadFiles();
         });
       });
       if (activeTab === 'files') loadFiles();
+      if (activeTab === 'survey') loadSurveyUI();
+      if (activeTab === 'layout') loadLayoutUI();
     }
 
     function renderOverview(s, d, eq) {
@@ -401,13 +435,18 @@
       const mods = (eq.configuredModules || []).map(m =>
         `<tr><td>${esc(m.name)}</td><td>${esc(m.deviceType || m.brand || '—')}</td><td>${esc(Object.entries(m.props || {}).slice(0, 6).map(([k,v]) => k + '=' + v).join('; ') || '—')}</td></tr>`
       ).join('') || '<tr><td colspan="3">No non-default modules flagged as configured</td></tr>';
+      const posRows = (eq.fuelingPositions || []).map(p =>
+        `<tr><td>${esc(p.position)}</td><td>${esc(p.fuelChannel)}</td><td>${esc(p.dcrChannel)}</td><td>${esc(p.dispenserBrand)}</td><td>${esc(p.dcrBrand)}</td><td>${esc(p.portName)}</td><td>${esc(p.pumpSoftwareVersion || '—')}</td><td>${esc(p.crindSoftwareVersion || '—')}</td></tr>`
+      ).join('') || '<tr><td colspan="8">No fueling positions mapped</td></tr>';
+      const empRows = (d.employees || []).map(e =>
+        `<tr><td>${esc(e.name)}</td><td>${esc(e.number)}</td><td>${esc(e.securityLevel)}</td><td>${esc(e.password || (e.passwordRawPresent ? '(encoded)' : '—'))}</td><td>${e.passwordDecoded ? 'decoded' : (e.passwordRawPresent ? 'raw only' : 'missing')}</td></tr>`
+      ).join('') || '<tr><td colspan="5">No employees in possecurity.xml</td></tr>';
       const hw = eq.dcrHardware || {};
       return `
         <div class="section">
           <h3>Dispensers (enabled fuel channels only)</h3>
           <table class="soft"><thead><tr><th>Channel</th><th>Brand</th><th>Driver</th><th>Port</th><th>Positions</th></tr></thead>
           <tbody>${fuelRows}</tbody></table>
-          <p class="note">Brand deduced from driver family (G=Gilbarco, W=Wayne, T=Tokheim, …). Blank if channel not enabled.</p>
         </div>
         <div class="section">
           <h3>CRIND / DCR (enabled channels only)</h3>
@@ -418,25 +457,32 @@
             <tr><th>Screen</th><td>${esc(hw.screenSize || '—')}</td></tr>
             <tr><th>EMV IP</th><td>${esc(hw.emvIPAddress || '—')}</td></tr>
             <tr><th>NFC</th><td>${esc(hw.nfcMode || '—')}</td></tr>
-            <tr><th>EMV / Debit</th><td>${esc(hw.emvEnabled || '—')} / ${esc(hw.debitEnabled || '—')}</td></tr>
           </table>
+        </div>
+        <div class="section">
+          <h3>Fueling positions (from DCR position map)</h3>
+          <table class="soft"><thead><tr><th>Pos</th><th>Fuel</th><th>DCR</th><th>Disp brand</th><th>CRIND brand</th><th>Port</th><th>Pump FW</th><th>CRIND FW</th></tr></thead>
+          <tbody>${posRows}</tbody></table>
+          <p class="note">Pump/CRIND firmware usually not in SMS — fill under Site survey tab.</p>
+        </div>
+        <div class="section">
+          <h3>Employees / logins from backup (possecurity)</h3>
+          <table class="soft"><thead><tr><th>Name</th><th>#</th><th>Level</th><th>Password</th><th>Decode</th></tr></thead>
+          <tbody>${empRows}</tbody></table>
+          <p class="note">Passwords decoded from gemcomPasswd when possible. Confirm live. Full editable list is on Site survey tab.</p>
         </div>
         <div class="section">
           <h3>Tank / TLS / car wash</h3>
           <table class="soft">
-            <tr><th>Tank monitor</th><td>${esc(eq.tankMonitorType || '— (TLS-None / TANK-None omitted)')}</td></tr>
+            <tr><th>Tank monitor</th><td>${esc(eq.tankMonitorType || '—')}</td></tr>
             <tr><th>TLS device</th><td>${esc(eq.tlsDeviceType || '—')}</td></tr>
             <tr><th>Car wash</th><td>${esc(eq.carWashType || '—')}</td></tr>
           </table>
         </div>
         <div class="section">
-          <h3>Configured modules only (defaults like ESign/DVR omitted)</h3>
+          <h3>Configured modules only</h3>
           <table class="soft"><thead><tr><th>Module</th><th>Device</th><th>Key props</th></tr></thead>
           <tbody>${mods}</tbody></table>
-        </div>
-        <div class="section">
-          <h3>Firmware versions</h3>
-          <p class="note">${Object.keys(eq.firmwareVersions || {}).length ? esc(JSON.stringify(eq.firmwareVersions)) : 'Not present in typical SMS XML exports — left blank when unavailable.'}</p>
         </div>`;
     }
 
@@ -586,6 +632,410 @@
       } catch (e) {
         toast(String(e.message || e));
       }
+    }
+
+    function fieldHtml(path, label, value, multiline = false) {
+      const v = value ?? '';
+      if (multiline) {
+        return `<div class="field"><label>${esc(label)}</label><textarea data-path="${esc(path)}">${esc(v)}</textarea></div>`;
+      }
+      return `<div class="field"><label>${esc(label)}</label><input data-path="${esc(path)}" value="${esc(v)}"></div>`;
+    }
+
+    function setByPath(obj, path, value) {
+      const parts = path.split('.');
+      let cur = obj;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        const m = p.match(/^(\w+)\[(\d+)\]$/);
+        if (m) {
+          const key = m[1], idx = +m[2];
+          if (!Array.isArray(cur[key])) cur[key] = [];
+          if (!cur[key][idx]) cur[key][idx] = {};
+          cur = cur[key][idx];
+        } else {
+          if (!cur[p] || typeof cur[p] !== 'object') cur[p] = {};
+          cur = cur[p];
+        }
+      }
+      const last = parts[parts.length - 1];
+      const m2 = last.match(/^(\w+)\[(\d+)\]$/);
+      if (m2) {
+        if (!Array.isArray(cur[m2[1]])) cur[m2[1]] = [];
+        cur[m2[1]][+m2[2]] = value;
+      } else {
+        cur[last] = value;
+      }
+    }
+
+    function bindSurveyFields(rootEl) {
+      rootEl.querySelectorAll('[data-path]').forEach(inp => {
+        const handler = () => {
+          if (!survey) return;
+          setByPath(survey, inp.dataset.path, inp.value);
+        };
+        inp.addEventListener('change', handler);
+        inp.addEventListener('input', handler);
+      });
+    }
+
+    async function loadSurveyUI() {
+      const body = el('detail').querySelector('#tabBody');
+      if (!body || !selectedExportId) return;
+      try {
+        const data = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey');
+        survey = data.survey;
+        body.innerHTML = renderSurvey(survey);
+        bindSurveyFields(body);
+        body.querySelector('#btnSaveSurvey')?.addEventListener('click', saveSurvey);
+        body.querySelector('#btnExportSurveyMd')?.addEventListener('click', exportSurveyMd);
+        body.querySelector('#btnAddAccount')?.addEventListener('click', () => {
+          survey.credentials = survey.credentials || {};
+          survey.credentials.accounts = survey.credentials.accounts || [];
+          survey.credentials.accounts.push({
+            name: '', number: '', securityLevel: '', password: '', source: 'manual', notes: ''
+          });
+          body.innerHTML = renderSurvey(survey);
+          bindSurveyFields(body);
+          body.querySelector('#btnSaveSurvey')?.addEventListener('click', saveSurvey);
+          body.querySelector('#btnExportSurveyMd')?.addEventListener('click', exportSurveyMd);
+        });
+      } catch (e) {
+        body.innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+      }
+    }
+
+    function renderSurvey(s) {
+      const net = s.network || {};
+      const si = s.siteInfo || {};
+      const cred = s.credentials || {};
+      const accounts = cred.accounts || [];
+      const positions = (s.forecourt || {}).positions || [];
+      const accRows = accounts.map((a, i) => `
+        <tr>
+          <td><input data-path="credentials.accounts[${i}].name" value="${esc(a.name || '')}"></td>
+          <td><input data-path="credentials.accounts[${i}].number" value="${esc(a.number || '')}" style="width:70px"></td>
+          <td><input data-path="credentials.accounts[${i}].securityLevel" value="${esc(a.securityLevel || '')}" style="width:50px"></td>
+          <td><input data-path="credentials.accounts[${i}].password" value="${esc(a.password || '')}" style="width:100px"></td>
+          <td style="font-size:10px;color:var(--muted)">${esc(a.source || '')}${a.passwordDecoded ? ' · decoded' : ''}</td>
+        </tr>`).join('') || '<tr><td colspan="5">No accounts yet</td></tr>';
+      const posRows = positions.map((p, i) => `
+        <tr>
+          <td>${esc(p.position)}</td>
+          <td>${esc(p.fuelChannel || '')}</td>
+          <td>${esc(p.dcrChannel || '')}</td>
+          <td>${esc(p.dispenserBrand || '')}</td>
+          <td>${esc(p.dcrBrand || '')}</td>
+          <td><input data-path="forecourt.positions[${i}].pumpSoftwareVersion" value="${esc(p.pumpSoftwareVersion || '')}" style="width:90px"></td>
+          <td><input data-path="forecourt.positions[${i}].crindSoftwareVersion" value="${esc(p.crindSoftwareVersion || '')}" style="width:90px"></td>
+          <td><input data-path="forecourt.positions[${i}].notes" value="${esc(p.notes || '')}"></td>
+        </tr>`).join('') || '<tr><td colspan="8">No positions mapped from backup</td></tr>';
+
+      return `
+        <div class="warn-box">${esc(s.securityNotice || 'May contain credentials — local only under survey\\\\site-survey.json')}</div>
+        <div class="layout-tools">
+          <button class="btn primary" id="btnSaveSurvey">💾 Save survey</button>
+          <button class="btn" id="btnExportSurveyMd">⬇ Export markdown</button>
+          <button class="btn" id="btnAddAccount">+ Account row</button>
+          <span class="status-pill ${s.hasSaved ? 'ok' : 'warn'}">${s.hasSaved ? 'Saved on disk' : 'Not saved yet'}</span>
+        </div>
+
+        <div class="section">
+          <h3>Site info (tech fill + prefill)</h3>
+          <div class="form-grid">
+            ${fieldHtml('siteInfo.address', 'Address', si.address)}
+            ${fieldHtml('siteInfo.city', 'City', si.city)}
+            ${fieldHtml('siteInfo.state', 'State', si.state)}
+            ${fieldHtml('siteInfo.zip', 'ZIP', si.zip)}
+            ${fieldHtml('siteInfo.phone', 'Phone', si.phone)}
+            ${fieldHtml('siteInfo.brand', 'Brand', si.brand)}
+            ${fieldHtml('siteInfo.serviceId', 'Service ID', si.serviceId)}
+            ${fieldHtml('siteInfo.helpDesk', 'Help desk', si.helpDesk)}
+            ${fieldHtml('siteInfo.contactName', 'On-site contact', si.contactName)}
+            ${fieldHtml('siteInfo.contactPhone', 'Contact phone', si.contactPhone)}
+            ${fieldHtml('siteInfo.hours', 'Hours', si.hours)}
+            ${fieldHtml('siteInfo.techNotes', 'Tech notes', si.techNotes, true)}
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Network config punch list</h3>
+          <div class="form-grid">
+            ${fieldHtml('network.lanIp', 'LAN IP', net.lanIp)}
+            ${fieldHtml('network.subnet', 'Subnet', net.subnet)}
+            ${fieldHtml('network.gateway', 'Gateway', net.gateway)}
+            ${fieldHtml('network.dns1', 'DNS primary', net.dns1)}
+            ${fieldHtml('network.dns2', 'DNS secondary', net.dns2)}
+            ${fieldHtml('network.paymentNicIp', 'Payment NIC / EMV IP', net.paymentNicIp)}
+            ${fieldHtml('network.paymentNicSubnet', 'Payment NIC subnet', net.paymentNicSubnet)}
+            ${fieldHtml('network.paymentNicGateway', 'Payment NIC gateway', net.paymentNicGateway)}
+            ${fieldHtml('network.isolatedPaymentNic', 'Isolated Payment NIC (Y/N + notes)', net.isolatedPaymentNic)}
+            ${fieldHtml('network.mnspVariant', 'MNSP variant / circuit', net.mnspVariant)}
+            ${fieldHtml('network.mnspRouter', 'MNSP router IP', net.mnspRouter)}
+            ${fieldHtml('network.mnspPort', 'MNSP port', net.mnspPort)}
+            ${fieldHtml('network.staticRoutes', 'Static routes / hosts', net.staticRoutes, true)}
+            ${fieldHtml('network.dailyMsgServer', 'DailyMsg server', net.dailyMsgServer)}
+            ${fieldHtml('network.remoteServer', 'Remote server host', net.remoteServer)}
+            ${fieldHtml('network.remoteServerPort', 'Remote server port', net.remoteServerPort)}
+            ${fieldHtml('network.internetPathNotes', 'Internet / firewall path notes', net.internetPathNotes, true)}
+            ${fieldHtml('network.notes', 'Network notes', net.notes, true)}
+          </div>
+          <p class="note">Yellow-prefilled values came from SMS XML (MNSP, EMV IP, hosts). Full LAN/Payment NIC still confirm on site.</p>
+        </div>
+
+        <div class="section">
+          <h3>Credentials &amp; logins (Config Client / cashiers)</h3>
+          <div class="form-grid">
+            ${fieldHtml('credentials.configClientUser', 'Config Client user', cred.configClientUser)}
+            ${fieldHtml('credentials.configClientPassword', 'Config Client manager password', cred.configClientPassword)}
+            ${fieldHtml('credentials.csrPassword', 'CSR password', cred.csrPassword)}
+            ${fieldHtml('credentials.maintenanceMenuPassword', 'Maintenance menu password', cred.maintenanceMenuPassword)}
+          </div>
+          <table class="soft" style="margin-top:10px">
+            <thead><tr><th>Name</th><th>#</th><th>Lvl</th><th>Password</th><th>Source</th></tr></thead>
+            <tbody>${accRows}</tbody>
+          </table>
+          <p class="note">${esc(cred.notes || '')}</p>
+        </div>
+
+        <div class="section">
+          <h3>Fueling positions / CRIND · pump versions</h3>
+          <table class="soft">
+            <thead><tr><th>Pos</th><th>Fuel ch</th><th>DCR ch</th><th>Disp</th><th>CRIND</th><th>Pump FW</th><th>CRIND FW</th><th>Notes</th></tr></thead>
+            <tbody>${posRows}</tbody>
+          </table>
+        </div>`;
+    }
+
+    async function saveSurvey() {
+      if (!survey || !selectedExportId) return;
+      try {
+        const res = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey', {
+          method: 'PUT',
+          body: JSON.stringify({ survey }),
+        });
+        survey.hasSaved = true;
+        toast('Survey saved: ' + res.path, 5000);
+        if (activeTab === 'survey') loadSurveyUI();
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    async function exportSurveyMd() {
+      if (!selectedExportId) return;
+      try {
+        await saveSurvey();
+        const res = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey/export-md', {
+          method: 'POST', body: '{}'
+        });
+        toast('Markdown: ' + res.path, 5000);
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    async function loadLayoutUI() {
+      const body = el('detail').querySelector('#tabBody');
+      if (!body || !selectedExportId) return;
+      try {
+        if (!survey) {
+          const data = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey');
+          survey = data.survey;
+        }
+        if (!survey.layout) survey.layout = { width: 1000, height: 700, grid: 20, items: [] };
+        body.innerHTML = `
+          <div class="warn-box">Drag items to place equipment. Resize from bottom-right corner. Labels editable in the form under the map. Save survey to persist layout.</div>
+          <div class="layout-tools">
+            <button class="btn primary" id="btnSaveLayout">💾 Save layout</button>
+            <button class="btn" data-tool="select">Select / move</button>
+            <button class="btn" id="btnDelItem">Delete selected</button>
+            <button class="btn" id="btnResetLayout">Reset starter layout</button>
+          </div>
+          <div class="layout-wrap">
+            <div class="palette">
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Add</div>
+              ${['building','parking','driveway','pump','crind','tank','manhole','register','other'].map(t =>
+                `<button class="btn" data-add="${t}">+ ${t}</button>`).join('')}
+              <div class="field" style="margin-top:8px">
+                <label>Selected label</label>
+                <input id="selLabel" placeholder="Label">
+              </div>
+              <div class="field">
+                <label>Width</label><input id="selW" type="number" min="16" step="4">
+              </div>
+              <div class="field">
+                <label>Height</label><input id="selH" type="number" min="16" step="4">
+              </div>
+            </div>
+            <div class="canvas-box">
+              <canvas id="siteCanvas" width="${survey.layout.width || 1000}" height="${survey.layout.height || 700}"></canvas>
+            </div>
+          </div>
+          <p class="note">Tip: place pumps to match driveway flow; tanks/manholes on the tank farm side. Layout saves with the site survey JSON (local only).</p>
+        `;
+        wireLayoutEditor(body);
+      } catch (e) {
+        body.innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+      }
+    }
+
+    function wireLayoutEditor(rootEl) {
+      const canvas = rootEl.querySelector('#siteCanvas');
+      const ctx = canvas.getContext('2d');
+      const grid = survey.layout.grid || 20;
+      layoutState.selectedId = null;
+
+      function snap(v) { return Math.round(v / grid) * grid; }
+
+      function draw() {
+        const L = survey.layout;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // soft lot fill
+        ctx.fillStyle = 'rgba(15, 23, 32, 0.9)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        for (const it of L.items || []) {
+          const selected = it.id === layoutState.selectedId;
+          ctx.fillStyle = it.color || '#64748b';
+          ctx.globalAlpha = 0.9;
+          if (it.type === 'manhole' || it.type === 'tank') {
+            ctx.beginPath();
+            ctx.ellipse(it.x + it.w / 2, it.y + it.h / 2, it.w / 2, it.h / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            if (selected) { ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.stroke(); }
+          } else {
+            ctx.fillRect(it.x, it.y, it.w, it.h);
+            if (selected) {
+              ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2;
+              ctx.strokeRect(it.x, it.y, it.w, it.h);
+              // resize handle
+              ctx.fillStyle = '#f59e0b';
+              ctx.fillRect(it.x + it.w - 8, it.y + it.h - 8, 8, 8);
+            }
+          }
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#e8eef4';
+          ctx.font = '11px Segoe UI, sans-serif';
+          ctx.fillText(it.label || it.type, it.x + 4, it.y + 14);
+        }
+      }
+
+      function hitTest(x, y) {
+        const items = survey.layout.items || [];
+        for (let i = items.length - 1; i >= 0; i--) {
+          const it = items[i];
+          if (x >= it.x && x <= it.x + it.w && y >= it.y && y <= it.y + it.h) return it;
+        }
+        return null;
+      }
+
+      function syncSelForm() {
+        const it = (survey.layout.items || []).find(i => i.id === layoutState.selectedId);
+        rootEl.querySelector('#selLabel').value = it ? (it.label || '') : '';
+        rootEl.querySelector('#selW').value = it ? it.w : '';
+        rootEl.querySelector('#selH').value = it ? it.h : '';
+      }
+
+      canvas.onmousedown = (ev) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+        const it = hitTest(x, y);
+        if (it) {
+          layoutState.selectedId = it.id;
+          const onHandle = x >= it.x + it.w - 10 && y >= it.y + it.h - 10;
+          if (onHandle) {
+            layoutState.resize = { id: it.id, ox: x, oy: y, ow: it.w, oh: it.h };
+          } else {
+            layoutState.drag = { id: it.id, ox: x - it.x, oy: y - it.y };
+          }
+        } else {
+          layoutState.selectedId = null;
+        }
+        syncSelForm();
+        draw();
+      };
+      canvas.onmousemove = (ev) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+        if (layoutState.drag) {
+          const it = survey.layout.items.find(i => i.id === layoutState.drag.id);
+          if (it) {
+            it.x = snap(x - layoutState.drag.ox);
+            it.y = snap(y - layoutState.drag.oy);
+            draw();
+          }
+        } else if (layoutState.resize) {
+          const it = survey.layout.items.find(i => i.id === layoutState.resize.id);
+          if (it) {
+            it.w = Math.max(16, snap(layoutState.resize.ow + (x - layoutState.resize.ox)));
+            it.h = Math.max(16, snap(layoutState.resize.oh + (y - layoutState.resize.oy)));
+            syncSelForm();
+            draw();
+          }
+        }
+      };
+      canvas.onmouseup = () => { layoutState.drag = null; layoutState.resize = null; };
+      canvas.onmouseleave = () => { layoutState.drag = null; layoutState.resize = null; };
+
+      rootEl.querySelectorAll('[data-add]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const type = btn.dataset.add;
+          const id = type + '_' + Date.now().toString(36);
+          const colors = {
+            building: '#475569', parking: '#64748b', driveway: '#334155', pump: '#0ea5e9',
+            crind: '#22d3ee', tank: '#f59e0b', manhole: '#a78bfa', register: '#34d399', other: '#94a3b8'
+          };
+          survey.layout.items.push({
+            id, type, x: 40, y: 40, w: type === 'building' ? 160 : 48, h: type === 'building' ? 100 : 48,
+            label: type, color: colors[type] || '#94a3b8'
+          });
+          layoutState.selectedId = id;
+          syncSelForm();
+          draw();
+        });
+      });
+      rootEl.querySelector('#btnDelItem')?.addEventListener('click', () => {
+        if (!layoutState.selectedId) return;
+        survey.layout.items = survey.layout.items.filter(i => i.id !== layoutState.selectedId);
+        layoutState.selectedId = null;
+        syncSelForm();
+        draw();
+      });
+      rootEl.querySelector('#btnResetLayout')?.addEventListener('click', () => {
+        if (!confirm('Reset aerial layout to starter template?')) return;
+        const positions = (survey.forecourt && survey.forecourt.positions) || [];
+        // call default via simple rebuild from positions
+        survey.layout = {
+          width: 1000, height: 700, grid: 20,
+          items: [
+            { id: 'bldg1', type: 'building', x: 320, y: 80, w: 280, h: 160, label: 'Store / building', color: '#475569' },
+            { id: 'park1', type: 'parking', x: 40, y: 40, w: 200, h: 120, label: 'Parking', color: '#64748b' },
+            { id: 'drive1', type: 'driveway', x: 80, y: 300, w: 760, h: 70, label: 'Driveway', color: '#334155' },
+            ...positions.slice(0, 12).map((p, i) => ({
+              id: 'pump' + (p.position || i + 1), type: 'pump',
+              x: 160 + (i % 8) * 90, y: 420 + Math.floor(i / 8) * 90, w: 56, h: 56,
+              label: 'Pump ' + (p.position || i + 1), color: '#0ea5e9'
+            })),
+            { id: 'tank1', type: 'tank', x: 820, y: 100, w: 70, h: 70, label: 'Tank 1', color: '#f59e0b' },
+            { id: 'mh1', type: 'manhole', x: 840, y: 200, w: 36, h: 36, label: 'MH-1', color: '#a78bfa' },
+          ]
+        };
+        draw();
+      });
+      rootEl.querySelector('#btnSaveLayout')?.addEventListener('click', saveSurvey);
+      rootEl.querySelector('#selLabel')?.addEventListener('change', (e) => {
+        const it = survey.layout.items.find(i => i.id === layoutState.selectedId);
+        if (it) { it.label = e.target.value; draw(); }
+      });
+      rootEl.querySelector('#selW')?.addEventListener('change', (e) => {
+        const it = survey.layout.items.find(i => i.id === layoutState.selectedId);
+        if (it) { it.w = Math.max(16, +e.target.value || 16); draw(); }
+      });
+      rootEl.querySelector('#selH')?.addEventListener('change', (e) => {
+        const it = survey.layout.items.find(i => i.id === layoutState.selectedId);
+        if (it) { it.h = Math.max(16, +e.target.value || 16); draw(); }
+      });
+      draw();
     }
 
     el('search').addEventListener('input', () => renderCards(el('search').value));
