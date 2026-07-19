@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Commander Site Console · FAFO</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛽</text></svg>">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <style>
+    :root {
+      --bg: #05080c;
+      --panel: #0c1218;
+      --panel2: #101820;
+      --line: rgba(56, 189, 248, 0.18);
+      --accent: #38bdf8;
+      --accent2: #f59e0b;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --text: #e8eef4;
+      --muted: #8b9bb0;
+      --glow: 0 0 24px rgba(56, 189, 248, 0.25);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(14, 116, 144, 0.35), transparent 50%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(245, 158, 11, 0.12), transparent 45%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(8, 12, 18, 0.85);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .brand { display: flex; flex-direction: column; gap: 2px; }
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      text-shadow: var(--glow);
+    }
+    .brand .sub { font-size: 11px; color: var(--muted); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .btn {
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .btn:hover { background: var(--accent); color: #041018; box-shadow: var(--glow); }
+    .btn.primary { background: rgba(56, 189, 248, 0.15); }
+    .btn.amber { border-color: var(--accent2); color: var(--accent2); }
+    .btn.amber:hover { background: var(--accent2); color: #1a1200; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+    input[type="search"], input[type="text"] {
+      background: #0a1016;
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      min-width: 200px;
+      font-size: 13px;
+    }
+    .status-pill {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .status-pill.ok { border-color: rgba(52, 211, 153, 0.5); color: var(--good); }
+    .status-pill.warn { border-color: rgba(251, 191, 36, 0.5); color: var(--warn); }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 1.1fr) minmax(320px, 1fr);
+      gap: 0;
+      min-height: calc(100vh - 72px);
+    }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .list-pane {
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .list-meta {
+      padding: 10px 16px;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .cards {
+      overflow: auto;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+      align-content: start;
+    }
+    .card {
+      background: linear-gradient(160deg, var(--panel2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 12px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    }
+    .card:hover, .card.active {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+      transform: translateY(-2px);
+    }
+    .card h3 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .card .cust { font-size: 11px; color: var(--accent); margin-bottom: 6px; }
+    .card .meta { font-size: 10px; color: var(--muted); line-height: 1.4; }
+    .flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .chip {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .chip.good { background: rgba(52, 211, 153, 0.12); color: var(--good); border-color: rgba(52, 211, 153, 0.3); }
+    .chip.warn { background: rgba(251, 191, 36, 0.12); color: var(--warn); border-color: rgba(251, 191, 36, 0.3); }
+    .chip.amber { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border-color: rgba(245, 158, 11, 0.35); }
+
+    .detail-pane {
+      padding: 16px 18px 28px;
+      overflow: auto;
+      min-height: 0;
+    }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 48px 20px;
+      font-size: 14px;
+    }
+    .detail-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .detail-head h2 { margin: 0; font-size: 22px; color: var(--text); }
+    .detail-head .path { font-size: 11px; color: var(--muted); word-break: break-all; margin-top: 4px; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .kpi .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .kpi .val { font-size: 15px; font-weight: 700; margin-top: 4px; color: var(--accent); word-break: break-word; }
+    .section {
+      margin-top: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent2);
+    }
+    .section ul { margin: 0; padding-left: 18px; color: var(--text); font-size: 13px; }
+    .section li { margin: 4px 0; }
+    table.soft {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.soft th, table.soft td {
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    table.soft th { color: var(--muted); font-weight: 600; }
+    .toast {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      background: #0f1720;
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      max-width: 360px;
+      box-shadow: var(--glow);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 50;
+    }
+    .toast.show { opacity: 1; }
+    .note {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.45;
+    }
+    .settings-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>⛽ Commander Site Console</h1>
+      <div class="sub">VAPS / Commander config backups · tech dossiers · pre-filled punch lists</div>
+    </div>
+    <div class="toolbar">
+      <span id="serverPill" class="status-pill warn">Server…</span>
+      <input type="search" id="search" placeholder="Search customer, site, phone, ID…">
+      <button class="btn primary" id="btnSync">↻ Sync folder</button>
+      <button class="btn" id="btnSetRoot">📁 Set backup root</button>
+      <button class="btn amber" id="btnPunch" disabled>📋 Prefill punch list</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="list-pane">
+      <div class="list-meta">
+        <span id="listCount">0 sites</span>
+        <span id="rootLabel" title="">No root</span>
+      </div>
+      <div class="cards" id="cards">
+        <div class="empty">Start the toolbox server, then Sync your Commander backup folder.</div>
+      </div>
+    </section>
+    <section class="detail-pane" id="detail">
+      <div class="empty">
+        Select a site to interpret identity, fuel, payment, DCR, and C-Site signals from the SMS/XML export.<br><br>
+        <span style="color:var(--accent2)">Note:</span> XML namespaces may still say “Sapphire” — the product is <strong>Commander</strong>.
+      </div>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script>
+    const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+    let sites = [];
+    let selectedId = null;
+    let status = null;
+
+    const el = (id) => document.getElementById(id);
+    function toast(msg, ms = 3200) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(() => t.classList.remove('show'), ms);
+    }
+
+    async function api(path, opts = {}) {
+      const r = await fetch(apiBase() + path, {
+        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+        ...opts,
+      });
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) throw new Error(data.detail || data.message || r.statusText || 'Request failed');
+      return data;
+    }
+
+    async function refreshStatus() {
+      try {
+        const online = await (window.AIToolbox?.checkServer?.(true) ?? fetch(apiBase() + '/health').then(r => r.ok));
+        el('serverPill').textContent = online ? 'Server online' : 'Server offline';
+        el('serverPill').className = 'status-pill ' + (online ? 'ok' : 'warn');
+        if (!online) return false;
+        status = await api('/verifone/status');
+        el('rootLabel').textContent = status.sitesRoot || 'No backup root set';
+        el('rootLabel').title = status.sitesRoot || '';
+        el('listCount').textContent = `${status.exportCount || 0} indexed`;
+        return true;
+      } catch {
+        el('serverPill').textContent = 'Server offline';
+        el('serverPill').className = 'status-pill warn';
+        return false;
+      }
+    }
+
+    function chipsFor(s) {
+      const bits = [];
+      if (s.has_mobile_mop || s.hasMobileMop28) bits.push(['MOP 28', 'good']);
+      if (s.dcr_rewards || s.dcrRewardsSoftKey) bits.push(['REWARDS', 'amber']);
+      if (s.cloud_agent === '1' || s.cloud_agent === 'true') bits.push(['C-Site ON', 'good']);
+      else if (s.cloud_agent != null && s.cloud_agent !== '') bits.push(['C-Site file', 'warn']);
+      if ((s.snapshot || '').toLowerCase().includes('pre')) bits.push(['PRE', 'warn']);
+      if ((s.snapshot || '').toLowerCase().includes('post')) bits.push(['POST', 'good']);
+      return bits;
+    }
+
+    function renderCards(filter = '') {
+      const q = filter.trim().toLowerCase();
+      const filtered = !q ? sites : sites.filter(s => {
+        const blob = [
+          s.customer, s.site_label, s.display_name, s.site_id, s.service_id,
+          s.store_phone, s.relative_path, s.snapshot, s.named_tanks
+        ].join(' ').toLowerCase();
+        return blob.includes(q);
+      });
+      el('listCount').textContent = `${filtered.length} shown · ${sites.length} total`;
+      if (!filtered.length) {
+        el('cards').innerHTML = '<div class="empty">No matching Commander exports.</div>';
+        return;
+      }
+      el('cards').innerHTML = filtered.map(s => {
+        const chips = chipsFor(s).map(([t, c]) => `<span class="chip ${c}">${esc(t)}</span>`).join('');
+        return `<article class="card ${s.id === selectedId ? 'active' : ''}" data-id="${esc(s.id)}">
+          <div class="cust">${esc(s.customer || '')}</div>
+          <h3>${esc(s.display_name || s.site_label || 'Site')}</h3>
+          <div class="meta">
+            Site ID: <strong>${esc(s.site_id || '—')}</strong><br>
+            Svc: ${esc(s.service_id || '—')} · ${esc(s.store_phone || 'no phone')}<br>
+            ${esc(s.snapshot || s.relative_path || '')}
+          </div>
+          <div class="flags">${chips}</div>
+        </article>`;
+      }).join('');
+      el('cards').querySelectorAll('.card').forEach(card => {
+        card.addEventListener('click', () => selectSite(card.dataset.id));
+      });
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function selectSite(id) {
+      selectedId = id;
+      renderCards(el('search').value);
+      const s = sites.find(x => x.id === id);
+      el('btnPunch').disabled = !s;
+      if (!s) return;
+      const d = s.dossier || {};
+      const tanks = (d.namedTanks || []).map(t => t.name).join(', ') || s.named_tanks || '—';
+      const regs = (d.registerIds || (s.register_ids || '').split(',').filter(Boolean)).join(', ') || '—';
+      const flags = (d.techFlags || s.techFlags || []).map(f => `<li>${esc(f)}</li>`).join('') || '<li>None flagged</li>';
+      const modules = (d.managedModules || []).slice(0, 24).map(m => `<li>${esc(m)}</li>`).join('') || '<li>—</li>';
+      const soft = (d.dcrSoftKeys || []).slice(0, 16).map(k =>
+        `<tr><td>${esc(k.keyType)}</td><td>${esc(k.text)}</td></tr>`).join('') ||
+        '<tr><td colspan="2">—</td></tr>';
+
+      el('detail').innerHTML = `
+        <div class="detail-head">
+          <div>
+            <h2>${esc(s.display_name || s.site_label)}</h2>
+            <div class="path">${esc(s.customer)} · ${esc(s.relative_path || s.path)}</div>
+          </div>
+          <div class="toolbar">
+            <button class="btn amber" id="btnPunchDetail">📋 Prefill punch list</button>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="lbl">Site ID</div><div class="val">${esc(s.site_id || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Service ID</div><div class="val">${esc(s.service_id || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Store phone</div><div class="val">${esc(s.store_phone || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Postal</div><div class="val">${esc(s.postal_code || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Help desk</div><div class="val">${esc(s.help_desk || d.helpDeskPhone || '—')}</div></div>
+          <div class="kpi"><div class="lbl">XML files</div><div class="val">${esc(s.xml_count ?? d.xmlFileCount ?? '—')}</div></div>
+          <div class="kpi"><div class="lbl">Cloud agent</div><div class="val">${esc(s.cloud_agent || d.cloudAgentEnabled || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Product</div><div class="val">Commander</div></div>
+        </div>
+        <div class="section">
+          <h3>Tech flags (reload / verify)</h3>
+          <ul>${flags}</ul>
+          <p class="note">Use these as post-PSI checks. Full PSI reloads often need C-Site re-onboard even when SMS restores local config.</p>
+        </div>
+        <div class="section">
+          <h3>Registers &amp; fuel</h3>
+          <table class="soft">
+            <tr><th>Registers</th><td>${esc(regs)}</td></tr>
+            <tr><th>Named tanks</th><td>${esc(tanks)}</td></tr>
+            <tr><th>Mobile MOP 28</th><td>${(s.has_mobile_mop || d.hasMobileMop28) ? 'Yes' : 'No / unknown'}</td></tr>
+            <tr><th>DCR REWARDS key</th><td>${(s.dcr_rewards || d.dcrRewardsSoftKey) ? 'Present' : 'Not seen'}</td></tr>
+            <tr><th>POP enabled</th><td>${esc(d.popEnabled || '—')}</td></tr>
+          </table>
+        </div>
+        <div class="section">
+          <h3>DCR idle soft keys</h3>
+          <table class="soft"><thead><tr><th>Key type</th><th>Text</th></tr></thead><tbody>${soft}</tbody></table>
+        </div>
+        <div class="section">
+          <h3>Managed modules (sample)</h3>
+          <ul>${modules}</ul>
+        </div>
+        <div class="section">
+          <h3>Punch list prefill preview</h3>
+          <table class="soft">
+            <tr><th>Site name</th><td>${esc((d.prefill || {}).siteName || s.display_name)}</td></tr>
+            <tr><th>Customer</th><td>${esc(s.customer)}</td></tr>
+            <tr><th>Store #</th><td>${esc(s.site_id)}</td></tr>
+            <tr><th>Service ID</th><td>${esc(s.service_id)}</td></tr>
+            <tr><th>Phone</th><td>${esc(s.store_phone)}</td></tr>
+          </table>
+          <p class="note">Creates a working spreadsheet copy from the master template — master is never modified. Saved under the site <code>punchlists</code> folder when possible.</p>
+        </div>
+      `;
+      el('btnPunchDetail')?.addEventListener('click', () => makePunch(s.id));
+    }
+
+    async function loadSites() {
+      const data = await api('/verifone/sites');
+      sites = data.sites || [];
+      renderCards(el('search').value);
+      if (selectedId && sites.some(s => s.id === selectedId)) selectSite(selectedId);
+    }
+
+    async function syncNow() {
+      el('btnSync').disabled = true;
+      try {
+        toast('Scanning Commander backup folder…');
+        const res = await api('/verifone/sync', { method: 'POST', body: '{}' });
+        toast(`Synced ${res.count} export(s)` + (res.removed ? ` · removed ${res.removed} stale` : ''));
+        await refreshStatus();
+        await loadSites();
+      } catch (e) {
+        toast(String(e.message || e));
+      } finally {
+        el('btnSync').disabled = false;
+      }
+    }
+
+    async function setRoot() {
+      const path = prompt('Local Commander backup folder (not git):\nExample: C:\\\\Users\\\\you\\\\OneDrive\\\\WORK\\\\Backups\\\\Verifone Laptop storage\\\\NC', status?.sitesRoot || '');
+      if (!path) return;
+      try {
+        const res = await api('/verifone/root', { method: 'POST', body: JSON.stringify({ path }) });
+        toast('Backup root saved' + (res.LinkOk ? ' · junction OK' : ''));
+        await refreshStatus();
+        await syncNow();
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    async function makePunch(id) {
+      try {
+        toast('Building prefilled punch list…');
+        const res = await api('/verifone/punch-list', {
+          method: 'POST',
+          body: JSON.stringify({ id: id || selectedId }),
+        });
+        toast('Saved: ' + res.path, 6000);
+        if (res.path && navigator.clipboard?.writeText) {
+          try { await navigator.clipboard.writeText(res.path); } catch (_) {}
+        }
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    el('search').addEventListener('input', () => renderCards(el('search').value));
+    el('btnSync').addEventListener('click', syncNow);
+    el('btnSetRoot').addEventListener('click', setRoot);
+    el('btnPunch').addEventListener('click', () => makePunch(selectedId));
+
+    (async function init() {
+      const ok = await refreshStatus();
+      if (!ok) {
+        el('cards').innerHTML = '<div class="empty">Toolbox server offline. Start it from the toolbox, then refresh.</div>';
+        return;
+      }
+      try {
+        await loadSites();
+        if (!sites.length && status.sitesRoot) {
+          await syncNow();
+        } else if (!status.sitesRoot) {
+          el('cards').innerHTML = '<div class="empty">Set your local Commander backup root, then Sync.<br>Your path stays on this PC only.</div>';
+        }
+      } catch (e) {
+        el('cards').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+      }
+    })();
+  </script>
+</body>
+</html>

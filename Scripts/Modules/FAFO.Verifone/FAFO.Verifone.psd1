@@ -1,6 +1,6 @@
 @{
     RootModule        = 'FAFO.Verifone.psm1'
-    ModuleVersion     = '1.4.0'
+    ModuleVersion     = '1.5.0'
     GUID              = 'e2f9a4b1-7c58-4d2e-9a01-3b6c8d5e4f70'
     Author            = 'FAFO Power Toolbox'
     CompanyName       = 'FAFO'
@@ -50,14 +50,19 @@
         'Update-FAFOVerifoneSapphireIndex',
         'Show-FAFOVerifoneSiteDossier',
         'Export-FAFOVerifoneSiteDossier',
-        'Get-FAFOVerifonePunchListPrefill'
+        'Get-FAFOVerifonePunchListPrefill',
+        'New-FAFOVerifonePunchListFromExport'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
-    AliasesToExport   = @()
+    AliasesToExport   = @(
+        'Find-FAFOVerifoneCommanderExport',
+        'Get-FAFOVerifoneCommanderDossier',
+        'Show-FAFOVerifoneCommanderSites'
+    )
     PrivateData       = @{
         PSData = @{
-            Tags = @('FAFO', 'Verifone', 'POS', 'PLU', 'Health', 'Backup', 'Library', 'Petro')
+            Tags = @('FAFO', 'Verifone', 'Commander', 'POS', 'PLU', 'Health', 'Backup', 'Library', 'Petro')
         }
     }
 }

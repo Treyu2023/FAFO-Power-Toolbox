@@ -1,6 +1,6 @@
 ﻿# FAFO.Verifone.psm1
 # Verifone POS backup analysis, site library, scripted edits, health + explore
-# Version: 1.4.0
+# Version: 1.5.0
 #
 # Design:
 #   1) Detect/load backup XML sets into structured objects (PLU/Dept focused)
@@ -2601,8 +2601,10 @@ function Test-FAFOVerifoneSapphireExportFolder {
 function Find-FAFOVerifoneSapphireExport {
     <#
     .SYNOPSIS
-      Discover Sapphire SMS export folders under a backup tree (does not move files).
+      Discover Commander SMS export folders under a backup tree (does not move files).
     .DESCRIPTION
+      Product branding: Commander (VAPS). Config XML namespaces historically say "Sapphire".
+
       Supports real-world laptop/cloud layouts:
         Customer\SiteId\*.xml
         Customer\*.xml (flat)
@@ -2612,6 +2614,8 @@ function Find-FAFOVerifoneSapphireExport {
     .EXAMPLE
       Find-FAFOVerifoneSapphireExport
       Find-FAFOVerifoneSapphireExport -Root 'D:\Backups\Verifone' -Customer '*CAP*'
+    .ALIAS
+      Find-FAFOVerifoneCommanderExport (same function name historically; use this cmdlet)
     #>
     [CmdletBinding()]
     param(
@@ -2953,7 +2957,7 @@ function Update-FAFOVerifoneSapphireIndex {
 function Show-FAFOVerifoneSiteDossier {
     <#
     .SYNOPSIS
-      Table/report of tech site dossiers from Sapphire exports under the local root.
+      Table/report of tech site dossiers from Commander SMS exports under the local root.
     .EXAMPLE
       Show-FAFOVerifoneSiteDossier
       Show-FAFOVerifoneSiteDossier -Customer '*CAP*'
@@ -2987,12 +2991,12 @@ function Show-FAFOVerifoneSiteDossier {
     }
 
     if ($rows.Count -eq 0) {
-        Write-Host "No Sapphire exports found under: $Root" -ForegroundColor Yellow
+        Write-Host "No Commander SMS exports found under: $Root" -ForegroundColor Yellow
         Write-Host "Set your data folder: Set-FAFOVerifoneSitesRoot -Browse" -ForegroundColor Gray
         return
     }
 
-    Write-Host "Sapphire exports under: $Root" -ForegroundColor Cyan
+    Write-Host "Commander exports under: $Root" -ForegroundColor Cyan
     $rows | Select-Object Customer, SiteLabel, Snapshot, SiteId, ServiceId, StorePhone, PostalCode,
         HasMobileMop28, DcrRewardsSoftKey, CloudAgentEnabled, XmlFileCount, DisplayName |
         Format-Table -AutoSize
@@ -3089,7 +3093,7 @@ function Export-FAFOVerifoneSiteDossier {
 function Get-FAFOVerifonePunchListPrefill {
     <#
     .SYNOPSIS
-      Map a Sapphire dossier (or export path) into punch-list header prefill fields.
+      Map a Commander dossier (or export path) into punch-list header prefill fields.
     #>
     [CmdletBinding()]
     param(
@@ -3117,6 +3121,88 @@ function Get-FAFOVerifonePunchListPrefill {
         }
     }
 }
+
+function New-FAFOVerifonePunchListFromExport {
+    <#
+    .SYNOPSIS
+      Create a pre-filled Pre-Reload Punch List working copy from a Commander export folder.
+    .DESCRIPTION
+      Copies the master SpreadsheetML template and fills site name, store #, phone, brand, and related fields.
+      Prefer the Commander Site Console GUI when the toolbox server is running.
+    .EXAMPLE
+      Find-FAFOVerifoneSapphireExport -Customer '*CAP*' | Select-Object -First 1 | New-FAFOVerifonePunchListFromExport
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [Alias('Path')]
+        [string]$ExportPath,
+
+        [string]$ToolboxRoot
+    )
+    process {
+        if (-not $ToolboxRoot) {
+            if (Get-Command Get-FAFOToolboxRoot -ErrorAction SilentlyContinue) {
+                $ToolboxRoot = Get-FAFOToolboxRoot
+            }
+            else {
+                $ToolboxRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+            }
+        }
+        $d = Get-FAFOVerifoneSiteDossier -ExportPath $ExportPath
+        if (-not $d) { throw "Could not read Commander export: $ExportPath" }
+
+        $master = Join-Path $ToolboxRoot 'VerifoneLibrary\Templates\Pre-Reload-Punch-List-MASTER.xml'
+        if (-not (Test-Path -LiteralPath $master)) { throw "Master punch list missing: $master" }
+
+        $punchDir = Join-Path $ExportPath 'punchlists'
+        if (-not (Test-Path -LiteralPath $punchDir)) {
+            New-Item -Path $punchDir -ItemType Directory -Force | Out-Null
+        }
+        $safeC = ConvertTo-FAFOSafeName $d.Customer 'Customer'
+        $safeS = ConvertTo-FAFOSafeName $(if ($d.SiteId) { $d.SiteId } else { $d.SiteLabel }) 'Site'
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $dest = Join-Path $punchDir ("Pre-Reload-PunchList_{0}_{1}_{2}.xml" -f $safeC, $safeS, $stamp)
+
+        Copy-Item -LiteralPath $master -Destination $dest -Force
+        $xmlText = [System.IO.File]::ReadAllText($dest, [System.Text.UTF8Encoding]::new($false))
+        $banner = "WORKING COPY - prefilled for $($d.Customer) / $($d.DisplayName) (site $($d.SiteId)). Master under Templates\."
+        $xmlText = [regex]::Replace(
+            $xmlText,
+            'MASTER TEMPLATE.{0,20}open via Launch-PreReload-PunchList so a dated working copy is created\. Do not type site data into the master file\.',
+            [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $banner }
+        )
+
+        function Set-LabelInput([string]$src, [string]$label, [string]$value) {
+            if ([string]::IsNullOrWhiteSpace($value)) { return $src }
+            $esc = [System.Security.SecurityElement]::Escape($value)
+            $pat = '(<Cell ss:StyleID="sLabel"><Data ss:Type="String">' + [regex]::Escape($label) + '</Data></Cell>[\s\S]*?<Cell[^>]*ss:StyleID="sInput"[^>]*><Data ss:Type="String">)([^<]*)(</Data></Cell>)'
+            return [regex]::Replace($src, $pat, {
+                    param($m)
+                    if ($m.Groups[2].Value.Trim()) { return $m.Value }
+                    return $m.Groups[1].Value + $esc + $m.Groups[3].Value
+                }, 1)
+        }
+
+        $xmlText = Set-LabelInput $xmlText 'Site Name' $d.DisplayName
+        $xmlText = Set-LabelInput $xmlText 'Site / Store #' $d.SiteId
+        $xmlText = Set-LabelInput $xmlText 'Date' (Get-Date -Format 'yyyy-MM-dd')
+        $xmlText = Set-LabelInput $xmlText 'Brand / MOC' 'Commander / CITGO VAPS'
+        $addrParts = @($d.StorePhone, $d.PostalCode) | Where-Object { $_ }
+        $addr = if ($addrParts) { $addrParts -join ', ' } else { $d.StorePhone }
+        $xmlText = Set-LabelInput $xmlText 'Address' $addr
+        $xmlText = Set-LabelInput $xmlText 'Maintenance phone' $d.StorePhone
+        $xmlText = Set-LabelInput $xmlText 'Registration / Service ID' $d.ServiceId
+
+        [System.IO.File]::WriteAllText($dest, $xmlText, [System.Text.UTF8Encoding]::new($false))
+        Write-FAFOVerifoneHost "Prefilled punch list: $dest" 'Green'
+        [PSCustomObject]@{ Path = $dest; Dossier = $d; Prefill = $d.Prefill }
+    }
+}
+
+Set-Alias -Name Find-FAFOVerifoneCommanderExport -Value Find-FAFOVerifoneSapphireExport
+Set-Alias -Name Get-FAFOVerifoneCommanderDossier -Value Get-FAFOVerifoneSiteDossier
+Set-Alias -Name Show-FAFOVerifoneCommanderSites -Value Show-FAFOVerifoneSiteDossier
 
 #endregion
 
@@ -3165,6 +3251,13 @@ Export-ModuleMember -Function @(
     'Update-FAFOVerifoneSapphireIndex',
     'Show-FAFOVerifoneSiteDossier',
     'Export-FAFOVerifoneSiteDossier',
-    'Get-FAFOVerifonePunchListPrefill'
+    'Get-FAFOVerifonePunchListPrefill',
+    'New-FAFOVerifonePunchListFromExport'
+)
+
+Export-ModuleMember -Alias @(
+    'Find-FAFOVerifoneCommanderExport',
+    'Get-FAFOVerifoneCommanderDossier',
+    'Show-FAFOVerifoneCommanderSites'
 )
 

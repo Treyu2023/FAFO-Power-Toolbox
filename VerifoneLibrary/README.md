@@ -58,7 +58,17 @@ Show-FAFOVerifoneLibrary
 Open-FAFOPath -Which VerifoneSites
 ```
 
-### What we can pull from Sapphire SMS XML (tech dossiers)
+### GUI
+
+Open **Commander Site Console** from the Toolbox Launcher (category Verifone). With the local server running it will:
+
+1. Sync your machine-local backup folder into a site index (SQLite)
+2. Show visual cards + tech flags (MOP 28, DCR REWARDS, C-Site, pre/post snapshots)
+3. Generate a **pre-filled Pre-Reload Punch List** per site (master stays untouched)
+
+Product name is **Commander**; XML namespaces may still say Sapphire historically.
+
+### What we can pull from Commander SMS XML (tech dossiers)
 
 | Source file | Useful fields |
 |-------------|----------------|

@@ -22,6 +22,7 @@ from pydantic import BaseModel
 import media_ops as ops
 import playlists as pl
 import debug_log as dbg
+import verifone_ops as vf
 from db import init_db
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -83,6 +84,10 @@ app.add_middleware(
 )
 
 init_db()
+try:
+    vf.ensure_tables()
+except Exception:
+    pass
 
 
 @app.middleware("http")
@@ -255,8 +260,113 @@ def health():
             "git_manager",
             "unique_bind",
             "tool_icons",
+            "commander_sites",
         ],
     }
+
+
+# --- Commander (VAPS) site backup console ---
+
+class VfRootBody(BaseModel):
+    path: str | None = None
+
+
+class VfPunchBody(BaseModel):
+    id: str | None = None
+    path: str | None = None
+
+
+@app.get("/api/verifone/status")
+def verifone_status():
+    return vf.status(ROOT)
+
+
+@app.get("/api/verifone/sites")
+def verifone_sites(
+    q: str | None = None,
+    customer: str | None = None,
+    root: str | None = None,
+):
+    return {"ok": True, "sites": vf.list_sites(q=q, customer=customer, root=root)}
+
+
+@app.get("/api/verifone/sites/{site_id}")
+def verifone_site_detail(site_id: str):
+    row = vf.get_site(site_id)
+    if not row:
+        raise HTTPException(404, "Site export not found — run Sync first")
+    return {"ok": True, "site": row}
+
+
+@app.post("/api/verifone/sync")
+def verifone_sync(body: VfRootBody | None = None):
+    root = (body.path if body else None) or vf.get_sites_root(ROOT)
+    if not root:
+        raise HTTPException(
+            400,
+            "No Commander backup root configured. Set path via /api/verifone/root or Setup-SitesDataDirectory.",
+        )
+    try:
+        result = vf.sync_root(root)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    return result
+
+
+@app.post("/api/verifone/root")
+def verifone_set_root(body: VfRootBody):
+    if not body.path:
+        raise HTTPException(400, "path required")
+    return {"ok": True, **vf.set_sites_root(body.path, ROOT)}
+
+
+@app.post("/api/verifone/punch-list")
+def verifone_punch_list(body: VfPunchBody):
+    row = None
+    if body.id:
+        row = vf.get_site(body.id)
+    if not row and body.path:
+        # build live dossier if path exists
+        p = Path(body.path)
+        root = vf.get_sites_root(ROOT)
+        if not p.is_dir():
+            raise HTTPException(404, f"Export path not found: {body.path}")
+        root_p = Path(root) if root else p.parent
+        try:
+            dossier = vf.build_dossier(p, root_p if root_p.is_dir() else p.parent)
+        except Exception as e:
+            raise HTTPException(500, f"Failed to read export: {e}") from e
+        result = vf.prefill_punch_list(ROOT, dossier)
+        return result
+    if not row:
+        raise HTTPException(400, "Provide site id or path")
+    dossier = row.get("dossier") or {}
+    if not dossier:
+        dossier = {
+            "customer": row.get("customer"),
+            "displayName": row.get("display_name"),
+            "siteId": row.get("site_id"),
+            "serviceId": row.get("service_id"),
+            "storePhone": row.get("store_phone"),
+            "postalCode": row.get("postal_code"),
+            "path": row.get("path"),
+            "relativePath": row.get("relative_path"),
+            "prefill": {
+                "siteName": row.get("display_name"),
+                "customer": row.get("customer"),
+                "storeNumber": row.get("site_id"),
+                "serviceId": row.get("service_id"),
+                "phone": row.get("store_phone"),
+                "postalCode": row.get("postal_code"),
+                "hasCSiteConfig": bool(row.get("cloud_agent") is not None),
+                "hasMobileMop28": bool(row.get("has_mobile_mop")),
+                "dcrRewardsKey": bool(row.get("dcr_rewards")),
+                "registerIds": row.get("register_ids") or "",
+                "namedTanks": row.get("named_tanks") or "",
+            },
+        }
+    result = vf.prefill_punch_list(ROOT, dossier)
+    return result
 
 
 # --- Shared tool icons (repo assets/tool-icons) ---
