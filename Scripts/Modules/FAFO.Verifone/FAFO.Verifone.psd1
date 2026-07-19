@@ -1,6 +1,6 @@
 @{
     RootModule        = 'FAFO.Verifone.psm1'
-    ModuleVersion     = '1.3.0'
+    ModuleVersion     = '1.4.0'
     GUID              = 'e2f9a4b1-7c58-4d2e-9a01-3b6c8d5e4f70'
     Author            = 'FAFO Power Toolbox'
     CompanyName       = 'FAFO'
@@ -43,7 +43,14 @@
         'Get-FAFOVerifoneEditScript',
         'Save-FAFOVerifoneEditScript',
         'Restore-FAFOVerifoneEditScript',
-        'Redo-FAFOVerifoneEditScript'
+        'Redo-FAFOVerifoneEditScript',
+        'Test-FAFOVerifoneSapphireExportFolder',
+        'Find-FAFOVerifoneSapphireExport',
+        'Get-FAFOVerifoneSiteDossier',
+        'Update-FAFOVerifoneSapphireIndex',
+        'Show-FAFOVerifoneSiteDossier',
+        'Export-FAFOVerifoneSiteDossier',
+        'Get-FAFOVerifonePunchListPrefill'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()

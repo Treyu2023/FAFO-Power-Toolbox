@@ -52,6 +52,6 @@ if (-not $health.OverallOk) {
 }
 
 Write-Host "Helpers: Invoke-FAFOSystemDiagnostics | Write-FAFOStatusReport -IncludeHealth | Invoke-FAFOGrokDiag | Get-FAFOReport | Open-FAFOPath -Which Device" -ForegroundColor DarkGray
-Write-Host "Verifone: Set-FAFOVerifoneSitesRoot -Browse | Add-FAFOVerifoneLibraryBackup | Show-FAFOVerifoneLibrary | Show-FAFOVerifoneHealthReport" -ForegroundColor DarkGray
-Write-Host "Sites:    Customer\\Site under local VerifoneSitesRoot (junction VerifoneLibrary\\Sites) — not git" -ForegroundColor DarkGray
+Write-Host "Verifone: Set-FAFOVerifoneSitesRoot -Browse | Show-FAFOVerifoneSiteDossier | Export-FAFOVerifoneSiteDossier -Json" -ForegroundColor DarkGray
+Write-Host "Sites:    local VerifoneSitesRoot (junction VerifoneLibrary\\Sites) - machine path in %LOCALAPPDATA%\\FAFO\\local-paths.json" -ForegroundColor DarkGray
 Write-Host "Demo:     Add-FAFOVerifoneLibraryBackup -Path (Get-FAFOVerifoneDemoBackupPath) -Customer 'Demo Customer LLC' -Location 'Main Street 12' -Force" -ForegroundColor DarkGray

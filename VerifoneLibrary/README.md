@@ -41,15 +41,38 @@ All FAFO apps should read **`VerifoneSitesRoot`** from that file (or env `FAFO_V
 ```powershell
 . .\Scripts\Initialize-FAFOSession.ps1
 
-# Pick / set data root + create junction
+# Pick / set data root + create junction (each tech uses their own folder)
 Set-FAFOVerifoneSitesRoot -Browse
+# Example (this machine only — never hardcode others' paths in git):
+# Set-FAFOVerifoneSitesRoot -Path 'C:\Users\you\OneDrive\WORK\Backups\Verifone Laptop storage\NC'
 
-# Ingest a USB/SMS backup export
+# Scan raw Sapphire SMS trees already on disk (Customer\Site\*.xml layouts)
+Show-FAFOVerifoneSiteDossier
+Update-FAFOVerifoneSapphireIndex
+Export-FAFOVerifoneSiteDossier -Json
+
+# Optional: formal ingest into original\working\scripts for scripted PLU edits
 Add-FAFOVerifoneLibraryBackup -Path 'E:\FromSite\SMSExport' -Customer 'Acme Petro' -Location 'Main Street 12'
 
 Show-FAFOVerifoneLibrary
 Open-FAFOPath -Which VerifoneSites
 ```
+
+### What we can pull from Sapphire SMS XML (tech dossiers)
+
+| Source file | Useful fields |
+|-------------|----------------|
+| `supportinfo.xml` | Site ID, Service ID, help desk phone |
+| `mainttelephone.xml` / `maintpostal.xml` | Store phone, postal code |
+| `registercfg.xml` | Register IDs, receipt/banner name |
+| `paymentcfg.xml` | MOP table — including **Mobile code 28** |
+| `fuelcfg.xml` / `fuelprices.xml` | Named tanks, products, prices |
+| `dcridlescreencfg.xml` | Idle soft keys — **REWARDS** |
+| `cloudagentprop.xml` | C-Site / Commander Central agent flags + service override |
+| `managedmodulecfg.xml` | Managed modules list |
+| `popcfg.xml` | POP enabled / mode |
+| `sapphireprop.xml` | Feature flags (e.g. mobile.feature.enabled) |
+| `PLUs.xml` + Maintenance datasets | Items / combos / mix-match (health + pricing tools) |
 
 ### Tracked in git (this folder)
 

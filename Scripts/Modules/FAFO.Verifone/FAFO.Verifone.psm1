@@ -1,6 +1,6 @@
 ﻿# FAFO.Verifone.psm1
 # Verifone POS backup analysis, site library, scripted edits, health + explore
-# Version: 1.3.0
+# Version: 1.4.0
 #
 # Design:
 #   1) Detect/load backup XML sets into structured objects (PLU/Dept focused)
@@ -2522,13 +2522,600 @@ function Show-FAFOVerifoneLibrary {
     )
     $sites = @(Get-FAFOVerifoneLibrarySite -MOC $MOC -Customer $Customer -Location $Location -SiteId $SiteId)
     if ($sites.Count -eq 0) {
-        Write-Host "No sites in library yet. Use Add-FAFOVerifoneLibraryBackup -Path <folder>" -ForegroundColor Yellow
+        Write-Host "No FAFO site.json library entries yet." -ForegroundColor Yellow
+        Write-Host "  Structured ingest: Add-FAFOVerifoneLibraryBackup -Path <folder>" -ForegroundColor Gray
+        Write-Host "  Raw Sapphire SMS tree: Get-FAFOVerifoneSapphireExport | Show-FAFOVerifoneSiteDossier" -ForegroundColor Gray
         Write-Host "Library root: $(Get-FAFOVerifoneLibraryRoot)" -ForegroundColor Gray
         return
     }
     Write-Host "Verifone library: $(Get-FAFOVerifoneLibraryRoot)" -ForegroundColor Cyan
     $sites | Format-Table MOC, Customer, Location, SiteId, Name, IngestedAt -AutoSize
     return $sites
+}
+
+#endregion
+
+#region Sapphire SMS export discovery + tech dossiers (raw cloud/laptop backup trees)
+
+function Read-FAFOVerifoneXmlDoc {
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    try {
+        $doc = New-Object System.Xml.XmlDocument
+        $doc.PreserveWhitespace = $false
+        $doc.Load($Path)
+        return $doc
+    }
+    catch {
+        try {
+            return [xml](Get-Content -LiteralPath $Path -Raw -ErrorAction Stop)
+        }
+        catch {
+            return $null
+        }
+    }
+}
+
+function Get-FAFOVerifoneXmlText {
+    param(
+        [System.Xml.XmlDocument]$Doc,
+        [string]$LocalName
+    )
+    if (-not $Doc) { return $null }
+    $n = $Doc.SelectSingleNode("//*[local-name()='$LocalName']")
+    if ($n -and -not [string]::IsNullOrWhiteSpace($n.InnerText)) {
+        return $n.InnerText.Trim()
+    }
+    return $null
+}
+
+function Get-FAFOVerifoneXmlPropValue {
+    param(
+        [System.Xml.XmlDocument]$Doc,
+        [string]$LocalName
+    )
+    if (-not $Doc) { return $null }
+    $n = $Doc.SelectSingleNode("//*[local-name()='$LocalName']")
+    if (-not $n) { return $null }
+    if ($n.HasAttribute('value')) { return $n.GetAttribute('value') }
+    if (-not [string]::IsNullOrWhiteSpace($n.InnerText)) { return $n.InnerText.Trim() }
+    return $null
+}
+
+function Test-FAFOVerifoneSapphireExportFolder {
+    <#
+    .SYNOPSIS
+      True if a folder looks like a Sapphire / Commander SMS config export root.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    $markers = @('poscfg.xml', 'supportinfo.xml', 'registercfg.xml', 'paymentcfg.xml', 'fuelcfg.xml', 'PLUs.xml')
+    $hits = 0
+    foreach ($m in $markers) {
+        if (Test-Path -LiteralPath (Join-Path $Path $m)) { $hits++ }
+    }
+    return ($hits -ge 2)
+}
+
+function Find-FAFOVerifoneSapphireExport {
+    <#
+    .SYNOPSIS
+      Discover Sapphire SMS export folders under a backup tree (does not move files).
+    .DESCRIPTION
+      Supports real-world laptop/cloud layouts:
+        Customer\SiteId\*.xml
+        Customer\*.xml (flat)
+        Customer\Site\version-label\*.xml
+        Customer\Pre Upgrade\*.xml
+      Default root is Get-FAFOVerifoneLibraryRoot (machine-local; others pick their own folder).
+    .EXAMPLE
+      Find-FAFOVerifoneSapphireExport
+      Find-FAFOVerifoneSapphireExport -Root 'D:\Backups\Verifone' -Customer '*CAP*'
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Root = (Get-FAFOVerifoneLibraryRoot),
+        [string]$Customer,
+        [int]$MaxDepth = 5
+    )
+
+    if (-not (Test-Path -LiteralPath $Root)) {
+        throw "Backup root not found: $Root"
+    }
+    $rootFull = (Resolve-Path -LiteralPath $Root).Path
+
+    $markerNames = @('poscfg.xml', 'supportinfo.xml')
+    $markerFiles = foreach ($name in $markerNames) {
+        Get-ChildItem -LiteralPath $rootFull -Filter $name -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object {
+                $rel = $_.DirectoryName.Substring($rootFull.Length).TrimStart('\')
+                ($rel.Split('\').Count) -le ($MaxDepth + 1)
+            }
+    }
+    $exportDirs = @($markerFiles | ForEach-Object { $_.Directory.FullName } | Sort-Object -Unique)
+
+    $results = foreach ($dir in $exportDirs) {
+        if (-not (Test-FAFOVerifoneSapphireExportFolder -Path $dir)) { continue }
+        $rel = $dir.Substring($rootFull.Length).TrimStart('\')
+        $parts = @($rel -split '[\\/]' | Where-Object { $_ })
+        $cust = if ($parts.Count -ge 1) { $parts[0] } else { Split-Path $dir -Leaf }
+        $siteLabel = if ($parts.Count -ge 2) { $parts[1] } else { $cust }
+        $snapshot = if ($parts.Count -ge 3) { ($parts[2..($parts.Count - 1)] -join '\') } else { '' }
+
+        if ($Customer -and ($cust -notlike $Customer)) { continue }
+
+        $xmlCount = @(Get-ChildItem -LiteralPath $dir -Filter '*.xml' -File -ErrorAction SilentlyContinue).Count
+        $names = @(Get-ChildItem -LiteralPath $dir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty Name)
+
+        [PSCustomObject]@{
+            PSTypeName   = 'FAFO.Verifone.SapphireExport'
+            Customer     = $cust
+            SiteLabel    = $siteLabel
+            Snapshot     = $snapshot
+            RelativePath = $rel
+            Path         = $dir
+            XmlFileCount = $xmlCount
+            HasSupport   = ($names -contains 'supportinfo.xml')
+            HasCloud     = ($names -contains 'cloudagentprop.xml')
+            HasFuel      = ($names -contains 'fuelcfg.xml')
+            HasPayment   = ($names -contains 'paymentcfg.xml')
+            HasDcrIdle   = ($names -contains 'dcridlescreencfg.xml')
+            HasManaged   = ($names -contains 'managedmodulecfg.xml')
+            HasPlus      = ($names -contains 'PLUs.xml')
+            Root         = $rootFull
+        }
+    }
+
+    $results | Sort-Object Customer, SiteLabel, Snapshot
+}
+
+function Get-FAFOVerifoneSiteDossier {
+    <#
+    .SYNOPSIS
+      Build a tech-facing site card from a Sapphire SMS export folder.
+    .DESCRIPTION
+      Pulls identity and reload-critical hints from supportinfo, maint*, register,
+      payment (MOP 28), fuel tanks, DCR REWARDS soft key, cloudagent (C-Site), etc.
+      Never modifies the backup XMLs.
+    .EXAMPLE
+      Get-FAFOVerifoneSapphireExport | Get-FAFOVerifoneSiteDossier
+      Get-FAFOVerifoneSiteDossier -Path '...\CAP\NC0023\POST 3.12.40'
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [Alias('Path')]
+        [string]$ExportPath,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$Customer,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$SiteLabel,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$Snapshot,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$RelativePath
+    )
+
+    process {
+        $path = $ExportPath
+        if (-not $path -and $_ -and $_.Path) { $path = $_.Path }
+
+        if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+            Write-Warning "Export path not found: $path"
+            return
+        }
+
+        $path = (Resolve-Path -LiteralPath $path).Path
+        $docSi = Read-FAFOVerifoneXmlDoc (Join-Path $path 'supportinfo.xml')
+        $docMt = Read-FAFOVerifoneXmlDoc (Join-Path $path 'mainttelephone.xml')
+        $docMp = Read-FAFOVerifoneXmlDoc (Join-Path $path 'maintpostal.xml')
+        $docCa = Read-FAFOVerifoneXmlDoc (Join-Path $path 'cloudagentprop.xml')
+        $docPay = Read-FAFOVerifoneXmlDoc (Join-Path $path 'paymentcfg.xml')
+        $docReg = Read-FAFOVerifoneXmlDoc (Join-Path $path 'registercfg.xml')
+        $docFuel = Read-FAFOVerifoneXmlDoc (Join-Path $path 'fuelcfg.xml')
+        $docPrices = Read-FAFOVerifoneXmlDoc (Join-Path $path 'fuelprices.xml')
+        $docDcr = Read-FAFOVerifoneXmlDoc (Join-Path $path 'dcridlescreencfg.xml')
+        $docPop = Read-FAFOVerifoneXmlDoc (Join-Path $path 'popcfg.xml')
+        $docMod = Read-FAFOVerifoneXmlDoc (Join-Path $path 'managedmodulecfg.xml')
+        $docSap = Read-FAFOVerifoneXmlDoc (Join-Path $path 'sapphireprop.xml')
+
+        $siteId = Get-FAFOVerifoneXmlText $docSi 'site'
+        if (-not $siteId) { $siteId = Get-FAFOVerifoneXmlText $docReg 'site' }
+        if (-not $siteId) { $siteId = Get-FAFOVerifoneXmlText $docPay 'site' }
+        $serviceId = Get-FAFOVerifoneXmlText $docSi 'storeServiceID'
+        $helpDesk = Get-FAFOVerifoneXmlText $docSi 'helpDeskPhoneNumber'
+        if (-not $helpDesk) { $helpDesk = Get-FAFOVerifoneXmlText $docSi 'helpDeskPhoneNumbers' }
+        $phone = Get-FAFOVerifoneXmlText $docMt 'maintStoreTelephoneNumber'
+        $zip = Get-FAFOVerifoneXmlText $docMp 'maintStorePostalCode'
+
+        $cloudEnabled = Get-FAFOVerifoneXmlPropValue $docCa 'cia.enableCloudAgent'
+        $cloudSiteOverride = Get-FAFOVerifoneXmlPropValue $docCa 'cia.overrideSiteID'
+        $cloudSvcOverride = Get-FAFOVerifoneXmlPropValue $docCa 'cia.overrideServiceID'
+        $cloudHost = Get-FAFOVerifoneXmlPropValue $docCa 'cia.overrideHostBaseURL'
+        if (-not $siteId -and $cloudSiteOverride) { $siteId = $cloudSiteOverride }
+        if (-not $serviceId -and $cloudSvcOverride) { $serviceId = $cloudSvcOverride }
+
+        $mops = @()
+        if ($docPay) {
+            $mops = @($docPay.SelectNodes('//*[local-name()="mopCode"]') | ForEach-Object {
+                    [PSCustomObject]@{
+                        SysId = $_.GetAttribute('sysid')
+                        Name  = $_.GetAttribute('name')
+                    }
+                })
+        }
+        $mop28 = @($mops | Where-Object { $_.SysId -eq '28' -or $_.Name -match 'MOBILE' }) | Select-Object -First 1
+
+        $registerIds = @()
+        $receiptName = $null
+        if ($docReg) {
+            $registerIds = @($docReg.SelectNodes('//*[local-name()="register"][@sysid]') |
+                    ForEach-Object { $_.GetAttribute('sysid') } | Sort-Object -Unique)
+            $logo = $docReg.SelectSingleNode('//*[local-name()="logo"][@sysid="2"]')
+            if ($logo -and $logo.GetAttribute('message')) {
+                $receiptName = $logo.GetAttribute('message')
+            }
+            elseif ($logo = $docReg.SelectSingleNode('//*[local-name()="banner"][@sysid="2"]')) {
+                $receiptName = $logo.GetAttribute('message')
+            }
+        }
+
+        $tanks = @()
+        if ($docFuel) {
+            $tanks = @($docFuel.SelectNodes('//*[local-name()="fuelTank"]') | ForEach-Object {
+                    $nm = $_.GetAttribute('name')
+                    if ($nm -match '^tank\d+$') { return }
+                    [PSCustomObject]@{
+                        SysId   = $_.GetAttribute('sysid')
+                        Name    = $nm
+                        ProdId  = $_.GetAttribute('NAXMLFuelProdID')
+                    }
+                } | Where-Object { $_ })
+        }
+
+        $fuelProducts = @()
+        if ($docPrices) {
+            $fuelProducts = @($docPrices.SelectNodes('//*[local-name()="fuelProduct"]') | ForEach-Object {
+                    [PSCustomObject]@{
+                        SysId  = $_.GetAttribute('sysid')
+                        Name   = $_.GetAttribute('name')
+                        Grade  = $_.GetAttribute('NAXMLFuelGradeID')
+                    }
+                })
+        }
+
+        $dcrRewards = $false
+        $dcrSoftkeys = @()
+        if ($docDcr) {
+            $rawKeys = @($docDcr.SelectNodes('//*[local-name()="softkey"]'))
+            foreach ($sk in $rawKeys) {
+                $kt = $sk.GetAttribute('keyType')
+                $tx = $sk.GetAttribute('text')
+                if ($kt -match 'REWARD' -or $tx -match 'REWARD') { $dcrRewards = $true }
+                if ($kt -and $kt -ne 'UNKNOWN') {
+                    $dcrSoftkeys += [PSCustomObject]@{ KeyType = $kt; Text = $tx }
+                }
+            }
+        }
+
+        $popEnabled = Get-FAFOVerifoneXmlText $docPop 'isPopEnable'
+        $modules = @()
+        if ($docMod) {
+            $modules = @($docMod.SelectNodes('//*[local-name()="module"]/*[local-name()="name"]') |
+                    ForEach-Object { $_.InnerText.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+            if ($modules.Count -eq 0) {
+                $modules = @($docMod.SelectNodes('//*[local-name()="name"]') |
+                        ForEach-Object { $_.InnerText.Trim() } | Where-Object { $_ -and $_.Length -lt 40 } |
+                        Sort-Object -Unique)
+            }
+        }
+
+        $mobileFeature = Get-FAFOVerifoneXmlPropValue $docSap 'mobile.feature.enabled'
+        $xmlCount = @(Get-ChildItem -LiteralPath $path -Filter '*.xml' -File -ErrorAction SilentlyContinue).Count
+
+        $techFlags = [System.Collections.Generic.List[string]]::new()
+        if ($mop28) { $techFlags.Add('Mobile MOP 28 present') }
+        if ($dcrRewards) { $techFlags.Add('DCR REWARDS soft key present') }
+        if ($cloudEnabled -eq '1' -or $cloudEnabled -eq 'yes' -or $cloudEnabled -eq 'true') {
+            $techFlags.Add('Cloud agent enabled in backup (C-Site path may still need re-onboard after PSI)')
+        }
+        elseif (Test-Path -LiteralPath (Join-Path $path 'cloudagentprop.xml')) {
+            $techFlags.Add('cloudagentprop present - plan optional C-Site re-link after PSI reload')
+        }
+        if ($popEnabled -eq '1') { $techFlags.Add('POP enabled') }
+        if ($Snapshot -match 'pre|PRE') { $techFlags.Add('Pre-upgrade snapshot folder') }
+        if ($Snapshot -match 'POST|post') { $techFlags.Add('Post-upgrade snapshot folder') }
+
+        $displayName = if ($receiptName) { $receiptName } elseif ($SiteLabel) { $SiteLabel } else { Split-Path $path -Leaf }
+
+        [PSCustomObject]@{
+            PSTypeName           = 'FAFO.Verifone.SiteDossier'
+            Customer             = $Customer
+            SiteLabel            = $SiteLabel
+            Snapshot             = $Snapshot
+            DisplayName          = $displayName
+            SiteId               = $siteId
+            ServiceId            = $serviceId
+            StorePhone           = $phone
+            PostalCode           = $zip
+            HelpDeskPhone        = $helpDesk
+            ReceiptBannerName    = $receiptName
+            CloudAgentEnabled    = $cloudEnabled
+            CloudSiteOverride    = $cloudSiteOverride
+            CloudServiceOverride = $cloudSvcOverride
+            CloudHostUrl         = $cloudHost
+            RegisterIds          = $registerIds
+            RegisterCount        = @($registerIds).Count
+            MobileMop            = $mop28
+            HasMobileMop28       = [bool]$mop28
+            NamedTanks           = $tanks
+            FuelProducts         = $fuelProducts
+            DcrRewardsSoftKey    = $dcrRewards
+            DcrSoftKeys          = $dcrSoftkeys
+            PopEnabled           = $popEnabled
+            MobileFeatureEnabled = $mobileFeature
+            ManagedModules       = $modules
+            TechFlags            = @($techFlags)
+            XmlFileCount         = $xmlCount
+            RelativePath         = $RelativePath
+            Path                 = $path
+            # Prefill blob for punch list / future apps (no secrets)
+            Prefill              = [PSCustomObject]@{
+                SiteName        = $displayName
+                Customer        = $Customer
+                StoreNumber     = $siteId
+                ServiceId       = $serviceId
+                Phone           = $phone
+                PostalCode      = $zip
+                HelpDesk        = $helpDesk
+                BrandOrMOC      = $null
+                HasCSiteConfig  = [bool](Test-Path -LiteralPath (Join-Path $path 'cloudagentprop.xml'))
+                HasMobileMop28  = [bool]$mop28
+                DcrRewardsKey   = $dcrRewards
+                RegisterIds     = ($registerIds -join ',')
+                NamedTanks      = (($tanks | ForEach-Object { $_.Name }) -join ', ')
+            }
+        }
+    }
+}
+
+function Update-FAFOVerifoneSapphireIndex {
+    <#
+    .SYNOPSIS
+      Scan the local sites root for Sapphire exports and write _sapphire_index.json.
+    .DESCRIPTION
+      Index is written under the data root (local-only; gitignored when under repo link).
+      Safe for OneDrive/cloud backup folders - never rewrites SMS XML.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Root = (Get-FAFOVerifoneLibraryRoot),
+        [string]$Customer
+    )
+
+    $exports = @(Find-FAFOVerifoneSapphireExport -Root $Root -Customer $Customer)
+    $dossiers = @($exports | Get-FAFOVerifoneSiteDossier)
+    $index = [PSCustomObject]@{
+        Schema    = 'FAFO.Verifone.SapphireIndex/1'
+        UpdatedAt = (Get-Date).ToString('o')
+        Root      = (Resolve-Path -LiteralPath $Root).Path
+        Count     = $dossiers.Count
+        Sites     = @($dossiers | ForEach-Object {
+                [PSCustomObject]@{
+                    Customer      = $_.Customer
+                    SiteLabel     = $_.SiteLabel
+                    Snapshot      = $_.Snapshot
+                    DisplayName   = $_.DisplayName
+                    SiteId        = $_.SiteId
+                    ServiceId     = $_.ServiceId
+                    StorePhone    = $_.StorePhone
+                    PostalCode    = $_.PostalCode
+                    Path          = $_.Path
+                    RelativePath  = $_.RelativePath
+                    XmlFileCount  = $_.XmlFileCount
+                    HasMobileMop28 = $_.HasMobileMop28
+                    DcrRewards    = $_.DcrRewardsSoftKey
+                    CloudAgent    = $_.CloudAgentEnabled
+                    TechFlags     = $_.TechFlags
+                    Prefill       = $_.Prefill
+                }
+            })
+    }
+
+    $indexPath = Join-Path $Root '_sapphire_index.json'
+    try {
+        $index | ConvertTo-Json -Depth 10 | Out-File -FilePath $indexPath -Encoding utf8
+        Write-FAFOVerifoneHost "Sapphire index: $indexPath ($($index.Count) export(s))" 'Green'
+    }
+    catch {
+        # OneDrive root may be read-only or pending - fall back to LocalAppData
+        $fallbackDir = Join-Path $env:LOCALAPPDATA 'FAFO\VerifoneIndexes'
+        if (-not (Test-Path -LiteralPath $fallbackDir)) {
+            New-Item -Path $fallbackDir -ItemType Directory -Force | Out-Null
+        }
+        $safe = ($Root -replace '[^\w\-]+', '_').Trim('_')
+        if ($safe.Length -gt 60) { $safe = $safe.Substring(0, 60) }
+        $indexPath = Join-Path $fallbackDir "$safe.json"
+        $index | ConvertTo-Json -Depth 10 | Out-File -FilePath $indexPath -Encoding utf8
+        Write-FAFOVerifoneHost "Sapphire index (LocalAppData fallback): $indexPath" 'Yellow'
+    }
+
+    $index | Add-Member -NotePropertyName IndexPath -NotePropertyValue $indexPath -Force
+    return $index
+}
+
+function Show-FAFOVerifoneSiteDossier {
+    <#
+    .SYNOPSIS
+      Table/report of tech site dossiers from Sapphire exports under the local root.
+    .EXAMPLE
+      Show-FAFOVerifoneSiteDossier
+      Show-FAFOVerifoneSiteDossier -Customer '*CAP*'
+      Show-FAFOVerifoneSiteDossier -Path '...\Smile Mart W Market GSO'
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Scan')]
+    param(
+        [Parameter(ParameterSetName = 'Scan')]
+        [string]$Root = (Get-FAFOVerifoneLibraryRoot),
+
+        [Parameter(ParameterSetName = 'Scan')]
+        [string]$Customer,
+
+        [Parameter(ParameterSetName = 'Path', Mandatory)]
+        [string]$Path,
+
+        [switch]$RefreshIndex
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq 'Path') {
+        $rows = @(Get-FAFOVerifoneSiteDossier -ExportPath $Path)
+    }
+    else {
+        if ($RefreshIndex) {
+            $idx = Update-FAFOVerifoneSapphireIndex -Root $Root -Customer $Customer
+            $rows = @($idx.Sites)
+        }
+        else {
+            $rows = @(Find-FAFOVerifoneSapphireExport -Root $Root -Customer $Customer | Get-FAFOVerifoneSiteDossier)
+        }
+    }
+
+    if ($rows.Count -eq 0) {
+        Write-Host "No Sapphire exports found under: $Root" -ForegroundColor Yellow
+        Write-Host "Set your data folder: Set-FAFOVerifoneSitesRoot -Browse" -ForegroundColor Gray
+        return
+    }
+
+    Write-Host "Sapphire exports under: $Root" -ForegroundColor Cyan
+    $rows | Select-Object Customer, SiteLabel, Snapshot, SiteId, ServiceId, StorePhone, PostalCode,
+        HasMobileMop28, DcrRewardsSoftKey, CloudAgentEnabled, XmlFileCount, DisplayName |
+        Format-Table -AutoSize
+    return $rows
+}
+
+function Export-FAFOVerifoneSiteDossier {
+    <#
+    .SYNOPSIS
+      Write a tech-readable Markdown (and optional JSON) pack from Sapphire dossiers.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Root = (Get-FAFOVerifoneLibraryRoot),
+        [string]$Customer,
+        [string]$Destination,
+        [switch]$Json
+    )
+
+    $rows = @(Find-FAFOVerifoneSapphireExport -Root $Root -Customer $Customer | Get-FAFOVerifoneSiteDossier)
+    if (-not $Destination) {
+        if (Get-Command Get-FAFOCommonPaths -ErrorAction SilentlyContinue) {
+            $paths = Get-FAFOCommonPaths
+            $Destination = Join-Path $paths.Markdown ("FAFO-Verifone-SiteDossiers-{0:yyyyMMdd-HHmmss}.md" -f (Get-Date))
+        }
+        else {
+            $Destination = Join-Path $env:TEMP ("FAFO-Verifone-SiteDossiers-{0:yyyyMMdd-HHmmss}.md" -f (Get-Date))
+        }
+    }
+
+    $dir = Split-Path -Parent $Destination
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+        New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    }
+
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine('# FAFO Verifone - Site dossiers (Sapphire SMS exports)')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine(('Generated: {0}' -f (Get-Date).ToString('o')))
+    [void]$sb.AppendLine(('Root: {0}' -f $Root))
+    [void]$sb.AppendLine(('Count: {0}' -f $rows.Count))
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('> Local backups only. Do not commit site XML to git.')
+    [void]$sb.AppendLine('')
+
+    foreach ($r in $rows) {
+        $titleName = if ($r.DisplayName) { $r.DisplayName } else { $r.SiteLabel }
+        [void]$sb.AppendLine(('## {0} / {1}' -f $r.Customer, $titleName))
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine('| Field | Value |')
+        [void]$sb.AppendLine('| --- | --- |')
+        [void]$sb.AppendLine(('| Snapshot path | {0} |' -f $r.RelativePath))
+        [void]$sb.AppendLine(('| Site ID | {0} |' -f $r.SiteId))
+        [void]$sb.AppendLine(('| Service ID | {0} |' -f $r.ServiceId))
+        [void]$sb.AppendLine(('| Store phone | {0} |' -f $r.StorePhone))
+        [void]$sb.AppendLine(('| Postal | {0} |' -f $r.PostalCode))
+        [void]$sb.AppendLine(('| Help desk | {0} |' -f $r.HelpDeskPhone))
+        [void]$sb.AppendLine(('| Registers | {0} |' -f ($r.RegisterIds -join ', ')))
+        [void]$sb.AppendLine(('| Mobile MOP 28 | {0} |' -f $r.HasMobileMop28))
+        [void]$sb.AppendLine(('| DCR REWARDS key | {0} |' -f $r.DcrRewardsSoftKey))
+        [void]$sb.AppendLine(('| Cloud agent | {0} |' -f $r.CloudAgentEnabled))
+        [void]$sb.AppendLine(('| Cloud svc override | {0} |' -f $r.CloudServiceOverride))
+        $tankNames = @($r.NamedTanks | ForEach-Object { $_.Name }) -join ', '
+        [void]$sb.AppendLine(('| Named tanks | {0} |' -f $tankNames))
+        [void]$sb.AppendLine(('| XML files | {0} |' -f $r.XmlFileCount))
+        [void]$sb.AppendLine('')
+        if (@($r.TechFlags).Count -gt 0) {
+            [void]$sb.AppendLine('**Tech flags**')
+            foreach ($f in $r.TechFlags) {
+                [void]$sb.AppendLine(('- {0}' -f $f))
+            }
+            [void]$sb.AppendLine('')
+        }
+    }
+
+    $sb.ToString() | Out-File -FilePath $Destination -Encoding utf8
+    Write-FAFOVerifoneHost "Dossier report: $Destination" 'Green'
+
+    $jsonPath = $null
+    if ($Json) {
+        $jsonPath = [System.IO.Path]::ChangeExtension($Destination, '.json')
+        $rows | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonPath -Encoding utf8
+        Write-FAFOVerifoneHost "JSON: $jsonPath" 'Green'
+    }
+
+    [PSCustomObject]@{
+        MarkdownPath = $Destination
+        JsonPath     = $jsonPath
+        Count        = $rows.Count
+        Root         = $Root
+    }
+}
+
+function Get-FAFOVerifonePunchListPrefill {
+    <#
+    .SYNOPSIS
+      Map a Sapphire dossier (or export path) into punch-list header prefill fields.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [object]$InputObject
+    )
+    process {
+        $d = $InputObject
+        if ($InputObject -is [string]) {
+            $d = Get-FAFOVerifoneSiteDossier -ExportPath $InputObject
+        }
+        elseif ($InputObject.PSObject.Properties['Path'] -and -not $InputObject.PSObject.Properties['Prefill']) {
+            $d = Get-FAFOVerifoneSiteDossier -ExportPath $InputObject.Path -Customer $InputObject.Customer -SiteLabel $InputObject.SiteLabel
+        }
+        if (-not $d) { return }
+        if ($d.Prefill) { return $d.Prefill }
+        [PSCustomObject]@{
+            SiteName       = $d.DisplayName
+            Customer       = $d.Customer
+            StoreNumber    = $d.SiteId
+            ServiceId      = $d.ServiceId
+            Phone          = $d.StorePhone
+            PostalCode     = $d.PostalCode
+            HasCSiteConfig = $true
+        }
+    }
 }
 
 #endregion
@@ -2570,6 +3157,14 @@ Export-ModuleMember -Function @(
     'Get-FAFOVerifoneEditScript',
     'Save-FAFOVerifoneEditScript',
     'Restore-FAFOVerifoneEditScript',
-    'Redo-FAFOVerifoneEditScript'
+    'Redo-FAFOVerifoneEditScript',
+    # Sapphire raw exports + tech dossiers
+    'Test-FAFOVerifoneSapphireExportFolder',
+    'Find-FAFOVerifoneSapphireExport',
+    'Get-FAFOVerifoneSiteDossier',
+    'Update-FAFOVerifoneSapphireIndex',
+    'Show-FAFOVerifoneSiteDossier',
+    'Export-FAFOVerifoneSiteDossier',
+    'Get-FAFOVerifonePunchListPrefill'
 )
 
