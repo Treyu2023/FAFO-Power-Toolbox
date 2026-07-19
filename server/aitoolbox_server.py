@@ -286,16 +286,46 @@ def verifone_sites(
     q: str | None = None,
     customer: str | None = None,
     root: str | None = None,
+    grouped: bool = True,
 ):
-    return {"ok": True, "sites": vf.list_sites(q=q, customer=customer, root=root)}
+    if grouped:
+        return {"ok": True, "grouped": True, "groups": vf.group_sites(q=q, customer=customer, root=root)}
+    return {"ok": True, "grouped": False, "sites": vf.list_sites(q=q, customer=customer, root=root)}
 
 
 @app.get("/api/verifone/sites/{site_id}")
 def verifone_site_detail(site_id: str):
     row = vf.get_site(site_id)
     if not row:
-        raise HTTPException(404, "Site export not found — run Sync first")
+        raise HTTPException(404, "Site export not found - run Sync first")
+    # attach equipment from dossier if present
+    d = row.get("dossier") or {}
+    row["equipment"] = d.get("equipment") or {}
+    row["softwareVersion"] = d.get("softwareVersion") or ""
+    row["brand"] = d.get("brand") or ""
     return {"ok": True, "site": row}
+
+
+@app.get("/api/verifone/sites/{site_id}/files")
+def verifone_site_files(site_id: str):
+    try:
+        files = vf.list_export_files(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+    return {"ok": True, "files": files}
+
+
+@app.get("/api/verifone/sites/{site_id}/files/{filename}")
+def verifone_site_file_content(site_id: str, filename: str):
+    try:
+        data = vf.read_export_file(site_id, filename)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+    return {"ok": True, **data}
 
 
 @app.post("/api/verifone/sync")
