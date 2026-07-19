@@ -57,9 +57,37 @@
     }
     .status-pill.ok { border-color: rgba(52,211,153,.5); color: var(--good); }
     .status-pill.warn { border-color: rgba(251,191,36,.5); color: var(--warn); }
-    .layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(360px, 1.15fr); min-height: calc(100vh - 70px); }
-    @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
-    .list-pane { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+    .layout {
+      display: flex; min-height: calc(100vh - 70px); width: 100%;
+    }
+    .list-pane {
+      flex: 0 0 var(--list-w, 320px);
+      width: var(--list-w, 320px);
+      max-width: 70vw;
+      min-width: 180px;
+      border-right: none;
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .split-handle {
+      flex: 0 0 6px;
+      cursor: col-resize;
+      background: linear-gradient(90deg, transparent, rgba(56,189,248,.35), transparent);
+      position: relative;
+      z-index: 5;
+    }
+    .split-handle:hover, .split-handle.dragging {
+      background: rgba(56,189,248,.55);
+    }
+    .detail-pane {
+      flex: 1 1 auto;
+      min-width: 240px;
+      padding: 14px 16px 28px; overflow: auto; min-height: 0;
+    }
+    @media (max-width: 700px) {
+      .layout { flex-direction: column; }
+      .list-pane { width: 100% !important; max-width: none; flex-basis: auto; max-height: 40vh; }
+      .split-handle { display: none; }
+    }
     .list-meta {
       padding: 10px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line);
       display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
@@ -101,7 +129,6 @@
     .ver-row:hover { background: rgba(56,189,248,.08); }
     .ver-row.active { border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.1); }
     .ver-row .tag { font-size: 9px; font-weight: 700; color: var(--good); text-transform: uppercase; }
-    .detail-pane { padding: 14px 16px 28px; overflow: auto; min-height: 0; }
     .empty { color: var(--muted); text-align: center; padding: 40px 16px; font-size: 14px; }
     .detail-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
     .detail-head h2 { margin: 0; font-size: 20px; }
@@ -137,13 +164,23 @@
     .file-item:hover, .file-item.active { border-color: var(--accent); }
     .file-item .sz { color: var(--muted); font-size: 10px; }
     .xml-view {
-      margin-top: 10px; background: #070b10; border: 1px solid var(--line); border-radius: 10px;
-      max-height: 420px; overflow: auto; padding: 10px;
+      margin-top: 10px; background: #0d1117; border: 1px solid var(--line); border-radius: 10px;
+      max-height: 480px; overflow: auto; padding: 10px 12px;
     }
-    .xml-view pre {
+    .xml-view pre, .xml-view code.xml-hl {
       margin: 0; white-space: pre-wrap; word-break: break-word;
-      font-family: ui-monospace, Consolas, monospace; font-size: 11px; line-height: 1.4; color: #d1e9f7;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11.5px; line-height: 1.45;
+      color: #c9d1d9;
     }
+    /* XML highlight: tags/markup one color, values/text another (Monokai-ish) */
+    .xml-hl .x-mark { color: #7ee787; }       /* < > / = and tag shell */
+    .xml-hl .x-tag { color: #79c0ff; }        /* element names */
+    .xml-hl .x-attr { color: #ffa657; }       /* attribute names */
+    .xml-hl .x-eq { color: #8b949e; }
+    .xml-hl .x-val { color: #a5d6ff; }        /* attribute values */
+    .xml-hl .x-text { color: #e6edf3; }       /* text content between tags */
+    .xml-hl .x-comment { color: #8b949e; font-style: italic; }
+    .xml-hl .x-decl { color: #d2a8ff; }       /* <?xml ... ?> */
     .note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
     .toast {
       position: fixed; bottom: 16px; right: 16px; background: #0f1720; border: 1px solid var(--accent);
@@ -194,8 +231,8 @@
     </div>
   </header>
 
-  <div class="layout">
-    <section class="list-pane">
+  <div class="layout" id="mainSplit">
+    <section class="list-pane" id="listPane">
       <div class="list-meta">
         <span id="listCount">0 sites</span>
         <span id="rootLabel">No root</span>
@@ -204,9 +241,11 @@
         <div class="empty">Start the toolbox server, then Sync your Commander backup folder.</div>
       </div>
     </section>
+    <div class="split-handle" id="splitHandle" title="Drag to resize panes"></div>
     <section class="detail-pane" id="detail">
       <div class="empty">
         Select a site. Same store with multiple software snapshots is stacked — latest on top.<br><br>
+        Drag the vertical bar to shrink the site list and give detail more room.<br><br>
         <span style="color:var(--accent2)">Note:</span> Product is <strong>Commander</strong> (XML namespaces may still say Sapphire).
       </div>
     </section>
@@ -226,9 +265,69 @@
     let fileCache = null;
     let openFileName = null;
     let survey = null;
-    let layoutState = { selectedId: null, drag: null, resize: null, tool: 'select' };
+    let layoutState = { selectedId: null, drag: null, resize: null, tool: 'select', clipboard: null };
+    let openFileContent = null;
 
     const el = (id) => document.getElementById(id);
+
+    // --- resizable site list / detail panes ---
+    (function initSplitter() {
+      const saved = localStorage.getItem('fafo_commander_list_w');
+      const listPane = document.getElementById('listPane');
+      const handle = document.getElementById('splitHandle');
+      if (!listPane || !handle) return;
+      const apply = (w) => {
+        const clamped = Math.max(180, Math.min(window.innerWidth * 0.7, w));
+        listPane.style.flexBasis = clamped + 'px';
+        listPane.style.width = clamped + 'px';
+        document.documentElement.style.setProperty('--list-w', clamped + 'px');
+      };
+      apply(saved ? parseInt(saved, 10) : 300);
+      let dragging = false;
+      handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        handle.classList.add('dragging');
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        apply(e.clientX);
+      });
+      window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('dragging');
+        localStorage.setItem('fafo_commander_list_w', String(listPane.getBoundingClientRect().width | 0));
+      });
+    })();
+
+    /** Highlight XML: markup/tags vs values (fast read). */
+    function highlightXml(src) {
+      if (!src) return '';
+      // escape first
+      let s = String(src)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      // comments
+      s = s.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="x-comment">$1</span>');
+      // declarations <?xml ...?>
+      s = s.replace(/(&lt;\?[\s\S]*?\?&gt;)/g, '<span class="x-decl">$1</span>');
+      // tags with attrs
+      s = s.replace(/(&lt;\/?)([\w:.-]+)((?:\s+[\w:.-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s&]+))?)*)(\s*\/?&gt;)/g,
+        (m, open, name, attrs, close) => {
+          let a = attrs || '';
+          a = a.replace(/([\w:.-]+)(\s*=\s*)("[^"]*"|'[^']*'|[^\s&]+)/g,
+            '<span class="x-attr">$1</span><span class="x-eq">$2</span><span class="x-val">$3</span>');
+          return `<span class="x-mark">${open}</span><span class="x-tag">${name}</span>${a}<span class="x-mark">${close}</span>`;
+        });
+      // text nodes between tags (simple pass)
+      s = s.replace(/(&gt;)([^&<]+)(&lt;)/g, (m, a, text, b) => {
+        if (!text.trim()) return m;
+        return `${a}<span class="x-text">${text}</span>${b}`;
+      });
+      return s;
+    }
     function toast(msg, ms = 3200) {
       const t = el('toast');
       t.textContent = msg;
@@ -533,8 +632,8 @@
         <div class="section">
           <h3>Export XML files</h3>
           <div class="file-list" id="fileList"><div class="empty" style="padding:12px">Loading…</div></div>
-          <div class="xml-view" id="xmlView"><pre>Select a file to view contents.</pre></div>
-          <p class="note">Read-only view of files inside this snapshot folder. Large files may be truncated.</p>
+          <div class="xml-view" id="xmlView"><pre class="xml-hl">Select a file to view contents.</pre></div>
+          <p class="note">Color legend: <span class="xml-hl"><span class="x-tag">tags</span></span> · <span class="xml-hl"><span class="x-attr">attributes</span></span> · <span class="xml-hl"><span class="x-val">"values"</span></span> · <span class="xml-hl"><span class="x-text">text content</span></span> · markup punctuation in green. Large files may be truncated.</p>
         </div>`;
     }
 
@@ -575,14 +674,21 @@
       if (listEl) {
         listEl.querySelectorAll('.file-item').forEach(n => n.classList.toggle('active', n.dataset.name === name));
       }
-      if (viewEl) viewEl.innerHTML = '<pre>Loading…</pre>';
+      if (viewEl) viewEl.innerHTML = '<pre class="xml-hl">Loading…</pre>';
       try {
         const data = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/files/' + encodeURIComponent(name));
+        openFileContent = data.content || '';
+        const trunc = data.truncated ? '\n\n… [truncated]' : '';
         if (viewEl) {
-          viewEl.innerHTML = `<pre>${esc(data.content || '')}${data.truncated ? '\n\n… [truncated]' : ''}</pre>`;
+          const isXml = /\.xml$/i.test(name) || (openFileContent.trimStart().startsWith('<?xml') || openFileContent.trimStart().startsWith('<'));
+          if (isXml) {
+            viewEl.innerHTML = `<pre class="xml-hl">${highlightXml(openFileContent + trunc)}</pre>`;
+          } else {
+            viewEl.innerHTML = `<pre class="xml-hl">${esc(openFileContent + trunc)}</pre>`;
+          }
         }
       } catch (e) {
-        if (viewEl) viewEl.innerHTML = `<pre>${esc(e.message || e)}</pre>`;
+        if (viewEl) viewEl.innerHTML = `<pre class="xml-hl">${esc(e.message || e)}</pre>`;
       }
     }
 
@@ -845,12 +951,13 @@
         }
         if (!survey.layout) survey.layout = { width: 1000, height: 700, grid: 20, items: [] };
         body.innerHTML = `
-          <div class="warn-box">Drag items to place equipment. Resize from bottom-right corner. Labels editable in the form under the map. Save survey to persist layout.</div>
+          <div class="warn-box">Drag to move · corner resize · copy/paste · fill &amp; border colors. Save layout with the site survey (local only).</div>
           <div class="layout-tools">
             <button class="btn primary" id="btnSaveLayout">💾 Save layout</button>
-            <button class="btn" data-tool="select">Select / move</button>
-            <button class="btn" id="btnDelItem">Delete selected</button>
-            <button class="btn" id="btnResetLayout">Reset starter layout</button>
+            <button class="btn" id="btnCopyItem">Copy</button>
+            <button class="btn" id="btnPasteItem">Paste</button>
+            <button class="btn" id="btnDelItem">Delete</button>
+            <button class="btn" id="btnResetLayout">Reset starter</button>
           </div>
           <div class="layout-wrap">
             <div class="palette">
@@ -860,6 +967,18 @@
               <div class="field" style="margin-top:8px">
                 <label>Selected label</label>
                 <input id="selLabel" placeholder="Label">
+              </div>
+              <div class="field">
+                <label>Fill color</label>
+                <input id="selColor" type="color" value="#0ea5e9" style="height:32px;padding:2px">
+              </div>
+              <div class="field">
+                <label>Border color</label>
+                <input id="selBorder" type="color" value="#38bdf8" style="height:32px;padding:2px">
+              </div>
+              <div class="field">
+                <label>Border width</label>
+                <input id="selBorderW" type="number" min="0" max="12" step="1" value="0">
               </div>
               <div class="field">
                 <label>Width</label><input id="selW" type="number" min="16" step="4">
@@ -872,7 +991,7 @@
               <canvas id="siteCanvas" width="${survey.layout.width || 1000}" height="${survey.layout.height || 700}"></canvas>
             </div>
           </div>
-          <p class="note">Tip: place pumps to match driveway flow; tanks/manholes on the tank farm side. Layout saves with the site survey JSON (local only).</p>
+          <p class="note">Ctrl+C / Ctrl+V also copy-paste the selected item. Drag the main window splitter to give this panel more space.</p>
         `;
         wireLayoutEditor(body);
       } catch (e) {
@@ -888,27 +1007,47 @@
 
       function snap(v) { return Math.round(v / grid) * grid; }
 
+      function selectedItem() {
+        return (survey.layout.items || []).find(i => i.id === layoutState.selectedId) || null;
+      }
+
       function draw() {
         const L = survey.layout;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // soft lot fill
         ctx.fillStyle = 'rgba(15, 23, 32, 0.9)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         for (const it of L.items || []) {
           const selected = it.id === layoutState.selectedId;
-          ctx.fillStyle = it.color || '#64748b';
-          ctx.globalAlpha = 0.9;
+          const fill = it.color || '#64748b';
+          const bCol = it.borderColor || '#38bdf8';
+          const bW = Number(it.borderWidth || 0);
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = fill;
           if (it.type === 'manhole' || it.type === 'tank') {
             ctx.beginPath();
             ctx.ellipse(it.x + it.w / 2, it.y + it.h / 2, it.w / 2, it.h / 2, 0, 0, Math.PI * 2);
             ctx.fill();
-            if (selected) { ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.stroke(); }
+            if (bW > 0) {
+              ctx.strokeStyle = bCol;
+              ctx.lineWidth = bW;
+              ctx.stroke();
+            }
+            if (selected) {
+              ctx.strokeStyle = '#fbbf24';
+              ctx.lineWidth = Math.max(2, bW + 1);
+              ctx.stroke();
+            }
           } else {
             ctx.fillRect(it.x, it.y, it.w, it.h);
+            if (bW > 0) {
+              ctx.strokeStyle = bCol;
+              ctx.lineWidth = bW;
+              ctx.strokeRect(it.x + bW / 2, it.y + bW / 2, it.w - bW, it.h - bW);
+            }
             if (selected) {
-              ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2;
+              ctx.strokeStyle = '#fbbf24';
+              ctx.lineWidth = 2;
               ctx.strokeRect(it.x, it.y, it.w, it.h);
-              // resize handle
               ctx.fillStyle = '#f59e0b';
               ctx.fillRect(it.x + it.w - 8, it.y + it.h - 8, 8, 8);
             }
@@ -930,10 +1069,37 @@
       }
 
       function syncSelForm() {
-        const it = (survey.layout.items || []).find(i => i.id === layoutState.selectedId);
+        const it = selectedItem();
         rootEl.querySelector('#selLabel').value = it ? (it.label || '') : '';
         rootEl.querySelector('#selW').value = it ? it.w : '';
         rootEl.querySelector('#selH').value = it ? it.h : '';
+        rootEl.querySelector('#selColor').value = it && it.color && /^#/.test(it.color) ? it.color : '#64748b';
+        rootEl.querySelector('#selBorder').value = it && it.borderColor && /^#/.test(it.borderColor) ? it.borderColor : '#38bdf8';
+        rootEl.querySelector('#selBorderW').value = it ? (it.borderWidth || 0) : 0;
+      }
+
+      function copySelected() {
+        const it = selectedItem();
+        if (!it) { toast('Select an item first'); return; }
+        layoutState.clipboard = JSON.parse(JSON.stringify(it));
+        toast('Copied ' + (it.label || it.type));
+      }
+      function pasteClipboard() {
+        if (!layoutState.clipboard) { toast('Clipboard empty'); return; }
+        const src = layoutState.clipboard;
+        const id = (src.type || 'item') + '_' + Date.now().toString(36);
+        const copy = {
+          ...src,
+          id,
+          x: (src.x || 0) + 24,
+          y: (src.y || 0) + 24,
+          label: (src.label || src.type || 'item') + ' copy',
+        };
+        survey.layout.items.push(copy);
+        layoutState.selectedId = id;
+        syncSelForm();
+        draw();
+        toast('Pasted');
       }
 
       canvas.onmousedown = (ev) => {
@@ -987,13 +1153,15 @@
           };
           survey.layout.items.push({
             id, type, x: 40, y: 40, w: type === 'building' ? 160 : 48, h: type === 'building' ? 100 : 48,
-            label: type, color: colors[type] || '#94a3b8'
+            label: type, color: colors[type] || '#94a3b8', borderColor: '#38bdf8', borderWidth: 1
           });
           layoutState.selectedId = id;
           syncSelForm();
           draw();
         });
       });
+      rootEl.querySelector('#btnCopyItem')?.addEventListener('click', copySelected);
+      rootEl.querySelector('#btnPasteItem')?.addEventListener('click', pasteClipboard);
       rootEl.querySelector('#btnDelItem')?.addEventListener('click', () => {
         if (!layoutState.selectedId) return;
         survey.layout.items = survey.layout.items.filter(i => i.id !== layoutState.selectedId);
@@ -1004,36 +1172,63 @@
       rootEl.querySelector('#btnResetLayout')?.addEventListener('click', () => {
         if (!confirm('Reset aerial layout to starter template?')) return;
         const positions = (survey.forecourt && survey.forecourt.positions) || [];
-        // call default via simple rebuild from positions
         survey.layout = {
           width: 1000, height: 700, grid: 20,
           items: [
-            { id: 'bldg1', type: 'building', x: 320, y: 80, w: 280, h: 160, label: 'Store / building', color: '#475569' },
-            { id: 'park1', type: 'parking', x: 40, y: 40, w: 200, h: 120, label: 'Parking', color: '#64748b' },
-            { id: 'drive1', type: 'driveway', x: 80, y: 300, w: 760, h: 70, label: 'Driveway', color: '#334155' },
+            { id: 'bldg1', type: 'building', x: 320, y: 80, w: 280, h: 160, label: 'Store / building', color: '#475569', borderColor: '#94a3b8', borderWidth: 2 },
+            { id: 'park1', type: 'parking', x: 40, y: 40, w: 200, h: 120, label: 'Parking', color: '#64748b', borderColor: '#cbd5e1', borderWidth: 1 },
+            { id: 'drive1', type: 'driveway', x: 80, y: 300, w: 760, h: 70, label: 'Driveway', color: '#334155', borderColor: '#64748b', borderWidth: 1 },
             ...positions.slice(0, 12).map((p, i) => ({
               id: 'pump' + (p.position || i + 1), type: 'pump',
               x: 160 + (i % 8) * 90, y: 420 + Math.floor(i / 8) * 90, w: 56, h: 56,
-              label: 'Pump ' + (p.position || i + 1), color: '#0ea5e9'
+              label: 'Pump ' + (p.position || i + 1), color: '#0ea5e9', borderColor: '#38bdf8', borderWidth: 2
             })),
-            { id: 'tank1', type: 'tank', x: 820, y: 100, w: 70, h: 70, label: 'Tank 1', color: '#f59e0b' },
-            { id: 'mh1', type: 'manhole', x: 840, y: 200, w: 36, h: 36, label: 'MH-1', color: '#a78bfa' },
+            { id: 'tank1', type: 'tank', x: 820, y: 100, w: 70, h: 70, label: 'Tank 1', color: '#f59e0b', borderColor: '#fbbf24', borderWidth: 2 },
+            { id: 'mh1', type: 'manhole', x: 840, y: 200, w: 36, h: 36, label: 'MH-1', color: '#a78bfa', borderColor: '#c4b5fd', borderWidth: 2 },
           ]
         };
         draw();
       });
       rootEl.querySelector('#btnSaveLayout')?.addEventListener('click', saveSurvey);
-      rootEl.querySelector('#selLabel')?.addEventListener('change', (e) => {
-        const it = survey.layout.items.find(i => i.id === layoutState.selectedId);
-        if (it) { it.label = e.target.value; draw(); }
-      });
-      rootEl.querySelector('#selW')?.addEventListener('change', (e) => {
-        const it = survey.layout.items.find(i => i.id === layoutState.selectedId);
-        if (it) { it.w = Math.max(16, +e.target.value || 16); draw(); }
-      });
-      rootEl.querySelector('#selH')?.addEventListener('change', (e) => {
-        const it = survey.layout.items.find(i => i.id === layoutState.selectedId);
-        if (it) { it.h = Math.max(16, +e.target.value || 16); draw(); }
+      const bindProp = (sel, fn) => {
+        const node = rootEl.querySelector(sel);
+        if (!node) return;
+        const run = () => {
+          const it = selectedItem();
+          if (!it) return;
+          fn(it, node);
+          draw();
+        };
+        node.addEventListener('change', run);
+        node.addEventListener('input', run);
+      };
+      bindProp('#selLabel', (it, n) => { it.label = n.value; });
+      bindProp('#selColor', (it, n) => { it.color = n.value; });
+      bindProp('#selBorder', (it, n) => { it.borderColor = n.value; });
+      bindProp('#selBorderW', (it, n) => { it.borderWidth = Math.max(0, +n.value || 0); });
+      bindProp('#selW', (it, n) => { it.w = Math.max(16, +n.value || 16); });
+      bindProp('#selH', (it, n) => { it.h = Math.max(16, +n.value || 16); });
+
+      // keyboard copy/paste when layout tab focused
+      rootEl.tabIndex = 0;
+      rootEl.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+          e.preventDefault();
+          copySelected();
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+          e.preventDefault();
+          pasteClipboard();
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+          if (!layoutState.selectedId) return;
+          e.preventDefault();
+          survey.layout.items = survey.layout.items.filter(i => i.id !== layoutState.selectedId);
+          layoutState.selectedId = null;
+          syncSelForm();
+          draw();
+        }
       });
       draw();
     }
