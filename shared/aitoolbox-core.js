@@ -478,14 +478,200 @@
         await put(STORES.settings, { ...settings, id: 'global' }, 'global');
     }
 
-    // --- Launcher icons ---
-    async function getLauncherIcon(toolId) {
-        const row = await get(STORES.launcher, toolId);
-        return row?.dataUrl || null;
+    // --- Launcher icons (personal IndexedDB + shared assets/tool-icons) ---
+    let _sharedIconManifest = null;
+    let _sharedIconManifestAt = 0;
+
+    function toolboxRootFromCore() {
+        try {
+            const scripts = document.getElementsByTagName('script');
+            for (let i = scripts.length - 1; i >= 0; i--) {
+                const src = scripts[i].src || '';
+                if (src.includes('aitoolbox-core.js')) {
+                    return new URL('..', src).href.replace(/\/?$/, '/');
+                }
+            }
+        } catch { /* ignore */ }
+        try {
+            return new URL('../', window.location.href).href;
+        } catch {
+            return '';
+        }
     }
 
-    async function setLauncherIcon(toolId, dataUrl) {
-        await put(STORES.launcher, { toolId, dataUrl, updatedAt: Date.now() });
+    function normalizeIconManifest(data) {
+        if (!data || typeof data !== 'object') {
+            return { ok: true, icons: {}, app: null };
+        }
+        // Already API-shaped?
+        if (data.icons && typeof data.icons === 'object') {
+            const first = Object.values(data.icons)[0];
+            if (first && typeof first === 'object' && first.url) {
+                return data;
+            }
+        }
+        const icons = {};
+        const raw = data.icons || {};
+        for (const [tid, fname] of Object.entries(raw)) {
+            if (!fname) continue;
+            const file = typeof fname === 'string' ? fname : (fname.file || '');
+            if (!file) continue;
+            icons[tid] = {
+                file,
+                url: 'assets/tool-icons/' + file,
+                exists: true
+            };
+        }
+        let app = null;
+        if (data.app) {
+            const file = typeof data.app === 'string' ? data.app : (data.app.file || '');
+            if (file) {
+                app = { file, url: 'assets/tool-icons/' + file, exists: true };
+            }
+        }
+        return {
+            ok: true,
+            version: data.version || 1,
+            updatedAt: data.updatedAt || null,
+            app,
+            icons
+        };
+    }
+
+    async function loadSharedIconManifest(force = false) {
+        const now = Date.now();
+        if (!force && _sharedIconManifest && now - _sharedIconManifestAt < 15000) {
+            return _sharedIconManifest;
+        }
+        // 1) Prefer server (always fresh)
+        try {
+            if (global.AIToolboxAPI?.isOnline) {
+                const online = await global.AIToolboxAPI.isOnline(false, 800);
+                if (online) {
+                    const base = (global.AIToolboxAPI.getApiBase && global.AIToolboxAPI.getApiBase())
+                        || global.AITOOLBOX_API_BASE
+                        || 'http://127.0.0.87:18765/api';
+                    const r = await fetch(`${base}/icons/manifest`, {
+                        signal: AbortSignal.timeout(2000)
+                    });
+                    if (r.ok) {
+                        const data = await r.json();
+                        _sharedIconManifest = normalizeIconManifest(data);
+                        _sharedIconManifestAt = now;
+                        return _sharedIconManifest;
+                    }
+                }
+            }
+        } catch { /* fall through */ }
+
+        // 2) Script-injected manifest (works on file://)
+        if (global.AITOOLBOX_ICON_MANIFEST) {
+            _sharedIconManifest = normalizeIconManifest(global.AITOOLBOX_ICON_MANIFEST);
+            _sharedIconManifestAt = now;
+            return _sharedIconManifest;
+        }
+
+        // 3) Fetch JSON next to assets (may fail on file://)
+        try {
+            const root = toolboxRootFromCore();
+            const url = new URL('assets/tool-icons/manifest.json', root).href + '?t=' + now;
+            const r = await fetch(url, { cache: 'no-store' });
+            if (r.ok) {
+                const data = await r.json();
+                _sharedIconManifest = normalizeIconManifest(data);
+                _sharedIconManifestAt = now;
+                return _sharedIconManifest;
+            }
+        } catch { /* ignore */ }
+
+        _sharedIconManifest = { ok: true, icons: {}, app: null };
+        _sharedIconManifestAt = now;
+        return _sharedIconManifest;
+    }
+
+    function sharedIconUrl(toolId, manifest) {
+        const m = manifest || _sharedIconManifest;
+        if (!m) return null;
+        const root = toolboxRootFromCore();
+        const entry = toolId === 'app'
+            ? (m.app || (m.icons && m.icons.app))
+            : (m.icons && m.icons[toolId]);
+        if (!entry || !entry.url) return null;
+        try {
+            return new URL(entry.url, root).href;
+        } catch {
+            return entry.url;
+        }
+    }
+
+    async function getLauncherIcon(toolId) {
+        // 1) Personal override (this browser)
+        const row = await get(STORES.launcher, toolId);
+        if (row?.dataUrl) {
+            return { src: row.dataUrl, source: 'personal', toolId };
+        }
+        // 2) Shared repo icon
+        const man = await loadSharedIconManifest(false);
+        const url = sharedIconUrl(toolId, man);
+        if (url) return { src: url, source: 'shared', toolId };
+        return null;
+    }
+
+    async function setLauncherIcon(toolId, dataUrl, opts = {}) {
+        if (dataUrl == null) {
+            await remove(STORES.launcher, toolId).catch(async () => {
+                // remove() may need key only — fallback put empty then delete via openDB
+                const db = await openDB();
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORES.launcher, 'readwrite');
+                    tx.objectStore(STORES.launcher).delete(toolId);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+            });
+            return { personal: false, shared: null };
+        }
+        await put(STORES.launcher, {
+            toolId,
+            dataUrl,
+            updatedAt: Date.now(),
+            mime: (String(dataUrl).match(/^data:([^;]+);/) || [])[1] || null
+        });
+
+        let shared = null;
+        if (opts.publish !== false) {
+            try {
+                if (global.AIToolboxAPI?.publishToolIcon) {
+                    shared = await global.AIToolboxAPI.publishToolIcon(toolId, dataUrl, {
+                        filename: opts.filename || null,
+                        asAppIcon: !!opts.asAppIcon
+                    });
+                    await loadSharedIconManifest(true);
+                }
+            } catch (e) {
+                shared = { ok: false, error: e.message || String(e) };
+            }
+        }
+        return { personal: true, shared };
+    }
+
+    async function listPersonalLauncherIcons() {
+        const rows = await getAll(STORES.launcher);
+        return (rows || []).filter(r => r && r.toolId && r.dataUrl);
+    }
+
+    async function clearPersonalLauncherIcons(toolIds) {
+        const ids = toolIds && toolIds.length
+            ? toolIds
+            : (await listPersonalLauncherIcons()).map(r => r.toolId);
+        const db = await openDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORES.launcher, 'readwrite');
+            const store = tx.objectStore(STORES.launcher);
+            ids.forEach(id => store.delete(id));
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
     }
 
     global.AIToolbox = {
@@ -523,6 +709,10 @@
         getSettings,
         saveSettings,
         getLauncherIcon,
-        setLauncherIcon
+        setLauncherIcon,
+        loadSharedIconManifest,
+        sharedIconUrl,
+        listPersonalLauncherIcons,
+        clearPersonalLauncherIcons
     };
 })(typeof window !== 'undefined' ? window : globalThis);

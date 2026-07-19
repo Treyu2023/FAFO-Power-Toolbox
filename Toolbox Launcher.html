@@ -233,8 +233,9 @@
 
     <div class="toolbar-top animate-in animate-in-delay-2">
         <button class="ui-btn" id="btnGetStarted" data-tip-title="Tutorial" data-tip="Replay the interactive walkthrough or show the quick-start panel above.">🎓 Get Started</button>
-        <button class="ui-btn" id="btnEditIcons" data-tip-title="Custom icons" data-tip="Switch to edit mode, click any tool, upload a PNG. Icons persist in IndexedDB — no more generic Chrome file icons.">✎ Edit Icons</button>
-        <button class="ui-btn ghost" id="btnResetIcons" style="display:none;" data-tip="Remove all custom PNG icons and restore emoji defaults">Reset Icons</button>
+        <button class="ui-btn" id="btnEditIcons" data-tip-title="Custom icons" data-tip="Edit mode: click a tool and pick PNG, GIF, JPG, WEBP, ICO, or SVG. With the server running, the file is copied into assets/tool-icons for all users. Personal overrides still work offline in this browser.">✎ Edit Icons</button>
+        <button class="ui-btn ghost" id="btnPublishIcons" style="display:none;" data-tip="Copy all personal browser icons into assets/tool-icons (shared repo defaults for everyone)">⬆ Publish Shared</button>
+        <button class="ui-btn ghost" id="btnResetIcons" style="display:none;" data-tip="Clear personal browser overrides only — shared repo icons stay">Reset Personal</button>
         <button class="ui-btn ghost" id="btnShowStarted" style="display:none;" data-tip="Show the 4-step quick-start panel">Show Quick Start</button>
         <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and runtime events — copy log when reporting issues">🐛 Debug</button>
     </div>
@@ -243,14 +244,16 @@
 
     <p class="hint-bar">
         <span>Tip:</span> Pin this launcher to your taskbar. In Chrome: ⋮ → More tools → Create shortcut → Open as window.
-        Custom PNG icons are stored locally in IndexedDB.
+        Icons: personal (this browser) override shared <code style="color:var(--accent)">assets/tool-icons</code> (all users) then emoji.
+        <span id="iconStatus" style="display:block;margin-top:6px;color:var(--muted)"></span>
     </p>
 
-    <input type="file" id="iconPicker" accept="image/png,image/jpeg,image/webp,image/gif">
+    <input type="file" id="iconPicker" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/x-icon,image/vnd.microsoft.icon,image/svg+xml,image/bmp,.ico,.png,.gif,.jpg,.jpeg,.webp,.svg,.bmp">
 
     <script src="shared/aitoolbox-config.js"></script>
     <script src="shared/aitoolbox-version.js"></script>
     <script src="shared/aitoolbox-debug.js"></script>
+    <script src="assets/tool-icons/manifest.js"></script>
     <script src="shared/aitoolbox-core.js"></script>
     <script src="shared/aitoolbox-api.js"></script>
     <script src="shared/aitoolbox-ui.js"></script>
@@ -451,8 +454,41 @@
         let editMode = false;
         let editingToolId = null;
 
+        function setIconStatus(msg, kind) {
+            const el = document.getElementById('iconStatus');
+            if (!el) return;
+            el.textContent = msg || '';
+            el.style.color = kind === 'ok' ? '#00ff88' : kind === 'warn' ? '#ffc800' : 'var(--muted)';
+        }
+
+        function iconSrc(result) {
+            if (!result) return null;
+            if (typeof result === 'string') return result;
+            return result.src || null;
+        }
+
+        function iconSourceLabel(result) {
+            if (!result || typeof result === 'string') return '';
+            if (result.source === 'personal') return 'personal';
+            if (result.source === 'shared') return 'shared';
+            return '';
+        }
+
         async function renderTools() {
             grid.innerHTML = '';
+            // Refresh shared manifest once per render pass
+            try { await AIToolbox.loadSharedIconManifest(false); } catch (e) { /* ignore */ }
+
+            // App favicon from shared app icon when available
+            try {
+                const appIcon = await AIToolbox.getLauncherIcon('app');
+                const href = iconSrc(appIcon);
+                if (href) {
+                    const link = document.getElementById('pageFavicon');
+                    if (link) link.href = href;
+                }
+            } catch (e) { /* ignore */ }
+
             for (const tool of TOOLS) {
                 let customIcon = null;
                 try {
@@ -460,20 +496,40 @@
                 } catch (e) {
                     customIcon = null;
                 }
+                const src = iconSrc(customIcon);
+                const source = iconSourceLabel(customIcon);
                 const card = document.createElement('div');
                 card.className = 'tool-card' + (tool.featured ? ' featured' : '');
                 card.dataset.toolId = tool.id;
                 card.dataset.tipTitle = tool.name;
-                card.dataset.tip = tool.desc + (tool.featured ? ' · Featured workflow tool' : '');
+                card.dataset.tip = tool.desc
+                    + (tool.featured ? ' · Featured workflow tool' : '')
+                    + (source ? ` · Icon: ${source}` : '');
                 card.innerHTML = `
-                    <div class="icon-wrap">
-                        ${customIcon
-                            ? `<img class="icon" src="${customIcon}" alt="">`
-                            : `<span class="icon-fallback">${tool.emoji}</span>`}
-                    </div>
+                    <div class="icon-wrap"></div>
                     <h3>${tool.name}</h3>
                     <p>${tool.desc}</p>
-                    <div class="cat">${tool.category}</div>`;
+                    <div class="cat">${tool.category}${source ? ' · ' + source : ''}</div>`;
+                const wrap = card.querySelector('.icon-wrap');
+                if (src) {
+                    const img = document.createElement('img');
+                    img.className = 'icon';
+                    img.alt = '';
+                    img.src = src;
+                    img.onerror = () => {
+                        wrap.innerHTML = '';
+                        const fb = document.createElement('span');
+                        fb.className = 'icon-fallback';
+                        fb.textContent = tool.emoji;
+                        wrap.appendChild(fb);
+                    };
+                    wrap.appendChild(img);
+                } else {
+                    const fb = document.createElement('span');
+                    fb.className = 'icon-fallback';
+                    fb.textContent = tool.emoji;
+                    wrap.appendChild(fb);
+                }
 
                 card.addEventListener('click', () => {
                     if (editMode) {
@@ -487,7 +543,6 @@
                 grid.appendChild(card);
             }
             try { AIToolboxUI.initTooltips(grid); } catch (e) { /* ignore */ }
-            // Cache-bust notice in console for debugging missing cards
             console.info('[AI Toolbox] Tools rendered:', TOOLS.length, TOOLS.map(t => t.id));
         }
 
@@ -496,7 +551,7 @@
             { target: '#getStartedPanel', title: 'Quick Start Panel', body: 'These 4 steps are your whole workflow. Dismiss anytime — this panel comes back via 🎓 Get Started.' },
             { target: '[data-tool-id="media-library"]', title: 'Media Library', body: 'Your catalog hub: watch folders, tag thousands of files, batch rename, and save before/after pairs.' },
             { target: '[data-tool-id="vsr-pipeline"]', title: 'VSR Pipeline', body: 'After VSR upscales/interpolates, this tool matches outputs to sources and renames them. Confirm each batch or check <em>Trust</em> to skip.' },
-            { target: '#btnEditIcons', title: 'Custom Icons', body: 'Upload PNGs so taskbar shortcuts look professional — not generic Chrome icons. Stored in IndexedDB.' },
+            { target: '#btnEditIcons', title: 'Custom Icons', body: 'Upload PNG/GIF/ICO (etc.). With the server on, icons are copied into <code>assets/tool-icons</code> for every user. Personal overrides still work offline in this browser.' },
             { target: '#toolGrid', title: 'You\'re Ready', body: 'Click any tool to open it. Hover anything with a glow for tooltips. First visits to Library & VSR have their own tours too.' },
         ];
 
@@ -539,27 +594,84 @@
             e.target.classList.toggle('active', editMode);
             e.target.textContent = editMode ? '✓ Done Editing' : '✎ Edit Icons';
             document.getElementById('btnResetIcons').style.display = editMode ? 'inline-block' : 'none';
+            document.getElementById('btnPublishIcons').style.display = editMode ? 'inline-block' : 'none';
+            if (editMode) {
+                setIconStatus('Edit mode: click a tool → pick image/GIF/ICO. Server on = shared for all users.', 'warn');
+            } else {
+                setIconStatus('');
+            }
         });
 
         document.getElementById('btnResetIcons').addEventListener('click', async () => {
-            if (!confirm('Reset all custom icons to defaults?')) return;
-            for (const t of TOOLS) await AIToolbox.setLauncherIcon(t.id, null).catch(() => {});
-            const db = await AIToolbox.openDB();
-            const tx = db.transaction(AIToolbox.STORES.launcher, 'readwrite');
-            TOOLS.forEach(t => tx.objectStore(AIToolbox.STORES.launcher).delete(t.toolId));
-            await new Promise(r => tx.oncomplete = r);
+            if (!confirm('Clear personal icon overrides in this browser?\n\nShared icons in assets/tool-icons stay (other users keep them).')) return;
+            try {
+                await AIToolbox.clearPersonalLauncherIcons(TOOLS.map(t => t.id).concat(['app']));
+            } catch (err) {
+                // Fallback older path
+                for (const t of TOOLS) await AIToolbox.setLauncherIcon(t.id, null, { publish: false }).catch(() => {});
+            }
+            setIconStatus('Personal overrides cleared. Shared repo icons still apply.', 'ok');
             renderTools();
+        });
+
+        document.getElementById('btnPublishIcons').addEventListener('click', async () => {
+            setIconStatus('Publishing personal icons to assets/tool-icons…', 'warn');
+            try {
+                const online = await AIToolboxAPI.isOnline(true, 2000);
+                if (!online) {
+                    setIconStatus('Server offline — start the server, then publish again.', 'warn');
+                    return;
+                }
+                const results = await AIToolboxAPI.publishAllPersonalIcons();
+                const ok = results.filter(r => r.ok).length;
+                const fail = results.length - ok;
+                setIconStatus(
+                    `Published ${ok} icon(s) to shared folder` + (fail ? ` · ${fail} failed` : '') + '. Commit assets/tool-icons to share via git.',
+                    fail ? 'warn' : 'ok'
+                );
+                await AIToolbox.loadSharedIconManifest(true);
+                renderTools();
+            } catch (e) {
+                setIconStatus('Publish failed: ' + (e.message || e), 'warn');
+            }
         });
 
         iconPicker.addEventListener('change', async e => {
             const file = e.target.files[0];
             if (!file || !editingToolId) return;
+            const toolId = editingToolId;
             const reader = new FileReader();
             reader.onload = async () => {
-                await AIToolbox.setLauncherIcon(editingToolId, reader.result);
+                try {
+                    setIconStatus(`Saving icon for ${toolId}…`, 'warn');
+                    const result = await AIToolbox.setLauncherIcon(toolId, reader.result, {
+                        filename: file.name,
+                        publish: true
+                    });
+                    if (result?.shared?.ok) {
+                        setIconStatus(
+                            `Saved personal + shared: assets/tool-icons/${result.shared.file || toolId}. Commit to share with all users.`,
+                            'ok'
+                        );
+                    } else if (result?.shared?.offline || result?.shared?.ok === false) {
+                        setIconStatus(
+                            `Saved personally in this browser. Start server + Publish Shared (or re-set icon) to copy into the repo for everyone.`,
+                            'warn'
+                        );
+                    } else {
+                        setIconStatus(`Saved icon for ${toolId}.`, 'ok');
+                    }
+                } catch (err) {
+                    setIconStatus('Icon save failed: ' + (err.message || err), 'warn');
+                }
                 editingToolId = null;
                 iconPicker.value = '';
                 renderTools();
+            };
+            reader.onerror = () => {
+                setIconStatus('Could not read that file.', 'warn');
+                editingToolId = null;
+                iconPicker.value = '';
             };
             reader.readAsDataURL(file);
         });

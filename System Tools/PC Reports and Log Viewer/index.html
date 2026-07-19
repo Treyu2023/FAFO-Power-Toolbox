@@ -568,6 +568,9 @@
     </div>
   </div>
 
+  <!-- Defaults ship in git; catalog.js / logs-data.js are generated per-device and gitignored -->
+  <script src="catalog.default.js"></script>
+  <script src="logs-data.default.js"></script>
   <script src="catalog.js"></script>
   <script src="logs-data.js"></script>
   <script>
@@ -660,7 +663,16 @@
         `${rows.length} shown · ${catalog.machine || "local"} · catalog ${catalog.generatedAt || ""}`;
 
       if (!rows.length) {
-        grid.innerHTML = `<div class="empty">No reports match your filters.</div>`;
+        const emptyHint = !catalog.reports.length
+          ? `<div class="empty">
+              <strong style="color:var(--text);display:block;margin-bottom:8px">No reports for this PC yet</strong>
+              Reports stay on the machine that created them (not shared via git).<br/><br/>
+              In PowerShell or Grok CLI, run:<br/>
+              <code style="color:#c4b5fd">Scripts\\Invoke-FAFOSystemDiagnostics.ps1</code><br/>
+              or ask: <em>“run system diagnostics”</em>
+            </div>`
+          : `<div class="empty">No reports match your filters.</div>`;
+        grid.innerHTML = emptyHint;
         return;
       }
 
@@ -778,7 +790,7 @@
       document.getElementById("statLogs").textContent = logData.length;
 
       if (!logData.length) {
-        list.innerHTML = `<div class="log-empty" style="padding:20px">No logs packed.<br/>Run <code>_pack_logs.ps1</code></div>`;
+        list.innerHTML = `<div class="log-empty" style="padding:20px">No logs for this PC yet.<br/>Run <code>Invoke-FAFOSystemDiagnostics.ps1</code><br/><span style="opacity:.8">Other devices' logs stay on those devices.</span></div>`;
         return;
       }
       if (!rows.length) {
@@ -895,10 +907,14 @@
     });
 
     /* -------- boot -------- */
+    const scopeNote = catalog.scope === "device-local"
+      ? "This PC only"
+      : "Run diagnostics to bind to this PC";
     document.getElementById("sideMeta").innerHTML =
-      `<div><strong style="color:var(--text)">${catalog.machine || "PC"}</strong></div>
-       <div>${catalog.reports.length} reports · ${logData.length} logs</div>
-       <div style="margin-top:6px"><code>${catalog.toolboxPath || "D:\\\\OUTPUTS\\\\toolbox"}</code></div>`;
+      `<div><strong style="color:var(--text)">${catalog.machine || "No device pack yet"}</strong></div>
+       <div>${catalog.reports.length} reports · ${logData.length} logs · ${scopeNote}</div>
+       <div style="margin-top:6px"><code>${catalog.deviceRoot || catalog.toolboxPath || "%LOCALAPPDATA%\\\\FAFO\\\\Devices\\\\&lt;PC&gt;"}</code></div>
+       <div style="margin-top:8px;opacity:.85">Ask Grok: <em>run system diagnostics</em></div>`;
 
     renderFilters();
     renderGrid();

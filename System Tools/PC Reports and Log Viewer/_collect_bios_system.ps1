@@ -1,8 +1,12 @@
 # Collect BIOS / firmware / OS-visible system configuration for report
+# Output is ALWAYS device-local — never a shared D:\ path that can leak into git.
 $ErrorActionPreference = 'Continue'
-$outDir = 'D:\OUTPUTS\toolbox\reports'
+$deviceId = ($env:COMPUTERNAME -replace '[^\w\.-]+', '-').ToUpperInvariant()
+$outDir = Join-Path $env:LOCALAPPDATA "FAFO\Devices\$deviceId\Reports\PC"
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 $raw = Join-Path $outDir 'bios_system_raw.json'
+Write-Host "Device: $deviceId"
+Write-Host "Output: $outDir"
 $lines = New-Object System.Collections.Generic.List[string]
 function A([string]$s) { [void]$lines.Add($s) }
 

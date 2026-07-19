@@ -236,8 +236,24 @@ AI HTML TOOLBOX/
 ## Requirements
 
 - **Browser:** Chrome or Edge (File System Access API for browser-only mode)
-- **Python 3.10+** for full backend features
+- **Python 3.10–3.12** (recommended **3.12**) for full backend features  
+  - Use a **local venv** — do not install toolbox packages globally  
+  - One-time: double-click **`INSTALL-PYTHON.bat`** (creates `.venv\`, installs `requirements.txt`)  
+  - Details: [`docs/PYTHON-SETUP.md`](docs/PYTHON-SETUP.md)
 - **ffmpeg** on PATH (optional but recommended for thumbnails and VSR metadata)
+
+### Python install (first time on a PC)
+
+```bat
+INSTALL-PYTHON.bat
+START SERVER.bat
+```
+
+Or full setup (venv + `aitoolbox://` protocol + desktop shortcut):
+
+```bat
+SETUP (run once).bat
+```
 
 ---
 

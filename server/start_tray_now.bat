@@ -1,7 +1,8 @@
 @echo off
 cd /d "%~dp0"
-python -m pip install -q -r requirements.txt 2>nul
+call "%~dp0..\Scripts\use-fafo-python.bat"
+if errorlevel 1 exit /b 1
 echo [%date% %time%] start_tray_now>> startup.log
-where python >> startup.log 2>&1
-start "AI Toolbox Server" /MIN cmd /k "cd /d "%~dp0" && python aitoolbox_server.py"
+echo python=%FAFO_PYTHON%>> startup.log
+start "AI Toolbox Server" /MIN cmd /k "cd /d "%~dp0" && "%FAFO_PYTHON%" aitoolbox_server.py"
 exit /b 0

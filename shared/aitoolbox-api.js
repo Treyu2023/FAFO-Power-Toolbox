@@ -221,11 +221,62 @@
 
         /** Current API base (http://host:port/api) — unique bind, not shared with FAFO :8765 */
         getApiBase() { return apiBase(); },
+        /** Alias used by icon helpers */
+        apiBase() { return apiBase(); },
         getEndpointLabel() {
             const c = global.AITOOLBOX_CONFIG;
             return (c && c.ENDPOINT_LABEL) || '127.0.0.87:18765';
         },
         refreshBind() { return refreshApiBase(); },
+
+        /**
+         * Copy a tool icon into assets/tool-icons and update shared manifest (all users).
+         * Accepts data URLs for png/gif/jpg/webp/ico/svg/bmp.
+         */
+        async publishToolIcon(toolId, dataUrl, opts = {}) {
+            if (!(await checkServer(true, 2000))) {
+                return { ok: false, offline: true, error: 'Server offline — icon saved in this browser only' };
+            }
+            return api('/icons', {
+                method: 'POST',
+                body: JSON.stringify({
+                    toolId,
+                    dataUrl,
+                    filename: opts.filename || null,
+                    asAppIcon: !!opts.asAppIcon,
+                }),
+            });
+        },
+
+        async getIconManifest() {
+            if (await checkServer(false, 1200)) {
+                return api('/icons/manifest');
+            }
+            return global.AIToolbox?.loadSharedIconManifest?.(true);
+        },
+
+        async deleteSharedToolIcon(toolId) {
+            if (!(await checkServer(true, 2000))) {
+                throw new Error('Server offline');
+            }
+            return api('/icons/' + encodeURIComponent(toolId), { method: 'DELETE' });
+        },
+
+        /** Publish every personal IndexedDB icon into the shared repo folder */
+        async publishAllPersonalIcons() {
+            const rows = await (global.AIToolbox?.listPersonalLauncherIcons?.() || []);
+            const results = [];
+            for (const row of rows) {
+                try {
+                    const r = await this.publishToolIcon(row.toolId, row.dataUrl);
+                    results.push({ toolId: row.toolId, ...r });
+                } catch (e) {
+                    results.push({ toolId: row.toolId, ok: false, error: e.message || String(e) });
+                }
+            }
+            try { await global.AIToolbox?.loadSharedIconManifest?.(true); } catch { /* ignore */ }
+            return results;
+        },
 
         /** Toolbox root URL (parent of shared/). */
         getToolboxRoot,

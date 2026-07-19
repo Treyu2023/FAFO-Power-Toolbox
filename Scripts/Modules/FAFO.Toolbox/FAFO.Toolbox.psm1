@@ -38,32 +38,59 @@ function Set-FAFOToolboxRoot {
     return $resolved
 }
 
+function Get-FAFODeviceId {
+    [CmdletBinding()]
+    param()
+
+    # Prefer stable machine name; sanitize for filesystem
+    $name = $env:COMPUTERNAME
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        try { $name = (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).Name } catch { $name = 'UNKNOWN-PC' }
+    }
+    ($name -replace '[^\w\.-]+', '-').Trim('-').ToUpperInvariant()
+}
+
 function Get-FAFOCommonPaths {
     [CmdletBinding()]
     param(
-        [string]$ToolboxRoot = (Get-FAFOToolboxRoot)
+        [string]$ToolboxRoot = (Get-FAFOToolboxRoot),
+        [string]$DeviceId = (Get-FAFODeviceId)
     )
 
+    # Machine-local root — never put per-PC reports/logs in the git tree or OneDrive sync folder.
+    $deviceRoot = Join-Path $env:LOCALAPPDATA ("FAFO\Devices\{0}" -f $DeviceId)
+    $viewer = Join-Path $ToolboxRoot 'System Tools\PC Reports and Log Viewer'
+
     [ordered]@{
-        ToolboxRoot   = $ToolboxRoot
-        Scripts       = Join-Path $ToolboxRoot 'Scripts'
-        Modules       = Join-Path $ToolboxRoot 'Scripts\Modules'
-        SecretsModule = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Secrets'
-        ToolboxModule = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Toolbox'
-        Reports       = Join-Path $ToolboxRoot 'Reports'
-        Markdown      = Join-Path $ToolboxRoot 'Reports\Markdown'
-        Raw           = Join-Path $ToolboxRoot 'Reports\Raw'
-        Archive       = Join-Path $ToolboxRoot 'Reports\Archive'
-        Logs          = Join-Path $ToolboxRoot 'Logs'
-        Backups       = Join-Path $ToolboxRoot 'Backups'
-        Server        = Join-Path $ToolboxRoot 'server'
-        Shared        = Join-Path $ToolboxRoot 'shared'
-        SecretsStore  = Join-Path $env:LOCALAPPDATA 'FAFO\Secrets'
-        GrokHome      = Join-Path $env:USERPROFILE '.grok'
-        InspectScript = Join-Path $ToolboxRoot 'Scripts\Inspect-GrokInstall.ps1'
-        SessionScript = Join-Path $ToolboxRoot 'Scripts\Initialize-FAFOSession.ps1'
-        BindConfig    = Join-Path $ToolboxRoot 'shared\aitoolbox-bind.json'
-        VersionFile   = Join-Path $ToolboxRoot 'VERSION'
+        ToolboxRoot     = $ToolboxRoot
+        DeviceId        = $DeviceId
+        DeviceRoot      = $deviceRoot
+        Scripts         = Join-Path $ToolboxRoot 'Scripts'
+        Modules         = Join-Path $ToolboxRoot 'Scripts\Modules'
+        SecretsModule   = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Secrets'
+        ToolboxModule   = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Toolbox'
+        # Device-scoped (this PC only)
+        Reports         = Join-Path $deviceRoot 'Reports'
+        Markdown        = Join-Path $deviceRoot 'Reports\Markdown'
+        Raw             = Join-Path $deviceRoot 'Reports\Raw'
+        Archive         = Join-Path $deviceRoot 'Reports\Archive'
+        PcReports       = Join-Path $deviceRoot 'Reports\PC'
+        Logs            = Join-Path $deviceRoot 'Logs'
+        Backups         = Join-Path $deviceRoot 'Backups'
+        # Repo UI (shared code; generated packs are gitignored)
+        PcReportViewer  = $viewer
+        CatalogJs       = Join-Path $viewer 'catalog.js'
+        LogsDataJs      = Join-Path $viewer 'logs-data.js'
+        Server          = Join-Path $ToolboxRoot 'server'
+        Shared          = Join-Path $ToolboxRoot 'shared'
+        SecretsStore    = Join-Path $env:LOCALAPPDATA 'FAFO\Secrets'
+        GrokHome        = Join-Path $env:USERPROFILE '.grok'
+        InspectScript   = Join-Path $ToolboxRoot 'Scripts\Inspect-GrokInstall.ps1'
+        SessionScript   = Join-Path $ToolboxRoot 'Scripts\Initialize-FAFOSession.ps1'
+        DiagScript      = Join-Path $ToolboxRoot 'Scripts\Invoke-FAFOSystemDiagnostics.ps1'
+        PackLogsScript  = Join-Path $viewer '_pack_logs.ps1'
+        BindConfig      = Join-Path $ToolboxRoot 'shared\aitoolbox-bind.json'
+        VersionFile     = Join-Path $ToolboxRoot 'VERSION'
     }
 }
 
@@ -74,19 +101,55 @@ function Initialize-FAFOPaths {
     )
 
     $paths = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
-    foreach ($dir in @($paths.Markdown, $paths.Raw, $paths.Archive, $paths.Logs, $paths.Backups)) {
+    foreach ($dir in @(
+            $paths.DeviceRoot,
+            $paths.Markdown,
+            $paths.Raw,
+            $paths.Archive,
+            $paths.PcReports,
+            $paths.Logs,
+            $paths.Backups
+        )) {
         if (-not (Test-Path -LiteralPath $dir)) {
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
         }
     }
 
+    # Optional convenience junction inside the viewer so file:// HTML can open
+    # device-local report files via relative paths (device-local/...).
+    $viewerLocal = Join-Path $paths.PcReportViewer 'device-local'
+    try {
+        if (Test-Path -LiteralPath $viewerLocal) {
+            $item = Get-Item -LiteralPath $viewerLocal -Force
+            $isLink = ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+            if (-not $isLink) {
+                # Do not clobber a real folder with data
+            }
+            else {
+                # Refresh junction target if it points elsewhere
+                $null = cmd /c "rmdir `"$viewerLocal`"" 2>$null
+                $null = cmd /c "mklink /J `"$viewerLocal`" `"$($paths.DeviceRoot)`"" 2>$null
+            }
+        }
+        else {
+            $null = cmd /c "mklink /J `"$viewerLocal`" `"$($paths.DeviceRoot)`"" 2>$null
+        }
+    }
+    catch {
+        # Junction is optional (needs permissions); pack still works offline via logs-data.js
+    }
+
     [PSCustomObject]@{
-        ToolboxRoot = $paths.ToolboxRoot
-        MarkdownDir = $paths.Markdown
-        RawDir      = $paths.Raw
-        ArchiveDir  = $paths.Archive
-        LogsDir     = $paths.Logs
-        BackupsDir  = $paths.Backups
+        ToolboxRoot  = $paths.ToolboxRoot
+        DeviceId     = $paths.DeviceId
+        DeviceRoot   = $paths.DeviceRoot
+        MarkdownDir  = $paths.Markdown
+        RawDir       = $paths.Raw
+        ArchiveDir   = $paths.Archive
+        PcReportsDir = $paths.PcReports
+        LogsDir      = $paths.Logs
+        BackupsDir   = $paths.Backups
+        ViewerDir    = $paths.PcReportViewer
     }
 }
 
@@ -509,10 +572,49 @@ Full install report was written by Inspect-GrokInstall.ps1 under Reports\Markdow
 
     [PSCustomObject]@{
         ToolboxRoot   = $ToolboxRoot
+        DeviceId      = $paths.DeviceId
         InspectScript = $scriptPath
         Status        = $status
         WrapperReport = $wrapper
     }
+}
+
+function Invoke-FAFOSystemDiagnostics {
+    <#
+    .SYNOPSIS
+      One-shot PC health / diagnostics collection for THIS machine only.
+    .DESCRIPTION
+      Runs Scripts\Invoke-FAFOSystemDiagnostics.ps1 — collects system status,
+      writes device-local reports, rebuilds the PC Report Library catalog for
+      this host, and prints a plain-English status summary.
+      Safe for Grok CLI: user does not need to name individual tests.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$ToolboxRoot = (Get-FAFOToolboxRoot),
+        [switch]$OpenViewer,
+        [switch]$SkipEventLog
+    )
+
+    $paths = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
+    $scriptPath = $paths.DiagScript
+    if (-not (Test-Path -LiteralPath $scriptPath)) {
+        throw "System diagnostics script not found: $scriptPath"
+    }
+
+    Initialize-FAFOPaths -ToolboxRoot $ToolboxRoot | Out-Null
+    Write-FAFOLog -Level Info -Message "Running system diagnostics for device $($paths.DeviceId)" -ToolboxRoot $ToolboxRoot
+
+    $argList = @(
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $scriptPath,
+        '-ToolboxRoot', $ToolboxRoot
+    )
+    if ($OpenViewer) { $argList += '-OpenViewer' }
+    if ($SkipEventLog) { $argList += '-SkipEventLog' }
+
+    & powershell.exe @argList
 }
 
 #endregion
@@ -718,7 +820,7 @@ function Compress-FAFOReport {
 function Open-FAFOPath {
     [CmdletBinding()]
     param(
-        [ValidateSet('Root', 'Reports', 'Markdown', 'Raw', 'Logs', 'Backups', 'Archive', 'Server', 'Scripts', 'SecretsStore')]
+        [ValidateSet('Root', 'Device', 'Reports', 'Markdown', 'Raw', 'PcReports', 'Logs', 'Backups', 'Archive', 'Server', 'Scripts', 'SecretsStore', 'Viewer')]
         [string]$Which = 'Root',
         [string]$ToolboxRoot = (Get-FAFOToolboxRoot)
     )
@@ -726,20 +828,23 @@ function Open-FAFOPath {
     $paths = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
     $map = @{
         Root         = $paths.ToolboxRoot
+        Device       = $paths.DeviceRoot
         Reports      = $paths.Reports
         Markdown     = $paths.Markdown
         Raw          = $paths.Raw
+        PcReports    = $paths.PcReports
         Logs         = $paths.Logs
         Backups      = $paths.Backups
         Archive      = $paths.Archive
         Server       = $paths.Server
         Scripts      = $paths.Scripts
         SecretsStore = $paths.SecretsStore
+        Viewer       = $paths.PcReportViewer
     }
 
     $target = $map[$Which]
     if (-not (Test-Path -LiteralPath $target)) {
-        if ($Which -in @('Logs', 'Backups', 'Archive', 'Markdown', 'Raw', 'Reports')) {
+        if ($Which -in @('Logs', 'Backups', 'Archive', 'Markdown', 'Raw', 'Reports', 'Device', 'PcReports')) {
             Initialize-FAFOPaths -ToolboxRoot $ToolboxRoot | Out-Null
         }
         else {
@@ -758,6 +863,7 @@ Export-ModuleMember -Function @(
     # Paths & config
     'Get-FAFOToolboxRoot',
     'Set-FAFOToolboxRoot',
+    'Get-FAFODeviceId',
     'Get-FAFOCommonPaths',
     'Initialize-FAFOPaths',
     'Get-FAFOEnvironment',
@@ -772,6 +878,7 @@ Export-ModuleMember -Function @(
     'Test-FAFOHealth',
     'Write-FAFOStatusReport',
     'Invoke-FAFOGrokDiag',
+    'Invoke-FAFOSystemDiagnostics',
     # Reports
     'New-FAFOReportName',
     'Write-FAFOReport',

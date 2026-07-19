@@ -1,8 +1,29 @@
 # FAFO.Secrets.psm1
 # DPAPI-backed secret store for FAFO Power Toolbox (CurrentUser scope)
 
+# ProtectedData lives in System.Security on Windows PowerShell 5.1;
+# some hosts also accept the long assembly name. Try both so FAFO secrets
+# work on this PC and the home setup.
 if (-not ('System.Security.Cryptography.ProtectedData' -as [type])) {
-    Add-Type -AssemblyName System.Security.Cryptography.ProtectedData
+    $loaded = $false
+    foreach ($asm in @(
+            'System.Security',
+            'System.Security.Cryptography.ProtectedData'
+        )) {
+        try {
+            Add-Type -AssemblyName $asm -ErrorAction Stop
+            if ('System.Security.Cryptography.ProtectedData' -as [type]) {
+                $loaded = $true
+                break
+            }
+        }
+        catch {
+            # try next assembly name
+        }
+    }
+    if (-not $loaded -and -not ('System.Security.Cryptography.ProtectedData' -as [type])) {
+        Write-Warning "DPAPI ProtectedData assembly not available; FAFO secret store will fail until .NET System.Security is present."
+    }
 }
 
 $script:SecretDir = Join-Path $env:LOCALAPPDATA 'FAFO\Secrets'

@@ -1,7 +1,13 @@
 @echo off
 cd /d "%~dp0"
 title AI Toolbox Server
-python -m pip install -q -r requirements.txt 2>nul
+call "%~dp0..\Scripts\use-fafo-python.bat"
+if errorlevel 1 (
+  echo Run INSTALL-PYTHON.bat from the toolbox root first.
+  pause
+  exit /b 1
+)
 echo [%date% %time%] Starting console server...>> startup.log
-python "%~dp0aitoolbox_server.py"
+echo Using %FAFO_PYTHON%
+"%FAFO_PYTHON%" "%~dp0aitoolbox_server.py"
 pause

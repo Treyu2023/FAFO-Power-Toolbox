@@ -1,45 +1,84 @@
-# Custom icon + launcher (AI HTML Toolbox)
+# Custom icons + launcher (AI HTML Toolbox)
 
-## Best option for a custom icon on Windows
+## How icons work
 
-**Do not pin the `.html` file.** Windows always shows a browser/document icon for HTML.
+| Layer | Where | Who sees it |
+|-------|--------|-------------|
+| **Personal** | Browser IndexedDB | Only this browser / profile |
+| **Shared (repo)** | `assets/tool-icons/` + `manifest.json` | **All users** after pull |
+| **Fallback** | Emoji on each tool card | Everyone |
 
-| Method | Custom icon? | Look & feel | Recommendation |
-|--------|--------------|-------------|----------------|
-| `.html` shortcut | Poor | Generic browser | Avoid |
-| **`.lnk` shortcut → launch `.bat` + custom `.ico`** | **Yes** | Normal desktop app icon | **Best** |
-| Edge/Chrome `--app=` window | Yes (via `.lnk`) | Frameless “app” window | Best with shortcut |
-| Real `.exe` wrapper | Yes | True EXE | Overkill unless you package later |
+**Priority:** personal override → shared file → emoji.
 
-### What we installed
+Supported file types: **PNG, GIF, JPG/JPEG, WEBP, ICO, SVG, BMP**.
 
-| File | Role |
-|------|------|
-| `Launch-AI-HTML-Toolbox.bat` | Opens Toolbox in Edge/Chrome **app mode** |
-| `assets\AI-HTML-Toolbox.ico` | Default custom icon (from your Completed ICO library) |
-| `Install-Desktop-Shortcut.bat` | Creates **Desktop + Start Menu** shortcuts with that icon |
-| `Change-Toolbox-Icon.bat` | Pick any `.ico` from your library and rebuild the shortcut |
+When you set an icon with the **server running**, the app **copies the file into `assets/tool-icons/{toolId}.ext`** and updates `manifest.json`. Commit that folder to ship defaults to every machine. Users can still change icons locally without overwriting the repo until they publish.
 
-Your icon library:
+## Best option for a Windows desktop icon
 
-`C:\Users\rkey2\OneDrive\Desktop\AI LOCAL Proj Bin\Completed ICO`
+**Do not pin the `.html` file.** Windows shows a browser/document icon for HTML.
+
+| Method | Custom icon? | Recommendation |
+|--------|--------------|----------------|
+| `.html` shortcut | Poor | Avoid |
+| **`.lnk` → `Launch-AI-HTML-Toolbox.bat` + `.ico`** | **Yes** | **Best** |
+| Edge/Chrome `--app=` | Yes (via `.lnk`) | Best with shortcut |
 
 ### One-time setup
 
-1. Double-click **`Install-Desktop-Shortcut.bat`**
-2. On the Desktop, open **AI HTML Toolbox** (not the raw HTML file)
-3. Optional: right-click → **Pin to taskbar**
+1. Double-click **`Install-Desktop-Shortcut.bat`** (or `.ps1`)
+2. Open **AI HTML Toolbox** from the Desktop shortcut
+3. Optional: pin to taskbar
 
-### Change the icon later
+### Change the **main app** icon
 
-- Run **`Change-Toolbox-Icon.bat`**, or  
+- Run **`Change-Toolbox-Icon.bat`** and pick any image/GIF/ICO, or  
 -  
   ```powershell
-  .\Install-Desktop-Shortcut.ps1 -IconPath "C:\Users\rkey2\OneDrive\Desktop\AI LOCAL Proj Bin\Completed ICO\YourIcon.ico" -StartMenu
+  .\Scripts\Set-FAFOToolIcon.ps1 -ToolId app -SourcePath "C:\path\to\icon.png"
+  .\Install-Desktop-Shortcut.ps1 -StartMenu
   ```
 
-### Alternates already copied into `assets\`
+Windows shortcuts prefer **`.ico`**. The HTML launcher still shows PNG/GIF/etc.
 
-- `AI-HTML-Toolbox.ico` — stack (default)
-- `AI-HTML-Toolbox-alt-coding.ico` — web coding
-- `AI-HTML-Toolbox-alt-wizard.ico` — tools wizard
+### Change a **tool** icon (all users)
+
+**In the launcher**
+
+1. `▶ Start Server`
+2. **Edit Icons** → click a tool → pick PNG/GIF/ICO/…
+3. Status should say it saved to `assets/tool-icons/…`
+4. **Commit & push** `assets/tool-icons/`
+
+**PowerShell**
+
+```powershell
+.\Scripts\Set-FAFOToolIcon.ps1 -ToolId image-compare -SourcePath "D:\icons\compare.png"
+.\Scripts\Set-FAFOToolIcon.ps1 -ListTools
+```
+
+**Publish personal → shared**
+
+If you set icons while the server was offline, open **Edit Icons** → **Publish Shared** once the server is up.
+
+### Reset
+
+- **Reset Personal** in the launcher clears only this browser’s overrides. Shared repo icons remain.
+
+### Layout
+
+```text
+assets/
+  AI-HTML-Toolbox.ico          ← legacy default for shortcuts
+  tool-icons/
+    manifest.json              ← toolId → filename (+ app)
+    app.ico                    ← main launcher / optional shortcut
+    image-compare.ico
+    video-compare.ico
+    media-library.png          ← example
+    README.md
+```
+
+### Icon library on your Desktop
+
+`C:\Users\rkey2\OneDrive\Desktop\AI LOCAL Proj Bin\Completed ICO`

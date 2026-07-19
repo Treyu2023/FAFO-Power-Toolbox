@@ -1,0 +1,12 @@
+/* Auto-generated - shared tool icons */
+window.AITOOLBOX_ICON_MANIFEST = {
+    "version":  1,
+    "updatedAt":  "2026-07-19T17:17:23.9480230Z",
+    "note":  "Shared tool icons for all users. Personal overrides live in browser IndexedDB. When you set an icon with the server on, it is copied here for everyone.",
+    "app":  "app.ico",
+    "icons":  {
+                  "image-compare":  "image-compare.ico",
+                  "video-compare":  "video-compare.ico"
+              }
+}
+

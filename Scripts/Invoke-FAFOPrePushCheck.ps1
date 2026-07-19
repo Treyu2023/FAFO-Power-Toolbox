@@ -66,7 +66,11 @@ $blockedRelative = @(
     'Backups',
     'backups',
     'terminals',
-    'server\security_config.json'
+    'server\security_config.json',
+    'System Tools\PC Reports and Log Viewer\catalog.js',
+    'System Tools\PC Reports and Log Viewer\logs-data.js',
+    'System Tools\PC Reports and Log Viewer\device-local',
+    'System Tools\PC Reports and Log Viewer\reports'
 )
 
 $gitDir = Join-Path $ToolboxRoot '.git'
@@ -82,9 +86,11 @@ function Test-PathLooksSecret([string]$RelativePath, [string]$FullPath) {
     }
 
     if ($rel -match '(^|\\)Secrets(\\|$)' -or $rel -match '(?i)FAFO\\Secrets(\\|$)' -or
+        $rel -match '(?i)FAFO\\Devices(\\|$)' -or
         $rel -match '(^|\\)Reports(\\|$)' -or $rel -match '(^|\\)Logs(\\|$)' -or
         $rel -match '(^|\\)Backups(\\|$)' -or $rel -match '(^|\\)backups(\\|$)' -or
-        $rel -match '(^|\\)terminals(\\|$)') {
+        $rel -match '(^|\\)terminals(\\|$)' -or
+        $rel -match '(?i)PC Reports and Log Viewer\\(catalog\.js|logs-data\.js|device-local|reports)(\\|$)') {
         return $true
     }
     if ($name -ieq 'security_config.json') { return $true }
@@ -142,44 +148,49 @@ if (Test-Path -LiteralPath $secCfg) {
 if ($hasGit) {
     Push-Location $ToolboxRoot
     try {
-        $staged = @(git diff --cached --name-only 2>$null | Where-Object { $_ })
+        $stagedAll = @(git diff --cached --name-only 2>$null | Where-Object { $_ })
+        # Files that will remain/appear after commit (exclude pure deletions — untracking sensitive packs is good)
+        $stagedKeep = @(git diff --cached --name-only --diff-filter=ACMR 2>$null | Where-Object { $_ })
+        $stagedDeleted = @(git diff --cached --name-only --diff-filter=D 2>$null | Where-Object { $_ })
         $tracked = @(git ls-files 2>$null | Where-Object { $_ })
+        # Paths still present after this commit (tracked minus staged deletions, plus staged adds/mods)
+        $trackedAfter = @($tracked | Where-Object { $stagedDeleted -notcontains $_ }) + @($stagedKeep) | Select-Object -Unique
         $unstaged = @(git diff --name-only 2>$null | Where-Object { $_ })
         $untracked = @(git ls-files --others --exclude-standard 2>$null | Where-Object { $_ })
 
-        $toScan = @($staged + $tracked + $unstaged + $untracked | Select-Object -Unique)
-        Write-Host "Scanning paths (staged=$($staged.Count) tracked=$($tracked.Count) untracked=$($untracked.Count))" -ForegroundColor Gray
+        $toScan = @($stagedKeep + $trackedAfter + $unstaged + $untracked | Select-Object -Unique)
+        Write-Host "Scanning paths (stagedKeep=$($stagedKeep.Count) stagedDel=$($stagedDeleted.Count) trackedAfter=$($trackedAfter.Count) untracked=$($untracked.Count))" -ForegroundColor Gray
 
         foreach ($rel in $toScan) {
             if ([string]::IsNullOrWhiteSpace($rel)) { continue }
             $full = Join-Path $ToolboxRoot ($rel -replace '/', '\')
-            $inGitIndex = ($staged -contains $rel) -or ($tracked -contains $rel)
+            $inNextCommit = ($trackedAfter -contains $rel)
             $inWorking = ($untracked -contains $rel) -or ($unstaged -contains $rel)
 
             if (Test-PathLooksSecret $rel $full) {
-                if ($inGitIndex) {
-                    Add-Fail "Sensitive path is staged or tracked: $rel"
+                if ($inNextCommit) {
+                    Add-Fail "Sensitive path would remain tracked after commit: $rel"
                 }
                 elseif ($untracked -contains $rel) {
                     Add-Fail "Sensitive untracked file is not ignored: $rel"
                 }
             }
 
-            if ($inGitIndex -and (Test-Path -LiteralPath $full -PathType Leaf)) {
+            if ($inNextCommit -and (Test-Path -LiteralPath $full -PathType Leaf)) {
                 if (Test-FileContentSecretish $full) {
                     Add-Fail "Secret-like content in tracked/staged file: $rel"
                 }
             }
-            elseif ($inWorking -and -not $inGitIndex -and (Test-Path -LiteralPath $full -PathType Leaf)) {
+            elseif ($inWorking -and -not $inNextCommit -and (Test-Path -LiteralPath $full -PathType Leaf)) {
                 if (Test-FileContentSecretish $full) {
                     Add-Fail "Secret-like content in untracked (not ignored) file: $rel"
                 }
             }
         }
 
-        # Explicit: Reports/Logs/Backups must never be tracked
+        # Explicit: Reports/Logs/Backups must never remain tracked after this commit
         foreach ($prefix in @('Reports/', 'Logs/', 'Backups/', 'backups/', 'terminals/')) {
-            $hit = @($tracked + $staged | Where-Object {
+            $hit = @($trackedAfter | Where-Object {
                     $_ -like ($prefix + '*') -or
                     $_ -like ($prefix.Replace('/', '\') + '*') -or
                     $_ -eq $prefix.TrimEnd('/') -or

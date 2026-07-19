@@ -36,18 +36,34 @@ Local, secure FAFO Power Toolbox + AI HTML Toolbox. Prefer small, reversible Pow
 Do not add, stage, or commit:
 
 - `Reports\`, `Logs\`, `Backups\`, `terminals\`
-- `%LOCALAPPDATA%\FAFO\Secrets\` (or any `Secrets\` folder)
+- `%LOCALAPPDATA%\FAFO\Secrets\` and `%LOCALAPPDATA%\FAFO\Devices\` (per-PC data)
+- `System Tools\PC Reports and Log Viewer\catalog.js` / `logs-data.js` (generated per device)
 - `server\security_config.json` with secrets
 - `*.db`, `*.log`, thumbnails, quarantine, `__pycache__`
 - `.env` and credential files
+- **Any other machine’s diagnostic dumps** (desktop logs on a laptop clone, etc.)
 
 Use `.gitignore` as the source of truth. If something sensitive appears, fix ignore rules and scrub history before pushing.
+
+## Device-local reports & diagnostics
+
+- **Each PC keeps its own reports/logs** under `%LOCALAPPDATA%\FAFO\Devices\<COMPUTERNAME>\`.
+- Do **not** commit or copy another host’s packs into the shared repo for “convenience.”
+- When the user asks for system health, PC status, diagnostics, or report library refresh — **run the full suite** without requiring them to name individual tests:
+
+```powershell
+& ".\Scripts\Initialize-FAFOSession.ps1"
+Invoke-FAFOSystemDiagnostics   # or: .\Scripts\Invoke-FAFOSystemDiagnostics.ps1 -OpenViewer
+```
+
+- That command collects identity/GPU/disk/volume/network/PnP/event summary, writes device-local reports, rebuilds the Report Library packs for **this** host, and prints a status overview.
 
 ## Runtime / bind conventions
 
 - Toolbox server bind: **`127.0.0.87:18765`** (see `shared\aitoolbox-bind.json`).
 - Do **not** move it back to `127.0.0.1:8765` — that conflicts with FAFO companion.
 - Secrets and machine-local state belong under `%LOCALAPPDATA%\FAFO\`, not OneDrive if avoidable.
+- **Python:** use local **`.venv`** only (never global pip). Setup: `INSTALL-PYTHON.bat` / `Scripts\Install-PythonEnvironment.ps1`. Launchers resolve via `Scripts\use-fafo-python.bat`. See `docs\PYTHON-SETUP.md`.
 
 ## Safety & destructive actions
 
@@ -74,7 +90,8 @@ Test-FAFOHealth
 & ".\Scripts\Invoke-FAFOPrePushCheck.ps1"
 ```
 
-Reports: `Write-FAFOReport` / `Write-FAFOStatusReport` → `Reports\Markdown` + optional `Reports\Raw`.
+Reports: `Write-FAFOReport` / `Write-FAFOStatusReport` → `%LOCALAPPDATA%\FAFO\Devices\<PC>\Reports\...` (this machine only).  
+System diagnostics: `Invoke-FAFOSystemDiagnostics` → same device store + PC Report Library packs.
 
 ## PR / commit hygiene
 

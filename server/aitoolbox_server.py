@@ -254,8 +254,243 @@ def health():
             "tray",
             "git_manager",
             "unique_bind",
+            "tool_icons",
         ],
     }
+
+
+# --- Shared tool icons (repo assets/tool-icons) ---
+ICONS_DIR = ROOT / "assets" / "tool-icons"
+ICONS_MANIFEST = ICONS_DIR / "manifest.json"
+_ICON_EXT_OK = {
+    ".png", ".gif", ".jpg", ".jpeg", ".webp", ".ico", ".svg", ".bmp",
+}
+_ICON_MIME_EXT = {
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+    "image/x-icon": ".ico",
+    "image/vnd.microsoft.icon": ".ico",
+    "image/svg+xml": ".svg",
+    "image/bmp": ".bmp",
+}
+
+
+def _safe_tool_id(tool_id: str) -> str:
+    tid = (tool_id or "").strip().lower()
+    tid = "".join(c if c.isalnum() or c in "-_" else "-" for c in tid)
+    tid = tid.strip("-_") or "tool"
+    if tid in {".", ".."} or len(tid) > 80:
+        raise HTTPException(400, "Invalid tool id")
+    return tid
+
+
+def _load_icon_manifest() -> dict:
+    ICONS_DIR.mkdir(parents=True, exist_ok=True)
+    if ICONS_MANIFEST.is_file():
+        try:
+            data = json.loads(ICONS_MANIFEST.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data.setdefault("version", 1)
+                data.setdefault("icons", {})
+                if not isinstance(data["icons"], dict):
+                    data["icons"] = {}
+                return data
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+    return {
+        "version": 1,
+        "updatedAt": None,
+        "note": "Shared tool icons for all users.",
+        "app": None,
+        "icons": {},
+    }
+
+
+def _save_icon_manifest(data: dict) -> dict:
+    from datetime import datetime, timezone
+
+    ICONS_DIR.mkdir(parents=True, exist_ok=True)
+    data["version"] = int(data.get("version") or 1)
+    data["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    data.setdefault("icons", {})
+    payload = json.dumps(data, indent=2, ensure_ascii=False)
+    ICONS_MANIFEST.write_text(payload + "\n", encoding="utf-8")
+    # JS companion so file:// launcher can load without fetch CORS issues
+    js_path = ICONS_DIR / "manifest.js"
+    js_path.write_text(
+        "/* Auto-generated — shared tool icons. Do not edit by hand. */\n"
+        "window.AITOOLBOX_ICON_MANIFEST = "
+        + json.dumps(data, ensure_ascii=False)
+        + ";\n",
+        encoding="utf-8",
+    )
+    return data
+
+
+def _ext_from_name_or_mime(filename: str | None, mime: str | None) -> str:
+    if filename:
+        ext = Path(filename).suffix.lower()
+        if ext == ".jpeg":
+            ext = ".jpg"
+        if ext in _ICON_EXT_OK:
+            return ext
+    if mime:
+        m = mime.split(";")[0].strip().lower()
+        if m in _ICON_MIME_EXT:
+            return _ICON_MIME_EXT[m]
+    return ".png"
+
+
+class IconSaveBody(BaseModel):
+    """Save a tool icon into assets/tool-icons and update manifest.json."""
+
+    toolId: str
+    # data URL (data:image/png;base64,...) or raw base64
+    dataUrl: str | None = None
+    base64: str | None = None
+    mimeType: str | None = None
+    filename: str | None = None
+    # When true, also set as the main app / Desktop shortcut icon
+    asAppIcon: bool = False
+
+
+@app.get("/api/icons/manifest")
+def api_icons_manifest():
+    data = _load_icon_manifest()
+    # Expose absolute file paths only as relative web paths for the launcher
+    icons_out = {}
+    for tid, fname in (data.get("icons") or {}).items():
+        if not fname:
+            continue
+        p = ICONS_DIR / str(fname)
+        icons_out[tid] = {
+            "file": str(fname),
+            "url": f"assets/tool-icons/{fname}",
+            "exists": p.is_file(),
+        }
+    app_name = data.get("app")
+    app_out = None
+    if app_name:
+        p = ICONS_DIR / str(app_name)
+        app_out = {
+            "file": str(app_name),
+            "url": f"assets/tool-icons/{app_name}",
+            "exists": p.is_file(),
+        }
+    return {
+        "ok": True,
+        "version": data.get("version", 1),
+        "updatedAt": data.get("updatedAt"),
+        "app": app_out,
+        "icons": icons_out,
+        "dir": str(ICONS_DIR),
+    }
+
+
+@app.get("/api/icons/file/{filename}")
+def api_icons_file(filename: str):
+    name = Path(filename).name
+    ext = Path(name).suffix.lower()
+    if ext not in _ICON_EXT_OK:
+        raise HTTPException(400, "Unsupported icon type")
+    path = ICONS_DIR / name
+    if not path.is_file():
+        raise HTTPException(404, "Icon not found")
+    return FileResponse(path)
+
+
+@app.post("/api/icons")
+def api_icons_save(body: IconSaveBody):
+    import base64
+    import re
+
+    tid = _safe_tool_id(body.toolId)
+    raw_b64 = body.base64
+    mime = body.mimeType
+    if body.dataUrl:
+        m = re.match(
+            r"^data:([^;]+);base64,(.+)$",
+            body.dataUrl.strip(),
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        if not m:
+            raise HTTPException(400, "dataUrl must be a base64 data URL")
+        mime = m.group(1).strip()
+        raw_b64 = m.group(2).strip()
+    if not raw_b64:
+        raise HTTPException(400, "Provide dataUrl or base64")
+
+    try:
+        blob = base64.b64decode(raw_b64, validate=False)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid base64: {e}") from e
+    if not blob:
+        raise HTTPException(400, "Empty image data")
+    if len(blob) > 12 * 1024 * 1024:
+        raise HTTPException(400, "Icon too large (max 12 MB)")
+
+    ext = _ext_from_name_or_mime(body.filename, mime)
+    ICONS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Remove previous files for this tool id (any extension)
+    for old in ICONS_DIR.glob(f"{tid}.*"):
+        if old.suffix.lower() in _ICON_EXT_OK:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+
+    dest_name = f"{tid}{ext}"
+    dest = ICONS_DIR / dest_name
+    dest.write_bytes(blob)
+
+    manifest = _load_icon_manifest()
+    if tid == "app" or body.asAppIcon:
+        manifest["app"] = dest_name
+        # Keep app listed under icons as well for uniform lookup
+        manifest.setdefault("icons", {})
+        if tid != "app":
+            manifest["icons"][tid] = dest_name
+        else:
+            # app id reserved for main launcher/shortcut
+            pass
+    else:
+        manifest.setdefault("icons", {})[tid] = dest_name
+    _save_icon_manifest(manifest)
+
+    return {
+        "ok": True,
+        "toolId": tid,
+        "file": dest_name,
+        "url": f"assets/tool-icons/{dest_name}",
+        "bytes": len(blob),
+        "path": str(dest),
+    }
+
+
+@app.delete("/api/icons/{tool_id}")
+def api_icons_delete(tool_id: str):
+    tid = _safe_tool_id(tool_id)
+    manifest = _load_icon_manifest()
+    removed = []
+    for old in ICONS_DIR.glob(f"{tid}.*"):
+        if old.suffix.lower() in _ICON_EXT_OK:
+            try:
+                old.unlink()
+                removed.append(old.name)
+            except OSError:
+                pass
+    icons = manifest.setdefault("icons", {})
+    if tid in icons:
+        icons.pop(tid, None)
+    if tid == "app" or manifest.get("app") in removed:
+        if tid == "app":
+            manifest["app"] = None
+    _save_icon_manifest(manifest)
+    return {"ok": True, "toolId": tid, "removed": removed}
 
 
 @app.get("/api/directories")

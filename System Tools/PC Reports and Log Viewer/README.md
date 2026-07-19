@@ -1,88 +1,88 @@
-# HTML Tools Box — Report Library
+# PC Reports and Log Viewer
 
-**Path:** `D:\OUTPUTS\toolbox`
+Graphical library for **this PC’s** diagnostics, firmware snapshots, and log packs.
 
-Graphical library for PC / BIOS / diagnostics reports.
+## Device-local by design
 
-**Reports are written in plain English** with friendly names (e.g. **Logitech G502 SE**, not “HID-compliant mouse”), color badges (green / yellow / red), and technical IDs kept in smaller secondary lines or “Technical appendix” sections.
+| What | Where |
+|------|--------|
+| **Source of truth** | `%LOCALAPPDATA%\FAFO\Devices\<COMPUTERNAME>\` |
+| Reports (HTML/MD/TXT/JSON) | `...\Reports\PC\` |
+| FAFO markdown/raw helpers | `...\Reports\Markdown` · `...\Reports\Raw` |
+| Session logs | `...\Logs\` |
+| Viewer code (shared) | this folder in the git repo |
+| Generated packs (local only) | `catalog.js`, `logs-data.js` (**gitignored**) |
 
-Open with:
+**Desktop dumps must not ship in git.** Cloning the repo onto a laptop must not show the desktop’s health reports. Each machine collects and stores its own data.
+
+Optional multi-PC: you *can* copy folders between devices if you want both libraries on one machine, but the default is **one device → its own store**.
+
+## Open the library
 
 ```text
 Open_Report_Library.bat
 ```
 
-or double-click `index.html`.
+or double-click `index.html` (Chrome / Edge).
+
+## Collect diagnostics (recommended)
+
+One shot — no need to name individual tests:
+
+```powershell
+cd "C:\_git\HTMLPROJECTS\AI HTML TOOLBOX"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\Invoke-FAFOSystemDiagnostics.ps1 -OpenViewer
+```
+
+Or after loading modules:
+
+```powershell
+& .\Scripts\Initialize-FAFOSession.ps1
+Invoke-FAFOSystemDiagnostics -OpenViewer
+```
+
+**Grok CLI:** say *“run system diagnostics”*, *“check PC health”*, or *“refresh report library”* — agents should run `Scripts\Invoke-FAFOSystemDiagnostics.ps1`.
+
+What it does:
+
+1. Reads identity, CPU/GPU, disks, volumes, network, problem devices, optional event-log summary  
+2. Writes reports under this machine’s FAFO device folder  
+3. Rebuilds `catalog.js` / `logs-data.js` for **this host only**  
+4. Prints a plain-English status summary  
+
+## Refresh packs only
+
+If files already exist under the device store:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\_pack_logs.ps1"
+```
+
+## BIOS / firmware collect (legacy helper)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\_collect_bios_system.ps1"
+```
+
+Output now goes to the same device-local `Reports\PC` folder (not a hard-coded `D:\OUTPUTS` path).
 
 ## Layout
 
 ```text
-toolbox/
-  index.html                 ← graphics UI (Reports + Log Viewer tabs)
-  catalog.js                 ← report index (add new entries here)
-  logs-data.js               ← packed raw logs for offline Log Viewer
-  _pack_logs.ps1             ← refresh logs-data.js from reports\
-  Open_Report_Library.bat
+PC Reports and Log Viewer/     ← git (shared UI)
+  index.html
+  catalog.default.js           ← empty stub in git
+  logs-data.default.js
+  catalog.js                   ← generated, gitignored
+  logs-data.js                 ← generated, gitignored
+  device-local/                ← junction → %LOCALAPPDATA%\FAFO\Devices\<PC>\
+  _pack_logs.ps1
+  _collect_bios_system.ps1
   README.md
-  reports/
-    bios-firmware-report.html
-    pc-anomaly-report.html
-    pc-health-report.html
-    pc-health-report-part2.html
-    usb-power-fix-log.html
-    bios_system_raw.json     ← machine-readable snapshot
-    *.md / *.txt             ← source originals
-  _collect_bios_system.ps1   ← re-scan BIOS/OS-visible firmware data
 ```
-
-## Log Viewer
-
-On the dashboard, open the **Log Viewer** tab (or `index.html#logs`).
-
-- Color-codes lines (errors / warnings / OK-ish)
-- Search / filter lines, hits-only mode, copy, open raw file
-- Works offline via `logs-data.js` (no web server)
-
-After adding or changing `.txt` / `.md` / `.json` under `reports\`, refresh the pack:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "D:\OUTPUTS\toolbox\_pack_logs.ps1"
-```
-
-Then reload the page.
-
-## Add a new report
-
-1. Put the file in `reports\` (prefer `.html`; `.md`/`.txt` OK if you wrap them).
-2. Append an object to `reports: [...]` in `catalog.js`:
-
-```js
-{
-  id: "unique-id",
-  title: "Short title",
-  summary: "One-line description",
-  category: "Diagnostics" | "Firmware" | "Fixes",
-  severity: "ok" | "warn" | "bad" | "info",
-  tags: ["Tag1", "Tag2"],
-  date: "YYYY-MM-DD",
-  icon: "cpu" | "radar" | "heart" | "search" | "bolt",
-  file: "reports/your-file.html",
-  highlights: [{ label: "Key", value: "Value" }]
-}
-```
-
-3. Refresh the Report Library page.
-
-## Re-collect BIOS / system snapshot
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "D:\OUTPUTS\toolbox\_collect_bios_system.ps1"
-```
-
-Then update or regenerate `reports/bios-firmware-report.html` if needed.
 
 ## Notes
 
-- Reports open in an in-page viewer (or “Open in new tab”).
-- Works offline via `file://` (no web server required).
-- Full BIOS menus cannot be read from Windows; the BIOS report uses SMBIOS/WMI/registry/powercfg plus platform guidance.
+- Works offline via `file://` when packs are generated.  
+- Reports open in-page (or new tab). HTML reports use `device-local/...` relative paths when the junction exists.  
+- Full BIOS menus cannot be read from Windows; SMBIOS/WMI/registry/powercfg only.  

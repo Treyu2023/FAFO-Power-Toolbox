@@ -1,6 +1,13 @@
 @echo off
-title LAN & Task Manager
+title LAN Task Manager
 cd /d "%~dp0\.."
+
+call "%CD%\Scripts\use-fafo-python.bat"
+if errorlevel 1 (
+  echo Run INSTALL-PYTHON.bat from the toolbox root first.
+  pause
+  exit /b 1
+)
 
 echo Stopping any old AI Toolbox server on port 18765...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":18765" ^| findstr "LISTENING"') do (
@@ -8,7 +15,8 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":18765" ^| findstr "LISTENIN
 )
 
 echo Starting AI Toolbox Server on 127.0.0.87:18765...
-start "AI Toolbox Server" /min cmd /c "cd /d "%~dp0..\server" && python aitoolbox_server.py"
+echo Python: %FAFO_PYTHON%
+start "AI Toolbox Server" /min cmd /c "cd /d "%CD%\server" && "%FAFO_PYTHON%" aitoolbox_server.py"
 
 echo Waiting for server...
 timeout /t 3 /nobreak >nul

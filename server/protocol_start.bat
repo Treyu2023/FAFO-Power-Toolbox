@@ -1,4 +1,6 @@
 @echo off
 cd /d "%~dp0"
-start "AI Toolbox Server" /MIN cmd /k "cd /d "%~dp0" && python aitoolbox_server.py"
+call "%~dp0..\Scripts\use-fafo-python.bat"
+if errorlevel 1 exit /b 1
+start "AI Toolbox Server" /MIN cmd /k "cd /d "%~dp0" && "%FAFO_PYTHON%" aitoolbox_server.py"
 exit /b 0

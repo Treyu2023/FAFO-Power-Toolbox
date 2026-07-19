@@ -43,4 +43,4 @@ if (-not $health.OverallOk) {
     Write-Host "Health issues: $($health.Failed -join ', ')" -ForegroundColor Yellow
 }
 
-Write-Host "Helpers: Write-FAFOStatusReport -IncludeHealth | Invoke-FAFOGrokDiag | Get-FAFOReport | Open-FAFOPath" -ForegroundColor DarkGray
+Write-Host "Helpers: Invoke-FAFOSystemDiagnostics | Write-FAFOStatusReport -IncludeHealth | Invoke-FAFOGrokDiag | Get-FAFOReport | Open-FAFOPath -Which Device" -ForegroundColor DarkGray
