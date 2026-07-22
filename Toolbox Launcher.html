@@ -240,6 +240,14 @@
         <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and runtime events — copy log when reporting issues">🐛 Debug</button>
     </div>
 
+    <div class="filter-bar animate-in animate-in-delay-2" id="filterBar" style="max-width:1200px;margin:0 auto 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;">
+        <input type="search" id="toolSearch" placeholder="Search tools…" autocomplete="off"
+            style="min-width:220px;max-width:360px;flex:1;padding:9px 14px;border-radius:8px;border:1px solid rgba(0,243,255,.25);background:rgba(0,0,0,.35);color:var(--text);font-size:13px;"
+            data-tip-title="Search" data-tip="Filter by name, description, or category">
+        <div id="catChips" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;"></div>
+        <span id="toolCount" style="font-size:11px;color:var(--muted);width:100%;text-align:center;"></span>
+    </div>
+
     <div class="tool-grid" id="toolGrid"></div>
 
     <p class="hint-bar">
@@ -267,6 +275,23 @@
                 category: 'Verifone',
                 emoji: '⛽',
                 featured: true
+            },
+            {
+                id: 'commander-status-hud',
+                name: 'Commander Status HUD',
+                desc: 'Live probe: ping, ports, HTTP discovery, credential login test, library context',
+                path: 'Verifone Tools/Commander Status HUD.html',
+                category: 'Verifone',
+                emoji: '📡',
+                featured: true
+            },
+            {
+                id: 'pre-reload-punch-list',
+                name: 'Pre-Reload Punch List',
+                desc: 'Working copy of the CITGO VAPS pre-reload spreadsheet — master template stays untouched',
+                path: 'Verifone Tools/Pre-Reload Punch List.html',
+                category: 'Verifone',
+                emoji: '✅'
             },
             {
                 id: 'ip-profile-switcher',
@@ -357,10 +382,27 @@
             {
                 id: 'loan-calc',
                 name: 'Loan Calculator',
-                desc: 'Amortization schedule calculator',
+                desc: 'Amortization schedule with escrow, extra payments & payoff chart',
                 path: 'Accounting Tools and calculators/Amoritization loan calculator2.html',
                 category: 'Finance',
                 emoji: '💰'
+            },
+            {
+                id: 'reg-qol-tweaks',
+                name: 'Windows REG QoL Tweaks',
+                desc: 'Classic menu, long paths, Explorer speed, show extensions, copy/move to',
+                path: 'REG Tweak AI Bat Files/Windows REG QoL Tweaks.html',
+                category: 'System',
+                emoji: '⚙️',
+                featured: true
+            },
+            {
+                id: 'solar-debris-tracker',
+                name: 'Solar System Debris Tracker',
+                desc: '3D Earth/solar view of ASAT & collision debris — live TLE from CelesTrak',
+                path: 'Solar System Debris Tracker.html',
+                category: 'Science',
+                emoji: '🪐'
             },
             {
                 id: 'ghost-device-cleaner',
@@ -462,6 +504,10 @@
         const iconPicker = document.getElementById('iconPicker');
         let editMode = false;
         let editingToolId = null;
+        let activeCategory = 'All';
+        let searchQuery = '';
+
+        const CATEGORIES = ['All', ...Array.from(new Set(TOOLS.map(t => t.category)))];
 
         function setIconStatus(msg, kind) {
             const el = document.getElementById('iconStatus');
@@ -483,6 +529,34 @@
             return '';
         }
 
+        function toolMatches(tool) {
+            if (activeCategory !== 'All' && tool.category !== activeCategory) return false;
+            const q = searchQuery.trim().toLowerCase();
+            if (!q) return true;
+            const hay = [tool.name, tool.desc, tool.category, tool.id].join(' ').toLowerCase();
+            return q.split(/\s+/).every(part => hay.includes(part));
+        }
+
+        function renderCategoryChips() {
+            const host = document.getElementById('catChips');
+            if (!host) return;
+            host.innerHTML = CATEGORIES.map(c => {
+                const count = c === 'All' ? TOOLS.length : TOOLS.filter(t => t.category === c).length;
+                const active = c === activeCategory;
+                return `<button type="button" class="ui-btn${active ? '' : ' ghost'}" data-cat="${c}"
+                    style="padding:5px 12px;font-size:11px;${active ? '' : 'opacity:.85'}"
+                    data-tip-title="${c}" data-tip="${count} tool${count === 1 ? '' : 's'}">${c} <span style="opacity:.65">(${count})</span></button>`;
+            }).join('');
+            host.querySelectorAll('[data-cat]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    activeCategory = btn.dataset.cat;
+                    renderCategoryChips();
+                    renderTools();
+                });
+            });
+            try { AIToolboxUI.initTooltips(host); } catch (e) { /* ignore */ }
+        }
+
         async function renderTools() {
             grid.innerHTML = '';
             // Refresh shared manifest once per render pass
@@ -498,7 +572,23 @@
                 }
             } catch (e) { /* ignore */ }
 
-            for (const tool of TOOLS) {
+            const visible = TOOLS.filter(toolMatches);
+            const countEl = document.getElementById('toolCount');
+            if (countEl) {
+                countEl.textContent = visible.length === TOOLS.length
+                    ? `${TOOLS.length} tools`
+                    : `Showing ${visible.length} of ${TOOLS.length} tools`;
+            }
+
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'grid-column:1/-1;text-align:center;padding:40px 16px;color:var(--muted);font-size:13px;';
+                empty.textContent = 'No tools match your search / category.';
+                grid.appendChild(empty);
+                return;
+            }
+
+            for (const tool of visible) {
                 let customIcon = null;
                 try {
                     customIcon = await AIToolbox.getLauncherIcon(tool.id);
@@ -552,8 +642,14 @@
                 grid.appendChild(card);
             }
             try { AIToolboxUI.initTooltips(grid); } catch (e) { /* ignore */ }
-            console.info('[AI Toolbox] Tools rendered:', TOOLS.length, TOOLS.map(t => t.id));
+            console.info('[AI Toolbox] Tools rendered:', visible.length, '/', TOOLS.length, visible.map(t => t.id));
         }
+
+        document.getElementById('toolSearch')?.addEventListener('input', (e) => {
+            searchQuery = e.target.value || '';
+            renderTools();
+        });
+        renderCategoryChips();
 
         const LAUNCHER_TUTORIAL = [
             { target: '#serverBanner', title: 'Welcome to AI HTML Toolbox', body: 'Everything runs locally. Click <strong>▶ Start Server</strong> for renames, Explorer tags, ffmpeg, and VSR. You can also start the server from <strong>Media Library</strong>, <strong>VSR</strong>, or <strong>File Organizer</strong> — green pill means ready.' },

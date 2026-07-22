@@ -133,6 +133,11 @@
     </style>
 </head>
 <body>
+    <nav style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid rgba(0,229,255,.15);background:rgba(5,5,12,.9);position:sticky;top:0;z-index:20;">
+        <a href="../Toolbox Launcher.html" style="color:#00e5ff;text-decoration:none;font-weight:600;font-size:13px;">← Toolbox</a>
+        <span style="color:#00e5ff;font-size:12px;letter-spacing:1px;opacity:.85">LOAN / AMORTIZATION</span>
+        <span style="font-size:11px;color:#666">Local · no data leaves this PC</span>
+    </nav>
 
     <div class="container">
         <div class="glass-panel calculator-wrapper">
@@ -311,27 +316,36 @@
         const formatCur = (num) => '$' + num.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
         
         function calcAmort(P, annualRate, years, extra) {
-            if (P <= 0 || annualRate <= 0 || years <= 0) return { pmt: 0, totalInterest: 0, months: 0, dataPoints: [] };
-            
+            if (P <= 0 || years <= 0) return { pmt: 0, totalInterest: 0, months: 0, dataPoints: [] };
+            if (annualRate < 0) annualRate = 0;
+
             const r = (annualRate / 100) / 12;
-            const n = years * 12;
-            const pmt = P * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-            
+            const n = Math.round(years * 12);
+            // Zero-rate loans: payment is principal / months (avoid divide-by-zero on (1+r)^n - 1)
+            const pmt = r === 0
+                ? P / n
+                : P * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+
             let balance = P;
             let totalInterest = 0;
             let months = 0;
             const dataPoints = [{ year: 0, balance: P }];
+            const safetyCap = Math.max(n * 3, n + 12);
 
-            while (balance > 0.01 && months < n * 2) { 
-                let interestThisMonth = balance * r;
-                let principalPaid = pmt - interestThisMonth + extra; 
+            while (balance > 0.01 && months < safetyCap) {
+                const interestThisMonth = balance * r;
+                let principalPaid = pmt - interestThisMonth + (extra || 0);
+                if (principalPaid <= 0 && r > 0) {
+                    // Extra payment too small / negative edge: force minimum principal progress
+                    principalPaid = Math.min(balance, Math.max(pmt * 0.01, 1));
+                }
                 if (balance < principalPaid) principalPaid = balance;
-                
+
                 totalInterest += interestThisMonth;
                 balance -= principalPaid;
                 months++;
 
-                if (months % 12 === 0 || balance <= 0) {
+                if (months % 12 === 0 || balance <= 0.01) {
                     dataPoints.push({
                         year: +(months / 12).toFixed(2),
                         balance: Math.max(0, balance)

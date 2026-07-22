@@ -5,6 +5,7 @@ cd /d "%~dp0"
 call "%~dp0Scripts\use-fafo-python.bat"
 if errorlevel 1 (
   echo  Run INSTALL-PYTHON.bat first to create .venv
+  echo  ^(If you see "No Python at ...Python312", the old venv is broken — reinstall.^)
   pause
   exit /b 1
 )
@@ -16,15 +17,18 @@ echo  Endpoint: http://127.0.0.87:18765  (not 127.0.0.1:8765)
 echo.
 
 REM Do not pip-install into global Python. Use INSTALL-PYTHON.bat for deps.
-if not exist "%~dp0.venv\Scripts\python.exe" (
-  echo  [!] Local .venv missing — run INSTALL-PYTHON.bat once.
-  echo  Falling back to system Python for this launch only.
+echo %FAFO_PYTHON%| findstr /I /C:"\.venv\Scripts\python.exe" >nul
+if errorlevel 1 (
+  echo  [!] Not using local .venv — packages may be missing.
+  echo      Run INSTALL-PYTHON.bat to recreate .venv ^(e.g. after uninstalling Python 3.12^).
+  echo.
 )
 
 echo [%date% %time%] START SERVER.bat>> "%~dp0server\startup.log"
 echo python=%FAFO_PYTHON%>> "%~dp0server\startup.log"
 
-start "AI Toolbox Server" /MIN cmd /k "cd /d "%~dp0server" && "%FAFO_PYTHON%" aitoolbox_server.py"
+REM Use /c so a failed import does not leave a permanent "No Python" window hanging
+start "AI Toolbox Server" /MIN cmd /c "cd /d "%~dp0server" && "%FAFO_PYTHON%" aitoolbox_server.py || (echo. & echo Server exited with an error. & pause)"
 
 echo  Server window started (minimized). Check taskbar if needed.
 echo  Return to Toolbox Launcher — dot should turn green in a few seconds.

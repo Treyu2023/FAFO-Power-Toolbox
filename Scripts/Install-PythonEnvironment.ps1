@@ -50,17 +50,29 @@ function Test-PythonVersionOk([string]$Exe, [version]$Min) {
     }
 }
 
+function Test-PythonRuns([string]$Exe) {
+    if (-not $Exe -or -not (Test-Path -LiteralPath $Exe)) { return $false }
+    try {
+        $p = Start-Process -FilePath $Exe -ArgumentList @('-c', 'import sys') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+        return ($p.ExitCode -eq 0)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Find-SystemPython {
     $min = [version]$MinVersion
     $found = @()
 
-    # py launcher first (Windows)
+    # py launcher first (Windows) — try preferred, then neighbors
     if (Get-Command py -ErrorAction SilentlyContinue) {
-        foreach ($tag in @("-3.12", "-3.11", "-3.10", "-3")) {
+        foreach ($tag in @("-3.12", "-3.11", "-3.13", "-3.10", "-3")) {
             try {
                 $exe = & py $tag -c "import sys; print(sys.executable)" 2>$null
-                if ($exe -and (Test-Path $exe.Trim()) -and (Test-PythonVersionOk $exe.Trim() $min)) {
-                    $found += [PSCustomObject]@{ Exe = $exe.Trim(); Via = "py $tag" }
+                $path = if ($exe) { $exe.Trim() } else { $null }
+                if ($path -and (Test-Path $path) -and (Test-PythonRuns $path) -and (Test-PythonVersionOk $path $min)) {
+                    $found += [PSCustomObject]@{ Exe = $path; Via = "py $tag" }
                 }
             }
             catch { }
@@ -69,7 +81,7 @@ function Find-SystemPython {
 
     foreach ($name in @('python', 'python3')) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($cmd -and $cmd.Source -and (Test-PythonVersionOk $cmd.Source $min)) {
+        if ($cmd -and $cmd.Source -and (Test-PythonRuns $cmd.Source) -and (Test-PythonVersionOk $cmd.Source $min)) {
             # Skip WindowsApps stub that opens Store
             if ($cmd.Source -match 'WindowsApps') { continue }
             $found += [PSCustomObject]@{ Exe = $cmd.Source; Via = $name }
@@ -80,20 +92,27 @@ function Find-SystemPython {
     $paths = @(
         "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
         "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
         "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
         "$env:ProgramFiles\Python312\python.exe",
         "$env:ProgramFiles\Python311\python.exe",
-        "$env:ProgramFiles\Python310\python.exe"
+        "$env:ProgramFiles\Python310\python.exe",
+        'C:\Python314\python.exe',
+        'C:\Python313\python.exe',
+        'C:\Python312\python.exe',
+        'C:\Python311\python.exe'
     )
     foreach ($p in $paths) {
-        if ((Test-Path $p) -and (Test-PythonVersionOk $p $min)) {
+        if ((Test-Path $p) -and (Test-PythonRuns $p) -and (Test-PythonVersionOk $p $min)) {
             $found += [PSCustomObject]@{ Exe = $p; Via = 'path' }
         }
     }
 
-    # Prefer 3.12
-    $prefer = $found | Where-Object { $_.Exe -match 'Python312|3\.12' } | Select-Object -First 1
-    if ($prefer) { return $prefer }
+    # Prefer 3.12, then 3.11, then 3.13, then anything else that works
+    foreach ($pat in @('Python312|\\3\.12', 'Python311|\\3\.11', 'Python313|\\3\.13', 'Python310|\\3\.10')) {
+        $prefer = $found | Where-Object { $_.Exe -match $pat } | Select-Object -First 1
+        if ($prefer) { return $prefer }
+    }
     return $found | Select-Object -First 1
 }
 
@@ -146,8 +165,14 @@ $req = if (Test-Path $reqRoot) { $reqRoot } elseif (Test-Path $reqServer) { $req
 Write-Host "Requirements: $req"
 
 # --- Create venv ---
-if ($Force -and (Test-Path $venvDir)) {
-    Write-Step "Removing existing .venv (-Force)"
+$venvBroken = $false
+if ((Test-Path $venvPy) -and -not (Test-PythonRuns $venvPy)) {
+    $venvBroken = $true
+    Write-Host "Existing .venv is broken (base Python missing) — will recreate." -ForegroundColor Yellow
+}
+
+if (($Force -or $venvBroken) -and (Test-Path $venvDir)) {
+    Write-Step $(if ($Force) { "Removing existing .venv (-Force)" } else { "Removing broken .venv" })
     Remove-Item -LiteralPath $venvDir -Recurse -Force
 }
 
@@ -156,6 +181,9 @@ if (-not (Test-Path $venvPy)) {
     & $base.Exe -m venv $venvDir
     if (-not (Test-Path $venvPy)) {
         throw "venv creation failed - missing $venvPy"
+    }
+    if (-not (Test-PythonRuns $venvPy)) {
+        throw "venv python does not run: $venvPy"
     }
 }
 else {

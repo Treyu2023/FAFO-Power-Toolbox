@@ -29,21 +29,75 @@ def _local_paths_config() -> Path:
     return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "FAFO" / "local-paths.json"
 
 
+def _load_local_paths() -> dict[str, Any]:
+    cfg = _local_paths_config()
+    if not cfg.is_file():
+        return {}
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _save_local_paths(data: dict[str, Any], toolbox_root: Path | None = None) -> Path:
+    """Persist machine-local path registry (never committed to git)."""
+    cfg_path = _local_paths_config()
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = _load_local_paths()
+    existing.update(data)
+    existing["Version"] = int(existing.get("Version") or 1)
+    if existing["Version"] < 2:
+        existing["Version"] = 2
+    existing["UpdatedAt"] = datetime.now().isoformat()
+    existing["Machine"] = os.environ.get("COMPUTERNAME", "")
+    if toolbox_root is not None:
+        existing["ToolboxRoot"] = str(toolbox_root)
+    cfg_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    return cfg_path
+
+
+def _normalize_dir(path: str | Path) -> str | None:
+    try:
+        p = Path(path).expanduser()
+        if not p.is_dir():
+            return None
+        return str(p.resolve())
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _dedupe_paths(paths: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in paths:
+        n = _normalize_dir(raw)
+        if not n:
+            continue
+        key = os.path.normcase(n)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(n)
+    return out
+
+
 def get_sites_root(toolbox_root: Path | None = None) -> str | None:
-    """Resolve machine-local Commander backup root (VerifoneSitesRoot)."""
+    """Resolve primary machine-local Commander backup root (VerifoneSitesRoot)."""
     env = os.environ.get("FAFO_VERIFONE_SITES_ROOT", "").strip()
     if env and Path(env).is_dir():
         return str(Path(env).resolve())
 
-    cfg = _local_paths_config()
-    if cfg.is_file():
-        try:
-            data = json.loads(cfg.read_text(encoding="utf-8"))
-            root = str(data.get("VerifoneSitesRoot") or "").strip()
-            if root and Path(root).is_dir():
-                return str(Path(root).resolve())
-        except (OSError, json.JSONDecodeError, TypeError):
-            pass
+    data = _load_local_paths()
+    root = str(data.get("VerifoneSitesRoot") or "").strip()
+    if root and Path(root).is_dir():
+        return str(Path(root).resolve())
+
+    # Prefer first configured watch folder if primary is unset
+    for w in data.get("VerifoneWatchFolders") or []:
+        n = _normalize_dir(w)
+        if n:
+            return n
 
     if toolbox_root:
         link = toolbox_root / "VerifoneLibrary" / "Sites"
@@ -58,58 +112,235 @@ def get_sites_root(toolbox_root: Path | None = None) -> str | None:
     return None
 
 
-def set_sites_root(path: str, toolbox_root: Path | None = None) -> dict[str, Any]:
-    p = Path(path).expanduser()
-    p.mkdir(parents=True, exist_ok=True)
-    resolved = str(p.resolve())
-    os.environ["FAFO_VERIFONE_SITES_ROOT"] = resolved
+def get_watch_folders(toolbox_root: Path | None = None) -> list[str]:
+    """
+    Folders scanned for Commander SMS/XML exports on every Sync / console load.
 
-    cfg_path = _local_paths_config()
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    existing: dict[str, Any] = {}
-    if cfg_path.is_file():
-        try:
-            existing = json.loads(cfg_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            existing = {}
-    existing["Version"] = 1
-    existing["VerifoneSitesRoot"] = resolved
-    existing["UpdatedAt"] = datetime.now().isoformat()
-    existing["Machine"] = os.environ.get("COMPUTERNAME", "")
-    if toolbox_root:
-        existing["ToolboxRoot"] = str(toolbox_root)
-    cfg_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    Each tech configures their own paths via local-paths.json (or env).
+    Order: explicit VerifoneWatchFolders, then primary VerifoneSitesRoot, then fallbacks.
+    """
+    folders: list[str] = []
+
+    # Env override: semicolon- or pipe-separated list
+    env_multi = os.environ.get("FAFO_VERIFONE_WATCH_FOLDERS", "").strip()
+    if env_multi:
+        for part in re.split(r"[;|]", env_multi):
+            n = _normalize_dir(part.strip())
+            if n:
+                folders.append(n)
+
+    data = _load_local_paths()
+    raw_watch = data.get("VerifoneWatchFolders")
+    if isinstance(raw_watch, str):
+        raw_watch = [raw_watch]
+    if isinstance(raw_watch, list):
+        for w in raw_watch:
+            n = _normalize_dir(str(w))
+            if n:
+                folders.append(n)
+
+    primary = get_sites_root(toolbox_root)
+    if primary:
+        folders.append(primary)
+
+    # Single-folder env still counts as a watch target
+    env_one = os.environ.get("FAFO_VERIFONE_SITES_ROOT", "").strip()
+    n_one = _normalize_dir(env_one) if env_one else None
+    if n_one:
+        folders.append(n_one)
+
+    if not folders and toolbox_root:
+        link = toolbox_root / "VerifoneLibrary" / "Sites"
+        if link.exists():
+            try:
+                folders.append(str(link.resolve()))
+            except OSError:
+                folders.append(str(link))
+
+    return _dedupe_paths(folders)
+
+
+def set_watch_folders(
+    paths: list[str],
+    toolbox_root: Path | None = None,
+    *,
+    primary: str | None = None,
+    make_primary_junction: bool = True,
+) -> dict[str, Any]:
+    """
+    Replace the list of watched Commander backup folders (per-machine).
+
+    - paths: absolute folders that contain Customer\\Site (or flat) SMS exports
+    - primary: which path is VerifoneSitesRoot / junction target (defaults to first)
+    """
+    cleaned: list[str] = []
+    for raw in paths:
+        p = Path(str(raw)).expanduser()
+        p.mkdir(parents=True, exist_ok=True)
+        cleaned.append(str(p.resolve()))
+    cleaned = _dedupe_paths(cleaned)
+    if not cleaned:
+        raise ValueError("At least one existing or creatable folder path is required")
+
+    primary_resolved: str
+    if primary:
+        pr = Path(primary).expanduser()
+        pr.mkdir(parents=True, exist_ok=True)
+        primary_resolved = str(pr.resolve())
+        if primary_resolved not in cleaned:
+            cleaned.insert(0, primary_resolved)
+    else:
+        primary_resolved = cleaned[0]
+
+    os.environ["FAFO_VERIFONE_SITES_ROOT"] = primary_resolved
+    # Keep multi env in sync for processes that only read env
+    os.environ["FAFO_VERIFONE_WATCH_FOLDERS"] = ";".join(cleaned)
+
+    cfg_path = _save_local_paths(
+        {
+            "VerifoneSitesRoot": primary_resolved,
+            "VerifoneWatchFolders": cleaned,
+        },
+        toolbox_root,
+    )
 
     link_ok = False
     link_path = None
-    if toolbox_root:
-        shell = toolbox_root / "VerifoneLibrary"
-        shell.mkdir(parents=True, exist_ok=True)
-        link_path = str(shell / "Sites")
-        try:
-            import subprocess
-
-            lp = shell / "Sites"
-            if lp.exists() or lp.is_symlink():
-                # remove empty dir or junction
-                if lp.is_dir() and not any(lp.iterdir()) and not lp.is_symlink():
-                    lp.rmdir()
-                else:
-                    subprocess.run(["cmd", "/c", "rmdir", str(lp)], capture_output=True)
-            r = subprocess.run(
-                ["cmd", "/c", "mklink", "/J", str(lp), resolved],
-                capture_output=True,
-                text=True,
-            )
-            link_ok = lp.exists()
-        except OSError:
-            link_ok = False
+    if make_primary_junction and toolbox_root:
+        link_meta = _ensure_sites_junction(primary_resolved, toolbox_root)
+        link_ok = bool(link_meta.get("LinkOk"))
+        link_path = link_meta.get("LinkPath")
 
     return {
-        "VerifoneSitesRoot": resolved,
+        "ok": True,
+        "VerifoneSitesRoot": primary_resolved,
+        "VerifoneWatchFolders": cleaned,
+        "watchFolders": cleaned,
+        "sitesRoot": primary_resolved,
         "ConfigPath": str(cfg_path),
         "LinkPath": link_path,
         "LinkOk": link_ok,
+    }
+
+
+def add_watch_folder(
+    path: str,
+    toolbox_root: Path | None = None,
+    *,
+    set_as_primary: bool = False,
+) -> dict[str, Any]:
+    """Add one folder to the watch list (creates it if missing)."""
+    p = Path(path).expanduser()
+    p.mkdir(parents=True, exist_ok=True)
+    resolved = str(p.resolve())
+    current = get_watch_folders(toolbox_root)
+    if resolved not in current:
+        current.append(resolved)
+    prev_primary = get_sites_root(toolbox_root)
+    primary = resolved if set_as_primary or not prev_primary else prev_primary
+    make_junc = bool(set_as_primary) or (not prev_primary) or (
+        primary and prev_primary and os.path.normcase(primary) != os.path.normcase(prev_primary)
+    )
+    return set_watch_folders(current, toolbox_root, primary=primary, make_primary_junction=make_junc)
+
+
+def remove_watch_folder(path: str, toolbox_root: Path | None = None) -> dict[str, Any]:
+    """Stop watching a folder. Does not delete files on disk."""
+    target = _normalize_dir(path) or str(Path(path).expanduser())
+    target_key = os.path.normcase(target)
+    current = get_watch_folders(toolbox_root)
+    remaining = [p for p in current if os.path.normcase(p) != target_key]
+    if not remaining:
+        # Keep config honest: allow empty watch list
+        cfg_path = _save_local_paths(
+            {
+                "VerifoneWatchFolders": [],
+                "VerifoneSitesRoot": get_sites_root(toolbox_root) or "",
+            },
+            toolbox_root,
+        )
+        # Drop index rows that belonged only to this root
+        _purge_root_from_index(target)
+        return {
+            "ok": True,
+            "VerifoneWatchFolders": [],
+            "watchFolders": [],
+            "sitesRoot": get_sites_root(toolbox_root),
+            "ConfigPath": str(cfg_path),
+            "purgedRoot": target,
+        }
+
+    primary = get_sites_root(toolbox_root)
+    if primary and os.path.normcase(primary) == target_key:
+        primary = remaining[0]
+    result = set_watch_folders(remaining, toolbox_root, primary=primary)
+    _purge_root_from_index(target)
+    result["purgedRoot"] = target
+    return result
+
+
+def _purge_root_from_index(root: str) -> int:
+    """Remove SQLite rows whose root_path matches a removed watch folder."""
+    n = _normalize_dir(root)
+    if not n:
+        try:
+            n = str(Path(root).expanduser().resolve())
+        except (OSError, ValueError):
+            n = str(root)
+    ensure_tables()
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM vf_exports WHERE root_path = ?", (n,))
+        return int(cur.rowcount or 0)
+
+
+def _ensure_sites_junction(resolved: str, toolbox_root: Path) -> dict[str, Any]:
+    link_ok = False
+    link_path = str(toolbox_root / "VerifoneLibrary" / "Sites")
+    try:
+        import subprocess
+
+        shell = toolbox_root / "VerifoneLibrary"
+        shell.mkdir(parents=True, exist_ok=True)
+        lp = shell / "Sites"
+        if lp.exists() or lp.is_symlink():
+            if lp.is_dir() and not any(lp.iterdir()) and not lp.is_symlink():
+                lp.rmdir()
+            else:
+                subprocess.run(["cmd", "/c", "rmdir", str(lp)], capture_output=True)
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(lp), resolved],
+            capture_output=True,
+            text=True,
+        )
+        link_ok = lp.exists()
+    except OSError:
+        link_ok = False
+    return {"LinkPath": link_path, "LinkOk": link_ok}
+
+
+def set_sites_root(path: str, toolbox_root: Path | None = None) -> dict[str, Any]:
+    """
+    Set primary Commander backup root and ensure it is on the watch list.
+
+    Backward-compatible with single-root clients; multi-root users should prefer
+    set_watch_folders / add_watch_folder.
+    """
+    p = Path(path).expanduser()
+    p.mkdir(parents=True, exist_ok=True)
+    resolved = str(p.resolve())
+    current = get_watch_folders(toolbox_root)
+    if resolved not in current:
+        current.insert(0, resolved)
+    else:
+        # Move to front as primary preference
+        current = [resolved] + [x for x in current if os.path.normcase(x) != os.path.normcase(resolved)]
+    result = set_watch_folders(current, toolbox_root, primary=resolved, make_primary_junction=True)
+    return {
+        "VerifoneSitesRoot": result["VerifoneSitesRoot"],
+        "VerifoneWatchFolders": result["VerifoneWatchFolders"],
+        "ConfigPath": result["ConfigPath"],
+        "LinkPath": result.get("LinkPath"),
+        "LinkOk": result.get("LinkOk"),
     }
 
 
@@ -1040,6 +1271,85 @@ def sync_root(root: str | Path, remove_missing: bool = True) -> dict[str, Any]:
     }
 
 
+def sync_all_roots(
+    toolbox_root: Path | None = None,
+    remove_missing: bool = True,
+    roots: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Scan every watched folder for Commander exports (new sites appear automatically).
+
+    Used on console load and when the user clicks Sync. Each tech's watch list is
+    machine-local (%LOCALAPPDATA%\\FAFO\\local-paths.json).
+    """
+    watch = roots if roots is not None else get_watch_folders(toolbox_root)
+    if not watch:
+        raise FileNotFoundError(
+            "No Commander backup folders configured. Add a watched folder "
+            "(each user can set their own paths)."
+        )
+
+    per_root: list[dict[str, Any]] = []
+    all_errors: list[str] = []
+    total_count = 0
+    total_removed = 0
+    all_sites: list[dict[str, Any]] = []
+
+    for root in watch:
+        try:
+            result = sync_root(root, remove_missing=remove_missing)
+            per_root.append(
+                {
+                    "root": result["root"],
+                    "count": result["count"],
+                    "removed": result["removed"],
+                    "errors": result["errors"],
+                    "indexPath": result.get("indexPath"),
+                    "ok": True,
+                }
+            )
+            total_count += int(result["count"] or 0)
+            total_removed += int(result["removed"] or 0)
+            all_errors.extend(result.get("errors") or [])
+            all_sites.extend(result.get("sites") or [])
+        except FileNotFoundError as ex:
+            per_root.append({"root": root, "count": 0, "removed": 0, "errors": [str(ex)], "ok": False})
+            all_errors.append(str(ex))
+        except Exception as ex:  # noqa: BLE001
+            per_root.append({"root": root, "count": 0, "removed": 0, "errors": [str(ex)], "ok": False})
+            all_errors.append(f"{root}: {ex}")
+
+    # Drop index rows from roots no longer watched
+    if remove_missing:
+        watched_keys = {os.path.normcase(str(Path(r).resolve())) for r in watch if Path(r).is_dir()}
+        ensure_tables()
+        with connect() as conn:
+            rows = conn.execute("SELECT DISTINCT root_path FROM vf_exports").fetchall()
+            for (rp,) in rows:
+                if not rp:
+                    continue
+                try:
+                    key = os.path.normcase(str(Path(rp).resolve()))
+                except (OSError, ValueError):
+                    key = os.path.normcase(str(rp))
+                if key not in watched_keys:
+                    conn.execute("DELETE FROM vf_exports WHERE root_path = ?", (rp,))
+
+    primary = get_sites_root(toolbox_root)
+    return {
+        "ok": True,
+        "root": primary,
+        "roots": watch,
+        "watchFolders": watch,
+        "count": total_count,
+        "removed": total_removed,
+        "errors": all_errors,
+        "perRoot": per_root,
+        "sites": all_sites,
+        "scannedAt": time.time(),
+    }
+
+
 def list_sites(
     q: str | None = None,
     customer: str | None = None,
@@ -1366,16 +1676,37 @@ def prefill_punch_list(
 def status(toolbox_root: Path) -> dict[str, Any]:
     ensure_tables()
     root = get_sites_root(toolbox_root)
+    watch = get_watch_folders(toolbox_root)
     with connect() as conn:
         count = conn.execute("SELECT COUNT(*) FROM vf_exports").fetchone()[0]
         last = conn.execute("SELECT MAX(last_scanned) FROM vf_exports").fetchone()[0]
+        # Per-root snapshot counts for the folders UI
+        root_rows = conn.execute(
+            "SELECT root_path, COUNT(*) AS n FROM vf_exports GROUP BY root_path"
+        ).fetchall()
+    by_root = {str(rp): int(n) for rp, n in root_rows if rp}
+    watch_info = []
+    for w in watch:
+        exists = Path(w).is_dir()
+        watch_info.append(
+            {
+                "path": w,
+                "exists": exists,
+                "isPrimary": bool(root and os.path.normcase(w) == os.path.normcase(root)),
+                "exportCount": by_root.get(w, 0),
+                "label": Path(w).name or w,
+            }
+        )
     return {
         "productLabel": "Commander",
         "xmlFamilyNote": "Config XML uses Sapphire namespaces historically; product is Commander.",
         "sitesRoot": root,
+        "watchFolders": watch,
+        "watchFolderDetails": watch_info,
         "exportCount": count,
         "lastScanned": last,
         "localPathsConfig": str(_local_paths_config()),
+        "autoScanOnLoad": True,
         "masterPunchList": str(
             toolbox_root / "VerifoneLibrary" / "Templates" / "Pre-Reload-Punch-List-MASTER.xml"
         ),

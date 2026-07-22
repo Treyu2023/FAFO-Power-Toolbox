@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Batch Media Converter — AI HTML Toolbox</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Batch Media Converter — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 <style>
 :root{--bg:#050508;--panel:#0c0f16;--border:rgba(251,146,60,.2);--accent:#fb923c;--ok:#4ade80;--text:#e2e8f0;--muted:#64748b}
@@ -15,30 +16,41 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 .pb{padding:16px 18px}
 .inp,.sel{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px}
 .btn{padding:8px 16px;border:1px solid var(--accent);background:rgba(251,146,60,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:rgba(255,255,255,.15);color:var(--muted);background:transparent}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border)}
 td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 .tw{max-height:360px;overflow:auto}
-.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;min-height:40px;margin-top:10px}
+.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;min-height:40px;margin-top:10px;white-space:pre-wrap}
 .tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(251,146,60,.15);color:var(--accent)}
+.progress{height:6px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:10px;overflow:hidden;display:none}
+.progress span{display:block;height:100%;background:var(--accent);width:0%;transition:width .2s}
 </style>
 </head>
 <body>
 <nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span style="color:var(--accent)">BATCH MEDIA CONVERTER</span></nav>
 <div class="wrap">
 <h1 style="font-size:22px">Batch Media Converter</h1>
-<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">FFmpeg-powered batch convert — video, audio, and short GIF exports.</p>
+<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">FFmpeg-powered batch convert — video, audio, and short GIF exports. Requires toolbox server + ffmpeg.</p>
 <div class="panel"><div class="ph">Source folder</div><div class="pb toolbar">
 <input class="inp" id="folder" placeholder="C:\path\to\media" style="flex:1;min-width:240px">
+<button class="btn ghost" id="btnPick" type="button">Browse…</button>
 <select class="sel" id="preset"></select>
 <input class="inp" id="outDir" placeholder="Output folder (optional, same as source)" style="flex:1;min-width:200px">
 <button class="btn" id="btnScan">Scan folder</button>
 <button class="btn" id="btnConvert" disabled>Convert selected</button>
+<button class="btn ghost" id="btnStop" type="button" disabled>Stop</button>
 </div></div>
-<div class="panel"><div class="ph">Media files <span id="fileCount" style="color:var(--muted)"></span></div>
-<div class="tw"><table><thead><tr><th><input type="checkbox" id="chkAll"></th><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody id="fileBody"></tbody></table></div>
-<div class="pb"><div class="log" id="log"></div></div></div>
+<div class="panel"><div class="ph">Media files <span id="fileCount" style="color:var(--muted)"></span>
+<input class="inp" id="filter" placeholder="Filter…" style="min-width:140px;max-width:200px">
+</div>
+<div class="tw"><table><thead><tr><th><input type="checkbox" id="chkAll" title="Select all"></th><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody id="fileBody"></tbody></table></div>
+<div class="pb">
+<div class="progress" id="progress"><span id="progressBar"></span></div>
+<div class="log" id="log"></div>
+</div></div>
 </div>
 <script src="../shared/aitoolbox-config.js"></script>
 <script src="../shared/aitoolbox-version.js"></script>
@@ -46,88 +58,155 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
 <script>
-const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
-let files=[],sel=new Set();
-function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
-function fmtB(n){const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return (i?n.toFixed(1):n)+' '+u[i]}
-async function init(){
-  const p=await(await fetch(API+'/convert/presets')).json();
-  document.getElementById('preset').innerHTML=p.presets.map(x=>`<option value="${x.id}">${esc(x.label)}</option>`).join('');
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
+const fmtB = (n) => UI()?.formatBytes?.(n) ?? (n + ' B');
+function apiBase() {
+  return UI()?.getApiBase?.() || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
 }
-function render(){
-  document.getElementById('fileCount').textContent=files.length?`(${files.length})`:'';
-  document.getElementById('fileBody').innerHTML=files.map((f,i)=>`<tr><td><input type="checkbox" data-i="${i}" ${sel.has(i)?'checked':''}></td><td>${esc(f.name)}</td><td><span class="tag">${esc(f.type)}</span></td><td>${fmtB(f.size)}</td></tr>`).join('');
-  document.querySelectorAll('[data-i]').forEach(c=>c.onchange=()=>{const i=+c.dataset.i;c.checked?sel.add(i):sel.delete(i);document.getElementById('btnConvert').disabled=sel.size===0});
-  document.getElementById('btnConvert').disabled=sel.size===0;
-}
-document.getElementById('chkAll').onchange=e=>{sel=e.target.checked?new Set(files.map((_,i)=>i)):new Set();render()};
-document.getElementById('btnScan').onclick=async()=>{
-  const folder=document.getElementById('folder').value.trim();if(!folder)return;
-  const d=await(await fetch(API+'/convert/scan?folder='+encodeURIComponent(folder))).json();
-  files=d.files;sel=new Set(files.map((_,i)=>i));render();
-};
-document.getElementById('btnConvert').onclick=()=>{
-  const chosen=[...sel].map(i=>files[i].path);
-  const preset=document.getElementById('preset').value;
-  const outDir=document.getElementById('outDir').value.trim()||null;
-  const log=document.getElementById('log');log.textContent='Starting…';
-  const url=API+'/convert/stream?files='+encodeURIComponent(chosen.join('|'))+'&preset='+preset+(outDir?'&output_dir='+encodeURIComponent(outDir):'');
-  const es=new EventSource(url);
-  es.onmessage=ev=>{const d=JSON.parse(ev.data);
-    if(d.error){log.textContent='Error: '+d.error;es.close();return}
-    if(d.done){const r=d.result;log.textContent=`Done: ${r.succeeded}/${r.total} succeeded`;es.close();return}
-    if(d.message)log.textContent=d.message};
-};
-init();
-</script>
-<script>
 
-// Shared server start (injected polish)
-(function(){
-  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
-  function ensureBar(){
-    if (document.getElementById('tbSharedServerBar')) return;
-    const bar = document.createElement('div');
-    bar.id = 'tbSharedServerBar';
-    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
-    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
-      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
-      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
-      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
-    const nav = document.querySelector('nav, .nav, .nav-bar, header');
-    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
-    else document.body.insertBefore(bar, document.body.firstChild);
-    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
-    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
-      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
-      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
-    } else {
-      const pill = document.getElementById('tbServerPill');
-      const btn = document.getElementById('tbBtnStartServer');
-      const hint = document.getElementById('tbServerHint');
-      async function refresh(){
-        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
-        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
-        pill.style.color = on ? '#4ade80' : '#fbbf24';
-        btn.style.display = on ? 'none' : '';
-        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
-      }
-      btn.onclick = async () => {
-        if (!window.AIToolboxAPI) return;
-        btn.disabled = true; btn.textContent = 'Starting…';
-        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
-        btn.disabled = false; btn.textContent = '▶ Start Server';
-        await refresh();
-        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
-      };
-      pill.onclick = () => btn.click();
-      refresh(); setInterval(refresh, 8000);
-    }
+let files = [];
+let sel = new Set();
+let es = null;
+
+function log(msg) { document.getElementById('log').textContent = msg || ''; }
+
+async function init() {
+  try {
+    const p = await UI().apiFetch('/convert/presets');
+    document.getElementById('preset').innerHTML = (p.presets || [])
+      .map(x => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join('')
+      || '<option value="">No presets</option>';
+  } catch (e) {
+    document.getElementById('preset').innerHTML = '<option value="">Server offline</option>';
+    log(e.message || String(e));
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
-  else ensureBar();
-})();
+}
 
+function filteredIndexes() {
+  const q = (document.getElementById('filter').value || '').toLowerCase();
+  return files.map((f, i) => i).filter(i => {
+    if (!q) return true;
+    return (files[i].name || '').toLowerCase().includes(q);
+  });
+}
+
+function render() {
+  const idxs = filteredIndexes();
+  document.getElementById('fileCount').textContent = files.length
+    ? `(${sel.size} selected · ${idxs.length}/${files.length} shown)`
+    : '';
+  document.getElementById('fileBody').innerHTML = idxs.map(i => {
+    const f = files[i];
+    return `<tr>
+      <td><input type="checkbox" data-i="${i}" ${sel.has(i) ? 'checked' : ''}></td>
+      <td>${esc(f.name)}</td>
+      <td><span class="tag">${esc(f.type)}</span></td>
+      <td>${fmtB(f.size)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No files — scan a folder</td></tr>';
+  document.querySelectorAll('[data-i]').forEach(c => {
+    c.onchange = () => {
+      const i = +c.dataset.i;
+      if (c.checked) sel.add(i); else sel.delete(i);
+      document.getElementById('btnConvert').disabled = sel.size === 0;
+      document.getElementById('fileCount').textContent =
+        `(${sel.size} selected · ${idxs.length}/${files.length} shown)`;
+    };
+  });
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+}
+
+document.getElementById('chkAll').onchange = e => {
+  const idxs = filteredIndexes();
+  if (e.target.checked) idxs.forEach(i => sel.add(i));
+  else idxs.forEach(i => sel.delete(i));
+  render();
+};
+
+document.getElementById('filter').oninput = render;
+
+document.getElementById('btnScan').onclick = async () => {
+  const folder = document.getElementById('folder').value.trim();
+  if (!folder) { log('Enter a folder path'); return; }
+  log('Scanning…');
+  try {
+    const d = await UI().apiFetch('/convert/scan?folder=' + encodeURIComponent(folder));
+    files = d.files || [];
+    sel = new Set(files.map((_, i) => i));
+    document.getElementById('chkAll').checked = true;
+    render();
+    log(`Found ${files.length} media file(s)`);
+  } catch (e) {
+    log(e.message || String(e));
+    UI()?.toast?.(e.message || String(e), 'warn');
+  }
+};
+
+function stopConvert() {
+  if (es) { try { es.close(); } catch {} es = null; }
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('progress').style.display = 'none';
+}
+
+document.getElementById('btnStop').onclick = () => { stopConvert(); log('Conversion stopped'); };
+
+document.getElementById('btnConvert').onclick = () => {
+  const chosen = [...sel].map(i => files[i]?.path).filter(Boolean);
+  if (!chosen.length) return;
+  const preset = document.getElementById('preset').value;
+  if (!preset) { log('No preset selected'); return; }
+  const outDir = document.getElementById('outDir').value.trim() || null;
+  log('Starting…');
+  document.getElementById('btnConvert').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  const prog = document.getElementById('progress');
+  const bar = document.getElementById('progressBar');
+  prog.style.display = 'block';
+  bar.style.width = '0%';
+
+  let url = apiBase() + '/convert/stream?files=' + encodeURIComponent(chosen.join('|')) + '&preset=' + encodeURIComponent(preset);
+  if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
+  if (es) try { es.close(); } catch {}
+  es = new EventSource(url);
+  es.onmessage = ev => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.error) { log('Error: ' + d.error); stopConvert(); return; }
+    if (d.done) {
+      const r = d.result || {};
+      log(`Done: ${r.succeeded || 0}/${r.total || chosen.length} succeeded`
+        + (r.failed ? ` · ${r.failed} failed` : ''));
+      bar.style.width = '100%';
+      stopConvert();
+      return;
+    }
+    if (d.current != null && d.total) {
+      bar.style.width = Math.round((d.current / d.total) * 100) + '%';
+    }
+    if (d.message) log(d.message);
+  };
+  es.onerror = () => {
+    log('Convert stream failed — is the server online and ffmpeg installed?');
+    stopConvert();
+  };
+};
+
+document.getElementById('btnPick').onclick = async () => {
+  try {
+    if (!window.AIToolboxAPI) throw new Error('API not loaded');
+    if (!(await AIToolboxAPI.isOnline(true))) throw new Error('Start the server first');
+    const r = await AIToolboxAPI.pickFolderOnly();
+    const p = r?.path || r?.folder || r;
+    if (typeof p === 'string' && p) document.getElementById('folder').value = p;
+  } catch (e) {
+    log(e.message || String(e));
+  }
+};
+
+UI()?.mountServerBar?.({ onOnline: init });
+init();
 </script>
 </body>
 </html>

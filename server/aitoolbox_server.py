@@ -23,6 +23,7 @@ import media_ops as ops
 import playlists as pl
 import debug_log as dbg
 import verifone_ops as vf
+import commander_live as cmd_live
 from db import init_db
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -75,12 +76,15 @@ TOOLBOX_VERSION = read_version()
 BIND_HOST, BIND_PORT = load_bind()
 
 app = FastAPI(title="AI Toolbox Server", version=TOOLBOX_VERSION)
+# allow_credentials=True + allow_origins=["*"] is invalid CORS and breaks
+# fetch() from file:// (Origin: null) and some Chromium private-network cases.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 init_db()
@@ -92,7 +96,25 @@ except Exception:
 
 @app.middleware("http")
 async def debug_request_middleware(request: Request, call_next):
+    # Chromium Private Network Access preflight (file:// / http → 127.x)
+    if request.method == "OPTIONS" and request.headers.get(
+        "access-control-request-private-network"
+    ):
+        from starlette.responses import Response
+
+        return Response(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": request.headers.get("origin") or "*",
+                "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": request.headers.get(
+                    "access-control-request-headers", "*"
+                ),
+                "Access-Control-Allow-Private-Network": "true",
+            },
+        )
     response = await call_next(request)
+    response.headers.setdefault("Access-Control-Allow-Private-Network", "true")
     if response.status_code >= 500:
         dbg.log("server", "error", f"{request.method} {request.url.path} → {response.status_code}")
     elif response.status_code >= 400:
@@ -262,13 +284,69 @@ def health():
             "tool_icons",
             "commander_sites",
         ],
+        "commanderConsole": f"http://{BIND_HOST}:{BIND_PORT}/toolbox/Verifone%20Tools/Commander%20Site%20Console.html",
     }
+
+
+# Serve toolbox HTML/tools from the same origin as the API so browsers do not
+# block fetch() (file:// → 127.x private network / CORS edge cases).
+@app.get("/toolbox/{file_path:path}")
+def toolbox_static(file_path: str):
+    """Read-only static files under the toolbox root (HTML tools + shared JS)."""
+    # Normalize and block path traversal
+    rel = Path(file_path.replace("\\", "/"))
+    if ".." in rel.parts or rel.is_absolute():
+        raise HTTPException(400, "Invalid path")
+    target = (ROOT / rel).resolve()
+    try:
+        target.relative_to(ROOT.resolve())
+    except ValueError as e:
+        raise HTTPException(403, "Path outside toolbox") from e
+    if not target.is_file():
+        raise HTTPException(404, f"Not found: {file_path}")
+    # Skip sensitive trees
+    blocked = {".git", ".venv", "node_modules", "__pycache__"}
+    if any(part in blocked for part in target.relative_to(ROOT.resolve()).parts):
+        raise HTTPException(403, "Forbidden")
+    # Never serve the SQLite DBs or secrets
+    if target.suffix.lower() in {".db", ".db-wal", ".db-shm", ".env"}:
+        raise HTTPException(403, "Forbidden")
+    media = None
+    lower = target.suffix.lower()
+    if lower == ".html":
+        media = "text/html; charset=utf-8"
+    elif lower == ".js":
+        media = "application/javascript; charset=utf-8"
+    elif lower == ".css":
+        media = "text/css; charset=utf-8"
+    elif lower == ".json":
+        media = "application/json; charset=utf-8"
+    return FileResponse(target, media_type=media)
+
+
+@app.get("/commander")
+def commander_redirect():
+    """Shortcut to Commander Site Console over HTTP (same-origin as API)."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(
+        url="/toolbox/Verifone%20Tools/Commander%20Site%20Console.html",
+        status_code=307,
+    )
 
 
 # --- Commander (VAPS) site backup console ---
 
 class VfRootBody(BaseModel):
     path: str | None = None
+    # When true (default for multi-folder), POST /sync scans all watched folders
+    all: bool | None = True
+    set_as_primary: bool | None = False
+
+
+class VfWatchFoldersBody(BaseModel):
+    paths: list[str] | None = None
+    primary: str | None = None
 
 
 class VfPunchBody(BaseModel):
@@ -283,6 +361,66 @@ class VfSurveyBody(BaseModel):
 @app.get("/api/verifone/status")
 def verifone_status():
     return vf.status(ROOT)
+
+
+@app.get("/api/verifone/watch-folders")
+def verifone_list_watch_folders():
+    """List machine-local folders scanned for Commander site exports."""
+    st = vf.status(ROOT)
+    return {
+        "ok": True,
+        "watchFolders": st.get("watchFolders") or [],
+        "watchFolderDetails": st.get("watchFolderDetails") or [],
+        "sitesRoot": st.get("sitesRoot"),
+        "localPathsConfig": st.get("localPathsConfig"),
+    }
+
+
+@app.put("/api/verifone/watch-folders")
+def verifone_put_watch_folders(body: VfWatchFoldersBody):
+    """Replace the full watch list (each tech sets paths on their own PC)."""
+    if not body.paths:
+        raise HTTPException(400, "paths array required (at least one folder)")
+    try:
+        result = vf.set_watch_folders(body.paths, ROOT, primary=body.primary)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return result
+
+
+@app.post("/api/verifone/watch-folders")
+def verifone_add_watch_folder(body: VfRootBody):
+    """Add one folder to the watch list."""
+    if not body.path:
+        raise HTTPException(400, "path required")
+    return vf.add_watch_folder(body.path, ROOT, set_as_primary=bool(body.set_as_primary))
+
+
+@app.delete("/api/verifone/watch-folders")
+def verifone_remove_watch_folder(path: str = ""):
+    """Stop watching a folder (does not delete files). Query: ?path=..."""
+    if not path or not str(path).strip():
+        raise HTTPException(400, "path query parameter required")
+    return vf.remove_watch_folder(path, ROOT)
+
+
+@app.post("/api/verifone/watch-folders/pick")
+def verifone_pick_watch_folder(set_as_primary: bool = False):
+    """Native folder picker → add to watch list (Windows tkinter)."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askdirectory(title="Select Commander backup folder to watch")
+        root.destroy()
+        if not path:
+            raise HTTPException(400, "Cancelled")
+        return vf.add_watch_folder(path, ROOT, set_as_primary=set_as_primary)
+    except ImportError as e:
+        raise HTTPException(500, "tkinter not available for folder picker") from e
 
 
 @app.get("/api/verifone/sites")
@@ -334,14 +472,25 @@ def verifone_site_file_content(site_id: str, filename: str):
 
 @app.post("/api/verifone/sync")
 def verifone_sync(body: VfRootBody | None = None):
-    root = (body.path if body else None) or vf.get_sites_root(ROOT)
-    if not root:
-        raise HTTPException(
-            400,
-            "No Commander backup root configured. Set path via /api/verifone/root or Setup-SitesDataDirectory.",
-        )
+    """
+    Scan watched Commander backup folder(s) for new/updated site exports.
+
+    Default: scan ALL configured watch folders (so new sites like Quick N Easy 8
+    appear without manual re-index). Pass {"path": "...", "all": false} to scan one.
+    """
+    scan_all = True if body is None else (body.all is not False)
+    single = (body.path if body else None) or None
     try:
-        result = vf.sync_root(root)
+        if single and not scan_all:
+            result = vf.sync_root(single)
+        elif single and scan_all:
+            # Explicit path + all: ensure path is watched, then scan everything
+            folders = vf.get_watch_folders(ROOT)
+            if single not in folders:
+                vf.add_watch_folder(single, ROOT)
+            result = vf.sync_all_roots(ROOT)
+        else:
+            result = vf.sync_all_roots(ROOT)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
     return result
@@ -349,9 +498,142 @@ def verifone_sync(body: VfRootBody | None = None):
 
 @app.post("/api/verifone/root")
 def verifone_set_root(body: VfRootBody):
+    """Set primary backup root (also added to the watch list)."""
     if not body.path:
         raise HTTPException(400, "path required")
     return {"ok": True, **vf.set_sites_root(body.path, ROOT)}
+
+
+# --- Commander live status HUD (reachability + credential profiles) ---
+
+class CmdLiveProbeBody(BaseModel):
+    host: str
+    username: str | None = ""
+    password: str | None = ""
+    otp: str | None = None  # Config OTP when CGIPortal.OTPRequired
+    ports: list[int] | None = None
+    export_id: str | None = None
+    profile_id: str | None = None
+    do_login: bool = True
+    do_http: bool = True
+    ping_count: int = 2
+    timeout: float = 1.5
+
+
+class CmdProfileBody(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    host: str
+    username: str | None = ""
+    password: str | None = None
+    export_id: str | None = None
+    ports: list[int] | None = None
+    notes: str | None = ""
+    keep_password_if_empty: bool = True
+
+
+@app.get("/api/verifone/live/profiles")
+def verifone_live_profiles():
+    """Saved Commander connection profiles (passwords never returned in list)."""
+    return {"ok": True, "profiles": cmd_live.list_profiles()}
+
+
+@app.get("/api/verifone/live/profiles/{profile_id}")
+def verifone_live_profile_get(profile_id: str, include_password: bool = False):
+    row = cmd_live.get_profile(profile_id, include_password=include_password)
+    if not row:
+        raise HTTPException(404, "Profile not found")
+    return {"ok": True, "profile": row}
+
+
+@app.post("/api/verifone/live/profiles")
+def verifone_live_profile_save(body: CmdProfileBody):
+    try:
+        row = cmd_live.save_profile(
+            name=body.name or body.host,
+            host=body.host,
+            username=body.username or "",
+            password=body.password,
+            profile_id=body.id,
+            export_id=body.export_id,
+            ports=body.ports,
+            notes=body.notes or "",
+            keep_password_if_empty=body.keep_password_if_empty,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ok": True, "profile": row}
+
+
+@app.delete("/api/verifone/live/profiles/{profile_id}")
+def verifone_live_profile_delete(profile_id: str):
+    return cmd_live.delete_profile(profile_id)
+
+
+@app.get("/api/verifone/live/targets")
+def verifone_live_targets(limit: int = 40):
+    """Indexed sites with suggested LAN/MNSP hosts for the HUD connect picker."""
+    return {"ok": True, "targets": cmd_live.suggested_targets_from_library(limit=limit)}
+
+
+@app.post("/api/verifone/live/probe")
+def verifone_live_probe(body: CmdLiveProbeBody):
+    """
+    Probe a Commander host: DNS, ping, ports, HTTP discovery, optional login test.
+    Loads backup/survey context when export_id is provided.
+    """
+    if not body.host or not body.host.strip():
+        raise HTTPException(400, "host required")
+    password = body.password or ""
+    # If profile selected and password omitted, load DPAPI secret
+    if body.profile_id and not password:
+        prof = cmd_live.get_profile(body.profile_id, include_password=True)
+        if prof:
+            password = prof.get("password") or ""
+            if not body.username:
+                body.username = prof.get("username") or ""
+    try:
+        result = cmd_live.gather_status(
+            body.host.strip(),
+            username=body.username or "",
+            password=password,
+            otp=body.otp,
+            ports=body.ports,
+            export_id=body.export_id,
+            profile_id=body.profile_id,
+            ping_count=body.ping_count,
+            do_login=body.do_login,
+            do_http=body.do_http,
+            timeout=body.timeout,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return result
+
+
+@app.get("/api/verifone/live/import-export")
+def verifone_import_export_status():
+    """Detect Verifone Import-Export Utility install paths on this PC."""
+    return cmd_live.detect_import_export_utility()
+
+
+class CmdLaunchImportExportBody(BaseModel):
+    tool_id: str | None = None
+
+
+@app.post("/api/verifone/live/import-export/launch")
+def verifone_import_export_launch(body: CmdLaunchImportExportBody | None = None):
+    """
+    Launch ImportExportUtility.exe for SMS/Commander config backups.
+    Uses same per-site Manager credentials as Config Client (entered in the utility UI).
+    """
+    tool_id = body.tool_id if body else None
+    try:
+        return cmd_live.launch_import_export_utility(tool_id=tool_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except OSError as e:
+        raise HTTPException(500, f"Failed to launch: {e}") from e
 
 
 @app.get("/api/verifone/sites/{site_id}/survey")

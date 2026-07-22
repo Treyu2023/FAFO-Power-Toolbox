@@ -25,12 +25,17 @@ if errorlevel 1 (
 echo  [OK] Python ready: %FAFO_PYTHON%
 
 echo.
-echo  [2/3] Register browser launch protocol (aitoolbox://start)
-reg add "HKCU\Software\Classes\aitoolbox" /ve /d "URL:AI Toolbox Server" /f >nul
+echo  [2/3] Register browser launch protocol (aitoolbox://...)
+REM Pass the full URL as %%1 so start / console / folder / setup all work without .hta downloads.
+reg add "HKCU\Software\Classes\aitoolbox" /ve /d "URL:AI Toolbox Protocol" /f >nul
 reg add "HKCU\Software\Classes\aitoolbox" /v "URL Protocol" /d "" /f >nul
 reg add "HKCU\Software\Classes\aitoolbox\DefaultIcon" /ve /d "%SystemRoot%\System32\shell32.dll,13" /f >nul
-reg add "HKCU\Software\Classes\aitoolbox\shell\open\command" /ve /d "\"%~dp0server\protocol_start.bat\"" /f >nul
+reg add "HKCU\Software\Classes\aitoolbox\shell\open\command" /ve /d "\"%~dp0server\protocol_start.bat\" \"%%1\"" /f >nul
 echo  [OK] Protocol registered
+echo       aitoolbox://start    = start server
+echo       aitoolbox://console  = start with console
+echo       aitoolbox://folder   = open toolbox folder
+echo       aitoolbox://setup    = run this setup again
 
 echo.
 echo  [3/3] Desktop shortcut
@@ -43,8 +48,11 @@ if exist "%USERPROFILE%\Desktop\AI Toolbox - Start Server.lnk" (
 
 echo.
 echo  Setup complete.
-echo    - Start: START SERVER.bat or Launcher "Start Server"
+echo    - From browser: Launcher "Start Server" uses aitoolbox://  (no .hta save prompts)
+echo    - Manual: START SERVER.bat or the desktop shortcut
 echo    - Backend: http://127.0.0.87:18765
 echo    - Venv:    %~dp0.venv\  (local only, not committed)
+echo.
+echo  If Chrome asks "Open AI Toolbox Protocol?" choose Open / Always allow.
 echo.
 pause

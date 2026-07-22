@@ -214,22 +214,90 @@
       background-size: 20px 20px; cursor: default; touch-action: none;
     }
     .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    /* Watched-folder manager (per-machine paths) */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(560px, 100%); max-height: min(80vh, 640px);
+      background: var(--panel2); border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: var(--glow), 0 20px 50px rgba(0,0,0,.55);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal header {
+      position: static; background: transparent; border-bottom: 1px solid var(--line);
+      padding: 12px 16px;
+    }
+    .modal header h2 { margin: 0; font-size: 15px; color: var(--accent); }
+    .modal header p { margin: 4px 0 0; font-size: 11px; color: var(--muted); line-height: 1.4; }
+    .modal .body { padding: 12px 16px; overflow: auto; flex: 1; }
+    .modal .footer {
+      padding: 10px 16px; border-top: 1px solid var(--line);
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
+    }
+    .watch-row {
+      display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start;
+      padding: 10px; border: 1px solid var(--line); border-radius: 10px;
+      background: rgba(0,0,0,.2); margin-bottom: 8px;
+    }
+    .watch-row .path { font-size: 12px; word-break: break-all; }
+    .watch-row .meta { font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .watch-row .actions { display: flex; flex-direction: column; gap: 4px; }
+    .watch-row.missing { border-color: rgba(251,191,36,.45); }
+    .add-path-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .add-path-row input {
+      flex: 1; min-width: 180px; background: #0a1016; border: 1px solid var(--line);
+      color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <h1>⛽ Commander Site Console</h1>
-      <div class="sub">Stacked site versions · equipment dossier · XML viewer · prefilled punch lists</div>
+      <div class="sub">Auto-scans watched folders on load · stacked versions · dossiers · punch lists</div>
     </div>
     <div class="toolbar">
       <span id="serverPill" class="status-pill warn">Server…</span>
       <input type="search" id="search" placeholder="Search customer, site, phone, equipment…">
-      <button class="btn primary" id="btnSync">↻ Sync folder</button>
-      <button class="btn" id="btnSetRoot">📁 Set backup root</button>
+      <button class="btn primary" id="btnSync" title="Rescan all watched folders for new/updated sites">↻ Sync folders</button>
+      <button class="btn" id="btnSetRoot" title="Each tech can set their own local backup folders">📁 Watched folders…</button>
+      <a class="btn" id="btnLiveHud" href="Commander Status HUD.html" title="Live Commander reachability + credential probe">📡 Status HUD</a>
       <button class="btn amber" id="btnPunch" disabled>📋 Prefill punch list</button>
     </div>
   </header>
+
+  <div class="modal-backdrop" id="watchModal" role="dialog" aria-modal="true" aria-labelledby="watchModalTitle">
+    <div class="modal">
+      <header>
+        <h2 id="watchModalTitle">Watched backup folders</h2>
+        <p>
+          These paths are scanned every time this console loads (and when you click Sync).
+          Each machine stores its own list in <code>%LOCALAPPDATA%\FAFO\local-paths.json</code> —
+          other techs pick folders on their PC (OneDrive, D:\, USB, etc.).
+        </p>
+      </header>
+      <div class="body">
+        <div id="watchList"><div class="empty" style="padding:16px">Loading…</div></div>
+        <div class="add-path-row">
+          <input type="text" id="watchPathInput" placeholder="Paste full path to a Commander backup folder…">
+          <button class="btn primary" type="button" id="btnAddWatchPath">+ Add path</button>
+          <button class="btn" type="button" id="btnPickWatchPath">Browse…</button>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin:12px 0 0;line-height:1.45">
+          Tip: point at a parent that contains site folders (e.g. <code>…\Verifone Laptop storage\NC</code>).
+          New site folders (like Quick N Easy 8) are picked up automatically on the next load/sync.
+        </p>
+      </div>
+      <div class="footer">
+        <button class="btn" type="button" id="btnWatchClose">Close</button>
+        <button class="btn primary" type="button" id="btnWatchSyncClose">Sync now &amp; close</button>
+      </div>
+    </div>
+  </div>
 
   <div class="layout" id="mainSplit">
     <section class="list-pane" id="listPane">
@@ -339,14 +407,39 @@
       return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
     async function api(path, opts = {}) {
-      const r = await fetch(apiBase() + path, {
-        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-        ...opts,
-      });
+      let r;
+      try {
+        const headers = { ...(opts.headers || {}) };
+        // Only set JSON content-type when sending a body (avoids noisy CORS preflights on GET)
+        if (opts.body != null && !headers['Content-Type'] && !headers['content-type']) {
+          headers['Content-Type'] = 'application/json';
+        }
+        r = await fetch(apiBase() + path, {
+          ...opts,
+          headers,
+        });
+      } catch (netErr) {
+        const base = apiBase();
+        throw new Error(
+          `Failed to reach server at ${base} (${netErr && netErr.message ? netErr.message : 'network error'}). ` +
+          `Start the toolbox server, then open the console via http://127.0.0.87:18765/commander (not a file:// page).`
+        );
+      }
       const text = await r.text();
       let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
       if (!r.ok) throw new Error((data.detail && (data.detail.msg || data.detail)) || data.message || r.statusText || 'Request failed');
       return data;
+    }
+
+    function formatWatchLabel(st) {
+      const folders = st.watchFolders || [];
+      if (!folders.length) return 'No watched folders';
+      if (folders.length === 1) {
+        const p = folders[0];
+        const name = p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
+        return name;
+      }
+      return `${folders.length} watched folders`;
     }
 
     async function refreshStatus() {
@@ -356,14 +449,83 @@
         el('serverPill').className = 'status-pill ' + (online ? 'ok' : 'warn');
         if (!online) return false;
         status = await api('/verifone/status');
-        el('rootLabel').textContent = status.sitesRoot || 'No backup root set';
-        el('rootLabel').title = status.sitesRoot || '';
+        const label = formatWatchLabel(status);
+        const count = status.exportCount != null ? ` · ${status.exportCount} snapshots` : '';
+        el('rootLabel').textContent = label + count;
+        const folderLines = (status.watchFolders || []).join('\n');
+        el('rootLabel').title = folderLines || status.sitesRoot || '';
         return true;
       } catch {
         el('serverPill').textContent = 'Server offline';
         el('serverPill').className = 'status-pill warn';
         return false;
       }
+    }
+
+    function renderWatchList() {
+      const details = (status && status.watchFolderDetails) || [];
+      const list = el('watchList');
+      if (!list) return;
+      if (!details.length) {
+        list.innerHTML = '<div class="empty" style="padding:16px">No folders yet. Browse or paste a path below.</div>';
+        return;
+      }
+      list.innerHTML = details.map(d => {
+        const miss = d.exists === false;
+        const primary = d.isPrimary ? '<span class="chip good">Primary</span>' : '';
+        const missChip = miss ? '<span class="chip warn">Missing on disk</span>' : '';
+        const n = d.exportCount != null ? `${d.exportCount} exports` : '';
+        return `<div class="watch-row ${miss ? 'missing' : ''}" data-path="${esc(d.path)}">
+          <div>
+            <div class="path">${esc(d.path)}</div>
+            <div class="meta">${primary} ${missChip} ${esc(n)} · ${esc(d.label || '')}</div>
+          </div>
+          <div class="actions">
+            ${d.isPrimary ? '' : `<button class="btn" type="button" data-act="primary" data-path="${esc(d.path)}">Make primary</button>`}
+            <button class="btn amber" type="button" data-act="remove" data-path="${esc(d.path)}">Remove</button>
+          </div>
+        </div>`;
+      }).join('');
+      list.querySelectorAll('button[data-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const path = btn.getAttribute('data-path');
+          const act = btn.getAttribute('data-act');
+          try {
+            if (act === 'remove') {
+              if (!confirm('Stop watching this folder?\n\n' + path + '\n\n(Files on disk are not deleted.)')) return;
+              await api('/verifone/watch-folders?path=' + encodeURIComponent(path), { method: 'DELETE' });
+              toast('Folder removed from watch list');
+            } else if (act === 'primary') {
+              await api('/verifone/root', { method: 'POST', body: JSON.stringify({ path }) });
+              toast('Primary root updated');
+            }
+            await refreshStatus();
+            renderWatchList();
+          } catch (e) {
+            toast(String(e.message || e));
+          }
+        });
+      });
+    }
+
+    function openWatchModal() {
+      renderWatchList();
+      el('watchModal').classList.add('open');
+    }
+    function closeWatchModal() {
+      el('watchModal').classList.remove('open');
+    }
+
+    async function addWatchPath(path, opts = {}) {
+      const p = (path || '').trim();
+      if (!p) throw new Error('Enter a folder path');
+      await api('/verifone/watch-folders', {
+        method: 'POST',
+        body: JSON.stringify({ path: p, set_as_primary: !!opts.setAsPrimary }),
+      });
+      await refreshStatus();
+      renderWatchList();
+      toast('Folder added to watch list');
     }
 
     function renderCards(filter = '') {
@@ -698,32 +860,32 @@
       renderCards(el('search').value);
     }
 
-    async function syncNow() {
+    async function syncNow(opts = {}) {
+      const quiet = !!opts.quiet;
       el('btnSync').disabled = true;
       try {
-        toast('Scanning Commander backup folder…');
-        const res = await api('/verifone/sync', { method: 'POST', body: '{}' });
-        toast(`Synced ${res.count} snapshot(s)` + (res.removed ? ` · removed ${res.removed} stale` : ''));
+        if (!quiet) toast('Scanning all watched Commander folders…');
+        const res = await api('/verifone/sync', { method: 'POST', body: JSON.stringify({ all: true }) });
+        const nRoots = (res.roots || res.watchFolders || []).length;
+        const errN = (res.errors || []).length;
+        const msg = `Synced ${res.count} snapshot(s) across ${nRoots || 1} folder(s)` +
+          (res.removed ? ` · removed ${res.removed} stale` : '') +
+          (errN ? ` · ${errN} warning(s)` : '');
+        toast(msg, quiet ? 2200 : 3200);
         await refreshStatus();
         await loadGroups();
+        return res;
       } catch (e) {
         toast(String(e.message || e));
+        throw e;
       } finally {
         el('btnSync').disabled = false;
       }
     }
 
     async function setRoot() {
-      const path = prompt('Local Commander backup folder (not git):', status?.sitesRoot || '');
-      if (!path) return;
-      try {
-        const res = await api('/verifone/root', { method: 'POST', body: JSON.stringify({ path }) });
-        toast('Backup root saved' + (res.LinkOk ? ' · junction OK' : ''));
-        await refreshStatus();
-        await syncNow();
-      } catch (e) {
-        toast(String(e.message || e));
-      }
+      // Multi-folder manager (each user configures their own local paths)
+      openWatchModal();
     }
 
     async function makePunch(id) {
@@ -1234,9 +1396,49 @@
     }
 
     el('search').addEventListener('input', () => renderCards(el('search').value));
-    el('btnSync').addEventListener('click', syncNow);
+    el('btnSync').addEventListener('click', () => syncNow());
     el('btnSetRoot').addEventListener('click', setRoot);
     el('btnPunch').addEventListener('click', () => makePunch(selectedExportId));
+
+    el('btnWatchClose').addEventListener('click', closeWatchModal);
+    el('btnWatchSyncClose').addEventListener('click', async () => {
+      try { await syncNow(); } catch (_) {}
+      closeWatchModal();
+    });
+    el('watchModal').addEventListener('click', (e) => {
+      if (e.target === el('watchModal')) closeWatchModal();
+    });
+    el('btnAddWatchPath').addEventListener('click', async () => {
+      try {
+        await addWatchPath(el('watchPathInput').value);
+        el('watchPathInput').value = '';
+      } catch (e) { toast(String(e.message || e)); }
+    });
+    el('watchPathInput').addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      try {
+        await addWatchPath(el('watchPathInput').value);
+        el('watchPathInput').value = '';
+      } catch (err) { toast(String(err.message || err)); }
+    });
+    el('btnPickWatchPath').addEventListener('click', async () => {
+      try {
+        toast('Opening folder picker…');
+        await api('/verifone/watch-folders/pick', { method: 'POST', body: '{}' });
+        await refreshStatus();
+        renderWatchList();
+        toast('Folder added to watch list');
+      } catch (e) {
+        // Fallback: prompt if picker cancelled or unavailable
+        if (String(e.message || e).toLowerCase().includes('cancel')) return;
+        const path = prompt('Paste Commander backup folder path:', status?.sitesRoot || '');
+        if (!path) return;
+        try {
+          await addWatchPath(path);
+        } catch (e2) { toast(String(e2.message || e2)); }
+      }
+    });
 
     (async function init() {
       const ok = await refreshStatus();
@@ -1245,10 +1447,21 @@
         return;
       }
       try {
-        await loadGroups();
-        if (!groups.length && status.sitesRoot) await syncNow();
-        else if (!status.sitesRoot) {
-          el('cards').innerHTML = '<div class="empty">Set your local Commander backup root, then Sync.</div>';
+        const folders = status.watchFolders || (status.sitesRoot ? [status.sitesRoot] : []);
+        if (!folders.length) {
+          el('cards').innerHTML = '<div class="empty">No watched folders yet. Click <strong>Watched folders…</strong> to add your Commander backup path (each tech uses their own).</div>';
+          return;
+        }
+        // Always rescan watched folders on load so new sites appear without a manual Sync
+        el('cards').innerHTML = '<div class="empty">Scanning watched folders for Commander sites…</div>';
+        try {
+          await syncNow({ quiet: true });
+        } catch (syncErr) {
+          // Still show whatever is already indexed
+          await loadGroups();
+          if (!groups.length) {
+            el('cards').innerHTML = `<div class="empty">${esc(syncErr.message || syncErr)}</div>`;
+          }
         }
       } catch (e) {
         el('cards').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;

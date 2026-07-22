@@ -489,9 +489,16 @@
         </div>
       </div>
 
+      <div class="side-actions" style="display:flex;flex-direction:column;gap:8px">
+        <button type="button" class="btn primary" id="btnRunDiag" style="width:100%;justify-content:center">▶ Run diagnostics</button>
+        <button type="button" class="btn" id="btnPack" style="width:100%;justify-content:center">↻ Refresh library pack</button>
+        <button type="button" class="btn" id="btnOpenDevice" style="width:100%;justify-content:center">📂 Device folder</button>
+        <div id="actionStatus" style="font-size:0.72rem;color:var(--muted);min-height:2.2em;line-height:1.4"></div>
+      </div>
+
       <div class="side-meta">
         <div id="sideMeta">Loading catalog…</div>
-        <p style="margin:10px 0 0">Log Viewer reads packed files from <code>logs-data.js</code>. Refresh pack: <code>_pack_logs.ps1</code></p>
+        <p style="margin:10px 0 0">Uses <strong>this PC’s</strong> data under <code>%LOCALAPPDATA%\FAFO\Devices\…</code>. Buttons above rebuild the library — no manual PowerShell needed.</p>
       </div>
     </aside>
 
@@ -509,6 +516,7 @@
             <div class="pill"><b>Fixes</b><span id="statOk" style="color:var(--ok)">0</span></div>
           </div>
         </div>
+        <div id="serverBanner" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(251,191,36,.08);color:#fcd34d;font-size:0.85rem"></div>
         <div class="grid" id="grid"></div>
       </section>
 
@@ -569,10 +577,35 @@
   </div>
 
   <!-- Defaults ship in git; catalog.js / logs-data.js are generated per-device and gitignored -->
+  <script src="../../shared/aitoolbox-config.js"></script>
+  <script src="../../shared/aitoolbox-api.js"></script>
+  <script src="../../shared/aitoolbox-ui.js"></script>
   <script src="catalog.default.js"></script>
   <script src="logs-data.default.js"></script>
   <script src="catalog.js"></script>
   <script src="logs-data.js"></script>
+  <style>
+    .side-actions .btn, .btn {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .side-actions .btn:hover, .btn:hover { border-color: #3b4d6b; }
+    .side-actions .btn.primary, .btn.primary {
+      background: linear-gradient(135deg, rgba(139,92,246,.35), rgba(34,211,238,.25));
+      border-color: rgba(139,92,246,.5);
+      color: #eef3fb;
+    }
+    .side-actions .btn:disabled, .btn:disabled { opacity: .5; cursor: wait; }
+  </style>
   <script>
     const ICONS = {
       cpu: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>',
@@ -582,8 +615,8 @@
       bolt: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>'
     };
 
-    const catalog = window.REPORT_CATALOG || { reports: [] };
-    const logData = Array.isArray(window.LOG_DATA) ? window.LOG_DATA : [];
+    let catalog = window.REPORT_CATALOG || { reports: [] };
+    let logData = Array.isArray(window.LOG_DATA) ? window.LOG_DATA : [];
     let activeCat = "All";
     let activeSev = "All";
     let query = "";
@@ -667,12 +700,14 @@
           ? `<div class="empty">
               <strong style="color:var(--text);display:block;margin-bottom:8px">No reports for this PC yet</strong>
               Reports stay on the machine that created them (not shared via git).<br/><br/>
-              In PowerShell or Grok CLI, run:<br/>
-              <code style="color:#c4b5fd">Scripts\\Invoke-FAFOSystemDiagnostics.ps1</code><br/>
-              or ask: <em>“run system diagnostics”</em>
+              <button type="button" class="btn primary" id="btnEmptyRun">▶ Run diagnostics now</button>
+              <button type="button" class="btn" id="btnEmptyPack" style="margin-left:8px">↻ Refresh pack</button>
+              <div style="margin-top:12px;font-size:0.8rem;opacity:.85">Needs the toolbox server (or Setup protocol). Files under <code>reports\\</code> and device store are packed automatically.</div>
             </div>`
           : `<div class="empty">No reports match your filters.</div>`;
         grid.innerHTML = emptyHint;
+        document.getElementById("btnEmptyRun")?.addEventListener("click", () => runDiagnostics());
+        document.getElementById("btnEmptyPack")?.addEventListener("click", () => refreshPack());
         return;
       }
 
@@ -790,7 +825,12 @@
       document.getElementById("statLogs").textContent = logData.length;
 
       if (!logData.length) {
-        list.innerHTML = `<div class="log-empty" style="padding:20px">No logs for this PC yet.<br/>Run <code>Invoke-FAFOSystemDiagnostics.ps1</code><br/><span style="opacity:.8">Other devices' logs stay on those devices.</span></div>`;
+        list.innerHTML = `<div class="log-empty" style="padding:20px">No logs for this PC yet.<br/>
+          <button type="button" class="btn primary" id="btnLogRun" style="margin-top:10px">▶ Run diagnostics</button>
+          <button type="button" class="btn" id="btnLogPack" style="margin-top:10px;margin-left:6px">↻ Refresh pack</button>
+          <div style="margin-top:10px;opacity:.8">Other devices' logs stay on those devices.</div></div>`;
+        document.getElementById("btnLogRun")?.addEventListener("click", () => runDiagnostics());
+        document.getElementById("btnLogPack")?.addEventListener("click", () => refreshPack());
         return;
       }
       if (!rows.length) {
@@ -906,27 +946,185 @@
       if (log && log.file) window.open(log.file, "_blank");
     });
 
-    /* -------- boot -------- */
-    const scopeNote = catalog.scope === "device-local"
-      ? "This PC only"
-      : "Run diagnostics to bind to this PC";
-    document.getElementById("sideMeta").innerHTML =
-      `<div><strong style="color:var(--text)">${catalog.machine || "No device pack yet"}</strong></div>
-       <div>${catalog.reports.length} reports · ${logData.length} logs · ${scopeNote}</div>
-       <div style="margin-top:6px"><code>${catalog.deviceRoot || catalog.toolboxPath || "%LOCALAPPDATA%\\\\FAFO\\\\Devices\\\\&lt;PC&gt;"}</code></div>
-       <div style="margin-top:8px;opacity:.85">Ask Grok: <em>run system diagnostics</em></div>`;
-
-    renderFilters();
-    renderGrid();
-    renderLogList();
-
-    // Deep-link: index.html#logs or #logs/usb-power
-    const hash = (location.hash || "").replace(/^#/, "");
-    if (hash.startsWith("logs")) {
-      setView("logs");
-      const id = hash.split("/")[1];
-      if (id && logData.some(l => l.id === id)) selectLog(id);
+    /* -------- actions / server -------- */
+    function setActionStatus(msg, warn) {
+      const el = document.getElementById("actionStatus");
+      if (!el) return;
+      el.textContent = msg || "";
+      el.style.color = warn ? "#fbbf24" : "var(--muted)";
     }
+
+    function updateSideMeta() {
+      const scopeNote = catalog.scope === "device-local"
+        ? "This PC only"
+        : "Run diagnostics to bind to this PC";
+      const realReports = (catalog.reports || []).filter(r => r.id !== "no-local-reports");
+      document.getElementById("sideMeta").innerHTML =
+        `<div><strong style="color:var(--text)">${catalog.machine || "No device pack yet"}</strong></div>
+         <div>${realReports.length} reports · ${logData.length} logs · ${scopeNote}</div>
+         <div style="margin-top:6px"><code>${catalog.deviceRoot || catalog.toolboxPath || "%LOCALAPPDATA%\\\\FAFO\\\\Devices\\\\&lt;PC&gt;"}</code></div>
+         <div style="margin-top:8px;opacity:.85">Generated: ${catalog.generatedAt || "—"}</div>`;
+    }
+
+    function paint() {
+      updateSideMeta();
+      renderFilters();
+      renderGrid();
+      renderLogList();
+      if (currentView === "logs" && activeLogId) renderLogContent();
+    }
+
+    function setBusy(on) {
+      ["btnRunDiag", "btnPack", "btnOpenDevice", "btnEmptyRun", "btnEmptyPack", "btnLogRun", "btnLogPack"]
+        .forEach(id => {
+          const b = document.getElementById(id);
+          if (b) b.disabled = !!on;
+        });
+    }
+
+    async function ensureServer() {
+      const API = window.AIToolboxAPI;
+      if (!API) return false;
+      if (await API.isOnline(true, 2000)) return true;
+      setActionStatus("Starting toolbox server…", true);
+      const r = await API.startServer({ mode: "tray", waitMs: 45000 });
+      return !!(r && r.ok);
+    }
+
+    async function refreshPack() {
+      setBusy(true);
+      setActionStatus("Refreshing library pack…");
+      try {
+        const online = await ensureServer();
+        if (!online) {
+          // Protocol fallback (no Save As for .ps1)
+          if (window.AIToolboxAPI?.tryProtocolLaunch) {
+            AIToolboxAPI.tryProtocolLaunch("pack-reports");
+          } else {
+            location.href = "aitoolbox://pack-reports";
+          }
+          setActionStatus("Launched pack via protocol — reload in a few seconds", true);
+          setTimeout(() => location.reload(), 4000);
+          return;
+        }
+        const r = await AIToolboxAPI.diagnosticsPack();
+        setActionStatus(`Pack OK · ${r.reportCount} reports · ${r.logCount} logs`);
+        // Reload scripts so log bodies + cards refresh
+        location.reload();
+      } catch (e) {
+        setActionStatus(e.message || String(e), true);
+        try {
+          location.href = "aitoolbox://pack-reports";
+          setTimeout(() => location.reload(), 5000);
+        } catch { /* ignore */ }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function runDiagnostics() {
+      setBusy(true);
+      setActionStatus("Running full system diagnostics (may take ~30–90s)…", true);
+      try {
+        const online = await ensureServer();
+        if (!online) {
+          if (window.AIToolboxAPI?.tryProtocolLaunch) {
+            AIToolboxAPI.tryProtocolLaunch("diagnostics");
+          } else {
+            location.href = "aitoolbox://diagnostics";
+          }
+          setActionStatus("Launched diagnostics via protocol — reload when the window finishes", true);
+          return;
+        }
+        const r = await AIToolboxAPI.diagnosticsRun(false);
+        const pack = r.pack || {};
+        setActionStatus(
+          (r.ok ? "Diagnostics complete" : "Diagnostics finished with warnings")
+          + ` · ${pack.reportCount ?? "?"} reports · ${pack.logCount ?? "?"} logs`
+        );
+        location.reload();
+      } catch (e) {
+        setActionStatus(e.message || String(e), true);
+        try {
+          location.href = "aitoolbox://diagnostics";
+        } catch { /* ignore */ }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function openDeviceFolder() {
+      try {
+        const online = window.AIToolboxAPI && await AIToolboxAPI.isOnline(true, 1500);
+        if (online) {
+          const st = await AIToolboxAPI.diagnosticsStatus();
+          const root = st.deviceRoot;
+          if (root && window.AIToolboxAPI.tryProtocolLaunch) {
+            // explorer via folder protocol opens toolbox root; use pack status path in clipboard tip
+            setActionStatus("Device store: " + root);
+          }
+        }
+        // Open viewer folder (user can open device-local junction)
+        if (window.AIToolboxAPI?.tryProtocolLaunch) {
+          AIToolboxAPI.tryProtocolLaunch("folder");
+        } else {
+          location.href = "aitoolbox://folder";
+        }
+        setActionStatus("Opened toolbox folder — open device-local junction or %LOCALAPPDATA%\\FAFO\\Devices");
+      } catch (e) {
+        setActionStatus(e.message || String(e), true);
+      }
+    }
+
+    document.getElementById("btnRunDiag")?.addEventListener("click", () => runDiagnostics());
+    document.getElementById("btnPack")?.addEventListener("click", () => refreshPack());
+    document.getElementById("btnOpenDevice")?.addEventListener("click", () => openDeviceFolder());
+
+    /* -------- boot -------- */
+    async function boot() {
+      // Prefer live pack from server when available (fixes missing catalog.js)
+      try {
+        if (window.AIToolboxAPI && await AIToolboxAPI.isOnline(true, 1500)) {
+          const st = await AIToolboxAPI.diagnosticsStatus();
+          const banner = document.getElementById("serverBanner");
+          if (banner) {
+            if (!st.hasCatalogJs || (st.pcReportFileCount === 0 && st.legacyReportFileCount > 0)) {
+              banner.style.display = "block";
+              banner.innerHTML = st.hasCatalogJs
+                ? `Device pack has ${st.pcReportFileCount} PC reports · ${st.legacyReportFileCount} bundled files. Click <strong>Refresh library pack</strong> if the list looks stale.`
+                : `Library pack not built yet for this PC. Click <strong>▶ Run diagnostics</strong> or <strong>↻ Refresh library pack</strong> (includes bundled reports folder).`;
+            }
+          }
+          // Auto-pack once if no catalog.js but files exist
+          if (!st.hasCatalogJs && (st.pcReportFileCount > 0 || st.legacyReportFileCount > 0)) {
+            setActionStatus("Building library pack…");
+            await AIToolboxAPI.diagnosticsPack();
+            location.reload();
+            return;
+          }
+        } else {
+          const banner = document.getElementById("serverBanner");
+          if (banner && !(catalog.reports && catalog.reports.length && catalog.reports[0].id !== "no-local-reports")) {
+            banner.style.display = "block";
+            banner.innerHTML = `Server offline — buttons will start it, or use <strong>▶ Run diagnostics</strong> (protocol). Empty list? Run diagnostics once on this PC.`;
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+
+      paint();
+
+      // Deep-link: index.html#logs or #logs/usb-power
+      const hash = (location.hash || "").replace(/^#/, "");
+      if (hash.startsWith("logs")) {
+        setView("logs");
+        const id = hash.split("/")[1];
+        if (id && logData.some(l => l.id === id)) selectLog(id);
+      }
+    }
+
+    boot();
   </script>
 </body>
 </html>

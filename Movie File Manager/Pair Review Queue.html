@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pair Review Queue — AI HTML Toolbox</title>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <style>
+    :root {
+      --bg: #050508;
+      --panel: #0c0f16;
+      --border: rgba(0, 243, 255, 0.18);
+      --accent: #00f3ff;
+      --accent2: #a78bfa;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --text: #e2e8f0;
+      --muted: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: radial-gradient(ellipse at 50% -15%, #0f1a2a, var(--bg) 55%);
+      color: var(--text); min-height: 100vh;
+    }
+    .top {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 12px 18px; border-bottom: 1px solid var(--border);
+      background: rgba(5, 5, 8, 0.95); position: sticky; top: 0; z-index: 20;
+    }
+    .top h1 { font-size: 16px; font-weight: 600; color: var(--accent); letter-spacing: 0.04em; margin-right: 6px; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 18px 18px 48px; }
+    .source-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px;
+    }
+    .source-bar select, .source-bar .ui-btn { font-size: 12px; }
+    .source-bar select {
+      background: rgba(0,0,0,.4); border: 1px solid var(--border); color: var(--text);
+      padding: 8px 12px; border-radius: 8px;
+    }
+    .progress-wrap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 16px; margin-bottom: 16px;
+    }
+    .progress-meta {
+      display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;
+      font-size: 12px; color: var(--muted); margin-bottom: 8px;
+    }
+    .progress-meta strong { color: var(--text); }
+    .stat-ok { color: var(--ok); }
+    .stat-no { color: var(--danger); }
+    .stat-skip { color: var(--warn); }
+    .bar-track {
+      height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden;
+      display: flex;
+    }
+    .bar-track span { display: block; height: 100%; transition: width .25s; }
+    .bar-ok { background: var(--ok); }
+    .bar-no { background: var(--danger); }
+    .bar-left { background: rgba(0,243,255,.25); }
+
+    .stage {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;
+    }
+    @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+    .pane {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      display: flex; flex-direction: column; min-height: 280px;
+    }
+    .pane-h {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+      display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    }
+    .pane-h .name { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600;
+      max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-box {
+      flex: 1; background: #000; display: flex; align-items: center; justify-content: center;
+      min-height: 220px; max-height: 42vh; position: relative;
+    }
+    .media-box video, .media-box img {
+      max-width: 100%; max-height: 42vh; width: 100%; height: 100%; object-fit: contain;
+    }
+    .media-box .empty-media { color: var(--muted); font-size: 12px; padding: 24px; text-align: center; }
+
+    .card-info {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 16px 18px; margin-bottom: 14px;
+    }
+    .card-info h2 { font-size: 15px; margin-bottom: 8px; }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
+      font-size: 12px;
+    }
+    .meta-grid .lbl { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .meta-grid .val { margin-top: 2px; word-break: break-all; font-family: Consolas, monospace; font-size: 11px; }
+    .score-pill {
+      display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 12px;
+      border: 1px solid var(--border);
+    }
+    .score-pill.high { color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .score-pill.mid { color: var(--warn); border-color: rgba(251,191,36,.4); }
+    .score-pill.low { color: var(--danger); border-color: rgba(248,113,113,.4); }
+    .rename-line {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+      background: rgba(0,0,0,.3); border: 1px solid var(--border); font-size: 12px;
+    }
+    .rename-line .from { color: var(--muted); }
+    .rename-line .to { color: var(--accent); font-weight: 700; }
+    .decision {
+      display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    .decision.accept { color: var(--ok); }
+    .decision.reject { color: var(--danger); }
+    .decision.skip { color: var(--warn); }
+
+    .actions {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px;
+    }
+    .actions .ui-btn.primary-ok {
+      border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.12);
+    }
+    .actions .ui-btn.primary-ok:hover { background: var(--ok); color: #04120a; }
+    .actions .ui-btn.danger {
+      border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,.1);
+    }
+    .actions .ui-btn.danger:hover { background: var(--danger); color: #1a0505; }
+
+    .keys {
+      font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 6px;
+    }
+    .keys kbd {
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
+      border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.35);
+      font-family: Consolas, monospace; font-size: 10px; color: var(--accent);
+    }
+    .queue-list {
+      display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow: auto; margin-top: 10px;
+    }
+    .q-dot {
+      width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+      font-size: 10px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--muted); background: rgba(0,0,0,.25);
+    }
+    .q-dot.current { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(0,243,255,.25); }
+    .q-dot.accept { background: rgba(74,222,128,.2); color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .q-dot.reject { background: rgba(248,113,113,.15); color: var(--danger); border-color: rgba(248,113,113,.35); }
+    .q-dot.skip { background: rgba(251,191,36,.12); color: var(--warn); }
+
+    .empty-state {
+      text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
+    }
+    .empty-state strong { color: var(--text); }
+    .footer-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
+      padding-top: 14px; border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <h1>🔎 Pair Review Queue</h1>
+    <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
+    <button class="ui-btn primary" id="btnStartServer" type="button">▶ Start Server</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">VSR</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
+    <span id="modeHint" style="margin-left:auto;font-size:11px;color:var(--muted)"></span>
+  </div>
+
+  <div class="wrap">
+    <div class="source-bar">
+      <label style="font-size:11px;color:var(--muted)">Queue source</label>
+      <select id="sourceSelect">
+        <option value="vsr1">VSR Stage I — upscale matches</option>
+        <option value="vsr2">VSR Stage II — interp matches</option>
+        <option value="catalog">Catalog pairs (saved)</option>
+        <option value="suggest">Suggested pairs (unlinked)</option>
+      </select>
+      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="onlyRename" checked> Only rename-needed (VSR)
+      </label>
+      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+        Min score
+        <input type="number" id="minScore" min="0" max="1" step="0.05" value="0" style="width:64px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text)">
+      </label>
+      <button class="ui-btn primary" id="btnLoad" type="button">↻ Load queue</button>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-meta">
+        <span>Item <strong id="posLabel">0</strong> / <strong id="totalLabel">0</strong></span>
+        <span>
+          <span class="stat-ok" id="nAccept">0 accepted</span> ·
+          <span class="stat-no" id="nReject">0 rejected</span> ·
+          <span class="stat-skip" id="nSkip">0 skipped</span> ·
+          <span id="nLeft">0 left</span>
+        </span>
+      </div>
+      <div class="bar-track">
+        <span class="bar-ok" id="barOk" style="width:0%"></span>
+        <span class="bar-no" id="barNo" style="width:0%"></span>
+        <span class="bar-left" id="barLeft" style="width:0%"></span>
+      </div>
+      <div class="queue-list" id="queueDots"></div>
+    </div>
+
+    <div id="reviewRoot">
+      <div class="empty-state" id="emptyState">
+        <strong>Review matches one-by-one before bulk rename.</strong><br>
+        Load a VSR preview, catalog pairs, or suggestions — then use keyboard shortcuts to accept or reject.<br><br>
+        Needs the toolbox server online (green pill).
+      </div>
+    </div>
+
+    <div id="activeReview" style="display:none">
+      <div class="stage">
+        <div class="pane">
+          <div class="pane-h"><span>Before / Source</span><span class="name" id="beforeName">—</span></div>
+          <div class="media-box" id="beforeMedia"><div class="empty-media">No preview</div></div>
+        </div>
+        <div class="pane">
+          <div class="pane-h"><span>After / Output</span><span class="name" id="afterName">—</span></div>
+          <div class="media-box" id="afterMedia"><div class="empty-media">No preview</div></div>
+        </div>
+      </div>
+
+      <div class="card-info">
+        <h2 id="itemTitle">—</h2>
+        <div class="meta-grid">
+          <div><div class="lbl">Confidence</div><div class="val"><span class="score-pill" id="scorePill">—</span></div></div>
+          <div><div class="lbl">Kind</div><div class="val" id="kindVal">—</div></div>
+          <div><div class="lbl">Decision</div><div class="val" id="decisionVal">pending</div></div>
+          <div><div class="lbl">Stage / Source</div><div class="val" id="stageVal">—</div></div>
+        </div>
+        <div class="rename-line" id="renameLine" style="display:none">
+          <span class="from" id="renameFrom"></span> → <span class="to" id="renameTo"></span>
+        </div>
+        <div class="keys">
+          <kbd>A</kbd> / <kbd>Enter</kbd> Accept ·
+          <kbd>R</kbd> / <kbd>X</kbd> Reject ·
+          <kbd>S</kbd> Skip ·
+          <kbd>←</kbd> <kbd>→</kbd> Prev / Next ·
+          <kbd>Space</kbd> Play/pause both ·
+          <kbd>C</kbd> Open comparator ·
+          <kbd>U</kbd> Undo decision
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="ui-btn primary-ok" id="btnAccept" type="button">✓ Accept</button>
+        <button class="ui-btn danger" id="btnReject" type="button">✗ Reject</button>
+        <button class="ui-btn ghost" id="btnSkip" type="button">Skip</button>
+        <button class="ui-btn ghost" id="btnPrev" type="button">← Prev</button>
+        <button class="ui-btn ghost" id="btnNext" type="button">Next →</button>
+        <button class="ui-btn ghost" id="btnUndo" type="button">Undo</button>
+        <button class="ui-btn ghost" id="btnCompare" type="button">Open comparator</button>
+      </div>
+
+      <div class="footer-actions">
+        <button class="ui-btn primary" id="btnApplyAccepted" type="button">Apply accepted renames…</button>
+        <button class="ui-btn ghost" id="btnDryAccepted" type="button">Dry-run accepted</button>
+        <button class="ui-btn ghost" id="btnSavePairs" type="button">Save accepted as catalog pairs</button>
+        <button class="ui-btn ghost" id="btnDeleteRejected" type="button">Delete rejected catalog pairs</button>
+        <span id="applyStatus" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-version.js"></script>
+  <script src="../shared/aitoolbox-debug.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script>
+    const API = () => window.AIToolboxAPI;
+    const UI = () => window.AIToolboxUI;
+    const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    /** @type {{ id: string, mode: string, kind: string, score: number, beforePath?: string, afterPath?: string, beforeName: string, afterName: string, beforeMediaId?: string, afterMediaId?: string, pairId?: string, renamePath?: string, proposedName?: string, currentName?: string, renameNeeded?: boolean, decision: 'pending'|'accept'|'reject'|'skip', label: string }[]} */
+    let queue = [];
+    let index = 0;
+    let busy = false;
+
+    const params = new URLSearchParams(location.search);
+
+    function toast(msg, type) { UI()?.toast?.(msg, type || ''); }
+
+    function scoreClass(score) {
+      const pct = score <= 1 ? Math.round(score * 100) : Math.round(score);
+      if (pct >= 75) return 'high';
+      if (pct >= 55) return 'mid';
+      return 'low';
+    }
+
+    function scoreLabel(score) {
+      if (score == null || Number.isNaN(score)) return '—';
+      const pct = score <= 1 ? Math.round(score * 100) : Math.round(score);
+      return pct + '%';
+    }
+
+    function current() { return queue[index] || null; }
+
+    function counts() {
+      let accept = 0, reject = 0, skip = 0, left = 0;
+      for (const q of queue) {
+        if (q.decision === 'accept') accept++;
+        else if (q.decision === 'reject') reject++;
+        else if (q.decision === 'skip') skip++;
+        else left++;
+      }
+      return { accept, reject, skip, left, total: queue.length };
+    }
+
+    function updateProgress() {
+      const c = counts();
+      document.getElementById('progressWrap').style.display = queue.length ? '' : 'none';
+      document.getElementById('posLabel').textContent = queue.length ? String(index + 1) : '0';
+      document.getElementById('totalLabel').textContent = String(c.total);
+      document.getElementById('nAccept').textContent = c.accept + ' accepted';
+      document.getElementById('nReject').textContent = c.reject + ' rejected';
+      document.getElementById('nSkip').textContent = c.skip + ' skipped';
+      document.getElementById('nLeft').textContent = c.left + ' left';
+      const t = Math.max(1, c.total);
+      document.getElementById('barOk').style.width = (c.accept / t * 100) + '%';
+      document.getElementById('barNo').style.width = (c.reject / t * 100) + '%';
+      document.getElementById('barLeft').style.width = (c.left / t * 100) + '%';
+
+      const dots = document.getElementById('queueDots');
+      dots.innerHTML = queue.map((q, i) => {
+        const cls = ['q-dot', q.decision !== 'pending' ? q.decision : '', i === index ? 'current' : ''].filter(Boolean).join(' ');
+        return `<button type="button" class="${cls}" data-i="${i}" title="${esc(q.label)}">${i + 1}</button>`;
+      }).join('');
+      dots.querySelectorAll('[data-i]').forEach(btn => {
+        btn.onclick = () => { index = +btn.dataset.i; renderItem(); };
+      });
+    }
+
+    function clearMedia(el) {
+      el.innerHTML = '<div class="empty-media">No preview</div>';
+    }
+
+    function setMediaFromItem(el, item, side) {
+      if (!item) { clearMedia(el); return; }
+      // Catalog suggestions: stream by media id
+      if (item._useMediaId) {
+        const mid = side === 'before' ? item.beforeMediaId : item.afterMediaId;
+        if (mid && API().mediaFileUrl) {
+          const url = API().mediaFileUrl(mid);
+          const isImage = item.kind === 'image';
+          el.innerHTML = isImage
+            ? `<img alt="" src="${esc(url)}">`
+            : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
+          const media = el.querySelector('img,video');
+          if (media) media.onerror = () => clearMedia(el);
+          return;
+        }
+      }
+      const path = side === 'before' ? item.beforePath : item.afterPath;
+      const name = side === 'before' ? item.beforeName : item.afterName;
+      if (!path) { clearMedia(el); return; }
+      const url = API().fileServeUrl(path);
+      const isImage = item.kind === 'image' || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(path || name || '');
+      el.innerHTML = isImage
+        ? `<img alt="" src="${esc(url)}">`
+        : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
+      const media = el.querySelector('img,video');
+      if (media) media.onerror = () => clearMedia(el);
+    }
+
+    function updateFooterButtons() {
+      document.getElementById('btnApplyAccepted').disabled = !queue.some(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName);
+      document.getElementById('btnDryAccepted').disabled = !queue.some(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName);
+      document.getElementById('btnSavePairs').disabled = !queue.some(q => q.decision === 'accept' && ((q.beforeMediaId && q.afterMediaId && !q.pairId) || (q.beforePath && q.afterPath && !q.pairId)));
+      document.getElementById('btnDeleteRejected').disabled = !queue.some(q => q.decision === 'reject' && q.pairId);
+    }
+
+    function renderItem() {
+      updateProgress();
+      const item = current();
+      const empty = document.getElementById('emptyState');
+      const active = document.getElementById('activeReview');
+
+      if (!item) {
+        active.style.display = 'none';
+        empty.style.display = '';
+        empty.innerHTML = queue.length
+          ? '<strong>Queue finished reviewing.</strong><br>Apply accepted renames or reload.'
+          : '<strong>No items loaded.</strong><br>Choose a source and click Load queue (server required).';
+        updateFooterButtons();
+        return;
+      }
+
+      empty.style.display = 'none';
+      active.style.display = '';
+
+      document.getElementById('beforeName').textContent = item.beforeName || '—';
+      document.getElementById('afterName').textContent = item.afterName || '—';
+      document.getElementById('itemTitle').textContent = item.label || (item.beforeName + ' ↔ ' + item.afterName);
+      document.getElementById('kindVal').textContent = item.kind || 'video';
+      document.getElementById('stageVal').textContent = item.mode || '—';
+
+      const pill = document.getElementById('scorePill');
+      pill.textContent = scoreLabel(item.score);
+      pill.className = 'score-pill ' + scoreClass(item.score || 0);
+
+      const dec = document.getElementById('decisionVal');
+      dec.textContent = '';
+      if (item.decision === 'pending') {
+        dec.textContent = 'pending';
+      } else {
+        const sp = document.createElement('span');
+        sp.className = 'decision ' + item.decision;
+        sp.textContent = item.decision;
+        dec.appendChild(sp);
+      }
+
+      const rl = document.getElementById('renameLine');
+      if (item.proposedName) {
+        rl.style.display = '';
+        document.getElementById('renameFrom').textContent = item.currentName || item.afterName;
+        document.getElementById('renameTo').textContent = item.proposedName + (item.renameNeeded === false ? ' (already OK)' : '');
+      } else {
+        rl.style.display = 'none';
+      }
+
+      setMediaFromItem(document.getElementById('beforeMedia'), item, 'before');
+      setMediaFromItem(document.getElementById('afterMedia'), item, 'after');
+      updateFooterButtons();
+    }
+
+    function setDecision(dec) {
+      const item = current();
+      if (!item || busy) return;
+      item.decision = dec;
+      // Auto-advance
+      if (index < queue.length - 1) index++;
+      else {
+        // Jump to first pending if any
+        const next = queue.findIndex(q => q.decision === 'pending');
+        if (next >= 0) index = next;
+      }
+      renderItem();
+      toast(dec === 'accept' ? 'Accepted' : dec === 'reject' ? 'Rejected' : 'Skipped',
+        dec === 'accept' ? 'ok' : 'warn');
+    }
+
+    function undoDecision() {
+      const item = current();
+      if (!item) return;
+      item.decision = 'pending';
+      renderItem();
+      toast('Decision cleared');
+    }
+
+    function togglePlay() {
+      document.querySelectorAll('#activeReview video').forEach(v => {
+        if (v.paused) v.play().catch(() => {});
+        else v.pause();
+      });
+    }
+
+    async function openComparator() {
+      const item = current();
+      if (!item) return;
+      try {
+        let pairId = item.pairId;
+        if (!pairId && item.beforePath && item.afterPath) {
+          const p = await API().savePairFromPaths({
+            beforePath: item.beforePath,
+            afterPath: item.afterPath,
+            name: item.label || '',
+            kind: item.kind || 'video',
+            pinned: false,
+            notes: 'pair-review-temp',
+          });
+          pairId = p.id;
+          item.pairId = pairId;
+        }
+        if (!pairId) {
+          toast('No pair id — save as catalog pair first or use VSR paths', 'warn');
+          return;
+        }
+        const url = API().comparatorUrl({ id: pairId, kind: item.kind || 'video' }, {});
+        window.open(url, '_blank');
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      }
+    }
+
+    function mapVsrItem(raw, stage) {
+      const score = Number(raw.score) || 0;
+      const source = raw.source || {};
+      const output = raw.output || {};
+      const beforePath = source.path || '';
+      const afterPath = output.path || '';
+      const beforeName = source.name || raw.original_source || '';
+      const afterName = output.name || raw.current_name || '';
+      const proposed = raw.proposed_name || afterName;
+      const current = raw.current_name || afterName;
+      const renameNeeded = !!raw.rename_needed;
+      return {
+        id: `vsr-${stage}-${afterPath || beforePath}-${proposed}`,
+        mode: stage === '1' ? 'vsr-stage1' : 'vsr-stage2',
+        kind: 'video',
+        score,
+        beforePath,
+        afterPath,
+        beforeName,
+        afterName,
+        renamePath: afterPath,
+        proposedName: proposed,
+        currentName: current,
+        renameNeeded,
+        decision: 'pending',
+        label: `${beforeName} → ${proposed}`,
+      };
+    }
+
+    async function loadQueue() {
+      busy = true;
+      document.getElementById('btnLoad').disabled = true;
+      document.getElementById('applyStatus').textContent = '';
+      try {
+        const online = await API().isOnline(true);
+        if (!online) throw new Error('Server offline — click ▶ Start Server');
+
+        const source = document.getElementById('sourceSelect').value;
+        const onlyRename = document.getElementById('onlyRename').checked;
+        const minScore = parseFloat(document.getElementById('minScore').value) || 0;
+        let items = [];
+
+        if (source === 'vsr1' || source === 'vsr2') {
+          const stage = source === 'vsr1' ? '1' : '2';
+          const data = await API().vsrPreview();
+          if (data.error) throw new Error(data.error);
+          const rows = stage === '1' ? (data.stage1 || []) : (data.stage2 || []);
+          items = rows.map(r => mapVsrItem(r, stage));
+          if (onlyRename) items = items.filter(i => i.renameNeeded);
+          document.getElementById('modeHint').textContent =
+            `VSR Stage ${stage === '1' ? 'I' : 'II'} · ${items.length} matches`;
+        } else if (source === 'catalog') {
+          const pairs = await API().listPairs();
+          for (const p of pairs) {
+            let beforePath = p.beforePath || '', afterPath = p.afterPath || '';
+            try {
+              const paths = await API().getPairPaths(p.id);
+              beforePath = paths.before || beforePath;
+              afterPath = paths.after || afterPath;
+            } catch { /* paths optional */ }
+            items.push({
+              id: p.id,
+              mode: 'catalog',
+              kind: p.kind || 'video',
+              score: 1,
+              beforePath,
+              afterPath,
+              beforeName: p.beforeName || 'before',
+              afterName: p.afterName || 'after',
+              beforeMediaId: p.beforeMediaId,
+              afterMediaId: p.afterMediaId,
+              pairId: p.id,
+              decision: 'pending',
+              label: p.name || `${p.beforeName || 'before'} ↔ ${p.afterName || 'after'}`,
+            });
+          }
+          document.getElementById('modeHint').textContent = `Catalog · ${items.length} pairs`;
+        } else if (source === 'suggest') {
+          const sug = await API().suggestPairs(80);
+          for (const s of sug) {
+            items.push({
+              id: `sug-${s.before_id}-${s.after_id}`,
+              mode: 'suggest',
+              kind: 'video',
+              score: Number(s.confidence) || 0,
+              beforePath: '',
+              afterPath: '',
+              beforeName: s.before_name || '',
+              afterName: s.after_name || '',
+              beforeMediaId: s.before_id,
+              afterMediaId: s.after_id,
+              decision: 'pending',
+              label: `${s.before_name} ↔ ${s.after_name} (${s.reason || 'suggest'})`,
+            });
+          }
+          // Resolve paths via media file API when possible
+          for (const it of items) {
+            if (it.beforeMediaId) it.beforePath = null; // use media file endpoint below
+          }
+          // For suggestions, serve via media mid
+          items = items.map(it => ({
+            ...it,
+            _useMediaId: true,
+          }));
+          document.getElementById('modeHint').textContent = `Suggestions · ${items.length}`;
+        }
+
+        if (minScore > 0) {
+          items = items.filter(i => (i.score || 0) >= minScore || (i.score > 1 && i.score / 100 >= minScore));
+        }
+
+        queue = items;
+        index = 0;
+        if (!queue.length) toast('No items for this source / filter', 'warn');
+        else toast(`Loaded ${queue.length} item(s)`, 'ok');
+        renderItem();
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+        queue = [];
+        renderItem();
+      } finally {
+        busy = false;
+        document.getElementById('btnLoad').disabled = false;
+      }
+    }
+
+    async function applyAccepted(dryRun) {
+      const renames = queue
+        .filter(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName)
+        .map(q => ({ path: q.renamePath, new_name: q.proposedName }));
+      if (!renames.length) {
+        toast('No accepted renames to apply', 'warn');
+        return;
+      }
+      if (!dryRun) {
+        const conf = await UI().confirmAction({
+          title: 'Apply accepted renames?',
+          body: `<strong>${renames.length}</strong> file(s) will be renamed on disk. Rejected/skipped items are left alone.`,
+          preview: renames.slice(0, 12).map(r => ({ from: r.path.split(/[/\\]/).pop(), to: r.new_name })),
+          showSafetyNote: true,
+          confirmText: `Rename ${renames.length}`,
+          cancelText: 'Cancel',
+        });
+        if (!conf.confirmed) return;
+      }
+      try {
+        const r = await API().vsrApplySelected(renames, dryRun);
+        const msg = dryRun
+          ? `Dry run: ${r.ok}/${r.count} would succeed`
+          : `Renamed ${r.ok}/${r.count}` + (r.failed ? ` · ${r.failed} failed` : '');
+        document.getElementById('applyStatus').textContent = msg;
+        toast(msg, r.failed ? 'warn' : 'ok');
+        if (!dryRun && r.ok) {
+          // Mark applied items as done (no longer rename-needed)
+          for (const q of queue) {
+            if (q.decision === 'accept' && q.renameNeeded) {
+              q.renameNeeded = false;
+              q.currentName = q.proposedName;
+              q.afterName = q.proposedName;
+            }
+          }
+          renderItem();
+        }
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      }
+    }
+
+    async function saveAcceptedPairs() {
+      const toSave = queue.filter(q => q.decision === 'accept' && q.beforeMediaId && q.afterMediaId && !q.pairId);
+      if (!toSave.length) {
+        // Try path-based for VSR accepts
+        const pathBased = queue.filter(q => q.decision === 'accept' && q.beforePath && q.afterPath && !q.pairId);
+        if (!pathBased.length) {
+          toast('No accepted pairs to save', 'warn');
+          return;
+        }
+        let n = 0;
+        for (const q of pathBased) {
+          try {
+            const p = await API().savePairFromPaths({
+              beforePath: q.beforePath,
+              afterPath: q.afterPath,
+              name: q.label || '',
+              kind: q.kind || 'video',
+              pinned: true,
+              notes: 'pair-review-accepted',
+            });
+            q.pairId = p.id;
+            n++;
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+        toast(`Saved ${n} pair(s) from paths`, n ? 'ok' : 'warn');
+        renderItem();
+        return;
+      }
+      let n = 0;
+      for (const q of toSave) {
+        try {
+          const p = await API().savePair({
+            beforeMediaId: q.beforeMediaId,
+            afterMediaId: q.afterMediaId,
+            name: q.label || '',
+            kind: q.kind || 'video',
+            pinned: true,
+            notes: 'pair-review-accepted',
+          });
+          q.pairId = p.id;
+          n++;
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+      toast(`Saved ${n} catalog pair(s)`, n ? 'ok' : 'warn');
+      renderItem();
+    }
+
+    async function deleteRejectedPairs() {
+      const toDel = queue.filter(q => q.decision === 'reject' && q.pairId);
+      if (!toDel.length) {
+        toast('No rejected catalog pairs', 'warn');
+        return;
+      }
+      const conf = await UI().confirmAction({
+        title: 'Delete rejected pairs?',
+        body: `Removes <strong>${toDel.length}</strong> pair link(s) from the catalog (files stay on disk).`,
+        confirmText: 'Delete pair links',
+        cancelText: 'Cancel',
+      });
+      if (!conf.confirmed) return;
+      let n = 0;
+      for (const q of toDel) {
+        try {
+          await API().deletePair(q.pairId);
+          q.pairId = null;
+          n++;
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+      toast(`Deleted ${n} pair link(s)`, 'ok');
+      renderItem();
+    }
+
+    // Wire buttons
+    document.getElementById('btnLoad').onclick = loadQueue;
+    document.getElementById('btnAccept').onclick = () => setDecision('accept');
+    document.getElementById('btnReject').onclick = () => setDecision('reject');
+    document.getElementById('btnSkip').onclick = () => setDecision('skip');
+    document.getElementById('btnPrev').onclick = () => { if (index > 0) { index--; renderItem(); } };
+    document.getElementById('btnNext').onclick = () => { if (index < queue.length - 1) { index++; renderItem(); } };
+    document.getElementById('btnUndo').onclick = undoDecision;
+    document.getElementById('btnCompare').onclick = openComparator;
+    document.getElementById('btnApplyAccepted').onclick = () => applyAccepted(false);
+    document.getElementById('btnDryAccepted').onclick = () => applyAccepted(true);
+    document.getElementById('btnSavePairs').onclick = saveAcceptedPairs;
+    document.getElementById('btnDeleteRejected').onclick = deleteRejectedPairs;
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      const k = e.key;
+      if (k === 'a' || k === 'A' || k === 'Enter') { e.preventDefault(); setDecision('accept'); }
+      else if (k === 'r' || k === 'R' || k === 'x' || k === 'X') { e.preventDefault(); setDecision('reject'); }
+      else if (k === 's' || k === 'S') { e.preventDefault(); setDecision('skip'); }
+      else if (k === 'ArrowRight' || k === 'n' || k === 'N') { e.preventDefault(); if (index < queue.length - 1) { index++; renderItem(); } }
+      else if (k === 'ArrowLeft' || k === 'p' || k === 'P') { e.preventDefault(); if (index > 0) { index--; renderItem(); } }
+      else if (k === ' ') { e.preventDefault(); togglePlay(); }
+      else if (k === 'c' || k === 'C') { e.preventDefault(); openComparator(); }
+      else if (k === 'u' || k === 'U') { e.preventDefault(); undoDecision(); }
+    });
+
+    // Query params: ?source=vsr&stage=1  or source=catalog|suggest
+    (function applyQuery() {
+      const src = (params.get('source') || '').toLowerCase();
+      const stage = params.get('stage') || '1';
+      if (src === 'vsr' || src === 'vsr1' || src === 'stage1') {
+        document.getElementById('sourceSelect').value = stage === '2' || stage === 'II' ? 'vsr2' : 'vsr1';
+      } else if (src === 'vsr2' || src === 'stage2') {
+        document.getElementById('sourceSelect').value = 'vsr2';
+      } else if (src === 'catalog' || src === 'pairs') {
+        document.getElementById('sourceSelect').value = 'catalog';
+      } else if (src === 'suggest' || src === 'suggestions') {
+        document.getElementById('sourceSelect').value = 'suggest';
+      }
+      if (params.get('min') != null) document.getElementById('minScore').value = params.get('min');
+      if (params.get('all') === '1') document.getElementById('onlyRename').checked = false;
+    })();
+
+    if (UI()?.bindServerControls) {
+      UI().bindServerControls({
+        statusEl: '#serverPill',
+        startBtn: '#btnStartServer',
+        onOnline: () => {
+          // Auto-load if navigated with source query
+          if (params.get('source') || params.get('autoload') === '1') loadQueue();
+        },
+      });
+    } else {
+      document.getElementById('btnStartServer').onclick = async () => {
+        await API()?.startServer?.({ mode: 'tray' });
+      };
+    }
+
+    // mediaFileUrl helper if missing
+    if (API() && !API().mediaFileUrl) {
+      API().mediaFileUrl = (mid) => API().getApiBase() + '/media/file?mid=' + encodeURIComponent(mid);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Commander Status HUD · FAFO</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <style>
+    :root {
+      --bg: #03060a;
+      --panel: #0a1018;
+      --panel2: #0e1620;
+      --line: rgba(56, 189, 248, 0.2);
+      --accent: #38bdf8;
+      --accent2: #f59e0b;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --text: #e8eef4;
+      --muted: #7b8fa6;
+      --glow: 0 0 28px rgba(56, 189, 248, 0.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 70% 45% at 15% -5%, rgba(14, 116, 144, 0.4), transparent 55%),
+        radial-gradient(ellipse 50% 35% at 100% 10%, rgba(245, 158, 11, 0.1), transparent 45%),
+        linear-gradient(180deg, #050a10 0%, var(--bg) 100%);
+    }
+    header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 18px; border-bottom: 1px solid var(--line);
+      background: rgba(5, 10, 16, 0.9); backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 30;
+    }
+    .brand h1 { margin: 0; font-size: 17px; color: var(--accent); letter-spacing: 0.06em; text-shadow: var(--glow); }
+    .brand .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .nav-links a {
+      color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 700;
+      border: 1px solid var(--line); padding: 6px 10px; border-radius: 8px;
+    }
+    .nav-links a:hover { background: rgba(56,189,248,.12); }
+    .pill {
+      font-size: 11px; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted);
+    }
+    .pill.ok { border-color: rgba(52,211,153,.5); color: var(--good); }
+    .pill.warn { border-color: rgba(251,191,36,.5); color: var(--warn); }
+    .pill.bad { border-color: rgba(248,113,113,.5); color: var(--bad); }
+
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 40px; }
+    .layout {
+      display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 14px;
+    }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: linear-gradient(165deg, var(--panel2), var(--panel));
+      border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    }
+    .ph {
+      padding: 10px 14px; border-bottom: 1px solid var(--line);
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .pb { padding: 12px 14px; }
+
+    label.fld { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 8px 0 4px; }
+    input, select, textarea {
+      width: 100%; background: #070c12; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 8px 10px; font-size: 13px;
+    }
+    textarea { min-height: 56px; resize: vertical; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 100px; }
+    .btn {
+      border: 1px solid var(--accent); background: transparent; color: var(--accent);
+      padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 700;
+      cursor: pointer; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .btn:hover { background: var(--accent); color: #041018; box-shadow: var(--glow); }
+    .btn.primary { background: rgba(56, 189, 248, 0.14); }
+    .btn.amber { border-color: var(--accent2); color: var(--accent2); }
+    .btn.amber:hover { background: var(--accent2); color: #1a1200; }
+    .btn.danger { border-color: var(--bad); color: var(--bad); }
+    .btn:disabled { opacity: 0.45; cursor: wait; box-shadow: none; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chk { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .chk input { width: auto; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .kpi {
+      background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    }
+    .kpi .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .kpi .val { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--accent); }
+    .kpi .val.good { color: var(--good); }
+    .kpi .val.warn { color: var(--warn); }
+    .kpi .val.bad { color: var(--bad); }
+    .kpi .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .health-ring {
+      width: 88px; height: 88px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: conic-gradient(var(--accent) calc(var(--pct) * 1%), rgba(255,255,255,.06) 0);
+      box-shadow: var(--glow);
+    }
+    .health-ring > span {
+      width: 68px; height: 68px; border-radius: 50%; background: var(--panel);
+      display: grid; place-items: center; font-size: 18px; font-weight: 800; color: var(--accent);
+    }
+
+    .chip {
+      display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .04em; padding: 2px 7px; border-radius: 4px; margin: 2px;
+      background: rgba(56,189,248,.12); color: var(--accent); border: 1px solid rgba(56,189,248,.28);
+    }
+    .chip.good { background: rgba(52,211,153,.12); color: var(--good); border-color: rgba(52,211,153,.35); }
+    .chip.warn { background: rgba(251,191,36,.12); color: var(--warn); border-color: rgba(251,191,36,.35); }
+    .chip.bad { background: rgba(248,113,113,.12); color: var(--bad); border-color: rgba(248,113,113,.35); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid rgba(56,189,248,.1); }
+    th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .empty { color: var(--muted); text-align: center; padding: 28px 12px; font-size: 13px; }
+    .mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
+    .muted { color: var(--muted); }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+    .profile-item {
+      padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+      margin-bottom: 6px; background: rgba(0,0,0,.2);
+    }
+    .profile-item:hover, .profile-item.active { border-color: var(--accent); background: rgba(56,189,248,.08); }
+    .profile-item .n { font-weight: 700; font-size: 13px; }
+    .profile-item .m { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .toast {
+      position: fixed; bottom: 18px; right: 18px; z-index: 50;
+      background: #0c1620; border: 1px solid var(--accent); color: var(--text);
+      padding: 10px 14px; border-radius: 10px; font-size: 12px; max-width: 360px;
+      box-shadow: var(--glow); opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .toast.show { opacity: 1; }
+    .hint-box {
+      font-size: 11px; color: var(--muted); line-height: 1.45;
+      border-left: 3px solid rgba(245,158,11,.5); padding: 8px 10px; margin-top: 10px;
+      background: rgba(245,158,11,.06); border-radius: 0 8px 8px 0;
+    }
+    .scanline {
+      pointer-events: none; position: fixed; inset: 0; z-index: 1; opacity: 0.03;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, #fff 3px);
+    }
+  </style>
+</head>
+<body>
+  <div class="scanline" aria-hidden="true"></div>
+  <header>
+    <div class="brand">
+      <h1>📡 Commander Status HUD</h1>
+      <div class="sub">Live reachability · port surface · HTTP discovery · credential test · backup context</div>
+    </div>
+    <div class="nav-links">
+      <span id="serverPill" class="pill warn">Server…</span>
+      <a href="Commander Site Console.html">⛽ Site Console</a>
+      <a href="Pre-Reload Punch List.html">✅ Punch List</a>
+      <a href="../Toolbox Launcher.html">🧰 Toolbox</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="layout">
+      <!-- LEFT: connect -->
+      <div class="stack">
+        <section class="panel">
+          <div class="ph">Connect <span class="muted" style="text-transform:none;letter-spacing:0">target controller</span></div>
+          <div class="pb">
+            <label class="fld">Host / IP</label>
+            <input id="host" placeholder="192.168.1.10 or commander-host" autocomplete="off">
+
+            <div class="row">
+              <div>
+                <label class="fld">Username</label>
+                <input id="username" placeholder="Config Client / web user" autocomplete="username">
+              </div>
+              <div>
+                <label class="fld">Password</label>
+                <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+              </div>
+            </div>
+
+            <label class="fld">Config OTP <span class="muted" style="text-transform:none;letter-spacing:0">(when required)</span></label>
+            <input id="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="4-digit code from register / Commander face" maxlength="12">
+            <div id="otpBanner" class="hint-box" style="display:none;border-left-color:var(--warn);background:rgba(251,191,36,.1)">
+              <strong style="color:var(--warn)">OTP required</strong>
+              <div id="otpBannerText" style="margin-top:4px"></div>
+            </div>
+
+            <label class="fld">Link library export (optional)</label>
+            <select id="exportSelect">
+              <option value="">— none —</option>
+            </select>
+
+            <label class="fld">Saved profile</label>
+            <select id="profileSelect">
+              <option value="">— new / manual —</option>
+            </select>
+
+            <div class="chk"><input type="checkbox" id="doLogin" checked> Test HTTP login with credentials</div>
+            <div class="chk"><input type="checkbox" id="doHttp" checked> Discover HTTP(S) services</div>
+
+            <div class="btn-row">
+              <button class="btn primary" id="btnProbe">▶ Probe &amp; gather</button>
+              <button class="btn" id="btnSaveProfile">💾 Save profile</button>
+              <button class="btn danger" id="btnDelProfile" title="Delete selected profile">🗑</button>
+              <a class="btn amber" id="btnOpenCc" href="#" target="_blank" rel="noopener">🌐 Open Config Client</a>
+              <button class="btn amber" id="btnImportExport" title="Launch Verifone Import-Export Utility for SMS backups">📦 Import-Export Utility</button>
+            </div>
+            <div class="hint-box">
+              Login: <code>CGILink?cmd=validate&amp;user=&amp;passwd=&amp;otp=</code>.
+              When the controller returns <code>CGIPortal.OTPRequired</code>, generate a
+              <strong>Config OTP</strong> on the register and enter it above.
+            </div>
+            <details style="margin-top:10px">
+              <summary style="cursor:pointer;color:var(--accent);font-size:12px;font-weight:700">OTP + Manager password notes</summary>
+              <div id="otpHelp" style="font-size:11px;color:var(--muted);line-height:1.45;margin-top:8px">
+                <p style="margin:0 0 8px"><strong style="color:var(--text)">Config OTP (4-digit)</strong><br>
+                CSR Functions → Maintenance → Generate/Config OTP (option 10 or 11) → Yes →
+                numeric code on the register and/or Commander front panel → enter here promptly.</p>
+                <p style="margin:0 0 8px"><strong style="color:var(--text)">Manager password (~90 days)</strong><br>
+                When prompted to change: cycle trailing letter <strong>A → B → C → D → E → A</strong>.
+                Update the saved profile on this PC after rotating. Do not put live passwords in git.</p>
+                <p style="margin:0"><strong style="color:var(--text)">C-Site OTP (cloud)</strong><br>
+                From C-Site Management (usually email). Used for cloud onboarding, not every login.</p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="ph">Saved profiles</div>
+          <div class="pb" id="profileList"><div class="empty">No profiles yet</div></div>
+        </section>
+      </div>
+
+      <!-- RIGHT: HUD -->
+      <div class="stack">
+        <section class="panel">
+          <div class="ph">
+            Status overview
+            <span id="gatheredAt" class="muted" style="text-transform:none;letter-spacing:0;font-size:11px"></span>
+          </div>
+          <div class="pb" id="overview">
+            <div class="empty">Enter a Commander IP/host and run <strong>Probe &amp; gather</strong>.</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="ph">Ports</div>
+          <div class="pb" id="portsPane"><div class="empty">—</div></div>
+        </section>
+
+        <section class="panel">
+          <div class="ph">Commander web UI</div>
+          <div class="pb" id="uiPane"><div class="empty">—</div></div>
+        </section>
+
+        <section class="panel">
+          <div class="ph">HTTP / CGILink login</div>
+          <div class="pb" id="httpPane"><div class="empty">—</div></div>
+        </section>
+
+        <section class="panel">
+          <div class="ph">Import-Export Utility (backups)</div>
+          <div class="pb" id="iePane"><div class="empty">Detecting local Verifone Import-Export install…</div></div>
+        </section>
+
+        <section class="panel">
+          <div class="ph">Backup / library context</div>
+          <div class="pb" id="backupPane"><div class="empty">Link an export or probe with export_id to pull site dossier fields.</div></div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script>
+    const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+    const el = (id) => document.getElementById(id);
+    let profiles = [];
+    let targets = [];
+    let lastResult = null;
+    let selectedProfileId = '';
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function toast(msg, ms = 3200) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(() => t.classList.remove('show'), ms);
+    }
+    async function api(path, opts = {}) {
+      let r;
+      try {
+        const headers = { ...(opts.headers || {}) };
+        if (opts.body != null && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+        r = await fetch(apiBase() + path, { ...opts, headers });
+      } catch (e) {
+        throw new Error('Cannot reach toolbox server at ' + apiBase() + '. Start the server, then open via http://127.0.0.87:18765/toolbox/…');
+      }
+      const text = await r.text();
+      let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) throw new Error((data.detail && (data.detail.msg || data.detail)) || data.message || r.statusText || 'Request failed');
+      return data;
+    }
+
+    async function refreshServer() {
+      try {
+        const ok = await fetch(apiBase().replace(/\/api$/, '') + '/health').then(r => r.ok).catch(() => false);
+        el('serverPill').textContent = ok ? 'Server online' : 'Server offline';
+        el('serverPill').className = 'pill ' + (ok ? 'ok' : 'bad');
+        return ok;
+      } catch {
+        el('serverPill').textContent = 'Server offline';
+        el('serverPill').className = 'pill bad';
+        return false;
+      }
+    }
+
+    function levelClass(level) {
+      if (level === 'online') return 'good';
+      if (level === 'partial') return 'warn';
+      if (level === 'degraded') return 'warn';
+      return 'bad';
+    }
+
+    function renderOverview(res) {
+      if (!res) {
+        el('overview').innerHTML = '<div class="empty">No probe yet.</div>';
+        return;
+      }
+      const h = res.health || {};
+      const pct = Math.max(0, Math.min(100, h.score || 0));
+      const pingOk = res.ping && res.ping.success;
+      const openN = (res.ports && res.ports.openCount) || 0;
+      const httpN = (res.httpServices || []).length;
+      const auth = res.login && res.login.authenticated;
+      el('gatheredAt').textContent = res.gatheredAt ? ('gathered ' + new Date(res.gatheredAt).toLocaleString()) : '';
+      el('overview').innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:14px">
+          <div class="health-ring" style="--pct:${pct}">
+            <span>${pct}</span>
+          </div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:20px;font-weight:800;text-transform:uppercase;color:var(--accent)">${esc(h.level || 'unknown')}</div>
+            <div class="mono muted" style="margin-top:4px">${esc(res.host)}</div>
+            <div style="margin-top:8px">${(h.reasons || []).map(r => `<span class="chip">${esc(r)}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="lbl">Ping</div><div class="val ${pingOk ? 'good' : 'bad'}">${pingOk ? 'UP' : 'DOWN'}</div>
+            <div class="hint">${esc(JSON.stringify(res.ping && res.ping.stats || {}))}</div></div>
+          <div class="kpi"><div class="lbl">Open ports</div><div class="val ${openN ? 'good' : 'warn'}">${openN}</div>
+            <div class="hint">${esc((res.ports.open || []).map(p => p.port).join(', ') || 'none')}</div></div>
+          <div class="kpi"><div class="lbl">HTTP services</div><div class="val ${httpN ? 'good' : 'warn'}">${httpN}</div>
+            <div class="hint">${esc((res.httpServices || []).map(s => s.baseUrl).join(' · ') || 'none')}</div></div>
+          <div class="kpi"><div class="lbl">HTTP login</div><div class="val ${auth ? 'good' : (res.login ? 'warn' : 'muted')}">${auth ? 'OK' : (res.login ? 'N/A' : '—')}</div>
+            <div class="hint">${esc((res.login && res.login.message) || 'skipped')}</div></div>
+          <div class="kpi"><div class="lbl">DNS</div><div class="val" style="font-size:13px">${esc((res.dns && res.dns.ips || []).join(', ') || '—')}</div>
+            <div class="hint">${esc((res.dns && res.dns.reverseDns) || '')}</div></div>
+          <div class="kpi"><div class="lbl">Elapsed</div><div class="val" style="font-size:16px">${esc(res.elapsedMs)} ms</div>
+            <div class="hint">probe duration</div></div>
+        </div>
+      `;
+    }
+
+    function renderPorts(res) {
+      const all = (res && res.ports && res.ports.all) || [];
+      if (!all.length) {
+        el('portsPane').innerHTML = '<div class="empty">No port data</div>';
+        return;
+      }
+      el('portsPane').innerHTML = `
+        <table>
+          <thead><tr><th>Port</th><th>Label</th><th>State</th><th>ms</th></tr></thead>
+          <tbody>
+            ${all.map(p => `
+              <tr>
+                <td class="mono">${p.port}</td>
+                <td>${esc(p.label || '')}</td>
+                <td><span class="chip ${p.open ? 'good' : 'bad'}">${p.open ? 'open' : 'closed'}</span></td>
+                <td class="muted">${p.ms != null ? p.ms : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function updateOpenCcLink(res) {
+      const a = el('btnOpenCc');
+      const url = (res && res.configClientUrl) || (el('host').value.trim() ? `http://${el('host').value.trim()}/ConfigClient.html` : '#');
+      a.href = url;
+      a.title = url;
+    }
+
+    function renderCommanderUi(res) {
+      updateOpenCcLink(res);
+      const ui = (res && res.commanderUi) || {};
+      const surfaces = ui.surfaces || [];
+      if (!surfaces.length) {
+        el('uiPane').innerHTML = `<div class="empty">No Config Client / Journal Browser surface detected yet.
+          <div class="hint-box" style="text-align:left;margin-top:10px">Expected: <span class="mono">http://HOST/ConfigClient.html</span></div></div>`;
+        return;
+      }
+      el('uiPane').innerHTML = `
+        <div style="margin-bottom:8px">
+          ${res.configClientUrl ? `<a class="btn primary" href="${esc(res.configClientUrl)}" target="_blank" rel="noopener">Open Config Client</a>` : ''}
+          ${res.journalBrowserUrl ? `<a class="btn" href="${esc(res.journalBrowserUrl)}" target="_blank" rel="noopener" style="margin-left:6px">Journal Browser</a>` : ''}
+        </div>
+        <table>
+          <thead><tr><th>Surface</th><th>Title</th><th>URL</th><th>ms</th></tr></thead>
+          <tbody>
+            ${surfaces.map(s => `<tr>
+              <td><span class="chip ${s.key === 'configClient' ? 'good' : ''}">${esc(s.label || s.key)}</span></td>
+              <td>${esc(s.title || '')}</td>
+              <td class="mono"><a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(s.url)}</a></td>
+              <td class="muted">${s.ms != null ? s.ms : '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function showOtpBanner(res) {
+      const ban = el('otpBanner');
+      const need = !!(res && (res.otpRequired || (res.login && res.login.otpRequired)));
+      if (!need) {
+        ban.style.display = 'none';
+        return;
+      }
+      ban.style.display = 'block';
+      el('otpBannerText').textContent =
+        (res.login && res.login.message) ||
+        res.message ||
+        'Generate Config OTP on the register (CSR → Maintenance → Generate/Config OTP), enter it above, probe again.';
+      el('otp').focus();
+    }
+
+    function renderOtpGuidance(res) {
+      const g = (res && res.otpGuidance) || (res && res.login && res.login.otpGuidance);
+      if (!g) return;
+      const box = el('otpHelp');
+      if (!box) return;
+      const blocks = [g.configOtp, g.managerPassword, g.cSiteOtp].filter(Boolean);
+      if (!blocks.length) return;
+      box.innerHTML = blocks.map(b => `
+        <p style="margin:0 0 10px">
+          <strong style="color:var(--text)">${esc(b.title)}</strong><br>
+          <span>${esc(b.when || '')}</span>
+          <ol style="margin:6px 0 0 18px;padding:0">
+            ${(b.steps || []).map(s => `<li>${esc(s)}</li>`).join('')}
+          </ol>
+          ${(b.notes || []).map(n => `<div style="margin-top:4px">• ${esc(n)}</div>`).join('')}
+        </p>`).join('');
+    }
+
+    function renderHttp(res) {
+      const services = (res && res.httpServices) || [];
+      const login = res && res.login;
+      let html = '';
+      if (login) {
+        const sap = login.sapphire || {};
+        const fg = sap.functionGather || {};
+        html += `<div style="margin-bottom:12px">
+          <span class="chip ${login.authenticated ? 'good' : (login.otpRequired ? 'warn' : 'warn')}">${login.authenticated ? 'Authenticated' : (login.otpRequired ? 'OTP required' : 'Not authenticated')}</span>
+          ${login.method ? `<span class="chip">${esc(login.method)}</span>` : ''}
+          ${login.otpRequired ? `<span class="chip warn">CGIPortal.OTPRequired</span>` : ''}
+          <div class="muted" style="margin-top:6px;font-size:12px;line-height:1.4">${esc(login.message || '')}</div>
+          ${login.configClientNote ? `<div class="hint-box">${esc(login.configClientNote)}</div>` : ''}
+          ${Object.keys(fg).length ? `<div style="margin-top:10px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Post-login CGILink gather</div>
+            ${Object.entries(fg).map(([cmd, g]) => `
+              <div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px;background:rgba(0,0,0,.2)">
+                <strong class="mono">${esc(cmd)}</strong>
+                <span class="chip ${g.ok ? 'good' : 'warn'}">${g.ok ? 'ok' : 'fault'}</span>
+                ${g.faultMessage ? `<div class="muted" style="font-size:11px;margin-top:4px">${esc(g.faultMessage)}</div>` : ''}
+                ${g.rawPreview ? `<details style="margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:11px">XML preview</summary>
+                  <pre class="mono" style="white-space:pre-wrap;font-size:10px;max-height:160px;overflow:auto">${esc(g.rawPreview)}</pre></details>` : ''}
+              </div>`).join('')}
+          </div>` : ''}
+          ${(login.attempts || []).length ? `<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:12px">Login attempts (${login.attempts.length})</summary>
+            <table style="margin-top:8px"><thead><tr><th>Method</th><th>URL</th><th>Status</th><th>OK</th></tr></thead>
+            <tbody>${login.attempts.map(a => `<tr>
+              <td>${esc(a.method)}</td><td class="mono">${esc(a.url)}</td>
+              <td>${a.status != null ? a.status : '—'}</td>
+              <td><span class="chip ${a.ok ? 'good' : 'bad'}">${a.ok ? 'yes' : 'no'}</span></td>
+            </tr>`).join('')}</tbody></table></details>` : ''}
+        </div>`;
+      }
+      if (!services.length) {
+        html += '<div class="empty">No HTTP(S) services discovered on common ports</div>';
+        el('httpPane').innerHTML = html;
+        return;
+      }
+      html += services.map(s => `
+        <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:rgba(0,0,0,.2)">
+          <div style="font-weight:700;color:var(--accent)">${esc(s.baseUrl)}</div>
+          <div class="muted" style="font-size:11px;margin-top:4px">
+            status ${s.rootStatus != null ? s.rootStatus : '—'}
+            ${s.rootTitle ? ' · ' + esc(s.rootTitle) : ''}
+            ${s.server ? ' · Server: ' + esc(s.server) : ''}
+          </div>
+          ${s.cert && s.cert.present ? `<div class="chip good" style="margin-top:6px">TLS ${esc(s.cert.tlsVersion || '')}</div>` : ''}
+          <table style="margin-top:8px">
+            <thead><tr><th>Path</th><th>Status</th><th>Title</th><th>Auth?</th></tr></thead>
+            <tbody>
+              ${(s.paths || []).map(p => `<tr>
+                <td class="mono">${esc(p.path)}</td>
+                <td>${p.status != null ? p.status : '—'}</td>
+                <td>${esc(p.title || '')}</td>
+                <td>${p.authRequired ? '<span class="chip warn">yes</span>' : '—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`).join('');
+      el('httpPane').innerHTML = html;
+    }
+
+    function renderBackup(res) {
+      const b = res && res.backup;
+      if (!b) {
+        el('backupPane').innerHTML = '<div class="empty">No library export linked.</div>';
+        return;
+      }
+      if (b.error) {
+        el('backupPane').innerHTML = `<div class="empty">${esc(b.error)}</div>`;
+        return;
+      }
+      const eq = b.equipment || {};
+      el('backupPane').innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi"><div class="lbl">Customer</div><div class="val" style="font-size:14px">${esc(b.customer || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Site</div><div class="val" style="font-size:14px">${esc(b.displayName || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Site ID</div><div class="val" style="font-size:14px">${esc(b.siteId || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Software</div><div class="val" style="font-size:14px">${esc(b.softwareVersion || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Brand</div><div class="val" style="font-size:14px">${esc(b.brand || '—')}</div></div>
+          <div class="kpi"><div class="lbl">Suggested host</div><div class="val" style="font-size:13px">${esc(b.suggestedHost || '—')}</div></div>
+        </div>
+        <div style="margin-top:10px">${(b.techFlags || []).map(f => `<span class="chip amber">${esc(f)}</span>`).join('')}</div>
+        <div class="muted" style="margin-top:10px;font-size:12px">
+          Dispensers: ${esc((eq.dispenserBrands || []).join(', ') || '—')} ·
+          DCR: ${esc((eq.dcrBrands || []).join(', ') || '—')} ·
+          ATG: ${esc(eq.tankMonitorType || '—')}
+        </div>
+        ${b.path ? `<div class="mono muted" style="margin-top:8px">${esc(b.path)}</div>` : ''}
+      `;
+    }
+
+    function renderImportExport(info) {
+      const box = el('iePane');
+      if (!box) return;
+      if (!info) {
+        box.innerHTML = '<div class="empty">No Import-Export info yet.</div>';
+        return;
+      }
+      const tools = info.tools || [];
+      const g = info.guidance || {};
+      const roots = info.suggestedBackupRoots || [];
+      if (!info.installed) {
+        box.innerHTML = `<div class="empty">Import-Export Utility not found on this PC.
+          <div class="hint-box" style="text-align:left;margin-top:8px">Expected:<br>
+          <span class="mono">C:\\Program Files\\Verifone\\Import-Export Utility\\ImportExportUtility.exe</span><br>
+          <strong>Not</strong> unins000.exe (that uninstalls the app).</div></div>`;
+        return;
+      }
+      box.innerHTML = `
+        <div class="hint-box" style="margin-top:0">
+          <strong>Same login as Config Client per site</strong> (usually Manager + site password).
+          OTP is a <strong>4-digit</strong> code from the register/Commander when required.
+          ${esc(g.passwordRotation || '')}
+        </div>
+        <div style="margin-top:10px">
+          ${tools.map(t => `
+            <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:rgba(0,0,0,.2)">
+              <div style="font-weight:700;color:var(--accent)">${esc(t.label || t.id)}</div>
+              <div class="mono muted" style="margin-top:4px">${esc(t.exe)}</div>
+              <div class="muted" style="font-size:11px;margin-top:4px">workdir: ${esc(t.workdir || '')}</div>
+              <button class="btn primary" style="margin-top:8px" data-ie-launch="${esc(t.id)}">▶ Launch this tool</button>
+            </div>`).join('')}
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:6px">
+          <strong>Do not run:</strong> unins000.exe
+          ${(info.uninstallerPaths || []).map(p => `<div class="mono">${esc(p)}</div>`).join('')}
+        </div>
+        ${roots.length ? `<div style="margin-top:10px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Suggested backup save roots (FAFO watched)</div>
+          ${roots.map(r => `<div class="mono" style="margin-top:4px;font-size:11px">${esc(r)}</div>`).join('')}
+          <button class="btn" style="margin-top:8px" id="btnOpenBackupRoot">📂 Open primary backup folder</button>
+        </div>` : ''}
+        <ol style="margin:12px 0 0 18px;font-size:12px;color:var(--muted);line-height:1.45">
+          ${(g.backupWorkflow || []).map(s => `<li>${esc(s)}</li>`).join('')}
+        </ol>
+      `;
+      box.querySelectorAll('[data-ie-launch]').forEach(btn => {
+        btn.addEventListener('click', () => launchImportExport(btn.getAttribute('data-ie-launch')));
+      });
+      const openBtn = el('btnOpenBackupRoot');
+      if (openBtn && roots[0]) {
+        openBtn.addEventListener('click', async () => {
+          try {
+            await api('/open-folder?path=' + encodeURIComponent(roots[0]));
+            toast('Opened ' + roots[0]);
+          } catch (e) { toast(String(e.message || e)); }
+        });
+      }
+    }
+
+    async function loadImportExport() {
+      try {
+        const info = await api('/verifone/live/import-export');
+        renderImportExport(info);
+        return info;
+      } catch (e) {
+        el('iePane').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+        return null;
+      }
+    }
+
+    async function launchImportExport(toolId) {
+      try {
+        toast('Launching Import-Export Utility…');
+        const res = await api('/verifone/live/import-export/launch', {
+          method: 'POST',
+          body: JSON.stringify({ tool_id: toolId || null }),
+        });
+        toast('Launched: ' + (res.label || res.launched), 4500);
+        if (res.loginHint) {
+          // brief second toast after
+          setTimeout(() => toast(res.loginHint, 6000), 800);
+        }
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    function renderAll(res) {
+      lastResult = res;
+      renderOverview(res);
+      renderPorts(res);
+      renderCommanderUi(res);
+      renderHttp(res);
+      renderBackup(res);
+      showOtpBanner(res);
+      renderOtpGuidance(res);
+      if (res && res.importExportUtility) renderImportExport(res.importExportUtility);
+    }
+
+    function renderProfileList() {
+      const box = el('profileList');
+      if (!profiles.length) {
+        box.innerHTML = '<div class="empty">No saved profiles — probe a site then Save profile.</div>';
+        return;
+      }
+      box.innerHTML = profiles.map(p => `
+        <div class="profile-item ${p.id === selectedProfileId ? 'active' : ''}" data-id="${esc(p.id)}">
+          <div class="n">${esc(p.name || p.host)}</div>
+          <div class="m">${esc(p.host)} ${p.username ? '· ' + esc(p.username) : ''}
+            ${p.hasPassword ? '· 🔑' : ''}
+            ${p.lastProbeOk === true ? '· <span style="color:var(--good)">last OK</span>' : (p.lastProbeOk === false ? '· <span style="color:var(--warn)">last fail</span>' : '')}
+          </div>
+        </div>`).join('');
+      box.querySelectorAll('.profile-item').forEach(node => {
+        node.addEventListener('click', () => applyProfile(node.getAttribute('data-id')));
+      });
+    }
+
+    function fillProfileSelect() {
+      const sel = el('profileSelect');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— new / manual —</option>' +
+        profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name || p.host)} (${esc(p.host)})</option>`).join('');
+      if (cur) sel.value = cur;
+    }
+
+    function fillExportSelect() {
+      const sel = el('exportSelect');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— none —</option>' +
+        targets.map(t => {
+          const label = [t.customer, t.displayName, t.suggestedHost].filter(Boolean).join(' · ');
+          return `<option value="${esc(t.exportId)}" data-host="${esc(t.suggestedHost || '')}">${esc(label || t.exportId)}</option>`;
+        }).join('');
+      if (cur) sel.value = cur;
+    }
+
+    async function loadProfiles() {
+      const data = await api('/verifone/live/profiles');
+      profiles = data.profiles || [];
+      fillProfileSelect();
+      renderProfileList();
+    }
+
+    async function loadTargets() {
+      try {
+        const data = await api('/verifone/live/targets?limit=80');
+        targets = data.targets || [];
+        fillExportSelect();
+      } catch {
+        targets = [];
+      }
+    }
+
+    async function applyProfile(id) {
+      selectedProfileId = id || '';
+      el('profileSelect').value = id || '';
+      renderProfileList();
+      if (!id) return;
+      try {
+        const data = await api('/verifone/live/profiles/' + encodeURIComponent(id) + '?include_password=true');
+        const p = data.profile;
+        el('host').value = p.host || '';
+        el('username').value = p.username || '';
+        el('password').value = p.password || '';
+        if (p.exportId) el('exportSelect').value = p.exportId;
+        toast('Loaded profile: ' + (p.name || p.host));
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    async function probe() {
+      const host = el('host').value.trim();
+      if (!host) { toast('Enter a host / IP'); return; }
+      const btn = el('btnProbe');
+      btn.disabled = true;
+      el('overview').innerHTML = '<div class="empty">Probing Commander… DNS · ping · ports · HTTP · login</div>';
+      try {
+        const body = {
+          host,
+          username: el('username').value.trim(),
+          password: el('password').value,
+          otp: el('otp').value.trim() || null,
+          export_id: el('exportSelect').value || null,
+          profile_id: el('profileSelect').value || selectedProfileId || null,
+          do_login: el('doLogin').checked,
+          do_http: el('doHttp').checked,
+          ping_count: 2,
+          timeout: 1.5,
+        };
+        // Don't send empty password if profile has stored secret
+        if (!body.password && body.profile_id) delete body.password;
+        const res = await api('/verifone/live/probe', { method: 'POST', body: JSON.stringify(body) });
+        renderAll(res);
+        toast(`Health ${res.health.level} (${res.health.score}) · ${res.elapsedMs} ms`);
+        await loadProfiles();
+      } catch (e) {
+        el('overview').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+        toast(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function saveProfile() {
+      const host = el('host').value.trim();
+      if (!host) { toast('Host required to save profile'); return; }
+      const name = prompt('Profile name:', host) || host;
+      try {
+        const body = {
+          id: el('profileSelect').value || selectedProfileId || null,
+          name,
+          host,
+          username: el('username').value.trim(),
+          password: el('password').value,
+          export_id: el('exportSelect').value || null,
+          notes: '',
+          keep_password_if_empty: true,
+        };
+        if (body.password === '') body.password = null; // keep existing
+        const res = await api('/verifone/live/profiles', { method: 'POST', body: JSON.stringify(body) });
+        selectedProfileId = res.profile.id;
+        await loadProfiles();
+        el('profileSelect').value = selectedProfileId;
+        toast('Profile saved (password DPAPI-protected on this PC)');
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    async function deleteProfile() {
+      const id = el('profileSelect').value || selectedProfileId;
+      if (!id) { toast('Select a profile to delete'); return; }
+      if (!confirm('Delete this connection profile and its stored password?')) return;
+      try {
+        await api('/verifone/live/profiles/' + encodeURIComponent(id), { method: 'DELETE' });
+        selectedProfileId = '';
+        el('profileSelect').value = '';
+        await loadProfiles();
+        toast('Profile deleted');
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+
+    el('btnProbe').addEventListener('click', probe);
+    el('btnSaveProfile').addEventListener('click', saveProfile);
+    el('btnDelProfile').addEventListener('click', deleteProfile);
+    el('btnImportExport').addEventListener('click', () => launchImportExport(null));
+    el('profileSelect').addEventListener('change', () => applyProfile(el('profileSelect').value));
+    el('exportSelect').addEventListener('change', () => {
+      const opt = el('exportSelect').selectedOptions[0];
+      const host = opt && opt.getAttribute('data-host');
+      if (host && !el('host').value.trim()) el('host').value = host;
+      else if (host && confirm('Fill host from library suggestion?\n' + host)) el('host').value = host;
+    });
+    el('host').addEventListener('keydown', (e) => { if (e.key === 'Enter') probe(); });
+    el('host').addEventListener('input', () => updateOpenCcLink(lastResult));
+    el('btnOpenCc').addEventListener('click', (e) => {
+      const h = el('host').value.trim();
+      if (!el('btnOpenCc').href || el('btnOpenCc').href.endsWith('#')) {
+        if (h) {
+          el('btnOpenCc').href = `http://${h}/ConfigClient.html`;
+        } else {
+          e.preventDefault();
+          toast('Enter a host first');
+        }
+      }
+    });
+
+    (async function init() {
+      const online = await refreshServer();
+      if (!online) {
+        el('overview').innerHTML = '<div class="empty">Toolbox server offline. Start it, then open this page via the server URL.</div>';
+        return;
+      }
+      try {
+        await Promise.all([loadProfiles(), loadTargets(), loadImportExport()]);
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+      // Deep-link: ?host= &export= &user=
+      const q = new URLSearchParams(location.search);
+      if (q.get('host')) el('host').value = q.get('host');
+      if (q.get('export')) el('exportSelect').value = q.get('export');
+      if (q.get('user')) el('username').value = q.get('user');
+      // Convenience: paste full ConfigClient URL into ?url=
+      if (q.get('url')) {
+        try {
+          const u = new URL(q.get('url'));
+          el('host').value = u.hostname;
+        } catch (_) {}
+      }
+      updateOpenCcLink(null);
+      // Prefer saved site Manager profile when no deep-link host
+      if (!q.get('host') && !q.get('url') && profiles.length) {
+        const pref = profiles.find(p =>
+          /192\.168\.31\.11/.test(p.host || '') || /manager/i.test(p.name || '') || /manager/i.test(p.username || '')
+        ) || profiles[0];
+        if (pref && pref.id) await applyProfile(pref.id);
+      }
+      if (q.get('auto') === '1' && el('host').value) probe();
+    })();
+  </script>
+</body>
+</html>

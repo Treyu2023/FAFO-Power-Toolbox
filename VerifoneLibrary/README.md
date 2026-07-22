@@ -62,11 +62,39 @@ Open-FAFOPath -Which VerifoneSites
 
 Open **Commander Site Console** from the Toolbox Launcher (category Verifone). With the local server running it will:
 
-1. Sync your machine-local backup folder into a site index (SQLite)
+1. **Auto-scan watched folders on every load** — new site folders (e.g. Quick N Easy 8) appear without a manual re-index
 2. Show visual cards + tech flags (MOP 28, DCR REWARDS, C-Site, pre/post snapshots)
 3. Generate a **pre-filled Pre-Reload Punch List** per site (master stays untouched)
 4. **Site survey** tab — network config + credentials (from `possecurity` when present) + fueling positions
 5. **Aerial layout** — drag/resize pumps, tanks, manholes, building, parking, driveway; saved under `survey\site-survey.json` (local only)
+
+#### Watched folders (multi-user / multi-path)
+
+Each tech configures **their own** backup folder list (not shared in git):
+
+| UI | API | Config key |
+|----|-----|------------|
+| **Watched folders…** in Commander Site Console | `GET/PUT/POST/DELETE /api/verifone/watch-folders` | `VerifoneWatchFolders` in `%LOCALAPPDATA%\FAFO\local-paths.json` |
+| Primary root (junction target) | `POST /api/verifone/root` | `VerifoneSitesRoot` |
+| Sync all watched | `POST /api/verifone/sync` with `{"all": true}` (default) | — |
+
+Env overrides (optional):
+
+- `FAFO_VERIFONE_SITES_ROOT` — primary root  
+- `FAFO_VERIFONE_WATCH_FOLDERS` — semicolon- or pipe-separated list of folders  
+
+Example `local-paths.json` fragment:
+
+```json
+{
+  "Version": 2,
+  "VerifoneSitesRoot": "D:\\FAFO\\VerifoneSites",
+  "VerifoneWatchFolders": [
+    "D:\\FAFO\\VerifoneSites",
+    "C:\\Users\\you\\OneDrive\\WORK\\Backups\\Verifone Laptop storage\\NC"
+  ]
+}
+```
 
 Product name is **Commander**; XML namespaces may still say Sapphire historically.
 

@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Hosts & DNS Blocker — AI HTML Toolbox</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hosts & DNS Blocker — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 <style>
 :root{--bg:#050508;--panel:#0c0f16;--border:rgba(56,189,248,.2);--accent:#38bdf8;--ok:#4ade80;--text:#e2e8f0;--muted:#64748b}
@@ -13,15 +14,16 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
 .ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--accent);font-size:12px;text-transform:uppercase}
 .pb{padding:16px 18px}
-.btn{padding:8px 16px;border:1px solid var(--accent);background:rgba(56,189,248,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;margin-right:8px}
+.btn{padding:8px 16px;border:1px solid var(--accent);background:rgba(56,189,248,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;margin-right:8px;margin-bottom:6px}
+.btn:disabled{opacity:.45;cursor:wait}
 .btn.off{border-color:rgba(248,113,113,.4);color:#f87171;background:rgba(248,113,113,.08)}
 .inp{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;width:100%;margin-bottom:8px}
-.sel{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px}
-.stat{display:inline-block;padding:6px 12px;border-radius:8px;background:rgba(56,189,248,.1);font-size:12px;margin-right:8px}
-.mono{font-family:Consolas,monospace;font-size:11px;color:var(--muted);word-break:break-all}
+.stat{display:inline-block;padding:6px 12px;border-radius:8px;background:rgba(56,189,248,.1);font-size:12px;margin-right:8px;margin-bottom:6px}
+.mono{font-family:Consolas,monospace;font-size:11px;color:var(--muted);word-break:break-all;white-space:pre-wrap}
 .feed{padding:12px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;cursor:pointer}
 .feed:hover{border-color:var(--accent)}
 .feed.active{border-color:var(--accent);background:rgba(56,189,248,.08)}
+.toast-line{font-size:12px;color:var(--muted);min-height:18px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -29,18 +31,20 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 <div class="wrap">
 <h1 style="font-size:22px;margin-bottom:4px">Hosts & DNS Blocker</h1>
 <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Block ads, trackers, and malware domains using open Steven Black hosts feeds. Updates your Windows hosts file.</p>
-<div id="adminWarn" style="display:none;padding:12px;border-radius:10px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fcd34d;font-size:13px;margin-bottom:16px">⚠ Run server as Administrator to modify the hosts file.</div>
+<div id="adminWarn" style="display:none;padding:12px;border-radius:10px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fcd34d;font-size:13px;margin-bottom:16px">⚠ Run the toolbox server as Administrator to modify the hosts file.</div>
 <div class="pb" style="padding:0 0 16px" id="statusBar"></div>
 <div class="panel"><div class="ph">Blocklist feeds (open source)</div><div class="pb" id="feeds"></div></div>
 <div class="panel"><div class="ph">Actions</div><div class="pb">
 <button class="btn" id="btnEnable">Enable blocklist</button>
 <button class="btn off" id="btnDisable">Disable blocklist</button>
+<button class="btn" id="btnRefresh" type="button" style="border-color:var(--muted);color:var(--muted)">↻ Refresh</button>
+<div class="toast-line" id="actionMsg"></div>
 </div></div>
 <div class="panel"><div class="ph">Custom block</div><div class="pb">
-<input class="inp" id="customHost" placeholder="domain.com">
+<input class="inp" id="customHost" placeholder="domain.com" autocomplete="off">
 <button class="btn" id="btnAdd">Add to hosts</button>
 </div></div>
-<div class="panel"><div class="ph">Hosts file</div><div class="pb mono" id="hostsPreview" style="max-height:200px;overflow:auto">Loading…</div></div>
+<div class="panel"><div class="ph">Hosts file preview</div><div class="pb mono" id="hostsPreview">Loading…</div></div>
 </div>
 <script src="../shared/aitoolbox-config.js"></script>
 <script src="../shared/aitoolbox-version.js"></script>
@@ -48,71 +52,112 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
 <script>
-const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
-let feedId='ads';
-async function api(p,o={}){const r=await fetch(API+p,{headers:{'Content-Type':'application/json'},...o});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText)}return r.json()}
-function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
-async function load(){
-  const st=await api('/hosts/status');
-  document.getElementById('statusBar').innerHTML=`<span class="stat">${st.blocklist_enabled?'🟢 Blocklist ON':'⚪ Blocklist OFF'}</span><span class="stat">${(st.blocklist_count||0).toLocaleString()} blocked domains</span><span class="stat">${st.custom_count} custom</span>`;
-  document.getElementById('feeds').innerHTML=st.feeds.map(f=>`<div class="feed ${f.id===feedId?'active':''}" data-id="${f.id}"><strong>${esc(f.name)}</strong><div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(f.description)}</div></div>`).join('');
-  document.querySelectorAll('.feed').forEach(el=>el.onclick=()=>{feedId=el.dataset.id;load()});
-  const h=await api('/hosts/read');
-  document.getElementById('hostsPreview').textContent=(h.raw||'').slice(0,3000)+(h.raw?.length>3000?'\n…':'');
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
+let feedId = 'ads';
+
+function setMsg(t, warn) {
+  const el = document.getElementById('actionMsg');
+  el.textContent = t || '';
+  el.style.color = warn ? '#fbbf24' : 'var(--muted)';
 }
-document.getElementById('btnEnable').onclick=async()=>{try{const r=await api('/hosts/apply',{method:'POST',body:JSON.stringify({feed_id:feedId,enabled:true})});alert('Enabled '+r.blocklist_count+' entries')}catch(e){document.getElementById('adminWarn').style.display='block';alert(e.message)}load()};
-document.getElementById('btnDisable').onclick=async()=>{await api('/hosts/apply',{method:'POST',body:JSON.stringify({feed_id:feedId,enabled:false})});load()};
-document.getElementById('btnAdd').onclick=async()=>{const host=document.getElementById('customHost').value.trim();if(!host)return;try{await api('/hosts/add',{method:'POST',body:JSON.stringify({host})})}catch(e){alert(e.message)}load()};
-load();
-</script>
-<script>
 
-// Shared server start (injected polish)
-(function(){
-  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
-  function ensureBar(){
-    if (document.getElementById('tbSharedServerBar')) return;
-    const bar = document.createElement('div');
-    bar.id = 'tbSharedServerBar';
-    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
-    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
-      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
-      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
-      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
-    const nav = document.querySelector('nav, .nav, .nav-bar, header');
-    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
-    else document.body.insertBefore(bar, document.body.firstChild);
-    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
-    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
-      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
-      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
-    } else {
-      const pill = document.getElementById('tbServerPill');
-      const btn = document.getElementById('tbBtnStartServer');
-      const hint = document.getElementById('tbServerHint');
-      async function refresh(){
-        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
-        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
-        pill.style.color = on ? '#4ade80' : '#fbbf24';
-        btn.style.display = on ? 'none' : '';
-        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
-      }
-      btn.onclick = async () => {
-        if (!window.AIToolboxAPI) return;
-        btn.disabled = true; btn.textContent = 'Starting…';
-        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
-        btn.disabled = false; btn.textContent = '▶ Start Server';
-        await refresh();
-        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
-      };
-      pill.onclick = () => btn.click();
-      refresh(); setInterval(refresh, 8000);
-    }
+async function api(p, o = {}) {
+  return UI().apiFetch(p, o);
+}
+
+async function load() {
+  try {
+    const st = await api('/hosts/status');
+    document.getElementById('statusBar').innerHTML =
+      `<span class="stat">${st.blocklist_enabled ? '🟢 Blocklist ON' : '⚪ Blocklist OFF'}</span>`
+      + `<span class="stat">${(st.blocklist_count || 0).toLocaleString()} blocked domains</span>`
+      + `<span class="stat">${st.custom_count || 0} custom</span>`;
+    const feeds = st.feeds || [];
+    if (feeds.length && !feeds.some(f => f.id === feedId)) feedId = feeds[0].id;
+    document.getElementById('feeds').innerHTML = feeds.map(f =>
+      `<div class="feed ${f.id === feedId ? 'active' : ''}" data-id="${esc(f.id)}" role="button" tabindex="0">`
+      + `<strong>${esc(f.name)}</strong>`
+      + `<div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(f.description || '')}</div></div>`
+    ).join('') || '<div style="color:var(--muted)">No feeds reported by server</div>';
+    document.querySelectorAll('.feed').forEach(el => {
+      el.onclick = () => { feedId = el.dataset.id; load(); };
+      el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } };
+    });
+    const h = await api('/hosts/read');
+    const raw = h.raw || '';
+    document.getElementById('hostsPreview').textContent =
+      raw.slice(0, 4000) + (raw.length > 4000 ? '\n…' : (raw ? '' : '(empty hosts file)'));
+  } catch (e) {
+    document.getElementById('statusBar').innerHTML = '';
+    document.getElementById('feeds').innerHTML = `<div style="color:#fbbf24">${esc(e.message || e)}</div>`;
+    document.getElementById('hostsPreview').textContent = e.message || String(e);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
-  else ensureBar();
-})();
+}
 
+function busy(on) {
+  ['btnEnable', 'btnDisable', 'btnAdd', 'btnRefresh'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = !!on;
+  });
+}
+
+document.getElementById('btnEnable').onclick = async () => {
+  busy(true);
+  try {
+    const r = await api('/hosts/apply', { method: 'POST', body: JSON.stringify({ feed_id: feedId, enabled: true }) });
+    setMsg('Enabled ' + (r.blocklist_count || 0) + ' entries');
+    UI()?.toast?.('Blocklist enabled', 'ok');
+  } catch (e) {
+    document.getElementById('adminWarn').style.display = 'block';
+    setMsg(e.message || String(e), true);
+    UI()?.toast?.(e.message || String(e), 'warn');
+  }
+  busy(false);
+  load();
+};
+
+document.getElementById('btnDisable').onclick = async () => {
+  busy(true);
+  try {
+    await api('/hosts/apply', { method: 'POST', body: JSON.stringify({ feed_id: feedId, enabled: false }) });
+    setMsg('Blocklist disabled');
+    UI()?.toast?.('Blocklist disabled', 'ok');
+  } catch (e) {
+    setMsg(e.message || String(e), true);
+  }
+  busy(false);
+  load();
+};
+
+document.getElementById('btnAdd').onclick = async () => {
+  const host = document.getElementById('customHost').value.trim().replace(/^https?:\/\//i, '').split('/')[0];
+  if (!host) return;
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host) && host !== 'localhost') {
+    setMsg('Enter a valid domain (e.g. ads.example.com)', true);
+    return;
+  }
+  busy(true);
+  try {
+    await api('/hosts/add', { method: 'POST', body: JSON.stringify({ host }) });
+    document.getElementById('customHost').value = '';
+    setMsg('Added ' + host);
+    UI()?.toast?.('Added ' + host, 'ok');
+  } catch (e) {
+    document.getElementById('adminWarn').style.display = 'block';
+    setMsg(e.message || String(e), true);
+  }
+  busy(false);
+  load();
+};
+
+document.getElementById('btnRefresh').onclick = load;
+document.getElementById('customHost').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnAdd').click();
+});
+
+UI()?.mountServerBar?.({ onOnline: load });
+load();
 </script>
 </body>
 </html>

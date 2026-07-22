@@ -77,33 +77,86 @@
         return new URL(filename.replace(/^\//, ''), root).href;
     }
 
-    function tryProtocolLaunch() {
-        dbg()?.log('api', 'info', 'Try aitoolbox://start');
+    /**
+     * Fire a custom protocol once. Browsers may show "Open AI Toolbox?" — that is OK.
+     * Do NOT window.open .hta/.bat files: Chrome/Edge download them and prompt Save As
+     * (often twice if open + anchor fallback both fire).
+     */
+    function tryProtocolLaunch(action = 'start') {
+        const allowed = {
+            start: 'start',
+            tray: 'start',
+            console: 'console',
+            folder: 'folder',
+            setup: 'setup',
+            diagnostics: 'diagnostics',
+            'pack-reports': 'pack-reports',
+            packreports: 'pack-reports',
+            pack: 'pack-reports',
+        };
+        const key = String(action || 'start').toLowerCase();
+        const act = allowed[key] || (allowed[action] ? allowed[action] : null) || 'start';
+        // Unknown actions used to silently become "start" — keep start as default only when missing
+        const url = 'aitoolbox://' + act;
+        dbg()?.log('api', 'info', 'Protocol launch: ' + url);
         try {
+            // Hidden iframe is enough for registered URL handlers; avoids navigation + double fire.
             const iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;pointer-events:none';
-            iframe.src = 'aitoolbox://start';
+            iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;pointer-events:none;opacity:0';
+            iframe.setAttribute('aria-hidden', 'true');
+            iframe.src = url;
             document.body.appendChild(iframe);
-            setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 3000);
+            setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 4000);
         } catch (e) {
             dbg()?.log('api', 'warn', 'Protocol launch failed: ' + (e.message || e));
         }
+        try {
+            localStorage.setItem('aitoolbox_protocol_used', '1');
+        } catch { /* ignore */ }
+        return url;
     }
 
-    function launchToolboxFile(filename) {
-        const url = toolboxFileUrl(filename);
-        dbg()?.log('api', 'info', 'Launch file: ' + url);
+    /**
+     * Open a toolbox file URL. Prefer protocol for launch actions.
+     * For legacy .hta/.bat, only used when opts.allowDownload is true (explicit user intent).
+     * Default path for start/folder/setup is custom protocol — no Save dialogs.
+     */
+    function launchToolboxFile(filename, opts = {}) {
+        const name = String(filename || '').replace(/^\.\//, '');
+        const lower = name.toLowerCase();
+
+        // Map common launchers to protocol so we never download them from the browser.
+        if (/launch_server\.hta$/i.test(lower) || /^start server\.bat$/i.test(lower)) {
+            return tryProtocolLaunch('start');
+        }
+        if (/start server \(console\)\.bat$/i.test(lower) || /start_console/i.test(lower)) {
+            return tryProtocolLaunch('console');
+        }
+        if (/open_toolbox_folder\.hta$/i.test(lower)) {
+            return tryProtocolLaunch('folder');
+        }
+        if (/setup \(run once\)\.bat$/i.test(lower) || /^setup.*\.bat$/i.test(lower)) {
+            return tryProtocolLaunch('setup');
+        }
+
+        const url = toolboxFileUrl(name);
+        dbg()?.log('api', 'info', 'Launch file: ' + url + (opts.allowDownload ? ' (download allowed)' : ''));
+
+        // .hta / .bat / .cmd almost always become "Save As" in modern browsers — skip unless forced.
+        if (/\.(hta|bat|cmd|ps1)$/i.test(lower) && !opts.allowDownload) {
+            dbg()?.log('api', 'warn', 'Skipped browser open of ' + name + ' (would download). Use protocol or desktop shortcut.');
+            return url;
+        }
+
         try {
-            const w = window.open(url, 'aitoolbox_launch', 'noopener,noreferrer');
-            if (!w) {
-                const a = document.createElement('a');
-                a.href = url;
-                a.target = '_blank';
-                a.rel = 'noopener noreferrer';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-            }
+            // Single navigation attempt only (no open + click double-fire).
+            const a = document.createElement('a');
+            a.href = url;
+            a.rel = 'noopener noreferrer';
+            // Same-tab for file:// resources reduces download; leave default.
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
         } catch (e) {
             dbg()?.log('api', 'error', 'Launch file failed: ' + (e.message || e));
         }
@@ -113,10 +166,12 @@
     let serverLaunching = false;
 
     /**
-     * Launch the Python server from any toolbox page (file://).
-     * Tries custom protocol first (after SETUP), then launch_server.hta.
-     * @param {{ mode?: 'tray'|'console', waitMs?: number, onStatus?: (msg:string)=>void }} opts
-     * @returns {Promise<{ ok: boolean, alreadyOnline?: boolean, blocked?: boolean }>}
+     * Launch the Python server from any toolbox page (file:// or http://).
+     * Uses registered custom protocol only (aitoolbox://start|console) after SETUP.
+     * Does not open .hta/.bat in the browser (that caused Save As prompts, often twice).
+     *
+     * @param {{ mode?: 'tray'|'console', waitMs?: number, onStatus?: (msg:string)=>void, allowLegacyHta?: boolean }} opts
+     * @returns {Promise<{ ok: boolean, alreadyOnline?: boolean, blocked?: boolean, needsSetup?: boolean }>}
      */
     async function startServer(opts = {}) {
         const mode = opts.mode === 'console' ? 'console' : 'tray';
@@ -135,32 +190,52 @@
 
         serverLaunching = true;
         try {
-            onStatus?.('Starting server…');
-            tryProtocolLaunch();
-            if (mode === 'console') {
-                launchToolboxFile('START SERVER (Console).bat');
-            } else {
-                launchToolboxFile('launch_server.hta');
-            }
-            onStatus?.('Waiting for server (up to ' + Math.round(waitMs / 1000) + 's)…');
-            const ok = await waitForServer(waitMs, 1000);
+            onStatus?.('Starting via aitoolbox:// protocol…');
+            tryProtocolLaunch(mode === 'console' ? 'console' : 'start');
+
+            // Brief wait — protocol handler is usually instant if registered.
+            onStatus?.('Waiting for server…');
+            let ok = await waitForServer(Math.min(12000, waitMs), 800);
             if (ok) {
                 onStatus?.('Server online');
+                try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
                 return { ok: true };
             }
-            onStatus?.('Server did not come online — browser may have blocked launch');
-            return { ok: false, blocked: true };
+
+            // One more protocol nudge (user may have dismissed the first "Open?" dialog)
+            onStatus?.('Retrying protocol launch…');
+            tryProtocolLaunch(mode === 'console' ? 'console' : 'start');
+            ok = await waitForServer(Math.max(3000, waitMs - 12000), 1000);
+            if (ok) {
+                onStatus?.('Server online');
+                try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                return { ok: true };
+            }
+
+            // Opt-in legacy only — still often causes Save As; not default.
+            if (opts.allowLegacyHta) {
+                onStatus?.('Trying legacy HTA (may prompt Save)…');
+                launchToolboxFile('launch_server.hta', { allowDownload: true });
+                ok = await waitForServer(Math.min(20000, waitMs), 1000);
+                if (ok) {
+                    onStatus?.('Server online');
+                    return { ok: true };
+                }
+            }
+
+            onStatus?.('Server did not start — run SETUP once, or double-click START SERVER.bat');
+            return { ok: false, blocked: true, needsSetup: true };
         } finally {
             serverLaunching = false;
         }
     }
 
     function openToolboxFolder() {
-        return launchToolboxFile('open_toolbox_folder.hta');
+        return tryProtocolLaunch('folder');
     }
 
     function runSetupOnce() {
-        return launchToolboxFile('SETUP (run once).bat');
+        return tryProtocolLaunch('setup');
     }
 
     function isServerLaunching() {
@@ -700,8 +775,10 @@
             return global.AIToolbox.deletePair(id);
         },
 
-        async suggestPairs() {
-            if (await checkServer()) return api('/pairs/suggest');
+        async suggestPairs(limit = 30) {
+            if (await checkServer()) {
+                return api(`/pairs/suggest?limit=${encodeURIComponent(limit)}`);
+            }
             return [];
         },
 
@@ -815,6 +892,25 @@
         async vsrApply(stage, dryRun = false) {
             return api('/vsr/apply', { method: 'POST', body: JSON.stringify({ stage: String(stage), dry_run: dryRun }) });
         },
+        /**
+         * Apply only selected renames (pair review queue).
+         * @param {{path:string,new_name:string}[]} renames
+         * @param {boolean} [dryRun]
+         */
+        async vsrApplySelected(renames, dryRun = false) {
+            return api('/vsr/apply-selected', {
+                method: 'POST',
+                body: JSON.stringify({ renames: renames || [], dry_run: !!dryRun }),
+            });
+        },
+        /** Stream a local file path through the toolbox server (for dual preview). */
+        fileServeUrl(path) {
+            if (!path) return '';
+            return `${apiBase()}/files/serve?path=${encodeURIComponent(path)}`;
+        },
+        async getPairPaths(pairId) {
+            return api(`/pairs/${encodeURIComponent(pairId)}/paths`);
+        },
         async scanDuplicates(folder, deep = false, opts = {}) {
             const p = new URLSearchParams({
                 folder,
@@ -868,12 +964,25 @@
             });
         },
 
-        fileServeUrl(path) {
-            return `${apiBase()}/files/serve?path=${encodeURIComponent(path)}`;
-        },
-
         async getFileInfo(path) {
             return api(`/files/info?path=${encodeURIComponent(path)}`);
+        },
+
+        /** PC Report Library / system diagnostics (this machine only). */
+        async diagnosticsStatus() {
+            return api('/diagnostics/status');
+        },
+        async diagnosticsCatalog() {
+            return api('/diagnostics/catalog');
+        },
+        async diagnosticsPack() {
+            return api('/diagnostics/pack', { method: 'POST', body: '{}' });
+        },
+        async diagnosticsRun(openViewer = false) {
+            return api('/diagnostics/run', {
+                method: 'POST',
+                body: JSON.stringify({ open_viewer: !!openViewer }),
+            });
         },
 
         async getFileText(path, maxBytes = 65536) {

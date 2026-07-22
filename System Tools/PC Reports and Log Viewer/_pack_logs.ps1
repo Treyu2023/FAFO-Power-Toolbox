@@ -42,10 +42,22 @@ $preferNames = @(
     'bios_system_raw.json'
 )
 
-$files = @()
+# Collect from: device PC reports, device Logs, device Markdown, legacy viewer reports\
+$fileSpecs = New-Object System.Collections.Generic.List[object]
+
+function Add-ReportFile {
+    param([System.IO.FileInfo]$File, [string]$Rel, [string]$Source)
+    if (-not $File -or -not $File.Exists) { return }
+    if ($File.Extension -notmatch '\.(txt|md|json|html|log)$') { return }
+    $script:fileSpecs.Add([pscustomobject]@{
+            File   = $File
+            Rel    = ($Rel -replace '\\', '/')
+            Source = $Source
+        }) | Out-Null
+}
+
 if (Test-Path -LiteralPath $reportsDir) {
-    $all = Get-ChildItem -LiteralPath $reportsDir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -match '\.(txt|md|json|html|log)$' }
+    $all = Get-ChildItem -LiteralPath $reportsDir -File -ErrorAction SilentlyContinue
     $preferred = @()
     foreach ($n in $preferNames) {
         $hit = $all | Where-Object { $_.Name -ieq $n }
@@ -53,9 +65,36 @@ if (Test-Path -LiteralPath $reportsDir) {
     }
     $rest = $all | Where-Object { $preferNames -notcontains $_.Name } |
         Sort-Object LastWriteTime -Descending |
-        Select-Object -First 20
-    $files = @($preferred) + @($rest)
+        Select-Object -First 40
+    foreach ($f in (@($preferred) + @($rest))) {
+        Add-ReportFile -File $f -Rel "device-local/Reports/PC/$($f.Name)" -Source 'device-pc'
+    }
 }
+
+$logsDir = Join-Path $deviceRoot 'Logs'
+if (Test-Path -LiteralPath $logsDir) {
+    Get-ChildItem -LiteralPath $logsDir -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 30 |
+        ForEach-Object { Add-ReportFile -File $_ -Rel "device-local/Logs/$($_.Name)" -Source 'device-logs' }
+}
+
+$mdDir = Join-Path $deviceRoot 'Reports\Markdown'
+if (Test-Path -LiteralPath $mdDir) {
+    Get-ChildItem -LiteralPath $mdDir -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 15 |
+        ForEach-Object { Add-ReportFile -File $_ -Rel "device-local/Reports/Markdown/$($_.Name)" -Source 'device-md' }
+}
+
+$legacyDir = Join-Path $viewer 'reports'
+if (Test-Path -LiteralPath $legacyDir) {
+    Get-ChildItem -LiteralPath $legacyDir -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        ForEach-Object { Add-ReportFile -File $_ -Rel "reports/$($_.Name)" -Source 'repo-reports' }
+}
+
+$files = @($fileSpecs)
 
 $logEntries = New-Object System.Collections.Generic.List[object]
 $reportEntries = New-Object System.Collections.Generic.List[object]
@@ -69,17 +108,24 @@ function Get-Kind([string]$ext) {
     }
 }
 
-foreach ($f in $files) {
-    $raw = [System.IO.File]::ReadAllText($f.FullName)
+foreach ($spec in $files) {
+    $f = $spec.File
+    $source = $spec.Source
+    $relFile = $spec.Rel
+    try {
+        $raw = [System.IO.File]::ReadAllText($f.FullName)
+    } catch {
+        continue
+    }
     $maxChars = 400000
     if ($raw.Length -gt $maxChars) {
         $raw = $raw.Substring(0, $maxChars) + "`n`n... [truncated for offline pack - open full file under device store] ...`n"
     }
 
     $id = ($f.BaseName -replace '[^\w\-]+', '-').ToLowerInvariant()
+    if ($source -eq 'repo-reports') { $id = "repo-$id" }
     if (-not $id) { $id = "log-$([guid]::NewGuid().ToString('N').Substring(0,8))" }
 
-    $relFile = "device-local/Reports/PC/$($f.Name)"
     $kind = Get-Kind $f.Extension
 
     $title = switch -Regex ($f.Name) {
@@ -88,10 +134,13 @@ foreach ($f in $files) {
         'system_status.*\.txt$'  { "System Status (text) - $deviceId" }
         'system_snapshot'        { "System snapshot (JSON) - $deviceId" }
         'bios'                   { "BIOS / firmware snapshot - $deviceId" }
-        default                  { "$($f.BaseName) - $deviceId" }
+        default {
+            if ($source -eq 'repo-reports') { "$($f.BaseName) (bundled)" }
+            else { "$($f.BaseName) - $deviceId" }
+        }
     }
 
-    $desc = "Local to $deviceId | $($f.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
+    $desc = "$source | $($f.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
 
     $logEntries.Add([ordered]@{
             id      = $id
@@ -102,24 +151,30 @@ foreach ($f in $files) {
             bytes   = [System.Text.Encoding]::UTF8.GetByteCount($raw)
             content = $raw
             device  = $deviceId
+            source  = $source
         }) | Out-Null
 
-    if ($f.Extension -ieq '.html') {
+    if ($f.Extension -ieq '.html' -or $source -in @('device-pc', 'repo-reports')) {
         $sev = 'info'
         if ($raw -match 'banner bad|Attention needed|Kernel-Power') { $sev = 'warn' }
         if ($raw -match 'class="banner ok"') { $sev = 'ok' }
+        $cat = if ($source -eq 'repo-reports') { 'Bundled' } elseif ($f.Name -match 'bios') { 'Firmware' } elseif ($f.Name -match 'usb|fix') { 'Fixes' } else { 'Diagnostics' }
         $reportEntries.Add([ordered]@{
                 id         = "rpt-$id"
                 title      = $title
-                summary    = "Diagnostics for $deviceId only (not other PCs)."
-                category   = 'Diagnostics'
+                summary    = if ($source -eq 'repo-reports') {
+                    'Report file in the toolbox reports folder.'
+                } else {
+                    "Diagnostics for $deviceId only (not other PCs)."
+                }
+                category   = $cat
                 severity   = $sev
-                tags       = @($deviceId, 'This PC', 'Local')
+                tags       = @($(if ($source -eq 'repo-reports') { 'Bundled' } else { $deviceId }), $cat)
                 date       = $f.LastWriteTime.ToString('yyyy-MM-dd')
                 icon       = 'heart'
                 file       = $relFile
                 highlights = @(
-                    @{ label = 'Device'; value = $deviceId }
+                    @{ label = 'Source'; value = $source }
                     @{ label = 'Updated'; value = $f.LastWriteTime.ToString('HH:mm') }
                 )
             }) | Out-Null

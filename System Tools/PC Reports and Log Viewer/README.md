@@ -27,21 +27,25 @@ or double-click `index.html` (Chrome / Edge).
 
 ## Collect diagnostics (recommended)
 
-One shot — no need to name individual tests:
+### In the viewer (preferred)
+
+Open `index.html` (or Launcher → **PC Reports & Log Viewer**) and use the sidebar:
+
+| Button | What it does |
+|--------|----------------|
+| **▶ Run diagnostics** | Full system collect for **this PC**, then rebuilds the library |
+| **↻ Refresh library pack** | Rebuilds `catalog.js` / `logs-data.js` from device store + bundled `reports\` |
+| **📂 Device folder** | Opens the toolbox folder (device data is under `device-local` junction) |
+
+Needs the toolbox server (or one-time **Setup** so `aitoolbox://diagnostics` works). No need to paste PowerShell yourself.
+
+### CLI / agents (same work)
 
 ```powershell
-cd "C:\_git\HTMLPROJECTS\AI HTML TOOLBOX"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\Invoke-FAFOSystemDiagnostics.ps1 -OpenViewer
 ```
 
-Or after loading modules:
-
-```powershell
-& .\Scripts\Initialize-FAFOSession.ps1
-Invoke-FAFOSystemDiagnostics -OpenViewer
-```
-
-**Grok CLI:** say *“run system diagnostics”*, *“check PC health”*, or *“refresh report library”* — agents should run `Scripts\Invoke-FAFOSystemDiagnostics.ps1`.
+**Grok CLI:** say *“run system diagnostics”*, *“check PC health”*, or *“refresh report library”*.
 
 What it does:
 
@@ -52,11 +56,13 @@ What it does:
 
 ## Refresh packs only
 
-If files already exist under the device store:
+Viewer button **↻ Refresh library pack**, or:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\_pack_logs.ps1"
 ```
+
+The pack includes **device** `Reports\PC` + `Logs` + `Reports\Markdown`, and also the in-repo **`reports\`** folder so existing HTML/logs still appear if device-local is empty.
 
 ## BIOS / firmware collect (legacy helper)
 

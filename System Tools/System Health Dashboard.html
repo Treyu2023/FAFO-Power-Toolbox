@@ -24,14 +24,17 @@ h1{font-size:24px;margin-bottom:6px} .sub{color:var(--muted);font-size:13px;marg
 .issue{padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:12px;border:1px solid var(--border)}
 .issue.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3)}
 .issue.info{background:rgba(0,243,255,.06)}
+.issue.danger,.issue.error{background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.3)}
 .links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .link{padding:8px 14px;border:1px solid var(--border);border-radius:8px;color:var(--accent);text-decoration:none;font-size:12px}
 .link:hover{background:rgba(0,243,255,.1)}
 .btn{background:rgba(0,243,255,.12);border:1px solid var(--accent);color:var(--accent);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.btn:disabled{opacity:.5;cursor:wait}
 .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border)}
 .status.ok{color:var(--ok)} .status.bad{color:var(--danger)}
 .bar{height:6px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden}
 .bar span{display:block;height:100%;background:var(--accent);border-radius:4px}
+.auto{font-size:11px;color:var(--muted);margin-left:12px}
 </style>
 </head>
 <body>
@@ -40,6 +43,7 @@ h1{font-size:24px;margin-bottom:6px} .sub{color:var(--muted);font-size:13px;marg
 <h1>Mission Control</h1>
 <p class="sub">Unified view of CPU, memory, disk, security, and startup health across your toolbox.</p>
 <button class="btn" id="btnRefresh">Refresh dashboard</button>
+<label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 15s</label>
 <div id="healthBadge" style="margin:16px 0"></div>
 <div class="grid" id="stats"></div>
 <div class="panel"><div class="ph">Issues & alerts</div><div class="pb" id="issues">Loading…</div></div>
@@ -49,6 +53,9 @@ h1{font-size:24px;margin-bottom:6px} .sub{color:var(--muted);font-size:13px;marg
 <a class="link" href="Startup Service Manager.html">🚀 Startup Manager</a>
 <a class="link" href="Disk Space Analyzer.html">💾 Disk Analyzer</a>
 <a class="link" href="Hosts DNS Blocker.html">🔒 DNS Blocker</a>
+<a class="link" href="IP Profile Switcher.html">🌐 IP Profiles</a>
+<a class="link" href="PC Reports and Log Viewer/index.html">📋 PC Reports</a>
+<a class="link" href="../REG Tweak AI Bat Files/Windows REG QoL Tweaks.html">⚙️ REG Tweaks</a>
 </div></div>
 </div>
 <script src="../shared/aitoolbox-config.js"></script>
@@ -57,76 +64,74 @@ h1{font-size:24px;margin-bottom:6px} .sub{color:var(--muted);font-size:13px;marg
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
 <script>
-const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
-async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error('API error');return r.json()}
-function bar(pct){return `<div class="bar"><span style="width:${Math.min(100,pct)}%"></span></div>`}
-async function load(){
-  try{await fetch(API+'/health',{signal:AbortSignal.timeout(2000)});document.getElementById('pill').className='status ok';document.getElementById('pill').textContent='Connected'}catch{document.getElementById('pill').className='status bad';document.getElementById('pill').textContent='Server offline';document.getElementById('issues').innerHTML='<div class="issue warn">Server offline — use <strong>▶ Start Server</strong> on this page (or Launcher), backend at <code>127.0.0.87:18765</code>, then Refresh.</div>';return}
-  const d=await api('/health/dashboard');
-  document.getElementById('healthBadge').innerHTML=`<span class="status ${d.healthy?'ok':'bad'}">${d.healthy?'SYSTEM HEALTHY':'ATTENTION NEEDED'}</span> <span style="color:var(--muted);font-size:12px;margin-left:10px">${new Date(d.timestamp).toLocaleString()}</span>`;
-  const s=d.system;
-  document.getElementById('stats').innerHTML=[
-    {l:'CPU',v:s.cpu_percent+'%',h:bar(s.cpu_percent)},
-    {l:'Memory',v:s.memory_percent+'%',h:`${s.memory_used_human} used`+bar(s.memory_percent)},
-    {l:'Disk C:',v:s.disk_percent+'%',h:bar(s.disk_percent)},
-    {l:'Processes',v:s.process_count,h:`↑${s.net_send_human} ↓${s.net_recv_human}`},
-    {l:'Threat DB',v:(d.security.threat_hashes||0).toLocaleString(),h:d.security.last_intel_update?'Updated '+new Date(d.security.last_intel_update).toLocaleDateString():'Not updated'},
-    {l:'Quarantined',v:d.security.quarantine_count,h:'Malware Defender'},
-    {l:'Startup items',v:d.startup.startup_items,h:`${d.startup.scheduled_tasks} tasks`},
-    {l:'Services',v:d.startup.running_services+'/'+d.startup.services,h:`${d.startup.auto_services} auto-start`}
-  ].map(c=>`<div class="card"><div class="lbl">${c.l}</div><div class="val">${c.v}</div><div class="hint">${c.h||''}</div></div>`).join('');
-  document.getElementById('issues').innerHTML=d.issues.length?d.issues.map(i=>`<div class="issue ${i.level}">${i.message} <span style="color:var(--muted)">(${i.source})</span></div>`).join(''):'<div style="color:var(--ok)">No issues flagged ✓</div>';
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
+let timer = null;
+
+function bar(pct) {
+  const p = Math.min(100, Math.max(0, Number(pct) || 0));
+  const color = p > 90 ? 'var(--danger)' : p > 75 ? 'var(--warn)' : 'var(--accent)';
+  return `<div class="bar"><span style="width:${p}%;background:${color}"></span></div>`;
 }
-document.getElementById('btnRefresh').onclick=load;load();
-</script>
-<script>
 
-// Shared server start (injected polish)
-(function(){
-  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
-  function ensureBar(){
-    if (document.getElementById('tbSharedServerBar')) return;
-    const bar = document.createElement('div');
-    bar.id = 'tbSharedServerBar';
-    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
-    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
-      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
-      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
-      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
-    const nav = document.querySelector('nav, .nav, .nav-bar, header');
-    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
-    else document.body.insertBefore(bar, document.body.firstChild);
-    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
-    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
-      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
-      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
-    } else {
-      const pill = document.getElementById('tbServerPill');
-      const btn = document.getElementById('tbBtnStartServer');
-      const hint = document.getElementById('tbServerHint');
-      async function refresh(){
-        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
-        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
-        pill.style.color = on ? '#4ade80' : '#fbbf24';
-        btn.style.display = on ? 'none' : '';
-        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
-      }
-      btn.onclick = async () => {
-        if (!window.AIToolboxAPI) return;
-        btn.disabled = true; btn.textContent = 'Starting…';
-        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
-        btn.disabled = false; btn.textContent = '▶ Start Server';
-        await refresh();
-        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
-      };
-      pill.onclick = () => btn.click();
-      refresh(); setInterval(refresh, 8000);
-    }
+async function load() {
+  const btn = document.getElementById('btnRefresh');
+  btn.disabled = true;
+  try {
+    await UI().apiFetch('/health');
+    document.getElementById('pill').className = 'status ok';
+    document.getElementById('pill').textContent = 'Connected';
+  } catch {
+    document.getElementById('pill').className = 'status bad';
+    document.getElementById('pill').textContent = 'Server offline';
+    document.getElementById('issues').innerHTML =
+      '<div class="issue warn">Server offline — use <strong>▶ Start Server</strong> on this page (or Launcher), backend at <code>127.0.0.87:18765</code>, then Refresh.</div>';
+    document.getElementById('stats').innerHTML = '';
+    document.getElementById('healthBadge').innerHTML = '';
+    btn.disabled = false;
+    return;
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
-  else ensureBar();
-})();
+  try {
+    const d = await UI().apiFetch('/health/dashboard');
+    document.getElementById('healthBadge').innerHTML =
+      `<span class="status ${d.healthy ? 'ok' : 'bad'}">${d.healthy ? 'SYSTEM HEALTHY' : 'ATTENTION NEEDED'}</span>`
+      + ` <span style="color:var(--muted);font-size:12px;margin-left:10px">${d.timestamp ? new Date(d.timestamp).toLocaleString() : ''}</span>`;
+    const s = d.system || {};
+    const sec = d.security || {};
+    const su = d.startup || {};
+    document.getElementById('stats').innerHTML = [
+      { l: 'CPU', v: (s.cpu_percent ?? '—') + '%', h: bar(s.cpu_percent) },
+      { l: 'Memory', v: (s.memory_percent ?? '—') + '%', h: `${esc(s.memory_used_human || '')} used` + bar(s.memory_percent) },
+      { l: 'Disk C:', v: (s.disk_percent ?? '—') + '%', h: bar(s.disk_percent) },
+      { l: 'Processes', v: s.process_count ?? '—', h: `↑${esc(s.net_send_human || '0')} ↓${esc(s.net_recv_human || '0')}` },
+      { l: 'Threat DB', v: (sec.threat_hashes || 0).toLocaleString(), h: sec.last_intel_update ? 'Updated ' + new Date(sec.last_intel_update).toLocaleDateString() : 'Not updated' },
+      { l: 'Quarantined', v: sec.quarantine_count ?? 0, h: 'Malware Defender' },
+      { l: 'Startup items', v: su.startup_items ?? 0, h: `${su.scheduled_tasks ?? 0} tasks` },
+      { l: 'Services', v: (su.running_services ?? 0) + '/' + (su.services ?? 0), h: `${su.auto_services ?? 0} auto-start` }
+    ].map(c => `<div class="card"><div class="lbl">${c.l}</div><div class="val">${c.v}</div><div class="hint">${c.h || ''}</div></div>`).join('');
+    const issues = d.issues || [];
+    document.getElementById('issues').innerHTML = issues.length
+      ? issues.map(i => `<div class="issue ${esc(i.level || 'info')}">${esc(i.message)} <span style="color:var(--muted)">(${esc(i.source || '')})</span></div>`).join('')
+      : '<div style="color:var(--ok)">No issues flagged ✓</div>';
+  } catch (e) {
+    document.getElementById('issues').innerHTML = `<div class="issue warn">${esc(e.message || e)}</div>`;
+  }
+  btn.disabled = false;
+}
 
+function setupAuto() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  if (document.getElementById('autoRefresh').checked) {
+    timer = setInterval(load, 15000);
+  }
+}
+
+document.getElementById('btnRefresh').onclick = load;
+document.getElementById('autoRefresh').onchange = setupAuto;
+UI()?.mountServerBar?.({ onOnline: load });
+load();
+setupAuto();
 </script>
 </body>
 </html>

@@ -427,11 +427,171 @@
 
         const pollMs = opts.pollMs != null ? opts.pollMs : 8000;
         if (pollMs > 0) {
-            pollTimer = setInterval(() => refresh(false), pollMs);
+            pollTimer = setInterval(() => {
+                // Skip background-tab polling (many tool pages mount this bar)
+                if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+                refresh(false);
+            }, pollMs);
         }
         refresh(true);
 
         return { refresh, start, stop: () => { if (pollTimer) clearInterval(pollTimer); } };
+    }
+
+    /**
+     * Escape text for safe HTML insertion (text nodes only — not attributes with quotes).
+     */
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Format byte counts for UI (B / KB / MB / GB / TB).
+     */
+    function formatBytes(n, digits = 1) {
+        const num = Number(n) || 0;
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let v = Math.abs(num);
+        let i = 0;
+        while (v >= 1024 && i < units.length - 1) {
+            v /= 1024;
+            i++;
+        }
+        const shown = i === 0 ? String(Math.round(v)) : v.toFixed(digits);
+        return (num < 0 ? '-' : '') + shown + ' ' + units[i];
+    }
+
+    /**
+     * Inject a shared server status bar under nav/header (or at top of body).
+     * Replaces the duplicated IIFE copied into many thin system tools.
+     * @param {{ insertAfter?: string|Element, pollMs?: number, onOnline?: Function, onOffline?: Function }} opts
+     */
+    function mountServerBar(opts = {}) {
+        if (document.getElementById('tbSharedServerBar')) {
+            return bindServerControls({
+                statusEl: '#tbServerPill',
+                startBtn: '#tbBtnStartServer',
+                hintEl: '#tbServerHint',
+                pollMs: opts.pollMs,
+                onOnline: opts.onOnline,
+                onOffline: opts.onOffline,
+            });
+        }
+
+        const endpoint = () => {
+            if (global.AIToolboxAPI?.getEndpointLabel) return global.AIToolboxAPI.getEndpointLabel();
+            return global.AITOOLBOX_CONFIG?.ENDPOINT_LABEL || '127.0.0.87:18765';
+        };
+
+        const bar = document.createElement('div');
+        bar.id = 'tbSharedServerBar';
+        bar.setAttribute('role', 'status');
+        bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;'
+            + 'border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+        bar.innerHTML =
+            '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer" '
+            + 'data-tip-title="Backend" data-tip="Green = toolbox server online. Click to start if offline.">Server …</span>'
+            + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;'
+            + 'background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600" '
+            + 'data-tip-title="Start Server" data-tip="Uses aitoolbox:// protocol (no .hta Save prompts). Run Setup Once if nothing happens.">▶ Start Server</button>'
+            + '<button type="button" id="tbBtnServerConsole" style="padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);'
+            + 'background:transparent;color:#aaa;cursor:pointer;font-size:11px" '
+            + 'data-tip="Start via aitoolbox://console (visible window)">🖥 Console</button>'
+            + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+            + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+
+        let anchor = null;
+        if (opts.insertAfter) {
+            anchor = typeof opts.insertAfter === 'string'
+                ? document.querySelector(opts.insertAfter)
+                : opts.insertAfter;
+        }
+        if (!anchor) {
+            anchor = document.querySelector('nav, .nav, .nav-bar, header, .toolbox-nav');
+        }
+        if (anchor && anchor.parentNode) {
+            anchor.parentNode.insertBefore(bar, anchor.nextSibling);
+        } else {
+            document.body.insertBefore(bar, document.body.firstChild);
+        }
+
+        if (global.AITOOLBOX_VERSION) {
+            const ver = document.getElementById('tbVer');
+            if (ver) ver.textContent = 'v' + global.AITOOLBOX_VERSION;
+        }
+
+        const controls = bindServerControls({
+            statusEl: '#tbServerPill',
+            startBtn: '#tbBtnStartServer',
+            hintEl: '#tbServerHint',
+            pollMs: opts.pollMs,
+            onOnline: opts.onOnline,
+            onOffline: opts.onOffline,
+        });
+
+        const consoleBtn = document.getElementById('tbBtnServerConsole');
+        if (consoleBtn && !consoleBtn._serverBound) {
+            consoleBtn._serverBound = true;
+            consoleBtn.addEventListener('click', async () => {
+                if (!global.AIToolboxAPI?.startServer) return;
+                consoleBtn.disabled = true;
+                try {
+                    await global.AIToolboxAPI.startServer({ mode: 'console', waitMs: 90000 });
+                    await controls.refresh(true);
+                } finally {
+                    consoleBtn.disabled = false;
+                }
+            });
+        }
+
+        try { initTooltips(bar); } catch { /* ignore */ }
+        bar.dataset.endpoint = endpoint();
+        return controls;
+    }
+
+    /**
+     * Resolve API base consistently (config → AIToolboxAPI → bind default).
+     */
+    function getApiBase() {
+        if (global.AIToolboxAPI?.getApiBase) return global.AIToolboxAPI.getApiBase();
+        if (global.AITOOLBOX_CONFIG?.API_BASE) return global.AITOOLBOX_CONFIG.API_BASE;
+        if (global.AITOOLBOX_API_BASE) return global.AITOOLBOX_API_BASE;
+        return 'http://127.0.0.87:18765/api';
+    }
+
+    /**
+     * Fetch JSON from toolbox API with clearer offline errors.
+     */
+    async function apiFetch(path, opts = {}) {
+        const base = getApiBase();
+        const url = path.startsWith('http') ? path : base + path;
+        let r;
+        try {
+            r = await fetch(url, {
+                headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+                ...opts,
+            });
+        } catch (e) {
+            const err = new Error('Server offline — use ▶ Start Server (backend ' + (
+                global.AIToolboxAPI?.getEndpointLabel?.() || '127.0.0.87:18765'
+            ) + ')');
+            err.cause = e;
+            err.offline = true;
+            throw err;
+        }
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.detail || r.statusText || ('HTTP ' + r.status));
+        }
+        const ct = r.headers.get('content-type') || '';
+        if (ct.includes('json')) return r.json();
+        return r;
     }
 
     global.AIToolboxUI = {
@@ -451,5 +611,10 @@
         scoreClass,
         renderWorkflow,
         bindServerControls,
+        mountServerBar,
+        escapeHtml,
+        formatBytes,
+        getApiBase,
+        apiFetch,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

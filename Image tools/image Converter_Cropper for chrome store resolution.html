@@ -3,63 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Processor for Promo Tiles</title>
+    <title>Image Cropper / Converter — AI HTML Toolbox</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-        .container { max-width: 900px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        #preview { border: 1px solid #ccc; margin-top: 20px; display: block; background-color: #000; }
-        button { margin-top: 10px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        select { padding: 8px; margin-right: 10px; }
-        label { margin-right: 5px; font-weight: bold; }
-        .options { margin-top: 15px; }
-        .mode-options { margin-top: 10px; }
+        :root {
+            --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.2);
+            --accent: #00f3ff; --text: #e2e8f0; --muted: #64748b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: radial-gradient(ellipse at 50% -20%, #0a1a2a, var(--bg) 60%);
+            color: var(--text); min-height: 100vh;
+        }
+        .nav {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 20px; border-bottom: 1px solid var(--border);
+            background: rgba(5,5,8,.95); position: sticky; top: 0; z-index: 10;
+        }
+        .nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
+        .wrap { max-width: 960px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 22px; margin-bottom: 6px; color: var(--accent); }
+        .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.5; }
+        .panel {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 14px; padding: 18px; margin-bottom: 16px;
+        }
+        label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 6px; }
+        select, input[type="number"], input[type="file"] {
+            background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
+            padding: 8px 12px; border-radius: 8px; font-size: 13px; max-width: 100%;
+        }
+        .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 12px; }
+        .field { flex: 1 1 160px; min-width: 140px; }
+        .btn {
+            background: rgba(0,243,255,.12); border: 1px solid var(--accent); color: var(--accent);
+            padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px;
+        }
+        .btn:hover { background: var(--accent); color: #000; }
+        .btn:disabled { opacity: .4; cursor: not-allowed; }
+        #previewWrap {
+            margin-top: 14px; overflow: auto; max-height: 70vh;
+            border: 1px solid var(--border); border-radius: 10px; background: #000;
+            display: flex; justify-content: center; align-items: center; min-height: 120px;
+        }
+        #preview { display: block; max-width: 100%; height: auto; }
+        .meta { font-size: 11px; color: var(--muted); margin-top: 10px; font-family: Consolas, monospace; }
+        ul { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+        .custom-dims { display: none; gap: 10px; }
+        .custom-dims.show { display: flex; flex-wrap: wrap; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Image Processor for Promo Tiles</h2>
-        <p>Select an image file and choose the desired output size. Two modes are available:</p>
-        <ul>
-            <li><strong>Cover (Crop):</strong> Scales the image to cover the entire canvas, centrally cropping excess portions.</li>
-            <li><strong>Contain (Letterbox):</strong> Scales the image to fit within the canvas while preserving the full image, adding solid black bars (OLED-friendly) on the sides or top/bottom as needed.</li>
-        </ul>
-        <p>Export as JPEG or 24-bit PNG with no transparency.</p>
-        
-        <input type="file" id="fileInput" accept="image/*">
-        
-        <div class="options">
-            <label for="sizeSelect">Output Size:</label>
-            <select id="sizeSelect">
-                <option value="small">Small Promo Tile (440×280)</option>
-                <option value="marquee">Marquee Promo Tile (1400×560)</option>
-                <option value="custom">Custom Size (1280×800)</option>
-                <option value="newsize">New Size (850×400)</option>
-            </select>
-            
-            <label for="formatSelect">Export Format:</label>
-            <select id="formatSelect">
-                <option value="jpeg">JPEG</option>
-                <option value="png">24-bit PNG (no alpha)</option>
-            </select>
+    <nav class="nav">
+        <a href="../Toolbox Launcher.html">← Toolbox</a>
+        <span style="color:var(--accent);font-size:13px;letter-spacing:1px">IMAGE CROPPER / CONVERTER</span>
+        <a href="Image Comparitor With Slider.html" style="font-size:12px">Image Comparator →</a>
+    </nav>
+
+    <div class="wrap">
+        <h1>Image Processor</h1>
+        <p class="sub">Convert &amp; crop for Chrome Web Store tiles, extension icons, and custom promo sizes. All processing is local in the browser — nothing is uploaded.</p>
+
+        <div class="panel">
+            <div class="row">
+                <div class="field" style="flex:2">
+                    <label for="fileInput">Source image</label>
+                    <input type="file" id="fileInput" accept="image/*">
+                </div>
+            </div>
+            <div class="row">
+                <div class="field">
+                    <label for="sizeSelect">Output size</label>
+                    <select id="sizeSelect"></select>
+                </div>
+                <div class="field custom-dims" id="customDims">
+                    <div>
+                        <label for="customW">Width</label>
+                        <input type="number" id="customW" min="16" max="4096" value="1280">
+                    </div>
+                    <div>
+                        <label for="customH">Height</label>
+                        <input type="number" id="customH" min="16" max="4096" value="800">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="modeSelect">Scaling mode</label>
+                    <select id="modeSelect">
+                        <option value="cover">Cover (crop center)</option>
+                        <option value="contain">Contain (letterbox)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="formatSelect">Export format</label>
+                    <select id="formatSelect">
+                        <option value="jpeg">JPEG (0.95)</option>
+                        <option value="png">PNG (no alpha)</option>
+                        <option value="webp">WebP (0.92)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <button class="btn" id="exportBtn" disabled>Export processed image</button>
+                <button class="btn" id="btnReset" type="button" style="border-color:var(--muted);color:var(--muted)">Clear</button>
+            </div>
+            <ul>
+                <li><strong>Cover:</strong> fills the canvas; crops excess from the center.</li>
+                <li><strong>Contain:</strong> fits the full image; black bars fill the rest (OLED-friendly).</li>
+            </ul>
+            <div id="previewWrap"><canvas id="preview"></canvas></div>
+            <div class="meta" id="meta">No image loaded</div>
         </div>
-        
-        <div class="mode-options">
-            <label for="modeSelect">Scaling Mode:</label>
-            <select id="modeSelect">
-                <option value="cover">Cover (Crop)</option>
-                <option value="contain">Contain (Letterbox with black bars)</option>
-            </select>
-        </div>
-        
-        <canvas id="preview"></canvas>
-        
-        <div style="margin-top: 10px;">
-            <button id="exportBtn">Export Processed Image</button>
-        </div>
-        
-        <a id="downloadLink" style="display: none;"></a>
     </div>
+
+    <a id="downloadLink" style="display:none"></a>
 
     <script>
         const fileInput = document.getElementById('fileInput');
@@ -70,142 +127,208 @@
         const formatSelect = document.getElementById('formatSelect');
         const exportBtn = document.getElementById('exportBtn');
         const downloadLink = document.getElementById('downloadLink');
+        const customDims = document.getElementById('customDims');
+        const customW = document.getElementById('customW');
+        const customH = document.getElementById('customH');
+        const meta = document.getElementById('meta');
 
         let img = new Image();
+        let objectUrl = null;
 
-        const sizes = {
-            small: { width: 440, height: 280, name: 'small_promo' },
-            marquee: { width: 1400, height: 560, name: 'marquee_promo' },
-            custom: { width: 1280, height: 800, name: '1280x800' },
-            newsize: { width: 850, height: 400, name: '850x400' }
+        const SIZES = {
+            small: { width: 440, height: 280, name: 'chrome_small_promo', group: 'Chrome Web Store' },
+            marquee: { width: 1400, height: 560, name: 'chrome_marquee', group: 'Chrome Web Store' },
+            screenshot1280: { width: 1280, height: 800, name: 'chrome_screenshot_1280x800', group: 'Chrome Web Store' },
+            screenshot640: { width: 640, height: 400, name: 'chrome_screenshot_640x400', group: 'Chrome Web Store' },
+            store850: { width: 850, height: 400, name: 'promo_850x400', group: 'Promo' },
+            icon16: { width: 16, height: 16, name: 'icon_16', group: 'Extension icons' },
+            icon32: { width: 32, height: 32, name: 'icon_32', group: 'Extension icons' },
+            icon48: { width: 48, height: 48, name: 'icon_48', group: 'Extension icons' },
+            icon128: { width: 128, height: 128, name: 'icon_128', group: 'Extension icons' },
+            og1200: { width: 1200, height: 630, name: 'og_social_1200x630', group: 'Social' },
+            custom: { width: 1280, height: 800, name: 'custom', group: 'Custom' },
         };
 
-        function updateCanvasDimensions() {
-            const selected = sizeSelect.value;
-            preview.width = sizes[selected].width;
-            preview.height = sizes[selected].height;
-            drawPreview();
+        function populateSizes() {
+            const groups = {};
+            Object.entries(SIZES).forEach(([id, s]) => {
+                if (!groups[s.group]) groups[s.group] = [];
+                groups[s.group].push({ id, ...s });
+            });
+            sizeSelect.innerHTML = Object.entries(groups).map(([g, items]) =>
+                `<optgroup label="${g}">${items.map(s =>
+                    `<option value="${s.id}">${s.id === 'custom' ? 'Custom size…' : `${s.width}×${s.height} — ${s.name}`}</option>`
+                ).join('')}</optgroup>`
+            ).join('');
+            sizeSelect.value = 'small';
+        }
+
+        function currentSize() {
+            const id = sizeSelect.value;
+            if (id === 'custom') {
+                return {
+                    width: Math.max(16, Math.min(4096, parseInt(customW.value, 10) || 1280)),
+                    height: Math.max(16, Math.min(4096, parseInt(customH.value, 10) || 800)),
+                    name: 'custom',
+                };
+            }
+            return SIZES[id] || SIZES.small;
+        }
+
+        function syncCustomUi() {
+            customDims.classList.toggle('show', sizeSelect.value === 'custom');
+        }
+
+        function computeDraw(srcW, srcH, dstW, dstH, mode) {
+            const imgRatio = srcW / srcH;
+            const canvasRatio = dstW / dstH;
+            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+            let sx = 0, sy = 0, sWidth = srcW, sHeight = srcH;
+            let useSourceCrop = false;
+
+            if (mode === 'cover') {
+                useSourceCrop = true;
+                if (imgRatio > canvasRatio) {
+                    sHeight = srcH;
+                    sWidth = sHeight * canvasRatio;
+                    sx = (srcW - sWidth) / 2;
+                } else {
+                    sWidth = srcW;
+                    sHeight = sWidth / canvasRatio;
+                    sy = (srcH - sHeight) / 2;
+                }
+                drawWidth = dstW;
+                drawHeight = dstH;
+            } else {
+                if (imgRatio > canvasRatio) {
+                    drawWidth = dstW;
+                    drawHeight = drawWidth / imgRatio;
+                    offsetY = (dstH - drawHeight) / 2;
+                } else {
+                    drawHeight = dstH;
+                    drawWidth = drawHeight * imgRatio;
+                    offsetX = (dstW - drawWidth) / 2;
+                }
+            }
+            return { drawWidth, drawHeight, offsetX, offsetY, sx, sy, sWidth, sHeight, useSourceCrop };
         }
 
         function drawPreview() {
             if (!img.src) return;
-            
-            ctx.fillStyle = '#000000'; // Black background for letterbox
-            ctx.fillRect(0, 0, preview.width, preview.height);
-            
+            const size = currentSize();
+            // Cap preview canvas for huge targets so UI stays snappy
+            const maxPreview = 900;
+            let pw = size.width, ph = size.height;
+            const scale = Math.min(1, maxPreview / Math.max(pw, ph));
+            pw = Math.round(pw * scale);
+            ph = Math.round(ph * scale);
+            preview.width = pw;
+            preview.height = ph;
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, pw, ph);
+
             const mode = modeSelect.value;
-            const imgRatio = img.width / img.height;
-            const canvasRatio = preview.width / preview.height;
-            
-            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-            
-            if (mode === 'cover') {
-                // Cover: scale to cover, crop excess
-                if (imgRatio > canvasRatio) {
-                    drawHeight = preview.height;
-                    drawWidth = drawHeight * imgRatio;
-                    offsetX = (preview.width - drawWidth) / 2;
-                } else {
-                    drawWidth = preview.width;
-                    drawHeight = drawWidth / imgRatio;
-                    offsetY = (preview.height - drawHeight) / 2;
-                }
+            const d = computeDraw(img.width, img.height, pw, ph, mode);
+            if (d.useSourceCrop) {
+                ctx.drawImage(img, d.sx, d.sy, d.sWidth, d.sHeight, 0, 0, pw, ph);
             } else {
-                // Contain: scale to fit, add black bars
-                if (imgRatio > canvasRatio) {
-                    drawWidth = preview.width;
-                    drawHeight = drawWidth / imgRatio;
-                    offsetY = (preview.height - drawHeight) / 2;
-                } else {
-                    drawHeight = preview.height;
-                    drawWidth = drawHeight * imgRatio;
-                    offsetX = (preview.width - drawWidth) / 2;
-                }
+                ctx.drawImage(img, d.offsetX, d.offsetY, d.drawWidth, d.drawHeight);
             }
-            
-            ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+
+            meta.textContent = `Source ${img.width}×${img.height} → Output ${size.width}×${size.height} · ${mode} · preview ${pw}×${ph}`;
         }
 
         function exportImage() {
-            const selected = sizeSelect.value;
-            const outputWidth = sizes[selected].width;
-            const outputHeight = sizes[selected].height;
+            if (!img.src) return;
+            const size = currentSize();
             const mode = modeSelect.value;
-            
             const outputCanvas = document.createElement('canvas');
-            outputCanvas.width = outputWidth;
-            outputCanvas.height = outputHeight;
+            outputCanvas.width = size.width;
+            outputCanvas.height = size.height;
             const outCtx = outputCanvas.getContext('2d');
-            
-            // Black background (OLED-friendly true black)
             outCtx.fillStyle = '#000000';
-            outCtx.fillRect(0, 0, outputWidth, outputHeight);
-            
-            const imgRatio = img.width / img.height;
-            const canvasRatio = outputWidth / outputHeight;
-            
-            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-            
-            if (mode === 'cover') {
-                // Cover with central crop
-                let sx = 0, sy = 0, sWidth = img.width, sHeight = img.height;
-                if (imgRatio > canvasRatio) {
-                    sHeight = img.height;
-                    sWidth = sHeight * canvasRatio;
-                    sx = (img.width - sWidth) / 2;
-                } else {
-                    sWidth = img.width;
-                    sHeight = sWidth / canvasRatio;
-                    sy = (img.height - sHeight) / 2;
-                }
-                outCtx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, outputWidth, outputHeight);
+            outCtx.fillRect(0, 0, size.width, size.height);
+
+            const d = computeDraw(img.width, img.height, size.width, size.height, mode);
+            if (d.useSourceCrop) {
+                outCtx.drawImage(img, d.sx, d.sy, d.sWidth, d.sHeight, 0, 0, size.width, size.height);
             } else {
-                // Contain with letterboxing
-                if (imgRatio > canvasRatio) {
-                    drawWidth = outputWidth;
-                    drawHeight = drawWidth / imgRatio;
-                    offsetY = (outputHeight - drawHeight) / 2;
-                } else {
-                    drawHeight = outputHeight;
-                    drawWidth = drawHeight * imgRatio;
-                    offsetX = (outputWidth - drawWidth) / 2;
-                }
-                outCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                outCtx.drawImage(img, d.offsetX, d.offsetY, d.drawWidth, d.drawHeight);
             }
-            
-            const format = formatSelect.value === 'jpeg' ? 'image/jpeg' : 'image/png';
-            const quality = format === 'image/jpeg' ? 0.95 : undefined;
-            const fileExt = format === 'image/jpeg' ? 'jpg' : 'png';
-            
+
+            const fmt = formatSelect.value;
+            const mime = fmt === 'png' ? 'image/png' : fmt === 'webp' ? 'image/webp' : 'image/jpeg';
+            const quality = fmt === 'png' ? undefined : (fmt === 'webp' ? 0.92 : 0.95);
+            const ext = fmt === 'png' ? 'png' : fmt === 'webp' ? 'webp' : 'jpg';
+
             outputCanvas.toBlob(blob => {
+                if (!blob) {
+                    alert('Export failed — try a smaller size or another format.');
+                    return;
+                }
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
-                downloadLink.download = `processed_${sizes[selected].name}_${mode}.${fileExt}`;
+                downloadLink.download = `processed_${size.name}_${mode}.${ext}`;
                 downloadLink.click();
-                URL.revokeObjectURL(url);
-            }, format, quality);
+                setTimeout(() => URL.revokeObjectURL(url), 2000);
+            }, mime, quality);
+        }
+
+        function clearImage() {
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+                objectUrl = null;
+            }
+            img = new Image();
+            fileInput.value = '';
+            exportBtn.disabled = true;
+            ctx.clearRect(0, 0, preview.width, preview.height);
+            preview.width = 440;
+            preview.height = 280;
+            meta.textContent = 'No image loaded';
         }
 
         fileInput.addEventListener('change', e => {
             const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = ev => {
-                    img.src = ev.target.result;
-                    img.onload = () => {
-                        updateCanvasDimensions();
-                    };
-                };
-                reader.readAsDataURL(file);
-            }
+            if (!file) return;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(file);
+            img = new Image();
+            img.onload = () => {
+                exportBtn.disabled = false;
+                drawPreview();
+            };
+            img.onerror = () => {
+                alert('Could not load that image.');
+                clearImage();
+            };
+            img.src = objectUrl;
         });
 
-        sizeSelect.addEventListener('change', updateCanvasDimensions);
+        sizeSelect.addEventListener('change', () => { syncCustomUi(); drawPreview(); });
+        customW.addEventListener('input', drawPreview);
+        customH.addEventListener('input', drawPreview);
         modeSelect.addEventListener('change', drawPreview);
         exportBtn.addEventListener('click', exportImage);
+        document.getElementById('btnReset').addEventListener('click', clearImage);
 
-        // Initial setup
-        updateCanvasDimensions();
+        // Drag & drop
+        document.body.addEventListener('dragover', e => { e.preventDefault(); });
+        document.body.addEventListener('drop', e => {
+            e.preventDefault();
+            const file = e.dataTransfer?.files?.[0];
+            if (!file || !file.type.startsWith('image/')) return;
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+            fileInput.dispatchEvent(new Event('change'));
+        });
+
+        populateSizes();
+        syncCustomUi();
+        preview.width = 440;
+        preview.height = 280;
     </script>
 </body>
 </html>
