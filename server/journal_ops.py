@@ -454,40 +454,32 @@ def _period_fetch_attempts(period: dict[str, Any], cookie: str) -> list[tuple[st
         attempts.append((cmd, params))
 
     # Most common field-confirmed style patterns
-    period_param = str(period.get("periodParam") or raw.get("period") or "").strip()
+    period_param = str(period.get("periodParam") or raw.get("period") or "1").strip() or "1"
     name = str(period.get("name") or "").strip()
+    fn = filename or name or "current"
 
-    # Commander Journal Browser typically uses filename + period reportParameters
+    # Field-confirmed on Commander (Manager role):
+    #   cmd=vtransset&filename=2026-07-22.416&period=1&cookie=…
+    #   → <transSet periodID="1" …><trans type="sale">…
+    # Also: vposjournal (NAXML), vtranssetz (gzip), vtransnumlist (ticket ids only)
+    add("vtransset", filename=fn, period=period_param)
+    add("vtransset", filename=fn)
+    add("vtranssetz", filename=fn, period=period_param)
+    add("vposjournal", filename=fn, period=period_param)
+    add("vposjournal", filename=fn)
+    add("vtransnumlist", filename=fn, period=period_param)
+    add("vtransnumlist", filename=fn)
+    # Legacy / alternate names
     if filename:
+        add("vtlog", filename=filename, period=period_param)
         add("vtlog", filename=filename)
-        add("vtlog", filename=filename, period=period_param or "1")
-        add("vtlog", file=filename)
-        add("vtlog", name=filename)
         add("getvtlog", filename=filename)
-        add("vtlogget", filename=filename)
         add("tlog", filename=filename)
-        add("getfile", file=filename)
-        add("getfile", name=filename)
-        add("vfit", filename=filename)
-        # Some builds use report-style parameters
-        add("vtlog", **{"reportParameter": filename})
     if name and name != filename:
-        add("vtlog", filename=name)
-        add("vtlog", filename=name, period=period_param or "1")
-        add("vtlog", name=name)
-    if period_param:
-        add("vtlog", period=period_param, filename=filename or name or "current")
-        add("getvtlog", period=period_param, filename=filename or name or "current")
+        add("vtransset", filename=name, period=period_param)
     if date:
+        add("vtransset", period=date, shift=shift)
         add("vtlog", period=date, shift=shift)
-        add("vtlog", date=date, shift=shift)
-        add("getvtlog", period=date, shift=shift)
-        add("tlog", period=date, shift=shift)
-    # raw attribute passthrough
-    for key in ("periodId", "periodid", "id", "seq", "periodSeq"):
-        if raw.get(key):
-            add("vtlog", **{key: str(raw[key])})
-            add("getvtlog", **{key: str(raw[key])})
 
     # de-dupe
     seen: set[str] = set()

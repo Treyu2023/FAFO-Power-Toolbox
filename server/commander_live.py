@@ -610,7 +610,16 @@ def sapphire_cgi_link(
         req = urllib.request.Request(url, headers={"User-Agent": "FAFO-Commander-Status-HUD/1.0"})
         with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             status = getattr(resp, "status", None) or resp.getcode()
-            full = resp.read(512_000).decode("utf-8", errors="replace")
+            raw = resp.read(20_000_000)  # T-logs can be multi-MB
+            # gzip (e.g. vtranssetz)
+            if raw[:2] == b"\x1f\x8b":
+                import gzip
+
+                try:
+                    raw = gzip.decompress(raw)
+                except OSError:
+                    pass
+            full = raw.decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
         status = e.code
         try:
@@ -621,6 +630,16 @@ def sapphire_cgi_link(
     except Exception as e:  # noqa: BLE001
         err = str(e)
     parsed = _parse_sapphire_xml(full)
+    # Large T-log / period XML is not a fault just because ElementTree cannot load a truncated tree
+    if parsed.get("isFault") and full and (
+        "<trans" in full[:2000].lower()
+        or "transset" in full[:2000].lower()
+        or "periodlist" in full[:2000].lower()
+        or "naxml" in full[:2000].lower()
+    ):
+        parsed["isFault"] = False
+        if parsed.get("faultMessage", "").startswith("XML parse error"):
+            parsed["faultMessage"] = None
     return {
         "url": url,
         "httpStatus": status,
