@@ -202,17 +202,17 @@
         <section class="panel">
           <div class="ph">Connect <span class="muted" style="text-transform:none;letter-spacing:0">target controller</span></div>
           <div class="pb">
-            <label class="fld">Host / IP</label>
-            <input id="host" placeholder="192.168.1.10 or commander-host" autocomplete="off">
+            <label class="fld">Commander host / IP <span class="muted" style="text-transform:none">(site box — not 127.x)</span></label>
+            <input id="host" value="192.168.31.11" placeholder="192.168.31.11" autocomplete="off">
 
             <div class="row">
               <div>
                 <label class="fld">Username</label>
-                <input id="username" placeholder="Config Client / web user" autocomplete="username">
+                <input id="username" value="Manager" placeholder="Manager" autocomplete="username">
               </div>
               <div>
                 <label class="fld">Password</label>
-                <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+                <input id="password" type="password" placeholder="••••••••" autocomplete="off">
               </div>
             </div>
 
@@ -318,20 +318,21 @@
       </div>
       <div class="pb">
         <div class="hint-box" style="margin-top:0">
-          Collects T-log periods from the controller (same CGILink path as Sapphire Journal Browser),
-          then supports <strong>Get Data</strong>, <strong>Search</strong>, and <strong>Filter</strong>
-          by register, employee, time, amount, fuel position/dispenser, MOP, department, barcode, and free text.
-          Drill into a row for line items (fuel grade, PLU, etc.).
+          <strong>Two different addresses:</strong>
+          (1) <em>Toolbox server</em> on this PC — <code>http://127.0.0.87:18765</code> (local FAFO API only).
+          (2) <em>Commander site</em> — host field above (default <code>192.168.31.11</code>), used for Journal / Config Client CGILink.
+          Journal login uses your site Manager password; it does not log into 127.0.0.1.
+          Then: <strong>Get Data</strong> → Search/Filter by register, fuel, time, amount, etc.
         </div>
         <div class="btn-row" style="margin-top:10px">
-          <button class="btn primary" id="btnJLogin">Journal login / refresh periods</button>
-          <button class="btn" id="btnJGetData" disabled>Get Data</button>
-          <button class="btn" id="btnJSearch" disabled>Search</button>
-          <button class="btn" id="btnJFilter" disabled>Filter</button>
-          <button class="btn" id="btnJPrev" disabled>◀ Prev match</button>
-          <button class="btn" id="btnJNext" disabled>Next match ▶</button>
-          <button class="btn" id="btnJLogout" disabled>Logout session</button>
-          <button class="btn" id="btnJExport" disabled>Export CSV</button>
+          <button type="button" class="btn primary" id="btnJLogin">Journal login / refresh periods</button>
+          <button type="button" class="btn" id="btnJGetData" disabled>Get Data</button>
+          <button type="button" class="btn" id="btnJSearch" disabled>Search</button>
+          <button type="button" class="btn" id="btnJFilter" disabled>Filter</button>
+          <button type="button" class="btn" id="btnJPrev" disabled>◀ Prev match</button>
+          <button type="button" class="btn" id="btnJNext" disabled>Next match ▶</button>
+          <button type="button" class="btn" id="btnJLogout" disabled>Logout session</button>
+          <button type="button" class="btn" id="btnJExport" disabled>Export CSV</button>
         </div>
         <div class="j-filters" id="jFilters">
           <div><label class="fld">Register</label><select id="jfReg"><option value="">Any</option></select></div>
@@ -389,6 +390,12 @@
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script>
+    const DEFAULT_SITE_HOST = '192.168.31.11';
+    const DEFAULT_SITE_USER = 'Manager';
+    const LS_HOST = 'fafo_commander_host';
+    const LS_USER = 'fafo_commander_user';
+    const SS_PASS = 'fafo_commander_pass'; // session only — not localStorage
+
     const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
     const el = (id) => document.getElementById(id);
     let profiles = [];
@@ -415,14 +422,52 @@
       clearTimeout(toast._tm);
       toast._tm = setTimeout(() => t.classList.remove('show'), ms);
     }
+    /** Persist site login fields so they do not clear between actions / reloads. */
+    function saveLoginFields() {
+      try {
+        const host = (el('host') && el('host').value || '').trim();
+        const user = (el('username') && el('username').value || '').trim();
+        const pass = el('password') ? el('password').value : '';
+        if (host) localStorage.setItem(LS_HOST, host);
+        if (user) localStorage.setItem(LS_USER, user);
+        // Password only for this browser tab session (still use DPAPI profiles for durable store)
+        if (pass) sessionStorage.setItem(SS_PASS, pass);
+      } catch (_) {}
+    }
+    function restoreLoginFields() {
+      try {
+        const host = localStorage.getItem(LS_HOST) || DEFAULT_SITE_HOST;
+        const user = localStorage.getItem(LS_USER) || DEFAULT_SITE_USER;
+        const pass = sessionStorage.getItem(SS_PASS) || '';
+        if (el('host') && !el('host').value.trim()) el('host').value = host;
+        else if (el('host') && (el('host').value === DEFAULT_SITE_HOST || !el('host').dataset.userTouched)) {
+          // prefer saved over bare default when present
+          if (localStorage.getItem(LS_HOST)) el('host').value = localStorage.getItem(LS_HOST);
+        }
+        if (el('username')) {
+          if (!el('username').value.trim() || el('username').value === DEFAULT_SITE_USER) {
+            el('username').value = user || DEFAULT_SITE_USER;
+          }
+        }
+        if (el('password') && pass && !el('password').value) el('password').value = pass;
+      } catch (_) {
+        if (el('host') && !el('host').value) el('host').value = DEFAULT_SITE_HOST;
+        if (el('username') && !el('username').value) el('username').value = DEFAULT_SITE_USER;
+      }
+    }
     async function api(path, opts = {}) {
       let r;
+      const base = apiBase();
       try {
         const headers = { ...(opts.headers || {}) };
         if (opts.body != null && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-        r = await fetch(apiBase() + path, { ...opts, headers });
+        r = await fetch(base + path, { ...opts, headers });
       } catch (e) {
-        throw new Error('Cannot reach toolbox server at ' + apiBase() + '. Start the server, then open via http://127.0.0.87:18765/toolbox/…');
+        throw new Error(
+          'Cannot reach LOCAL toolbox API at ' + base + ' (this is FAFO on your PC, not the Commander). ' +
+          'Start the toolbox server, then open the HUD via http://127.0.0.87:18765/toolbox/… ' +
+          'Commander site stays in Host/IP (e.g. 192.168.31.11).'
+        );
       }
       const text = await r.text();
       let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
@@ -432,9 +477,15 @@
 
     async function refreshServer() {
       try {
-        const ok = await fetch(apiBase().replace(/\/api$/, '') + '/health').then(r => r.ok).catch(() => false);
+        // Prefer real API probe (/health may 404 on some builds)
+        const origin = apiBase().replace(/\/api$/, '');
+        let ok = await fetch(apiBase() + '/verifone/status').then(r => r.ok).catch(() => false);
+        if (!ok) ok = await fetch(origin + '/health').then(r => r.ok).catch(() => false);
         el('serverPill').textContent = ok ? 'Server online' : 'Server offline';
         el('serverPill').className = 'pill ' + (ok ? 'ok' : 'bad');
+        el('serverPill').title = ok
+          ? ('Local toolbox API ' + apiBase() + ' — site host is separate (Host/IP field)')
+          : 'Local FAFO server not running at ' + apiBase();
         return ok;
       } catch {
         el('serverPill').textContent = 'Server offline';
@@ -830,10 +881,12 @@
       try {
         const data = await api('/verifone/live/profiles/' + encodeURIComponent(id) + '?include_password=true');
         const p = data.profile;
-        el('host').value = p.host || '';
-        el('username').value = p.username || '';
-        el('password').value = p.password || '';
+        // Never wipe fields with blanks from a partial profile
+        if (p.host) el('host').value = p.host;
+        if (p.username) el('username').value = p.username;
+        if (p.password) el('password').value = p.password;
         if (p.exportId) el('exportSelect').value = p.exportId;
+        saveLoginFields();
         toast('Loaded profile: ' + (p.name || p.host));
       } catch (e) {
         toast(String(e.message || e));
@@ -841,16 +894,22 @@
     }
 
     async function probe() {
-      const host = el('host').value.trim();
-      if (!host) { toast('Enter a host / IP'); return; }
+      const host = el('host').value.trim() || DEFAULT_SITE_HOST;
+      const username = el('username').value.trim() || DEFAULT_SITE_USER;
+      const password = el('password').value;
+      el('host').value = host;
+      el('username').value = username;
+      saveLoginFields();
+      if (!host) { toast('Enter a Commander host / IP'); return; }
       const btn = el('btnProbe');
       btn.disabled = true;
-      el('overview').innerHTML = '<div class="empty">Probing Commander… DNS · ping · ports · HTTP · login</div>';
+      el('overview').innerHTML = '<div class="empty">Probing Commander ' + esc(host) + '… DNS · ping · ports · HTTP · login</div>';
       try {
+        toast('Probing site ' + host + '…');
         const body = {
           host,
-          username: el('username').value.trim(),
-          password: el('password').value,
+          username,
+          password,
           otp: el('otp').value.trim() || null,
           export_id: el('exportSelect').value || null,
           profile_id: el('profileSelect').value || selectedProfileId || null,
@@ -862,10 +921,17 @@
         // Don't send empty password if profile has stored secret
         if (!body.password && body.profile_id) delete body.password;
         const res = await api('/verifone/live/probe', { method: 'POST', body: JSON.stringify(body) });
+        el('host').value = host;
+        el('username').value = username;
+        if (password) el('password').value = password;
+        saveLoginFields();
         renderAll(res);
-        toast(`Health ${res.health.level} (${res.health.score}) · ${res.elapsedMs} ms`);
+        toast(`Health ${res.health.level} (${res.health.score}) · ${res.elapsedMs} ms · ${host}`);
         await loadProfiles();
       } catch (e) {
+        el('host').value = host;
+        el('username').value = username;
+        if (password) el('password').value = password;
         el('overview').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
         toast(String(e.message || e));
       } finally {
@@ -1045,29 +1111,36 @@
       fillSelect(el('jfDisp'), payload.dispensers || []);
     }
     async function journalLogin() {
-      const host = el('host').value.trim();
-      if (!host) { toast('Enter host/IP first'); return; }
+      // Snapshot credentials BEFORE any async work so nothing clears them
+      const host = el('host').value.trim() || DEFAULT_SITE_HOST;
+      const username = el('username').value.trim() || DEFAULT_SITE_USER;
+      const password = el('password').value;
+      const otp = el('otp').value.trim() || null;
+      const profile_id = el('profileSelect').value || selectedProfileId || null;
+      el('host').value = host;
+      el('username').value = username;
+      saveLoginFields();
+      if (!host) { toast('Enter Commander host/IP first (e.g. 192.168.31.11)'); return; }
       el('btnJLogin').disabled = true;
       el('btnJournalLogin').disabled = true;
       try {
-        toast('Journal login + loading periods…');
-        const body = {
-          host,
-          username: el('username').value.trim(),
-          password: el('password').value,
-          otp: el('otp').value.trim() || null,
-          profile_id: el('profileSelect').value || selectedProfileId || null,
-        };
+        toast('Journal login to ' + host + ' (via local toolbox API)…');
+        const body = { host, username, password, otp, profile_id };
         if (!body.password && body.profile_id) delete body.password;
         const res = await api('/verifone/journal/login', { method: 'POST', body: JSON.stringify(body) });
+        // Restore fields after API (in case browser/password manager touched them)
+        el('host').value = host;
+        el('username').value = username;
+        if (password) el('password').value = password;
+        saveLoginFields();
         if (!res.authenticated) {
-          setJournalStatus(res.message || 'Login failed', false);
+          setJournalStatus((res.message || 'Login failed') + ' @ ' + host, false);
           if (res.otpRequired) {
             el('otpBanner').style.display = 'block';
             el('otpBannerText').textContent = res.message || 'OTP required';
             el('otp').focus();
           }
-          toast(res.message || 'Journal login failed');
+          toast(res.message || 'Journal login failed on site ' + host);
           return;
         }
         journalSessionId = res.sessionId;
@@ -1083,12 +1156,16 @@
         el('btnJFilter').disabled = true;
         el('btnJLogout').disabled = false;
         el('btnJExport').disabled = true;
-        setJournalStatus(`Connected ${res.host} · ${journalPeriods.length} periods · ${res.username || ''}`, true);
-        toast(res.message || 'Journal session open');
+        setJournalStatus(`Site ${res.host} · ${journalPeriods.length} periods · ${res.username || username}`, true);
+        toast(res.message || ('Journal open on ' + res.host));
         el('journalPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (e) {
+        // Keep credentials filled on error
+        el('host').value = host;
+        el('username').value = username;
+        if (password) el('password').value = password;
         toast(String(e.message || e));
-        setJournalStatus('Error', false);
+        setJournalStatus('Error (check local server + site IP)', false);
       } finally {
         el('btnJLogin').disabled = false;
         el('btnJournalLogin').disabled = false;
@@ -1290,14 +1367,31 @@
       }
     });
 
+    // Keep login fields sticky while typing
+    ['host', 'username', 'password'].forEach(id => {
+      const node = el(id);
+      if (!node) return;
+      node.addEventListener('change', saveLoginFields);
+      node.addEventListener('blur', saveLoginFields);
+    });
+
     (async function init() {
+      // Defaults first so UI is never blank
+      if (el('host') && !el('host').value.trim()) el('host').value = DEFAULT_SITE_HOST;
+      if (el('username') && !el('username').value.trim()) el('username').value = DEFAULT_SITE_USER;
+      restoreLoginFields();
+
       const online = await refreshServer();
       if (!online) {
-        el('overview').innerHTML = '<div class="empty">Toolbox server offline. Start it, then open this page via the server URL.</div>';
-        return;
+        el('overview').innerHTML =
+          '<div class="empty">Local toolbox server offline at <code>127.0.0.87:18765</code>. ' +
+          'That is the FAFO API on this PC (not the Commander). Start the server, then open ' +
+          '<code>http://127.0.0.87:18765/toolbox/Verifone%20Tools/Commander%20Status%20HUD.html</code>. ' +
+          'Site IP stays in Host field (default 192.168.31.11).</div>';
+        // Do not return early forever — still leave journal UI usable after server starts + refresh
       }
       try {
-        await Promise.all([loadProfiles(), loadTargets(), loadImportExport()]);
+        if (online) await Promise.all([loadProfiles(), loadTargets(), loadImportExport()]);
       } catch (e) {
         toast(String(e.message || e));
       }
@@ -1313,15 +1407,33 @@
           el('host').value = u.hostname;
         } catch (_) {}
       }
+      // Ensure defaults if still empty after deep-link
+      if (!el('host').value.trim()) el('host').value = DEFAULT_SITE_HOST;
+      if (!el('username').value.trim()) el('username').value = DEFAULT_SITE_USER;
+      restoreLoginFields();
       updateOpenCcLink(null);
-      // Prefer saved site Manager profile when no deep-link host
-      if (!q.get('host') && !q.get('url') && profiles.length) {
+      // Prefer saved site Manager profile password when empty (do not wipe typed password)
+      if (online && profiles.length && !el('password').value) {
         const pref = profiles.find(p =>
           /192\.168\.31\.11/.test(p.host || '') || /manager/i.test(p.name || '') || /manager/i.test(p.username || '')
-        ) || profiles[0];
-        if (pref && pref.id) await applyProfile(pref.id);
+        );
+        if (pref && pref.id) {
+          selectedProfileId = pref.id;
+          el('profileSelect').value = pref.id;
+          try {
+            const data = await api('/verifone/live/profiles/' + encodeURIComponent(pref.id) + '?include_password=true');
+            const p = data.profile || {};
+            if (p.password && !el('password').value) el('password').value = p.password;
+            if (p.host && el('host').value === DEFAULT_SITE_HOST) el('host').value = p.host;
+            if (p.username && (!el('username').value || el('username').value === DEFAULT_SITE_USER)) {
+              el('username').value = p.username;
+            }
+            saveLoginFields();
+          } catch (_) {}
+        }
       }
-      if (q.get('auto') === '1' && el('host').value) probe();
+      saveLoginFields();
+      if (online && q.get('auto') === '1' && el('host').value) probe();
     })();
   </script>
 </body>
