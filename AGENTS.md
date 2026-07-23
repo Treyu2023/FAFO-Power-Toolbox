@@ -53,10 +53,12 @@ Use `.gitignore` as the source of truth. If something sensitive appears, fix ign
 
 ```powershell
 & ".\Scripts\Initialize-FAFOSession.ps1"
-Invoke-FAFOSystemDiagnostics   # or: .\Scripts\Invoke-FAFOSystemDiagnostics.ps1 -OpenViewer
+Invoke-FAFOSystemDiagnostics -OpenHud   # uses .venv Python engine when available
+# UI: System Tools\PC Diagnostics HUD.html  (configurable modules + interactive map)
+# API: POST /api/pc-diagnostics/run
 ```
 
-- That command collects identity/GPU/disk/volume/network/PnP/event summary, writes device-local reports, rebuilds the Report Library packs for **this** host, and prints a status overview.
+- Diagnostics write **device-local** reports (JSON/MD/HTML) under `%LOCALAPPDATA%\FAFO\Devices\<PC>\Reports\PC\`, with plain-English component IDs, compatibility notes, bottlenecks, and suggested fixes.
 
 ## Runtime / bind conventions
 

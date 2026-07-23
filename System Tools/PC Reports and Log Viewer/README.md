@@ -39,10 +39,14 @@ Open `index.html` (or Launcher → **PC Reports & Log Viewer**) and use the side
 
 Needs the toolbox server (or one-time **Setup** so `aitoolbox://diagnostics` works). No need to paste PowerShell yourself.
 
+**Interactive HUD:** open `System Tools\PC Diagnostics HUD.html` (server on) → choose scan modules → **Run diagnostics** → click tiles for components, bottlenecks, and suggested fixes. Includes a **Simple report** view for non-technical reading.
+
 ### CLI / agents (same work)
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\Invoke-FAFOSystemDiagnostics.ps1 -OpenViewer
+# or open the HUD after collect:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\Invoke-FAFOSystemDiagnostics.ps1 -OpenHud
 ```
 
 **Grok CLI:** say *“run system diagnostics”*, *“check PC health”*, or *“refresh report library”*.

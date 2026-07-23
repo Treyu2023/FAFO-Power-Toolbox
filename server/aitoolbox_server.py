@@ -283,6 +283,7 @@ def health():
             "unique_bind",
             "tool_icons",
             "commander_sites",
+            "pc_diagnostics",
         ],
         "commanderConsole": f"http://{BIND_HOST}:{BIND_PORT}/toolbox/Verifone%20Tools/Commander%20Site%20Console.html",
     }
@@ -1602,6 +1603,7 @@ import disk_ops as disk
 import hosts_ops as hosts
 import convert_ops as convert
 import health_ops as health
+import pc_diagnostics as pc_diag
 import git_ops as git
 import vsr_pipeline as vsr
 import ip_profile_ops as ip_profiles
@@ -2116,6 +2118,41 @@ def api_health_dashboard():
         return health.get_dashboard()
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# --- Comprehensive PC diagnostics HUD ---
+class PcDiagRun(BaseModel):
+    options: dict[str, bool] | None = None
+    eventLogDays: int = 7
+    persist: bool = True
+
+
+@app.get("/api/pc-diagnostics/options")
+def api_pc_diag_options():
+    return pc_diag.get_options_schema()
+
+
+@app.get("/api/pc-diagnostics/latest")
+def api_pc_diag_latest():
+    report = pc_diag.load_latest()
+    if not report:
+        return {"ok": False, "report": None, "message": "No report yet — run a scan from the Diagnostics HUD."}
+    return {"ok": True, "report": report}
+
+
+@app.post("/api/pc-diagnostics/run")
+def api_pc_diag_run(body: PcDiagRun | None = None):
+    body = body or PcDiagRun()
+    days = max(1, min(int(body.eventLogDays or 7), 30))
+    try:
+        report = pc_diag.run_diagnostics(
+            options=body.options,
+            event_log_days=days,
+            persist=bool(body.persist),
+        )
+        return {"ok": True, "report": report}
+    except Exception as e:
+        raise HTTPException(500, f"Diagnostics failed: {e}") from e
 
 
 @app.get("/api/startup/overview")

@@ -56,7 +56,7 @@ $knownTools = @(
     'media-library', 'file-organizer', 'vsr-pipeline',
     'video-compare', 'image-compare', 'video-wall', 'image-cropper',
     'loan-calc', 'ghost-device-cleaner', 'lan-task-manager', 'malware-defender',
-    'health-dashboard', 'startup-manager', 'disk-analyzer', 'hosts-blocker',
+    'health-dashboard', 'pc-diagnostics-hud', 'startup-manager', 'disk-analyzer', 'hosts-blocker',
     'media-converter', 'duplicate-finder', 'git-manager', 'bloodmoon-survivor',
     'all'
 )

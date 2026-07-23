@@ -12,13 +12,51 @@ param(
     [string]$ToolboxRoot = $env:FAFO_TOOLBOX_ROOT,
     [switch]$OpenViewer,
     [switch]$SkipEventLog,
-    [int]$EventLogDays = 7
+    [int]$EventLogDays = 7,
+    # Prefer Python HUD engine when .venv is available (richer report + API-compatible JSON)
+    [switch]$UsePythonEngine,
+    [switch]$OpenHud
 )
 
 $ErrorActionPreference = 'Continue'
 
 if (-not $ToolboxRoot) {
     $ToolboxRoot = Split-Path -Parent $PSScriptRoot
+}
+
+# Prefer the Python diagnostics engine (same report the HUD UI / API uses)
+$venvPy = Join-Path $ToolboxRoot '.venv\Scripts\python.exe'
+$pyEngine = Join-Path $ToolboxRoot 'server\pc_diagnostics.py'
+$preferPython = (Test-Path -LiteralPath $venvPy) -and (Test-Path -LiteralPath $pyEngine)
+if ($PSBoundParameters.ContainsKey('UsePythonEngine') -and -not $UsePythonEngine) {
+    $preferPython = $false
+}
+
+if ($preferPython) {
+    Write-Host "Using Python diagnostics engine (.venv)..." -ForegroundColor Cyan
+    $serverDir = Join-Path $ToolboxRoot 'server'
+    $skipPy = if ($SkipEventLog) { 'True' } else { 'False' }
+    $pyCode = @"
+import json, sys
+sys.path.insert(0, r'''$serverDir''')
+import pc_diagnostics as d
+opts = dict(d.DEFAULT_OPTIONS)
+if $skipPy:
+    opts['event_log'] = False
+report = d.run_diagnostics(options=opts, event_log_days=$EventLogDays, persist=True)
+print(json.dumps({
+    'ok': True,
+    'overall': report.get('overall'),
+    'summary': report.get('summary'),
+    'meta': report.get('meta'),
+}, indent=2))
+"@
+    & $venvPy -c $pyCode
+    if ($OpenHud -or $OpenViewer) {
+        $hud = Join-Path $ToolboxRoot 'System Tools\PC Diagnostics HUD.html'
+        if (Test-Path -LiteralPath $hud) { Start-Process $hud }
+    }
+    return
 }
 
 $modulePath = Join-Path $ToolboxRoot 'Scripts\Modules\FAFO.Toolbox\FAFO.Toolbox.psd1'
