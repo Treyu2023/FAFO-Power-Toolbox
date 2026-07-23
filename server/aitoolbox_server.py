@@ -1718,6 +1718,9 @@ import disk_ops as disk
 import hosts_ops as hosts
 import convert_ops as convert
 import health_ops as health
+import event_ops as events
+import board_ops as board
+import diagnostics_ops as diag
 import pc_diagnostics as pc_diag
 import git_ops as git
 import vsr_pipeline as vsr
@@ -2233,6 +2236,279 @@ def api_health_dashboard():
         return health.get_dashboard()
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+class AlertSnoozeBody(BaseModel):
+    alert_id: str
+    hours: float = 24
+    reason: str = ""
+
+
+class AlertDismissBody(BaseModel):
+    alert_id: str
+    reason: str = ""
+
+
+class AlertClearBody(BaseModel):
+    alert_id: str = ""
+
+
+class SectionRunBody(BaseModel):
+    section: str = "full"
+    write_report: bool = True
+
+
+class DiagRunBody(BaseModel):
+    open_viewer: bool = False
+
+
+@app.get("/api/health/alerts/prefs")
+def api_health_alert_prefs():
+    import health_prefs
+    return health_prefs.get_public_prefs()
+
+
+@app.post("/api/health/alerts/snooze")
+def api_health_alert_snooze(body: AlertSnoozeBody):
+    import health_prefs
+    try:
+        return health_prefs.snooze_alert(body.alert_id, hours=body.hours, reason=body.reason)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/health/alerts/dismiss")
+def api_health_alert_dismiss(body: AlertDismissBody):
+    import health_prefs
+    try:
+        return health_prefs.dismiss_alert(body.alert_id, reason=body.reason)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/health/alerts/clear")
+def api_health_alert_clear(body: AlertClearBody | None = None):
+    import health_prefs
+    try:
+        if body and body.alert_id:
+            return health_prefs.clear_alert(body.alert_id)
+        return health_prefs.clear_all()
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/health/report/generate")
+def api_health_report_generate():
+    """Write plain-English health-hub-summary.json + pc-health-readable-auto.html."""
+    import health_report
+    try:
+        return health_report.generate_now(ROOT)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/diagnostics/run-section")
+def api_diagnostics_run_section(body: SectionRunBody | None = None):
+    """Re-run one hub section (or section=full for complete diagnostics)."""
+    section = (body.section if body else "full") or "full"
+    write_report = True if body is None else bool(body.write_report)
+    try:
+        return diag.run_section(section, ROOT, write_report=write_report)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except TimeoutError as e:
+        raise HTTPException(504, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/diagnostics/status")
+def api_diag_status():
+    return diag.status(ROOT)
+
+
+@app.get("/api/diagnostics/catalog")
+def api_diag_catalog():
+    built = diag.build_catalog_and_logs(ROOT)
+    logs_meta = [
+        {k: v for k, v in row.items() if k != "content"}
+        for row in (built.get("logs") or [])
+    ]
+    return {"catalog": built["catalog"], "logs": logs_meta}
+
+
+@app.post("/api/diagnostics/pack")
+def api_diag_pack():
+    try:
+        result = diag.write_viewer_packs(ROOT)
+        return {
+            "ok": True,
+            "deviceId": result["deviceId"],
+            "deviceRoot": result["deviceRoot"],
+            "reportCount": result["reportCount"],
+            "logCount": result["logCount"],
+            "catalogPath": result["catalogPath"],
+            "logsPath": result["logsPath"],
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
+
+
+@app.post("/api/diagnostics/run")
+def api_diag_run(body: DiagRunBody | None = None):
+    open_viewer = bool(body and body.open_viewer)
+    try:
+        return diag.run_system_diagnostics(ROOT, open_viewer=open_viewer)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except TimeoutError as e:
+        raise HTTPException(504, str(e)) from e
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
+
+
+@app.get("/api/events/summary")
+def api_events_summary(hours: int = 24, max_events: int = 400):
+    """Plain-English themed summary of recent System/Application events."""
+    try:
+        return events.get_summary(hours=hours, max_events=max_events)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/events/deep-dive")
+def api_events_deep_dive(
+    hours: int = 72,
+    max_events: int = 600,
+    include_noise: bool = True,
+):
+    """
+    Rank event themes most→least likely to be real problems,
+    each with fix alternatives ordered most→least likely.
+    """
+    import event_deep_dive as deep
+    try:
+        return deep.run_deep_dive(
+            hours=hours,
+            max_events=max_events,
+            include_noise=include_noise,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/events/themes")
+def api_events_themes(hours: int = 24):
+    try:
+        return events.get_themes_only(hours=hours)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/events/query")
+def api_events_query(
+    hours: int = 24,
+    max_events: int = 200,
+    log: str = "",
+    level: str = "",
+    provider: str = "",
+    q: str = "",
+    theme: str = "",
+):
+    """Filtered event rows (timeline) for Event Viewer."""
+    try:
+        return events.query_events(
+            hours=hours,
+            max_events=max_events,
+            log=log,
+            level=level,
+            provider=provider,
+            q=q,
+            theme_id=theme,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/hardware/identity")
+def api_hardware_identity():
+    try:
+        return board.detect_identity()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/hardware/board")
+def api_hardware_board():
+    """Matched motherboard pack + rear I/O ports + vendor links."""
+    try:
+        return board.get_board_bundle()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/hardware/board/{board_id}/rear-io.svg")
+def api_hardware_board_svg(board_id: str):
+    from fastapi.responses import Response
+    pack = board.get_rear_io_svg(board_id)
+    if not pack:
+        raise HTTPException(404, "Board SVG not found")
+    data, ctype = pack
+    return Response(content=data, media_type=ctype)
+
+
+@app.get("/api/hardware/intel")
+def api_hardware_intel():
+    try:
+        return board.match_component_intel()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/hardware/playbooks")
+def api_hardware_playbooks():
+    try:
+        return board.list_playbooks()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/hardware/playbooks/{playbook_id}")
+def api_hardware_playbook(playbook_id: str):
+    pb = board.get_playbook(playbook_id)
+    if not pb:
+        raise HTTPException(404, "Playbook not found")
+    return pb
+
+
+@app.get("/api/hardware/assist")
+def api_hardware_assist(
+    playbook: str = "",
+    theme: str = "",
+    alert: str = "",
+    process: str = "",
+):
+    """Offline playbook + guided search for a hub alert / event theme."""
+    try:
+        return board.assist(
+            playbook_id=playbook or None,
+            theme_id=theme or None,
+            alert_id=alert or None,
+            process_name=process or None,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+
 
 
 # --- Comprehensive PC diagnostics HUD ---

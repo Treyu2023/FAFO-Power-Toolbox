@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Event Deep Dive — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root{
+  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
+  --accent:#00f3ff;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;--purple:#a78bfa;
+  --text:#e2e8f0;--muted:#8b9bb4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;
+  background:
+    radial-gradient(ellipse at 80% -10%,rgba(244,63,94,.1),transparent 45%),
+    radial-gradient(ellipse at 10% 0%,rgba(167,139,250,.14),transparent 50%),
+    radial-gradient(ellipse at 50% -20%,#0f172a,var(--bg) 60%);
+}
+.nav{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.95);
+  position:sticky;top:0;z-index:20;
+}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.nav .t{color:var(--accent);letter-spacing:1px;font-size:14px;font-weight:700}
+.wrap{max-width:1100px;margin:0 auto;padding:22px 20px 56px}
+h1{font-size:1.5rem;margin-bottom:4px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.5}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.btn{
+  background:rgba(0,243,255,.12);border:1px solid var(--accent);color:var(--accent);
+  padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+}
+.btn:disabled{opacity:.5;cursor:wait}
+.btn.ghost{background:transparent;border-color:var(--border);color:var(--muted);text-decoration:none;display:inline-block}
+.sel,.inp{
+  background:var(--panel);border:1px solid var(--border);color:var(--text);
+  padding:8px 10px;border-radius:8px;font-size:12px;
+}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-weight:600}
+.status.ok{color:var(--ok)} .status.bad{color:var(--danger)}
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;text-transform:uppercase}
+.badge.ok{background:rgba(52,211,153,.14);color:var(--ok)}
+.badge.info{background:rgba(96,165,250,.14);color:var(--info)}
+.badge.warn{background:rgba(251,191,36,.14);color:var(--warn)}
+.badge.error{background:rgba(244,63,94,.14);color:var(--danger)}
+.badge.noise{background:rgba(139,155,180,.14);color:var(--muted)}
+.callout{
+  border-left:4px solid var(--purple);background:var(--panel2);padding:14px 16px;border-radius:0 12px 12px 0;
+  margin-bottom:18px;font-size:13px;line-height:1.5;
+}
+.callout h2{font-size:1.1rem;margin:6px 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:18px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-size:1.25rem;font-weight:700;margin-top:4px}
+.finding{
+  background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden;
+}
+.finding.noise{opacity:.85}
+.finding-h{
+  padding:14px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;justify-content:space-between;
+  cursor:pointer;border-bottom:1px solid transparent;
+}
+.finding.open .finding-h{border-bottom-color:var(--border)}
+.finding-h:hover{background:rgba(255,255,255,.02)}
+.rank{
+  width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:14px;
+  background:rgba(167,139,250,.15);color:var(--purple);flex-shrink:0;
+}
+.rank.top{background:rgba(244,63,94,.15);color:var(--danger)}
+.rank.mid{background:rgba(251,191,36,.15);color:var(--warn)}
+.finding-h .body{flex:1;min-width:200px}
+.finding-h h3{font-size:15px;margin:4px 0}
+.finding-h p{font-size:12px;color:var(--muted);line-height:1.45}
+.meter{height:8px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden;max-width:280px}
+.meter span{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--purple),var(--accent))}
+.finding-b{display:none;padding:0 16px 16px}
+.finding.open .finding-b{display:block}
+.fix{
+  border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel2);
+  position:relative;
+}
+.fix.best{border-color:rgba(52,211,153,.45);box-shadow:0 0 0 1px rgba(52,211,153,.12)}
+.fix .pct{
+  position:absolute;right:12px;top:12px;font-weight:800;font-size:13px;color:var(--accent);
+}
+.fix h4{font-size:13px;margin:0 28px 6px 0;padding-right:40px}
+.fix p{font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:8px}
+.fix ol{margin:0 0 0 18px;font-size:12px;line-height:1.45}
+.fix li{margin-bottom:4px}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;font-size:11px;color:var(--muted)}
+.chip{
+  font-size:11px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);
+  background:rgba(0,0,0,.25);color:var(--accent);text-decoration:none;font-weight:600;display:inline-block;
+}
+.chip:hover{background:rgba(0,243,255,.1)}
+.samples{font-size:11px;color:var(--muted);margin-top:10px}
+.samples pre{
+  white-space:pre-wrap;background:#070b12;border:1px solid var(--border);border-radius:8px;
+  padding:8px 10px;margin:6px 0;font-size:11px;color:#c4d0e0;
+}
+.breakdown{font-size:11px;color:var(--muted);margin:8px 0}
+.methodology{font-size:12px;color:var(--muted);line-height:1.45;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="Event Viewer.html">← Event Viewer</a>
+  <span class="t">EVENT DEEP DIVE</span>
+  <span id="pill" class="status bad">Offline</span>
+</nav>
+<div class="wrap">
+  <h1>Event Deep Dive</h1>
+  <p class="sub">
+    Scores every themed issue from most → least likely to be a <em>real problem</em>,
+    then for each issue lists fix alternatives from most → least likely.
+    Heuristic + your hardware context — not a lab diagnosis.
+  </p>
+
+  <div class="toolbar">
+    <button class="btn" id="btnRun">Run deep dive</button>
+    <select class="sel" id="hours">
+      <option value="24">Last 24 hours</option>
+      <option value="72" selected>Last 3 days</option>
+      <option value="168">Last 7 days</option>
+    </select>
+    <label style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px">
+      <input type="checkbox" id="includeNoise" checked> Include noise themes
+    </label>
+    <a class="btn ghost" href="Event Viewer.html">Themes / Timeline</a>
+    <a class="btn ghost" href="Hardware Board Map.html">Board Map / playbooks</a>
+    <a class="btn ghost" href="System Health Dashboard.html">Health Hub</a>
+  </div>
+
+  <div id="hero" class="callout" style="display:none"></div>
+  <div class="stats" id="stats"></div>
+  <div id="list">Click <strong>Run deep dive</strong> to analyze this PC’s event log.</div>
+  <p class="methodology" id="method"></p>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[c]));
+const LABEL = { ok:'Fine', info:'FYI', warn:'Watch', error:'Act' };
+function badge(lv, extra) {
+  const c = lv === 'bad' ? 'error' : (lv || 'info');
+  return `<span class="badge ${extra || c}">${extra === 'noise' ? 'Noise' : (LABEL[c] || c)}</span>`;
+}
+function setPill(ok, t) {
+  const el = document.getElementById('pill');
+  el.className = 'status ' + (ok ? 'ok' : 'bad');
+  el.textContent = t;
+}
+
+function rankClass(rank, tier) {
+  if (tier === 'noise') return '';
+  if (rank <= 2) return 'top';
+  if (rank <= 4) return 'mid';
+  return '';
+}
+
+function render(data) {
+  document.getElementById('hero').style.display = 'block';
+  document.getElementById('hero').innerHTML = `
+    ${badge(data.actionableCount ? 'warn' : 'ok')}
+    <h2>${esc(data.headline || '')}</h2>
+    <p style="margin-top:8px;color:var(--muted)">${esc(data.summary || '')}</p>
+    <p style="margin-top:10px;font-size:12px;color:var(--muted)">
+      Board: <strong>${esc(data.hardware?.board || '—')}</strong>
+      · CPU: ${esc(data.hardware?.cpu || '—')}
+      · GPU: ${esc((data.hardware?.gpus || [])[0] || '—')}
+    </p>`;
+
+  document.getElementById('stats').innerHTML = [
+    { l: 'Sampled', v: data.sampled ?? '—' },
+    { l: 'Errors', v: data.errorCount ?? '—' },
+    { l: 'Warnings', v: data.warningCount ?? '—' },
+    { l: 'Window', v: (data.windowHours || 72) + 'h' },
+    { l: 'Investigate', v: data.actionableCount ?? 0 },
+    { l: 'Noise themes', v: data.noiseCount ?? 0 },
+  ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${esc(String(x.v))}</div></div>`).join('');
+
+  document.getElementById('method').textContent = data.methodology || '';
+
+  const findings = data.findings || [];
+  if (!findings.length) {
+    document.getElementById('list').innerHTML = '<div class="callout">No findings in this window.</div>';
+    return;
+  }
+
+  document.getElementById('list').innerHTML = findings.map((f, idx) => {
+    const open = idx === 0 && f.tier !== 'noise' ? ' open' : '';
+    const noise = f.tier === 'noise' ? ' noise' : '';
+    const fixes = (f.advice?.fixes || []);
+    const samples = f.sampleEvents || [];
+    const br = f.scoreBreakdown || {};
+    return `<article class="finding${noise}${open}" data-i="${idx}">
+      <div class="finding-h">
+        <div class="rank ${rankClass(f.rank, f.tier)}">#${f.rank}</div>
+        <div class="body">
+          <div>${badge(f.level)}${f.tier === 'noise' ? ' ' + badge('info','noise') : ''}
+            <span style="margin-left:8px;font-size:11px;color:var(--muted)">${f.count} events · relative ${f.relativeLikelihoodPercent ?? 0}%</span>
+          </div>
+          <h3>${esc(f.title || f.themeId)}</h3>
+          <p>${esc(f.plainEnglish || '')}</p>
+          <div class="meter" title="Relative problem score vs top finding">
+            <span style="width:${Math.max(4, f.relativeLikelihoodPercent || 0)}%"></span>
+          </div>
+          ${f.topFixSummary ? `<p style="margin-top:8px;color:var(--text)">Top fix guess: <strong>${esc(f.topFixSummary)}</strong>
+            ${f.topFixLikelihoodPercent != null ? `(~${f.topFixLikelihoodPercent}% among alternatives)` : ''}</p>` : ''}
+        </div>
+      </div>
+      <div class="finding-b">
+        <div class="meta-row">
+          <span>Care: ${esc(f.care || '—')}</span>
+          <span>Providers: ${esc((f.providers || []).slice(0,5).join(', ') || '—')}</span>
+          ${f.hoursSinceLatest != null ? `<span>Latest ~${esc(String(f.hoursSinceLatest))}h ago</span>` : ''}
+        </div>
+        ${(f.hardwareReasons || []).length ? `<p class="breakdown">Hardware match: ${esc(f.hardwareReasons.join('; '))}</p>` : ''}
+        <p class="breakdown">Score parts — severity ${br.severity ?? 0}, freq ${br.frequency ?? 0}, errors ${br.errors ?? 0}, share ${br.shareOfSample ?? 0}, recency ${br.recency ?? 0}, hardware ${br.hardware ?? 0}, noise ${br.noisePenalty ?? 0}</p>
+
+        <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin:12px 0 8px">
+          Fix alternatives (most → least likely)
+        </h4>
+        ${fixes.map((fx, fi) => `
+          <div class="fix ${fi === 0 ? 'best' : ''}">
+            <div class="pct">~${fx.likelihoodPercent ?? 0}%</div>
+            <h4>#${fx.rank || fi + 1} · ${esc(fx.title || '')}</h4>
+            <p>${esc(fx.why || '')}</p>
+            ${(fx.steps || []).length ? `<ol>${fx.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
+            <div class="meta-row">
+              ${fx.effort ? `<span>Effort: ${esc(fx.effort)}</span>` : ''}
+              ${fx.risk ? `<span>Risk: ${esc(fx.risk)}</span>` : ''}
+            </div>
+          </div>`).join('') || '<p class="breakdown">No curated fixes for this theme yet.</p>'}
+
+        ${f.advice?.playbook ? `
+          <p style="font-size:12px;margin:8px 0"><strong>Playbook:</strong> ${esc(f.advice.playbook.title)} — ${esc(f.advice.playbook.summary || '')}</p>
+          ${f.advice.playbook.whenToStop ? `<p class="breakdown"><strong>When to stop:</strong> ${esc(f.advice.playbook.whenToStop)}</p>` : ''}
+        ` : ''}
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <a class="chip" href="${esc(f.timelineUrl || 'Event Viewer.html')}">Open timeline</a>
+          ${f.advice?.assistUrl ? `<a class="chip" href="${esc(f.advice.assistUrl)}">Board Map assist</a>` : ''}
+          ${f.advice?.searchUrl ? `<a class="chip" href="${esc(f.advice.searchUrl)}" target="_blank" rel="noopener">Guided web search</a>` : ''}
+        </div>
+
+        ${samples.length ? `<div class="samples"><strong>Sample log lines</strong>
+          ${samples.map(s => `<pre>${esc((s.time || '').slice(0,19))} · ${esc(s.provider || '')} · id ${esc(String(s.id ?? ''))}\n${esc(s.message || '')}</pre>`).join('')}
+        </div>` : ''}
+      </div>
+    </article>`;
+  }).join('');
+
+  document.querySelectorAll('.finding-h').forEach(h => {
+    h.addEventListener('click', () => {
+      h.parentElement.classList.toggle('open');
+    });
+  });
+}
+
+async function run() {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = true;
+  document.getElementById('list').innerHTML = '<p style="color:var(--muted)">Sampling event logs and scoring issues… (can take 15–40s)</p>';
+  try {
+    await UI().apiFetch('/health');
+    setPill(true, 'Connected');
+  } catch {
+    setPill(false, 'Server offline');
+    document.getElementById('list').innerHTML = '<p style="color:var(--danger)">Server offline — start toolbox server first.</p>';
+    btn.disabled = false;
+    return;
+  }
+  try {
+    const hours = document.getElementById('hours').value;
+    const includeNoise = document.getElementById('includeNoise').checked;
+    const data = await UI().apiFetch(
+      `/events/deep-dive?hours=${hours}&max_events=600&include_noise=${includeNoise}`
+    );
+    render(data);
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<p style="color:var(--danger)">${esc(e.message || e)}</p>`;
+  }
+  btn.disabled = false;
+}
+
+document.getElementById('btnRun').onclick = run;
+UI()?.mountServerBar?.({ onOnline: () => {} });
+// Auto-run if ?run=1
+if (new URLSearchParams(location.search).get('run') === '1') run();
+else {
+  UI().apiFetch('/health').then(() => setPill(true, 'Connected')).catch(() => setPill(false, 'Offline'));
+}
+</script>
+</body>
+</html>

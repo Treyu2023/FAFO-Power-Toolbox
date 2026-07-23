@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Event Viewer — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root{
+  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
+  --accent:#00f3ff;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;
+  --text:#e2e8f0;--muted:#8b9bb4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;
+  background:
+    radial-gradient(ellipse at 20% -10%,rgba(96,165,250,.14),transparent 50%),
+    radial-gradient(ellipse at 50% -20%,#0f172a,var(--bg) 60%);
+}
+.nav{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.95);
+  position:sticky;top:0;z-index:20;
+}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.nav .t{color:var(--accent);letter-spacing:1px;font-size:14px;font-weight:700}
+.wrap{max-width:1200px;margin:0 auto;padding:22px 20px 48px}
+h1{font-size:1.5rem;margin-bottom:4px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.45}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.btn{
+  background:rgba(0,243,255,.12);border:1px solid var(--accent);color:var(--accent);
+  padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+}
+.btn:disabled{opacity:.5;cursor:wait}
+.btn.ghost{background:transparent;border-color:var(--border);color:var(--muted)}
+.inp,.sel{
+  background:var(--panel);border:1px solid var(--border);color:var(--text);
+  padding:8px 10px;border-radius:8px;font-size:12px;
+}
+.status{
+  display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;
+  border-radius:999px;border:1px solid var(--border);font-weight:600;
+}
+.status.ok{color:var(--ok)} .status.info{color:var(--info)}
+.status.warn{color:var(--warn)} .status.bad,.status.error{color:var(--danger)}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tab{
+  border:1px solid var(--border);background:var(--panel);color:var(--muted);
+  padding:10px 14px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;
+}
+.tab.active{color:#0b1020;background:linear-gradient(135deg,#67e8f9,#a78bfa);border-color:transparent}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-size:1.35rem;font-weight:700;margin-top:4px}
+.badge{
+  display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;
+  text-transform:uppercase;
+}
+.badge.ok{background:rgba(52,211,153,.14);color:var(--ok)}
+.badge.info{background:rgba(96,165,250,.14);color:var(--info)}
+.badge.warn{background:rgba(251,191,36,.14);color:var(--warn)}
+.badge.error{background:rgba(244,63,94,.14);color:var(--danger)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{
+  background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;
+  cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%;
+}
+.card:hover{border-color:#3b4d6b}
+.card.ok{border-left:3px solid var(--ok)}
+.card.info{border-left:3px solid var(--info)}
+.card.warn{border-left:3px solid var(--warn)}
+.card.error{border-left:3px solid var(--danger)}
+.card h3{font-size:14px;margin:6px 0}
+.card p{font-size:12px;color:var(--muted);line-height:1.45}
+.card .meta{font-size:11px;color:var(--muted);margin-top:8px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:14px}
+.ph{padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.pb{padding:12px 16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)}
+td{padding:8px;border-bottom:1px solid rgba(36,48,73,.5);vertical-align:top}
+tr:hover td{background:rgba(255,255,255,.03)}
+.msg{max-width:420px;color:var(--muted);line-height:1.35}
+.mono{font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.hidden{display:none}
+.callout{
+  border-left:4px solid var(--info);background:var(--panel2);padding:12px 14px;border-radius:0 12px 12px 0;
+  font-size:13px;line-height:1.45;margin-bottom:16px;color:var(--text);
+}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="System Health Dashboard.html">← Health Hub</a>
+  <span class="t">EVENT VIEWER</span>
+  <span id="pill" class="status bad">Offline</span>
+</nav>
+<div class="wrap">
+  <h1>Event Viewer (human mode)</h1>
+  <p class="sub">Windows System &amp; Application errors/warnings, grouped into plain-English themes so DCOM spam does not look like a crisis. Not a full clone of <code>eventvwr.msc</code> — use that for deep admin work.</p>
+
+  <div class="callout">
+    <strong>How to read this:</strong>
+    Green/Fine themes are normal clutter. Yellow means watch if you feel a symptom. Red means act or investigate the related hardware/app.
+    For ranked “what’s wrong + what to try first,” open
+    <a href="Event Deep Dive.html?run=1" style="color:var(--accent);font-weight:700">Event Deep Dive</a>.
+  </div>
+
+  <div class="toolbar">
+    <a class="btn" href="Event Deep Dive.html?run=1" style="text-decoration:none">Deep dive (ranked fixes)</a>
+    <button class="btn" id="btnRefresh">Refresh</button>
+    <select class="sel" id="hours">
+      <option value="6">Last 6 hours</option>
+      <option value="24" selected>Last 24 hours</option>
+      <option value="72">Last 3 days</option>
+      <option value="168">Last 7 days</option>
+    </select>
+    <input class="inp" id="search" placeholder="Search provider or message…" style="min-width:200px">
+    <select class="sel" id="logFilter">
+      <option value="">All logs</option>
+      <option value="System">System</option>
+      <option value="Application">Application</option>
+    </select>
+    <a class="btn ghost" href="System Health Dashboard.html" style="text-decoration:none">Health Hub</a>
+    <a class="btn ghost" href="PC Reports and Log Viewer/index.html" style="text-decoration:none">Report Library</a>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="themes">Themes</button>
+    <button class="tab" data-tab="timeline">Timeline</button>
+    <button class="tab" data-tab="providers">By provider</button>
+  </div>
+
+  <div id="view-themes"></div>
+  <div id="view-timeline" class="hidden"></div>
+  <div id="view-providers" class="hidden"></div>
+
+  <div class="legend">
+    <span><span class="badge ok">Fine</span> usually ignore</span>
+    <span><span class="badge info">FYI</span> optional</span>
+    <span><span class="badge warn">Watch</span> if symptoms</span>
+    <span><span class="badge error">Act</span> investigate</span>
+  </div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[c]));
+
+const LABEL = { ok: 'Fine', info: 'FYI', warn: 'Watch', error: 'Act' };
+function badge(lv) {
+  const c = lv === 'bad' ? 'error' : (lv || 'info');
+  return `<span class="badge ${c}">${LABEL[c] || c}</span>`;
+}
+
+let summary = null;
+let timeline = null;
+let activeTheme = null;
+let tab = 'themes';
+
+function qs(name) {
+  return new URLSearchParams(location.search).get(name);
+}
+
+function setPill(ok, text) {
+  const el = document.getElementById('pill');
+  el.className = 'status ' + (ok ? 'ok' : 'bad');
+  el.textContent = text;
+}
+
+function renderStats(s) {
+  document.getElementById('stats').innerHTML = [
+    { l: 'Sampled', v: s.sampled ?? '—' },
+    { l: 'Errors', v: s.errorCount ?? '—' },
+    { l: 'Warnings', v: s.warningCount ?? '—' },
+    { l: 'Themes', v: (s.themes || []).length },
+    { l: 'Window', v: (s.windowHours || 24) + 'h' },
+    { l: 'Overall', v: LABEL[s.level] || s.level || '—' },
+  ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${esc(String(x.v))}</div></div>`).join('');
+}
+
+function renderThemes(s) {
+  const themes = s.themes || [];
+  const box = document.getElementById('view-themes');
+  if (!themes.length) {
+    box.innerHTML = '<div class="panel"><div class="pb" style="color:var(--ok)">No error/warning themes in this window ✓</div></div>';
+    return;
+  }
+  box.innerHTML = `<div class="grid">${themes.map(t => `
+    <button type="button" class="card ${t.level || 'info'}" data-theme="${esc(t.id)}">
+      ${badge(t.level)}
+      <h3>${esc(t.title)}</h3>
+      <p>${esc(t.plainEnglish)}</p>
+      <div class="meta">
+        <strong>${t.count}</strong> events · Care: ${esc(t.care || '—')}
+        ${(t.providers || []).length ? '<br>Providers: ' + esc((t.providers || []).slice(0,4).join(', ')) : ''}
+      </div>
+    </button>`).join('')}</div>`;
+  box.querySelectorAll('[data-theme]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTheme = btn.getAttribute('data-theme');
+      switchTab('timeline');
+      loadTimeline();
+    });
+  });
+}
+
+function renderTimeline(data) {
+  const box = document.getElementById('view-timeline');
+  const rows = data?.events || [];
+  const filterNote = activeTheme
+    ? `<div style="margin-bottom:10px;font-size:12px;color:var(--muted)">Filtered to theme <strong>${esc(activeTheme)}</strong>
+        <button class="btn ghost" id="btnClearTheme" style="margin-left:8px">Clear filter</button></div>`
+    : '';
+  if (!rows.length) {
+    box.innerHTML = filterNote + '<div class="panel"><div class="pb" style="color:var(--muted)">No events match.</div></div>';
+    document.getElementById('btnClearTheme')?.addEventListener('click', () => {
+      activeTheme = null;
+      loadTimeline();
+    });
+    return;
+  }
+  box.innerHTML = filterNote + `<div class="panel"><div class="ph">Timeline (${rows.length}${data.limited ? '+' : ''})</div>
+    <div class="pb" style="overflow:auto">
+    <table>
+      <thead><tr><th>When</th><th>Level</th><th>Log</th><th>Provider</th><th>ID</th><th>Theme</th><th>Message</th></tr></thead>
+      <tbody>
+        ${rows.map(e => {
+          const when = e.time ? new Date(e.time).toLocaleString() : '—';
+          return `<tr>
+            <td class="mono">${esc(when)}</td>
+            <td>${badge(e.uiLevel || e.themeLevel || 'info')}</td>
+            <td>${esc(e.log || '')}</td>
+            <td>${esc(e.provider || '')}</td>
+            <td class="mono">${esc(String(e.id ?? ''))}</td>
+            <td>${esc(e.themeTitle || e.themeId || '')}</td>
+            <td class="msg">${esc((e.message || '').slice(0, 220))}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div></div>`;
+  document.getElementById('btnClearTheme')?.addEventListener('click', () => {
+    activeTheme = null;
+    loadTimeline();
+  });
+}
+
+function renderProviders(s) {
+  const map = new Map();
+  for (const t of (s.themes || [])) {
+    for (const p of (t.providers || [])) {
+      const cur = map.get(p) || { provider: p, count: 0, level: 'ok', themes: [] };
+      cur.count += t.count || 0;
+      const ranks = { ok: 0, info: 1, warn: 2, error: 3 };
+      if ((ranks[t.level] || 0) > (ranks[cur.level] || 0)) cur.level = t.level;
+      cur.themes.push(t.title);
+      map.set(p, cur);
+    }
+  }
+  const rows = [...map.values()].sort((a, b) => b.count - a.count);
+  const box = document.getElementById('view-providers');
+  if (!rows.length) {
+    box.innerHTML = '<div class="panel"><div class="pb" style="color:var(--muted)">No providers in sample.</div></div>';
+    return;
+  }
+  box.innerHTML = `<div class="panel"><div class="ph">By provider</div><div class="pb" style="overflow:auto">
+    <table>
+      <thead><tr><th>Provider</th><th>Approx count</th><th>Care level</th><th>Themes</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td>${esc(r.provider)}</td>
+          <td class="mono">${r.count}</td>
+          <td>${badge(r.level)}</td>
+          <td class="msg">${esc([...new Set(r.themes)].join(' · '))}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div></div>`;
+}
+
+function switchTab(name) {
+  tab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.getElementById('view-themes').classList.toggle('hidden', name !== 'themes');
+  document.getElementById('view-timeline').classList.toggle('hidden', name !== 'timeline');
+  document.getElementById('view-providers').classList.toggle('hidden', name !== 'providers');
+}
+
+async function loadSummary() {
+  const hours = document.getElementById('hours').value;
+  const s = await UI().apiFetch(`/events/summary?hours=${hours}&max_events=400`);
+  summary = s;
+  renderStats(s);
+  renderThemes(s);
+  renderProviders(s);
+}
+
+async function loadTimeline() {
+  const hours = document.getElementById('hours').value;
+  const q = document.getElementById('search').value.trim();
+  const log = document.getElementById('logFilter').value;
+  const params = new URLSearchParams({ hours, max_events: '200' });
+  if (q) params.set('q', q);
+  if (log) params.set('log', log);
+  if (activeTheme) params.set('theme', activeTheme);
+  const data = await UI().apiFetch('/events/query?' + params.toString());
+  timeline = data;
+  renderTimeline(data);
+}
+
+async function load() {
+  const btn = document.getElementById('btnRefresh');
+  btn.disabled = true;
+  try {
+    await UI().apiFetch('/health');
+    setPill(true, 'Connected');
+  } catch {
+    setPill(false, 'Server offline');
+    document.getElementById('view-themes').innerHTML =
+      '<div class="panel"><div class="pb">Server offline — start the toolbox server, then refresh.</div></div>';
+    btn.disabled = false;
+    return;
+  }
+  try {
+    await loadSummary();
+    if (tab === 'timeline' || activeTheme) await loadTimeline();
+  } catch (e) {
+    document.getElementById('view-themes').innerHTML =
+      `<div class="panel"><div class="pb" style="color:var(--danger)">${esc(e.message || e)}</div></div>`;
+  }
+  btn.disabled = false;
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    switchTab(t.dataset.tab);
+    if (t.dataset.tab === 'timeline' && !timeline) loadTimeline().catch(console.error);
+  });
+});
+document.getElementById('btnRefresh').onclick = load;
+document.getElementById('hours').onchange = load;
+document.getElementById('logFilter').onchange = () => {
+  if (tab === 'timeline') loadTimeline();
+};
+let searchTimer = null;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (tab !== 'timeline') switchTab('timeline');
+    loadTimeline().catch(console.error);
+  }, 350);
+});
+
+// Deep link: ?theme=disk-retries or ?q=Bluetooth
+const t0 = qs('theme');
+const q0 = qs('q');
+if (t0) activeTheme = t0;
+if (q0) document.getElementById('search').value = q0;
+if (t0 || q0) tab = 'timeline';
+
+UI()?.mountServerBar?.({ onOnline: load });
+if (tab === 'timeline') switchTab('timeline');
+load();
+</script>
+</body>
+</html>

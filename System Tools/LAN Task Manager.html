@@ -507,15 +507,48 @@
         function $(id) { return document.getElementById(id); }
 
         // Navigation
+        const VALID_VIEWS = new Set(['dashboard', 'processes', 'connections', 'lan', 'tools', 'diagnostics']);
+
+        function selectView(view, { refresh = true } = {}) {
+            if (!VALID_VIEWS.has(view)) view = 'dashboard';
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            const pane = $('view-' + view);
+            if (pane) pane.classList.add('active');
+            if (refresh) refreshCurrentView();
+        }
+
+        /** Deep links from Home Health Hub: #processes?sort=cpu&q=chrome */
+        function applyRouteFromHash() {
+            const raw = (location.hash || '').replace(/^#/, '');
+            if (!raw) return;
+            const qIdx = raw.indexOf('?');
+            const view = (qIdx >= 0 ? raw.slice(0, qIdx) : raw).toLowerCase() || 'dashboard';
+            const qs = new URLSearchParams(qIdx >= 0 ? raw.slice(qIdx + 1) : '');
+            if (view === 'processes') {
+                const sort = qs.get('sort');
+                if (sort && $('procSort')) {
+                    const opt = [...$('procSort').options].find(o => o.value === sort);
+                    if (opt) $('procSort').value = sort;
+                }
+                const q = qs.get('q');
+                if (q != null && $('procSearch')) $('procSearch').value = q;
+            }
+            selectView(VALID_VIEWS.has(view) ? view : 'dashboard');
+        }
+
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-                btn.classList.add('active');
-                $('view-' + btn.dataset.view).classList.add('active');
-                refreshCurrentView();
+                selectView(btn.dataset.view);
+                const view = btn.dataset.view;
+                // Keep URL shareable without wiping process filters unless leaving processes
+                if (view && location.hash.replace(/^#/, '').split('?')[0] !== view) {
+                    history.replaceState(null, '', '#' + view);
+                }
             });
         });
+
+        window.addEventListener('hashchange', () => applyRouteFromHash());
 
         function refreshCurrentView() {
             const active = document.querySelector('.nav-btn.active')?.dataset.view;
@@ -907,8 +940,12 @@
         }
 
         async function init() {
+            // Apply deep link before first data load so processes view can fetch correctly
+            if (location.hash) applyRouteFromHash();
             if (await checkServer()) {
-                await loadDashboard();
+                const active = document.querySelector('.nav-btn.active')?.dataset.view || 'dashboard';
+                if (active === 'dashboard') await loadDashboard();
+                else refreshCurrentView();
                 startPolling();
             }
         }

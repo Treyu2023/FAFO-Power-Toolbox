@@ -388,6 +388,14 @@ def run_system_diagnostics(
         raise TimeoutError(f"Diagnostics timed out after {timeout_sec}s") from e
 
     pack = write_viewer_packs(root)
+    # Also refresh plain-English hub report
+    report = None
+    try:
+        import health_report
+        report = health_report.generate_now(root)
+    except Exception as e:
+        report = {"ok": False, "error": str(e)}
+
     return {
         "ok": proc.returncode == 0,
         "returncode": proc.returncode,
@@ -399,4 +407,136 @@ def run_system_diagnostics(
             "deviceId": pack["deviceId"],
             "deviceRoot": pack["deviceRoot"],
         },
+        "healthReport": report,
+    }
+
+
+# Sections the hub can re-run without a full FAFO PowerShell pass
+SECTION_IDS = {
+    "cpu", "memory", "storage", "gpu", "usb", "network",
+    "events", "processes", "boot", "security", "firmware", "full",
+}
+
+
+def run_section(
+    section: str,
+    toolbox_root: Path | None = None,
+    write_report: bool = True,
+) -> dict[str, Any]:
+    """
+    Refresh data for one hub section (live Python collectors).
+    section=full runs Invoke-FAFOSystemDiagnostics.ps1.
+    """
+    root = toolbox_root or _toolbox_root()
+    section = (section or "").strip().lower()
+    if section not in SECTION_IDS:
+        raise ValueError(f"Unknown section '{section}'. Valid: {sorted(SECTION_IDS)}")
+
+    started = datetime.now().isoformat(timespec="seconds")
+    details: dict[str, Any] = {"section": section, "started": started}
+
+    if section == "full":
+        result = run_system_diagnostics(root, open_viewer=False)
+        return {
+            "ok": result.get("ok", False),
+            "section": "full",
+            "mode": "full_diagnostics",
+            "started": started,
+            "finished": datetime.now().isoformat(timespec="seconds"),
+            "result": {
+                "returncode": result.get("returncode"),
+                "pack": result.get("pack"),
+                "healthReport": result.get("healthReport"),
+            },
+            "stdoutTail": (result.get("stdout") or "")[-2000:],
+        }
+
+    # Lightweight collectors
+    try:
+        if section in ("cpu", "memory", "processes", "network"):
+            import network_ops as net
+            overview = net.get_system_overview()
+            details["overview"] = {
+                "cpu": overview.get("cpu", {}).get("percent"),
+                "memory": overview.get("memory", {}).get("percent"),
+                "process_count": overview.get("process_count"),
+                "net_send": overview.get("network", {}).get("send_rate_human"),
+                "net_recv": overview.get("network", {}).get("recv_rate_human"),
+            }
+            if section == "processes":
+                procs = net.list_processes(sort_by="cpu", limit=15, include_network=False)
+                details["topProcesses"] = [
+                    {"name": p.get("name"), "cpu": p.get("cpu_percent"), "memory": p.get("memory_human")}
+                    for p in (procs.get("processes") or [])[:10]
+                ]
+        elif section == "storage":
+            import disk_ops as disk
+            details["disk"] = disk.get_overview()
+        elif section == "boot":
+            import startup_ops as startup
+            boot = startup.get_overview()
+            details["startup"] = {
+                "startup_count": boot.get("startup_count"),
+                "task_count": boot.get("task_count"),
+                "service_count": boot.get("service_count"),
+                "auto_services": boot.get("auto_services"),
+                "running_services": boot.get("running_services"),
+            }
+        elif section == "security":
+            import security_scan as sec
+            intel = sec.get_intel_status()
+            details["security"] = {
+                "threat_hashes": intel.get("total_hashes"),
+                "last_update": intel.get("last_update"),
+                "quarantine": len(sec.list_quarantine()),
+            }
+        elif section == "events":
+            import event_ops as events
+            events.clear_cache()
+            details["events"] = events.get_summary(hours=24, max_events=350)
+        elif section in ("usb", "firmware", "gpu"):
+            import board_ops as board
+            identity = board.detect_identity(force=True)
+            details["identity"] = {
+                "board": identity.get("board"),
+                "bios": identity.get("bios"),
+                "cpu": identity.get("cpu"),
+                "gpus": identity.get("gpus"),
+                "problemDevices": len(identity.get("devices") or []),
+                "devices": [
+                    {"name": d.get("name"), "status": d.get("status")}
+                    for d in (identity.get("devices") or [])[:15]
+                ],
+            }
+            if section == "firmware":
+                details["boardPack"] = board.get_board_bundle()
+        else:
+            details["note"] = "Section handled by full dashboard refresh."
+    except Exception as e:
+        return {
+            "ok": False,
+            "section": section,
+            "mode": "section",
+            "started": started,
+            "finished": datetime.now().isoformat(timespec="seconds"),
+            "error": str(e),
+        }
+
+    report = None
+    if write_report:
+        try:
+            import health_report
+            report = health_report.generate_now(root)
+        except Exception as e:
+            report = {"ok": False, "error": str(e)}
+
+    return {
+        "ok": True,
+        "section": section,
+        "mode": "section",
+        "started": started,
+        "finished": datetime.now().isoformat(timespec="seconds"),
+        "details": details,
+        "healthReport": report,
+        "message": f"Section '{section}' refreshed. Open Home Health Hub for the updated English summary.",
     }
