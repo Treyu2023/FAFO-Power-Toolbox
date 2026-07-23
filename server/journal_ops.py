@@ -281,7 +281,22 @@ def journal_periods(session_id: str, *, refresh: bool = True) -> dict[str, Any]:
 # --- Period / T-log fetch -----------------------------------------------------
 
 def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
-    """Parse vtlogpdlist XML into period descriptors (flexible tag names)."""
+    """
+    Parse vtlogpdlist XML into period descriptors.
+
+    Live Commander shape (field-confirmed):
+      <periodList>
+        <periodInfo>
+          <vs:period sysid="1"/>
+          <name>2026-07-22.416</name>
+          <desc>2026-07-22 (SHIFT-416)</desc>
+          <reportParameters>
+            <reportParameter name="period">1</reportParameter>
+            <reportParameter name="filename">2026-07-22.416</reportParameter>
+          </reportParameters>
+        </periodInfo>
+      </periodList>
+    """
     if not xml_text or not xml_text.strip():
         return []
     try:
@@ -289,50 +304,119 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
     except ET.ParseError:
         return []
 
-    periods: list[dict[str, Any]] = []
-    for el in root.iter():
-        ln = _local(el.tag).lower()
-        if ln not in {"period", "pd", "shiftperiod", "vtlogperiod", "tlogperiod", "periodinfo"}:
-            # also accept elements that look like periods by attributes
-            attrs = _attr_map(el)
-            keys = {k.lower() for k in attrs}
-            if not ({"filename", "file", "name", "period", "periodid"} & keys):
+    def report_params(el: ET.Element) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for rp in el.iter():
+            if _local(rp.tag).lower() != "reportparameter":
                 continue
-            if "date" not in keys and "begindate" not in keys and "period" not in keys:
-                if not any(re.search(r"\d{4}", v or "") for v in attrs.values()):
-                    continue
-        attrs = _attr_map(el)
-        children = _child_map(el, depth=2)
-        merged = {**children, **attrs}
-        # normalize
+            # name may be attribute or child
+            pname = rp.attrib.get("name") or ""
+            pval = (rp.text or "").strip()
+            if not pname:
+                # sometimes nested
+                for k, v in rp.attrib.items():
+                    if _local(k).lower() == "name":
+                        pname = v
+            if pname:
+                out[pname] = pval
+            # also map any child tags
+            for c in rp:
+                cn = _local(c.tag)
+                if c.text and c.text.strip():
+                    out[cn] = c.text.strip()
+        return out
+
+    periods: list[dict[str, Any]] = []
+
+    # Preferred: periodInfo blocks (Commander Journal Browser)
+    for el in root.iter():
+        if _local(el.tag).lower() != "periodinfo":
+            continue
+        children = _child_map(el, depth=3)
+        rparams = report_params(el)
+        name = children.get("name") or rparams.get("name") or ""
+        desc = children.get("desc") or children.get("description") or ""
         filename = (
-            merged.get("filename")
-            or merged.get("file")
-            or merged.get("fileName")
-            or merged.get("name")
-            or merged.get("period")
+            rparams.get("filename")
+            or rparams.get("file")
+            or children.get("filename")
+            or name
             or ""
         )
-        date = merged.get("date") or merged.get("beginDate") or merged.get("beginDateTime") or merged.get("Date") or ""
-        shift = merged.get("shift") or merged.get("shiftNumber") or merged.get("periodSeq") or merged.get("seq") or ""
-        label = merged.get("label") or merged.get("display") or ""
-        if not label:
-            parts = [p for p in (date, f"shift {shift}" if shift else "", filename) if p]
-            label = " · ".join(parts) if parts else _local(el.tag)
-        if not filename and not date:
+        period_num = rparams.get("period") or children.get("period") or ""
+        # date/shift from name like 2026-07-22.416 or desc "2026-07-22 (SHIFT-416)"
+        date = ""
+        shift = ""
+        m = re.match(r"(\d{4}-\d{2}-\d{2})(?:\.(\d+))?", name)
+        if m:
+            date = m.group(1)
+            shift = m.group(2) or ""
+        if not shift:
+            m2 = re.search(r"SHIFT[-\s]?(\d+)", desc, re.I)
+            if m2:
+                shift = m2.group(1)
+        if not date:
+            m3 = re.search(r"(\d{4}-\d{2}-\d{2})", desc)
+            if m3:
+                date = m3.group(1)
+        label = desc or name or filename
+        if not filename and not name:
             continue
-        key_src = f"{filename}|{date}|{shift}|{label}"
+        key_src = f"{filename}|{name}|{period_num}|{label}"
         key = hashlib.sha1(key_src.encode("utf-8", errors="ignore")).hexdigest()[:16]
         periods.append(
             {
                 "key": key,
                 "label": label,
                 "filename": filename,
+                "name": name,
                 "date": date,
                 "shift": str(shift),
-                "raw": {k: v for k, v in merged.items() if v},
+                "periodParam": period_num,
+                "raw": {**{k: v for k, v in children.items() if v}, **rparams},
             }
         )
+
+    # Fallback: older / simpler period elements
+    if not periods:
+        for el in root.iter():
+            ln = _local(el.tag).lower()
+            if ln not in {"period", "pd", "shiftperiod", "vtlogperiod", "tlogperiod"}:
+                attrs = _attr_map(el)
+                keys = {k.lower() for k in attrs}
+                if not ({"filename", "file", "name", "period", "periodid"} & keys):
+                    continue
+            attrs = _attr_map(el)
+            children = _child_map(el, depth=2)
+            merged = {**children, **attrs}
+            filename = (
+                merged.get("filename")
+                or merged.get("file")
+                or merged.get("fileName")
+                or merged.get("name")
+                or merged.get("period")
+                or ""
+            )
+            date = merged.get("date") or merged.get("beginDate") or merged.get("beginDateTime") or ""
+            shift = merged.get("shift") or merged.get("shiftNumber") or merged.get("periodSeq") or merged.get("seq") or ""
+            label = merged.get("label") or merged.get("display") or merged.get("desc") or ""
+            if not label:
+                parts = [p for p in (date, f"shift {shift}" if shift else "", filename) if p]
+                label = " · ".join(parts) if parts else _local(el.tag)
+            if not filename and not date:
+                continue
+            key_src = f"{filename}|{date}|{shift}|{label}"
+            key = hashlib.sha1(key_src.encode("utf-8", errors="ignore")).hexdigest()[:16]
+            periods.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "filename": filename,
+                    "date": date,
+                    "shift": str(shift),
+                    "raw": {k: v for k, v in merged.items() if v},
+                }
+            )
 
     # de-dupe by key
     seen: set[str] = set()
@@ -342,9 +426,12 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
             continue
         seen.add(p["key"])
         uniq.append(p)
-    # newest first when dates sortable
+
     def sort_key(p: dict[str, Any]) -> str:
-        return str(p.get("date") or p.get("label") or "")
+        # keep "current" first, then by date/name desc
+        if str(p.get("filename") or "").lower() == "current" or str(p.get("name") or "").lower() == "current":
+            return "9999-99-99"
+        return str(p.get("date") or p.get("name") or p.get("label") or "")
 
     uniq.sort(key=sort_key, reverse=True)
     return uniq
@@ -364,8 +451,13 @@ def _period_fetch_attempts(period: dict[str, Any], cookie: str) -> list[tuple[st
         attempts.append((cmd, params))
 
     # Most common field-confirmed style patterns
+    period_param = str(period.get("periodParam") or raw.get("period") or "").strip()
+    name = str(period.get("name") or "").strip()
+
+    # Commander Journal Browser typically uses filename + period reportParameters
     if filename:
         add("vtlog", filename=filename)
+        add("vtlog", filename=filename, period=period_param or "1")
         add("vtlog", file=filename)
         add("vtlog", name=filename)
         add("getvtlog", filename=filename)
@@ -374,6 +466,15 @@ def _period_fetch_attempts(period: dict[str, Any], cookie: str) -> list[tuple[st
         add("getfile", file=filename)
         add("getfile", name=filename)
         add("vfit", filename=filename)
+        # Some builds use report-style parameters
+        add("vtlog", **{"reportParameter": filename})
+    if name and name != filename:
+        add("vtlog", filename=name)
+        add("vtlog", filename=name, period=period_param or "1")
+        add("vtlog", name=name)
+    if period_param:
+        add("vtlog", period=period_param, filename=filename or name or "current")
+        add("getvtlog", period=period_param, filename=filename or name or "current")
     if date:
         add("vtlog", period=date, shift=shift)
         add("vtlog", date=date, shift=shift)
