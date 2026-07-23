@@ -215,8 +215,9 @@ def journal_login(
         }
 
     periods = []
-    if not pd.get("isFault") or (pd.get("rawPreview") and "period" in (pd.get("rawPreview") or "").lower()):
-        periods = parse_period_list(pd.get("rawPreview") or "")
+    pd_xml = pd.get("body") or pd.get("rawPreview") or ""
+    if not pd.get("isFault") or (pd_xml and "period" in pd_xml.lower()):
+        periods = parse_period_list(pd_xml)
 
     return {
         "ok": True,
@@ -267,14 +268,16 @@ def journal_periods(session_id: str, *, refresh: bool = True) -> dict[str, Any]:
     )
     if res.get("cookie"):
         sess["cookie"] = res["cookie"]
-    periods = parse_period_list(res.get("rawPreview") or "")
+    xml_body = res.get("body") or res.get("rawPreview") or ""
+    periods = parse_period_list(xml_body)
     sess["periods"] = periods
     return {
         "ok": True,
         "periods": periods,
         "count": len(periods),
         "fault": res.get("faultMessage") if res.get("isFault") and not periods else None,
-        "rawPreview": (res.get("rawPreview") or "")[:1500] if not periods else None,
+        "rawPreview": xml_body[:1500] if not periods else None,
+        "bodyBytes": res.get("bodyBytes") or len(xml_body),
     }
 
 
@@ -526,7 +529,7 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
             sess["cookie"] = res["cookie"]
             params = dict(params)
             params["cookie"] = sess["cookie"]
-        preview = res.get("rawPreview") or ""
+        preview = res.get("body") or res.get("rawPreview") or ""
         attempts_log.append(
             {
                 "cmd": cmd,
@@ -540,18 +543,21 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
             continue
         if res.get("isFault") and "invalid" in (res.get("faultMessage") or "").lower():
             continue
-        # Success heuristics: looks like transaction XML
+        # Success heuristics: looks like transaction / PJR XML
         low = preview.lower()
         if preview and (
             "transaction" in low
             or "transset" in low
+            or "<trans" in low
+            or "trheader" in low
             or "tlog" in low
             or "<sale" in low
             or "beginDateTime" in preview
             or "register" in low
+            or "trlfuel" in low
+            or "postfuel" in low
         ):
             raw_xml = preview
-            # full body may be truncated at 512k in sapphire_cgi_link — already max
             used_cmd = cmd
             break
         # Non-fault large XML without keyword still try parse

@@ -626,6 +626,9 @@ def sapphire_cgi_link(
         "httpStatus": status,
         "ms": round((time.time() - t0) * 1000),
         "httpError": err,
+        # Full response body for journal period lists / T-logs (rawPreview is truncated)
+        "body": full,
+        "bodyBytes": len(full or ""),
         **parsed,
     }
 
