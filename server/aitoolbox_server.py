@@ -24,6 +24,7 @@ import playlists as pl
 import debug_log as dbg
 import verifone_ops as vf
 import commander_live as cmd_live
+import journal_ops as journal
 from db import init_db
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -635,6 +636,120 @@ def verifone_import_export_launch(body: CmdLaunchImportExportBody | None = None)
         raise HTTPException(404, str(e)) from e
     except OSError as e:
         raise HTTPException(500, f"Failed to launch: {e}") from e
+
+
+# --- Journal Browser (T-log periods + transaction search / drill-down) ---
+
+class JournalLoginBody(BaseModel):
+    host: str
+    username: str | None = ""
+    password: str | None = ""
+    otp: str | None = None
+    profile_id: str | None = None
+
+
+class JournalPeriodBody(BaseModel):
+    session_id: str
+    period_key: str
+    force: bool = False
+
+
+class JournalSearchBody(BaseModel):
+    session_id: str
+    period_key: str
+    criteria: dict | None = None
+
+
+class JournalXmlBody(BaseModel):
+    path: str
+
+
+class JournalSearchLocalBody(BaseModel):
+    transactions: list[dict] | None = None
+    criteria: dict | None = None
+
+
+@app.post("/api/verifone/journal/login")
+def verifone_journal_login(body: JournalLoginBody):
+    """Authenticate to Commander CGILink and list journal periods (vtlogpdlist)."""
+    if not body.host or not body.host.strip():
+        raise HTTPException(400, "host required")
+    password = body.password or ""
+    username = body.username or ""
+    if body.profile_id and not password:
+        prof = cmd_live.get_profile(body.profile_id, include_password=True)
+        if prof:
+            password = prof.get("password") or ""
+            username = username or (prof.get("username") or "")
+    try:
+        return journal.journal_login(
+            body.host.strip(),
+            username,
+            password,
+            otp=body.otp,
+            profile_id=body.profile_id,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/verifone/journal/session")
+def verifone_journal_session(session_id: str | None = None):
+    return journal.session_status(session_id)
+
+
+@app.post("/api/verifone/journal/logout")
+def verifone_journal_logout(session_id: str = Query("")):
+    if not session_id:
+        raise HTTPException(400, "session_id required")
+    return journal.journal_logout(session_id)
+
+
+@app.get("/api/verifone/journal/periods")
+def verifone_journal_periods(session_id: str, refresh: bool = True):
+    try:
+        return journal.journal_periods(session_id, refresh=refresh)
+    except KeyError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/verifone/journal/load")
+def verifone_journal_load(body: JournalPeriodBody):
+    """Get Data — fetch T-log for a period and parse transactions."""
+    try:
+        return journal.journal_load_period(body.session_id, body.period_key, force=body.force)
+    except KeyError as e:
+        raise HTTPException(401, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/journal/search")
+def verifone_journal_search(body: JournalSearchBody):
+    """Search/filter transactions in a loaded period (register, amount, time, fuel, etc.)."""
+    try:
+        return journal.journal_search(body.session_id, body.period_key, body.criteria or {})
+    except KeyError as e:
+        raise HTTPException(401, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/journal/search-local")
+def verifone_journal_search_local(body: JournalSearchLocalBody):
+    """Client already has transactions (or offline XML parse) — filter only."""
+    return journal.search_transactions(body.transactions or [], body.criteria or {})
+
+
+@app.post("/api/verifone/journal/load-xml")
+def verifone_journal_load_xml(body: JournalXmlBody):
+    """Offline: parse a saved period/T-log XML from disk."""
+    if not body.path:
+        raise HTTPException(400, "path required")
+    try:
+        return journal.journal_load_xml_file(body.path)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
 
 
 @app.get("/api/verifone/sites/{site_id}/survey")

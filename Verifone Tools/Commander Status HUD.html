@@ -153,6 +153,31 @@
       pointer-events: none; position: fixed; inset: 0; z-index: 1; opacity: 0.03;
       background: repeating-linear-gradient(0deg, transparent, transparent 2px, #fff 3px);
     }
+    /* Journal browser */
+    .journal-wrap { margin-top: 14px; }
+    .journal-grid {
+      display: grid; grid-template-columns: 220px 1fr 300px; gap: 10px;
+    }
+    @media (max-width: 1100px) { .journal-grid { grid-template-columns: 1fr; } }
+    .j-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 10px 0; }
+    .j-filters label.fld { margin-top: 0; }
+    .tx-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .tx-table th, .tx-table td { padding: 6px 8px; border-bottom: 1px solid rgba(56,189,248,.1); text-align: left; vertical-align: top; }
+    .tx-table th { position: sticky; top: 0; background: #0a121a; color: var(--muted); font-size: 10px; text-transform: uppercase; z-index: 1; }
+    .tx-table tr { cursor: pointer; }
+    .tx-table tr:hover { background: rgba(56,189,248,.06); }
+    .tx-table tr.active { background: rgba(56,189,248,.14); outline: 1px solid rgba(56,189,248,.35); }
+    .tx-table tr.match { background: rgba(251,191,36,.1); }
+    .tx-scroll { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+    .period-item {
+      padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px;
+      cursor: pointer; font-size: 12px; background: rgba(0,0,0,.2);
+    }
+    .period-item:hover, .period-item.active { border-color: var(--accent); background: rgba(56,189,248,.1); }
+    .period-item .meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .detail-block { font-size: 12px; line-height: 1.45; }
+    .detail-block .rowk { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; margin-top: 8px; }
+    .line-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 6px; background: rgba(0,0,0,.22); font-size: 11px; }
   </style>
 </head>
 <body>
@@ -217,6 +242,7 @@
               <button class="btn danger" id="btnDelProfile" title="Delete selected profile">🗑</button>
               <a class="btn amber" id="btnOpenCc" href="#" target="_blank" rel="noopener">🌐 Open Config Client</a>
               <button class="btn amber" id="btnImportExport" title="Launch Verifone Import-Export Utility for SMS backups">📦 Import-Export Utility</button>
+              <button class="btn primary" id="btnJournalLogin" title="Open CGILink session and load journal periods">📒 Journal login</button>
             </div>
             <div class="hint-box">
               Login: <code>CGILink?cmd=validate&amp;user=&amp;passwd=&amp;otp=</code>.
@@ -283,6 +309,80 @@
         </section>
       </div>
     </div>
+
+    <!-- Journal Browser (full width) -->
+    <section class="panel journal-wrap" id="journalPanel">
+      <div class="ph">
+        📒 Journal Browser · transactions
+        <span id="journalStatus" class="muted" style="text-transform:none;letter-spacing:0;font-size:11px">Not connected</span>
+      </div>
+      <div class="pb">
+        <div class="hint-box" style="margin-top:0">
+          Collects T-log periods from the controller (same CGILink path as Sapphire Journal Browser),
+          then supports <strong>Get Data</strong>, <strong>Search</strong>, and <strong>Filter</strong>
+          by register, employee, time, amount, fuel position/dispenser, MOP, department, barcode, and free text.
+          Drill into a row for line items (fuel grade, PLU, etc.).
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn primary" id="btnJLogin">Journal login / refresh periods</button>
+          <button class="btn" id="btnJGetData" disabled>Get Data</button>
+          <button class="btn" id="btnJSearch" disabled>Search</button>
+          <button class="btn" id="btnJFilter" disabled>Filter</button>
+          <button class="btn" id="btnJPrev" disabled>◀ Prev match</button>
+          <button class="btn" id="btnJNext" disabled>Next match ▶</button>
+          <button class="btn" id="btnJLogout" disabled>Logout session</button>
+          <button class="btn" id="btnJExport" disabled>Export CSV</button>
+        </div>
+        <div class="j-filters" id="jFilters">
+          <div><label class="fld">Register</label><select id="jfReg"><option value="">Any</option></select></div>
+          <div><label class="fld">Employee</label><select id="jfEmp"><option value="">Any</option></select></div>
+          <div><label class="fld">MOP / tender</label><select id="jfMop"><option value="">Any</option></select></div>
+          <div><label class="fld">Department</label><select id="jfDept"><option value="">Any</option></select></div>
+          <div><label class="fld">Fuel position</label><select id="jfFuel"><option value="">Any</option></select></div>
+          <div><label class="fld">Dispenser</label><select id="jfDisp"><option value="">Any</option></select></div>
+          <div><label class="fld">Trans #</label><input id="jfTrans" placeholder="partial OK"></div>
+          <div><label class="fld">Barcode / PLU</label><input id="jfBarcode" placeholder="partial OK"></div>
+          <div><label class="fld">Amount min</label><input id="jfAmtMin" type="number" step="0.01" placeholder="0.00"></div>
+          <div><label class="fld">Amount max</label><input id="jfAmtMax" type="number" step="0.01" placeholder="9999"></div>
+          <div><label class="fld">Time from</label><input id="jfTimeFrom" placeholder="HH:MM:SS"></div>
+          <div><label class="fld">Time to</label><input id="jfTimeTo" placeholder="HH:MM:SS"></div>
+          <div><label class="fld">Text search</label><input id="jfText" placeholder="description, product…"></div>
+          <div><label class="fld">Code</label><select id="jfCode"><option value="">Any</option><option>D</option><option>PO</option><option>TE</option><option>VL</option></select></div>
+          <div style="display:flex;align-items:flex-end;padding-bottom:4px">
+            <label class="chk" style="margin:0"><input type="checkbox" id="jfHasFuel"> Fuel only</label>
+          </div>
+        </div>
+        <div id="jResultMeta" class="muted" style="font-size:12px;margin:6px 0">No period loaded.</div>
+        <div class="journal-grid">
+          <div>
+            <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Periods</div>
+            <div id="jPeriods" class="tx-scroll" style="max-height:480px;padding:6px"><div class="empty" style="padding:16px">Login to load periods</div></div>
+          </div>
+          <div>
+            <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Transactions</div>
+            <div class="tx-scroll" id="jTxScroll">
+              <table class="tx-table">
+                <thead>
+                  <tr>
+                    <th>Trans</th><th>Date</th><th>Time</th><th>Emp</th><th>Reg</th>
+                    <th>Description</th><th>Qty</th><th>Amount</th><th>Fuel</th>
+                  </tr>
+                </thead>
+                <tbody id="jTxBody">
+                  <tr><td colspan="9" class="empty">Get Data for a period</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Drill-down</div>
+            <div id="jDetail" class="detail-block" style="border:1px solid var(--line);border-radius:10px;padding:12px;min-height:200px;background:rgba(0,0,0,.2)">
+              <div class="empty" style="padding:20px">Select a transaction</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -295,6 +395,15 @@
     let targets = [];
     let lastResult = null;
     let selectedProfileId = '';
+    // Journal Browser state
+    let journalSessionId = null;
+    let journalPeriods = [];
+    let journalPeriodKey = null;
+    let journalAllTx = [];
+    let journalViewTx = [];
+    let journalMatchIdx = -1;
+    let journalSelectedRow = null;
+    let journalMode = 'all'; // all | search | filter
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -805,10 +914,361 @@
       }
     }
 
+    // --- Journal Browser ---
+    function setJournalStatus(text, ok) {
+      const s = el('journalStatus');
+      if (!s) return;
+      s.textContent = text;
+      s.style.color = ok ? 'var(--good)' : 'var(--muted)';
+    }
+    function jCriteria() {
+      return {
+        register: el('jfReg').value || '',
+        employee: el('jfEmp').value || '',
+        mop: el('jfMop').value || '',
+        department: el('jfDept').value || '',
+        fuelPosition: el('jfFuel').value || '',
+        dispenser: el('jfDisp').value || '',
+        transNum: el('jfTrans').value.trim() || '',
+        barcode: el('jfBarcode').value.trim() || '',
+        amountMin: el('jfAmtMin').value !== '' ? el('jfAmtMin').value : '',
+        amountMax: el('jfAmtMax').value !== '' ? el('jfAmtMax').value : '',
+        timeFrom: el('jfTimeFrom').value.trim() || '',
+        timeTo: el('jfTimeTo').value.trim() || '',
+        text: el('jfText').value.trim() || '',
+        code: el('jfCode').value || '',
+        hasFuel: el('jfHasFuel').checked ? true : '',
+      };
+    }
+    function fillSelect(sel, values, keepAny = true) {
+      const cur = sel.value;
+      sel.innerHTML = keepAny ? '<option value="">Any</option>' : '';
+      (values || []).forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        sel.appendChild(o);
+      });
+      if (cur) sel.value = cur;
+    }
+    function renderPeriods() {
+      const box = el('jPeriods');
+      if (!journalPeriods.length) {
+        box.innerHTML = '<div class="empty" style="padding:16px">No periods — login or check site connection</div>';
+        return;
+      }
+      box.innerHTML = journalPeriods.map(p => `
+        <div class="period-item ${p.key === journalPeriodKey ? 'active' : ''}" data-key="${esc(p.key)}">
+          <div>${esc(p.label || p.filename || p.key)}</div>
+          <div class="meta">${esc([p.date, p.shift ? ('shift ' + p.shift) : '', p.filename].filter(Boolean).join(' · '))}</div>
+        </div>`).join('');
+      box.querySelectorAll('.period-item').forEach(node => {
+        node.addEventListener('click', () => {
+          journalPeriodKey = node.getAttribute('data-key');
+          renderPeriods();
+          el('btnJGetData').disabled = !journalPeriodKey;
+        });
+      });
+    }
+    function renderTxTable(rows, matchIds) {
+      journalViewTx = rows || [];
+      const matchSet = new Set(matchIds || []);
+      const body = el('jTxBody');
+      if (!journalViewTx.length) {
+        body.innerHTML = '<tr><td colspan="9" class="empty">No transactions</td></tr>';
+        return;
+      }
+      body.innerHTML = journalViewTx.map((t, i) => {
+        const amt = t.amount != null ? Number(t.amount).toFixed(2) : '';
+        const fuel = [t.fuelPosition, t.dispenser].filter(Boolean).join('/') ||
+          ((t.lines || []).map(L => L.fuelPosition || L.product).filter(Boolean)[0] || '');
+        const active = journalSelectedRow === i ? 'active' : '';
+        const match = matchSet.has(i) || (journalMode !== 'all' && journalMatchIdx === i) ? 'match' : '';
+        return `<tr class="${active} ${match}" data-i="${i}">
+          <td class="mono">${esc(t.transNum || '')}</td>
+          <td>${esc(t.date || '')}</td>
+          <td>${esc(t.time || '')}</td>
+          <td>${esc(t.employee || '')}</td>
+          <td>${esc(t.register || '')}</td>
+          <td>${esc(t.description || '')}${(t.codes && t.codes.length) ? ' <span class="chip warn">' + esc(t.codes.join(',')) + '</span>' : ''}</td>
+          <td>${esc(t.qty || '')}</td>
+          <td class="mono">${esc(amt)}</td>
+          <td>${esc(fuel)}</td>
+        </tr>`;
+      }).join('');
+      body.querySelectorAll('tr[data-i]').forEach(tr => {
+        tr.addEventListener('click', () => selectTx(Number(tr.getAttribute('data-i'))));
+      });
+    }
+    function selectTx(i) {
+      journalSelectedRow = i;
+      const t = journalViewTx[i];
+      renderTxTable(journalViewTx);
+      const box = el('jDetail');
+      if (!t) {
+        box.innerHTML = '<div class="empty">Select a transaction</div>';
+        return;
+      }
+      const lines = (t.lines || []).map(L => `
+        <div class="line-item">
+          <strong>${esc(L.description || L.product || 'line')}</strong>
+          ${L.qty != null && L.qty !== '' ? ' × ' + esc(L.qty) : ''}
+          ${L.amount != null ? ' · $' + Number(L.amount).toFixed(2) : ''}
+          ${L.unitPrice != null ? ' · unit $' + Number(L.unitPrice).toFixed(2) : ''}
+          <div class="muted" style="margin-top:4px">
+            ${[L.department && ('Dept ' + L.department), L.barcode && ('UPC ' + L.barcode),
+               L.fuelPosition && ('FP ' + L.fuelPosition), L.dispenser && ('Disp ' + L.dispenser),
+               L.product && ('Product ' + L.product), L.code && ('Code ' + L.code)].filter(Boolean).map(esc).join(' · ')}
+          </div>
+        </div>`).join('') || '<div class="muted">No expandable line items in this record</div>';
+      box.innerHTML = `
+        <div><strong style="color:var(--accent)">Trans ${esc(t.transNum || i)}</strong>
+          ${t.amount != null ? ' · <strong>$' + Number(t.amount).toFixed(2) + '</strong>' : ''}</div>
+        <div class="rowk">When</div><div>${esc(t.dateTime || ((t.date || '') + ' ' + (t.time || '')))}</div>
+        <div class="rowk">Register / Employee</div><div>Reg ${esc(t.register || '—')} · Emp ${esc(t.employee || '—')}</div>
+        <div class="rowk">Description</div><div>${esc(t.description || '—')}</div>
+        <div class="rowk">Tender / Dept</div><div>${esc(t.mop || '—')} · ${esc(t.department || '—')}</div>
+        <div class="rowk">Fuel</div><div>Pos ${esc(t.fuelPosition || '—')} · Disp ${esc(t.dispenser || '—')}</div>
+        <div class="rowk">Barcode</div><div class="mono">${esc(t.barcode || '—')}</div>
+        <div class="rowk">Line items (${t.lineCount || 0})</div>
+        ${lines}
+      `;
+      // scroll row into view
+      const tr = el('jTxBody').querySelector(`tr[data-i="${i}"]`);
+      if (tr) tr.scrollIntoView({ block: 'nearest' });
+    }
+    function applyFacetOptions(payload) {
+      fillSelect(el('jfReg'), payload.registers || []);
+      fillSelect(el('jfEmp'), payload.employees || []);
+      fillSelect(el('jfMop'), payload.mops || []);
+      fillSelect(el('jfDept'), payload.departments || []);
+      fillSelect(el('jfFuel'), payload.fuelPositions || []);
+      fillSelect(el('jfDisp'), payload.dispensers || []);
+    }
+    async function journalLogin() {
+      const host = el('host').value.trim();
+      if (!host) { toast('Enter host/IP first'); return; }
+      el('btnJLogin').disabled = true;
+      el('btnJournalLogin').disabled = true;
+      try {
+        toast('Journal login + loading periods…');
+        const body = {
+          host,
+          username: el('username').value.trim(),
+          password: el('password').value,
+          otp: el('otp').value.trim() || null,
+          profile_id: el('profileSelect').value || selectedProfileId || null,
+        };
+        if (!body.password && body.profile_id) delete body.password;
+        const res = await api('/verifone/journal/login', { method: 'POST', body: JSON.stringify(body) });
+        if (!res.authenticated) {
+          setJournalStatus(res.message || 'Login failed', false);
+          if (res.otpRequired) {
+            el('otpBanner').style.display = 'block';
+            el('otpBannerText').textContent = res.message || 'OTP required';
+            el('otp').focus();
+          }
+          toast(res.message || 'Journal login failed');
+          return;
+        }
+        journalSessionId = res.sessionId;
+        journalPeriods = res.periods || [];
+        journalPeriodKey = journalPeriods[0] ? journalPeriods[0].key : null;
+        journalAllTx = [];
+        journalViewTx = [];
+        renderPeriods();
+        renderTxTable([]);
+        el('jDetail').innerHTML = '<div class="empty">Get Data for a period</div>';
+        el('btnJGetData').disabled = !journalPeriodKey;
+        el('btnJSearch').disabled = true;
+        el('btnJFilter').disabled = true;
+        el('btnJLogout').disabled = false;
+        el('btnJExport').disabled = true;
+        setJournalStatus(`Connected ${res.host} · ${journalPeriods.length} periods · ${res.username || ''}`, true);
+        toast(res.message || 'Journal session open');
+        el('journalPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        toast(String(e.message || e));
+        setJournalStatus('Error', false);
+      } finally {
+        el('btnJLogin').disabled = false;
+        el('btnJournalLogin').disabled = false;
+      }
+    }
+    async function journalGetData() {
+      if (!journalSessionId || !journalPeriodKey) { toast('Select a period'); return; }
+      el('btnJGetData').disabled = true;
+      try {
+        toast('Fetching T-log for period…');
+        const res = await api('/verifone/journal/load', {
+          method: 'POST',
+          body: JSON.stringify({ session_id: journalSessionId, period_key: journalPeriodKey, force: false }),
+        });
+        if (!res.ok) {
+          toast(res.message || 'Load failed');
+          el('jResultMeta').textContent = res.message || 'Load failed';
+          if (res.attempts) {
+            console.warn('journal fetch attempts', res.attempts);
+          }
+          return;
+        }
+        journalAllTx = res.transactions || [];
+        journalMode = 'all';
+        journalMatchIdx = -1;
+        applyFacetOptions(res);
+        renderTxTable(journalAllTx);
+        const sum = res.summary || {};
+        el('jResultMeta').textContent =
+          `Period loaded · ${res.count || 0} transactions · total $${Number(sum.totalAmount || 0).toFixed(2)}` +
+          (res.fetchCmd ? ` · via ${res.fetchCmd}` : '') +
+          (res.cached ? ' · cached' : '');
+        el('btnJSearch').disabled = false;
+        el('btnJFilter').disabled = false;
+        el('btnJExport').disabled = !journalAllTx.length;
+        el('btnJPrev').disabled = true;
+        el('btnJNext').disabled = true;
+        toast(`Loaded ${res.count} transactions`);
+      } catch (e) {
+        toast(String(e.message || e));
+      } finally {
+        el('btnJGetData').disabled = !journalPeriodKey;
+      }
+    }
+    async function journalSearch(mode) {
+      if (!journalSessionId || !journalPeriodKey) return;
+      if (!journalAllTx.length) {
+        await journalGetData();
+        if (!journalAllTx.length) return;
+      }
+      journalMode = mode || 'search';
+      try {
+        const res = await api('/verifone/journal/search', {
+          method: 'POST',
+          body: JSON.stringify({
+            session_id: journalSessionId,
+            period_key: journalPeriodKey,
+            criteria: jCriteria(),
+          }),
+        });
+        const matched = res.matched || [];
+        if (journalMode === 'filter') {
+          renderTxTable(matched);
+          journalMatchIdx = matched.length ? 0 : -1;
+          if (matched.length) selectTx(0);
+        } else {
+          // search: show all, highlight matches by trans identity
+          const matchKeys = new Set(matched.map(t => (t.transNum || '') + '|' + (t.dateTime || t.time || '')));
+          const matchIndexes = [];
+          journalAllTx.forEach((t, i) => {
+            const k = (t.transNum || '') + '|' + (t.dateTime || t.time || '');
+            if (matchKeys.has(k)) matchIndexes.push(i);
+          });
+          renderTxTable(journalAllTx, matchIndexes);
+          journalMatchIdx = matchIndexes.length ? matchIndexes[0] : -1;
+          if (journalMatchIdx >= 0) selectTx(journalMatchIdx);
+          // store match index list on element for next/prev
+          journalSearch._matches = matchIndexes;
+        }
+        el('jResultMeta').textContent =
+          `${journalMode === 'filter' ? 'Filter' : 'Search'}: ${res.count} match(es) · $${Number(res.totalAmount || 0).toFixed(2)}` +
+          ` · of ${res.totalInPeriod || journalAllTx.length} in period`;
+        el('btnJPrev').disabled = !(journalSearch._matches && journalSearch._matches.length);
+        el('btnJNext').disabled = !(journalSearch._matches && journalSearch._matches.length);
+        if (journalMode === 'filter') {
+          journalSearch._matches = matched.map((_, i) => i);
+          el('btnJPrev').disabled = !matched.length;
+          el('btnJNext').disabled = !matched.length;
+        }
+        toast(`${res.count} match(es)`);
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    }
+    function journalMove(dir) {
+      const matches = journalSearch._matches || [];
+      if (!matches.length) return;
+      let pos = matches.indexOf(journalSelectedRow);
+      if (pos < 0) pos = matches.indexOf(journalMatchIdx);
+      if (pos < 0) pos = 0;
+      else pos = (pos + dir + matches.length) % matches.length;
+      journalMatchIdx = matches[pos];
+      selectTx(journalMatchIdx);
+      el('jResultMeta').textContent = `Record ${pos + 1} of ${matches.length} matches`;
+    }
+    async function journalLogout() {
+      if (journalSessionId) {
+        try { await api('/verifone/journal/logout?session_id=' + encodeURIComponent(journalSessionId), { method: 'POST', body: '{}' }); } catch (_) {}
+      }
+      // fix logout - need session_id as query; update API call
+      journalSessionId = null;
+      journalPeriods = [];
+      journalAllTx = [];
+      setJournalStatus('Not connected', false);
+      el('btnJGetData').disabled = true;
+      el('btnJSearch').disabled = true;
+      el('btnJFilter').disabled = true;
+      el('btnJLogout').disabled = true;
+      el('btnJExport').disabled = true;
+      renderPeriods();
+      renderTxTable([]);
+      toast('Journal session closed');
+    }
+    function journalExportCsv() {
+      const rows = journalViewTx.length ? journalViewTx : journalAllTx;
+      if (!rows.length) return;
+      const cols = ['transNum','date','time','employee','register','description','qty','amount','mop','department','fuelPosition','dispenser','barcode'];
+      const lines = [cols.join(',')];
+      rows.forEach(t => {
+        lines.push(cols.map(c => {
+          let v = t[c] == null ? '' : String(t[c]);
+          if (v.includes(',') || v.includes('"')) v = '"' + v.replace(/"/g, '""') + '"';
+          return v;
+        }).join(','));
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'journal-transactions.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('CSV exported');
+    }
+
     el('btnProbe').addEventListener('click', probe);
     el('btnSaveProfile').addEventListener('click', saveProfile);
     el('btnDelProfile').addEventListener('click', deleteProfile);
     el('btnImportExport').addEventListener('click', () => launchImportExport(null));
+    el('btnJournalLogin').addEventListener('click', journalLogin);
+    el('btnJLogin').addEventListener('click', journalLogin);
+    el('btnJGetData').addEventListener('click', journalGetData);
+    el('btnJSearch').addEventListener('click', () => journalSearch('search'));
+    el('btnJFilter').addEventListener('click', () => journalSearch('filter'));
+    el('btnJPrev').addEventListener('click', () => journalMove(-1));
+    el('btnJNext').addEventListener('click', () => journalMove(1));
+    el('btnJLogout').addEventListener('click', async () => {
+      if (journalSessionId) {
+        try {
+          await fetch(apiBase() + '/verifone/journal/logout?session_id=' + encodeURIComponent(journalSessionId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        } catch (_) {}
+      }
+      journalSessionId = null;
+      journalPeriods = [];
+      journalAllTx = [];
+      journalViewTx = [];
+      setJournalStatus('Not connected', false);
+      el('btnJGetData').disabled = true;
+      el('btnJSearch').disabled = true;
+      el('btnJFilter').disabled = true;
+      el('btnJLogout').disabled = true;
+      el('btnJExport').disabled = true;
+      el('btnJPrev').disabled = true;
+      el('btnJNext').disabled = true;
+      renderPeriods();
+      renderTxTable([]);
+      el('jDetail').innerHTML = '<div class="empty">Select a transaction</div>';
+      el('jResultMeta').textContent = 'No period loaded.';
+      toast('Journal session closed');
+    });
+    el('btnJExport').addEventListener('click', journalExportCsv);
     el('profileSelect').addEventListener('change', () => applyProfile(el('profileSelect').value));
     el('exportSelect').addEventListener('change', () => {
       const opt = el('exportSelect').selectedOptions[0];
