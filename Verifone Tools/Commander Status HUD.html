@@ -321,12 +321,16 @@
           <strong>Two different addresses:</strong>
           (1) <em>Toolbox server</em> on this PC — <code>http://127.0.0.87:18765</code> (local FAFO API only).
           (2) <em>Commander site</em> — host field above (default <code>192.168.31.11</code>), used for Journal / Config Client CGILink.
-          Journal login uses your site Manager password; it does not log into 127.0.0.1.
-          Then: <strong>Get Data</strong> → Search/Filter by register, fuel, time, amount, etc.
+          Tuned for <strong>Base 55.02.08</strong> (WEB 5.05.00 · OS 6.01.00 · SELinux 55.x). Login uses site Manager password — not 127.x.
+          Flow: login → <code>vtlogpdlist</code> → <strong>Get Data</strong> (<code>vtransset</code> / <code>vtranssetz</code> / <code>vposjournal</code>) → Search/Filter.
+          Role needs <em>View T-Log period list</em> + <em>Period Reports</em>. Remote CGI may need 4-digit Config OTP (register / Commander 7-seg).
+          55.02.08 T-logs may include <em>cash rounding adjustment</em> paylines (code RND) when rounding is enabled.
+          Fallback: offline XML or open <code>http://&lt;site&gt;/JournalBrowser</code> on the site LAN.
         </div>
         <div class="btn-row" style="margin-top:10px">
           <button type="button" class="btn primary" id="btnJLogin">Journal login / refresh periods</button>
           <button type="button" class="btn" id="btnJGetData" disabled>Get Data</button>
+          <button type="button" class="btn" id="btnJForce" disabled title="Bypass cache and re-fetch from Commander">Force reload</button>
           <button type="button" class="btn" id="btnJSearch" disabled>Search</button>
           <button type="button" class="btn" id="btnJFilter" disabled>Filter</button>
           <button type="button" class="btn" id="btnJPrev" disabled>◀ Prev match</button>
@@ -334,6 +338,16 @@
           <button type="button" class="btn" id="btnJLogout" disabled>Logout session</button>
           <button type="button" class="btn" id="btnJExport" disabled>Export CSV</button>
         </div>
+        <div class="row" style="margin-top:10px;align-items:flex-end">
+          <div style="flex:2;min-width:220px">
+            <label class="fld">Offline T-log / period XML (when live Get Data fails)</label>
+            <input id="jXmlPath" placeholder="C:\path\to\period.xml or exported Journal Browser file" autocomplete="off">
+          </div>
+          <div style="flex:0 0 auto">
+            <button type="button" class="btn amber" id="btnJXml">Load XML file</button>
+          </div>
+        </div>
+        <pre id="jDiag" class="muted" style="display:none;font-size:10px;max-height:140px;overflow:auto;margin:8px 0 0;padding:8px;background:rgba(0,0,0,.35);border-radius:8px;border:1px solid var(--line);white-space:pre-wrap"></pre>
         <div class="j-filters" id="jFilters">
           <div><label class="fld">Register</label><select id="jfReg"><option value="">Any</option></select></div>
           <div><label class="fld">Employee</label><select id="jfEmp"><option value="">Any</option></select></div>
@@ -348,7 +362,7 @@
           <div><label class="fld">Time from</label><input id="jfTimeFrom" placeholder="HH:MM:SS"></div>
           <div><label class="fld">Time to</label><input id="jfTimeTo" placeholder="HH:MM:SS"></div>
           <div><label class="fld">Text search</label><input id="jfText" placeholder="description, product…"></div>
-          <div><label class="fld">Code</label><select id="jfCode"><option value="">Any</option><option>D</option><option>PO</option><option>TE</option><option>VL</option></select></div>
+          <div><label class="fld">Code</label><select id="jfCode"><option value="">Any</option><option>D</option><option>PO</option><option>TE</option><option>VL</option><option value="RND" title="Base 55.02.08 cash rounding payline">RND</option></select></div>
           <div style="display:flex;align-items:flex-end;padding-bottom:4px">
             <label class="chk" style="margin:0"><input type="checkbox" id="jfHasFuel"> Fuel only</label>
           </div>
@@ -1031,7 +1045,8 @@
         node.addEventListener('click', () => {
           journalPeriodKey = node.getAttribute('data-key');
           renderPeriods();
-          el('btnJGetData').disabled = !journalPeriodKey;
+          el('btnJGetData').disabled = !journalPeriodKey || journalSessionId === 'offline';
+          if (el('btnJForce')) el('btnJForce').disabled = !journalPeriodKey || !journalSessionId || journalSessionId === 'offline';
         });
       });
     }
@@ -1110,6 +1125,13 @@
       fillSelect(el('jfFuel'), payload.fuelPositions || []);
       fillSelect(el('jfDisp'), payload.dispensers || []);
     }
+    function showJournalDiag(obj) {
+      const box = el('jDiag');
+      if (!box) return;
+      if (!obj) { box.style.display = 'none'; box.textContent = ''; return; }
+      box.style.display = 'block';
+      box.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+    }
     async function journalLogin() {
       // Snapshot credentials BEFORE any async work so nothing clears them
       const host = el('host').value.trim() || DEFAULT_SITE_HOST;
@@ -1123,6 +1145,7 @@
       if (!host) { toast('Enter Commander host/IP first (e.g. 192.168.31.11)'); return; }
       el('btnJLogin').disabled = true;
       el('btnJournalLogin').disabled = true;
+      showJournalDiag(null);
       try {
         toast('Journal login to ' + host + ' (via local toolbox API)…');
         const body = { host, username, password, otp, profile_id };
@@ -1140,6 +1163,7 @@
             el('otpBannerText').textContent = res.message || 'OTP required';
             el('otp').focus();
           }
+          showJournalDiag({ loginFailed: true, message: res.message, otpRequired: res.otpRequired, otpGuidance: res.otpGuidance });
           toast(res.message || 'Journal login failed on site ' + host);
           return;
         }
@@ -1152,11 +1176,37 @@
         renderTxTable([]);
         el('jDetail').innerHTML = '<div class="empty">Get Data for a period</div>';
         el('btnJGetData').disabled = !journalPeriodKey;
+        if (el('btnJForce')) el('btnJForce').disabled = !journalPeriodKey;
         el('btnJSearch').disabled = true;
         el('btnJFilter').disabled = true;
         el('btnJLogout').disabled = false;
         el('btnJExport').disabled = true;
-        setJournalStatus(`Site ${res.host} · ${journalPeriods.length} periods · ${res.username || username}`, true);
+        const ver = res.siteVersion || {};
+        const verBits = [
+          ver.baseVersion ? ('base ' + ver.baseVersion) : 'base target 55.02.08',
+          ver.webVersion ? ('WEB ' + ver.webVersion) : null,
+        ].filter(Boolean).join(' · ');
+        setJournalStatus(
+          `Site ${res.host} · ${journalPeriods.length} periods · ${res.username || username}` +
+          (verBits ? ' · ' + verBits : ''),
+          true
+        );
+        if (res.periodListFault || !journalPeriods.length) {
+          showJournalDiag({
+            warning: res.periodListFault || 'No periods listed',
+            siteVersion: ver,
+            allowedCmds: res.allowedCmds || [],
+            hint: 'On Base 55.02.x role needs vtlogpdlist + vtransset. Try offline XML or open /JournalBrowser on the site.',
+            journalBrowserUrl: res.journalBrowserUrl,
+          });
+        } else {
+          showJournalDiag({
+            siteVersion: ver,
+            allowedCmds: (res.allowedCmds || []).slice(0, 40),
+            periodCount: journalPeriods.length,
+            target: 'Base 55.02.08 / WEB 5.05.00',
+          });
+        }
         toast(res.message || ('Journal open on ' + res.host));
         el('journalPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (e) {
@@ -1166,26 +1216,34 @@
         if (password) el('password').value = password;
         toast(String(e.message || e));
         setJournalStatus('Error (check local server + site IP)', false);
+        showJournalDiag(String(e.message || e));
       } finally {
         el('btnJLogin').disabled = false;
         el('btnJournalLogin').disabled = false;
       }
     }
-    async function journalGetData() {
+    async function journalGetData(force) {
       if (!journalSessionId || !journalPeriodKey) { toast('Select a period'); return; }
       el('btnJGetData').disabled = true;
+      if (el('btnJForce')) el('btnJForce').disabled = true;
+      showJournalDiag(null);
       try {
-        toast('Fetching T-log for period…');
+        toast(force ? 'Force re-fetching T-log…' : 'Fetching T-log for period…');
         const res = await api('/verifone/journal/load', {
           method: 'POST',
-          body: JSON.stringify({ session_id: journalSessionId, period_key: journalPeriodKey, force: false }),
+          body: JSON.stringify({ session_id: journalSessionId, period_key: journalPeriodKey, force: !!force }),
         });
         if (!res.ok) {
           toast(res.message || 'Load failed');
           el('jResultMeta').textContent = res.message || 'Load failed';
-          if (res.attempts) {
-            console.warn('journal fetch attempts', res.attempts);
-          }
+          showJournalDiag({
+            message: res.message,
+            hint: res.hint,
+            faults: res.faults,
+            allowedCmds: res.allowedCmds,
+            attempts: res.attempts,
+          });
+          console.warn('journal fetch attempts', res.attempts);
           return;
         }
         journalAllTx = res.transactions || [];
@@ -1197,35 +1255,112 @@
         el('jResultMeta').textContent =
           `Period loaded · ${res.count || 0} transactions · total $${Number(sum.totalAmount || 0).toFixed(2)}` +
           (res.fetchCmd ? ` · via ${res.fetchCmd}` : '') +
-          (res.cached ? ' · cached' : '');
+          (res.cached ? ' · cached' : '') +
+          (res.emptyPeriod ? ' · empty period XML' : '');
         el('btnJSearch').disabled = false;
         el('btnJFilter').disabled = false;
         el('btnJExport').disabled = !journalAllTx.length;
         el('btnJPrev').disabled = true;
         el('btnJNext').disabled = true;
+        if (res.fetchCmd || res.attempts) {
+          showJournalDiag({
+            fetchCmd: res.fetchCmd,
+            fetchParams: res.fetchParams,
+            rawBytes: res.rawBytes,
+            emptyPeriod: res.emptyPeriod,
+            attempts: (res.attempts || []).slice(0, 6),
+          });
+        }
         toast(`Loaded ${res.count} transactions`);
       } catch (e) {
         toast(String(e.message || e));
+        showJournalDiag(String(e.message || e));
       } finally {
         el('btnJGetData').disabled = !journalPeriodKey;
+        if (el('btnJForce')) el('btnJForce').disabled = !journalPeriodKey;
+      }
+    }
+    async function journalLoadXml() {
+      const path = (el('jXmlPath') && el('jXmlPath').value || '').trim();
+      if (!path) { toast('Enter a full path to a saved T-log / period XML'); return; }
+      el('btnJXml').disabled = true;
+      showJournalDiag(null);
+      try {
+        const res = await api('/verifone/journal/load-xml', {
+          method: 'POST',
+          body: JSON.stringify({ path }),
+        });
+        if (!res.ok) {
+          toast(res.message || 'XML load failed');
+          showJournalDiag(res);
+          return;
+        }
+        if (res.type === 'periodList') {
+          journalPeriods = res.periods || [];
+          journalPeriodKey = journalPeriods[0] ? journalPeriods[0].key : null;
+          journalSessionId = journalSessionId || 'offline';
+          renderPeriods();
+          el('btnJGetData').disabled = true;
+          if (el('btnJForce')) el('btnJForce').disabled = true;
+          setJournalStatus('Offline period list · ' + journalPeriods.length + ' periods', true);
+          toast('Loaded period list from file (live Get Data still needs a site session)');
+          showJournalDiag({ type: 'periodList', path: res.path, count: journalPeriods.length });
+          return;
+        }
+        journalAllTx = res.transactions || [];
+        journalMode = 'all';
+        journalMatchIdx = -1;
+        journalPeriodKey = (res.period && res.period.key) || 'file';
+        journalPeriods = res.period ? [res.period] : journalPeriods;
+        applyFacetOptions(res);
+        renderPeriods();
+        renderTxTable(journalAllTx);
+        const sum = res.summary || {};
+        el('jResultMeta').textContent =
+          `Offline XML · ${res.count || 0} transactions · total $${Number(sum.totalAmount || 0).toFixed(2)} · ${path}`;
+        el('btnJSearch').disabled = !journalAllTx.length;
+        el('btnJFilter').disabled = !journalAllTx.length;
+        el('btnJExport').disabled = !journalAllTx.length;
+        // Local search without server period cache: use search-local
+        journalSessionId = journalSessionId || 'offline';
+        setJournalStatus('Offline XML loaded', true);
+        toast(`Loaded ${res.count} transactions from XML`);
+      } catch (e) {
+        toast(String(e.message || e));
+        showJournalDiag(String(e.message || e));
+      } finally {
+        el('btnJXml').disabled = false;
       }
     }
     async function journalSearch(mode) {
-      if (!journalSessionId || !journalPeriodKey) return;
-      if (!journalAllTx.length) {
+      if (!journalAllTx.length && journalSessionId && journalSessionId !== 'offline' && journalPeriodKey) {
         await journalGetData();
-        if (!journalAllTx.length) return;
+      }
+      if (!journalAllTx.length) {
+        toast('Load a period (Get Data) or offline XML first');
+        return;
       }
       journalMode = mode || 'search';
       try {
-        const res = await api('/verifone/journal/search', {
-          method: 'POST',
-          body: JSON.stringify({
-            session_id: journalSessionId,
-            period_key: journalPeriodKey,
-            criteria: jCriteria(),
-          }),
-        });
+        let res;
+        if (journalSessionId && journalSessionId !== 'offline' && journalPeriodKey) {
+          res = await api('/verifone/journal/search', {
+            method: 'POST',
+            body: JSON.stringify({
+              session_id: journalSessionId,
+              period_key: journalPeriodKey,
+              criteria: jCriteria(),
+            }),
+          });
+        } else {
+          res = await api('/verifone/journal/search-local', {
+            method: 'POST',
+            body: JSON.stringify({
+              transactions: journalAllTx,
+              criteria: jCriteria(),
+            }),
+          });
+        }
         const matched = res.matched || [];
         if (journalMode === 'filter') {
           renderTxTable(matched);
@@ -1281,10 +1416,12 @@
       journalAllTx = [];
       setJournalStatus('Not connected', false);
       el('btnJGetData').disabled = true;
+      if (el('btnJForce')) el('btnJForce').disabled = true;
       el('btnJSearch').disabled = true;
       el('btnJFilter').disabled = true;
       el('btnJLogout').disabled = true;
       el('btnJExport').disabled = true;
+      showJournalDiag(null);
       renderPeriods();
       renderTxTable([]);
       toast('Journal session closed');
@@ -1316,7 +1453,9 @@
     el('btnImportExport').addEventListener('click', () => launchImportExport(null));
     el('btnJournalLogin').addEventListener('click', journalLogin);
     el('btnJLogin').addEventListener('click', journalLogin);
-    el('btnJGetData').addEventListener('click', journalGetData);
+    el('btnJGetData').addEventListener('click', () => journalGetData(false));
+    if (el('btnJForce')) el('btnJForce').addEventListener('click', () => journalGetData(true));
+    if (el('btnJXml')) el('btnJXml').addEventListener('click', journalLoadXml);
     el('btnJSearch').addEventListener('click', () => journalSearch('search'));
     el('btnJFilter').addEventListener('click', () => journalSearch('filter'));
     el('btnJPrev').addEventListener('click', () => journalMove(-1));
@@ -1333,12 +1472,14 @@
       journalViewTx = [];
       setJournalStatus('Not connected', false);
       el('btnJGetData').disabled = true;
+      if (el('btnJForce')) el('btnJForce').disabled = true;
       el('btnJSearch').disabled = true;
       el('btnJFilter').disabled = true;
       el('btnJLogout').disabled = true;
       el('btnJExport').disabled = true;
       el('btnJPrev').disabled = true;
       el('btnJNext').disabled = true;
+      showJournalDiag(null);
       renderPeriods();
       renderTxTable([]);
       el('jDetail').innerHTML = '<div class="empty">Select a transaction</div>';

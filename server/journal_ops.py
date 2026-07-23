@@ -1,17 +1,34 @@
 """
 Commander / Sapphire Journal Browser integration.
 
+Target fleet: Verifone Commander **Base 55.02.08** (Jan 2026) with:
+  OS 6.01.00 · EPS 9.06.02 · RCI 6.00.01 · **WEB 5.05.00**
+  (55.x uses shared SELinux OS; Config Client / JournalBrowser are WEB package.)
+
 Collects transaction (T-log) data via the same CGILink portal Journal Browser uses,
 then supports drill-down search/filter similar to the classic SMS Journal Browser:
 
   Period list → Get Data → Search/Filter by register, employee, time, amount,
   description, transaction #, MOP, department, fuel position / dispenser, barcode, etc.
 
-Protocol (field-confirmed + SMS Journal Browser docs):
+Protocol (field-confirmed + Verifone Roles/Functions handout + SMS Journal Browser docs):
   CGILink?cmd=validate&user=&passwd=&otp=
-  CGILink?cmd=vtlogpdlist&cookie=
-  CGILink?cmd=<period-fetch>&cookie=&…   (several period-fetch variants tried)
+  CGILink?cmd=ufunctionlist&cookie=          (discover allowed cmds for role)
+  CGILink?cmd=vtlogpdlist&cookie=           (View T-Log period list)
+  CGILink?cmd=vtransset&filename=&period=&cookie=   (Period reports / T-log body)
+  CGILink?cmd=vtranssetz&…                  (gzip compressed variant)
+  CGILink?cmd=vposjournal&…                 (NAXML POSJournal)
+  CGILink?cmd=vAppInfo|vsapphireprop&cookie= (optional base/web version probe)
   CGILink?cmd=releaseCredential&cookie=
+
+Official CGI function names (Commander User Administration roles handout):
+  validate, releaseCredential, ufunctionlist, vtlogpdlist, vtransset,
+  vtranssetz, vposjournal, vperiodlist, vreportpdlist, findfilename
+
+Base 55.02.08 T-log notes:
+  - Cash Rounding (new in 55.02.08): T-log may include a "Rounding Adjustment" payline.
+  - Role still needs vtlogpdlist + vtransset (Period Reports, masked CHD).
+  - Remote Config Client / CGILink may require 4-digit Config OTP (register / 7-seg).
 
 Offline: parse previously saved period XML exports from disk.
 """
@@ -34,6 +51,17 @@ import commander_live as cl
 _SESSIONS: dict[str, dict[str, Any]] = {}
 _SESS_LOCK = threading.Lock()
 _SESSION_TTL_SEC = 45 * 60  # 45 minutes
+
+# Field target for this toolbox build (sites may be slightly older/newer 55.02.x)
+TARGET_BASE_VERSION = "55.02.08"
+TARGET_WEB_VERSION = "5.05.00"
+TARGET_OS_VERSION = "6.01.00"
+
+# Official period-fetch cmds (preferred order). Avoid inventing cmds that can
+# thrash the session cookie on some firmware builds.
+# On Base 55.02.x / WEB 5.05 these are the documented period-report / POSJournal cmds.
+_OFFICIAL_FETCH_CMDS = ("vtransset", "vtranssetz", "vposjournal")
+_LEGACY_FETCH_CMDS = ("vtlog", "getvtlog", "tlog")
 
 
 def _utc_now() -> str:
@@ -185,7 +213,35 @@ def journal_login(
             "otpGuidance": cl.OTP_GUIDANCE,
         }
 
-    # Confirm journal function available
+    # Best-effort Base 55.02.x version probe (vAppInfo / vsapphireprop)
+    site_version = _probe_site_version(
+        host,
+        chosen["cookie"],
+        scheme=chosen["scheme"],
+        port=chosen["port"],
+        timeout=min(timeout, 8.0),
+    )
+    if site_version.get("cookie"):
+        chosen["cookie"] = site_version["cookie"]
+
+    # Discover which CGI functions this role may call (ufunctionlist).
+    # Used later to prefer allowed T-log fetch cmds (vtransset / vposjournal / …).
+    allowed_cmds: list[str] = []
+    fl = cl.sapphire_cgi_link(
+        host,
+        "ufunctionlist",
+        params={"cookie": chosen["cookie"]},
+        scheme=chosen["scheme"],
+        port=chosen["port"],
+        timeout=max(timeout, 12.0),
+    )
+    if fl.get("cookie"):
+        chosen["cookie"] = fl["cookie"]
+    fl_xml = fl.get("body") or fl.get("rawPreview") or ""
+    if fl_xml and not (fl.get("isFault") and "permission" in (fl.get("faultMessage") or "").lower()):
+        allowed_cmds = _parse_function_list(fl_xml)
+
+    # Confirm journal function available — View T-Log period list
     pd = cl.sapphire_cgi_link(
         host,
         "vtlogpdlist",
@@ -197,6 +253,34 @@ def journal_login(
     # cookie may rotate
     if pd.get("cookie"):
         chosen["cookie"] = pd["cookie"]
+
+    periods = []
+    pd_xml = pd.get("body") or pd.get("rawPreview") or ""
+    if not pd.get("isFault") or (pd_xml and "period" in pd_xml.lower()):
+        periods = parse_period_list(pd_xml)
+
+    # Fallback period lists when vtlogpdlist is empty/faulted but role has report lists
+    if not periods and allowed_cmds:
+        for alt_cmd in ("vperiodlist", "vreportpdlist"):
+            if allowed_cmds and alt_cmd not in allowed_cmds and allowed_cmds:
+                # if we have a list and cmd is absent, still try once (some builds omit names)
+                pass
+            alt = cl.sapphire_cgi_link(
+                host,
+                alt_cmd,
+                params={"cookie": chosen["cookie"]},
+                scheme=chosen["scheme"],
+                port=chosen["port"],
+                timeout=max(timeout, 15.0),
+            )
+            if alt.get("cookie"):
+                chosen["cookie"] = alt["cookie"]
+            alt_xml = alt.get("body") or alt.get("rawPreview") or ""
+            periods = parse_period_list(alt_xml)
+            if periods:
+                pd = alt
+                pd_xml = alt_xml
+                break
 
     sid = secrets.token_hex(16)
     with _SESS_LOCK:
@@ -212,13 +296,22 @@ def journal_login(
             "created": time.time(),
             "profileId": profile_id,
             "cache": {},  # periodKey -> parsed payload
+            "periods": periods,  # keep client period keys in sync
+            "allowedCmds": allowed_cmds,
+            "siteVersion": site_version,
         }
 
-    periods = []
-    pd_xml = pd.get("body") or pd.get("rawPreview") or ""
-    if not pd.get("isFault") or (pd_xml and "period" in pd_xml.lower()):
-        periods = parse_period_list(pd_xml)
+    period_fault = None
+    if pd.get("isFault") and not periods:
+        period_fault = pd.get("faultMessage") or "vtlogpdlist failed"
+    elif not periods:
+        period_fault = (
+            "No T-log periods returned. On Base 55.02.x confirm the user role includes "
+            "'View T-Log period list' (vtlogpdlist) and 'Period Reports' (vtransset). "
+            "Remote sessions may need a 4-digit Config OTP from the register/Commander display."
+        )
 
+    ver_label = site_version.get("baseVersion") or f"target {TARGET_BASE_VERSION}"
     return {
         "ok": True,
         "authenticated": True,
@@ -229,8 +322,21 @@ def journal_login(
         "journalBrowserUrl": f"{chosen['baseUrl']}/JournalBrowser",
         "periodCount": len(periods),
         "periods": periods,
-        "periodListFault": pd.get("faultMessage") if pd.get("isFault") and not periods else None,
-        "message": f"Journal session open — {len(periods)} period(s) listed",
+        "allowedCmds": allowed_cmds,
+        "siteVersion": {
+            "targetBase": TARGET_BASE_VERSION,
+            "targetWeb": TARGET_WEB_VERSION,
+            "baseVersion": site_version.get("baseVersion"),
+            "webVersion": site_version.get("webVersion"),
+            "looksLike55": site_version.get("looksLike55"),
+            "notes": site_version.get("notes") or [],
+        },
+        "periodListFault": period_fault,
+        "message": (
+            f"Journal session open on base {ver_label} — {len(periods)} period(s) listed"
+            if periods
+            else f"Journal session open (base {ver_label}) but no periods listed ({period_fault or 'empty'})"
+        ),
         "ttlSec": _SESSION_TTL_SEC,
     }
 
@@ -283,6 +389,137 @@ def journal_periods(session_id: str, *, refresh: bool = True) -> dict[str, Any]:
 
 # --- Period / T-log fetch -----------------------------------------------------
 
+def _probe_site_version(
+    host: str,
+    cookie: str,
+    *,
+    scheme: str,
+    port: int | None,
+    timeout: float = 8.0,
+) -> dict[str, Any]:
+    """
+    Best-effort base/WEB version probe for Base 55.02.x sites.
+
+    Tries vAppInfo then vsapphireprop (View App Info / Controller system properties).
+    Returns dict with raw text fields + any version-like strings found.
+    """
+    info: dict[str, Any] = {
+        "targetBase": TARGET_BASE_VERSION,
+        "targetWeb": TARGET_WEB_VERSION,
+        "detected": {},
+        "baseVersion": None,
+        "webVersion": None,
+        "looksLike55": None,
+        "notes": [],
+    }
+    text_blob = ""
+    for cmd in ("vAppInfo", "vsapphireprop"):
+        try:
+            res = cl.sapphire_cgi_link(
+                host,
+                cmd,
+                params={"cookie": cookie},
+                scheme=scheme,
+                port=port,
+                timeout=timeout,
+            )
+        except Exception:  # noqa: BLE001
+            continue
+        if res.get("cookie"):
+            cookie = res["cookie"]
+            info["cookie"] = cookie
+        body = res.get("body") or res.get("rawPreview") or ""
+        if res.get("isFault") and not body:
+            continue
+        text_blob += "\n" + body
+        # Capture useful leaves from sapphire parser
+        for k, v in (res.get("textFields") or {}).items():
+            if v and k not in info["detected"]:
+                info["detected"][k] = v
+        if body and not res.get("isFault"):
+            info["sourceCmd"] = cmd
+            break
+
+    # Pull version-like tokens: 55.02.08, 055.02.08, WEB 5.05.00, etc.
+    versions = re.findall(r"\b0?(\d{2}\.\d{2}\.\d{2})\b", text_blob)
+    web_vers = re.findall(r"\b(?:WEB|Web|web)[\s:=_-]*(\d+\.\d+\.\d+)\b", text_blob)
+    if versions:
+        # Prefer 55.x if present
+        pref = [v for v in versions if v.startswith("55.")]
+        info["baseVersion"] = (pref or versions)[0]
+    if web_vers:
+        info["webVersion"] = web_vers[0]
+    # Also scan detected field values
+    for k, v in list(info["detected"].items()):
+        kl = k.lower()
+        vs = str(v)
+        if not info["baseVersion"] and re.search(r"\b55\.\d{2}\.\d{2}\b", vs):
+            m = re.search(r"\b(55\.\d{2}\.\d{2})\b", vs)
+            if m:
+                info["baseVersion"] = m.group(1)
+        if "web" in kl and re.search(r"\d+\.\d+", vs) and not info["webVersion"]:
+            info["webVersion"] = vs.strip()
+    base = info.get("baseVersion") or ""
+    if base.startswith("55."):
+        info["looksLike55"] = True
+        if base != TARGET_BASE_VERSION:
+            info["notes"].append(
+                f"Detected base {base}; toolbox tuned for {TARGET_BASE_VERSION} "
+                f"(same 55.02 CGI family — usually OK)."
+            )
+        else:
+            info["notes"].append(f"Detected base {base} (matches target).")
+    elif base:
+        info["looksLike55"] = False
+        info["notes"].append(
+            f"Detected base {base}; expected ~{TARGET_BASE_VERSION}. "
+            "CGI names are usually stable, but period XML may differ."
+        )
+    else:
+        info["notes"].append(
+            f"Could not read base version (vAppInfo/vsapphireprop). "
+            f"Assuming field target {TARGET_BASE_VERSION} / WEB {TARGET_WEB_VERSION}."
+        )
+    info["cookie"] = cookie
+    return info
+
+
+def _parse_function_list(xml_text: str) -> list[str]:
+    """Parse ufunctionlist XML into lower-cased CGI cmd names available to the role."""
+    if not xml_text or not xml_text.strip():
+        return []
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        # crude fallback: pull known cmd tokens from text
+        found = re.findall(
+            r"\b(vtranssetz?|vposjournal|vtlogpdlist|vperiodlist|vreportpdlist|"
+            r"findfilename|validate|releaseCredential|ufunctionlist|vtlog)\b",
+            xml_text,
+            re.I,
+        )
+        return sorted({f.lower() for f in found})
+
+    cmds: set[str] = set()
+    for el in root.iter():
+        ln = _local(el.tag).lower()
+        # Common shapes: <function>vtransset</function>, <cmd name="vtransset"/>, text leaves
+        if ln in {"function", "cmd", "name", "functionname", "cgi", "cginame", "id"}:
+            val = (el.text or "").strip() or el.attrib.get("name") or el.attrib.get("cmd") or ""
+            if val and re.match(r"^[A-Za-z][A-Za-z0-9_]{1,40}$", val):
+                cmds.add(val.lower())
+        for attr_key in ("name", "cmd", "id", "function"):
+            av = el.attrib.get(attr_key) or ""
+            if av and re.match(r"^[A-Za-z][A-Za-z0-9_]{1,40}$", av):
+                cmds.add(av.lower())
+        if el.text and re.match(r"^[A-Za-z][A-Za-z0-9_]{1,40}$", (el.text or "").strip()):
+            # only keep if looks like a known CGI-ish token (starts with v/u/c or known)
+            t = el.text.strip().lower()
+            if t.startswith(("v", "u", "c", "diag", "allow", "get", "set", "find", "release", "notify", "send", "repeat")):
+                cmds.add(t)
+    return sorted(cmds)
+
+
 def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
     """
     Parse vtlogpdlist XML into period descriptors.
@@ -329,6 +566,16 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
                     out[cn] = c.text.strip()
         return out
 
+    def period_sysid(el: ET.Element) -> str:
+        for child in el.iter():
+            if _local(child.tag).lower() == "period":
+                for k, v in child.attrib.items():
+                    if _local(k).lower() in {"sysid", "id", "periodid"}:
+                        return str(v).strip()
+                if (child.text or "").strip():
+                    return child.text.strip()
+        return ""
+
     periods: list[dict[str, Any]] = []
 
     # Preferred: periodInfo blocks (Commander Journal Browser)
@@ -337,6 +584,7 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
             continue
         children = _child_map(el, depth=3)
         rparams = report_params(el)
+        sysid = period_sysid(el)
         name = children.get("name") or rparams.get("name") or ""
         desc = children.get("desc") or children.get("description") or ""
         filename = (
@@ -346,7 +594,7 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
             or name
             or ""
         )
-        period_num = rparams.get("period") or children.get("period") or ""
+        period_num = rparams.get("period") or children.get("period") or sysid or ""
         # date/shift from name like 2026-07-22.416 or desc "2026-07-22 (SHIFT-416)"
         date = ""
         shift = ""
@@ -365,7 +613,7 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
         label = desc or name or filename
         if not filename and not name:
             continue
-        key_src = f"{filename}|{name}|{period_num}|{label}"
+        key_src = f"{filename}|{name}|{period_num}|{sysid}|{label}"
         key = hashlib.sha1(key_src.encode("utf-8", errors="ignore")).hexdigest()[:16]
         periods.append(
             {
@@ -376,7 +624,9 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
                 "date": date,
                 "shift": str(shift),
                 "periodParam": period_num,
-                "raw": {**{k: v for k, v in children.items() if v}, **rparams},
+                "sysid": sysid,
+                "reportParameters": dict(rparams),
+                "raw": {**{k: v for k, v in children.items() if v}, **rparams, **({"sysid": sysid} if sysid else {})},
             }
         )
 
@@ -440,46 +690,81 @@ def parse_period_list(xml_text: str) -> list[dict[str, Any]]:
     return uniq
 
 
-def _period_fetch_attempts(period: dict[str, Any], cookie: str) -> list[tuple[str, dict[str, str]]]:
-    """Candidate CGILink cmd/param sets to retrieve a period T-log."""
+def _period_fetch_attempts(
+    period: dict[str, Any],
+    cookie: str,
+    *,
+    allowed_cmds: list[str] | None = None,
+) -> list[tuple[str, dict[str, str]]]:
+    """Candidate CGILink cmd/param sets to retrieve a period T-log.
+
+    Uses the same reportParameters Journal Browser / Config Client emit for the
+    period (filename + period, plus any extras), and prefers official CGI cmds
+    from the Verifone roles handout.
+    """
     filename = (period.get("filename") or "").strip()
     date = (period.get("date") or "").strip()
     shift = (period.get("shift") or "").strip()
     raw = period.get("raw") or {}
+    rparams = dict(period.get("reportParameters") or {})
+    # merge raw report-ish keys
+    for k in ("filename", "period", "file", "name", "shift", "date", "sysid"):
+        if raw.get(k) and k not in rparams:
+            rparams[k] = str(raw[k])
     attempts: list[tuple[str, dict[str, str]]] = []
 
     def add(cmd: str, **extra: str) -> None:
         params = {"cookie": cookie}
-        params.update({k: v for k, v in extra.items() if v})
+        params.update({k: str(v) for k, v in extra.items() if v not in (None, "")})
         attempts.append((cmd, params))
 
-    # Most common field-confirmed style patterns
-    period_param = str(period.get("periodParam") or raw.get("period") or "1").strip() or "1"
+    period_param = str(
+        period.get("periodParam") or rparams.get("period") or period.get("sysid") or raw.get("period") or "1"
+    ).strip() or "1"
     name = str(period.get("name") or "").strip()
-    fn = filename or name or "current"
+    fn = filename or name or rparams.get("filename") or "current"
+    sysid = str(period.get("sysid") or raw.get("sysid") or "").strip()
 
-    # Field-confirmed on Commander (Manager role):
-    #   cmd=vtransset&filename=2026-07-22.416&period=1&cookie=…
-    #   → <transSet periodID="1" …><trans type="sale">…
-    # Also: vposjournal (NAXML), vtranssetz (gzip), vtransnumlist (ticket ids only)
-    add("vtransset", filename=fn, period=period_param)
-    add("vtransset", filename=fn)
-    add("vtranssetz", filename=fn, period=period_param)
-    add("vposjournal", filename=fn, period=period_param)
-    add("vposjournal", filename=fn)
-    add("vtransnumlist", filename=fn, period=period_param)
-    add("vtransnumlist", filename=fn)
-    # Legacy / alternate names
-    if filename:
-        add("vtlog", filename=filename, period=period_param)
-        add("vtlog", filename=filename)
-        add("getvtlog", filename=filename)
-        add("tlog", filename=filename)
-    if name and name != filename:
-        add("vtransset", filename=name, period=period_param)
+    # Build param bundles Journal Browser typically POSTs/GETs for Get Data
+    bundles: list[dict[str, str]] = []
+    base = {"filename": fn, "period": period_param}
+    if sysid and sysid != period_param:
+        base["sysid"] = sysid
+    bundles.append(dict(base))
+    # Pass full reportParameters as CGI query args (native Journal Browser style)
+    if rparams:
+        full = {k: str(v) for k, v in rparams.items() if v not in (None, "")}
+        if "filename" not in full and fn:
+            full["filename"] = fn
+        if "period" not in full:
+            full["period"] = period_param
+        bundles.append(full)
+    bundles.append({"filename": fn})
+    if name and name != fn:
+        bundles.append({"filename": name, "period": period_param})
     if date:
-        add("vtransset", period=date, shift=shift)
-        add("vtlog", period=date, shift=shift)
+        bundles.append({"period": date, **({"shift": shift} if shift else {})})
+        bundles.append({"filename": fn, "date": date, **({"shift": shift} if shift else {})})
+
+    # Prefer official cmds; optionally filter to role-allowed set when known
+    official = list(_OFFICIAL_FETCH_CMDS)
+    legacy = list(_LEGACY_FETCH_CMDS)
+    if allowed_cmds:
+        allow = {c.lower() for c in allowed_cmds}
+        filtered = [c for c in official if c in allow]
+        # If list is present but empty of our cmds, still try official — role lists
+        # are not always complete on every build.
+        if filtered:
+            official = filtered + [c for c in official if c not in filtered]
+        # only add legacy if explicitly present
+        legacy = [c for c in legacy if c in allow]
+
+    for cmd in official:
+        for b in bundles:
+            add(cmd, **b)
+    for cmd in legacy:
+        for b in bundles[:2]:
+            add(cmd, **b)
 
     # de-dupe
     seen: set[str] = set()
@@ -491,6 +776,38 @@ def _period_fetch_attempts(period: dict[str, Any], cookie: str) -> list[tuple[st
         seen.add(sig)
         out.append((cmd, params))
     return out
+
+
+def _looks_like_tlog_xml(preview: str) -> bool:
+    if not preview or not preview.strip():
+        return False
+    low = preview.lower()
+    markers = (
+        "transaction",
+        "transset",
+        "<trans",
+        "trheader",
+        "tlog",
+        "<sale",
+        "saleevent",
+        "begindatetime",
+        "trlfuel",
+        "postfuel",
+        "naxml",
+        "posjournal",
+        "journalevent",
+        "trseq",
+        "trcurrtot",
+    )
+    if any(m in low for m in markers):
+        return True
+    # Empty but valid period container still counts as success (0 transactions)
+    if ("transset" in low or "period" in low) and not re.search(
+        r"fault|permission|invalid\s*credential", low
+    ):
+        if "<?xml" in low or "<transset" in low or "<period" in low:
+            return True
+    return False
 
 
 def journal_load_period(session_id: str, period_key: str, *, force: bool = False) -> dict[str, Any]:
@@ -508,14 +825,16 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
     attempts_log: list[dict[str, Any]] = []
     raw_xml = ""
     used_cmd = None
-    for cmd, params in _period_fetch_attempts(period, sess["cookie"]):
+    used_params: dict[str, str] = {}
+    allowed = sess.get("allowedCmds") or []
+    for cmd, params in _period_fetch_attempts(period, sess["cookie"], allowed_cmds=allowed):
         res = cl.sapphire_cgi_link(
             sess["host"],
             cmd,
             params=params,
             scheme=sess["scheme"],
             port=sess["port"],
-            timeout=45.0,
+            timeout=60.0,
         )
         if res.get("cookie"):
             sess["cookie"] = res["cookie"]
@@ -528,45 +847,55 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
                 "params": {k: v for k, v in params.items() if k != "cookie"},
                 "status": res.get("httpStatus"),
                 "fault": res.get("faultMessage"),
+                "faultCode": res.get("faultCode"),
                 "bytes": len(preview),
+                "preview": (preview[:240] if preview and (res.get("isFault") or len(preview) < 400) else None),
             }
         )
-        if res.get("isFault") and "permission" in (res.get("faultMessage") or "").lower():
-            continue
-        if res.get("isFault") and "invalid" in (res.get("faultMessage") or "").lower():
-            continue
-        # Success heuristics: looks like transaction / PJR XML
-        low = preview.lower()
-        if preview and (
-            "transaction" in low
-            or "transset" in low
-            or "<trans" in low
-            or "trheader" in low
-            or "tlog" in low
-            or "<sale" in low
-            or "beginDateTime" in preview
-            or "register" in low
-            or "trlfuel" in low
-            or "postfuel" in low
+        fault_l = (res.get("faultMessage") or "").lower()
+        if res.get("isFault") and any(
+            x in fault_l for x in ("permission", "not authorized", "not allowed", "access denied")
         ):
+            continue
+        if res.get("isFault") and any(
+            x in fault_l for x in ("invalid", "unknown command", "unknown cmd", "not found", "no such")
+        ):
+            continue
+        if res.get("isFault") and not _looks_like_tlog_xml(preview):
+            continue
+        if _looks_like_tlog_xml(preview):
             raw_xml = preview
             used_cmd = cmd
+            used_params = {k: v for k, v in params.items() if k != "cookie"}
             break
         # Non-fault large XML without keyword still try parse
         if preview.strip().startswith("<?xml") and not res.get("isFault") and len(preview) > 500:
             raw_xml = preview
             used_cmd = cmd
+            used_params = {k: v for k, v in params.items() if k != "cookie"}
             break
 
     if not raw_xml:
+        # Summarize faults for the HUD
+        fault_summary = []
+        for a in attempts_log[:8]:
+            if a.get("fault"):
+                fault_summary.append(f"{a['cmd']}: {a['fault']}")
         return {
             "ok": False,
             "period": period,
             "message": (
-                "Could not fetch T-log for this period. The controller may use a "
-                "CGILink command variant not yet matched, or the period is empty. "
-                "Try Journal Browser in the browser, or export via tools and open the XML offline."
+                "Could not fetch T-log for this period. "
+                "Need CGI functions vtlogpdlist + vtransset (Period Reports) on the user role. "
+                "Or open http://{host}/JournalBrowser in a browser, export the period, "
+                "and use offline XML load."
+            ).format(host=sess.get("host") or "site"),
+            "hint": (
+                "Official CGI cmds: validate → vtlogpdlist → vtransset|vtranssetz|vposjournal. "
+                "Manager role usually has these. OTP may be required for remote logins."
             ),
+            "faults": fault_summary,
+            "allowedCmds": allowed,
             "attempts": attempts_log[:20],
             "transactions": [],
             "count": 0,
@@ -576,6 +905,7 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
     payload = {
         "period": period,
         "fetchCmd": used_cmd,
+        "fetchParams": used_params,
         "transactions": parsed["transactions"],
         "count": len(parsed["transactions"]),
         "registers": parsed["registers"],
@@ -588,6 +918,7 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
         "loadedAt": _utc_now(),
         "attempts": attempts_log[:12],
         "rawBytes": len(raw_xml),
+        "emptyPeriod": len(parsed["transactions"]) == 0 and _looks_like_tlog_xml(raw_xml),
     }
     sess.setdefault("cache", {})[period_key] = payload
     return {"ok": True, "cached": False, **payload}
@@ -624,7 +955,7 @@ def journal_load_xml_file(path: str) -> dict[str, Any]:
 
 # --- Transaction parse / search ----------------------------------------------
 
-# Verifone PJR / Journal Browser event roots (Petrosoft + SMS docs)
+# Verifone PJR / Journal Browser event roots (Petrosoft + SMS + NAXML docs)
 _TX_LOCAL_NAMES = {
     "transaction",
     "trans",  # primary Verifone PJR root: <trans type="sale|void|network sale|...">
@@ -634,9 +965,17 @@ _TX_LOCAL_NAMES = {
     "tlogTransaction",
     "saleTransaction",
     "journalTransaction",
+    # NAXML POSJournal (vposjournal) — event roots only (not nested TransactionDetail)
+    "saleevent",
+    "voidevent",
+    "refundevent",
+    "financialevent",
+    "otherevent",
+    "journalevent",
 }
 
 # Verifone line types (trLine @type) — used for fuel / PLU drill-down
+# Base 55.02.08+ also journals cash "Rounding Adjustment" paylines when enabled.
 _LINE_TYPES = {
     "plu",
     "void plu",
@@ -650,6 +989,11 @@ _LINE_TYPES = {
     "void dept",
     "moneyorder",
     "void moneyorder",
+    "rounding",
+    "rounding adjustment",
+    "cash rounding",
+    "payline",
+    "tender",
 }
 
 
@@ -769,59 +1113,114 @@ def _parse_amount(val: Any) -> float | None:
     return None
 
 
+def _blob_get(blob: dict[str, Any], *names: str, allow_suffix: bool = False) -> str:
+    """Exact-key field lookup. Short names like 'time' must NOT match beginDateTime."""
+    for n in names:
+        nl = n.lower()
+        # 1) exact
+        for k, v in blob.items():
+            if k.lower() == nl and v not in (None, ""):
+                return str(v).strip()
+        # 2) dotted path ending with .name
+        for k, v in blob.items():
+            kl = k.lower()
+            if kl.endswith("." + nl) and v not in (None, ""):
+                return str(v).strip()
+        # 3) optional loose suffix (only for longer names to avoid time⊂datetime)
+        if allow_suffix and len(nl) >= 5:
+            for k, v in blob.items():
+                kl = k.lower()
+                if kl.endswith(nl) and v not in (None, ""):
+                    return str(v).strip()
+    return ""
+
+
+def _split_dt(date_raw: str) -> tuple[str, str]:
+    """Split beginDateTime-style values into (YYYY-MM-DD, HH:MM:SS)."""
+    if not date_raw:
+        return "", ""
+    s = date_raw.strip()
+    date, time_s = "", ""
+    if "T" in s:
+        date, rest = s.split("T", 1)
+        time_s = rest[:8]
+    elif " " in s and re.match(r"\d{4}-\d{2}-\d{2}\s", s):
+        date, rest = s.split(" ", 1)
+        time_s = rest[:8]
+    elif re.match(r"\d{4}-\d{2}-\d{2}", s):
+        date = s[:10]
+        if len(s) > 11:
+            time_s = s[11:19]
+    elif re.match(r"\d{1,2}:\d{2}", s):
+        time_s = s[:8]
+    return date[:10] if date else "", time_s
+
+
 def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any] | None:
     attrs = _attr_map(el)
     kids = _child_map(el, depth=4)
     blob = {**kids, **attrs}
-    event_type = (attrs.get("type") or "").strip()  # sale, void, network sale, …
+    event_type = (attrs.get("type") or attrs.get("eventType") or "").strip()  # sale, void, …
+    if not event_type:
+        # NAXML: local tag is the event type (SaleEvent → sale)
+        ln = _local(el.tag)
+        if ln.lower().endswith("event"):
+            event_type = re.sub(r"event$", "", ln, flags=re.I).strip() or ln
 
-    def g(*names: str) -> str:
-        for n in names:
-            nl = n.lower()
-            for k, v in blob.items():
-                kl = k.lower()
-                if kl == nl or kl.endswith("." + nl) or kl.endswith(nl):
-                    if v:
-                        return str(v).strip()
-        return ""
+    def g(*names: str, allow_suffix: bool = False) -> str:
+        return _blob_get(blob, *names, allow_suffix=allow_suffix)
 
     # Verifone PJR: trSeq / trUniqueSN / posNum
     trans_num = _first(
-        g("trSeq", "trans", "transNum", "transactionNumber", "transactionNo", "ticket", "ticketNumber", "trUniqueSN"),
+        g("trSeq", "transNum", "transactionNumber", "transactionNo", "ticketNumber", "trUniqueSN", "EventSequenceID", "TransactionID"),
+        g("trans", "ticket"),
         attrs.get("trans"),
         attrs.get("id"),
     )
-    date_raw = _first(g("date", "beginDate", "businessDate", "transactionDate", "beginDateTime"))
-    date = date_raw[:10] if date_raw else ""
-    time_s = _first(g("time", "beginTime", "transactionTime"))
-    if not time_s and date_raw:
-        if "T" in date_raw:
-            time_s = date_raw.split("T", 1)[1][:8]
-        elif " " in date_raw:
-            time_s = date_raw.split(" ", 1)[1][:8]
-    employee = _first(
-        g(
-            "cashier",
-            "empNum",
-            "emp",
-            "empId",
-            "employee",
-            "employeeId",
-            "cashierId",
-            "operator",
-            "userId",
-            "csrId",
-            "originalCashier",
-        )
+    date_raw = _first(
+        g("beginDateTime", "businessDate", "transactionDate", "EventStartDate", "EventStartDateTime", "beginDate"),
+        g("date"),
     )
-    # cashier element often has text name + empNum attribute
+    date, time_from_dt = _split_dt(date_raw)
+    time_s = _first(
+        g("beginTime", "transactionTime", "EventStartTime", "time"),
+        time_from_dt,
+    )
+    # If "time" accidentally still holds a datetime, re-split
+    if time_s and ("T" in time_s or re.match(r"\d{4}-\d{2}-\d{2}", time_s)):
+        d2, t2 = _split_dt(time_s)
+        if t2:
+            time_s = t2
+        if d2 and not date:
+            date = d2
+    if not date and date_raw:
+        date = date_raw[:10] if re.match(r"\d{4}-\d{2}-\d{2}", date_raw) else ""
+
+    # Prefer numeric emp id (Journal Browser Emp ID column) over display name
+    employee = ""
+    for c in el.iter():
+        if _local(c.tag).lower() == "cashier":
+            employee = _first(c.attrib.get("empNum"), c.attrib.get("sysid"), (c.text or "").strip())
+            break
     if not employee:
-        for c in el.iter():
-            if _local(c.tag).lower() == "cashier":
-                employee = _first(c.attrib.get("empNum"), (c.text or "").strip(), c.attrib.get("sysid"))
-                break
+        employee = _first(
+            g("empNum", "empId", "employeeId", "cashierId", "csrId", "EmployeeID", "CashierID"),
+            g("employee", "cashier", "operator", "userId", "originalCashier"),
+        )
     register = _first(
-        g("posNum", "reg", "register", "registerId", "registerNumber", "posNumber", "workstation", "terminalId", "term")
+        g(
+            "posNum",
+            "registerId",
+            "registerNumber",
+            "posNumber",
+            "workstation",
+            "terminalId",
+            "RegisterID",
+            "POSCode",
+            "register",
+            "reg",
+            "term",
+        )
     )
     amount = _parse_amount(
         _first(
@@ -830,37 +1229,49 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
                 "trTotWTax",
                 "trTotNoTax",
                 "trGTotalizer",
-                "amount",
-                "total",
+                "TransactionTotalGrossAmount",
+                "TransactionTotalNetAmount",
                 "grandTotal",
                 "transactionTotal",
                 "netAmount",
                 "totalAmount",
+                "amount",
+                "total",
                 "amt",
             )
         )
     )
-    qty = _first(g("qty", "quantity", "itemCount", "units", "trlQty"))
+    qty = _first(g("trlQty", "itemCount", "quantity", "units", "qty"))
     mop = _first(
-        g("trpPaycode", "mop", "tender", "tenderType", "paymentMethod", "methodOfPayment", "cardType", "fuelMOP")
+        g(
+            "trpPaycode",
+            "tenderType",
+            "paymentMethod",
+            "methodOfPayment",
+            "TenderCode",
+            "cardType",
+            "fuelMOP",
+            "mop",
+            "tender",
+        )
     )
-    department = _first(g("trlDept", "department", "dept", "departmentName", "deptName"))
-    barcode = _first(g("trlUPC", "barcode", "upc", "sku", "plu", "itemCode"))
+    department = _first(g("trlDept", "departmentName", "deptName", "department", "dept"))
+    barcode = _first(g("trlUPC", "itemCode", "barcode", "upc", "sku", "plu", "POSCode"))
     fuel_pos = _first(
         g(
             "fuelPosition",
-            "position",
             "fuelingPosition",
-            "pump",
             "pumpNumber",
+            "fuelPoint",
+            "position",
+            "pump",
             "fp",
             "hose",
-            "fuelPoint",
         )
     )
-    dispenser = _first(g("dispenser", "dispenserId", "dispenserNumber", "dcr", "crind", "fuelingPoint"))
+    dispenser = _first(g("dispenserId", "dispenserNumber", "dispenser", "dcr", "crind", "fuelingPoint"))
     description = _first(
-        g("trlDesc", "description", "desc", "transactionType", "event", "summary", "text", "name")
+        g("trlDesc", "description", "transactionType", "summary", "desc", "event", "text", "name")
     )
     if not description:
         description = " ".join(x for x in (event_type, mop) if x)[:120]
@@ -874,9 +1285,24 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
         ca = _attr_map(c)
         line_type = (ca.get("type") or "").strip()
         is_line = (
-            cln in {"trline", "item", "saleitem", "linesale", "linetransaction", "fuelline", "fuelsale", "merchandise", "trxline"}
+            cln in {
+                "trline",
+                "item",
+                "saleitem",
+                "linesale",
+                "linetransaction",
+                "fuelline",
+                "fuelsale",
+                "merchandise",
+                "trxline",
+                "payline",
+                "tenderline",
+            }
             or cln.endswith("item")
             or line_type.lower().replace(" ", "") in {t.replace(" ", "") for t in _LINE_TYPES}
+            # Base 55.02.08 cash rounding payline (description match)
+            or "rounding" in (line_type or "").lower()
+            or "rounding" in (cln or "")
         )
         if not is_line:
             continue
@@ -944,6 +1370,25 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
     for ln in lines:
         if ln.get("code") and ln["code"] not in codes:
             codes.append(str(ln["code"]))
+        # Base 55.02.08 cash rounding
+        desc_l = str(ln.get("description") or "").lower()
+        type_l = str(ln.get("type") or "").lower()
+        if "rounding" in desc_l or "rounding" in type_l:
+            if "RND" not in codes:
+                codes.append("RND")
+            if not description or "sale" in (description or "").lower():
+                description = (description + " · rounding adj" if description else "rounding adjustment")[:160]
+
+    rounding_adj = None
+    for ln in lines:
+        desc_l = str(ln.get("description") or "").lower()
+        type_l = str(ln.get("type") or "").lower()
+        if "rounding" in desc_l or "rounding" in type_l:
+            if ln.get("amount") is not None:
+                try:
+                    rounding_adj = (rounding_adj or 0.0) + float(ln["amount"])
+                except (TypeError, ValueError):
+                    pass
 
     return {
         "transNum": trans_num,
@@ -961,6 +1406,7 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
         "fuelPosition": fuel_pos,
         "dispenser": dispenser,
         "codes": codes,
+        "roundingAdjustment": round(rounding_adj, 2) if rounding_adj is not None else None,
         "lines": lines,
         "lineCount": len(lines),
         "searchBlob": " ".join(
@@ -980,6 +1426,7 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
                 fuel_pos,
                 dispenser,
                 " ".join(codes),
+                f"rounding {rounding_adj}" if rounding_adj is not None else "",
                 " ".join(
                     f"{L.get('description')} {L.get('product')} {L.get('barcode')} {L.get('fuelPosition')}"
                     for L in lines
