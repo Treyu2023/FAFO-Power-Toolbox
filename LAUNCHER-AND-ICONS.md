@@ -30,6 +30,20 @@ When you set an icon with the **server running**, the app **copies the file into
 2. Open **AI HTML Toolbox** from the Desktop shortcut
 3. Optional: pin to taskbar
 
+### OneDrive / Desktop (do not use a folder junction)
+
+Keep the **real repo outside OneDrive** (e.g. `C:\_Git\HTMLPROJECTS\AI HTML TOOLBOX`).  
+On the Desktop, use only a normal **`.lnk` shortcut** — never a directory junction/symlink named `AI HTML TOOLBOX`.
+
+OneDrive **cannot back up junctions** and will block Desktop backup if one is present.  
+If you hit that error, run:
+
+```powershell
+.\Scripts\Remove-DesktopToolboxJunction.ps1
+```
+
+That removes the junction (link only) and recreates `AI HTML Toolbox.lnk` pointing at the real path. GitHub remains the code backup.
+
 ### Change the **main app** icon
 
 - Run **`Change-Toolbox-Icon.bat`** and pick any image/GIF/ICO, or  
