@@ -1875,6 +1875,26 @@ def build_survey_template(dossier: dict[str, Any]) -> dict[str, Any]:
             "notes": "Fill pump/CRIND firmware per position on-site when not in SMS export.",
         },
         "layout": default_layout(positions),
+        # Field-survey packs share this file; UI tabs map to packs.*
+        "packs": {
+            "schema": "FAFO.Commander.SurveyPacks/1",
+            "lastActive": "site",
+            "catalog": [
+                {"id": "site", "label": "Site info", "short": "Site"},
+                {"id": "network", "label": "Network", "short": "Network"},
+                {"id": "pos", "label": "POS / Commander", "short": "POS"},
+                {"id": "forecourt", "label": "Forecourt", "short": "Forecourt"},
+            ],
+        },
+        # EZ Mode photo OCR captures (filled by survey_ocr_ops; local only)
+        "photoCaptures": [],
+        "ocrScratch": {
+            "combinedRawText": "",
+            "lastIngestAt": None,
+            "lastParsedFields": {},
+            "lastDomain": None,
+            "lastScreenType": None,
+        },
     }
 
 
@@ -1984,6 +2004,35 @@ def export_survey_markdown(site_key: str) -> dict[str, Any]:
             f"{p.get('dispenserBrand')} | {p.get('dcrBrand')} | "
             f"{p.get('pumpSoftwareVersion')} | {p.get('crindSoftwareVersion')} | {p.get('notes')} |"
         )
+    # Photo OCR captures (EZ Mode) — raw text preserved as given
+    captures = survey.get("photoCaptures") or []
+    if captures:
+        sb.append("")
+        sb.append("## Photo OCR captures")
+        sb.append("")
+        for c in captures[:40]:
+            sb.append(f"### {c.get('fileName') or c.get('id')}")
+            sb.append(f"- Captured: {c.get('capturedAt')}  ")
+            sb.append(f"- Engine: {c.get('engine')}  ")
+            fields = c.get("parsedFields") or {}
+            if fields:
+                sb.append("- Parsed fields:")
+                for k, v in fields.items():
+                    sb.append(f"  - **{k}**: {v}")
+            raw = c.get("rawText") or ""
+            if raw:
+                sb.append("")
+                sb.append("```")
+                sb.append(raw)
+                sb.append("```")
+            sb.append("")
+    scratch = survey.get("ocrScratch") or {}
+    if scratch.get("combinedRawText"):
+        sb.append("## OCR transcript (combined)")
+        sb.append("")
+        sb.append("```")
+        sb.append(str(scratch.get("combinedRawText")))
+        sb.append("```")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(sb), encoding="utf-8")
     return {"ok": True, "path": str(out_path)}

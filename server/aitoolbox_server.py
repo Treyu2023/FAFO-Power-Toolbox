@@ -25,6 +25,8 @@ import debug_log as dbg
 import verifone_ops as vf
 import commander_live as cmd_live
 import journal_ops as journal
+import survey_ocr_ops as survey_ocr
+import survey_share_ops as survey_share
 from db import init_db
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -358,6 +360,31 @@ class VfPunchBody(BaseModel):
 
 class VfSurveyBody(BaseModel):
     survey: dict | None = None
+
+
+class VfSurveyOcrBody(BaseModel):
+    """Photo / text ingest for site survey OCR (EZ Mode foundation)."""
+    images: list[dict] | None = None  # [{filename, data_base64, pastedText?}]
+    raw_texts: list[dict] | None = None  # [{text, notes?}]
+    apply_mode: str | None = "fill_empty"  # none | fill_empty | overwrite
+    notes: str | None = None
+    prefer_engine: str | None = None  # windows_ocr | tesseract
+    domain: str | None = "pos"  # site | network | pos | forecourt
+    screen_type: str | None = "auto"  # auto | network_menu | employees | software | …
+
+
+class VfSurveyOcrApplyBody(BaseModel):
+    capture_id: str | None = None
+    mode: str | None = "fill_empty"
+    fields: dict | None = None  # optional override map path -> value (as-given)
+
+
+class VfSurveyShareBody(BaseModel):
+    """Build redacted email pack, full tech ZIP, or recovery checklist."""
+    mode: str | None = "redacted"  # redacted | full | checklist
+    include_photos: bool | None = False  # full pack only
+    include_layout_json: bool | None = True
+    include_checklist: bool | None = True
 
 
 @app.get("/api/verifone/status")
@@ -1045,6 +1072,119 @@ def verifone_export_survey_md(site_id: str):
         return vf.export_survey_markdown(site_id)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
+
+
+@app.get("/api/verifone/sites/{site_id}/survey/share-packs")
+def verifone_list_share_packs(site_id: str):
+    """List previously built share packs under survey\\share-packs\\."""
+    try:
+        return survey_share.list_share_packs(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/sites/{site_id}/survey/share-pack")
+def verifone_export_share_pack(site_id: str, body: VfSurveyShareBody | None = None):
+    """
+    Build a share / recovery pack:
+      redacted  — email-safe folder (secrets + OCR raw stripped)
+      full      — local tech ZIP (optional photos)
+      checklist — recovery checklist Markdown only
+    """
+    body = body or VfSurveyShareBody()
+    try:
+        return survey_share.export_share_pack(
+            site_id,
+            mode=body.mode or "redacted",
+            include_photos=bool(body.include_photos),
+            include_layout_json=bool(body.include_layout_json if body.include_layout_json is not None else True),
+            include_checklist=bool(body.include_checklist if body.include_checklist is not None else True),
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        raise HTTPException(500, f"Share pack failed: {e}") from e
+
+
+@app.get("/api/verifone/survey/ocr-status")
+def verifone_survey_ocr_status():
+    """Which OCR engines are available on this PC."""
+    return {"ok": True, **survey_ocr.ocr_engine_status()}
+
+
+@app.get("/api/verifone/sites/{site_id}/survey/photos")
+def verifone_survey_list_photos(site_id: str):
+    try:
+        return survey_ocr.list_captures(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.get("/api/verifone/sites/{site_id}/survey/photos/{capture_id}")
+def verifone_survey_get_photo(site_id: str, capture_id: str):
+    try:
+        return survey_ocr.get_capture(site_id, capture_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/sites/{site_id}/survey/ocr")
+def verifone_survey_ocr_ingest(site_id: str, body: VfSurveyOcrBody):
+    """
+    Upload POS/Commander screen photos (base64) and/or pasted OCR text.
+    Stores images + exact raw text under survey\\photos, parses config fields,
+    and optionally fills the site-survey form (fill_empty by default).
+    """
+    try:
+        return survey_ocr.ingest_photos(
+            site_id,
+            images=body.images,
+            raw_texts=body.raw_texts,
+            apply_mode=body.apply_mode or "fill_empty",
+            notes=body.notes or "",
+            prefer_engine=body.prefer_engine,
+            domain=body.domain or "pos",
+            screen_type=body.screen_type or "auto",
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        raise HTTPException(500, f"OCR ingest failed: {e}") from e
+
+
+@app.post("/api/verifone/sites/{site_id}/survey/ocr/apply")
+def verifone_survey_ocr_apply(site_id: str, body: VfSurveyOcrApplyBody):
+    """Apply a prior capture's fields (or explicit field map) onto the site survey."""
+    if not body.capture_id and not body.fields:
+        raise HTTPException(400, "capture_id or fields required")
+    try:
+        if body.capture_id:
+            return survey_ocr.apply_capture_fields(
+                site_id,
+                body.capture_id,
+                mode=body.mode or "fill_empty",
+                fields=body.fields,
+            )
+        survey = vf.get_survey(site_id)
+        result = survey_ocr.apply_fields_to_survey(
+            survey, body.fields or {}, mode=body.mode or "fill_empty"
+        )
+        saved = vf.save_survey(site_id, result["survey"])
+        return {
+            "ok": True,
+            "path": saved.get("path"),
+            "applied": result["applied"],
+            "skipped": result["skipped"],
+            "mode": result["mode"],
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @app.post("/api/verifone/punch-list")

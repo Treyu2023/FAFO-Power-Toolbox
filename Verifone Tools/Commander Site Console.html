@@ -214,6 +214,80 @@
       background-size: 20px 20px; cursor: default; touch-action: none;
     }
     .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    /* Site survey photo OCR (EZ Mode) */
+    .ocr-drop {
+      border: 1.5px dashed rgba(56,189,248,.4); border-radius: 12px; padding: 18px 14px;
+      text-align: center; background: rgba(56,189,248,.04); cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .ocr-drop:hover, .ocr-drop.dragover {
+      border-color: var(--accent); background: rgba(56,189,248,.1);
+      box-shadow: var(--glow);
+    }
+    .ocr-drop strong { color: var(--accent); display: block; margin-bottom: 4px; }
+    .ocr-drop .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
+    .ocr-preview {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+    }
+    .ocr-thumb {
+      width: 72px; height: 72px; object-fit: cover; border-radius: 8px;
+      border: 1px solid var(--line); background: #000;
+    }
+    .ocr-raw {
+      width: 100%; min-height: 110px; max-height: 220px; resize: vertical;
+      background: #0a1016; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: ui-monospace, Consolas, monospace;
+      line-height: 1.4;
+    }
+    .ocr-capture {
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+      background: rgba(0,0,0,.2); margin-top: 8px;
+    }
+    .ocr-capture h4 {
+      margin: 0 0 6px; font-size: 12px; color: var(--accent);
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .ocr-fields {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 10px;
+      font-size: 11px; margin-top: 6px;
+    }
+    .ocr-fields code { color: var(--accent2); font-size: 10px; }
+    .ocr-engine-pill {
+      font-size: 10px; padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted);
+    }
+    .ocr-engine-pill.ok { border-color: rgba(52,211,153,.45); color: var(--good); }
+    .ocr-engine-pill.bad { border-color: rgba(251,191,36,.45); color: var(--warn); }
+    /* Survey field packs (Site / Network / POS / Forecourt) */
+    .pack-nav {
+      display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px;
+      padding: 8px; border-radius: 12px; border: 1px solid var(--line);
+      background: rgba(0,0,0,.22);
+    }
+    .pack-nav button {
+      border: 1px solid var(--line); background: transparent; color: var(--muted);
+      padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 700;
+      cursor: pointer; text-transform: uppercase; letter-spacing: 0.04em;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .pack-nav button:hover { border-color: var(--accent); color: var(--accent); }
+    .pack-nav button.active {
+      border-color: var(--accent); color: #041018; background: var(--accent);
+      box-shadow: var(--glow);
+    }
+    .pack-nav .pack-dot {
+      width: 7px; height: 7px; border-radius: 999px; background: rgba(139,155,176,.5);
+    }
+    .pack-nav .pack-dot.partial { background: var(--warn); }
+    .pack-nav .pack-dot.full { background: var(--good); }
+    .pack-panel { display: none; }
+    .pack-panel.active { display: block; }
+    .pack-head {
+      display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+      gap: 8px; margin-bottom: 8px;
+    }
+    .pack-head h3 { margin: 0; }
+    .pack-head .pack-desc { font-size: 11px; color: var(--muted); line-height: 1.4; max-width: 42rem; }
     /* Watched-folder manager (per-machine paths) */
     .modal-backdrop {
       display: none; position: fixed; inset: 0; z-index: 100;
@@ -1728,38 +1802,271 @@
       });
     }
 
+    // Pending photo files for survey OCR (File objects + preview URLs)
+    let ocrPendingFiles = [];
+    // Active pack inside Site survey tab: site | network | pos | forecourt
+    let surveyPack = localStorage.getItem('fafo_survey_pack') || 'site';
+
+    const SURVEY_PACK_DEFS = [
+      { id: 'site', label: 'Site info', short: 'Site', desc: 'Address, contacts, brand, service IDs — who/where this store is.' },
+      { id: 'network', label: 'Network', short: 'Network', desc: 'LAN, payment NIC, MNSP, routes, firewall path.' },
+      { id: 'pos', label: 'POS / Commander', short: 'POS', desc: 'Photo OCR of config screens, software version, accounts & passwords.' },
+      { id: 'forecourt', label: 'Forecourt', short: 'Forecourt', desc: 'Pumps, CRIND firmware, tank monitor, car wash. Aerial layout is its own tab.' },
+    ];
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const s = String(reader.result || '');
+          const i = s.indexOf(',');
+          resolve(i >= 0 ? s.slice(i + 1) : s);
+        };
+        reader.onerror = () => reject(reader.error || new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function packFillLevel(s, packId) {
+      const filled = (v) => v != null && String(v).trim() !== '';
+      let keys = [];
+      if (packId === 'site') {
+        const si = s.siteInfo || {};
+        keys = [si.address, si.city, si.phone, si.serviceId, si.contactName, si.brand, s.siteId, s.displayName];
+      } else if (packId === 'network') {
+        const n = s.network || {};
+        keys = [n.lanIp, n.subnet, n.gateway, n.paymentNicIp, n.mnspRouter, n.dns1];
+      } else if (packId === 'pos') {
+        const c = s.credentials || {};
+        keys = [c.configClientUser, c.configClientPassword, s.softwareVersion, (c.accounts || []).length ? 'x' : ''];
+      } else if (packId === 'forecourt') {
+        const f = s.forecourt || {};
+        const pos = f.positions || [];
+        const fw = pos.some(p => filled(p.pumpSoftwareVersion) || filled(p.crindSoftwareVersion));
+        keys = [f.tankMonitorType, f.carWashType, fw ? 'x' : '', pos.length ? 'x' : ''];
+      }
+      const n = keys.filter(filled).length;
+      if (!keys.length || n === 0) return 'empty';
+      if (n >= Math.ceil(keys.length * 0.6)) return 'full';
+      return 'partial';
+    }
+
     async function loadSurveyUI() {
       const body = el('detail').querySelector('#tabBody');
       if (!body || !selectedExportId) return;
       try {
         const data = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey');
         survey = data.survey;
-        body.innerHTML = renderSurvey(survey);
+        if (survey?.packs?.lastActive && !localStorage.getItem('fafo_survey_pack')) {
+          surveyPack = survey.packs.lastActive;
+        }
+        if (!SURVEY_PACK_DEFS.some(p => p.id === surveyPack)) surveyPack = 'site';
+        let eng = null;
+        try {
+          eng = await api('/verifone/survey/ocr-status');
+        } catch (_) { eng = null; }
+        body.innerHTML = renderSurvey(survey, eng);
         bindSurveyFields(body);
-        body.querySelector('#btnSaveSurvey')?.addEventListener('click', saveSurvey);
-        body.querySelector('#btnExportSurveyMd')?.addEventListener('click', exportSurveyMd);
-        body.querySelector('#btnAddAccount')?.addEventListener('click', () => {
-          survey.credentials = survey.credentials || {};
-          survey.credentials.accounts = survey.credentials.accounts || [];
-          survey.credentials.accounts.push({
-            name: '', number: '', securityLevel: '', password: '', source: 'manual', notes: ''
-          });
-          body.innerHTML = renderSurvey(survey);
-          bindSurveyFields(body);
-          body.querySelector('#btnSaveSurvey')?.addEventListener('click', saveSurvey);
-          body.querySelector('#btnExportSurveyMd')?.addEventListener('click', exportSurveyMd);
-        });
+        bindSurveyOcrUI(body, eng);
       } catch (e) {
         body.innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
       }
     }
 
-    function renderSurvey(s) {
+    function setSurveyPack(packId, rootEl) {
+      surveyPack = packId;
+      try { localStorage.setItem('fafo_survey_pack', packId); } catch (_) {}
+      if (survey) {
+        survey.packs = survey.packs || {};
+        survey.packs.lastActive = packId;
+      }
+      rootEl.querySelectorAll('.pack-nav button').forEach(b => {
+        b.classList.toggle('active', b.dataset.pack === packId);
+      });
+      rootEl.querySelectorAll('.pack-panel').forEach(p => {
+        p.classList.toggle('active', p.dataset.pack === packId);
+      });
+      // Sync OCR domain default when jumping packs
+      const domainSel = rootEl.querySelector('#ocrDomain');
+      if (domainSel && ['site', 'network', 'pos', 'forecourt'].includes(packId)) {
+        domainSel.value = packId;
+      }
+    }
+
+    function bindSurveyOcrUI(rootEl, eng) {
+      rootEl.querySelector('#btnSaveSurvey')?.addEventListener('click', saveSurvey);
+      rootEl.querySelector('#btnExportSurveyMd')?.addEventListener('click', exportSurveyMd);
+      rootEl.querySelector('#btnShareRedacted')?.addEventListener('click', () => exportSharePack('redacted'));
+      rootEl.querySelector('#btnShareFull')?.addEventListener('click', () => exportSharePack('full'));
+      rootEl.querySelector('#btnShareChecklist')?.addEventListener('click', () => exportSharePack('checklist'));
+      rootEl.querySelector('#btnShareFullPhotos')?.addEventListener('click', () => exportSharePack('full', true));
+      rootEl.querySelector('#btnAddAccount')?.addEventListener('click', () => {
+        survey.credentials = survey.credentials || {};
+        survey.credentials.accounts = survey.credentials.accounts || [];
+        survey.credentials.accounts.push({
+          name: '', number: '', securityLevel: '', password: '', source: 'manual', notes: ''
+        });
+        rootEl.innerHTML = renderSurvey(survey, eng);
+        bindSurveyFields(rootEl);
+        bindSurveyOcrUI(rootEl, eng);
+      });
+
+      rootEl.querySelectorAll('.pack-nav button[data-pack]').forEach(btn => {
+        btn.addEventListener('click', () => setSurveyPack(btn.dataset.pack, rootEl));
+      });
+
+      const drop = rootEl.querySelector('#ocrDrop');
+      const fileInput = rootEl.querySelector('#ocrFileInput');
+      const preview = rootEl.querySelector('#ocrPreview');
+      const pasteBox = rootEl.querySelector('#ocrPasteText');
+      const modeSel = rootEl.querySelector('#ocrApplyMode');
+      const notesInp = rootEl.querySelector('#ocrBatchNotes');
+      const domainSel = rootEl.querySelector('#ocrDomain');
+      const screenSel = rootEl.querySelector('#ocrScreenType');
+      const capFilter = rootEl.querySelector('#ocrCapFilter');
+
+      const renderPending = () => {
+        if (!preview) return;
+        preview.innerHTML = ocrPendingFiles.map((f, i) => {
+          const url = URL.createObjectURL(f);
+          return `<img class="ocr-thumb" src="${url}" alt="${esc(f.name)}" title="${esc(f.name)} (${Math.round(f.size/1024)} KB)" data-idx="${i}">`;
+        }).join('') || '<span class="note">No photos queued yet.</span>';
+      };
+
+      const addFiles = (fileList) => {
+        const arr = Array.from(fileList || []).filter(f => /^image\//i.test(f.type) || /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(f.name));
+        if (!arr.length) {
+          toast('Drop image files (PNG/JPG/WebP…)');
+          return;
+        }
+        ocrPendingFiles = ocrPendingFiles.concat(arr).slice(0, 20);
+        renderPending();
+        toast(arr.length + ' photo(s) queued');
+      };
+
+      drop?.addEventListener('click', () => fileInput?.click());
+      fileInput?.addEventListener('change', () => {
+        addFiles(fileInput.files);
+        fileInput.value = '';
+      });
+      drop?.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragover'); });
+      drop?.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+      drop?.addEventListener('drop', (e) => {
+        e.preventDefault();
+        drop.classList.remove('dragover');
+        addFiles(e.dataTransfer?.files);
+      });
+      renderPending();
+
+      const filterCaptures = () => {
+        const f = (capFilter?.value || 'all').toLowerCase();
+        rootEl.querySelectorAll('.ocr-capture[data-domain]').forEach(card => {
+          const d = (card.dataset.domain || 'pos').toLowerCase();
+          card.style.display = (f === 'all' || d === f) ? '' : 'none';
+        });
+      };
+      capFilter?.addEventListener('change', filterCaptures);
+      filterCaptures();
+
+      rootEl.querySelector('#btnOcrClearQueue')?.addEventListener('click', () => {
+        ocrPendingFiles = [];
+        renderPending();
+        if (pasteBox) pasteBox.value = '';
+      });
+
+      rootEl.querySelector('#btnOcrRun')?.addEventListener('click', async () => {
+        if (!selectedExportId) return;
+        const pasted = (pasteBox?.value || '').trim();
+        if (!ocrPendingFiles.length && !pasted) {
+          toast('Add photos and/or paste screen text first');
+          return;
+        }
+        const btn = rootEl.querySelector('#btnOcrRun');
+        if (btn) { btn.disabled = true; btn.textContent = 'Running OCR…'; }
+        const domain = domainSel?.value || 'pos';
+        const screen_type = screenSel?.value || 'auto';
+        try {
+          const images = [];
+          for (const f of ocrPendingFiles) {
+            const data_base64 = await fileToBase64(f);
+            images.push({ filename: f.name, data_base64, domain, screen_type });
+          }
+          const body = {
+            images: images.length ? images : undefined,
+            raw_texts: pasted ? [{ text: pasted, notes: notesInp?.value || '', domain, screen_type }] : undefined,
+            apply_mode: modeSel?.value || 'fill_empty',
+            notes: notesInp?.value || '',
+            domain,
+            screen_type,
+          };
+          toast('Extracting text & saving to ' + domain + ' pack…', 6000);
+          const res = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey/ocr', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+          const nFields = Object.keys(res.parsedFields || {}).length;
+          const nApplied = (res.apply && res.apply.applied || []).length;
+          toast(
+            `Saved ${(res.captures || []).length} · pack ${res.domain || domain} · ${nFields} field(s) · ${nApplied} applied`,
+            7000
+          );
+          ocrPendingFiles = [];
+          if (pasteBox) pasteBox.value = '';
+          surveyPack = domain;
+          try { localStorage.setItem('fafo_survey_pack', domain); } catch (_) {}
+          await loadSurveyUI();
+        } catch (e) {
+          toast(String(e.message || e), 7000);
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = '▶ Extract → pack'; }
+        }
+      });
+
+      rootEl.querySelectorAll('[data-ocr-apply]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const capId = btn.getAttribute('data-ocr-apply');
+          if (!capId || !selectedExportId) return;
+          try {
+            const mode = modeSel?.value || 'fill_empty';
+            const res = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey/ocr/apply', {
+              method: 'POST',
+              body: JSON.stringify({ capture_id: capId, mode }),
+            });
+            toast(`Applied ${(res.applied || []).length} field(s) from capture`);
+            await loadSurveyUI();
+          } catch (e) {
+            toast(String(e.message || e));
+          }
+        });
+      });
+    }
+
+    function renderSurvey(s, eng) {
       const net = s.network || {};
       const si = s.siteInfo || {};
       const cred = s.credentials || {};
+      const fc = s.forecourt || {};
       const accounts = cred.accounts || [];
-      const positions = (s.forecourt || {}).positions || [];
+      const positions = fc.positions || [];
+      const captures = s.photoCaptures || [];
+      const scratch = s.ocrScratch || {};
+      const engPrimary = eng && eng.primary;
+      const engPill = engPrimary
+        ? `<span class="ocr-engine-pill ok">OCR: ${esc(engPrimary)}</span>`
+        : `<span class="ocr-engine-pill bad">OCR: manual paste only</span>`;
+      const engHint = (eng && eng.hint) ? `<p class="note">${esc(eng.hint)}</p>` : '';
+      const activePack = SURVEY_PACK_DEFS.some(p => p.id === surveyPack) ? surveyPack : 'site';
+
+      const packNav = SURVEY_PACK_DEFS.map(p => {
+        const lvl = packFillLevel(s, p.id);
+        const nCap = captures.filter(c => (c.domain || c.pack || 'pos') === p.id).length;
+        return `<button type="button" data-pack="${p.id}" class="${activePack === p.id ? 'active' : ''}" title="${esc(p.desc)}">
+          <span class="pack-dot ${lvl === 'full' ? 'full' : lvl === 'partial' ? 'partial' : ''}"></span>
+          ${esc(p.short)}
+          ${nCap ? `<span style="opacity:.75;font-size:10px">· ${nCap}</span>` : ''}
+        </button>`;
+      }).join('');
+
       const accRows = accounts.map((a, i) => `
         <tr>
           <td><input data-path="credentials.accounts[${i}].name" value="${esc(a.name || '')}"></td>
@@ -1780,79 +2087,240 @@
           <td><input data-path="forecourt.positions[${i}].notes" value="${esc(p.notes || '')}"></td>
         </tr>`).join('') || '<tr><td colspan="8">No positions mapped from backup</td></tr>';
 
+      const captureBlocks = captures.slice(0, 24).map(c => {
+        const pack = c.domain || c.pack || 'pos';
+        const fields = c.scopedFields && Object.keys(c.scopedFields).length ? c.scopedFields : (c.parsedFields || {});
+        const fieldHtml = Object.keys(fields).length
+          ? `<div class="ocr-fields">${Object.entries(fields).map(([k, v]) =>
+              `<div><code>${esc(k)}</code> = ${esc(v)}</div>`).join('')}</div>`
+          : '<p class="note">No key/value fields auto-matched — raw text still stored as given.</p>';
+        const rawPreview = (c.rawText || '').slice(0, 1200);
+        return `
+          <div class="ocr-capture" data-domain="${esc(pack)}">
+            <h4>
+              <span class="chip">${esc(pack)}</span>
+              ${c.screenType && c.screenType !== 'auto' ? `<span class="chip amber">${esc(c.screenType)}</span>` : ''}
+              <span>${esc(c.fileName || c.id || 'capture')}</span>
+              <span class="ocr-engine-pill ${c.ocrOk ? 'ok' : 'bad'}">${esc(c.engine || '—')}</span>
+              <span style="font-size:10px;color:var(--muted)">${esc((c.capturedAt || '').replace('T', ' ').slice(0, 19))}</span>
+              <button type="button" class="btn" data-ocr-apply="${esc(c.id)}" title="Push scoped fields into survey packs">Apply fields</button>
+            </h4>
+            ${fieldHtml}
+            <details style="margin-top:6px">
+              <summary style="cursor:pointer;font-size:11px;color:var(--muted)">Raw text (as given)</summary>
+              <pre class="ocr-raw" style="min-height:60px;margin-top:6px">${esc(rawPreview)}${(c.rawText || '').length > 1200 ? '\n…' : ''}</pre>
+            </details>
+          </div>`;
+      }).join('') || '<p class="note">No photo captures yet for this export.</p>';
+
+      const lastFields = scratch.lastParsedFields || {};
+      const lastFieldsHtml = Object.keys(lastFields).length
+        ? `<div class="ocr-fields" style="margin-top:8px">${Object.entries(lastFields).map(([k, v]) =>
+            `<div><code>${esc(k)}</code> = ${esc(v)}</div>`).join('')}</div>`
+        : '';
+
+      const selStyle = 'width:100%;background:#0a1016;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px';
+      const brandList = (fc.dispenserBrands || []).join(', ');
+      const dcrList = (fc.dcrBrands || []).join(', ');
+
       return `
         <div class="warn-box">${esc(s.securityNotice || 'May contain credentials — local only under survey\\\\site-survey.json')}</div>
         <div class="layout-tools">
           <button class="btn primary" id="btnSaveSurvey">💾 Save survey</button>
           <button class="btn" id="btnExportSurveyMd">⬇ Export markdown</button>
-          <button class="btn" id="btnAddAccount">+ Account row</button>
+          <button class="btn" id="btnShareRedacted" title="Secrets stripped — review before email">✉ Redacted share</button>
+          <button class="btn" id="btnShareChecklist" title="Ordered recovery checklist">☑ Checklist</button>
+          <button class="btn amber" id="btnShareFull" title="Local/USB only — includes passwords">🔒 Full tech ZIP</button>
+          <button class="btn amber" id="btnShareFullPhotos" title="Full ZIP + survey photos">🔒 Full + photos</button>
           <span class="status-pill ${s.hasSaved ? 'ok' : 'warn'}">${s.hasSaved ? 'Saved on disk' : 'Not saved yet'}</span>
+          ${engPill}
         </div>
+        <p class="note" style="margin:0 0 4px">
+          Field survey packs share one local file. <strong>Aerial layout</strong> stays on its own tab.
+          Share packs write under <code>survey\\share-packs</code> — redacted for email review, full tech for USB only.
+        </p>
+        <div class="pack-nav" role="tablist" aria-label="Survey packs">${packNav}</div>
 
-        <div class="section">
-          <h3>Site info (tech fill + prefill)</h3>
-          <div class="form-grid">
-            ${fieldHtml('siteInfo.address', 'Address', si.address)}
-            ${fieldHtml('siteInfo.city', 'City', si.city)}
-            ${fieldHtml('siteInfo.state', 'State', si.state)}
-            ${fieldHtml('siteInfo.zip', 'ZIP', si.zip)}
-            ${fieldHtml('siteInfo.phone', 'Phone', si.phone)}
-            ${fieldHtml('siteInfo.brand', 'Brand', si.brand)}
-            ${fieldHtml('siteInfo.serviceId', 'Service ID', si.serviceId)}
-            ${fieldHtml('siteInfo.helpDesk', 'Help desk', si.helpDesk)}
-            ${fieldHtml('siteInfo.contactName', 'On-site contact', si.contactName)}
-            ${fieldHtml('siteInfo.contactPhone', 'Contact phone', si.contactPhone)}
-            ${fieldHtml('siteInfo.hours', 'Hours', si.hours)}
-            ${fieldHtml('siteInfo.techNotes', 'Tech notes', si.techNotes, true)}
+        <div class="pack-panel ${activePack === 'site' ? 'active' : ''}" data-pack="site">
+          <div class="section">
+            <div class="pack-head">
+              <h3>📍 Site info pack</h3>
+              <span class="pack-desc">Who/where — store identity for recovery &amp; handoff. Separate from POS screenshots.</span>
+            </div>
+            <div class="form-grid">
+              ${fieldHtml('displayName', 'Display / store name', s.displayName)}
+              ${fieldHtml('siteId', 'Site ID', s.siteId)}
+              ${fieldHtml('customer', 'Customer', s.customer)}
+              ${fieldHtml('siteInfo.address', 'Address', si.address)}
+              ${fieldHtml('siteInfo.city', 'City', si.city)}
+              ${fieldHtml('siteInfo.state', 'State', si.state)}
+              ${fieldHtml('siteInfo.zip', 'ZIP', si.zip)}
+              ${fieldHtml('siteInfo.phone', 'Phone', si.phone)}
+              ${fieldHtml('siteInfo.brand', 'Brand', si.brand)}
+              ${fieldHtml('siteInfo.serviceId', 'Service ID', si.serviceId)}
+              ${fieldHtml('siteInfo.helpDesk', 'Help desk', si.helpDesk)}
+              ${fieldHtml('siteInfo.contactName', 'On-site contact', si.contactName)}
+              ${fieldHtml('siteInfo.contactPhone', 'Contact phone', si.contactPhone)}
+              ${fieldHtml('siteInfo.hours', 'Hours', si.hours)}
+              ${fieldHtml('siteInfo.techNotes', 'Tech notes', si.techNotes, true)}
+            </div>
           </div>
         </div>
 
-        <div class="section">
-          <h3>Network config punch list</h3>
-          <div class="form-grid">
-            ${fieldHtml('network.lanIp', 'LAN IP', net.lanIp)}
-            ${fieldHtml('network.subnet', 'Subnet', net.subnet)}
-            ${fieldHtml('network.gateway', 'Gateway', net.gateway)}
-            ${fieldHtml('network.dns1', 'DNS primary', net.dns1)}
-            ${fieldHtml('network.dns2', 'DNS secondary', net.dns2)}
-            ${fieldHtml('network.paymentNicIp', 'Payment NIC / EMV IP', net.paymentNicIp)}
-            ${fieldHtml('network.paymentNicSubnet', 'Payment NIC subnet', net.paymentNicSubnet)}
-            ${fieldHtml('network.paymentNicGateway', 'Payment NIC gateway', net.paymentNicGateway)}
-            ${fieldHtml('network.isolatedPaymentNic', 'Isolated Payment NIC (Y/N + notes)', net.isolatedPaymentNic)}
-            ${fieldHtml('network.mnspVariant', 'MNSP variant / circuit', net.mnspVariant)}
-            ${fieldHtml('network.mnspRouter', 'MNSP router IP', net.mnspRouter)}
-            ${fieldHtml('network.mnspPort', 'MNSP port', net.mnspPort)}
-            ${fieldHtml('network.staticRoutes', 'Static routes / hosts', net.staticRoutes, true)}
-            ${fieldHtml('network.dailyMsgServer', 'DailyMsg server', net.dailyMsgServer)}
-            ${fieldHtml('network.remoteServer', 'Remote server host', net.remoteServer)}
-            ${fieldHtml('network.remoteServerPort', 'Remote server port', net.remoteServerPort)}
-            ${fieldHtml('network.internetPathNotes', 'Internet / firewall path notes', net.internetPathNotes, true)}
-            ${fieldHtml('network.notes', 'Network notes', net.notes, true)}
+        <div class="pack-panel ${activePack === 'network' ? 'active' : ''}" data-pack="network">
+          <div class="section">
+            <div class="pack-head">
+              <h3>🌐 Network pack</h3>
+              <span class="pack-desc">LAN / payment / MNSP. Prefill from SMS when present — confirm on site. Photo OCR of network menus can land here with domain tag.</span>
+            </div>
+            <div class="form-grid">
+              ${fieldHtml('network.lanIp', 'LAN IP', net.lanIp)}
+              ${fieldHtml('network.subnet', 'Subnet', net.subnet)}
+              ${fieldHtml('network.gateway', 'Gateway', net.gateway)}
+              ${fieldHtml('network.dns1', 'DNS primary', net.dns1)}
+              ${fieldHtml('network.dns2', 'DNS secondary', net.dns2)}
+              ${fieldHtml('network.paymentNicIp', 'Payment NIC / EMV IP', net.paymentNicIp)}
+              ${fieldHtml('network.paymentNicSubnet', 'Payment NIC subnet', net.paymentNicSubnet)}
+              ${fieldHtml('network.paymentNicGateway', 'Payment NIC gateway', net.paymentNicGateway)}
+              ${fieldHtml('network.isolatedPaymentNic', 'Isolated Payment NIC (Y/N + notes)', net.isolatedPaymentNic)}
+              ${fieldHtml('network.mnspVariant', 'MNSP variant / circuit', net.mnspVariant)}
+              ${fieldHtml('network.mnspRouter', 'MNSP router IP', net.mnspRouter)}
+              ${fieldHtml('network.mnspPort', 'MNSP port', net.mnspPort)}
+              ${fieldHtml('network.staticRoutes', 'Static routes / hosts', net.staticRoutes, true)}
+              ${fieldHtml('network.dailyMsgServer', 'DailyMsg server', net.dailyMsgServer)}
+              ${fieldHtml('network.remoteServer', 'Remote server host', net.remoteServer)}
+              ${fieldHtml('network.remoteServerPort', 'Remote server port', net.remoteServerPort)}
+              ${fieldHtml('network.internetPathNotes', 'Internet / firewall path notes', net.internetPathNotes, true)}
+              ${fieldHtml('network.notes', 'Network notes', net.notes, true)}
+            </div>
+            <p class="note">SMS may prefill MNSP / EMV / hosts. Full LAN stack still verify live.</p>
           </div>
-          <p class="note">Yellow-prefilled values came from SMS XML (MNSP, EMV IP, hosts). Full LAN/Payment NIC still confirm on site.</p>
         </div>
 
-        <div class="section">
-          <h3>Credentials &amp; logins (Config Client / cashiers)</h3>
-          <div class="form-grid">
-            ${fieldHtml('credentials.configClientUser', 'Config Client user', cred.configClientUser)}
-            ${fieldHtml('credentials.configClientPassword', 'Config Client manager password', cred.configClientPassword)}
-            ${fieldHtml('credentials.csrPassword', 'CSR password', cred.csrPassword)}
-            ${fieldHtml('credentials.maintenanceMenuPassword', 'Maintenance menu password', cred.maintenanceMenuPassword)}
+        <div class="pack-panel ${activePack === 'pos' ? 'active' : ''}" data-pack="pos">
+          <div class="section">
+            <div class="pack-head">
+              <h3>🖥️ POS / Commander pack <span class="chip amber">EZ Mode</span></h3>
+              <span class="pack-desc">Primary home for config-screen photos. Text kept exactly as given for later agentic fill.</span>
+            </div>
+            ${engHint}
+            <div class="form-grid">
+              ${fieldHtml('softwareVersion', 'Software / base version', s.softwareVersion)}
+              ${fieldHtml('credentials.configClientUser', 'Config Client user', cred.configClientUser)}
+              ${fieldHtml('credentials.configClientPassword', 'Config Client manager password', cred.configClientPassword)}
+              ${fieldHtml('credentials.csrPassword', 'CSR password', cred.csrPassword)}
+              ${fieldHtml('credentials.maintenanceMenuPassword', 'Maintenance menu password', cred.maintenanceMenuPassword)}
+            </div>
+            <div class="layout-tools" style="margin-top:10px">
+              <button type="button" class="btn" id="btnAddAccount">+ Account row</button>
+            </div>
+            <table class="soft" style="margin-top:8px">
+              <thead><tr><th>Name</th><th>#</th><th>Lvl</th><th>Password</th><th>Source</th></tr></thead>
+              <tbody>${accRows}</tbody>
+            </table>
+            <p class="note">${esc(cred.notes || '')}</p>
           </div>
-          <table class="soft" style="margin-top:10px">
-            <thead><tr><th>Name</th><th>#</th><th>Lvl</th><th>Password</th><th>Source</th></tr></thead>
-            <tbody>${accRows}</tbody>
-          </table>
-          <p class="note">${esc(cred.notes || '')}</p>
+
+          <div class="section">
+            <h3>📷 Photo / text extract</h3>
+            <p class="note" style="margin-top:0">
+              Tag the batch with a <strong>pack domain</strong> and optional <strong>screen type</strong>.
+              Stored under <code>survey\\photos</code> + this site&rsquo;s survey JSON (local only).
+            </p>
+            <div class="ocr-drop" id="ocrDrop" title="Click or drop images">
+              <strong>Drop POS / config photos here</strong>
+              <div class="hint">or click to browse · PNG / JPG / WebP · up to 20 per batch</div>
+              <input type="file" id="ocrFileInput" accept="image/*" multiple hidden>
+            </div>
+            <div class="ocr-preview" id="ocrPreview"></div>
+            <div class="field" style="margin-top:10px">
+              <label>Or paste screen text / phone OCR (kept exactly as typed)</label>
+              <textarea class="ocr-raw" id="ocrPasteText" placeholder="IP Address: 192.168.x.x&#10;Gateway: …&#10;Subnet: …"></textarea>
+            </div>
+            <div class="form-grid" style="margin-top:8px">
+              <div class="field">
+                <label>Pack domain</label>
+                <select id="ocrDomain" style="${selStyle}">
+                  <option value="pos" ${activePack === 'pos' ? 'selected' : ''}>POS / Commander</option>
+                  <option value="network" ${activePack === 'network' ? 'selected' : ''}>Network</option>
+                  <option value="site" ${activePack === 'site' ? 'selected' : ''}>Site info</option>
+                  <option value="forecourt" ${activePack === 'forecourt' ? 'selected' : ''}>Forecourt</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Screen type</label>
+                <select id="ocrScreenType" style="${selStyle}">
+                  <option value="auto" selected>Auto (keep all matched fields)</option>
+                  <option value="network_menu">Network menu</option>
+                  <option value="employees">Employees / logins</option>
+                  <option value="software">Software / version</option>
+                  <option value="forecourt_menu">Forecourt / pumps</option>
+                  <option value="site_signage">Site signage / door sticker</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Apply mode</label>
+                <select id="ocrApplyMode" style="${selStyle}">
+                  <option value="fill_empty" selected>Fill empty fields only</option>
+                  <option value="overwrite">Overwrite matching fields</option>
+                  <option value="none">Store only (don&rsquo;t touch form fields)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Batch notes (optional)</label>
+                <input id="ocrBatchNotes" placeholder="e.g. network menu + manager login">
+              </div>
+            </div>
+            <div class="layout-tools" style="margin-top:10px">
+              <button type="button" class="btn primary" id="btnOcrRun">▶ Extract → pack</button>
+              <button type="button" class="btn" id="btnOcrClearQueue">Clear queue</button>
+            </div>
+            ${lastFieldsHtml ? `<p class="note" style="margin-top:10px">Last scoped field map${scratch.lastDomain ? ' (' + esc(scratch.lastDomain) + (scratch.lastScreenType ? '/' + esc(scratch.lastScreenType) : '') + ')' : ''}:</p>${lastFieldsHtml}` : ''}
+
+            <div class="layout-tools" style="margin-top:16px;align-items:center">
+              <h3 style="margin:0;font-size:13px;flex:1">Stored captures</h3>
+              <div class="field" style="margin:0;min-width:140px">
+                <label style="font-size:10px">Filter pack</label>
+                <select id="ocrCapFilter" style="${selStyle}">
+                  <option value="all">All packs</option>
+                  <option value="pos">POS</option>
+                  <option value="network">Network</option>
+                  <option value="site">Site</option>
+                  <option value="forecourt">Forecourt</option>
+                </select>
+              </div>
+            </div>
+            ${captureBlocks}
+            ${scratch.combinedRawText ? `
+              <details style="margin-top:10px">
+                <summary style="cursor:pointer;font-size:11px;color:var(--muted)">Full OCR transcript (combined, as given)</summary>
+                <pre class="ocr-raw" style="margin-top:6px;max-height:280px">${esc((scratch.combinedRawText || '').slice(0, 8000))}${(scratch.combinedRawText || '').length > 8000 ? '\n…' : ''}</pre>
+              </details>` : ''}
+          </div>
         </div>
 
-        <div class="section">
-          <h3>Fueling positions / CRIND · pump versions</h3>
-          <table class="soft">
-            <thead><tr><th>Pos</th><th>Fuel ch</th><th>DCR ch</th><th>Disp</th><th>CRIND</th><th>Pump FW</th><th>CRIND FW</th><th>Notes</th></tr></thead>
-            <tbody>${posRows}</tbody>
-          </table>
+        <div class="pack-panel ${activePack === 'forecourt' ? 'active' : ''}" data-pack="forecourt">
+          <div class="section">
+            <div class="pack-head">
+              <h3>⛽ Forecourt pack</h3>
+              <span class="pack-desc">Pumps / CRIND / tank gear. Draw the birds-eye under the <strong>Aerial layout</strong> tab.</span>
+            </div>
+            <div class="form-grid">
+              ${fieldHtml('forecourt.tankMonitorType', 'Tank monitor type', fc.tankMonitorType)}
+              ${fieldHtml('forecourt.carWashType', 'Car wash type', fc.carWashType)}
+              ${fieldHtml('forecourt.notes', 'Forecourt notes', fc.notes, true)}
+            </div>
+            <p class="note" style="margin-top:8px">
+              Dispenser brands (from backup): <strong>${esc(brandList || '—')}</strong>
+              · DCR brands: <strong>${esc(dcrList || '—')}</strong>
+            </p>
+            <h3 style="margin-top:14px;font-size:13px">Fueling positions / CRIND · pump versions</h3>
+            <table class="soft">
+              <thead><tr><th>Pos</th><th>Fuel ch</th><th>DCR ch</th><th>Disp</th><th>CRIND</th><th>Pump FW</th><th>CRIND FW</th><th>Notes</th></tr></thead>
+              <tbody>${posRows}</tbody>
+            </table>
+          </div>
         </div>`;
     }
 
@@ -1881,6 +2349,43 @@
         toast('Markdown: ' + res.path, 5000);
       } catch (e) {
         toast(String(e.message || e));
+      }
+    }
+
+    async function exportSharePack(mode, includePhotos = false) {
+      if (!selectedExportId) return;
+      const labels = {
+        redacted: 'Redacted share pack',
+        full: includePhotos ? 'Full tech ZIP + photos' : 'Full tech ZIP',
+        checklist: 'Recovery checklist',
+      };
+      try {
+        // Persist form first so pack reflects current fields
+        if (survey) {
+          try {
+            await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey', {
+              method: 'PUT',
+              body: JSON.stringify({ survey }),
+            });
+            survey.hasSaved = true;
+          } catch (_) { /* still try export from last disk save */ }
+        }
+        toast('Building ' + (labels[mode] || mode) + '…', 5000);
+        const res = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey/share-pack', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode,
+            include_photos: !!includePhotos,
+            include_layout_json: true,
+            include_checklist: true,
+          }),
+        });
+        const path = res.path || res.folder || '';
+        const safe = res.emailSafe ? ' · email-safe (review first)' : ' · LOCAL/USB ONLY';
+        toast((labels[mode] || 'Pack') + ': ' + path + safe, 9000);
+        try { await navigator.clipboard?.writeText(path); } catch (_) {}
+      } catch (e) {
+        toast(String(e.message || e), 7000);
       }
     }
 
