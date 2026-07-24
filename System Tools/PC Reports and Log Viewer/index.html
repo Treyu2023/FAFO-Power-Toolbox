@@ -578,14 +578,13 @@
     </div>
   </div>
 
-  <!-- Defaults ship in git; catalog.js / logs-data.js are generated per-device and gitignored -->
+  <!-- Defaults ship in git; catalog.js / logs-data.js are generated per-device and gitignored.
+       Do NOT hard-include the optional packs — missing files caused browser launch errors. -->
   <script src="../../shared/aitoolbox-config.js"></script>
   <script src="../../shared/aitoolbox-api.js"></script>
   <script src="../../shared/aitoolbox-ui.js"></script>
   <script src="catalog.default.js"></script>
   <script src="logs-data.default.js"></script>
-  <script src="catalog.js"></script>
-  <script src="logs-data.js"></script>
   <style>
     .side-actions .btn, .btn {
       border: 1px solid var(--line);
@@ -609,6 +608,18 @@
     .side-actions .btn:disabled, .btn:disabled { opacity: .5; cursor: wait; }
   </style>
   <script>
+    /** Load optional gitignored pack scripts without hard 404 page errors. */
+    function loadOptionalScript(src) {
+      return new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = false;
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+      });
+    }
+
     const ICONS = {
       cpu: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>',
       radar: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 12l6-3"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -1084,6 +1095,12 @@
 
     /* -------- boot -------- */
     async function boot() {
+      // Optional per-device packs (gitignored). Fail silently if not generated yet.
+      await loadOptionalScript("catalog.js");
+      await loadOptionalScript("logs-data.js");
+      catalog = window.REPORT_CATALOG || catalog || { reports: [] };
+      logData = Array.isArray(window.LOG_DATA) ? window.LOG_DATA : logData;
+
       // Prefer live pack from server when available (fixes missing catalog.js)
       try {
         if (window.AIToolboxAPI && await AIToolboxAPI.isOnline(true, 1500)) {
@@ -1093,8 +1110,8 @@
             if (!st.hasCatalogJs || (st.pcReportFileCount === 0 && st.legacyReportFileCount > 0)) {
               banner.style.display = "block";
               banner.innerHTML = st.hasCatalogJs
-                ? `Device pack has ${st.pcReportFileCount} PC reports · ${st.legacyReportFileCount} bundled files. Click <strong>Refresh library pack</strong> if the list looks stale.`
-                : `Library pack not built yet for this PC. Click <strong>▶ Run diagnostics</strong> or <strong>↻ Refresh library pack</strong> (includes bundled reports folder).`;
+                ? `Device pack has ${st.pcReportFileCount} PC reports / ${st.legacyReportFileCount} bundled files. Click <strong>Refresh library pack</strong> if the list looks stale.`
+                : `Library pack not built yet for this PC. Click <strong>Run diagnostics</strong> or <strong>Refresh library pack</strong> (includes bundled reports folder).`;
             }
           }
           // Auto-pack once if no catalog.js but files exist
@@ -1108,7 +1125,7 @@
           const banner = document.getElementById("serverBanner");
           if (banner && !(catalog.reports && catalog.reports.length && catalog.reports[0].id !== "no-local-reports")) {
             banner.style.display = "block";
-            banner.innerHTML = `Server offline — buttons will start it, or use <strong>▶ Run diagnostics</strong> (protocol). Empty list? Run diagnostics once on this PC.`;
+            banner.innerHTML = `Server offline — use Launcher <strong>Start Server</strong>, or double-click <strong>START SERVER.bat</strong>. Empty list? Run diagnostics once on this PC.`;
           }
         }
       } catch (e) {

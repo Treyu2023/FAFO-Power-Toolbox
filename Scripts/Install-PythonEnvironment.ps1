@@ -200,18 +200,27 @@ Write-Step "Installing requirements into .venv"
 
 # --- Sanity checks ---
 Write-Step "Verifying imports"
-& $venvPy -c @"
+$verifyPy = @'
 import sys
-print('python', sys.version)
-print('prefix', sys.prefix)
-mods = ['fastapi', 'uvicorn', 'mutagen', 'PIL', 'pystray', 'psutil']
-if sys.platform == 'win32':
-    mods.append('win32api')
+print("python", sys.version)
+print("prefix", sys.prefix)
+mods = ["fastapi", "uvicorn", "mutagen", "PIL", "pystray", "psutil"]
+if sys.platform == "win32":
+    mods.append("win32api")
 for m in mods:
-    __import__(m if m != 'PIL' else 'PIL')
-    print('  OK', m)
-print('venv-ok')
-"@
+    __import__(m if m != "PIL" else "PIL")
+    print("  OK", m)
+print("venv-ok")
+'@
+$verifyFile = Join-Path $env:TEMP 'fafo-verify-venv-imports.py'
+Set-Content -LiteralPath $verifyFile -Value $verifyPy -Encoding UTF8
+try {
+    & $venvPy $verifyFile
+    if ($LASTEXITCODE -ne 0) { throw "Import verification failed (exit $LASTEXITCODE)" }
+}
+finally {
+    Remove-Item -LiteralPath $verifyFile -Force -ErrorAction SilentlyContinue
+}
 
 # Marker file for bats
 $marker = Join-Path $venvDir 'fafo-toolbox-venv.txt'

@@ -120,6 +120,19 @@ $sc.Save()
 Write-Host "Shortcut ready: $shortcut" -ForegroundColor Green
 Write-Host "  Target: $targetPath"
 
+# Re-point aitoolbox:// protocol at the real repo (old Desktop junction path breaks Start Server)
+try {
+  $protoCmd = "`"$real\server\protocol_start.bat`" `"%1`""
+  reg add "HKCU\Software\Classes\aitoolbox" /ve /d "URL:AI Toolbox Protocol" /f | Out-Null
+  reg add "HKCU\Software\Classes\aitoolbox" /v "URL Protocol" /d "" /f | Out-Null
+  reg add "HKCU\Software\Classes\aitoolbox\DefaultIcon" /ve /d "$env:SystemRoot\System32\shell32.dll,13" /f | Out-Null
+  reg add "HKCU\Software\Classes\aitoolbox\shell\open\command" /ve /d $protoCmd /f | Out-Null
+  Write-Host "Protocol aitoolbox:// -> $real\server\protocol_start.bat" -ForegroundColor Green
+} catch {
+  Write-Host "Could not re-register aitoolbox:// protocol: $_" -ForegroundColor Yellow
+  Write-Host "  Run SETUP (run once).bat from the real repo to fix Start Server."
+}
+
 Write-Host ""
 Write-Host "Done."
 Write-Host "  Real git repo stays at: $real  (outside OneDrive - intentional)"
