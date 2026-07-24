@@ -902,6 +902,9 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
         }
 
     parsed = parse_transactions(raw_xml)
+    # Keep a small raw head for UI diagnostics (never multi-MB)
+    raw_head = raw_xml[:1200] if raw_xml else ""
+    n_markers = len(re.findall(r"<\s*(?:[\w.-]+:)?trans\b", raw_xml or "", flags=re.I))
     payload = {
         "period": period,
         "fetchCmd": used_cmd,
@@ -918,6 +921,9 @@ def journal_load_period(session_id: str, period_key: str, *, force: bool = False
         "loadedAt": _utc_now(),
         "attempts": attempts_log[:12],
         "rawBytes": len(raw_xml),
+        "transMarkers": n_markers,
+        "parseNote": parsed.get("parseNote"),
+        "rawHead": raw_head,
         "emptyPeriod": len(parsed["transactions"]) == 0 and _looks_like_tlog_xml(raw_xml),
     }
     sess.setdefault("cache", {})[period_key] = payload
@@ -932,9 +938,15 @@ def journal_load_xml_file(path: str) -> dict[str, Any]:
     raw = p.read_text(encoding="utf-8", errors="replace")
     # period list file?
     periods = parse_period_list(raw)
-    if periods and "transaction" not in raw.lower()[:5000]:
+    low_head = raw[:8000].lower()
+    looks_like_tx = any(
+        m in low_head
+        for m in ("<trans", "trheader", "trseq", "saleevent", "trcurrtot", "trllinetot")
+    )
+    if periods and not looks_like_tx:
         return {"ok": True, "type": "periodList", "periods": periods, "path": str(p)}
     parsed = parse_transactions(raw)
+    n_markers = len(re.findall(r"<\s*(?:[\w.-]+:)?trans\b", raw or "", flags=re.I))
     return {
         "ok": True,
         "type": "transactions",
@@ -949,7 +961,118 @@ def journal_load_xml_file(path: str) -> dict[str, Any]:
         "fuelPositions": parsed["fuelPositions"],
         "dispensers": parsed["dispensers"],
         "summary": parsed["summary"],
+        "parseNote": parsed.get("parseNote"),
+        "transMarkers": n_markers,
+        "rawBytes": len(raw),
+        "rawHead": raw[:1200],
         "loadedAt": _utc_now(),
+    }
+
+
+def scan_backup_journal_files(export_path: str | Path, *, max_files: int = 40) -> dict[str, Any]:
+    """
+    Look under a site SMS export / watched backup folder for offline T-log XML.
+
+    Note: standard Import-Export SMS config dumps usually do NOT include journals.
+    Techs sometimes drop Journal Browser / vtransset exports next to the site folder.
+    """
+    root = Path(export_path).expanduser()
+    if not root.exists():
+        return {
+            "ok": False,
+            "message": f"Path not found: {root}",
+            "files": [],
+            "smsNote": "SMS configuration backups rarely include T-log / journal XML.",
+        }
+    if root.is_file():
+        roots = [root.parent]
+        seed_files = [root]
+    else:
+        roots = [root]
+        seed_files = []
+
+    name_pat = re.compile(
+        r"(tlog|transset|trans|journal|posjournal|pjr|period|vtlog|vtrans)",
+        re.I,
+    )
+    content_markers = ("<trans", "trheader", "trseq", "trcurrtot", "saleevent", "trllinetot", "trline")
+    found: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def consider(p: Path, why: str) -> None:
+        try:
+            if not p.is_file():
+                return
+            key = str(p.resolve())
+            if key in seen:
+                return
+            if p.suffix.lower() not in {".xml", ".txt", ".jnl", ".log"}:
+                return
+            size = p.stat().st_size
+            if size < 200 or size > 80_000_000:
+                return
+            seen.add(key)
+            head = ""
+            try:
+                head = p.read_text(encoding="utf-8", errors="replace")[:4000]
+            except OSError:
+                return
+            low = head.lower()
+            score = 0
+            if name_pat.search(p.name):
+                score += 2
+            hits = [m for m in content_markers if m in low]
+            score += len(hits)
+            if score < 2 and why != "name":
+                return
+            if not hits and score < 3:
+                return
+            found.append(
+                {
+                    "path": str(p),
+                    "name": p.name,
+                    "bytes": size,
+                    "score": score,
+                    "markers": hits[:8],
+                    "mtime": datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+                    "why": why,
+                }
+            )
+        except OSError:
+            return
+
+    for sf in seed_files:
+        consider(sf, "seed")
+
+    # shallow walk: site folder + one level of subfolders (avoid huge trees)
+    for base in roots:
+        try:
+            for p in base.iterdir():
+                if p.is_file():
+                    consider(p, "name" if name_pat.search(p.name) else "scan")
+                elif p.is_dir() and p.name.lower() not in {".git", "node_modules", "__pycache__"}:
+                    try:
+                        for p2 in p.iterdir():
+                            if p2.is_file():
+                                consider(p2, "name" if name_pat.search(p2.name) else "scan")
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+
+    # Prefer stronger journal signals
+    found.sort(key=lambda r: (-int(r.get("score") or 0), -int(r.get("bytes") or 0)))
+    found = found[: max(1, min(max_files, 80))]
+    return {
+        "ok": True,
+        "exportPath": str(root if root.is_dir() else root.parent),
+        "files": found,
+        "count": len(found),
+        "smsNote": (
+            "SMS Import-Export config backups usually contain poscfg/PLUs/etc., not live T-logs. "
+            "Use live Journal login → Get Data, or drop a Journal Browser / vtransset XML export "
+            "into this site folder and click Scan backup."
+        ),
     }
 
 
@@ -997,6 +1120,108 @@ _LINE_TYPES = {
 }
 
 
+def _normalize_journal_xml(xml_text: str) -> str:
+    """
+    Make Commander / Journal Browser dumps parseable by ElementTree.
+
+    Live CGI often returns *many* concatenated documents:
+      <?xml ...?><trans>...</trans><?xml ...?><trans>...</trans>
+    or bare multi-root <trans> fragments. ET rejects multi-root XML, which
+    previously collapsed T-logs to 0–1 transactions with missing totals.
+    """
+    if not xml_text:
+        return ""
+    text = xml_text.lstrip("\ufeff").strip()
+    if not text:
+        return ""
+    # Drop declarations / DOCTYPE so multi-doc streams can share one root
+    text = re.sub(r"<\?xml[^?]*\?>", "", text, flags=re.I)
+    text = re.sub(r"<!DOCTYPE[^>]*>", "", text, flags=re.I)
+    text = text.strip()
+    low_head = text[:800].lower()
+    # Already a single-rooted container?
+    if re.match(
+        r"<\s*(?:[\w.-]+:)?(transset|period|periodlist|root|naxml-posjournal|journalreport|posjournal)\b",
+        text,
+        re.I,
+    ):
+        return text
+    # Count event roots (Verifone PJR + NAXML)
+    n_trans = len(re.findall(r"<\s*(?:[\w.-]+:)?trans\b", text, flags=re.I))
+    n_events = len(
+        re.findall(
+            r"<\s*(?:[\w.-]+:)?(?:saleevent|voidevent|refundevent|financialevent|otherevent|journalevent)\b",
+            text,
+            flags=re.I,
+        )
+    )
+    if n_trans >= 1 or n_events >= 1:
+        # Always wrap multi / bare fragments so sibling <trans> are all kept
+        if n_trans + n_events > 1 or not re.match(r"<\s*(?:[\w.-]+:)?trans\b", text, re.I):
+            # If the stream is only events/trans (no outer wrapper), wrap
+            if not re.match(
+                r"<\s*(?:[\w.-]+:)?(transset|period|root|naxml|journal)",
+                text,
+                re.I,
+            ):
+                return f"<root>{text}</root>"
+    # HTML / junk prefix before first tag
+    m = re.search(r"<\s*(?:[\w.-]+:)?(?:trans|transset|saleevent|period)\b", text, re.I)
+    if m and m.start() > 0:
+        text = text[m.start() :]
+        if not re.match(
+            r"<\s*(?:[\w.-]+:)?(transset|period|root|naxml|journal)",
+            text,
+            re.I,
+        ):
+            n_trans = len(re.findall(r"<\s*(?:[\w.-]+:)?trans\b", text, flags=re.I))
+            if n_trans >= 1:
+                return f"<root>{text}</root>"
+    return text
+
+
+def _extract_trans_fragments(xml_text: str) -> list[str]:
+    """Last-resort: pull each <trans>...</trans> (or SaleEvent) block via regex."""
+    if not xml_text:
+        return []
+    patterns = [
+        r"(<\s*(?:[\w.-]+:)?trans\b[^>]*>.*?</\s*(?:[\w.-]+:)?trans\s*>)",
+        r"(<\s*(?:[\w.-]+:)?saleevent\b[^>]*>.*?</\s*(?:[\w.-]+:)?saleevent\s*>)",
+        r"(<\s*(?:[\w.-]+:)?voidevent\b[^>]*>.*?</\s*(?:[\w.-]+:)?voidevent\s*>)",
+        r"(<\s*(?:[\w.-]+:)?refundevent\b[^>]*>.*?</\s*(?:[\w.-]+:)?refundevent\s*>)",
+    ]
+    frags: list[str] = []
+    for pat in patterns:
+        frags.extend(re.findall(pat, xml_text, flags=re.I | re.S))
+    return frags
+
+
+def _parse_transactions_from_root(root: ET.Element) -> list[dict[str, Any]]:
+    txs: list[dict[str, Any]] = []
+    tx_names = {n.lower() for n in _TX_LOCAL_NAMES}
+    for el in root.iter():
+        ln = _local(el.tag)
+        lnl = ln.lower()
+        if lnl not in tx_names and not lnl.endswith("transaction"):
+            continue
+        if lnl in {"transactionlist", "transactions", "transset", "transactiondetail", "transactiondetailgroup"}:
+            continue
+        # Skip nested TransactionDetail-style containers inside NAXML events
+        if lnl in {"transactionline", "transactionsummary"}:
+            continue
+        rec = _parse_one_transaction(el)
+        if rec:
+            txs.append(rec)
+    if not txs:
+        for el in root.iter():
+            ln = _local(el.tag).lower()
+            if ln in {"sale", "receipt", "ticket", "event"}:
+                rec = _parse_one_transaction(el, force=True)
+                if rec and (rec.get("amount") is not None or rec.get("transNum") or rec.get("description")):
+                    txs.append(rec)
+    return txs
+
+
 def parse_transactions(xml_text: str) -> dict[str, Any]:
     """Parse T-log / PJR / transSet XML into flat searchable transaction records + line items."""
     empty = {
@@ -1008,52 +1233,71 @@ def parse_transactions(xml_text: str) -> dict[str, Any]:
         "fuelPositions": [],
         "dispensers": [],
         "summary": {"count": 0, "totalAmount": 0.0},
+        "parseNote": None,
     }
     if not xml_text or not xml_text.strip():
         return empty
-    # Journal exports sometimes concatenate many <trans> without a root
-    text = xml_text.strip()
-    if text.count("<trans") > 1 and not text.lstrip().startswith("<?xml") and "<transSet" not in text[:200]:
-        text = f"<root>{text}</root>"
-    elif "<trans " in text and not any(
-        x in text[:300].lower() for x in ("<transset", "<root", "<period", "<vfi:", "<?xml")
-    ):
-        if not text.lstrip().startswith("<"):
-            pass
-        elif text.count("<trans") >= 1 and "</trans>" in text and "<transSet" not in text:
-            # single or multi trans fragment
-            if not text.strip().startswith("<?xml"):
-                text = f"<root>{text}</root>"
+
+    text = _normalize_journal_xml(xml_text)
+    root: ET.Element | None = None
+    parse_note = None
     try:
         root = ET.fromstring(text)
     except ET.ParseError:
+        # Retry: strip decls again + force wrap
+        stripped = re.sub(r"<\?xml[^?]*\?>", "", xml_text, flags=re.I)
+        stripped = re.sub(r"<!DOCTYPE[^>]*>", "", stripped, flags=re.I).strip()
         try:
-            root = ET.fromstring(f"<root>{xml_text}</root>")
+            root = ET.fromstring(f"<root>{stripped}</root>")
+            parse_note = "wrapped-after-parse-error"
         except ET.ParseError:
-            return empty
-
-    txs: list[dict[str, Any]] = []
-    for el in root.iter():
-        ln = _local(el.tag)
-        lnl = ln.lower()
-        if lnl not in {n.lower() for n in _TX_LOCAL_NAMES} and not lnl.endswith("transaction"):
-            continue
-        if lnl in {"transactionlist", "transactions", "transset"}:
-            continue
-        # Prefer top-level <trans> with type= attribute (Verifone PJR)
-        rec = _parse_one_transaction(el)
-        if rec:
-            txs.append(rec)
-
-    # Fallback: if no transaction elements, try sale / receipt blocks
-    if not txs:
-        for el in root.iter():
-            ln = _local(el.tag).lower()
-            if ln in {"sale", "receipt", "ticket", "event"}:
+            # Fragment extraction for severely broken multi-doc streams
+            frags = _extract_trans_fragments(xml_text)
+            if not frags:
+                empty["parseNote"] = "parse-failed-no-fragments"
+                return empty
+            txs_fr: list[dict[str, Any]] = []
+            for frag in frags:
+                try:
+                    el = ET.fromstring(frag)
+                except ET.ParseError:
+                    continue
                 rec = _parse_one_transaction(el, force=True)
-                if rec and (rec.get("amount") is not None or rec.get("transNum") or rec.get("description")):
-                    txs.append(rec)
+                if rec:
+                    txs_fr.append(rec)
+            if not txs_fr:
+                empty["parseNote"] = "parse-failed-fragments-empty"
+                return empty
+            return _finalize_tx_payload(txs_fr, parse_note=f"fragment-extract:{len(frags)}")
 
+    assert root is not None
+    txs = _parse_transactions_from_root(root)
+
+    # If single outer element absorbed everything poorly, try fragment path
+    if len(txs) <= 1:
+        n_markers = len(re.findall(r"<\s*(?:[\w.-]+:)?trans\b", xml_text, flags=re.I))
+        if n_markers > max(1, len(txs)):
+            frags = _extract_trans_fragments(xml_text)
+            if len(frags) > len(txs):
+                txs2: list[dict[str, Any]] = []
+                for frag in frags:
+                    try:
+                        el = ET.fromstring(frag)
+                    except ET.ParseError:
+                        continue
+                    rec = _parse_one_transaction(el, force=True)
+                    if rec:
+                        txs2.append(rec)
+                if len(txs2) > len(txs):
+                    txs = txs2
+                    parse_note = f"fragment-recover:{len(frags)}-markers:{n_markers}"
+
+    return _finalize_tx_payload(txs, parse_note=parse_note)
+
+
+def _finalize_tx_payload(
+    txs: list[dict[str, Any]], *, parse_note: str | None = None
+) -> dict[str, Any]:
     registers = sorted({str(t.get("register") or "") for t in txs if t.get("register")})
     employees = sorted({str(t.get("employee") or "") for t in txs if t.get("employee")})
     mops = sorted({str(t.get("mop") or "") for t in txs if t.get("mop")})
@@ -1062,13 +1306,16 @@ def parse_transactions(xml_text: str) -> dict[str, Any]:
     dispensers = sorted({str(t.get("dispenser") or "") for t in txs if t.get("dispenser")})
 
     total = 0.0
+    sale_count = 0
     for t in txs:
         try:
-            total += float(t.get("amount") or 0)
+            if t.get("amount") is not None:
+                total += float(t.get("amount") or 0)
         except (TypeError, ValueError):
             pass
+        if t.get("isSaleLike") or (t.get("amount") is not None and (t.get("eventType") or "").lower() != "journal"):
+            sale_count += 1
 
-    # sequential id for UI
     for i, t in enumerate(txs):
         t["rowId"] = i
         t["id"] = t.get("transNum") or f"row-{i}"
@@ -1081,7 +1328,13 @@ def parse_transactions(xml_text: str) -> dict[str, Any]:
         "departments": [d for d in departments if d],
         "fuelPositions": [f for f in fuel_pos if f],
         "dispensers": [d for d in dispensers if d],
-        "summary": {"count": len(txs), "totalAmount": round(total, 2)},
+        "summary": {
+            "count": len(txs),
+            "totalAmount": round(total, 2),
+            "saleLikeCount": sale_count,
+            "journalEventCount": sum(1 for t in txs if (t.get("eventType") or "").lower() == "journal"),
+        },
+        "parseNote": parse_note,
     }
 
 
@@ -1160,7 +1413,7 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
     attrs = _attr_map(el)
     kids = _child_map(el, depth=4)
     blob = {**kids, **attrs}
-    event_type = (attrs.get("type") or attrs.get("eventType") or "").strip()  # sale, void, …
+    event_type = (attrs.get("type") or attrs.get("eventType") or "").strip()  # sale, void, journal…
     if not event_type:
         # NAXML: local tag is the event type (SaleEvent → sale)
         ln = _local(el.tag)
@@ -1171,11 +1424,18 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
         return _blob_get(blob, *names, allow_suffix=allow_suffix)
 
     # Verifone PJR: trSeq / trUniqueSN / posNum
+    # termMsgSN text is often a journal sequence for type=journal — use as weak id
+    term_msg = ""
+    for c in el.iter():
+        if _local(c.tag).lower() == "termmsgsn":
+            term_msg = (c.text or "").strip()
+            break
     trans_num = _first(
         g("trSeq", "transNum", "transactionNumber", "transactionNo", "ticketNumber", "trUniqueSN", "EventSequenceID", "TransactionID"),
         g("trans", "ticket"),
         attrs.get("trans"),
         attrs.get("id"),
+        term_msg if (event_type or "").lower() == "journal" else "",
     )
     date_raw = _first(
         g("beginDateTime", "businessDate", "transactionDate", "EventStartDate", "EventStartDateTime", "beginDate"),
@@ -1198,15 +1458,18 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
 
     # Prefer numeric emp id (Journal Browser Emp ID column) over display name
     employee = ""
+    cashier_pos = ""
     for c in el.iter():
         if _local(c.tag).lower() == "cashier":
             employee = _first(c.attrib.get("empNum"), c.attrib.get("sysid"), (c.text or "").strip())
+            cashier_pos = _first(c.attrib.get("posNum"), c.attrib.get("register"), c.attrib.get("term"))
             break
     if not employee:
         employee = _first(
             g("empNum", "empId", "employeeId", "cashierId", "csrId", "EmployeeID", "CashierID"),
             g("employee", "cashier", "operator", "userId", "originalCashier"),
         )
+    # PJR: posNum lives under trHeader/trTickNum/posNum (not cashier term attr alone)
     register = _first(
         g(
             "posNum",
@@ -1218,30 +1481,37 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
             "RegisterID",
             "POSCode",
             "register",
-            "reg",
-            "term",
-        )
+        ),
+        cashier_pos,
     )
+    if not register:
+        for c in el.iter():
+            if _local(c.tag).lower() == "termmsgsn":
+                register = _first(c.attrib.get("term"), c.attrib.get("posNum"))
+                if register:
+                    break
+    # Totals: prefer trValue/trCurrTot + trTotWTax (official PJR). Avoid bare "total"
+    # which can collide with unrelated nested leaves.
     amount = _parse_amount(
         _first(
             g(
                 "trCurrTot",
                 "trTotWTax",
+                "trSTotalizer",
                 "trTotNoTax",
-                "trGTotalizer",
-                "TransactionTotalGrossAmount",
+                "TransactionTotalGrandAmount",
                 "TransactionTotalNetAmount",
+                "TransactionTotalGrossAmount",
                 "grandTotal",
                 "transactionTotal",
                 "netAmount",
                 "totalAmount",
-                "amount",
-                "total",
-                "amt",
             )
         )
     )
-    qty = _first(g("trlQty", "itemCount", "quantity", "units", "qty"))
+    # Do not trust bare "amount"/"total"/"amt" at header level — too ambiguous.
+    # Line totals fill in later if still missing.
+    qty = ""  # filled after lines (sum of trlQty)
     mop = _first(
         g(
             "trpPaycode",
@@ -1310,11 +1580,15 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
             continue
         ck = _child_map(c, depth=3)
         cm = {**ck, **ca}
-        # fuel nested block
-        fuel_pos_l = _first(cm.get("fuelPosition"), cm.get("position"), cm.get("pump"))
-        product = _first(cm.get("fuelProd"), cm.get("product"), cm.get("fuelProduct"), cm.get("grade"), cm.get("productName"))
+
+        def lg(*names: str) -> str:
+            return _blob_get(cm, *names, allow_suffix=True)
+
+        # fuel nested block (trlFuel/fuelPosition, etc.)
+        fuel_pos_l = _first(lg("fuelPosition", "fuelingPosition", "position", "pump", "fp"))
+        product = _first(lg("fuelProd", "product", "fuelProduct", "grade", "productName"))
         # CR #09 style in description often encodes position
-        desc_l = _first(cm.get("trlDesc"), cm.get("description"), cm.get("desc"), cm.get("name"))
+        desc_l = _first(lg("trlDesc", "description", "desc", "name"))
         if not fuel_pos_l and desc_l:
             m = re.search(r"#\s*0*(\d+)", desc_l)
             if m:
@@ -1322,21 +1596,27 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
         line = {
             "type": line_type or cln,
             "description": desc_l,
-            "qty": _first(cm.get("trlQty"), cm.get("qty"), cm.get("quantity"), cm.get("units"), cm.get("fuelVolume")),
+            "qty": _first(lg("trlQty", "qty", "quantity", "units", "fuelVolume", "SalesQuantity")),
             "amount": _parse_amount(
-                _first(cm.get("trlLineTot"), cm.get("amount"), cm.get("extendedAmount"), cm.get("price"), cm.get("total"))
+                _first(lg("trlLineTot", "SalesAmount", "extendedAmount", "amount", "price", "total"))
             ),
             "unitPrice": _parse_amount(
-                _first(cm.get("trlUnitPrice"), cm.get("unitPrice"), cm.get("price"), cm.get("sellPrice"), cm.get("basePrice"))
+                _first(lg("trlUnitPrice", "unitPrice", "RegularSellPrice", "sellPrice", "basePrice", "price"))
             ),
-            "department": _first(cm.get("trlDept"), cm.get("department"), cm.get("dept")),
-            "barcode": _first(cm.get("trlUPC"), cm.get("barcode"), cm.get("upc"), cm.get("plu")),
+            "department": _first(lg("trlDept", "department", "dept")),
+            "barcode": _first(lg("trlUPC", "barcode", "upc", "plu", "POSCode")),
             "fuelPosition": fuel_pos_l,
-            "dispenser": _first(cm.get("dispenser"), cm.get("dispenserId")),
+            "dispenser": _first(lg("dispenser", "dispenserId")),
             "product": product,
-            "volume": _first(cm.get("fuelVolume"), cm.get("volume")),
-            "code": _first(cm.get("code"), cm.get("status"), cm.get("flag")),
+            "volume": _first(lg("fuelVolume", "volume")),
+            "code": _first(lg("code", "status", "flag")),
         }
+        # trlDept @number is the department code in official PJR
+        if not line["department"]:
+            for sub in c.iter():
+                if _local(sub.tag).lower() == "trldept":
+                    line["department"] = _first(sub.attrib.get("number"), (sub.text or "").strip())
+                    break
         if any(v not in (None, "") for v in line.values()):
             lines.append(line)
             if not fuel_pos and fuel_pos_l:
@@ -1351,16 +1631,41 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
     if not force and not any([trans_num, amount is not None, register, employee, lines, date]):
         return None
 
-    # pull amount from lines if missing
+    # pull amount from merchandise lines if header totals missing
     if amount is None and lines:
         s = 0.0
         any_a = False
         for ln in lines:
+            lt = str(ln.get("type") or "").lower()
+            # skip pure tender/change lines when summing
+            if lt in {"payline", "tender", "trpayline"}:
+                continue
             if ln.get("amount") is not None:
                 s += float(ln["amount"])
                 any_a = True
         if any_a:
             amount = round(s, 2)
+
+    # transaction qty = sum of line quantities (Journal Browser style)
+    qty_sum = 0.0
+    qty_any = False
+    for ln in lines:
+        lt = str(ln.get("type") or "").lower()
+        if lt in {"payline", "tender", "trpayline"}:
+            continue
+        qv = ln.get("qty")
+        if qv in (None, ""):
+            continue
+        try:
+            qty_sum += float(str(qv).replace(",", ""))
+            qty_any = True
+        except (TypeError, ValueError):
+            pass
+    if qty_any:
+        # keep integers clean (3 not 3.0)
+        qty = str(int(qty_sum)) if abs(qty_sum - int(qty_sum)) < 1e-9 else f"{qty_sum:.3f}".rstrip("0").rstrip(".")
+    elif not qty:
+        qty = _first(g("trlQty", "itemCount", "quantity", "units", "SalesQuantity"))
 
     # codes from description/lines
     codes = []
@@ -1392,6 +1697,7 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
 
     return {
         "transNum": trans_num,
+        "eventType": event_type or "",
         "date": date,
         "time": time_s,
         "dateTime": _first(g("beginDateTime"), f"{date} {time_s}".strip()),
@@ -1409,6 +1715,10 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
         "roundingAdjustment": round(rounding_adj, 2) if rounding_adj is not None else None,
         "lines": lines,
         "lineCount": len(lines),
+        "isSaleLike": (event_type or "").lower() in {
+            "sale", "network sale", "void", "refund sale", "refund network sale",
+            "suspended sale", "suspended network sale", "nosale", "refund void",
+        },
         "searchBlob": " ".join(
             str(x)
             for x in (

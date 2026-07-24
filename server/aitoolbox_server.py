@@ -752,6 +752,273 @@ def verifone_journal_load_xml(body: JournalXmlBody):
         raise HTTPException(404, str(e)) from e
 
 
+class JournalScanBody(BaseModel):
+    path: str | None = None
+    site_id: str | None = None
+
+
+@app.post("/api/verifone/journal/scan-backup")
+def verifone_journal_scan_backup(body: JournalScanBody):
+    """Scan a site export / watched backup folder for offline T-log XML files."""
+    path = (body.path or "").strip()
+    if not path and body.site_id:
+        row = vf.get_site(body.site_id)
+        if not row:
+            raise HTTPException(404, "site not found")
+        path = row.get("path") or row.get("export_path") or ""
+    if not path:
+        raise HTTPException(400, "path or site_id required")
+    return journal.scan_backup_journal_files(path)
+
+
+@app.get("/api/verifone/sites/{site_id}/journal-files")
+def verifone_site_journal_files(site_id: str):
+    """List possible offline journal/T-log XML under this site's backup export path."""
+    row = vf.get_site(site_id)
+    if not row:
+        raise HTTPException(404, "site not found")
+    path = row.get("path") or row.get("export_path") or ""
+    if not path:
+        raise HTTPException(404, "site has no export path")
+    return journal.scan_backup_journal_files(path)
+
+
+# --- Local backup PLU lookup + staged edits (safe copies, review queue) ---
+import backup_edit_ops as bedit
+
+
+class BackupLookupBody(BaseModel):
+    site_id: str
+    barcode: str | None = None
+    description: str | None = None
+    department: str | None = None
+    product: str | None = None
+
+
+class BackupStageBody(BaseModel):
+    site_id: str
+    upc: str
+    field: str
+    new_value: str
+    old_value: str | None = None
+    source: str | None = None
+
+
+class BackupChangeStatusBody(BaseModel):
+    site_id: str
+    change_id: str
+    status: str  # pending | verified | rejected
+
+
+class BackupApplyBody(BaseModel):
+    site_id: str
+    only_verified: bool = True
+
+
+class BackupRestoreBody(BaseModel):
+    site_id: str
+    copy_id: str
+
+
+@app.post("/api/verifone/backup/lookup-item")
+def verifone_backup_lookup_item(body: BackupLookupBody):
+    """Match a journal receipt line to PLUs.xml in the site's local SMS backup."""
+    if not body.site_id:
+        raise HTTPException(400, "site_id required")
+    try:
+        return bedit.lookup_item(
+            body.site_id,
+            barcode=body.barcode,
+            description=body.description,
+            department=body.department,
+            product=body.product,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.get("/api/verifone/backup/{site_id}/changes")
+def verifone_backup_list_changes(site_id: str, include_applied: bool = True):
+    return bedit.list_changes(site_id, include_applied=include_applied)
+
+
+@app.post("/api/verifone/backup/stage")
+def verifone_backup_stage(body: BackupStageBody):
+    """Stage a PLU field edit against the local backup (not live Commander)."""
+    try:
+        return bedit.stage_plu_edit(
+            body.site_id,
+            upc=body.upc,
+            field=body.field,
+            new_value=body.new_value,
+            old_value=body.old_value,
+            source=body.source,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.post("/api/verifone/backup/change-status")
+def verifone_backup_change_status(body: BackupChangeStatusBody):
+    try:
+        return bedit.set_change_status(body.site_id, body.change_id, body.status)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/backup/{site_id}/verify-all")
+def verifone_backup_verify_all(site_id: str):
+    return bedit.verify_all_pending(site_id)
+
+
+@app.post("/api/verifone/backup/apply")
+def verifone_backup_apply(body: BackupApplyBody):
+    """Apply verified staged edits to local backup files (safe-copy first)."""
+    try:
+        return bedit.apply_verified_changes(body.site_id, only_verified=body.only_verified)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.get("/api/verifone/backup/{site_id}/safe-copies")
+def verifone_backup_safe_copies(site_id: str):
+    return bedit.list_safe_copies(site_id)
+
+
+@app.post("/api/verifone/backup/restore-safe")
+def verifone_backup_restore_safe(body: BackupRestoreBody):
+    try:
+        return bedit.restore_safe_copy(body.site_id, body.copy_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.post("/api/verifone/backup/prune-safe")
+def verifone_backup_prune_safe(site_id: str | None = None):
+    return bedit.prune_safe_copies(site_id)
+
+
+# --- Master site profile (tech liferaft — group-level, not per backup version) ---
+import site_profile_ops as sprof
+
+
+class MasterProfileBody(BaseModel):
+    group_key: str | None = None
+    export_id: str | None = None
+    profile: dict | None = None
+    overwrite_empty_only: bool = True
+
+
+@app.get("/api/verifone/master-profiles")
+def verifone_master_profiles_list():
+    return sprof.list_master_profiles()
+
+
+@app.get("/api/verifone/master-profile")
+def verifone_master_profile_get(group_key: str | None = None, export_id: str | None = None, merge: bool = True):
+    """Physical-site liferaft profile (auto-fills empty fields from backup/survey when merge=true)."""
+    try:
+        return {"ok": True, "profile": sprof.get_master_profile(group_key=group_key, export_id=export_id, merge_sources=merge)}
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.put("/api/verifone/master-profile")
+def verifone_master_profile_save(body: MasterProfileBody):
+    if not body.group_key and not body.export_id:
+        raise HTTPException(400, "group_key or export_id required")
+    try:
+        gk = sprof.resolve_group_key(body.group_key, body.export_id)
+        return sprof.save_master_profile(gk, body.profile or {})
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/master-profile/refresh")
+def verifone_master_profile_refresh(body: MasterProfileBody):
+    """Re-merge from latest backup/survey into empty fields (preserves tech-entered data by default)."""
+    try:
+        prof = sprof.refresh_master_from_backup(
+            group_key=body.group_key,
+            export_id=body.export_id,
+            overwrite_empty_only=body.overwrite_empty_only,
+        )
+        return {"ok": True, "profile": prof}
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/verifone/master-profile/export-md")
+def verifone_master_profile_export_md(group_key: str | None = None, export_id: str | None = None):
+    try:
+        gk = sprof.resolve_group_key(group_key, export_id)
+        return sprof.export_liferaft_markdown(gk)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+class ManagerPasswordRotateBody(BaseModel):
+    group_key: str | None = None
+    export_id: str | None = None
+    direction: str = "next"  # next | prev | set
+    letter: str | None = None
+    mark_changed: bool = True
+    note: str | None = ""
+    sync_live_profile: bool = True
+
+
+class ManagerPasswordSetBody(BaseModel):
+    group_key: str | None = None
+    export_id: str | None = None
+    password: str
+    mark_changed: bool = True
+    scheme: str | None = None  # letter_cycle | manual
+    note: str | None = ""
+    sync_live_profile: bool = True
+
+
+@app.post("/api/verifone/master-profile/password/rotate")
+def verifone_master_password_rotate(body: ManagerPasswordRotateBody):
+    """Advance Manager password letter A→B→C→D→E→A for this site (local liferaft + optional DPAPI profile)."""
+    try:
+        gk = sprof.resolve_group_key(body.group_key, body.export_id)
+        return sprof.rotate_manager_password(
+            gk,
+            direction=body.direction or "next",
+            set_letter=body.letter,
+            mark_changed=body.mark_changed,
+            note=body.note or "",
+            sync_live_profile=body.sync_live_profile,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/master-profile/password/set")
+def verifone_master_password_set(body: ManagerPasswordSetBody):
+    """Set Manager password on site liferaft (parses trailing letter when scheme is letter_cycle)."""
+    try:
+        gk = sprof.resolve_group_key(body.group_key, body.export_id)
+        return sprof.set_manager_password(
+            gk,
+            body.password,
+            mark_changed=body.mark_changed,
+            scheme=body.scheme,
+            note=body.note or "",
+            sync_live_profile=body.sync_live_profile,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
 @app.get("/api/verifone/sites/{site_id}/survey")
 def verifone_get_survey(site_id: str):
     try:
