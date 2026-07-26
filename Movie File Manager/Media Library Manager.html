@@ -8,16 +8,30 @@
     <style>
         :root {
             --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
-            --accent: #00f3ff; --accent2: #7c5cff;
+            --accent: #00f3ff; --accent2: #7c5cff; --accent3: #ffb347;
             --text: #e8e8ec; --muted: #777;
             --danger: #ff4466; --ok: #00ff88;
             --glow: 0 0 10px rgba(0,243,255,0.4);
+            /* Layout + density (persisted via JS) */
+            --ui-scale: 1;
+            --font-base: 13px;
+            --sidebar-w: 240px;
+            --tags-w: 300px;
+            --detail-w: 360px;
+            --preview-h: 280px;
+            --tag-font: 11px;
+            --tag-pad-y: 5px;
+            --tag-pad-x: 9px;
+            --tag-gap: 6px;
+            --tag-cols: 2;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { font-size: calc(var(--font-base) * var(--ui-scale)); }
         body {
             background: radial-gradient(ellipse at 20% 0%, #12121f 0%, var(--bg) 50%);
             color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
-            height: 100vh; display: flex; flex-direction: column; overflow: hidden; min-width: 900px;
+            height: 100vh; display: flex; flex-direction: column; overflow: hidden; min-width: 720px;
+            font-size: 1rem;
         }
 
         .top-bar {
@@ -38,15 +52,42 @@
 
         .main {
             flex: 1; display: grid;
-            grid-template-columns: minmax(180px, var(--sidebar-w, 260px)) 1fr minmax(260px, var(--detail-w, 380px));
+            grid-template-columns:
+                var(--sidebar-w, 240px)
+                minmax(0, 1fr)
+                var(--tags-w, 300px)
+                var(--detail-w, 360px);
             min-height: 0; overflow: hidden;
+            transition: grid-template-columns 0.05s linear;
         }
+        body.tags-collapsed .main {
+            grid-template-columns:
+                var(--sidebar-w, 240px)
+                minmax(0, 1fr)
+                var(--detail-w, 360px);
+        }
+        body.tags-collapsed .tags-panel { display: none; }
+        body.detail-collapsed .main {
+            grid-template-columns:
+                var(--sidebar-w, 240px)
+                minmax(0, 1fr)
+                var(--tags-w, 300px);
+        }
+        body.detail-collapsed.tags-collapsed .main {
+            grid-template-columns: var(--sidebar-w, 240px) minmax(0, 1fr);
+        }
+        body.detail-collapsed .detail-panel { display: none; }
 
         .sidebar {
             background: var(--panel); border-right: 1px solid rgba(255,255,255,0.06);
             display: flex; flex-direction: column; overflow: auto;
-            resize: horizontal; min-width: 180px; max-width: 45vw;
+            min-width: 160px; max-width: 42vw; position: relative; height: 100%;
         }
+        .sidebar-resize-handle {
+            position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize;
+            z-index: 6; background: transparent; transition: background .15s;
+        }
+        .sidebar-resize-handle:hover, .sidebar-resize-handle.dragging { background: rgba(0,243,255,0.3); }
         .sidebar-section { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .sidebar-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
         .dir-list { flex: 1; overflow-y: auto; padding: 8px; }
@@ -179,16 +220,125 @@
             border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between;
         }
 
+        .tags-panel {
+            background: var(--panel2);
+            border-left: 1px solid rgba(0,243,255,0.18);
+            border-right: 1px solid rgba(255,255,255,0.06);
+            display: flex; flex-direction: column; overflow: hidden;
+            min-width: 180px; max-width: 50vw; position: relative; height: 100%;
+            box-shadow: inset 0 0 40px rgba(0,243,255,0.03);
+        }
+        .tags-panel-head {
+            flex-shrink: 0;
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            padding: 10px 12px 8px;
+            border-bottom: 1px solid rgba(0,243,255,0.15);
+            background: linear-gradient(180deg, rgba(0,243,255,0.08), transparent);
+        }
+        .tags-panel-head h3 {
+            font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
+            color: var(--accent); margin: 0; font-weight: 800;
+        }
+        .tags-panel-head .count {
+            font-size: 10px; color: var(--accent3); font-weight: 700; font-family: Consolas, monospace;
+        }
+        .tags-panel-head .spacer { flex: 1; }
+        .tags-panel-tools {
+            flex-shrink: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .tags-panel-tools input[type="search"],
+        .tags-panel-tools select {
+            width: 100%; background: #000; border: 1px solid rgba(0,243,255,0.28);
+            color: var(--text); padding: 6px 8px; border-radius: 6px; font-size: 0.85rem;
+        }
+        .tags-panel-tools input:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+        .tags-density-row {
+            display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+        }
+        .tags-density-row span {
+            font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 2px;
+        }
+        .tags-density-row button {
+            font-size: 9px; padding: 3px 7px; border-radius: 999px; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.35); color: var(--muted);
+        }
+        .tags-density-row button.active {
+            border-color: var(--accent); color: var(--accent); background: rgba(0,243,255,0.12);
+        }
+        .tag-lib-cloud {
+            flex: 1; min-height: 0; overflow-y: auto; padding: 10px;
+            display: block;
+            column-count: var(--tag-cols, 2);
+            column-gap: var(--tag-gap, 6px);
+        }
+        .tag-lib-cloud .tag-lib-chip {
+            display: inline-flex; width: 100%;
+            break-inside: avoid; margin: 0 0 var(--tag-gap, 6px);
+            justify-content: space-between; align-items: center; gap: 6px;
+            font-size: var(--tag-font, 11px);
+            padding: var(--tag-pad-y, 5px) var(--tag-pad-x, 9px);
+            border-radius: 8px; cursor: pointer; text-align: left;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04); color: var(--text);
+            line-height: 1.25; word-break: break-word;
+            transition: border-color .12s, background .12s, color .12s;
+        }
+        .tag-lib-cloud .tag-lib-chip:hover {
+            border-color: var(--accent); color: var(--accent);
+            background: rgba(0,243,255,0.08);
+        }
+        .tag-lib-cloud .tag-lib-chip.on {
+            border-color: var(--accent3); color: var(--accent3);
+            background: rgba(255,179,71,0.14);
+            box-shadow: 0 0 10px rgba(255,179,71,0.12);
+        }
+        .tag-lib-cloud .tag-lib-chip .chip-mark {
+            opacity: 0.55; font-size: 0.85em; flex-shrink: 0;
+        }
+        .tag-lib-cloud .tag-lib-chip.on .chip-mark { opacity: 1; }
+        .tags-panel-foot {
+            flex-shrink: 0; padding: 8px 10px; font-size: 9px; color: var(--muted);
+            border-top: 1px solid rgba(255,255,255,0.06); line-height: 1.4;
+        }
+        .tags-resize-handle {
+            position: absolute; left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize;
+            z-index: 6; background: transparent; transition: background .15s;
+        }
+        .tags-resize-handle:hover, .tags-resize-handle.dragging { background: rgba(0,243,255,0.3); }
+
         .detail-panel {
             background: var(--panel); border-left: 1px solid rgba(255,255,255,0.06);
             display: flex; flex-direction: column; overflow: hidden;
-            min-width: 260px; max-width: 55vw; position: relative; height: 100%;
+            min-width: 240px; max-width: 55vw; position: relative; height: 100%;
         }
         .panel-resize-handle {
             position: absolute; left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize;
             z-index: 6; background: transparent; transition: background .15s;
         }
         .panel-resize-handle:hover, .panel-resize-handle.dragging { background: rgba(0,243,255,0.25); }
+
+        .ui-scale-bar {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            padding: 2px 0 2px 8px; border-left: 1px solid rgba(255,255,255,0.08); margin-left: 4px;
+        }
+        .ui-scale-bar label {
+            font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700;
+        }
+        .ui-scale-bar select {
+            background: #000; border: 1px solid rgba(0,243,255,0.28); color: var(--text);
+            border-radius: 5px; padding: 3px 6px; font-size: 10px; max-width: 88px;
+        }
+        .ui-scale-bar .btn { font-size: 9px; padding: 3px 8px; }
+        .panel-toggle-fab {
+            position: fixed; z-index: 30; bottom: 14px; right: 14px;
+            display: none; gap: 6px; flex-wrap: wrap; justify-content: flex-end;
+        }
+        body.tags-collapsed .panel-toggle-fab,
+        body.detail-collapsed .panel-toggle-fab { display: flex; }
+        .panel-toggle-fab .btn {
+            background: rgba(5,5,12,0.92); box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
         .preview-sticky {
             flex-shrink: 0; position: sticky; top: 0; z-index: 4;
             background: var(--panel); border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -257,26 +407,140 @@
         .tag-suggestions div { padding: 6px 10px; font-size: 12px; cursor: pointer; }
         .tag-suggestions div:hover, .tag-suggestions div.active { background: rgba(0,243,255,0.15); color: var(--accent); }
         .tag-suggestions .hint { color: var(--muted); cursor: default; font-size: 11px; }
-        .tag-library-box {
-            margin-top: 8px; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.35);
-            border: 1px solid rgba(255,255,255,0.06); max-height: 150px; overflow-y: auto;
+        /* Tag library lives in .tags-panel (full-height column) — legacy box removed from detail */
+        .tag-preset-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin: 8px 0 10px;
         }
-        .tag-library-head {
-            display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;
+        .tag-preset-btn {
+            min-height: 52px;
+            padding: 8px 6px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 243, 255, 0.35);
+            background: linear-gradient(145deg, rgba(0,243,255,0.1), rgba(124,92,255,0.14));
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            text-align: center;
+            line-height: 1.2;
+            transition: border-color .15s, transform .1s;
         }
-        .tag-library-head span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
-        .tag-library-head input {
-            width: 100px; background: #000; border: 1px solid rgba(255,255,255,0.12); color: var(--text);
-            padding: 3px 6px; border-radius: 4px; font-size: 10px;
+        .tag-preset-btn:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
         }
-        .tag-lib-cloud { display: flex; flex-wrap: wrap; gap: 5px; }
-        .tag-lib-chip {
-            font-size: 10px; padding: 4px 8px; border-radius: 999px; cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: var(--text);
+        .tag-preset-btn:active { transform: translateY(0); }
+        .tag-preset-btn small {
+            display: block;
+            font-weight: 500;
+            font-size: 9px;
+            color: var(--muted);
+            margin-top: 4px;
+            max-height: 2.6em;
+            overflow: hidden;
+            line-height: 1.25;
         }
-        .tag-lib-chip:hover { border-color: var(--accent); color: var(--accent); }
-        .tag-lib-chip.on { border-color: var(--accent3); color: var(--accent3); background: rgba(255,179,71,0.12); }
-        .tag-lib-empty { font-size: 10px; color: var(--muted); font-style: italic; width: 100%; text-align: center; padding: 8px; }
+        .tag-preset-btn.empty {
+            border-style: dashed;
+            opacity: 0.85;
+        }
+        .tag-preset-tools {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+        .tag-preset-tools .btn { font-size: 9px; padding: 3px 8px; }
+        .two-dir-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .two-dir-grid label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
+        .two-dir-grid select {
+            width: 100%;
+            background: #0a0e16;
+            border: 1px solid var(--border, rgba(255,255,255,0.12));
+            color: var(--text);
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 12px;
+        }
+        .two-dir-list {
+            max-height: 280px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+        .two-dir-item {
+            display: grid;
+            grid-template-columns: 28px 48px 1fr;
+            gap: 8px;
+            align-items: start;
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 11px;
+        }
+        .two-dir-item:hover { background: rgba(0,243,255,0.06); }
+        .two-dir-item .pct { color: var(--accent); font-weight: 700; font-family: Consolas, monospace; }
+        .pair-studio-slots {
+            display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch;
+            margin-bottom: 12px;
+        }
+        .pair-slot {
+            background: rgba(0,0,0,0.4); border: 2px dashed rgba(0,243,255,0.25);
+            border-radius: 12px; padding: 10px; min-height: 150px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .pair-slot.filled { border-style: solid; border-color: rgba(0,243,255,0.45); }
+        .pair-slot h4 {
+            font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+            color: var(--accent); margin: 0;
+        }
+        .pair-slot .slot-name {
+            font-size: 12px; font-weight: 700; color: var(--text);
+            word-break: break-all; min-height: 2.4em;
+        }
+        .pair-slot .slot-meta { font-size: 10px; color: var(--muted); }
+        .pair-slot video, .pair-slot img {
+            width: 100%; max-height: 120px; object-fit: contain; background: #000; border-radius: 6px;
+        }
+        .pair-slot .slot-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+        .pair-slot .slot-actions .btn { font-size: 9px; padding: 3px 7px; }
+        .pair-studio-mid {
+            display: flex; flex-direction: column; gap: 6px; justify-content: center; align-items: center;
+        }
+        .pair-studio-opts {
+            display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+            font-size: 11px; color: var(--muted); margin: 8px 0;
+        }
+        .pair-studio-opts input[type="number"], .pair-studio-opts select {
+            background: #0a0e16; border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text); border-radius: 6px; padding: 4px 6px; font-size: 11px;
+        }
+        .pair-studio-opts label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+        .suggest-item {
+            display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: start;
+        }
+        .suggest-item .sug-actions { display: flex; flex-direction: column; gap: 3px; }
+        .suggest-item .sug-actions .btn { font-size: 9px; padding: 2px 6px; white-space: nowrap; }
+        .player-hint {
+            font-size: 9px;
+            color: var(--muted);
+            margin-top: 4px;
+            line-height: 1.35;
+        }
+        .tag-lib-empty {
+            font-size: 0.85rem; color: var(--muted); font-style: italic;
+            width: 100%; text-align: center; padding: 16px 8px;
+            column-span: all;
+        }
 
         .rename-history-hint { font-size: 10px; color: var(--muted); margin-top: 3px; }
 
@@ -459,16 +723,37 @@
         <button class="btn" id="btnNativeDir" data-tip-title="Native Picker" data-tip="Windows folder picker via Python server. Needs green pill — use ▶ Start Server on this page if offline.">📂 Native Picker</button>
         <button class="btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new/moved/deleted files. Also re-imports Explorer tags and auto-relinks pairs from UP-#### tags on disk.">↻ Rescan</button>
         <button class="btn purple" id="btnPair" data-tip-title="Pair" data-tip="Select exactly 2 files (1st = Before/source, 2nd = After/upscaled). Saves a locked pair, opens the comparator, and stamps UP-#### + role tags on both files (and on disk when server is green).">🔗 Pair Selected</button>
-        <button class="btn purple" id="btnSuggest" data-tip-title="Suggest pairs" data-tip="Finds likely before/after matches by filename similarity. Click a suggestion to lock the pair and tag both files.">✨ Suggest Pairs</button>
+        <button class="btn purple" id="btnSuggest" data-tip-title="Pair Studio" data-tip="Multi-signal suggestions (stem, last-N id tail, digit ids, folder fuzzy). Assign Left/Right slots independently when names are mixed up. Play next while reviewing.">✨ Pair Studio</button>
+        <button class="btn orange" id="btnTwoDirPairs" data-tip-title="Two-folder pairs" data-tip="Point at a Before folder and an After folder (watched directories). Suggests and batch-creates pairs across those two trees — best after consolidating batch folders.">📁 Two-Folder Pairs</button>
         <button class="btn orange" id="btnAutoPair" data-tip-title="Auto-link upscales" data-tip="Scans for originals + upscaled siblings (_upscaled, _vsr, etc.), creates locked UP-#### pairs, and writes source/upscaled tags into the files.">⚡ Auto-Link Upscale Pairs</button>
         <button class="btn" id="btnRelinkPairs" data-tip-title="Relink pairs" data-tip="Pair codes (UP-####) are written into both files. If you move files to other folders, rescan or click here to rebuild catalog links from those tags. Path changes alone do not erase the pair.">🔗 Relink Pairs from Tags</button>
         <button class="btn orange" id="btnPairHealth" data-tip-title="Pair health" data-tip="Dashboard: complete / partial / broken pairs, orphan UP-#### tags, unpaired upscale filenames.">🩺 Pair Health</button>
         <button class="btn" id="btnVerifyTags" data-tip-title="Verify tags on disk" data-tip="Compare catalog tags/rank vs file metadata (+ .fafo.json sidecars). Optionally rewrite disk to match catalog.">✔ Verify Tags</button>
         <button class="btn" id="btnPairMap" data-tip-title="Pair map" data-tip="Export/import a JSON map of all UP-#### pairs (survives DB wipes / new PC).">🗺️ Pair Map</button>
         <button class="btn" onclick="location.href='VSR Pipeline Manager.html'" data-tip="Two-stage VSR rename pipeline with smart matching">⚡ VSR Pipeline</button>
-        <button class="btn" id="btnSettings" data-tip-title="Settings" data-tip="Thumbnail hotkey, sidecar thumbs, and write Tags/Rating into real files for Windows Explorer (default ON).">⚙ Settings</button>
+        <button class="btn" id="btnSettings" data-tip-title="Settings" data-tip="Thumbnail hotkey, sidecar thumbs, Explorer tags, UI scale &amp; panel layout.">⚙ Settings</button>
         <button class="ui-btn" id="btnFaq" data-tip-title="Q&amp;A" data-tip="Short answers: start server, pairs after moves, Explorer tags, ZIP vs re-encode, USB archive, FAFO.">❓ Q&amp;A</button>
         <button class="ui-btn ghost" id="btnDebug" data-tip-title="Debug mode" data-tip="Echo errors and API events to a panel — copy log instead of describing bugs. Persists until turned off.">🐛 Debug</button>
+        <div class="ui-scale-bar" data-tip-title="Display scale" data-tip="UI scale zooms the whole app. Tag size / columns only affect the tag library column. Drag panel edges to resize.">
+            <label for="uiScaleSelect">UI</label>
+            <select id="uiScaleSelect" aria-label="App UI scale">
+                <option value="0.85">85%</option>
+                <option value="1" selected>100%</option>
+                <option value="1.1">110%</option>
+                <option value="1.25">125%</option>
+                <option value="1.4">140%</option>
+            </select>
+            <label for="tagScaleSelect">Tags</label>
+            <select id="tagScaleSelect" aria-label="Tag chip size">
+                <option value="sm">S</option>
+                <option value="md" selected>M</option>
+                <option value="lg">L</option>
+                <option value="xl">XL</option>
+            </select>
+            <button type="button" class="btn" id="btnToggleTagsPanel" title="Show/hide tag library column">🏷 Tags</button>
+            <button type="button" class="btn" id="btnToggleDetailPanel" title="Show/hide detail/preview column">▦ Detail</button>
+            <button type="button" class="btn" id="btnResetLayout" title="Reset panel widths &amp; scale">↺ Layout</button>
+        </div>
     </div>
 
     <div class="server-offline-banner" id="serverOfflineBanner">
@@ -482,8 +767,9 @@
 
     <div id="workflowBar"></div>
 
-    <div class="main">
-        <aside class="sidebar">
+    <div class="main" id="mainLayout">
+        <aside class="sidebar" id="sidebarPanel">
+            <div class="sidebar-resize-handle" id="sidebarResizeHandle" title="Drag to resize folders panel"></div>
             <div class="sidebar-section">
                 <h3>Watched Folders</h3>
                 <button class="btn" id="btnAddDir2" style="width:100%;margin-bottom:6px;">+ Add Folder</button>
@@ -530,7 +816,7 @@
             </div>
         </aside>
 
-        <section class="center">
+        <section class="center" id="centerPanel">
             <div class="path-hint" id="pathHint"></div>
             <div class="filter-bar" id="filterBar">
                 <input type="search" id="searchInput" placeholder="Search name, path, tags, notes…" data-tip-title="Search" data-tip="Searches filenames, paths, tags, and notes across all watched folders. Fast even with 7k+ files when server is online.">
@@ -614,6 +900,41 @@
             </div>
         </section>
 
+        <aside class="tags-panel" id="tagsPanel" data-tip-title="Tag library" data-tip="Full-height tag list. Click a chip to toggle on the selected file. Drag left edge to widen. Use Tags S–XL and column density to see more at once.">
+            <div class="tags-resize-handle" id="tagsResizeHandle" title="Drag to resize tag library"></div>
+            <div class="tags-panel-head">
+                <h3>🏷 Tag library</h3>
+                <span class="count" id="tagLibCount"></span>
+                <span class="spacer"></span>
+                <button type="button" class="btn" id="btnCollapseTags" style="font-size:9px;padding:3px 8px;" title="Hide tag column">Hide</button>
+            </div>
+            <div class="tags-panel-tools">
+                <input type="search" id="tagLibFilter" placeholder="Filter tags…" autocomplete="off">
+                <select id="tagLibSort" title="Sort order">
+                    <option value="session">Session-first (recent use)</option>
+                    <option value="alpha">A → Z</option>
+                    <option value="alpha-desc">Z → A</option>
+                </select>
+                <div class="tags-density-row">
+                    <span>Cols</span>
+                    <button type="button" data-cols="1">1</button>
+                    <button type="button" data-cols="2" class="active">2</button>
+                    <button type="button" data-cols="3">3</button>
+                    <button type="button" data-cols="4">4</button>
+                    <span style="margin-left:4px;">Size</span>
+                    <button type="button" data-tagscale="sm">S</button>
+                    <button type="button" data-tagscale="md" class="active">M</button>
+                    <button type="button" data-tagscale="lg">L</button>
+                    <button type="button" data-tagscale="xl">XL</button>
+                </div>
+            </div>
+            <div class="tag-lib-cloud" id="tagLibrary"></div>
+            <div class="tags-panel-foot">
+                Click chip = toggle tag on <strong>selected file</strong> (saves with Save Metadata / auto flows).
+                Left sidebar “Filter by Tag” still filters the list. Drag panel edges · UI scale in top bar.
+            </div>
+        </aside>
+
         <aside class="detail-panel" id="detailPanel" data-tip-title="Details" data-tip="Preview stays pinned while you scroll. Drag handles to resize. Edit filename (Enter to save), tags, notes.">
             <div class="panel-resize-handle" id="panelResizeHandle" title="Drag to resize panel"></div>
             <div class="preview-sticky">
@@ -624,7 +945,7 @@
                 <div class="preview-capture-bar" id="previewCaptureBar">
                     <button type="button" class="capture-frame-btn" id="btnCaptureFrame" data-tip="Save current video frame as catalog thumbnail + optional sidecar file">📷 Capture Frame → Thumbnail</button>
                 </div>
-                <div class="resize-hint">↔ Drag left edge to widen panel · ↕ drag bar below preview to resize</div>
+                <div class="resize-hint">↔ Drag left edge · ↕ preview height · 🏷 tags are their own column</div>
             </div>
             <div class="detail-body" id="detailBody" style="display:none;">
                 <div class="field">
@@ -633,19 +954,22 @@
                     <div class="rename-history-hint">↑↓ recall rename patterns · Enter to rename on disk</div>
                 </div>
                 <div class="field">
-                    <label>Tags</label>
+                    <label>Tags on this file</label>
                     <div class="tag-editor" id="detailTags"></div>
+                    <div class="tag-preset-tools">
+                        <span style="font-size:10px;color:var(--muted);align-self:center;">Multi-tag presets</span>
+                        <button type="button" class="btn" id="btnEditPresets" data-tip="Configure the 3 big buttons (each can apply many tags at once)">⚙ Edit</button>
+                    </div>
+                    <div class="tag-preset-row" id="tagPresetRow" aria-label="Multi-tag preset buttons">
+                        <button type="button" class="tag-preset-btn empty" data-preset="0" id="tagPreset0">1<small>Set tags…</small></button>
+                        <button type="button" class="tag-preset-btn empty" data-preset="1" id="tagPreset1">2<small>Set tags…</small></button>
+                        <button type="button" class="tag-preset-btn empty" data-preset="2" id="tagPreset2">3<small>Set tags…</small></button>
+                    </div>
                     <div class="tag-input-wrap">
                         <input type="text" id="tagInput" placeholder="Type tag… Enter to add · ↑↓ autocomplete" autocomplete="off">
                         <div class="tag-suggestions" id="tagSuggestions"></div>
                     </div>
-                    <div class="tag-library-box">
-                        <div class="tag-library-head">
-                            <span>All tags <span id="tagLibCount"></span></span>
-                            <input type="search" id="tagLibFilter" placeholder="Filter…" autocomplete="off">
-                        </div>
-                        <div class="tag-lib-cloud" id="tagLibrary"></div>
-                    </div>
+                    <p class="player-hint">Hotkeys (not in text fields): <strong>Space</strong> play/pause · <strong>1 / 2 / 3</strong> presets · <strong>[ ]</strong> prev/next · <strong>C</strong> capture frame · full library is in the <strong>Tag library</strong> column</p>
                     <label id="tagPairPartnerWrap" style="display:none;margin-top:8px;font-size:11px;color:var(--muted);cursor:pointer;"
                         data-tip-title="Tag both sides"
                         data-tip="When this file is in a UP-#### pair, project tags (not source/upscaled role tags) are added to the partner too, and written into both files for Explorer.">
@@ -675,6 +999,11 @@
                 </div>
             </div>
         </aside>
+    </div>
+
+    <div class="panel-toggle-fab" id="panelToggleFab">
+        <button type="button" class="btn" id="btnShowTagsFab">🏷 Show tags</button>
+        <button type="button" class="btn" id="btnShowDetailFab">▦ Show detail</button>
     </div>
 
     <!-- Batch Rename Modal -->
@@ -723,7 +1052,7 @@
     <div class="modal-bg" id="healthModal">
         <div class="modal wide faq-modal">
             <h2>🩺 Pair Health</h2>
-            <p class="faq-lead">Catalog pair status. Durable link is <code>UP-####</code> on disk (+ <code>.fafo.json</code> sidecars for MKV).</p>
+            <p class="faq-lead">Catalog pair status. Durable link is <code>UP-####</code> on disk (+ <code>.fafo.json</code> sidecars for MKV). After consolidating folders: Rescan → Relink → Two-Folder Pairs for leftovers.</p>
             <div class="health-grid" id="healthStats"></div>
             <h3 style="font-size:12px;color:var(--accent3);margin:8px 0;">Partial (one side only)</h3>
             <div class="health-list" id="healthPartial"></div>
@@ -732,8 +1061,133 @@
             <h3 style="font-size:12px;color:var(--muted);margin:8px 0;">Orphan UP- tags / unpaired upscale names</h3>
             <div class="health-list" id="healthOrphans"></div>
             <div class="modal-actions">
+                <button class="btn purple" id="btnHealthTwoDir">Open Two-Folder Pairs</button>
                 <button class="btn" id="btnHealthRelink">Relink then refresh</button>
                 <button class="btn orange" id="btnHealthClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Two-Folder Pair Modal -->
+    <div class="modal-bg" id="twoDirModal">
+        <div class="modal wide faq-modal">
+            <h2>📁 Two-Folder Pairs</h2>
+            <p class="faq-lead">
+                Watch your consolidated <strong>Before</strong> tree and <strong>After</strong> tree, pick them here, then review suggested pairs.
+                Matching uses normalized names (strips <code>_upscaled</code>, <code>_vsr</code>, etc.) then fuzzy fallback.
+            </p>
+            <div class="two-dir-grid">
+                <div>
+                    <label>Before / source folder</label>
+                    <select id="twoDirBefore"></select>
+                </div>
+                <div>
+                    <label>After / upscaled folder</label>
+                    <select id="twoDirAfter"></select>
+                </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;">
+                <label style="font-size:11px;color:var(--muted);">Min confidence
+                    <input type="number" id="twoDirMin" min="0.3" max="1" step="0.05" value="0.55" style="width:64px;margin-left:6px;background:#0a0e16;border:1px solid rgba(255,255,255,0.12);color:var(--text);border-radius:6px;padding:4px 6px;">
+                </label>
+                <button class="btn purple" id="btnTwoDirFind">✨ Find matches</button>
+                <button class="btn orange" id="btnTwoDirAcceptHigh" data-tip="Create pairs for checked rows ≥ 85% confidence">✅ Accept checked (≥85%)</button>
+                <button class="btn" id="btnTwoDirAcceptAll" data-tip="Create pairs for all checked rows">✅ Accept all checked</button>
+            </div>
+            <div id="twoDirSummary" style="font-size:12px;color:var(--muted);margin-bottom:6px;"></div>
+            <div class="two-dir-list" id="twoDirList"></div>
+            <div class="modal-actions">
+                <button class="btn" id="btnTwoDirClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pair Studio: independent L/R slots + multi-signal suggestions -->
+    <div class="modal-bg" id="pairStudioModal">
+        <div class="modal wide faq-modal" style="width:min(960px,96vw);">
+            <h2>✨ Pair Studio</h2>
+            <p class="faq-lead">
+                Assign <strong>Left (Before)</strong> and <strong>Right (After)</strong> independently when names are messy.
+                Suggestions use stem match, <strong>last-N unique tail</strong> (default 5 chars), digit IDs, folder cues, and fuzzy names — not filename alone.
+            </p>
+            <div class="pair-studio-slots">
+                <div class="pair-slot" id="studioSlotBefore">
+                    <h4>◀ Left · Before / Source</h4>
+                    <div class="slot-name" id="studioBeforeName">Empty — select a file or pick from suggestions</div>
+                    <div class="slot-meta" id="studioBeforeMeta"></div>
+                    <div id="studioBeforePreview"></div>
+                    <div class="slot-actions">
+                        <button type="button" class="btn" id="studioAssignBefore">Use selection</button>
+                        <button type="button" class="btn" id="studioPlayBefore">▶ Play</button>
+                        <button type="button" class="btn danger" id="studioClearBefore">Clear</button>
+                    </div>
+                </div>
+                <div class="pair-studio-mid">
+                    <button type="button" class="btn purple" id="studioSwap" title="Swap left/right">⇄ Swap</button>
+                    <button type="button" class="btn" id="studioPlayBoth">▶ Both</button>
+                    <button type="button" class="btn orange" id="studioLockPair">🔒 Lock pair</button>
+                    <button type="button" class="btn" id="studioOpenCompare">Open comparator</button>
+                </div>
+                <div class="pair-slot" id="studioSlotAfter">
+                    <h4>Right · After / Upscale ▶</h4>
+                    <div class="slot-name" id="studioAfterName">Empty — select a file or pick from suggestions</div>
+                    <div class="slot-meta" id="studioAfterMeta"></div>
+                    <div id="studioAfterPreview"></div>
+                    <div class="slot-actions">
+                        <button type="button" class="btn" id="studioAssignAfter">Use selection</button>
+                        <button type="button" class="btn" id="studioPlayAfter">▶ Play</button>
+                        <button type="button" class="btn danger" id="studioClearAfter">Clear</button>
+                    </div>
+                </div>
+            </div>
+            <div class="pair-studio-opts">
+                <label>Min % <input type="number" id="studioMinPct" min="30" max="99" value="50" style="width:52px"></label>
+                <label>Tail len <input type="number" id="studioTailLen" min="3" max="12" value="5" style="width:48px" title="Last N alnum chars of stem — 5 finds more matches"></label>
+                <label><input type="checkbox" id="studioUseTail" checked> Tail id</label>
+                <label><input type="checkbox" id="studioUseDigits" checked> Digit ids</label>
+                <label><input type="checkbox" id="studioUseFuzzy" checked> Fuzzy</label>
+                <label><input type="checkbox" id="studioUseFolder" checked> Folder</label>
+                <label>Limit <input type="number" id="studioLimit" min="10" max="300" value="80" style="width:56px"></label>
+                <button type="button" class="btn purple" id="studioFind">🔍 Find suggestions</button>
+                <button type="button" class="btn" id="studioNextPair" title="Next suggestion into slots + play">⏭ Next + play</button>
+                <label><input type="checkbox" id="studioAutoNext"> Auto-next when video ends</label>
+                <label title="When advancing, write the previous Left/Right tags + star rating into the real files (Explorer)"><input type="checkbox" id="studioUpdateFiles" checked> 💾 Update files on next</label>
+            </div>
+            <div id="studioSummary" style="font-size:12px;color:var(--muted);margin-bottom:6px;">Click Find suggestions (server online).</div>
+            <div class="suggest-panel" id="studioSuggestList" style="display:block;max-height:280px;overflow:auto;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn" id="studioOpenReview" title="Full keyboard review queue">Open Pair Review Queue</button>
+                <button type="button" class="btn" id="studioClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Preset Editor Modal -->
+    <div class="modal-bg" id="presetModal">
+        <div class="modal faq-modal">
+            <h2>⚡ Multi-tag presets</h2>
+            <p class="faq-lead">Three big buttons apply several tags at once (then auto-save). Session-used single tags still float to the top of the library list.</p>
+            <div class="field">
+                <label>Preset 1 — label</label>
+                <input type="text" id="presetName0" placeholder="e.g. Basics">
+                <label style="margin-top:6px;">Tags (comma-separated)</label>
+                <input type="text" id="presetTags0" placeholder="client-x, review, shortlist">
+            </div>
+            <div class="field">
+                <label>Preset 2 — label</label>
+                <input type="text" id="presetName1" placeholder="e.g. Quality">
+                <label style="margin-top:6px;">Tags (comma-separated)</label>
+                <input type="text" id="presetTags1" placeholder="4k, vsr, keep">
+            </div>
+            <div class="field">
+                <label>Preset 3 — label</label>
+                <input type="text" id="presetName2" placeholder="e.g. Status">
+                <label style="margin-top:6px;">Tags (comma-separated)</label>
+                <input type="text" id="presetTags2" placeholder="done, approved">
+            </div>
+            <div class="modal-actions">
+                <button class="btn" id="btnPresetCancel">Cancel</button>
+                <button class="btn purple" id="btnPresetSave">Save presets</button>
             </div>
         </div>
     </div>
@@ -794,6 +1248,14 @@
             <details class="faq-item">
                 <summary>Can I put sources and upscales in one folder?</summary>
                 <p>Yes. One watched tree is fine. Two roots (e.g. Sources + Upscaled) is optional and simpler for humans, not required by the software.</p>
+            </details>
+            <details class="faq-item">
+                <summary>I consolidated Before and After into two big folders — how do I pair fast?</summary>
+                <p>Watch both folders, <strong>Rescan</strong>, then open <strong>📁 Two-Folder Pairs</strong>. Pick Before + After, Find matches, accept high-confidence rows. Use <strong>🩺 Pair Health</strong> for leftovers, and <strong>Relink from Tags</strong> if you moved already-paired files.</p>
+            </details>
+            <details class="faq-item">
+                <summary>What are the 3 big tag buttons?</summary>
+                <p><strong>Multi-tag presets</strong> under Tags — each button can add several tags at once and auto-save. Click <strong>Edit</strong> to set labels + comma-separated tags. Keys <strong>1 / 2 / 3</strong> fire the same presets while previewing (not while typing). Single tags still sort by session use at the top of the tag library.</p>
             </details>
             <details class="faq-item">
                 <summary>Can I ZIP the library to save space and still play videos here?</summary>
@@ -931,6 +1393,43 @@
             </div>
             <div class="field">
                 <label><input type="checkbox" id="setDebugMode"> Debug mode — echo errors &amp; events (🐛 panel)</label>
+            </div>
+            <div class="field">
+                <label>Display · scaling</label>
+                <p style="font-size:11px;color:var(--muted);margin:6px 0 8px;">Same controls as the top bar. UI scale zooms the whole app; tag size only affects the tag library column.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div>
+                        <label style="font-size:10px;">App UI scale</label>
+                        <select id="setUiScale" style="width:100%;background:#000;border:1px solid rgba(0,243,255,.3);color:var(--text);padding:6px;border-radius:5px;font-size:12px;">
+                            <option value="0.85">85%</option>
+                            <option value="1">100%</option>
+                            <option value="1.1">110%</option>
+                            <option value="1.25">125%</option>
+                            <option value="1.4">140%</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:10px;">Tag chip size</label>
+                        <select id="setTagScale" style="width:100%;background:#000;border:1px solid rgba(0,243,255,.3);color:var(--text);padding:6px;border-radius:5px;font-size:12px;">
+                            <option value="sm">Small</option>
+                            <option value="md">Medium</option>
+                            <option value="lg">Large</option>
+                            <option value="xl">Extra large</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:10px;">Tag columns</label>
+                        <select id="setTagCols" style="width:100%;background:#000;border:1px solid rgba(0,243,255,.3);color:var(--text);padding:6px;border-radius:5px;font-size:12px;">
+                            <option value="1">1 column</option>
+                            <option value="2">2 columns</option>
+                            <option value="3">3 columns</option>
+                            <option value="4">4 columns</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:flex-end;">
+                        <button type="button" class="btn" id="btnSettingsResetLayout" style="width:100%;">Reset panel widths</button>
+                    </div>
+                </div>
             </div>
             <div class="field">
                 <label>Rename trust (re-enable confirmations)</label>
@@ -1183,6 +1682,7 @@
             syncDebugButton();
             loadPanelSizes();
             initResizeHandles();
+            initLayoutControls();
             DBG()?.log('library', 'info', 'Media Library init v' + (window.AITOOLBOX_VERSION || '?'));
             await updateServerStatus();
             setInterval(updateServerStatus, 5000);
@@ -1275,57 +1775,215 @@
             return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${u[i]}`;
         }
 
+        const TAG_SCALE_PRESETS = {
+            sm: { font: '10px', padY: '3px', padX: '6px', gap: '4px' },
+            md: { font: '11px', padY: '5px', padX: '9px', gap: '6px' },
+            lg: { font: '13px', padY: '7px', padX: '11px', gap: '7px' },
+            xl: { font: '15px', padY: '9px', padX: '12px', gap: '8px' },
+        };
+
+        function applyTagScale(key) {
+            const k = TAG_SCALE_PRESETS[key] ? key : 'md';
+            const p = TAG_SCALE_PRESETS[k];
+            const root = document.documentElement;
+            root.style.setProperty('--tag-font', p.font);
+            root.style.setProperty('--tag-pad-y', p.padY);
+            root.style.setProperty('--tag-pad-x', p.padX);
+            root.style.setProperty('--tag-gap', p.gap);
+            localStorage.setItem('ml_tag_scale', k);
+            document.querySelectorAll('[data-tagscale]').forEach(b => b.classList.toggle('active', b.dataset.tagscale === k));
+            const sel = document.getElementById('tagScaleSelect');
+            if (sel) sel.value = k;
+            const setSel = document.getElementById('setTagScale');
+            if (setSel) setSel.value = k;
+        }
+
+        function applyTagCols(n) {
+            const cols = Math.max(1, Math.min(4, parseInt(n, 10) || 2));
+            document.documentElement.style.setProperty('--tag-cols', String(cols));
+            localStorage.setItem('ml_tag_cols', String(cols));
+            document.querySelectorAll('[data-cols]').forEach(b => b.classList.toggle('active', b.dataset.cols === String(cols)));
+            const setSel = document.getElementById('setTagCols');
+            if (setSel) setSel.value = String(cols);
+        }
+
+        function applyUiScale(scale) {
+            const s = Math.max(0.75, Math.min(1.6, parseFloat(scale) || 1));
+            document.documentElement.style.setProperty('--ui-scale', String(s));
+            localStorage.setItem('ml_ui_scale', String(s));
+            const sel = document.getElementById('uiScaleSelect');
+            if (sel) {
+                const opt = [...sel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.01);
+                if (opt) sel.value = opt.value;
+                else sel.value = '1';
+            }
+            const setSel = document.getElementById('setUiScale');
+            if (setSel) {
+                const opt = [...setSel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.01);
+                if (opt) setSel.value = opt.value;
+            }
+        }
+
+        function setTagsCollapsed(collapsed) {
+            document.body.classList.toggle('tags-collapsed', !!collapsed);
+            localStorage.setItem('ml_tags_collapsed', collapsed ? '1' : '0');
+            const btn = document.getElementById('btnToggleTagsPanel');
+            if (btn) btn.classList.toggle('active', !collapsed);
+            const fab = document.getElementById('btnShowTagsFab');
+            if (fab) fab.style.display = collapsed ? '' : 'none';
+        }
+
+        function setDetailCollapsed(collapsed) {
+            document.body.classList.toggle('detail-collapsed', !!collapsed);
+            localStorage.setItem('ml_detail_collapsed', collapsed ? '1' : '0');
+            const btn = document.getElementById('btnToggleDetailPanel');
+            if (btn) btn.classList.toggle('active', !collapsed);
+            const fab = document.getElementById('btnShowDetailFab');
+            if (fab) fab.style.display = collapsed ? '' : 'none';
+        }
+
         function loadPanelSizes() {
+            const root = document.documentElement;
             const ph = localStorage.getItem('ml_preview_h');
             const dw = localStorage.getItem('ml_detail_w');
-            if (ph) document.documentElement.style.setProperty('--preview-h', ph + 'px');
-            if (dw) document.documentElement.style.setProperty('--detail-w', dw + 'px');
+            const sw = localStorage.getItem('ml_sidebar_w');
+            const tw = localStorage.getItem('ml_tags_w');
+            if (ph) root.style.setProperty('--preview-h', ph + 'px');
+            if (dw) root.style.setProperty('--detail-w', dw + 'px');
+            if (sw) root.style.setProperty('--sidebar-w', sw + 'px');
+            if (tw) root.style.setProperty('--tags-w', tw + 'px');
+            applyUiScale(localStorage.getItem('ml_ui_scale') || '1');
+            applyTagScale(localStorage.getItem('ml_tag_scale') || 'md');
+            applyTagCols(localStorage.getItem('ml_tag_cols') || '2');
+            setTagsCollapsed(localStorage.getItem('ml_tags_collapsed') === '1');
+            setDetailCollapsed(localStorage.getItem('ml_detail_collapsed') === '1');
+            const sort = localStorage.getItem('ml_tag_sort') || 'session';
+            const sortEl = document.getElementById('tagLibSort');
+            if (sortEl) sortEl.value = sort;
+        }
+
+        function resetLayout() {
+            ['ml_preview_h', 'ml_detail_w', 'ml_sidebar_w', 'ml_tags_w',
+             'ml_ui_scale', 'ml_tag_scale', 'ml_tag_cols', 'ml_tags_collapsed', 'ml_detail_collapsed'
+            ].forEach(k => localStorage.removeItem(k));
+            const root = document.documentElement;
+            root.style.setProperty('--preview-h', '280px');
+            root.style.setProperty('--detail-w', '360px');
+            root.style.setProperty('--sidebar-w', '240px');
+            root.style.setProperty('--tags-w', '300px');
+            applyUiScale(1);
+            applyTagScale('md');
+            applyTagCols(2);
+            setTagsCollapsed(false);
+            setDetailCollapsed(false);
+            showToast('Layout reset', 'ok');
         }
 
         function initResizeHandles() {
             const previewHandle = document.getElementById('previewResizeHandle');
             const panelHandle = document.getElementById('panelResizeHandle');
-            let mode = null, startY = 0, startX = 0, startH = 0, startW = 0;
+            const tagsHandle = document.getElementById('tagsResizeHandle');
+            const sideHandle = document.getElementById('sidebarResizeHandle');
+            let mode = null, startX = 0, startW = 0;
 
-            previewHandle.addEventListener('mousedown', e => {
-                mode = 'preview';
-                startY = e.clientY;
-                startH = document.getElementById('previewArea').offsetHeight;
-                previewHandle.classList.add('dragging');
-                e.preventDefault();
-            });
-            panelHandle.addEventListener('mousedown', e => {
-                mode = 'panel';
+            function startDrag(m, handle, e) {
+                mode = m;
                 startX = e.clientX;
-                startW = document.getElementById('detailPanel').offsetWidth;
-                panelHandle.classList.add('dragging');
+                if (m === 'preview') {
+                    /* handled separately */
+                } else if (m === 'detail') startW = document.getElementById('detailPanel').offsetWidth;
+                else if (m === 'tags') startW = document.getElementById('tagsPanel').offsetWidth;
+                else if (m === 'sidebar') startW = document.getElementById('sidebarPanel').offsetWidth;
+                handle?.classList.add('dragging');
+                document.body.style.cursor = m === 'preview' ? 'ns-resize' : 'ew-resize';
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            }
+
+            previewHandle?.addEventListener('mousedown', e => {
+                mode = 'preview';
+                previewHandle.classList.add('dragging');
+                document.body.style.cursor = 'ns-resize';
+                document.body.style.userSelect = 'none';
                 e.preventDefault();
             });
+            panelHandle?.addEventListener('mousedown', e => startDrag('detail', panelHandle, e));
+            tagsHandle?.addEventListener('mousedown', e => startDrag('tags', tagsHandle, e));
+            sideHandle?.addEventListener('mousedown', e => startDrag('sidebar', sideHandle, e));
+
             document.addEventListener('mousemove', e => {
                 if (!mode) return;
+                const root = document.documentElement;
                 if (mode === 'preview') {
                     const panel = document.getElementById('detailPanel');
+                    if (!panel || panel.offsetParent === null) return;
                     const top = panel.getBoundingClientRect().top;
                     const h = Math.max(120, Math.min(window.innerHeight * 0.65, e.clientY - top - 40));
-                    document.documentElement.style.setProperty('--preview-h', h + 'px');
-                } else if (mode === 'panel') {
-                    const w = Math.max(260, Math.min(window.innerWidth * 0.55, startW + (startX - e.clientX)));
-                    document.documentElement.style.setProperty('--detail-w', w + 'px');
+                    root.style.setProperty('--preview-h', h + 'px');
+                } else if (mode === 'detail') {
+                    const w = Math.max(240, Math.min(window.innerWidth * 0.5, startW + (startX - e.clientX)));
+                    root.style.setProperty('--detail-w', w + 'px');
+                } else if (mode === 'tags') {
+                    const w = Math.max(180, Math.min(window.innerWidth * 0.45, startW + (startX - e.clientX)));
+                    root.style.setProperty('--tags-w', w + 'px');
+                } else if (mode === 'sidebar') {
+                    const w = Math.max(160, Math.min(window.innerWidth * 0.4, startW + (e.clientX - startX)));
+                    root.style.setProperty('--sidebar-w', w + 'px');
                 }
             });
             document.addEventListener('mouseup', () => {
                 if (!mode) return;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                previewHandle?.classList.remove('dragging');
+                panelHandle?.classList.remove('dragging');
+                tagsHandle?.classList.remove('dragging');
+                sideHandle?.classList.remove('dragging');
+                const root = document.documentElement;
                 if (mode === 'preview') {
-                    previewHandle.classList.remove('dragging');
-                    const h = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--preview-h'), 10);
+                    const h = parseInt(getComputedStyle(root).getPropertyValue('--preview-h'), 10);
                     if (h) localStorage.setItem('ml_preview_h', h);
-                } else if (mode === 'panel') {
-                    panelHandle.classList.remove('dragging');
-                    const w = document.getElementById('detailPanel').offsetWidth;
-                    localStorage.setItem('ml_detail_w', w);
+                } else if (mode === 'detail') {
+                    const w = document.getElementById('detailPanel')?.offsetWidth;
+                    if (w) localStorage.setItem('ml_detail_w', w);
+                } else if (mode === 'tags') {
+                    const w = document.getElementById('tagsPanel')?.offsetWidth;
+                    if (w) localStorage.setItem('ml_tags_w', w);
+                } else if (mode === 'sidebar') {
+                    const w = document.getElementById('sidebarPanel')?.offsetWidth;
+                    if (w) localStorage.setItem('ml_sidebar_w', w);
                 }
                 mode = null;
             });
+        }
+
+        function initLayoutControls() {
+            document.getElementById('uiScaleSelect')?.addEventListener('change', e => applyUiScale(e.target.value));
+            document.getElementById('tagScaleSelect')?.addEventListener('change', e => applyTagScale(e.target.value));
+            document.getElementById('btnResetLayout')?.addEventListener('click', resetLayout);
+            document.getElementById('btnToggleTagsPanel')?.addEventListener('click', () => {
+                setTagsCollapsed(!document.body.classList.contains('tags-collapsed'));
+            });
+            document.getElementById('btnToggleDetailPanel')?.addEventListener('click', () => {
+                setDetailCollapsed(!document.body.classList.contains('detail-collapsed'));
+            });
+            document.getElementById('btnCollapseTags')?.addEventListener('click', () => setTagsCollapsed(true));
+            document.getElementById('btnShowTagsFab')?.addEventListener('click', () => setTagsCollapsed(false));
+            document.getElementById('btnShowDetailFab')?.addEventListener('click', () => setDetailCollapsed(false));
+            document.querySelectorAll('[data-cols]').forEach(b => {
+                b.addEventListener('click', () => applyTagCols(b.dataset.cols));
+            });
+            document.querySelectorAll('[data-tagscale]').forEach(b => {
+                b.addEventListener('click', () => applyTagScale(b.dataset.tagscale));
+            });
+            document.getElementById('tagLibSort')?.addEventListener('change', e => {
+                localStorage.setItem('ml_tag_sort', e.target.value);
+                renderMlTagLibrary();
+            });
+            document.getElementById('setUiScale')?.addEventListener('change', e => applyUiScale(e.target.value));
+            document.getElementById('setTagScale')?.addEventListener('change', e => applyTagScale(e.target.value));
+            document.getElementById('setTagCols')?.addEventListener('change', e => applyTagCols(e.target.value));
+            document.getElementById('btnSettingsResetLayout')?.addEventListener('click', resetLayout);
         }
 
         async function deleteMediaItems(ids, label) {
@@ -2391,6 +3049,110 @@
 
         let mlAllTags = [];
         let mlTagSuggestIdx = -1;
+        const TAG_SESSION_KEY = 'aitoolbox_ml_tag_session_use_v1';
+        const TAG_PRESETS_KEY = 'aitoolbox_ml_tag_presets_v1';
+        let twoDirSuggestions = [];
+
+        function loadTagSessionUse() {
+            try { return JSON.parse(localStorage.getItem(TAG_SESSION_KEY) || '{}') || {}; }
+            catch { return {}; }
+        }
+        function bumpTagSessionUse(tags) {
+            if (!tags || !tags.length) return;
+            const u = loadTagSessionUse();
+            for (const t of tags) {
+                const k = String(t).toLowerCase();
+                if (!k) continue;
+                u[k] = (u[k] || 0) + 1;
+            }
+            try { localStorage.setItem(TAG_SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
+        }
+        function sortTagsSessionFirst(list) {
+            const u = loadTagSessionUse();
+            return [...list].sort((a, b) => {
+                const da = u[String(a).toLowerCase()] || 0;
+                const db = u[String(b).toLowerCase()] || 0;
+                if (db !== da) return db - da;
+                return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+            });
+        }
+        function defaultTagPresets() {
+            return [
+                { name: 'Basics', tags: [] },
+                { name: 'Quality', tags: [] },
+                { name: 'Status', tags: [] },
+            ];
+        }
+        function loadTagPresets() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(TAG_PRESETS_KEY) || 'null');
+                if (Array.isArray(raw) && raw.length === 3) {
+                    return raw.map((p, i) => ({
+                        name: (p && p.name) ? String(p.name).slice(0, 24) : defaultTagPresets()[i].name,
+                        tags: Array.isArray(p?.tags) ? p.tags.map(String).filter(Boolean) : [],
+                    }));
+                }
+            } catch { /* ignore */ }
+            return defaultTagPresets();
+        }
+        function saveTagPresets(presets) {
+            try { localStorage.setItem(TAG_PRESETS_KEY, JSON.stringify(presets)); } catch { /* ignore */ }
+            renderTagPresetButtons();
+        }
+        function renderTagPresetButtons() {
+            const presets = loadTagPresets();
+            for (let i = 0; i < 3; i++) {
+                const btn = document.getElementById('tagPreset' + i);
+                if (!btn) continue;
+                const p = presets[i];
+                const empty = !p.tags.length;
+                btn.classList.toggle('empty', empty);
+                const preview = empty ? 'Click Edit or set tags…' : p.tags.slice(0, 6).join(', ') + (p.tags.length > 6 ? '…' : '');
+                btn.innerHTML = `${p.name || ('Preset ' + (i + 1))}<small>${preview}</small>`;
+            }
+        }
+        async function applyTagPreset(idx) {
+            const presets = loadTagPresets();
+            const p = presets[idx];
+            if (!p) return;
+            if (!p.tags.length) {
+                openPresetEditor();
+                showToast('Set tags for this preset first', 'warn');
+                return;
+            }
+            if (!currentItem) {
+                showToast('Select a file first', 'warn');
+                return;
+            }
+            const tags = [...(els.detailTags._tags || [])];
+            let added = 0;
+            for (const t of p.tags) {
+                if (!tags.some(x => x.toLowerCase() === t.toLowerCase())) {
+                    tags.push(t);
+                    added++;
+                }
+            }
+            if (!added) {
+                showToast('All preset tags already on this file');
+                return;
+            }
+            bumpTagSessionUse(p.tags);
+            renderDetailTags(tags);
+            try {
+                await saveDetail();
+                showToast(`Preset “${p.name}”: +${added} tag(s)`, 'ok');
+            } catch (e) {
+                showToast(e.message || 'Save failed', 'warn');
+            }
+        }
+        function openPresetEditor() {
+            const presets = loadTagPresets();
+            for (let i = 0; i < 3; i++) {
+                document.getElementById('presetName' + i).value = presets[i].name || '';
+                document.getElementById('presetTags' + i).value = (presets[i].tags || []).join(', ');
+            }
+            document.getElementById('presetModal').classList.add('active');
+        }
 
         function renderDetailTags(tags) {
             els.detailTags.innerHTML = '';
@@ -2417,8 +3179,9 @@
             (filtered || []).forEach(it => (it.tags || []).forEach(t => {
                 if (!mlAllTags.some(x => x.toLowerCase() === String(t).toLowerCase())) mlAllTags.push(t);
             }));
-            mlAllTags.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            mlAllTags = sortTagsSessionFirst(mlAllTags);
             renderMlTagLibrary();
+            renderTagPresetButtons();
         }
 
         function renderMlTagLibrary() {
@@ -2426,25 +3189,50 @@
             const countEl = document.getElementById('tagLibCount');
             if (!box) return;
             const q = (document.getElementById('tagLibFilter')?.value || '').trim().toLowerCase();
-            const current = els.detailTags._tags || [];
-            const list = mlAllTags.filter(t => !q || t.toLowerCase().includes(q));
-            if (countEl) countEl.textContent = mlAllTags.length ? `(${mlAllTags.length})` : '';
+            const current = els.detailTags?._tags || [];
+            let list = mlAllTags.filter(t => !q || t.toLowerCase().includes(q));
+            const sortMode = document.getElementById('tagLibSort')?.value || 'session';
+            if (sortMode === 'alpha') {
+                list = [...list].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            } else if (sortMode === 'alpha-desc') {
+                list = [...list].sort((a, b) => b.localeCompare(a, undefined, { sensitivity: 'base' }));
+            } else {
+                list = sortTagsSessionFirst(list);
+            }
+            if (countEl) {
+                countEl.textContent = mlAllTags.length
+                    ? (list.length === mlAllTags.length ? `${mlAllTags.length}` : `${list.length} / ${mlAllTags.length}`)
+                    : '0';
+            }
             if (!list.length) {
-                box.innerHTML = `<div class="tag-lib-empty">${mlAllTags.length ? 'No tags match filter' : 'Tags you save appear here for one-click reuse'}</div>`;
+                box.innerHTML = `<div class="tag-lib-empty">${mlAllTags.length ? 'No tags match filter' : 'Tags you save appear here for one-click reuse — full height list, multi-column'}</div>`;
                 return;
             }
+            const esc = (s) => String(s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
             box.innerHTML = list.map(t => {
                 const on = current.some(x => x.toLowerCase() === t.toLowerCase());
-                return `<button type="button" class="tag-lib-chip ${on ? 'on' : ''}" data-tag="${t.replace(/"/g, '&quot;')}">${t}</button>`;
+                return `<button type="button" class="tag-lib-chip ${on ? 'on' : ''}" data-tag="${esc(t)}" title="${on ? 'Remove from file' : 'Add to file'}">
+                    <span class="chip-label">${esc(t)}</span>
+                    <span class="chip-mark">${on ? '✓' : '+'}</span>
+                </button>`;
             }).join('');
             box.querySelectorAll('.tag-lib-chip').forEach(btn => {
                 btn.onclick = () => {
+                    if (!currentItem && !(els.detailTags?._tags)) {
+                        showToast('Select a file first, then click tags', 'warn');
+                        return;
+                    }
                     const tags = els.detailTags._tags || [];
                     const tag = btn.dataset.tag;
                     const idx = tags.findIndex(x => x.toLowerCase() === tag.toLowerCase());
                     if (idx >= 0) tags.splice(idx, 1);
-                    else tags.push(tag);
+                    else {
+                        tags.push(tag);
+                        bumpTagSessionUse([tag]);
+                    }
                     renderDetailTags(tags);
+                    renderMlTagLibrary();
                 };
             });
         }
@@ -2663,6 +3451,7 @@
             const tags = els.detailTags._tags || [];
             const notes = els.detailNotes.value.trim();
             const writeTags = document.getElementById('setWriteFileTags')?.checked !== false;
+            bumpTagSessionUse(tags);
 
             try {
                 if (newName && newName !== currentItem.name) {
@@ -2725,34 +3514,517 @@
             window.open(`${base}?pair=${encodeURIComponent(ref)}&server=1`, '_blank');
         }
 
-        async function showSuggestPairs() {
-            const panel = document.getElementById('suggestPanel');
-            panel.style.display = 'block';
-            panel.innerHTML = 'Finding matches…';
-            const suggestions = await API().suggestPairs();
-            if (!suggestions.length) {
-                panel.innerHTML = '<div style="color:#666;padding:8px;">No auto-pairs found. Try consistent naming like clip.mp4 + clip_upscaled.mp4</div>';
+        /** Pair Studio — independent L/R slots + multi-signal suggestions */
+        let studioBefore = null;
+        let studioAfter = null;
+        let studioSuggestions = [];
+        let studioSugIndex = -1;
+        const UPDATE_FILES_ON_NEXT_KEY = 'aitoolbox_update_files_on_next';
+
+        function isUpdateFilesOnNext() {
+            try {
+                const el = document.getElementById('studioUpdateFiles');
+                if (el) return !!el.checked;
+            } catch { /* ignore */ }
+            return localStorage.getItem(UPDATE_FILES_ON_NEXT_KEY) !== '0';
+        }
+
+        function setUpdateFilesOnNext(on) {
+            localStorage.setItem(UPDATE_FILES_ON_NEXT_KEY, on ? '1' : '0');
+            const el = document.getElementById('studioUpdateFiles');
+            if (el) el.checked = !!on;
+        }
+
+        /**
+         * Write tags + rating for a media id into the real file (when toggle is on).
+         * Uses open detail-panel edits if that file is currently selected.
+         */
+        async function flushMediaTagsToFile(mediaLike) {
+            if (!isUpdateFilesOnNext()) return null;
+            if (!serverOn) {
+                showToast('Server offline — skip file tag write', 'warn');
+                return null;
+            }
+            const id = typeof mediaLike === 'string' ? mediaLike : mediaLike?.id;
+            if (!id) return null;
+            let override = {};
+            if (currentItem && currentItem.id === id) {
+                override = {
+                    tags: els.detailTags?._tags || currentItem.tags || [],
+                    rank: currentItem.rank || 0,
+                    notes: els.detailNotes?.value ?? currentItem.notes,
+                };
+            } else if (typeof mediaLike === 'object' && mediaLike) {
+                override = {
+                    tags: mediaLike.tags || [],
+                    rank: mediaLike.rank || 0,
+                    notes: mediaLike.notes,
+                };
+            }
+            try {
+                const updated = await API().flushMediaTagsToFile(id, override);
+                return updated;
+            } catch (e) {
+                console.warn('flushMediaTagsToFile', e);
+                showToast('File tag/rating write failed: ' + (e.message || e), 'warn');
+                return null;
+            }
+        }
+
+        async function flushStudioSlotsToFiles(before, after) {
+            if (!isUpdateFilesOnNext()) return;
+            const b = before || studioBefore;
+            const a = after || studioAfter;
+            if (!b && !a) return;
+            const parts = [];
+            if (b) {
+                const r = await flushMediaTagsToFile(b);
+                if (r) parts.push('L');
+            }
+            if (a) {
+                const r = await flushMediaTagsToFile(a);
+                if (r) parts.push('R');
+            }
+            if (parts.length) {
+                showToast('Updated file tags/rating: ' + parts.join(' + '), 'ok');
+            }
+        }
+
+        function openPairStudio() {
+            document.getElementById('pairStudioModal').classList.add('active');
+            const uf = document.getElementById('studioUpdateFiles');
+            if (uf) uf.checked = localStorage.getItem(UPDATE_FILES_ON_NEXT_KEY) !== '0';
+            renderStudioSlots();
+            UI()?.initTooltips?.(document.getElementById('pairStudioModal'));
+            // Prefill from current selection if empty
+            if (!studioBefore && !studioAfter) {
+                const ids = [...selected];
+                if (currentItem) ids.unshift(currentItem.id);
+                const uniq = [...new Set(ids)];
+                if (uniq[0]) assignStudioSide('before', uniq[0]);
+                if (uniq[1]) assignStudioSide('after', uniq[1]);
+            }
+        }
+
+        async function assignStudioSide(side, mediaId) {
+            if (!mediaId) {
+                // use selection / current
+                mediaId = currentItem?.id || [...selected][0];
+            }
+            if (!mediaId) {
+                showToast('Select a file in the library first', 'warn');
                 return;
             }
-            panel.innerHTML = suggestions.map(s => `
-                <div class="suggest-item" data-b="${s.before_id}" data-a="${s.after_id}">
-                    <strong>${Math.round(s.confidence * 100)}%</strong> ${s.before_name}<br>↔ ${s.after_name}
-                </div>`).join('');
-            panel.querySelectorAll('.suggest-item').forEach(el => {
-                el.onclick = async () => {
-                    const before = await API().getMedia(el.dataset.b);
-                    const after = await API().getMedia(el.dataset.a);
-                    const kind = before?.type === 'image' && after?.type === 'image' ? 'image' : 'video';
-                    const pair = await API().savePair({
-                        beforeMediaId: el.dataset.b, afterMediaId: el.dataset.a, kind,
-                        name: `${el.textContent.trim().slice(0, 50)}`,
-                        pinned: true,
-                    });
-                    const code = pair.pairCode || pair.pair_code || pair.id;
-                    showToast(`Locked pair ${code} — tagged source/upscaled`);
-                    openComparator(pair.id);
+            try {
+                const m = await API().getMedia(mediaId);
+                if (!m) throw new Error('Media not found');
+                if (side === 'before') studioBefore = m;
+                else studioAfter = m;
+                renderStudioSlots();
+            } catch (e) {
+                showToast(e.message || String(e), 'warn');
+            }
+        }
+
+        function clearStudioSide(side) {
+            if (side === 'before') studioBefore = null;
+            else studioAfter = null;
+            renderStudioSlots();
+        }
+
+        function studioSwap() {
+            const t = studioBefore;
+            studioBefore = studioAfter;
+            studioAfter = t;
+            renderStudioSlots();
+        }
+
+        function renderStudioSlots() {
+            const fill = (side, m) => {
+                const slot = document.getElementById(side === 'before' ? 'studioSlotBefore' : 'studioSlotAfter');
+                const nameEl = document.getElementById(side === 'before' ? 'studioBeforeName' : 'studioAfterName');
+                const metaEl = document.getElementById(side === 'before' ? 'studioBeforeMeta' : 'studioAfterMeta');
+                const prev = document.getElementById(side === 'before' ? 'studioBeforePreview' : 'studioAfterPreview');
+                slot.classList.toggle('filled', !!m);
+                if (!m) {
+                    nameEl.textContent = 'Empty — select a file or pick from suggestions';
+                    metaEl.textContent = '';
+                    prev.innerHTML = '';
+                    return;
+                }
+                nameEl.textContent = m.name || m.id;
+                metaEl.textContent = `${m.type || '?'} · ${fmtBytes(m.size || 0)} · ${m.relativePath || m.rel_path || ''}`;
+                if (serverOn && API().mediaFileUrl) {
+                    const url = API().mediaFileUrl(m.id);
+                    if (m.type === 'image') prev.innerHTML = `<img alt="" src="${url}">`;
+                    else prev.innerHTML = `<video controls muted playsinline preload="metadata" src="${url}"></video>`;
+                } else {
+                    prev.innerHTML = '<div class="slot-meta">Start server to preview</div>';
+                }
+            };
+            fill('before', studioBefore);
+            fill('after', studioAfter);
+        }
+
+        function studioPlaySide(side) {
+            const root = document.getElementById(side === 'before' ? 'studioBeforePreview' : 'studioAfterPreview');
+            const v = root?.querySelector('video');
+            if (!v) { showToast('No video in that slot', 'warn'); return; }
+            document.querySelectorAll('#pairStudioModal video').forEach(x => { if (x !== v) x.pause(); });
+            v.currentTime = 0;
+            v.play().catch(() => {});
+        }
+
+        function studioPlayBoth() {
+            document.querySelectorAll('#pairStudioModal video').forEach(v => {
+                v.currentTime = 0;
+                v.play().catch(() => {});
+            });
+        }
+
+        function bindStudioAutoNext() {
+            document.querySelectorAll('#pairStudioModal video').forEach(v => {
+                v.onended = null;
+                if (document.getElementById('studioAutoNext')?.checked) {
+                    v.onended = () => {
+                        // Prefer advancing after the After clip ends
+                        if (v.closest('#studioAfterPreview') || !document.querySelector('#studioAfterPreview video')) {
+                            studioNextSuggestion(true);
+                        }
+                    };
+                }
+            });
+        }
+
+        async function studioFindSuggestions() {
+            if (!serverOn) { showToast('Start server first', 'warn'); return; }
+            const list = document.getElementById('studioSuggestList');
+            const sum = document.getElementById('studioSummary');
+            list.innerHTML = 'Finding matches (stem · tail · digits · folder · fuzzy)…';
+            sum.textContent = 'Scanning…';
+            const minRatio = (parseFloat(document.getElementById('studioMinPct').value) || 50) / 100;
+            const tailLen = parseInt(document.getElementById('studioTailLen').value, 10) || 5;
+            const limit = parseInt(document.getElementById('studioLimit').value, 10) || 80;
+            try {
+                studioSuggestions = await API().suggestPairs(limit, {
+                    minRatio,
+                    tailLen,
+                    useTail: document.getElementById('studioUseTail').checked,
+                    useDigits: document.getElementById('studioUseDigits').checked,
+                    useFuzzy: document.getElementById('studioUseFuzzy').checked,
+                    useFolder: document.getElementById('studioUseFolder').checked,
+                    unpairedOnly: true,
+                    forcePost: true,
+                });
+                studioSugIndex = studioSuggestions.length ? 0 : -1;
+                renderStudioSuggestions();
+                const reasons = {};
+                studioSuggestions.forEach(s => { reasons[s.reason || '?'] = (reasons[s.reason || '?'] || 0) + 1; });
+                const rtxt = Object.entries(reasons).map(([k, v]) => `${k}:${v}`).join(' · ');
+                sum.textContent = studioSuggestions.length
+                    ? `${studioSuggestions.length} suggestion(s) · tail=${tailLen} · ${rtxt}`
+                    : 'No matches — try lower Min %, longer/shorter tail, or Two-Folder Pairs.';
+            } catch (e) {
+                list.innerHTML = '';
+                sum.textContent = e.message || 'Suggest failed';
+                showToast(e.message || 'Suggest failed', 'warn');
+            }
+        }
+
+        function renderStudioSuggestions() {
+            const list = document.getElementById('studioSuggestList');
+            if (!studioSuggestions.length) {
+                list.innerHTML = '<div style="color:#666;padding:8px;">No suggestions yet. Adjust tail length (try 4–6) and Find again.</div>';
+                return;
+            }
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+            list.innerHTML = studioSuggestions.map((s, i) => `
+                <div class="suggest-item" data-i="${i}" style="${i === studioSugIndex ? 'border-color:var(--accent);' : ''}">
+                    <strong style="color:var(--accent)">${Math.round((s.confidence || 0) * 100)}%</strong>
+                    <div>
+                        <div><strong>L</strong> ${esc(s.before_name)}</div>
+                        <div style="color:var(--muted)"><strong>R</strong> ${esc(s.after_name)}</div>
+                        <div style="font-size:9px;color:var(--muted)">${esc(s.reason || '')} · tail ${esc(s.tail || '')} · ${esc(s.stem || '')}</div>
+                    </div>
+                    <div class="sug-actions">
+                        <button type="button" class="btn purple sug-both" data-i="${i}">Both → slots</button>
+                        <button type="button" class="btn sug-l" data-i="${i}">← L only</button>
+                        <button type="button" class="btn sug-r" data-i="${i}">R only →</button>
+                        <button type="button" class="btn orange sug-lock" data-i="${i}">Lock</button>
+                    </div>
+                </div>
+            `).join('');
+            list.querySelectorAll('.sug-both').forEach(btn => {
+                btn.onclick = (e) => { e.stopPropagation(); studioLoadSuggestion(+btn.dataset.i, true); };
+            });
+            list.querySelectorAll('.sug-l').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const s = studioSuggestions[+btn.dataset.i];
+                    if (s) await assignStudioSide('before', s.before_id);
                 };
             });
+            list.querySelectorAll('.sug-r').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const s = studioSuggestions[+btn.dataset.i];
+                    if (s) await assignStudioSide('after', s.after_id);
+                };
+            });
+            list.querySelectorAll('.sug-lock').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    await studioLoadSuggestion(+btn.dataset.i, false);
+                    await studioLockPair();
+                };
+            });
+            list.querySelectorAll('.suggest-item').forEach(el => {
+                el.onclick = () => studioLoadSuggestion(+el.dataset.i, true);
+            });
+        }
+
+        async function studioLoadSuggestion(i, play, { flushPrevious = true } = {}) {
+            const s = studioSuggestions[i];
+            if (!s) return;
+            // Before leaving current slots, push tags/rating to the real files
+            if (flushPrevious && (studioBefore || studioAfter)) {
+                await flushStudioSlotsToFiles(studioBefore, studioAfter);
+            }
+            studioSugIndex = i;
+            await assignStudioSide('before', s.before_id);
+            await assignStudioSide('after', s.after_id);
+            renderStudioSuggestions();
+            if (play) {
+                setTimeout(() => {
+                    studioPlayBoth();
+                    bindStudioAutoNext();
+                }, 200);
+            }
+        }
+
+        async function studioNextSuggestion(play) {
+            if (!studioSuggestions.length) {
+                showToast('Find suggestions first', 'warn');
+                return;
+            }
+            studioSugIndex = (studioSugIndex + 1) % studioSuggestions.length;
+            await studioLoadSuggestion(studioSugIndex, play !== false, { flushPrevious: true });
+        }
+
+        async function studioLockPair() {
+            if (!studioBefore || !studioAfter) {
+                showToast('Fill both Left and Right slots', 'warn');
+                return;
+            }
+            if (studioBefore.id === studioAfter.id) {
+                showToast('Left and Right must be different files', 'warn');
+                return;
+            }
+            try {
+                const kind = studioBefore.type === 'image' && studioAfter.type === 'image' ? 'image' : 'video';
+                const pair = await API().savePair({
+                    beforeMediaId: studioBefore.id,
+                    afterMediaId: studioAfter.id,
+                    kind,
+                    name: `${studioBefore.name} ↔ ${studioAfter.name}`.slice(0, 80),
+                    pinned: true,
+                });
+                const code = pair.pairCode || pair.pair_code || pair.id;
+                showToast(`Locked pair ${code}`, 'ok');
+                try { await refreshPairsList(); } catch { /* ignore */ }
+                openComparator(pair.id);
+            } catch (e) {
+                showToast(e.message || 'Lock failed', 'warn');
+            }
+        }
+
+        async function showSuggestPairs() {
+            openPairStudio();
+            // Also keep a compact sidebar teaser
+            const panel = document.getElementById('suggestPanel');
+            if (panel) {
+                panel.style.display = 'block';
+                panel.innerHTML = '<div style="padding:6px;font-size:11px;color:var(--muted);">Pair Studio opened — multi-signal match + independent L/R slots. <button type="button" class="btn" id="reopenStudio" style="font-size:9px;padding:2px 6px;">Reopen</button></div>';
+                document.getElementById('reopenStudio')?.addEventListener('click', openPairStudio);
+            }
+            await studioFindSuggestions();
+        }
+
+        function wirePairStudio() {
+            document.getElementById('studioAssignBefore')?.addEventListener('click', () => assignStudioSide('before'));
+            document.getElementById('studioAssignAfter')?.addEventListener('click', () => assignStudioSide('after'));
+            document.getElementById('studioClearBefore')?.addEventListener('click', () => clearStudioSide('before'));
+            document.getElementById('studioClearAfter')?.addEventListener('click', () => clearStudioSide('after'));
+            document.getElementById('studioSwap')?.addEventListener('click', studioSwap);
+            document.getElementById('studioPlayBefore')?.addEventListener('click', () => studioPlaySide('before'));
+            document.getElementById('studioPlayAfter')?.addEventListener('click', () => studioPlaySide('after'));
+            document.getElementById('studioPlayBoth')?.addEventListener('click', () => { studioPlayBoth(); bindStudioAutoNext(); });
+            document.getElementById('studioLockPair')?.addEventListener('click', studioLockPair);
+            document.getElementById('studioOpenCompare')?.addEventListener('click', async () => {
+                if (!studioBefore || !studioAfter) { showToast('Fill both slots first', 'warn'); return; }
+                await studioLockPair();
+            });
+            document.getElementById('studioFind')?.addEventListener('click', studioFindSuggestions);
+            document.getElementById('studioNextPair')?.addEventListener('click', () => studioNextSuggestion(true));
+            document.getElementById('studioAutoNext')?.addEventListener('change', bindStudioAutoNext);
+            document.getElementById('studioUpdateFiles')?.addEventListener('change', (e) => {
+                setUpdateFilesOnNext(!!e.target.checked);
+            });
+            document.getElementById('studioClose')?.addEventListener('click', async () => {
+                // Optional final flush when closing with toggle on
+                if (isUpdateFilesOnNext() && (studioBefore || studioAfter)) {
+                    await flushStudioSlotsToFiles(studioBefore, studioAfter);
+                }
+                document.getElementById('pairStudioModal').classList.remove('active');
+            });
+            document.getElementById('studioOpenReview')?.addEventListener('click', () => {
+                location.href = 'Pair Review Queue.html?source=suggest';
+            });
+        }
+
+        async function openTwoDirModal() {
+            if (!serverOn) { showToast('Start server first', 'warn'); return; }
+            const dirs = await API().listDirectories();
+            const beforeSel = document.getElementById('twoDirBefore');
+            const afterSel = document.getElementById('twoDirAfter');
+            const opts = (dirs || []).map(d =>
+                `<option value="${d.id}">${(d.name || d.path || d.id).replace(/</g, '')}</option>`
+            ).join('');
+            if (!opts) {
+                showToast('Add two watched folders first (Before + After)', 'warn');
+                return;
+            }
+            beforeSel.innerHTML = opts;
+            afterSel.innerHTML = opts;
+            if (dirs.length > 1) afterSel.selectedIndex = 1;
+            // Restore last pick
+            try {
+                const last = JSON.parse(localStorage.getItem('aitoolbox_two_dir_pick') || '{}');
+                if (last.before && [...beforeSel.options].some(o => o.value === last.before)) beforeSel.value = last.before;
+                if (last.after && [...afterSel.options].some(o => o.value === last.after)) afterSel.value = last.after;
+            } catch { /* ignore */ }
+            document.getElementById('twoDirList').innerHTML = '';
+            document.getElementById('twoDirSummary').textContent = 'Pick folders, then Find matches.';
+            twoDirSuggestions = [];
+            document.getElementById('twoDirModal').classList.add('active');
+        }
+
+        function renderTwoDirList(suggestions) {
+            twoDirSuggestions = suggestions || [];
+            const box = document.getElementById('twoDirList');
+            const sum = document.getElementById('twoDirSummary');
+            if (!twoDirSuggestions.length) {
+                box.innerHTML = '<div class="hint-box" style="padding:12px;">No matches. Ensure both folders are watched + scanned, and filenames share a stem (clip.mp4 ↔ clip_upscaled.mp4 or same name in each tree).</div>';
+                sum.textContent = '0 suggestions';
+                return;
+            }
+            const high = twoDirSuggestions.filter(s => s.confidence >= 0.85).length;
+            sum.textContent = `${twoDirSuggestions.length} suggestion(s) · ${high} at ≥85% · uncheck any you don’t want`;
+            box.innerHTML = twoDirSuggestions.map((s, i) => `
+                <div class="two-dir-item" data-i="${i}">
+                    <input type="checkbox" class="two-dir-check" data-i="${i}" ${s.confidence >= 0.55 ? 'checked' : ''}>
+                    <span class="pct">${Math.round((s.confidence || 0) * 100)}%</span>
+                    <div>
+                        <div><strong>B</strong> ${s.before_name || ''}</div>
+                        <div style="color:var(--muted)"><strong>A</strong> ${s.after_name || ''}</div>
+                        <div style="font-size:9px;color:var(--muted)">${s.reason || ''} · ${s.stem || ''}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function findTwoDirMatches() {
+            const beforeDirId = document.getElementById('twoDirBefore').value;
+            const afterDirId = document.getElementById('twoDirAfter').value;
+            const minRatio = parseFloat(document.getElementById('twoDirMin').value) || 0.55;
+            if (!beforeDirId || !afterDirId) {
+                showToast('Select both folders', 'warn');
+                return;
+            }
+            if (beforeDirId === afterDirId) {
+                showToast('Pick two different folders (or use Suggest Pairs for same-folder)', 'warn');
+                return;
+            }
+            try {
+                localStorage.setItem('aitoolbox_two_dir_pick', JSON.stringify({ before: beforeDirId, after: afterDirId }));
+            } catch { /* ignore */ }
+            document.getElementById('twoDirSummary').textContent = 'Scanning for matches…';
+            try {
+                const suggestions = await API().suggestPairs(200, {
+                    beforeDirId,
+                    afterDirId,
+                    minRatio,
+                    unpairedOnly: true,
+                    tailLen: 5,
+                    useTail: true,
+                    useDigits: true,
+                    useFuzzy: true,
+                    forcePost: true,
+                });
+                renderTwoDirList(suggestions);
+            } catch (e) {
+                showToast(e.message || 'Suggest failed', 'warn');
+            }
+        }
+
+        async function acceptTwoDirChecked(minConf = 0) {
+            const checks = [...document.querySelectorAll('.two-dir-check:checked')];
+            if (!checks.length) {
+                showToast('Check at least one pair', 'warn');
+                return;
+            }
+            let created = 0;
+            let failed = 0;
+            for (const c of checks) {
+                const i = Number(c.dataset.i);
+                const s = twoDirSuggestions[i];
+                if (!s) continue;
+                if ((s.confidence || 0) < minConf) continue;
+                try {
+                    const before = await API().getMedia(s.before_id);
+                    const after = await API().getMedia(s.after_id);
+                    const kind = before?.type === 'image' && after?.type === 'image' ? 'image' : 'video';
+                    await API().savePair({
+                        beforeMediaId: s.before_id,
+                        afterMediaId: s.after_id,
+                        kind,
+                        name: `${_pairStemClient(s.before_name)} — before/after`,
+                        pinned: true,
+                    });
+                    created++;
+                } catch {
+                    failed++;
+                }
+            }
+            showToast(`Created ${created} pair(s)${failed ? ` · ${failed} failed` : ''}`, created ? 'ok' : 'warn');
+            await findTwoDirMatches();
+            await applyFilters();
+            try { await refreshPairsList(); } catch { /* optional */ }
+        }
+
+        function _pairStemClient(name) {
+            let stem = String(name || '').replace(/\.[^.]+$/, '').toLowerCase();
+            for (const s of ['_upscaled', '_upscale', '.upscaled', '_vsr', '_rife', '_interp', '_4k', '_2k']) {
+                const idx = stem.indexOf(s);
+                if (idx > 0) stem = stem.slice(0, idx);
+            }
+            return stem.replace(/[._\-\s]+$/, '') || name;
+        }
+
+        async function selectAdjacentMedia(delta) {
+            const list = filtered || [];
+            if (!list.length) return;
+            let idx = currentItem ? list.findIndex(m => m.id === currentItem.id) : -1;
+            if (idx < 0) idx = 0;
+            else idx = Math.max(0, Math.min(list.length - 1, idx + delta));
+            const item = list[idx];
+            if (item) {
+                selected.clear();
+                selected.add(item.id);
+                await selectItem(item);
+                document.querySelector(`[data-id="${item.id}"]`)?.scrollIntoView({ block: 'nearest' });
+            }
         }
 
         // --- Rename history navigation ---
@@ -2902,6 +4174,36 @@
         };
         document.getElementById('btnPathAdd').onclick = () => addDirectoryByPath(document.getElementById('pathInput').value);
         document.getElementById('btnSuggest').onclick = showSuggestPairs;
+        wirePairStudio();
+        document.getElementById('btnTwoDirPairs')?.addEventListener('click', openTwoDirModal);
+        document.getElementById('btnTwoDirClose')?.addEventListener('click', () => document.getElementById('twoDirModal').classList.remove('active'));
+        document.getElementById('btnTwoDirFind')?.addEventListener('click', findTwoDirMatches);
+        document.getElementById('btnTwoDirAcceptHigh')?.addEventListener('click', () => acceptTwoDirChecked(0.85));
+        document.getElementById('btnTwoDirAcceptAll')?.addEventListener('click', () => acceptTwoDirChecked(0));
+        document.getElementById('btnHealthTwoDir')?.addEventListener('click', () => {
+            document.getElementById('healthModal').classList.remove('active');
+            openTwoDirModal();
+        });
+        document.getElementById('btnEditPresets')?.addEventListener('click', openPresetEditor);
+        document.getElementById('tagPresetRow')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-preset]');
+            if (!btn) return;
+            applyTagPreset(Number(btn.dataset.preset));
+        });
+        document.getElementById('btnPresetCancel')?.addEventListener('click', () => document.getElementById('presetModal').classList.remove('active'));
+        document.getElementById('btnPresetSave')?.addEventListener('click', () => {
+            const next = [0, 1, 2].map(i => ({
+                name: (document.getElementById('presetName' + i).value || ('Preset ' + (i + 1))).trim().slice(0, 24),
+                tags: (document.getElementById('presetTags' + i).value || '')
+                    .split(',')
+                    .map(t => t.trim())
+                    .filter(Boolean),
+            }));
+            saveTagPresets(next);
+            document.getElementById('presetModal').classList.remove('active');
+            showToast('Presets saved', 'ok');
+        });
+        renderTagPresetButtons();
         document.getElementById('btnRescan').onclick = rescanAll;
         document.getElementById('btnSaveDetail').onclick = saveDetail;
         els.searchInput.addEventListener('input', () => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); });
@@ -3491,6 +4793,10 @@
             const autoPairEl = document.getElementById('setAutoPairScan');
             if (autoPairEl) autoPairEl.checked = settings.auto_pair_after_scan === 'true';
             document.getElementById('setDebugMode').checked = DBG()?.enabled();
+            // Sync display controls
+            applyUiScale(localStorage.getItem('ml_ui_scale') || '1');
+            applyTagScale(localStorage.getItem('ml_tag_scale') || 'md');
+            applyTagCols(localStorage.getItem('ml_tag_cols') || '2');
             document.getElementById('settingsModal').classList.add('active');
             UI().initTooltips(document.getElementById('settingsModal'));
         };
@@ -3544,10 +4850,41 @@
         });
 
         document.addEventListener('keydown', e => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
             if (e.key === 'Delete' && selected.size > 0) {
                 e.preventDefault();
                 deleteMediaItems(getSelectedIds(), 'Selected files');
+                return;
+            }
+            // Player / tagging speed keys
+            if (e.key === ' ' || e.code === 'Space') {
+                if (previewVideo) {
+                    e.preventDefault();
+                    if (previewVideo.paused) previewVideo.play().catch(() => {});
+                    else previewVideo.pause();
+                }
+                return;
+            }
+            if (e.key === '1' || e.key === '2' || e.key === '3') {
+                e.preventDefault();
+                applyTagPreset(Number(e.key) - 1);
+                return;
+            }
+            if (e.key === '[' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectAdjacentMedia(-1);
+                return;
+            }
+            if (e.key === ']' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectAdjacentMedia(1);
+                return;
+            }
+            if (e.key === 'c' || e.key === 'C') {
+                if (currentItem?.type === 'video') {
+                    e.preventDefault();
+                    captureFrame();
+                }
             }
         });
 

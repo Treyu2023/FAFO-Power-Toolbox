@@ -230,6 +230,25 @@ class AutoPairRequest(BaseModel):
     dry_run: bool = False
     pin: bool = True
     kind: str | None = None
+    before_dir_id: str | None = None
+    after_dir_id: str | None = None
+    require_upscale_name: bool | None = None
+
+
+class SuggestPairsRequest(BaseModel):
+    """Optional two-folder mode + multi-signal matching knobs."""
+    limit: int = 50
+    min_ratio: float = 0.5
+    before_dir_id: str | None = None
+    after_dir_id: str | None = None
+    unpaired_only: bool = True
+    kind: str | None = None
+    # Looser unique-id style match: last N alnum chars of stem (default 5)
+    tail_len: int = 5
+    use_tail: bool = True
+    use_digits: bool = True
+    use_fuzzy: bool = True
+    use_folder: bool = True
 
 
 class ThumbCapture(BaseModel):
@@ -356,6 +375,8 @@ class VfWatchFoldersBody(BaseModel):
 class VfPunchBody(BaseModel):
     id: str | None = None
     path: str | None = None
+    # When true, open the generated punch list with the OS default app (Excel)
+    open: bool = False
 
 
 class VfSurveyBody(BaseModel):
@@ -1189,6 +1210,26 @@ def verifone_survey_ocr_apply(site_id: str, body: VfSurveyOcrApplyBody):
 
 @app.post("/api/verifone/punch-list")
 def verifone_punch_list(body: VfPunchBody):
+    import os
+
+    def _finish(result: dict) -> dict:
+        path = (result or {}).get("path")
+        opened = False
+        if body.open and path:
+            try:
+                p = Path(path)
+                if p.is_file():
+                    os.startfile(str(p))  # Excel / SpreadsheetML default app
+                    opened = True
+                elif p.parent.is_dir():
+                    os.startfile(str(p.parent))
+                    opened = True
+            except OSError:
+                opened = False
+        out = dict(result or {})
+        out["opened"] = opened
+        return out
+
     row = None
     if body.id:
         row = vf.get_site(body.id)
@@ -1203,8 +1244,7 @@ def verifone_punch_list(body: VfPunchBody):
             dossier = vf.build_dossier(p, root_p if root_p.is_dir() else p.parent)
         except Exception as e:
             raise HTTPException(500, f"Failed to read export: {e}") from e
-        result = vf.prefill_punch_list(ROOT, dossier)
-        return result
+        return _finish(vf.prefill_punch_list(ROOT, dossier))
     if not row:
         raise HTTPException(400, "Provide site id or path")
     dossier = row.get("dossier") or {}
@@ -1232,8 +1272,7 @@ def verifone_punch_list(body: VfPunchBody):
                 "namedTanks": row.get("named_tanks") or "",
             },
         }
-    result = vf.prefill_punch_list(ROOT, dossier)
-    return result
+    return _finish(vf.prefill_punch_list(ROOT, dossier))
 
 
 # --- Shared tool icons (repo assets/tool-icons) ---
@@ -1887,6 +1926,9 @@ def api_auto_pair_upscale(body: AutoPairRequest):
             dry_run=body.dry_run,
             pin=body.pin,
             kind=body.kind,
+            before_dir_id=body.before_dir_id,
+            after_dir_id=body.after_dir_id,
+            require_upscale_name=body.require_upscale_name,
         )
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -2006,9 +2048,53 @@ def api_run_smart_search(body: SmartSearchRun):
 
 
 @app.get("/api/pairs/suggest")
-def api_suggest_pairs(limit: int = 30):
-    return ops.suggest_pairs(limit=limit)
+def api_suggest_pairs(
+    limit: int = 30,
+    min_ratio: float = 0.55,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+    tail_len: int = 5,
+    use_tail: bool = True,
+    use_digits: bool = True,
+    use_fuzzy: bool = True,
+    use_folder: bool = True,
+):
+    return ops.suggest_pairs(
+        limit=limit,
+        min_ratio=min_ratio,
+        before_dir_id=before_dir_id or None,
+        after_dir_id=after_dir_id or None,
+        unpaired_only=unpaired_only,
+        tail_len=tail_len,
+        use_tail=use_tail,
+        use_digits=use_digits,
+        use_fuzzy=use_fuzzy,
+        use_folder=use_folder,
+    )
 
+
+@app.post("/api/pairs/suggest")
+def api_suggest_pairs_post(body: SuggestPairsRequest):
+    return {
+        "ok": True,
+        "suggestions": ops.suggest_pairs(
+            limit=body.limit,
+            min_ratio=body.min_ratio,
+            media_type=body.kind if body.kind in ("video", "image") else None,
+            before_dir_id=body.before_dir_id,
+            after_dir_id=body.after_dir_id,
+            unpaired_only=body.unpaired_only,
+            tail_len=body.tail_len,
+            use_tail=body.use_tail,
+            use_digits=body.use_digits,
+            use_fuzzy=body.use_fuzzy,
+            use_folder=body.use_folder,
+        ),
+        "before_dir_id": body.before_dir_id,
+        "after_dir_id": body.after_dir_id,
+        "tail_len": body.tail_len,
+    }
 
 @app.get("/api/pairs/{pid}")
 def api_get_pair(pid: str):
@@ -2121,6 +2207,8 @@ import tag_rules as tags
 import network_ops as net
 import security_scan as sec
 import startup_ops as startup
+import task_manager_pro as tmpro
+import setup_ops
 import disk_ops as disk
 import hosts_ops as hosts
 import convert_ops as convert
@@ -2404,6 +2492,101 @@ def api_network_kill_process(body: NetKillProcess):
         raise HTTPException(404, str(e))
     except PermissionError as e:
         raise HTTPException(403, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# --- FAFO Task Manager Pro (intel + efficiency + optional NVD) ---
+class TmproRefresh(BaseModel):
+    force: bool = False
+    max_apps: int = 20
+    only_seen_since_days: int | None = 7
+
+
+@app.get("/api/tmpro/overview")
+def api_tmpro_overview():
+    try:
+        return tmpro.overview()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/processes")
+def api_tmpro_processes(
+    sort_by: str = "cpu",
+    search: str = "",
+    limit: int = 250,
+):
+    try:
+        return tmpro.list_processes_intel(sort_by=sort_by, search=search, limit=limit)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/processes/{pid}")
+def api_tmpro_process_detail(pid: int):
+    try:
+        return tmpro.get_process_intel(pid)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/ratings")
+def api_tmpro_ratings(limit: int = 100):
+    try:
+        return tmpro.list_ratings(limit=limit)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/startup")
+def api_tmpro_startup():
+    try:
+        return tmpro.startup_intel()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/knowledge")
+def api_tmpro_knowledge():
+    try:
+        return tmpro.knowledge_stats()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/seen")
+def api_tmpro_seen():
+    try:
+        return tmpro.get_seen_apps()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/tmpro/refresh")
+def api_tmpro_refresh(body: TmproRefresh = TmproRefresh()):
+    """Weekly-style NVD keyword refresh for apps seen on this PC."""
+    try:
+        # Optional NVD API key from env only (never from JSON secrets file)
+        import os as _os
+        key = _os.environ.get("NVD_API_KEY") or _os.environ.get("FAFO_NVD_API_KEY") or None
+        return tmpro.weekly_intel_refresh(
+            force=bool(body.force),
+            max_apps=int(body.max_apps or 20),
+            only_seen_since_days=body.only_seen_since_days,
+            api_key=key,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/setup/status")
+def api_setup_status():
+    """First-run / setup completeness for launcher thin-shell UX."""
+    try:
+        return setup_ops.get_setup_status()
     except Exception as e:
         raise HTTPException(500, str(e))
 

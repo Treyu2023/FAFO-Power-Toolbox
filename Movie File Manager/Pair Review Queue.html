@@ -243,10 +243,20 @@
           <kbd>R</kbd> / <kbd>X</kbd> Reject ·
           <kbd>S</kbd> Skip ·
           <kbd>←</kbd> <kbd>→</kbd> Prev / Next ·
+          <kbd>N</kbd> Next + play ·
           <kbd>Space</kbd> Play/pause both ·
           <kbd>C</kbd> Open comparator ·
           <kbd>U</kbd> Undo decision
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="chkAutoNext" checked>
+          Auto-play next pair when the <strong>After</strong> video ends
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted);cursor:pointer;"
+          title="When you go to the next pair, write the previous pair’s tags + star rating into the real files (Windows Explorer)">
+          <input type="checkbox" id="chkUpdateFiles" checked>
+          💾 <strong>Update files</strong> on next — write previous tags + rating to disk
+        </label>
       </div>
 
       <div class="actions">
@@ -255,6 +265,8 @@
         <button class="ui-btn ghost" id="btnSkip" type="button">Skip</button>
         <button class="ui-btn ghost" id="btnPrev" type="button">← Prev</button>
         <button class="ui-btn ghost" id="btnNext" type="button">Next →</button>
+        <button class="ui-btn primary" id="btnNextPlay" type="button">⏭ Next + play</button>
+        <button class="ui-btn ghost" id="btnSwapSides" type="button">⇄ Swap L/R</button>
         <button class="ui-btn ghost" id="btnUndo" type="button">Undo</button>
         <button class="ui-btn ghost" id="btnCompare" type="button">Open comparator</button>
       </div>
@@ -429,13 +441,94 @@
 
       setMediaFromItem(document.getElementById('beforeMedia'), item, 'before');
       setMediaFromItem(document.getElementById('afterMedia'), item, 'after');
+      wireEndedAdvance();
       updateFooterButtons();
     }
 
-    function setDecision(dec) {
+    function playCurrentVideos() {
+      document.querySelectorAll('#activeReview video').forEach(v => {
+        try { v.currentTime = 0; } catch { /* ignore */ }
+        v.play().catch(() => {});
+      });
+    }
+
+    const UPDATE_FILES_KEY = 'aitoolbox_update_files_on_next';
+
+    function isUpdateFilesOnNext() {
+      const el = document.getElementById('chkUpdateFiles');
+      if (el) return !!el.checked;
+      return localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+    }
+
+    /**
+     * Write previous pair sides' catalog tags + rating into real files.
+     * Called when advancing (Next / auto-next / accept auto-advance).
+     */
+    async function flushItemFilesToDisk(item) {
+      if (!isUpdateFilesOnNext() || !item) return;
+      if (!API()?.flushMediaTagsToFile) return;
+      const online = await API().isOnline?.(false, 800).catch(() => false);
+      if (!online) {
+        toast('Server offline — skipped file tag write', 'warn');
+        return;
+      }
+      const ids = [item.beforeMediaId, item.afterMediaId].filter(Boolean);
+      if (!ids.length) return;
+      let n = 0;
+      for (const id of ids) {
+        try {
+          await API().flushMediaTagsToFile(id);
+          n++;
+        } catch (e) {
+          console.warn('flush', id, e);
+          toast('File write failed: ' + (e.message || e), 'warn');
+        }
+      }
+      if (n) toast(`Updated tags/rating on ${n} file(s)`, 'ok');
+    }
+
+    async function goNextAndPlay() {
+      if (!queue.length) return;
+      const prev = current();
+      await flushItemFilesToDisk(prev);
+      if (index < queue.length - 1) index++;
+      else index = 0;
+      renderItem();
+      setTimeout(playCurrentVideos, 120);
+    }
+
+    function wireEndedAdvance() {
+      const afterBox = document.getElementById('afterMedia');
+      const beforeBox = document.getElementById('beforeMedia');
+      const vids = [...document.querySelectorAll('#activeReview video')];
+      vids.forEach(v => { v.onended = null; });
+      if (!document.getElementById('chkAutoNext')?.checked) return;
+      const afterV = afterBox?.querySelector('video');
+      const beforeV = beforeBox?.querySelector('video');
+      const primary = afterV || beforeV;
+      if (primary) {
+        primary.onended = () => goNextAndPlay();
+      }
+    }
+
+    function swapCurrentSides() {
+      const item = current();
+      if (!item) return;
+      const swap = (a, b) => { const t = item[a]; item[a] = item[b]; item[b] = t; };
+      swap('beforeName', 'afterName');
+      swap('beforePath', 'afterPath');
+      swap('beforeMediaId', 'afterMediaId');
+      item.label = `${item.beforeName} ↔ ${item.afterName}`;
+      renderItem();
+      toast('Swapped left/right for this review item');
+    }
+
+    async function setDecision(dec) {
       const item = current();
       if (!item || busy) return;
       item.decision = dec;
+      // Write previous (this) pair's tags/rating to files before leaving
+      await flushItemFilesToDisk(item);
       // Auto-advance
       if (index < queue.length - 1) index++;
       else {
@@ -569,7 +662,15 @@
           }
           document.getElementById('modeHint').textContent = `Catalog · ${items.length} pairs`;
         } else if (source === 'suggest') {
-          const sug = await API().suggestPairs(80);
+          const sug = await API().suggestPairs(120, {
+            minRatio: 0.45,
+            tailLen: 5,
+            useTail: true,
+            useDigits: true,
+            useFuzzy: true,
+            useFolder: true,
+            forcePost: true,
+          });
           for (const s of sug) {
             items.push({
               id: `sug-${s.before_id}-${s.after_id}`,
@@ -583,19 +684,11 @@
               beforeMediaId: s.before_id,
               afterMediaId: s.after_id,
               decision: 'pending',
-              label: `${s.before_name} ↔ ${s.after_name} (${s.reason || 'suggest'})`,
+              label: `${s.before_name} ↔ ${s.after_name} (${s.reason || 'suggest'}${s.tail ? ' · tail ' + s.tail : ''})`,
             });
           }
-          // Resolve paths via media file API when possible
-          for (const it of items) {
-            if (it.beforeMediaId) it.beforePath = null; // use media file endpoint below
-          }
-          // For suggestions, serve via media mid
-          items = items.map(it => ({
-            ...it,
-            _useMediaId: true,
-          }));
-          document.getElementById('modeHint').textContent = `Suggestions · ${items.length}`;
+          items = items.map(it => ({ ...it, _useMediaId: true }));
+          document.getElementById('modeHint').textContent = `Suggestions (multi-signal) · ${items.length}`;
         }
 
         if (minScore > 0) {
@@ -742,8 +835,32 @@
     document.getElementById('btnAccept').onclick = () => setDecision('accept');
     document.getElementById('btnReject').onclick = () => setDecision('reject');
     document.getElementById('btnSkip').onclick = () => setDecision('skip');
-    document.getElementById('btnPrev').onclick = () => { if (index > 0) { index--; renderItem(); } };
-    document.getElementById('btnNext').onclick = () => { if (index < queue.length - 1) { index++; renderItem(); } };
+    document.getElementById('btnPrev').onclick = async () => {
+      if (index > 0) {
+        await flushItemFilesToDisk(current());
+        index--;
+        renderItem();
+      }
+    };
+    document.getElementById('btnNext').onclick = async () => {
+      if (index < queue.length - 1) {
+        await flushItemFilesToDisk(current());
+        index++;
+        renderItem();
+      }
+    };
+    document.getElementById('btnNextPlay').onclick = () => goNextAndPlay();
+    document.getElementById('btnSwapSides').onclick = swapCurrentSides;
+    document.getElementById('chkAutoNext')?.addEventListener('change', wireEndedAdvance);
+    // Sync Update files toggle (shared with Pair Studio / Comparator)
+    (() => {
+      const el = document.getElementById('chkUpdateFiles');
+      if (!el) return;
+      el.checked = localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+      el.addEventListener('change', () => {
+        localStorage.setItem(UPDATE_FILES_KEY, el.checked ? '1' : '0');
+      });
+    })();
     document.getElementById('btnUndo').onclick = undoDecision;
     document.getElementById('btnCompare').onclick = openComparator;
     document.getElementById('btnApplyAccepted').onclick = () => applyAccepted(false);
@@ -757,8 +874,19 @@
       if (k === 'a' || k === 'A' || k === 'Enter') { e.preventDefault(); setDecision('accept'); }
       else if (k === 'r' || k === 'R' || k === 'x' || k === 'X') { e.preventDefault(); setDecision('reject'); }
       else if (k === 's' || k === 'S') { e.preventDefault(); setDecision('skip'); }
-      else if (k === 'ArrowRight' || k === 'n' || k === 'N') { e.preventDefault(); if (index < queue.length - 1) { index++; renderItem(); } }
-      else if (k === 'ArrowLeft' || k === 'p' || k === 'P') { e.preventDefault(); if (index > 0) { index--; renderItem(); } }
+      else if (k === 'n' || k === 'N') { e.preventDefault(); goNextAndPlay(); }
+      else if (k === 'ArrowRight') {
+        e.preventDefault();
+        if (index < queue.length - 1) {
+          flushItemFilesToDisk(current()).then(() => { index++; renderItem(); });
+        }
+      }
+      else if (k === 'ArrowLeft' || k === 'p' || k === 'P') {
+        e.preventDefault();
+        if (index > 0) {
+          flushItemFilesToDisk(current()).then(() => { index--; renderItem(); });
+        }
+      }
       else if (k === ' ') { e.preventDefault(); togglePlay(); }
       else if (k === 'c' || k === 'C') { e.preventDefault(); openComparator(); }
       else if (k === 'u' || k === 'U') { e.preventDefault(); undoDecision(); }

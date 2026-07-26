@@ -130,6 +130,24 @@
             margin-top: 10px;
             opacity: 0.7;
         }
+        .tool-card .badges {
+            display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+            margin-top: 8px; min-height: 16px;
+        }
+        .tool-card .badge {
+            font-size: 8px; letter-spacing: 0.6px; text-transform: uppercase;
+            padding: 2px 6px; border-radius: 999px; font-weight: 700;
+            border: 1px solid rgba(0,243,255,0.25); color: var(--muted);
+        }
+        .tool-card .badge.server {
+            border-color: rgba(255,200,0,0.45); color: #ffc800;
+        }
+        .tool-card .badge.offline-ok {
+            border-color: rgba(0,255,136,0.35); color: #00ff88;
+        }
+        .tool-card .badge.local-only {
+            border-color: rgba(124,92,255,0.4); color: #a78bfa;
+        }
 
         body.edit-mode .tool-card::after {
             content: '✎ Change Icon';
@@ -197,6 +215,25 @@
             <button class="ui-btn ghost" id="btnRecheckServer" data-tip="Ping the server again without launching">↻ Recheck</button>
         </div>
         <div class="server-hint" id="serverHint"></div>
+    </div>
+
+    <!-- First-run setup: only shown when machine setup marker/checks are incomplete -->
+    <div class="get-started animate-in" id="firstRunSetupPanel" style="display:none;border-color:rgba(0,243,255,0.45);background:linear-gradient(135deg,rgba(0,243,255,0.12),rgba(124,92,255,0.10));">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+            <h3 style="color:var(--accent);">🛠 First-time setup</h3>
+            <span id="firstRunStatus" style="font-size:12px;color:var(--muted);">Checking…</span>
+        </div>
+        <p style="font-size:13px;color:var(--text);margin-bottom:12px;line-height:1.5;">
+            One-time install for this PC: Python <code>.venv</code>, <code>aitoolbox://</code> protocol, Chrome app launch, desktop shortcut.
+            This panel <strong>disappears automatically</strong> after setup completes successfully.
+        </p>
+        <ul id="firstRunMissing" style="margin:0 0 14px 18px;font-size:12px;color:var(--muted);line-height:1.6;"></ul>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <button class="ui-btn primary" id="btnCompleteSetup" data-tip-title="Complete Setup" data-tip="Runs automated setup: Python venv, protocol registration, desktop shortcut, setup marker. Chrome only — never Edge.">✔ Complete Setup</button>
+            <button class="ui-btn" id="btnOneClickLaunch" data-tip-title="One-click launch" data-tip="Runs setup if needed, starts server, opens Chrome app window (thin shell).">🚀 One-Click Launch</button>
+            <button class="ui-btn ghost" id="btnRecheckSetup" data-tip="Re-check setup status">↻ Recheck setup</button>
+        </div>
+        <p id="firstRunHint" style="font-size:11px;color:var(--muted);margin-top:12px;min-height:16px;"></p>
     </div>
 
     <div class="get-started animate-in animate-in-delay-1" id="getStartedPanel">
@@ -274,7 +311,9 @@
                 path: 'Verifone Tools/Commander Site Console.html',
                 category: 'Verifone',
                 emoji: '⛽',
-                featured: true
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'commander-status-hud',
@@ -283,7 +322,9 @@
                 path: 'Verifone Tools/Commander Status HUD.html',
                 category: 'Verifone',
                 emoji: '📡',
-                featured: true
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'pre-reload-punch-list',
@@ -300,7 +341,8 @@
                 path: 'System Tools/IP Profile Switcher.html',
                 category: 'System',
                 emoji: '🌐',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'pc-reports-log-viewer',
@@ -309,7 +351,8 @@
                 path: 'System Tools/PC Reports and Log Viewer/index.html',
                 category: 'System',
                 emoji: '📋',
-                featured: true
+                featured: true,
+                offlineOk: true
             },
             {
                 id: 'log-viewer',
@@ -327,7 +370,9 @@
                 path: 'Movie File Manager/Media Library Manager.html',
                 category: 'Library',
                 emoji: '🗂️',
-                featured: true
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'file-organizer',
@@ -336,7 +381,9 @@
                 path: 'Movie File Manager/File Organizer.html',
                 category: 'Library',
                 emoji: '✏️',
-                featured: true
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'vsr-pipeline',
@@ -345,7 +392,9 @@
                 path: 'Movie File Manager/VSR Pipeline Manager.html',
                 category: 'Pipeline',
                 emoji: '⚡',
-                featured: true
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'pair-review-queue',
@@ -354,7 +403,9 @@
                 path: 'Movie File Manager/Pair Review Queue.html',
                 category: 'Library',
                 emoji: '🔎',
-                featured: true
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'video-compare',
@@ -394,7 +445,18 @@
                 desc: 'Amortization schedule with escrow, extra payments & payoff chart',
                 path: 'Accounting Tools and calculators/Amoritization loan calculator2.html',
                 category: 'Finance',
-                emoji: '💰'
+                emoji: '💰',
+                offlineOk: true
+            },
+            {
+                id: 'universal-converter',
+                name: 'Universal Converter',
+                desc: 'Resolution lab, RAM/DDR memory terms, electrical V/A/W/Ω, metric↔imperial, currency & more',
+                path: 'Accounting Tools and calculators/Universal Converter.html',
+                category: 'Calculators',
+                emoji: '🧮',
+                featured: true,
+                offlineOk: true
             },
             {
                 id: 'reg-qol-tweaks',
@@ -428,7 +490,19 @@
                 path: 'System Tools/LAN Task Manager.html',
                 category: 'System',
                 emoji: '📡',
-                featured: true
+                featured: true,
+                needsServer: true
+            },
+            {
+                id: 'fafo-task-manager-pro',
+                name: 'FAFO Task Manager Pro',
+                desc: 'Process intel: what it is, disable pros/cons, efficiency ratings, weekly NVD CVE checks for apps you run',
+                path: 'System Tools/FAFO Task Manager Pro.html',
+                category: 'System',
+                emoji: '🧠',
+                featured: true,
+                needsServer: true,
+                localOnly: true
             },
             {
                 id: 'malware-defender',
@@ -437,7 +511,8 @@
                 path: 'System Tools/Malware Defender.html',
                 category: 'System',
                 emoji: '🛡️',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'health-dashboard',
@@ -446,7 +521,8 @@
                 path: 'System Tools/System Health Dashboard.html',
                 category: 'System',
                 emoji: '📊',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'event-viewer',
@@ -454,7 +530,8 @@
                 desc: 'Themed Windows event timeline with filters (System / Application)',
                 path: 'System Tools/Event Viewer.html',
                 category: 'System',
-                emoji: '📜'
+                emoji: '📜',
+                needsServer: true
             },
             {
                 id: 'event-deep-dive',
@@ -462,7 +539,8 @@
                 desc: 'Rank event themes most→least likely real problems with fix alternatives',
                 path: 'System Tools/Event Deep Dive.html',
                 category: 'System',
-                emoji: '🔎'
+                emoji: '🔎',
+                needsServer: true
             },
             {
                 id: 'hardware-board-map',
@@ -470,7 +548,8 @@
                 desc: 'Motherboard pack, rear I/O map, component intel & playbooks',
                 path: 'System Tools/Hardware Board Map.html',
                 category: 'System',
-                emoji: '🔌'
+                emoji: '🔌',
+                needsServer: true
             },
             {
                 id: 'pc-diagnostics-hud',
@@ -479,7 +558,8 @@
                 path: 'System Tools/PC Diagnostics HUD.html',
                 category: 'System',
                 emoji: '🩺',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'startup-manager',
@@ -487,7 +567,8 @@
                 desc: 'Boot items, registry Run keys, scheduled tasks & Windows services',
                 path: 'System Tools/Startup Service Manager.html',
                 category: 'System',
-                emoji: '🚀'
+                emoji: '🚀',
+                needsServer: true
             },
             {
                 id: 'disk-analyzer',
@@ -495,7 +576,8 @@
                 desc: 'Drive usage, largest files, heavy folders & junk candidates',
                 path: 'System Tools/Disk Space Analyzer.html',
                 category: 'System',
-                emoji: '💾'
+                emoji: '💾',
+                needsServer: true
             },
             {
                 id: 'hosts-blocker',
@@ -503,7 +585,8 @@
                 desc: 'Block ads, trackers & malware domains via Steven Black open feeds',
                 path: 'System Tools/Hosts DNS Blocker.html',
                 category: 'System',
-                emoji: '🔒'
+                emoji: '🔒',
+                needsServer: true
             },
             {
                 id: 'media-converter',
@@ -512,7 +595,8 @@
                 path: 'System Tools/Batch Media Converter.html',
                 category: 'Video',
                 emoji: '🔄',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'duplicate-finder',
@@ -521,7 +605,8 @@
                 path: 'File Tools/Duplicate File Manager.html',
                 category: 'Files',
                 emoji: '🗑️',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'git-manager',
@@ -530,7 +615,8 @@
                 path: 'Developer Tools/Git Repository Manager.html',
                 category: 'Developer',
                 emoji: '🔀',
-                featured: true
+                featured: true,
+                needsServer: true
             },
             {
                 id: 'bloodmoon-survivor',
@@ -646,10 +732,15 @@
                 card.dataset.tip = tool.desc
                     + (tool.featured ? ' · Featured workflow tool' : '')
                     + (source ? ` · Icon: ${source}` : '');
+                const badges = [];
+                if (tool.needsServer) badges.push('<span class="badge server" title="Full features need ▶ Start Server">Server</span>');
+                if (tool.offlineOk) badges.push('<span class="badge offline-ok" title="Works fully offline in the browser">Offline OK</span>');
+                if (tool.localOnly) badges.push('<span class="badge local-only" title="Local desktop / GitHub — not Chrome Web Store">Local</span>');
                 card.innerHTML = `
                     <div class="icon-wrap"></div>
                     <h3>${tool.name}</h3>
                     <p>${tool.desc}</p>
+                    <div class="badges">${badges.join('')}</div>
                     <div class="cat">${tool.category}${source ? ' · ' + source : ''}</div>`;
                 const wrap = card.querySelector('.icon-wrap');
                 if (src) {
@@ -672,13 +763,30 @@
                     wrap.appendChild(fb);
                 }
 
-                card.addEventListener('click', () => {
+                card.addEventListener('click', async () => {
                     if (editMode) {
                         editingToolId = tool.id;
                         iconPicker.click();
-                    } else {
-                        // Support hash routes (e.g. Log Viewer → index.html#logs)
+                        return;
+                    }
+                    try {
+                        // Soft warn when server-backed tools open offline (still allow open)
+                        if (tool.needsServer && window.AIToolboxAPI?.isOnline) {
+                            const on = await AIToolboxAPI.isOnline(false, 800).catch(() => false);
+                            if (!on) {
+                                try {
+                                    AIToolboxUI.toast(
+                                        tool.name + ' works best with ▶ Start Server — opening anyway…',
+                                        'warn'
+                                    );
+                                } catch (e) { /* ignore */ }
+                            }
+                        }
+                        // Hash routes (e.g. Log Viewer → index.html#logs)
                         window.location.href = tool.path;
+                    } catch (e) {
+                        console.error('[Launcher] open tool failed', tool.id, e);
+                        try { AIToolboxUI.toast('Could not open ' + tool.name + ': ' + (e.message || e), 'warn'); } catch (_) {}
                     }
                 });
                 grid.appendChild(card);
@@ -950,13 +1058,156 @@
             if (!on) setServerUi('off', 'Still offline — click Start Server or use Console mode', 'warn');
         });
 
+        // ── First-run setup panel (machine marker; hides after successful setup) ──
+        const firstRunPanel = document.getElementById('firstRunSetupPanel');
+        const firstRunMissing = document.getElementById('firstRunMissing');
+        const firstRunStatus = document.getElementById('firstRunStatus');
+        const firstRunHint = document.getElementById('firstRunHint');
+
+        function hideFirstRunSetup() {
+            if (firstRunPanel) firstRunPanel.style.display = 'none';
+        }
+
+        function showFirstRunSetup(status) {
+            if (!firstRunPanel) return;
+            firstRunPanel.style.display = 'block';
+            const missing = (status && status.missing) || [];
+            firstRunMissing.innerHTML = missing.length
+                ? missing.map(m => '<li>' + m + '</li>').join('')
+                : '<li>Setup success not logged yet — click Complete Setup</li>';
+            const lastRun = status && status.lastRun;
+            if (status && status.complete) {
+                firstRunStatus.textContent = 'Setup complete';
+                firstRunStatus.style.color = 'var(--ok, #3dff9a)';
+            } else if (lastRun && lastRun.ranAt && !lastRun.ok) {
+                firstRunStatus.textContent = 'Last setup run failed — try again';
+                firstRunStatus.style.color = '#ff8a9a';
+            } else if (status && status.readyToLaunch) {
+                firstRunStatus.textContent = 'Almost ready — finish setup once';
+                firstRunStatus.style.color = '#ffc800';
+            } else {
+                firstRunStatus.textContent = 'Setup needed on this PC';
+                firstRunStatus.style.color = '#ff8a9a';
+            }
+            if (status && status.offline) {
+                firstRunHint.textContent = 'Server offline — Complete Setup / One-Click Launch still work via protocol (allow aitoolbox:// if prompted).';
+            } else if (lastRun && lastRun.ranAt && !lastRun.ok) {
+                firstRunHint.textContent = 'Last run logged but incomplete. Marker is only written on success — this panel stays until then.';
+            } else {
+                firstRunHint.textContent = 'Success is logged under LocalAppData\\FAFO\\Setup\\setup-state.json. This panel hides after a successful run and stays gone.';
+            }
+        }
+
+        async function refreshSetupStatus() {
+            // Fast path: browser cache after success (panel already cleared this origin)
+            if (AIToolboxAPI.isSetupCompleteCached()) {
+                hideFirstRunSetup();
+                return { complete: true, showFirstRun: false, cached: true };
+            }
+            try {
+                const status = await AIToolboxAPI.getSetupStatus();
+                // Hide only when success is logged (marker) + critical checks pass
+                if (status && status.complete) {
+                    AIToolboxAPI.markSetupCompleteCached(true);
+                    hideFirstRunSetup();
+                    if (AIToolboxUI.isTutorialDone('launcher')) hideGetStartedPanel();
+                    return status;
+                }
+                showFirstRunSetup(status || { missing: ['Setup incomplete'], readyToLaunch: false });
+                // Hide workflow get-started until setup is done (avoid double panels)
+                hideGetStartedPanel();
+                document.getElementById('btnShowStarted').style.display = 'none';
+                return status;
+            } catch (e) {
+                if (!AIToolboxAPI.isSetupCompleteCached()) {
+                    showFirstRunSetup({
+                        offline: true,
+                        readyToLaunch: false,
+                        missing: ['Could not verify setup — run Complete Setup or One-Click Launch'],
+                    });
+                    hideGetStartedPanel();
+                    document.getElementById('btnShowStarted').style.display = 'none';
+                } else {
+                    hideFirstRunSetup();
+                }
+                return null;
+            }
+        }
+
+        document.getElementById('btnCompleteSetup').addEventListener('click', () => {
+            firstRunHint.textContent = 'Running setup… allow the protocol prompt if Chrome asks (Always allow).';
+            firstRunStatus.textContent = 'Setup running…';
+            firstRunStatus.style.color = '#ffc800';
+            AIToolboxAPI.runSetupOnce();
+            // Poll for completion after setup window runs
+            let tries = 0;
+            const poll = setInterval(async () => {
+                tries += 1;
+                const status = await refreshSetupStatus();
+                if (status && status.complete) {
+                    clearInterval(poll);
+                    firstRunHint.textContent = 'Setup complete — panel dismissed.';
+                    AIToolboxUI.toast('Setup complete — first-run panel cleared', 'ok');
+                    if (!AIToolboxUI.isTutorialDone('launcher')) {
+                        showGetStartedPanel();
+                        setTimeout(() => startLauncherTutorial(false), 500);
+                    }
+                } else if (tries >= 45) {
+                    clearInterval(poll);
+                    firstRunHint.textContent = 'Still waiting — finish the setup window, then click Recheck setup.';
+                }
+            }, 2000);
+        });
+
+        document.getElementById('btnOneClickLaunch').addEventListener('click', () => {
+            firstRunHint.textContent = 'Launching one-click shell (setup + server + Chrome)…';
+            AIToolboxAPI.launchToolboxShell();
+            AIToolboxUI.toast('One-click launch started (Chrome + server)', 'ok');
+            // Also try start server from this page as backup
+            setTimeout(() => launchServer('tray'), 800);
+            let tries = 0;
+            const poll = setInterval(async () => {
+                tries += 1;
+                const status = await refreshSetupStatus();
+                if (status && status.complete) {
+                    clearInterval(poll);
+                    AIToolboxUI.toast('Setup complete', 'ok');
+                } else if (tries >= 40) {
+                    clearInterval(poll);
+                }
+            }, 2000);
+        });
+
+        document.getElementById('btnRecheckSetup').addEventListener('click', async () => {
+            firstRunStatus.textContent = 'Rechecking…';
+            // Allow re-check even if cached complete
+            AIToolboxAPI.markSetupCompleteCached(false);
+            const status = await refreshSetupStatus();
+            if (status && status.complete) {
+                AIToolboxUI.toast('Setup complete — first-run panel hidden', 'ok');
+            } else {
+                AIToolboxUI.toast('Setup still incomplete', 'warn');
+            }
+        });
+
         renderTools();
         loadVersion();
         checkServer();
         setInterval(checkServer, 4000);
         AIToolboxUI.initTooltips();
-        if (AIToolboxUI.isTutorialDone('launcher')) hideGetStartedPanel();
-        else setTimeout(() => startLauncherTutorial(false), 700);
+
+        // First-run setup panel vs workflow get-started
+        refreshSetupStatus().then((status) => {
+            if (status && status.complete) {
+                hideFirstRunSetup();
+                if (AIToolboxUI.isTutorialDone('launcher')) hideGetStartedPanel();
+                else setTimeout(() => startLauncherTutorial(false), 700);
+            } else {
+                // Keep first-run visible; suppress workflow tutorial until setup done
+                hideGetStartedPanel();
+                document.getElementById('btnShowStarted').style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>

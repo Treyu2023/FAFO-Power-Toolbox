@@ -538,7 +538,9 @@
     let openFileContent = null;
 
     // Journal Browser (CGILink T-log) — state survives tab re-renders
-    const DEFAULT_SITE_HOST = '192.168.31.11';
+    // Empty by default — prefer sticky localStorage, survey/network IP, or live profile.
+    // Do not assume a lab site IP on every PC / store.
+    const DEFAULT_SITE_HOST = '';
     const DEFAULT_SITE_USER = 'Manager';
     const LS_HOST = 'fafo_commander_host';
     const LS_USER = 'fafo_commander_user';
@@ -1748,10 +1750,21 @@
         toast('Building prefilled punch list…');
         const res = await api('/verifone/punch-list', {
           method: 'POST',
-          body: JSON.stringify({ id: id || selectedExportId }),
+          body: JSON.stringify({ id: id || selectedExportId, open: true }),
         });
-        toast('Saved: ' + res.path, 6000);
-        try { await navigator.clipboard?.writeText(res.path); } catch (_) {}
+        const path = res.path || '';
+        try { if (path) await navigator.clipboard?.writeText(path); } catch (_) {}
+        if (res.opened) {
+          toast('Opened punch list in Excel · path copied', 5000);
+        } else if (path) {
+          toast('Saved (open manually): ' + path, 7000);
+          try {
+            // Reveal parent folder if Excel did not launch
+            await api('/open-folder?path=' + encodeURIComponent(path));
+          } catch (_) {}
+        } else {
+          toast('Punch list created', 4000);
+        }
       } catch (e) {
         toast(String(e.message || e));
       }
@@ -2714,11 +2727,11 @@
         const stickyUser = localStorage.getItem(LS_USER) || DEFAULT_SITE_USER;
         const stickyPass = sessionStorage.getItem(SS_PASS) || '';
         const suggested = suggestedSiteHost(s, d, eq);
-        if (el('jHost')) el('jHost').value = stickyHost || suggested || DEFAULT_SITE_HOST;
+        if (el('jHost')) el('jHost').value = stickyHost || suggested || '';
         if (el('jUser')) el('jUser').value = stickyUser || DEFAULT_SITE_USER;
         if (el('jPass') && stickyPass) el('jPass').value = stickyPass;
       } catch (_) {
-        if (el('jHost')) el('jHost').value = DEFAULT_SITE_HOST;
+        if (el('jHost')) el('jHost').value = '';
         if (el('jUser')) el('jUser').value = DEFAULT_SITE_USER;
       }
     }
@@ -3454,7 +3467,7 @@
       if (el('jHost')) el('jHost').value = host;
       if (el('jUser')) el('jUser').value = username;
       saveJournalLoginFields();
-      if (!host) { toast('Enter Commander host/IP first (e.g. 192.168.31.11)'); return; }
+      if (!host) { toast('Enter Commander host/IP first (store controller LAN IP)'); return; }
       if (el('btnJLogin')) el('btnJLogin').disabled = true;
       showJournalDiag(null);
       if (el('jOtpBanner')) el('jOtpBanner').style.display = 'none';

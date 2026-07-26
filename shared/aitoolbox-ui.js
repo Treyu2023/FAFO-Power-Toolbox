@@ -594,6 +594,92 @@
         return r;
     }
 
+    /**
+     * Resolve path to Toolbox Launcher.html from any nested tool page.
+     * Walks up from the current URL until a candidate works, falls back to ../ climbs.
+     */
+    function launcherHref() {
+        try {
+            const scripts = document.getElementsByTagName('script');
+            for (let i = scripts.length - 1; i >= 0; i--) {
+                const src = scripts[i].src || '';
+                if (src.includes('aitoolbox-ui.js') || src.includes('aitoolbox-api.js') || src.includes('aitoolbox-config.js')) {
+                    return new URL('../Toolbox Launcher.html', src).href;
+                }
+            }
+        } catch { /* ignore */ }
+        // Depth from path segments under toolbox root (best-effort)
+        const depth = (location.pathname.match(/\//g) || []).length;
+        const up = depth > 2 ? '../'.repeat(Math.min(depth - 1, 4)) : '../';
+        return up + 'Toolbox Launcher.html';
+    }
+
+    /**
+     * Ensure a sticky “← Toolbox” control exists (does not duplicate if page already has one).
+     */
+    function ensureToolboxBack(opts = {}) {
+        if (document.querySelector('a.toolbox-back, a[href*="Toolbox Launcher"]')) return null;
+        const a = document.createElement('a');
+        a.className = 'toolbox-back';
+        a.href = opts.href || launcherHref();
+        a.textContent = opts.label || '← Toolbox';
+        a.style.cssText = opts.style || [
+            'position:fixed', 'top:10px', 'left:12px', 'z-index:9998',
+            'color:#00e5ff', 'text-decoration:none', 'font:600 12px system-ui,sans-serif',
+            'padding:6px 10px', 'border-radius:8px',
+            'background:rgba(5,5,12,.85)', 'border:1px solid rgba(0,229,255,.25)',
+            'backdrop-filter:blur(8px)',
+        ].join(';');
+        const mount = () => {
+            if (!document.body) return;
+            document.body.appendChild(a);
+        };
+        if (document.body) mount();
+        else document.addEventListener('DOMContentLoaded', mount, { once: true });
+        return a;
+    }
+
+    /**
+     * Catch unhandled errors / rejections and surface a toast once (no spam).
+     * Call from tool pages that load this script; safe to call multiple times.
+     */
+    let guardsInstalled = false;
+    let lastErrToast = 0;
+    function installStabilityGuards(opts = {}) {
+        if (guardsInstalled || typeof window === 'undefined') return;
+        guardsInstalled = true;
+        const quiet = !!opts.quiet;
+
+        window.addEventListener('error', (ev) => {
+            const msg = ev?.error?.message || ev?.message || 'Script error';
+            // Ignore noisy extension / third-party noise
+            if (/ResizeObserver|Script error\.|chrome-extension:\/\//i.test(String(msg))) return;
+            console.error('[AIToolbox]', ev.error || msg);
+            const now = Date.now();
+            if (!quiet && now - lastErrToast > 4000) {
+                lastErrToast = now;
+                try { toast('Error: ' + String(msg).slice(0, 140), 'warn'); } catch { /* ignore */ }
+            }
+        });
+
+        window.addEventListener('unhandledrejection', (ev) => {
+            const reason = ev?.reason;
+            const msg = reason?.message || String(reason || 'Unhandled promise rejection');
+            if (/ResizeObserver|chrome-extension:\/\//i.test(msg)) return;
+            console.error('[AIToolbox] unhandledrejection', reason);
+            const now = Date.now();
+            if (!quiet && now - lastErrToast > 4000) {
+                lastErrToast = now;
+                try { toast(String(msg).slice(0, 160), 'warn'); } catch { /* ignore */ }
+            }
+        });
+    }
+
+    // Auto-install on every page that loads the UI kit (low cost, high value)
+    if (typeof window !== 'undefined') {
+        try { installStabilityGuards({ quiet: false }); } catch { /* ignore */ }
+    }
+
     global.AIToolboxUI = {
         initTooltips,
         toast,
@@ -616,5 +702,8 @@
         formatBytes,
         getApiBase,
         apiFetch,
+        launcherHref,
+        ensureToolboxBack,
+        installStabilityGuards,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

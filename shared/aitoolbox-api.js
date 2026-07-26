@@ -262,30 +262,90 @@
         };
     }
 
+    /**
+     * Fetch toolbox API with timeout + clearer offline errors.
+     * opts.timeoutMs — default 30000 (use 0 to disable).
+     * opts.signal — optional AbortSignal (combined with timeout).
+     */
     async function api(path, opts = {}) {
         const method = opts.method || 'GET';
         const t0 = Date.now();
+        const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 30000;
         dbg()?.log('api', 'info', `${method} ${path}`);
+
+        // Don't send custom fields to fetch()
+        const { timeoutMs: _tm, ...fetchOpts } = opts;
+        const headers = { 'Content-Type': 'application/json', ...(fetchOpts.headers || {}) };
+
+        let timeoutCtrl = null;
+        let timeoutTimer = null;
+        let combinedSignal = fetchOpts.signal || null;
+        if (timeoutMs > 0) {
+            timeoutCtrl = new AbortController();
+            timeoutTimer = setTimeout(() => timeoutCtrl.abort(), timeoutMs);
+            if (fetchOpts.signal) {
+                if (fetchOpts.signal.aborted) {
+                    timeoutCtrl.abort();
+                } else {
+                    fetchOpts.signal.addEventListener('abort', () => timeoutCtrl.abort(), { once: true });
+                }
+            }
+            combinedSignal = timeoutCtrl.signal;
+        }
+
         try {
             refreshApiBase();
             const r = await fetch(`${apiBase()}${path}`, {
-                headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-                ...opts,
+                ...fetchOpts,
+                headers,
+                signal: combinedSignal,
             });
+            if (timeoutTimer) clearTimeout(timeoutTimer);
             if (!r.ok) {
                 const err = await r.json().catch(() => ({ detail: r.statusText }));
-                const msg = err.detail || r.statusText;
+                const msg = typeof err.detail === 'string'
+                    ? err.detail
+                    : (err.detail ? JSON.stringify(err.detail) : r.statusText);
                 dbg()?.log('api', 'error', `${method} ${path} → ${r.status}: ${msg}`);
-                throw new Error(msg);
+                const e = new Error(msg || `HTTP ${r.status}`);
+                e.status = r.status;
+                e.path = path;
+                throw e;
             }
+            serverOnline = true;
+            lastCheck = Date.now();
             const out = r.headers.get('content-type')?.includes('json') ? await r.json() : r;
             dbg()?.log('api', 'info', `${method} ${path} OK ${Date.now() - t0}ms`);
             return out;
         } catch (e) {
-            if (!String(e.message).includes('→')) {
-                dbg()?.log('api', 'error', `${method} ${path}: ${e.message}`);
+            if (timeoutTimer) clearTimeout(timeoutTimer);
+            const name = e && e.name;
+            const raw = String(e && e.message || e || '');
+            const offlineLike = name === 'AbortError'
+                || /Failed to fetch|NetworkError|Load failed|ERR_CONNECTION|ECONNREFUSED|timed out|aborted/i.test(raw);
+
+            if (offlineLike) {
+                serverOnline = false;
+                lastCheck = Date.now();
             }
-            throw e;
+
+            let msg = raw;
+            if (name === 'AbortError' || /aborted/i.test(raw)) {
+                msg = timeoutMs > 0
+                    ? `Request timed out after ${timeoutMs}ms (${method} ${path}). Is the toolbox server busy or offline?`
+                    : `Request aborted (${method} ${path})`;
+            } else if (/Failed to fetch|NetworkError|Load failed|ECONNREFUSED/i.test(raw)) {
+                msg = `Server unreachable at ${apiBase()}. Click ▶ Start Server, then retry.`;
+            }
+
+            if (!String(msg).includes('→')) {
+                dbg()?.log('api', 'error', `${method} ${path}: ${msg}`);
+            }
+            const err = new Error(msg);
+            err.cause = e;
+            err.offline = offlineLike;
+            err.path = path;
+            throw err;
         }
     }
 
@@ -589,6 +649,54 @@
             });
         },
 
+        /**
+         * Push catalog tags + star rating (rank) onto the real file for Explorer.
+         * Used when "Update files on next" is on and the user advances pairs/videos.
+         * @param {string|object} idOrMedia media id or media row
+         * @param {{ tags?: string[], rank?: number, notes?: string }} [override]
+         */
+        async flushMediaTagsToFile(idOrMedia, override = {}) {
+            if (!(await checkServer())) {
+                throw new Error('Server offline — cannot write file tags/rating');
+            }
+            const id = typeof idOrMedia === 'string'
+                ? idOrMedia
+                : (idOrMedia && (idOrMedia.id || idOrMedia.mediaId));
+            if (!id) throw new Error('No media id');
+            let tags = override.tags;
+            let rank = override.rank;
+            let notes = override.notes;
+            if (tags == null || rank == null || notes === undefined) {
+                const m = typeof idOrMedia === 'object' && idOrMedia && (idOrMedia.tags != null || idOrMedia.rank != null)
+                    ? idOrMedia
+                    : await this.getMedia(id);
+                if (!m) throw new Error('Media not found');
+                if (tags == null) tags = m.tags || [];
+                if (rank == null) rank = m.rank != null ? m.rank : 0;
+                if (notes === undefined) notes = m.notes;
+            }
+            return this.updateMedia(id, {
+                tags: Array.isArray(tags) ? tags : [],
+                rank: Math.max(0, Math.min(5, parseInt(rank, 10) || 0)),
+                notes: notes != null ? notes : undefined,
+                write_file_tags: true,
+            });
+        },
+
+        /** Flush both sides of a pair (before + after) to disk metadata. */
+        async flushPairMediaToFiles(beforeId, afterId, opts = {}) {
+            const out = { ok: true, before: null, after: null, errors: [] };
+            if (beforeId) {
+                try { out.before = await this.flushMediaTagsToFile(beforeId, opts.before || {}); }
+                catch (e) { out.ok = false; out.errors.push('before: ' + (e.message || e)); }
+            }
+            if (afterId) {
+                try { out.after = await this.flushMediaTagsToFile(afterId, opts.after || {}); }
+                catch (e) { out.ok = false; out.errors.push('after: ' + (e.message || e)); }
+            }
+            return out;
+        },
+
         async readFileMetadata(path) {
             if (!(await checkServer())) {
                 throw new Error('AI Toolbox server required');
@@ -761,6 +869,9 @@
                     limit: opts.limit ?? 200,
                     dry_run: !!opts.dryRun,
                     pin: opts.pin !== false,
+                    before_dir_id: opts.beforeDirId || opts.before_dir_id || null,
+                    after_dir_id: opts.afterDirId || opts.after_dir_id || null,
+                    require_upscale_name: opts.requireUpscaleName ?? opts.require_upscale_name ?? null,
                 }),
             });
         },
@@ -775,11 +886,39 @@
             return global.AIToolbox.deletePair(id);
         },
 
-        async suggestPairs(limit = 30) {
-            if (await checkServer()) {
-                return api(`/pairs/suggest?limit=${encodeURIComponent(limit)}`);
+        async suggestPairs(limit = 30, opts = {}) {
+            if (!(await checkServer())) return [];
+            const beforeDirId = opts.beforeDirId || opts.before_dir_id || null;
+            const afterDirId = opts.afterDirId || opts.after_dir_id || null;
+            const body = {
+                limit: limit ?? 50,
+                min_ratio: opts.minRatio ?? opts.min_ratio ?? 0.5,
+                before_dir_id: beforeDirId,
+                after_dir_id: afterDirId,
+                unpaired_only: opts.unpairedOnly !== false,
+                kind: opts.kind || null,
+                tail_len: opts.tailLen ?? opts.tail_len ?? 5,
+                use_tail: opts.useTail !== false && opts.use_tail !== false,
+                use_digits: opts.useDigits !== false && opts.use_digits !== false,
+                use_fuzzy: opts.useFuzzy !== false && opts.use_fuzzy !== false,
+                use_folder: opts.useFolder !== false && opts.use_folder !== false,
+            };
+            // Prefer POST so multi-signal knobs always apply
+            if (beforeDirId || afterDirId || opts.minRatio != null || opts.tailLen != null
+                || opts.useTail != null || opts.useDigits != null || opts.useFuzzy != null
+                || opts.forcePost) {
+                const r = await api('/pairs/suggest', {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                });
+                return Array.isArray(r) ? r : (r.suggestions || []);
             }
-            return [];
+            const q = new URLSearchParams({
+                limit: String(limit ?? 40),
+                min_ratio: String(body.min_ratio),
+                tail_len: String(body.tail_len),
+            });
+            return api(`/pairs/suggest?${q}`);
         },
 
         async captureThumbnail(mediaId, timestamp = 0) {
@@ -993,6 +1132,72 @@
         async applyTagRules(dirId) {
             const q = dirId ? `?dir_id=${encodeURIComponent(dirId)}` : '';
             return api(`/tag-rules/apply${q}`, { method: 'POST' });
+        },
+
+        /**
+         * First-run / setup status from the server (marker + critical checks).
+         * Returns null-ish offline fields when the backend is down.
+         */
+        async getSetupStatus() {
+            // Browser cache: after a successful setup this origin hides first-run even offline
+            if (API.isSetupCompleteCached()) {
+                const online = await checkServer(false, 1200);
+                if (!online) {
+                    return {
+                        complete: true,
+                        readyToLaunch: true,
+                        showFirstRun: false,
+                        offline: true,
+                        cached: true,
+                        missing: [],
+                        checks: {},
+                    };
+                }
+            }
+            if (!(await checkServer(false, 1200))) {
+                return {
+                    complete: false,
+                    readyToLaunch: false,
+                    showFirstRun: true,
+                    offline: true,
+                    missing: ['Server offline — use One-Click Launch or Complete Setup'],
+                    checks: {},
+                };
+            }
+            const status = await api('/setup/status', { timeoutMs: 5000 });
+            if (status && status.complete) {
+                API.markSetupCompleteCached(true);
+            }
+            return status;
+        },
+
+        /**
+         * One-click launch helpers via custom protocol (Chrome shell + server).
+         * Prefer Scripts/Launch-FAFOToolbox.ps1 from the desktop bat for true one-click.
+         */
+        launchToolboxShell() {
+            return tryProtocolLaunch('launch');
+        },
+
+        /** true when machine-local setup marker + critical checks are complete (cached). */
+        isSetupCompleteCached() {
+            try {
+                return localStorage.getItem('aitoolbox_setup_complete') === '1';
+            } catch {
+                return false;
+            }
+        },
+
+        markSetupCompleteCached(complete = true) {
+            try {
+                if (complete) {
+                    localStorage.setItem('aitoolbox_setup_complete', '1');
+                    localStorage.setItem('aitoolbox_setup_completed_at', new Date().toISOString());
+                } else {
+                    localStorage.removeItem('aitoolbox_setup_complete');
+                    localStorage.removeItem('aitoolbox_setup_completed_at');
+                }
+            } catch { /* ignore */ }
         },
     };
 

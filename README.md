@@ -2,9 +2,11 @@
 
 Local browser-based tools for media cataloging, VSR pipeline renaming, and before/after comparison. No cloud — files stay on your machine.
 
-**Current version:** `1.06.00`
+**Current version:** `1.09.01`
 
 **Deep dive (pairs, Explorer tags, moves, storage Q&A):** [`MEDIA_LIBRARY_AND_PAIRS.md`](MEDIA_LIBRARY_AND_PAIRS.md)
+
+**Sharing / Chrome Web Store / GitHub:** [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) — full media+server stack is **not** a Chrome Web Store extension; GitHub (local install) is the right channel.
 
 ---
 

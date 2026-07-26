@@ -8,6 +8,7 @@ REM   aitoolbox://start          Start server (minimized / tray-style)
 REM   aitoolbox://console        Start server with visible console
 REM   aitoolbox://folder         Open toolbox root in Explorer
 REM   aitoolbox://setup          Run one-time setup
+REM   aitoolbox://launch         One-click: setup if needed + server + Chrome shell
 REM   aitoolbox://diagnostics    Full system diagnostics + pack report library
 REM   aitoolbox://pack-reports   Rebuild catalog.js / logs-data.js only
 
@@ -17,19 +18,21 @@ cd /d "%~dp0.."
 set "ACTION=start"
 set "RAW=%~1"
 if defined RAW (
-  REM crude contains checks (URLs are ASCII)
+  REM crude contains checks (URLs are ASCII) — more specific actions first
   echo %RAW%| findstr /I /C:"console" >nul && set "ACTION=console"
   echo %RAW%| findstr /I /C:"folder" >nul && set "ACTION=folder"
   echo %RAW%| findstr /I /C:"open" >nul && set "ACTION=folder"
   echo %RAW%| findstr /I /C:"setup" >nul && set "ACTION=setup"
+  echo %RAW%| findstr /I /C:"launch" >nul && set "ACTION=launch"
   echo %RAW%| findstr /I /C:"diagnostics" >nul && set "ACTION=diagnostics"
   echo %RAW%| findstr /I /C:"pack-reports" >nul && set "ACTION=pack"
   echo %RAW%| findstr /I /C:"packreports" >nul && set "ACTION=pack"
-  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" set "ACTION=start"
+  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" set "ACTION=start"
 )
 
 if /I "%ACTION%"=="folder" goto do_folder
 if /I "%ACTION%"=="setup" goto do_setup
+if /I "%ACTION%"=="launch" goto do_launch
 if /I "%ACTION%"=="console" goto do_console
 if /I "%ACTION%"=="diagnostics" goto do_diagnostics
 if /I "%ACTION%"=="pack" goto do_pack
@@ -40,7 +43,11 @@ start "" explorer.exe "%cd%"
 exit /b 0
 
 :do_setup
-start "" "%cd%\SETUP (run once).bat"
+start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\Complete-FAFOSetup.ps1" -ToolboxRoot "%cd%"
+exit /b 0
+
+:do_launch
+start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\Launch-FAFOToolbox.ps1" -ToolboxRoot "%cd%"
 exit /b 0
 
 :do_console

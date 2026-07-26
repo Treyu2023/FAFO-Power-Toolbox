@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pre-Reload Punch List — AI HTML Toolbox</title>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
   <style>
     :root {
       --bg: #05080c; --panel: #0c1218; --line: rgba(56, 189, 248, 0.18);
       --accent: #38bdf8; --accent2: #f59e0b; --text: #e8eef4; --muted: #8b9bb0;
+      --ok: #34d399; --bad: #f87171;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -25,7 +28,7 @@
       background: rgba(8, 12, 18, 0.9);
     }
     .nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
-    .wrap { max-width: 640px; margin: 40px auto; padding: 0 20px 48px; }
+    .wrap { max-width: 720px; margin: 36px auto; padding: 0 20px 48px; }
     .card {
       background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
       padding: 28px 26px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
@@ -40,26 +43,50 @@
     ul { margin: 0 0 18px 18px; color: #cbd5e1; font-size: 13px; line-height: 1.7; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
     .btn {
-      display: inline-block; text-decoration: none; border-radius: 10px;
-      padding: 12px 18px; font-size: 13px; font-weight: 700; text-align: center;
+      display: inline-block; text-decoration: none; border: none; cursor: pointer;
+      border-radius: 10px; padding: 12px 18px; font-size: 13px; font-weight: 700; text-align: center;
+      font-family: inherit; color: inherit;
     }
     .btn.primary {
       background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff; flex: 1 1 200px;
     }
+    .btn.primary:disabled { opacity: 0.55; cursor: wait; }
     .btn.ghost {
       border: 1px solid var(--line); color: var(--text); background: rgba(255,255,255,.04);
     }
     .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
     .foot { margin-top: 16px; font-size: 11px; color: var(--muted); }
     code { color: var(--accent); font-size: 11px; }
+    .status {
+      margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 12px;
+      border: 1px solid var(--line); background: rgba(0,0,0,.25); color: var(--muted);
+      min-height: 18px; word-break: break-all;
+    }
+    .status.ok { color: var(--ok); border-color: rgba(52,211,153,.35); }
+    .status.bad { color: var(--bad); border-color: rgba(248,113,113,.35); }
+    .status.warn { color: var(--accent2); border-color: rgba(245,158,11,.35); }
+    label { display: block; font-size: 11px; color: var(--muted); margin: 12px 0 6px; }
+    select {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+      background: #0a1016; color: var(--text); font-size: 13px;
+    }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+      padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+    }
+    .pill.on { color: var(--ok); border-color: rgba(52,211,153,.4); }
+    .pill.off { color: var(--bad); border-color: rgba(248,113,113,.35); }
   </style>
 </head>
 <body>
   <nav class="nav">
     <a href="../Toolbox Launcher.html">← Toolbox</a>
     <span style="color:var(--accent);font-size:12px;letter-spacing:.06em">VERIFONE · PUNCH LIST</span>
-    <a href="Commander Site Console.html">Commander Console →</a>
-    <a href="Commander Status HUD.html" style="margin-left:10px">Status HUD →</a>
+    <div style="display:flex;gap:12px;align-items:center">
+      <span class="pill off" id="serverPill">Server…</span>
+      <a href="Commander Site Console.html">Commander Console →</a>
+      <a href="Commander Status HUD.html">Status HUD →</a>
+    </div>
   </nav>
 
   <div class="wrap">
@@ -67,24 +94,184 @@
       <div class="badge">CITGO VAPS · Pre-Reload</div>
       <h1>Pre-Reload Punch List</h1>
       <p>
-        Creates a <strong>working copy</strong> of the master Pre-Reload Punch List spreadsheet
-        and opens it. The master template under <code>VerifoneLibrary\Templates</code> is never modified.
+        Creates a <strong>working copy</strong> of the master Pre-Reload Punch List and opens it in Excel.
+        The master under <code>VerifoneLibrary\Templates</code> is never modified.
       </p>
       <ul>
-        <li>Preferred path: site <code>punchlists\</code> under your local Verifone sites root</li>
-        <li>Fallback: <code>VerifoneLibrary\Working-PunchLists\</code> (gitignored)</li>
-        <li>For full site dossiers + prefill from SMS/XML, use <strong>Commander Site Console</strong></li>
+        <li><strong>Best:</strong> pick a site below (from watched SMS backups) → prefilled punch list + Excel</li>
+        <li>Or open <strong>Commander Site Console</strong> → site → <strong>Punch list</strong> (same API)</li>
+        <li>Fallback offline: double-click <code>VerifoneLibrary\Launch-PreReload-PunchList.bat</code> in Explorer (browsers cannot run .bat links)</li>
       </ul>
+
+      <label for="siteSelect">Site (from server index)</label>
+      <select id="siteSelect" disabled>
+        <option value="">Start server + set watched folders first…</option>
+      </select>
+
       <div class="actions">
-        <a class="btn primary" href="../VerifoneLibrary/Launch-PreReload-PunchList.bat">▶ Launch punch list</a>
-        <a class="btn ghost" href="../VerifoneLibrary/Setup-SitesDataDirectory.bat">⚙ Setup sites folder</a>
-        <a class="btn ghost" href="Commander Site Console.html">⛽ Commander Console</a>
+        <button class="btn primary" type="button" id="btnCreateOpen" disabled>▶ Create &amp; open punch list</button>
+        <button class="btn ghost" type="button" id="btnStartServer">▶ Start server</button>
+        <button class="btn ghost" type="button" id="btnOpenConsole">⛽ Commander Console</button>
+        <button class="btn ghost" type="button" id="btnOpenFolder">📂 Open VerifoneLibrary</button>
       </div>
+      <div class="status" id="status">Checking backend…</div>
       <p class="foot">
-        PowerShell: <code>VerifoneLibrary\Launch-PreReload-PunchList.ps1</code>
-        · Optional args: Customer, SiteName
+        API: <code>POST /api/verifone/punch-list</code> with <code>open: true</code>
+        · Setup sites root: <code>VerifoneLibrary\Setup-SitesDataDirectory.bat</code>
       </p>
     </div>
   </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const API = window.AIToolboxAPI;
+    const CFG = window.AITOOLBOX_CONFIG || {};
+    const apiRoot = (CFG.API_BASE || 'http://127.0.0.87:18765/api').replace(/\/$/, '');
+
+    function setStatus(msg, kind) {
+      const s = el('status');
+      s.textContent = msg || '';
+      s.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function setPill(online) {
+      const p = el('serverPill');
+      p.textContent = online ? 'Server online' : 'Server offline';
+      p.className = 'pill ' + (online ? 'on' : 'off');
+    }
+
+    async function api(path, opts = {}) {
+      const r = await fetch(apiRoot + path, {
+        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+        ...opts,
+      });
+      const text = await r.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+      if (!r.ok) throw new Error((data && (data.detail || data.error || data.message)) || r.statusText || 'Request failed');
+      return data;
+    }
+
+    async function refreshSites() {
+      const sel = el('siteSelect');
+      const btn = el('btnCreateOpen');
+      const online = API ? await API.checkServer(false, 1500) : false;
+      setPill(online);
+      if (!online) {
+        sel.disabled = true;
+        btn.disabled = true;
+        sel.innerHTML = '<option value="">Server offline — click Start server</option>';
+        setStatus('Server offline. Start it, then recheck. Prefer opening tools via http://127.0.0.87:18765/commander when possible.', 'warn');
+        return;
+      }
+      try {
+        const data = await api('/verifone/sites?grouped=true');
+        const groups = data.groups || data.sites || [];
+        const options = [];
+        // grouped: { customer, sites: [{id, display_name, ...}] } or flat list
+        if (Array.isArray(groups) && groups.length && groups[0] && groups[0].sites) {
+          for (const g of groups) {
+            for (const s of (g.sites || [])) {
+              const id = s.id || s.export_id;
+              if (!id) continue;
+              const label = [g.customer || g.name, s.display_name || s.site_label || s.site_id || id].filter(Boolean).join(' · ');
+              options.push({ id, label });
+            }
+          }
+        } else {
+          const list = data.sites || groups || [];
+          for (const s of list) {
+            const id = s.id || s.export_id;
+            if (!id) continue;
+            options.push({
+              id,
+              label: [s.customer, s.display_name || s.site_label || s.site_id || id].filter(Boolean).join(' · '),
+            });
+          }
+        }
+        if (!options.length) {
+          sel.innerHTML = '<option value="">No sites indexed — open Console → Watched folders → Sync</option>';
+          sel.disabled = true;
+          btn.disabled = true;
+          setStatus('Server up, but no site exports indexed yet. Set watched SMS backup folders in Commander Site Console.', 'warn');
+          return;
+        }
+        sel.innerHTML = options.map(o => `<option value="${o.id.replace(/"/g, '')}">${o.label.replace(/</g, '&lt;')}</option>`).join('');
+        sel.disabled = false;
+        btn.disabled = false;
+        setStatus(options.length + ' site(s) ready. Create & open builds a working punch list and launches Excel.', 'ok');
+      } catch (e) {
+        sel.disabled = true;
+        btn.disabled = true;
+        setStatus(String(e.message || e), 'bad');
+      }
+    }
+
+    el('btnCreateOpen').addEventListener('click', async () => {
+      const id = el('siteSelect').value;
+      if (!id) { setStatus('Pick a site first', 'warn'); return; }
+      const btn = el('btnCreateOpen');
+      btn.disabled = true;
+      setStatus('Building prefilled punch list…', 'warn');
+      try {
+        const res = await api('/verifone/punch-list', {
+          method: 'POST',
+          body: JSON.stringify({ id, open: true }),
+        });
+        const path = res.path || '';
+        try { if (path) await navigator.clipboard?.writeText(path); } catch (_) {}
+        if (res.opened) {
+          setStatus('Opened in Excel · path copied: ' + path, 'ok');
+        } else if (path) {
+          setStatus('Saved (open manually): ' + path, 'warn');
+          try { await api('/open-folder?path=' + encodeURIComponent(path)); } catch (_) {}
+        } else {
+          setStatus('Punch list created', 'ok');
+        }
+      } catch (e) {
+        setStatus(String(e.message || e), 'bad');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    el('btnStartServer').addEventListener('click', async () => {
+      setStatus('Starting server…', 'warn');
+      if (API && API.startServer) {
+        const r = await API.startServer({ mode: 'tray', waitMs: 90000 });
+        setStatus(r && r.ok ? 'Server started' : ((r && r.message) || 'Start attempted — recheck'), r && r.ok ? 'ok' : 'warn');
+      } else if (API && API.tryProtocolLaunch) {
+        API.tryProtocolLaunch('start');
+        setStatus('Launch signal sent via protocol…', 'warn');
+      }
+      setTimeout(refreshSites, 2500);
+    });
+
+    el('btnOpenConsole').addEventListener('click', () => {
+      location.href = 'Commander Site Console.html';
+    });
+
+    el('btnOpenFolder').addEventListener('click', async () => {
+      // Prefer API open of toolbox VerifoneLibrary when server knows ROOT
+      try {
+        const st = await api('/verifone/status');
+        const root = st.sitesRoot || st.sites_root || st.toolboxRoot;
+        if (root) {
+          await api('/open-folder?path=' + encodeURIComponent(root));
+          setStatus('Opened sites / library folder', 'ok');
+          return;
+        }
+      } catch (_) {}
+      if (API && API.openToolboxFolder) {
+        API.openToolboxFolder();
+        setStatus('Opened toolbox folder — run VerifoneLibrary\\Launch-PreReload-PunchList.bat from Explorer', 'warn');
+      } else {
+        setStatus('Open Explorer to the toolbox and run VerifoneLibrary\\Launch-PreReload-PunchList.bat', 'warn');
+      }
+    });
+
+    refreshSites();
+    setInterval(refreshSites, 12000);
+  </script>
 </body>
 </html>

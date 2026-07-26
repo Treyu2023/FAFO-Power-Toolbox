@@ -31,6 +31,13 @@
 
         * { box-sizing: border-box; }
 
+        a.toolbox-back {
+            position: fixed; top: 10px; left: 12px; z-index: 50;
+            color: var(--neon-accent); text-decoration: none; font: 600 12px system-ui, sans-serif;
+            padding: 6px 10px; border-radius: 8px;
+            background: rgba(5,5,12,.9); border: 1px solid rgba(0,243,255,.3);
+        }
+        a.toolbox-back:hover { box-shadow: var(--neon-glow); }
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -274,6 +281,7 @@
     </style>
 </head>
 <body data-fx="none">
+<a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
 
     <div class="control-panel-wrapper fx-border" id="panelWrapper">
         <div class="control-panel fx-border">
@@ -356,7 +364,18 @@
                     <input type="text" id="pairCodeInput" placeholder="UP-0001" title="Type pair code and press Enter">
                     <button class="btn btn-sm" id="btn-load-code">Load</button>
                 </div>
-                <p style="font-size:9px;color:#666;margin-bottom:6px;">Pinned pairs persist in the server database across reboots.</p>
+                <div class="pair-quick" style="margin-top:6px;">
+                    <button class="btn btn-sm" id="btn-prev-pair" title="Previous locked pair">◀ Prev</button>
+                    <button class="btn btn-sm" id="btn-next-pair" title="Next locked pair + play">Next ▶</button>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:#888;margin:6px 0;cursor:pointer;">
+                    <input type="checkbox" id="chkAutoNextPair" checked> Auto-next when After video ends
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:#888;margin:0 0 6px;cursor:pointer;"
+                    title="When advancing pairs, write previous Before/After tags + star rating into the real files">
+                    <input type="checkbox" id="chkUpdateFiles" checked> 💾 Update files on next (tags + rating)
+                </label>
+                <p style="font-size:9px;color:#666;margin-bottom:6px;">Pinned pairs persist in the server database. <kbd>N</kbd> = next pair + play.</p>
             </div>
             <div class="pair-list" id="pairList"></div>
             <div class="pair-footer">
@@ -708,7 +727,9 @@
             showToast(`Saved locally: ${name}`);
         }
 
-        async function loadPair(pair) {
+        let cachedPairList = [];
+
+        async function loadPair(pair, opts = {}) {
             const p = normalizePair(pair);
             try {
                 if (await AIToolboxAPI.isOnline() && (p.beforeMediaId || p.beforePath)) {
@@ -719,6 +740,8 @@
                     rememberPair(p);
                     renderPairList();
                     showToast(`Loaded ${p.pairCode || p.name}`);
+                    if (opts.play) setTimeout(() => playBothVideos(), 150);
+                    wirePairEndedAdvance();
                     return;
                 }
                 const files = await AIToolbox.resolvePairFiles(p);
@@ -732,9 +755,76 @@
                 loadVideos(files.beforeFile, files.afterFile);
                 renderPairList();
                 showToast(`Loaded: ${p.name}`);
+                if (opts.play) setTimeout(() => playBothVideos(), 150);
+                wirePairEndedAdvance();
             } catch (e) {
                 showToast('Could not load pair — ' + e.message);
                 console.warn(e);
+            }
+        }
+
+        function playBothVideos() {
+            document.querySelectorAll('video').forEach(v => {
+                try { v.currentTime = 0; } catch { /* ignore */ }
+                v.play?.().catch?.(() => {});
+            });
+        }
+
+        const UPDATE_FILES_KEY = 'aitoolbox_update_files_on_next';
+
+        function isUpdateFilesOnNext() {
+            const el = document.getElementById('chkUpdateFiles');
+            if (el) return !!el.checked;
+            return localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+        }
+
+        async function flushActivePairFilesToDisk() {
+            if (!isUpdateFilesOnNext() || !activePairId) return;
+            if (!(await AIToolboxAPI.isOnline?.().catch(() => false))) return;
+            try {
+                const p = cachedPairList.find(x => x.id === activePairId)
+                    || normalizePair(await AIToolboxAPI.getPair(activePairId));
+                if (!p) return;
+                const beforeId = p.beforeMediaId || p.before_media_id;
+                const afterId = p.afterMediaId || p.after_media_id;
+                if (!beforeId && !afterId) return;
+                if (AIToolboxAPI.flushPairMediaToFiles) {
+                    const r = await AIToolboxAPI.flushPairMediaToFiles(beforeId, afterId);
+                    if (r.errors?.length) showToast('File write: ' + r.errors.join('; '), 'warn');
+                    else if (r.before || r.after) showToast('Updated previous pair tags/rating on disk', 'ok');
+                } else if (AIToolboxAPI.flushMediaTagsToFile) {
+                    if (beforeId) await AIToolboxAPI.flushMediaTagsToFile(beforeId);
+                    if (afterId) await AIToolboxAPI.flushMediaTagsToFile(afterId);
+                    showToast('Updated previous pair tags/rating on disk', 'ok');
+                }
+            } catch (e) {
+                console.warn(e);
+                showToast('File tag write failed: ' + (e.message || e), 'warn');
+            }
+        }
+
+        async function stepPair(delta, play) {
+            if (!cachedPairList.length) await renderPairList();
+            if (!cachedPairList.length) {
+                showToast('No locked pairs');
+                return;
+            }
+            // Write previous pair's tags + rating before leaving
+            await flushActivePairFilesToDisk();
+            let i = cachedPairList.findIndex(p => p.id === activePairId);
+            if (i < 0) i = 0;
+            else i = (i + delta + cachedPairList.length) % cachedPairList.length;
+            await loadPair(cachedPairList[i], { play: !!play });
+        }
+
+        function wirePairEndedAdvance() {
+            const vids = [...document.querySelectorAll('#box-after video, .media-box video')];
+            vids.forEach(v => { v.onended = null; });
+            if (!document.getElementById('chkAutoNextPair')?.checked) return;
+            // Prefer the "after" video if present
+            const afterV = document.querySelector('#box-after video') || vids[0];
+            if (afterV) {
+                afterV.onended = () => stepPair(1, true);
             }
         }
 
@@ -763,6 +853,7 @@
             } else {
                 pairs = (await AIToolbox.listPairs()).filter(p => p.kind !== 'image');
             }
+            cachedPairList = (pairs || []).map(normalizePair);
             pairList.innerHTML = '';
             if (!pairs.length) {
                 pairList.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:20px;">No locked pairs yet.<br>Pair files in Media Library or save here with server online.</div>';
@@ -830,6 +921,17 @@
         document.getElementById('btn-save-pair').addEventListener('click', saveCurrentPair);
         document.getElementById('btn-save-pair-side').addEventListener('click', saveCurrentPair);
         document.getElementById('btn-load-code').addEventListener('click', () => loadPairByCode(document.getElementById('pairCodeInput').value));
+        document.getElementById('btn-prev-pair')?.addEventListener('click', () => stepPair(-1, true));
+        document.getElementById('btn-next-pair')?.addEventListener('click', () => stepPair(1, true));
+        document.getElementById('chkAutoNextPair')?.addEventListener('change', wirePairEndedAdvance);
+        (() => {
+            const el = document.getElementById('chkUpdateFiles');
+            if (!el) return;
+            el.checked = localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+            el.addEventListener('change', () => {
+                localStorage.setItem(UPDATE_FILES_KEY, el.checked ? '1' : '0');
+            });
+        })();
         document.getElementById('pairCodeInput').addEventListener('keydown', e => {
             if (e.key === 'Enter') loadPairByCode(e.target.value);
         });
@@ -1451,6 +1553,7 @@
                 case 'KeyF': e.preventDefault(); toggleFullscreen(); break;
                 case 'KeyS': if (e.ctrlKey) break; e.preventDefault(); saveCurrentPair(); break;
                 case 'KeyP': e.preventDefault(); document.getElementById('btn-pairs').click(); break;
+                case 'KeyN': e.preventDefault(); stepPair(1, true); break;
                 case 'Digit1': if (abLoopActive) { abPointA = elAfter.currentTime; updateABMarkers(); showToast(`A = ${abPointA.toFixed(2)}s`); } break;
                 case 'Digit2': if (abLoopActive) { abPointB = elAfter.currentTime; updateABMarkers(); showToast(`B = ${abPointB.toFixed(2)}s`); } break;
             }

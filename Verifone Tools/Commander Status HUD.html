@@ -204,7 +204,7 @@
           <div class="ph">Connect <span class="muted" style="text-transform:none;letter-spacing:0">target controller</span></div>
           <div class="pb">
             <label class="fld">Commander host / IP <span class="muted" style="text-transform:none">(site box — not 127.x)</span></label>
-            <input id="host" value="192.168.31.11" placeholder="192.168.31.11" autocomplete="off">
+            <input id="host" value="" placeholder="store controller IP e.g. 192.168.x.x" autocomplete="off">
 
             <div class="row">
               <div>
@@ -409,7 +409,8 @@
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script>
-    const DEFAULT_SITE_HOST = '192.168.31.11';
+    // Prefer sticky host / saved profile — never assume a fixed lab site IP.
+    const DEFAULT_SITE_HOST = '';
     const DEFAULT_SITE_USER = 'Manager';
     const LS_HOST = 'fafo_commander_host';
     const LS_USER = 'fafo_commander_user';
@@ -1248,7 +1249,7 @@
       el('host').value = host;
       el('username').value = username;
       saveLoginFields();
-      if (!host) { toast('Enter Commander host/IP first (e.g. 192.168.31.11)'); return; }
+      if (!host) { toast('Enter Commander host/IP first (store controller LAN IP)'); return; }
       el('btnJLogin').disabled = true;
       el('btnJournalLogin').disabled = true;
       showJournalDiag(null);
@@ -1662,7 +1663,7 @@
           '<div class="empty">Local toolbox server offline at <code>127.0.0.87:18765</code>. ' +
           'That is the FAFO API on this PC (not the Commander).<br><br>' +
           'Click <strong>▶ Start Server</strong> above (or the status pill), then retry. ' +
-          'Site IP stays in Host field (default 192.168.31.11).</div>';
+          'Site IP goes in Host field (last-used host, saved profile, or type the store controller IP).</div>';
         // Do not return early forever — still leave journal UI usable after server starts + refresh
       }
       try {
@@ -1682,16 +1683,14 @@
           el('host').value = u.hostname;
         } catch (_) {}
       }
-      // Ensure defaults if still empty after deep-link
-      if (!el('host').value.trim()) el('host').value = DEFAULT_SITE_HOST;
       if (!el('username').value.trim()) el('username').value = DEFAULT_SITE_USER;
       restoreLoginFields();
       updateOpenCcLink(null);
-      // Prefer saved site Manager profile password when empty (do not wipe typed password)
-      if (online && profiles.length && !el('password').value) {
+      // Prefer a saved Manager/site profile when host/password empty (do not wipe typed password)
+      if (online && profiles.length && (!el('password').value || !el('host').value.trim())) {
         const pref = profiles.find(p =>
-          /192\.168\.31\.11/.test(p.host || '') || /manager/i.test(p.name || '') || /manager/i.test(p.username || '')
-        );
+          /manager/i.test(p.name || '') || /manager/i.test(p.username || '')
+        ) || profiles[0];
         if (pref && pref.id) {
           selectedProfileId = pref.id;
           el('profileSelect').value = pref.id;
@@ -1699,7 +1698,7 @@
             const data = await api('/verifone/live/profiles/' + encodeURIComponent(pref.id) + '?include_password=true');
             const p = data.profile || {};
             if (p.password && !el('password').value) el('password').value = p.password;
-            if (p.host && el('host').value === DEFAULT_SITE_HOST) el('host').value = p.host;
+            if (p.host && !el('host').value.trim()) el('host').value = p.host;
             if (p.username && (!el('username').value || el('username').value === DEFAULT_SITE_USER)) {
               el('username').value = p.username;
             }

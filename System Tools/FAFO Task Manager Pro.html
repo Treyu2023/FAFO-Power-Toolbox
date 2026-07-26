@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAFO Task Manager Pro — AI HTML Toolbox</title>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <style>
+    :root {
+      --bg: #05060c; --panel: #0c101c; --panel2: #121826;
+      --border: rgba(0, 243, 255, 0.16);
+      --accent: #00f3ff; --accent2: #a78bfa; --ok: #34d399;
+      --warn: #fbbf24; --danger: #f87171; --text: #e8eaf0; --muted: #7b849c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif; color: var(--text);
+      min-height: 100vh;
+      background: radial-gradient(ellipse 100% 60% at 20% -10%, #132033 0%, var(--bg) 50%);
+    }
+    .nav {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      padding: 10px 18px; border-bottom: 1px solid var(--border);
+      background: rgba(5,6,12,.94); position: sticky; top: 0; z-index: 40;
+    }
+    .nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
+    .nav .t { color: var(--accent); letter-spacing: 1px; font-weight: 700; font-size: 14px; }
+    .pill {
+      font-size: 11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+    }
+    .pill.on { color: var(--ok); border-color: rgba(52,211,153,.4); }
+    .pill.off { color: var(--danger); border-color: rgba(248,113,113,.4); }
+
+    .app { display: grid; grid-template-columns: 210px 1fr; min-height: calc(100vh - 48px); }
+    @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
+    .side {
+      background: var(--panel); border-right: 1px solid var(--border);
+      padding: 12px 10px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .nav-btn {
+      display: flex; gap: 10px; align-items: center; width: 100%; text-align: left;
+      background: transparent; border: 1px solid transparent; color: var(--muted);
+      border-radius: 10px; padding: 10px 12px; cursor: pointer; font-size: 13px;
+    }
+    .nav-btn:hover { background: rgba(0,243,255,.06); color: var(--text); }
+    .nav-btn.active { background: rgba(0,243,255,.12); border-color: var(--border); color: var(--accent); }
+
+    .main { padding: 18px 20px 48px; overflow: auto; }
+    .view { display: none; }
+    .view.active { display: block; animation: fade .3s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.45; max-width: 80ch; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat {
+      background: linear-gradient(145deg, var(--panel2), var(--panel));
+      border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+    }
+    .stat .l { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .stat .v { font-size: 22px; font-weight: 800; margin-top: 4px; }
+
+    .panel {
+      background: var(--panel2); border: 1px solid var(--border);
+      border-radius: 14px; margin-bottom: 14px; overflow: hidden;
+    }
+    .panel-h {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+      padding: 12px 16px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,.25);
+    }
+    .panel-h h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+    .panel-b { padding: 12px 16px; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .inp, .sel {
+      background: #000; border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    }
+    .btn {
+      background: rgba(0,243,255,.1); border: 1px solid rgba(0,243,255,.35);
+      color: var(--accent); border-radius: 8px; padding: 8px 12px; font-size: 11px;
+      font-weight: 700; text-transform: uppercase; cursor: pointer;
+    }
+    .btn:hover { background: var(--accent); color: #000; }
+    .btn.danger { border-color: rgba(248,113,113,.4); color: var(--danger); background: rgba(248,113,113,.08); }
+    .btn.danger:hover { background: var(--danger); color: #fff; }
+    .btn.sm { padding: 5px 8px; font-size: 10px; }
+    .btn:disabled { opacity: .45; cursor: wait; }
+
+    .table-wrap { overflow: auto; max-height: 520px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      position: sticky; top: 0; background: #0a0e18; z-index: 2;
+      text-align: left; padding: 9px 10px; color: var(--muted); font-size: 10px;
+      text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border);
+    }
+    td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: top; }
+    tr:hover td { background: rgba(0,243,255,.04); }
+    tr.sel td { background: rgba(167,139,250,.12); }
+    .mono { font-family: Consolas, ui-monospace, monospace; font-size: 11px; }
+
+    .tag {
+      display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;
+    }
+    .tag.good { background: rgba(52,211,153,.15); color: var(--ok); }
+    .tag.ok { background: rgba(0,243,255,.12); color: var(--accent); }
+    .tag.heavy { background: rgba(251,191,36,.15); color: var(--warn); }
+    .tag.critical { background: rgba(248,113,113,.15); color: var(--danger); }
+    .tag.hog { background: rgba(251,191,36,.2); color: var(--warn); }
+    .tag.vuln { background: rgba(248,113,113,.2); color: var(--danger); }
+    .tag.kb { background: rgba(167,139,250,.15); color: var(--accent2); }
+    .tag.unk { background: rgba(255,255,255,.06); color: var(--muted); }
+
+    .score-bar {
+      height: 6px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; min-width: 60px;
+    }
+    .score-bar > i { display: block; height: 100%; border-radius: 4px; }
+
+    .drawer {
+      position: fixed; top: 0; right: 0; width: min(420px, 100vw); height: 100vh;
+      background: #0a0e16; border-left: 1px solid var(--border); z-index: 50;
+      transform: translateX(105%); transition: transform .25s; overflow: auto; padding: 16px;
+      box-shadow: -12px 0 40px rgba(0,0,0,.5);
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer h3 { color: var(--accent); margin: 12px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+    .drawer .title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .drawer p { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 8px; }
+    .drawer ul { margin: 0 0 10px 18px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; font-size: 12px; margin-bottom: 12px; }
+    .kv dt { color: var(--muted); }
+    .kv dd { word-break: break-all; }
+    .cve {
+      border: 1px solid rgba(248,113,113,.25); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
+      font-size: 11px; background: rgba(248,113,113,.06);
+    }
+    .cve a { color: var(--accent); }
+    .callout {
+      border: 1px solid rgba(167,139,250,.3); background: rgba(167,139,250,.08);
+      border-radius: 12px; padding: 12px 14px; font-size: 12px; line-height: 1.5; color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .callout strong { color: var(--accent2); }
+    .banner {
+      display: none; padding: 10px 16px; background: rgba(248,113,113,.1);
+      border-bottom: 1px solid rgba(248,113,113,.3); font-size: 12px; color: #f0a8b0;
+      align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .banner.show { display: flex; }
+
+    .mode-bar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch;
+      margin-bottom: 14px;
+    }
+    .mode-card {
+      flex: 1; min-width: 180px;
+      background: linear-gradient(160deg, rgba(0,243,255,.08), rgba(167,139,250,.06));
+      border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+    }
+    .mode-card h3 { font-size: 12px; color: var(--accent); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .mode-card input.rename {
+      background: #000; border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; width: 100%;
+      margin-bottom: 8px;
+    }
+    .mode-card .meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; min-height: 2.4em; }
+    .mode-card .btn { width: 100%; }
+    .mode-card.m1 { border-color: rgba(0,243,255,.35); }
+    .mode-card.m2 { border-color: rgba(167,139,250,.4); }
+    .mode-card.m3 { border-color: rgba(251,191,36,.35); }
+    .mode-toggles {
+      display: flex; gap: 4px; flex-wrap: wrap;
+    }
+    .mode-toggles label {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 10px; font-weight: 800; cursor: pointer;
+      padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,.1);
+      color: var(--muted); user-select: none;
+    }
+    .mode-toggles label.on-m1 { border-color: var(--accent); color: var(--accent); background: rgba(0,243,255,.1); }
+    .mode-toggles label.on-m2 { border-color: var(--accent2); color: var(--accent2); background: rgba(167,139,250,.12); }
+    .mode-toggles label.on-m3 { border-color: var(--warn); color: var(--warn); background: rgba(251,191,36,.12); }
+    .mode-toggles input { accent-color: var(--accent); }
+    .chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 120px; overflow: auto; }
+    .chip-list .chip {
+      font-size: 10px; padding: 3px 8px; border-radius: 999px;
+      background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
+    }
+    .chip-list .chip button {
+      border: none; background: none; color: var(--danger); cursor: pointer; margin-left: 4px; font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <span class="t">FAFO TASK MANAGER PRO</span>
+    <span class="pill off" id="serverPill">○ Checking…</span>
+    <button class="btn sm" id="btnStart" type="button">▶ Start Server</button>
+    <div class="toolbar" id="navModeRun" style="gap:6px" title="Run efficiency kill profiles">
+      <button class="btn sm danger" type="button" data-run-mode="m1" id="navRunM1">⚡ M1</button>
+      <button class="btn sm danger" type="button" data-run-mode="m2" id="navRunM2">⚡ M2</button>
+      <button class="btn sm danger" type="button" data-run-mode="m3" id="navRunM3">⚡ M3</button>
+    </div>
+    <a href="LAN Task Manager.html" style="font-size:12px;color:var(--muted)">Classic LAN/Task Manager →</a>
+  </nav>
+  <div class="banner" id="offlineBanner">
+    <strong>Server offline</strong>
+    <span>Process list, kill, startup intel, and NVD refresh need the toolbox backend.</span>
+    <button class="btn sm" id="btnStart2" type="button">▶ Start Server</button>
+  </div>
+
+  <div class="app">
+    <aside class="side">
+      <button class="nav-btn active" data-view="dash" type="button">📊 Overview</button>
+      <button class="nav-btn" data-view="procs" type="button">⚙ Processes + Intel</button>
+      <button class="nav-btn" data-view="modes" type="button">⚡ Efficiency modes</button>
+      <button class="nav-btn" data-view="ratings" type="button">⭐ Efficiency ratings</button>
+      <button class="nav-btn" data-view="startup" type="button">🚀 Startup & services</button>
+      <button class="nav-btn" data-view="intel" type="button">🧠 Knowledge & weekly</button>
+    </aside>
+    <main class="main">
+      <!-- DASH -->
+      <section class="view active" id="view-dash">
+        <h1>Task Manager Pro</h1>
+        <p class="sub">Live processes with <strong>what it is</strong>, <strong>disable pros/cons</strong>, efficiency scoring, and optional weekly CVE checks for apps that actually ran on this PC.</p>
+        <div class="callout">
+          <strong>Data strategy (recommended):</strong> There is no free complete “ProcessLibrary API.”
+          This tool uses (1) a local curated knowledge base, (2) live CPU/RAM on your machine, and (3) optional
+          <strong>NVD</strong> keyword CVE lookups only for apps you’ve seen — not a full internet crawl of every EXE.
+        </div>
+        <div class="stats" id="dashStats"></div>
+        <div class="panel">
+          <div class="panel-h"><h2>Quick actions</h2></div>
+          <div class="panel-b toolbar">
+            <button class="btn" type="button" data-go="procs">Open processes</button>
+            <button class="btn" type="button" data-go="modes">Efficiency modes</button>
+            <button class="btn" type="button" data-go="ratings">Efficiency board</button>
+            <button class="btn" type="button" id="btnRefreshIntelDash">↻ Weekly intel refresh</button>
+          </div>
+        </div>
+        <div class="mode-bar" id="dashModeBar"></div>
+      </section>
+
+      <!-- PROCS -->
+      <section class="view" id="view-procs">
+        <h1>Processes + Intel</h1>
+        <p class="sub">Click a row for purpose, disable guidance, efficiency, and any cached CVE flags.
+          Use <strong>M1 / M2 / M3</strong> toggles to put a process into one or more efficiency kill profiles (overlap allowed).</p>
+        <div class="mode-bar" id="procModeBar"></div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2>Running processes</h2>
+            <div class="toolbar">
+              <input class="inp" id="procSearch" placeholder="Filter name / path…" style="min-width:180px">
+              <select class="sel" id="procSort">
+                <option value="cpu">Sort: CPU</option>
+                <option value="memory">Sort: Memory</option>
+                <option value="name">Sort: Name</option>
+                <option value="efficiency">Sort: Efficiency (worst first)</option>
+                <option value="risk">Sort: Vuln risk</option>
+              </select>
+              <button class="btn" type="button" id="btnReloadProcs">Refresh</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>PID</th><th>Name</th><th>CPU%</th><th>RAM</th><th>Score</th><th>Flags</th><th>Modes</th><th>Safe off?</th>
+                </tr>
+              </thead>
+              <tbody id="procBody"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- EFFICIENCY MODES -->
+      <section class="view" id="view-modes">
+        <h1>Efficiency modes</h1>
+        <p class="sub">Three kill profiles. Assign processes with the M1/M2/M3 toggles on the process list — the same process can sit in all three modes. Press a mode button to end every matching running process in that list.</p>
+        <div class="callout">
+          <strong>Safety:</strong> Hard-protected system processes (csrss, lsass, services, …) are never killed.
+          By default, processes marked <em>not safe to disable</em> in the knowledge base are also skipped unless you enable force below.
+        </div>
+        <div class="mode-bar" id="modesPageBar"></div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2>Options</h2>
+            <div class="toolbar">
+              <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="modeSkipUnsafe" checked>
+                Skip “not safe to disable” (recommended)
+              </label>
+              <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="modeForceKill">
+                Force kill (Terminate → Kill)
+              </label>
+              <button class="btn sm" type="button" id="btnSeedCommonHogs" title="Add common optional hogs to M2/M3">+ Seed common optional apps</button>
+              <button class="btn sm" type="button" id="btnClearAllModes">Clear all mode lists</button>
+            </div>
+          </div>
+          <div class="panel-b">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Mode membership is stored in this browser (by process name, not PID). Overlap is intentional — e.g. Discord can be in Focus + Gaming + Deep clean.</p>
+            <div id="modeListsDetail"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Last run log</h2></div>
+          <div class="panel-b">
+            <pre id="modeRunLog" style="font-size:11px;background:#000;padding:10px;border-radius:8px;max-height:200px;overflow:auto;color:var(--muted)">No efficiency mode run yet.</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- RATINGS -->
+      <section class="view" id="view-ratings">
+        <h1>Efficiency ratings</h1>
+        <p class="sub">Combined live resource use + knowledge hints + vulnerability flags. Lower score = heavier / riskier.</p>
+        <div class="stats" id="rateStats"></div>
+        <div class="panel">
+          <div class="panel-h"><h2>Leaderboard</h2><button class="btn sm" type="button" id="btnReloadRates">Refresh</button></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Score</th><th>Process</th><th>CPU</th><th>RAM</th><th>Band</th><th>Notes</th></tr>
+              </thead>
+              <tbody id="rateBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- STARTUP -->
+      <section class="view" id="view-startup">
+        <h1>Startup & services</h1>
+        <p class="sub">Logon items and Windows services with disable guidance when known.</p>
+        <div class="stats" id="startStats"></div>
+        <div class="panel">
+          <div class="panel-h"><h2>Startup items</h2><button class="btn sm" type="button" id="btnReloadStart">Refresh</button></div>
+          <div class="table-wrap" style="max-height:280px">
+            <table>
+              <thead><tr><th>Name</th><th>Location</th><th>Purpose</th><th>Safe off?</th></tr></thead>
+              <tbody id="startBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Services (sample of automatic/running first)</h2></div>
+          <div class="table-wrap" style="max-height:320px">
+            <table>
+              <thead><tr><th>Service</th><th>State</th><th>Start</th><th>Purpose</th><th>Safe off?</th></tr></thead>
+              <tbody id="svcBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- INTEL -->
+      <section class="view" id="view-intel">
+        <h1>Knowledge base & weekly intel</h1>
+        <p class="sub">Local KB ships with common Windows processes. Seen-app list and CVE cache stay on this PC under %LOCALAPPDATA%\FAFO\…</p>
+        <div class="callout" id="strategyBox"></div>
+        <div class="stats" id="intelStats"></div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2>Weekly NVD refresh</h2>
+            <div class="toolbar">
+              <label style="font-size:11px;color:var(--muted)">Max apps
+                <input class="inp" id="refreshMax" type="number" value="15" min="1" max="40" style="width:64px">
+              </label>
+              <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="refreshForce"> Force (ignore 7-day cache)
+              </label>
+              <button class="btn" type="button" id="btnDoRefresh">Run refresh</button>
+            </div>
+          </div>
+          <div class="panel-b">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:8px">
+              Calls NIST NVD API by product keyword for apps this PC has run. Rate-limited; optional env <code>NVD_API_KEY</code> raises limits.
+              Does <strong>not</strong> upload your process list anywhere else.
+            </p>
+            <pre id="refreshLog" style="font-size:11px;background:#000;padding:10px;border-radius:8px;max-height:220px;overflow:auto;color:var(--muted)">No refresh yet.</pre>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Recently seen apps</h2></div>
+          <div class="table-wrap" style="max-height:260px">
+            <table>
+              <thead><tr><th>Name</th><th>Runs</th><th>Last seen</th><th>Last CVE check</th></tr></thead>
+              <tbody id="seenBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside class="drawer" id="drawer">
+    <button class="btn sm" type="button" id="btnCloseDrawer">Close</button>
+    <div class="title" id="dTitle">—</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px" id="dSub"></div>
+    <div class="kv" id="dKv"></div>
+    <h3>What it is</h3>
+    <p id="dPurpose"></p>
+    <h3>Pros of disabling / ending</h3>
+    <ul id="dPros"></ul>
+    <h3>Cons / risks</h3>
+    <ul id="dCons"></ul>
+    <h3>Known issues</h3>
+    <ul id="dIssues"></ul>
+    <h3>Vulnerabilities (cached)</h3>
+    <div id="dCves"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn danger sm" type="button" id="btnKill">End process</button>
+      <button class="btn danger sm" type="button" id="btnForce">Force kill</button>
+    </div>
+  </aside>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-version.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script>
+  (() => {
+    'use strict';
+    const API = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    let online = false;
+    let selectedPid = null;
+    let lastProcs = [];
+
+    /* ── Efficiency modes (3 profiles, overlapping membership by process name) ── */
+    const MODES_KEY = 'fafo_tmpro_efficiency_modes_v1';
+    const MODE_IDS = ['m1', 'm2', 'm3'];
+    const NEVER_KILL = new Set([
+      'system', 'system idle process', 'idle', 'csrss', 'smss', 'wininit', 'services',
+      'lsass', 'winlogon', 'fontdrvhost', 'dwm', 'svchost', 'conhost', 'registry',
+      'memory compression', 'secure system', 'sihost', 'fontdrvhost', 'lsm',
+      'csrss.exe', 'lsass.exe', 'services.exe', 'wininit.exe', 'smss.exe', 'winlogon.exe',
+    ]);
+
+    function defaultModesState() {
+      return {
+        names: { m1: 'Focus', m2: 'Gaming', m3: 'Deep clean' },
+        members: {}, // key -> { m1, m2, m3 }
+        skipUnsafe: true,
+        forceKill: false,
+      };
+    }
+
+    function loadModesState() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(MODES_KEY) || 'null');
+        if (!raw || !raw.names || !raw.members) return defaultModesState();
+        return {
+          names: { ...defaultModesState().names, ...raw.names },
+          members: raw.members || {},
+          skipUnsafe: raw.skipUnsafe !== false,
+          forceKill: !!raw.forceKill,
+        };
+      } catch {
+        return defaultModesState();
+      }
+    }
+
+    function saveModesState(st) {
+      localStorage.setItem(MODES_KEY, JSON.stringify(st));
+    }
+
+    let modesState = loadModesState();
+
+    function procKey(name) {
+      let n = String(name || '').trim().toLowerCase();
+      if (n.endsWith('.exe')) n = n.slice(0, -4);
+      return n;
+    }
+
+    function isInMode(name, modeId) {
+      const k = procKey(name);
+      return !!(modesState.members[k] && modesState.members[k][modeId]);
+    }
+
+    function setInMode(name, modeId, on) {
+      const k = procKey(name);
+      if (!k) return;
+      if (!modesState.members[k]) modesState.members[k] = { m1: false, m2: false, m3: false };
+      modesState.members[k][modeId] = !!on;
+      // drop empty
+      if (!modesState.members[k].m1 && !modesState.members[k].m2 && !modesState.members[k].m3) {
+        delete modesState.members[k];
+      }
+      saveModesState(modesState);
+    }
+
+    function countMode(modeId) {
+      return Object.values(modesState.members).filter(m => m[modeId]).length;
+    }
+
+    function listModeKeys(modeId) {
+      return Object.entries(modesState.members)
+        .filter(([, m]) => m[modeId])
+        .map(([k]) => k)
+        .sort();
+    }
+
+    function modeTogglesHtml(name) {
+      const k = procKey(name);
+      return `<div class="mode-toggles" data-pkey="${esc(k)}" onclick="event.stopPropagation()">
+        ${MODE_IDS.map(mid => {
+          const on = isInMode(name, mid);
+          const lab = mid.toUpperCase();
+          return `<label class="${on ? 'on-' + mid : ''}" title="Include in ${esc(modesState.names[mid] || mid)}">
+            <input type="checkbox" data-mode="${mid}" data-pkey="${esc(k)}" ${on ? 'checked' : ''}>${lab}
+          </label>`;
+        }).join('')}
+      </div>`;
+    }
+
+    function bindModeToggleClicks(root) {
+      root.querySelectorAll('.mode-toggles input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          e.stopPropagation();
+          const key = cb.dataset.pkey;
+          const mid = cb.dataset.mode;
+          setInMode(key, mid, cb.checked);
+          renderModeBars();
+          const lab = cb.closest('label');
+          if (lab) lab.classList.toggle('on-' + mid, cb.checked);
+        });
+      });
+    }
+
+    function renderModeBars() {
+      const html = MODE_IDS.map(mid => {
+        const n = countMode(mid);
+        const name = modesState.names[mid] || mid;
+        return `<div class="mode-card ${mid}">
+          <h3>⚡ ${esc(mid.toUpperCase())}</h3>
+          <input class="rename" data-rename="${mid}" value="${esc(name)}" title="Rename mode">
+          <div class="meta">${n} process name${n === 1 ? '' : 's'} assigned · overlap OK</div>
+          <button class="btn danger" type="button" data-run-mode="${mid}">Run — kill list</button>
+        </div>`;
+      }).join('');
+      ['dashModeBar', 'procModeBar', 'modesPageBar'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.innerHTML = html;
+        el.querySelectorAll('[data-run-mode]').forEach(b => {
+          b.onclick = () => runEfficiencyMode(b.dataset.runMode);
+        });
+        el.querySelectorAll('input.rename').forEach(inp => {
+          inp.onchange = () => {
+            const mid = inp.dataset.rename;
+            modesState.names[mid] = inp.value.trim() || mid;
+            saveModesState(modesState);
+            updateNavModeLabels();
+            renderModeDetailLists();
+          };
+        });
+      });
+      updateNavModeLabels();
+      renderModeDetailLists();
+      // options checkboxes
+      const skip = $('modeSkipUnsafe');
+      const force = $('modeForceKill');
+      if (skip) { skip.checked = modesState.skipUnsafe !== false; }
+      if (force) { force.checked = !!modesState.forceKill; }
+    }
+
+    function updateNavModeLabels() {
+      MODE_IDS.forEach(mid => {
+        const b = document.querySelector(`#navRun${mid.toUpperCase()}`) || document.querySelector(`[data-run-mode="${mid}"]`);
+        // nav buttons
+        const nav = $('navRun' + mid.toUpperCase().replace('M', 'M'));
+      });
+      const n1 = $('navRunM1'), n2 = $('navRunM2'), n3 = $('navRunM3');
+      if (n1) n1.textContent = `⚡ ${modesState.names.m1 || 'M1'} (${countMode('m1')})`;
+      if (n2) n2.textContent = `⚡ ${modesState.names.m2 || 'M2'} (${countMode('m2')})`;
+      if (n3) n3.textContent = `⚡ ${modesState.names.m3 || 'M3'} (${countMode('m3')})`;
+    }
+
+    function renderModeDetailLists() {
+      const box = $('modeListsDetail');
+      if (!box) return;
+      box.innerHTML = MODE_IDS.map(mid => {
+        const keys = listModeKeys(mid);
+        const chips = keys.length
+          ? keys.map(k => `<span class="chip">${esc(k)}<button type="button" data-rm="${mid}" data-k="${esc(k)}" title="Remove from mode">×</button></span>`).join('')
+          : '<span style="font-size:11px;color:var(--muted)">Empty — toggle M1/M2/M3 on the process list</span>';
+        return `<div style="margin-bottom:14px">
+          <strong style="color:var(--accent)">${esc(modesState.names[mid])} (${mid.toUpperCase()})</strong>
+          <div class="chip-list">${chips}</div>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('button[data-rm]').forEach(b => {
+        b.onclick = () => {
+          setInMode(b.dataset.k, b.dataset.rm, false);
+          renderModeBars();
+          if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+        };
+      });
+    }
+
+    function isNeverKill(name) {
+      const k = procKey(name);
+      return NEVER_KILL.has(k) || NEVER_KILL.has(k + '.exe') || NEVER_KILL.has(name.toLowerCase());
+    }
+
+    async function runEfficiencyMode(modeId) {
+      if (!online) {
+        AIToolboxUI?.toast?.('Start server first', 'warn');
+        return;
+      }
+      const keys = listModeKeys(modeId);
+      const label = modesState.names[modeId] || modeId;
+      if (!keys.length) {
+        AIToolboxUI?.toast?.(label + ' list is empty — toggle processes into this mode first', 'warn');
+        selectView('procs');
+        return;
+      }
+      modesState.skipUnsafe = $('modeSkipUnsafe') ? $('modeSkipUnsafe').checked : modesState.skipUnsafe !== false;
+      modesState.forceKill = $('modeForceKill') ? $('modeForceKill').checked : !!modesState.forceKill;
+      saveModesState(modesState);
+
+      const conf = await (window.AIToolboxUI?.confirmAction
+        ? AIToolboxUI.confirmAction({
+            title: `Run efficiency mode “${label}”?`,
+            body: `Will attempt to end <strong>${keys.length}</strong> process name(s) currently running:<br><code style="font-size:11px">${keys.slice(0, 24).map(esc).join(', ')}${keys.length > 24 ? '…' : ''}</code>`,
+            confirmText: 'Kill matching processes',
+            cancelText: 'Cancel',
+            showSafetyNote: true,
+          })
+        : Promise.resolve({ confirmed: confirm(`Run ${label} and kill ${keys.length} process name(s)?`) }));
+      if (!conf.confirmed) return;
+
+      const data = await api('/tmpro/processes?sort_by=cpu&limit=400');
+      const running = data.processes || [];
+      const keySet = new Set(keys);
+      const targets = [];
+      for (const p of running) {
+        const k = procKey(p.name);
+        if (!keySet.has(k)) continue;
+        if (isNeverKill(p.name)) {
+          targets.push({ p, skip: 'protected' });
+          continue;
+        }
+        const safe = p.intel?.safe_to_disable !== false;
+        if (modesState.skipUnsafe && p.intel?.safe_to_disable === false) {
+          targets.push({ p, skip: 'unsafe' });
+          continue;
+        }
+        targets.push({ p, skip: null, safe });
+      }
+
+      const toKill = targets.filter(t => !t.skip);
+      const log = [];
+      log.push(`[${new Date().toLocaleTimeString()}] Mode ${modeId} “${label}”`);
+      log.push(`Assigned names: ${keys.length} · Running matches: ${targets.length} · Will kill: ${toKill.length}`);
+      targets.filter(t => t.skip).forEach(t => {
+        log.push(`SKIP ${t.p.name} (pid ${t.p.pid}): ${t.skip}`);
+      });
+
+      let killed = 0, failed = 0;
+      for (const t of toKill) {
+        try {
+          await api('/network/processes/kill', {
+            method: 'POST',
+            body: JSON.stringify({ pid: t.p.pid, force: !!modesState.forceKill }),
+          });
+          killed++;
+          log.push(`OK  ${t.p.name} (pid ${t.p.pid})`);
+        } catch (e) {
+          failed++;
+          log.push(`ERR ${t.p.name} (pid ${t.p.pid}): ${e.message || e}`);
+        }
+      }
+      log.push(`Done — killed ${killed}, failed ${failed}, skipped ${targets.length - toKill.length}`);
+      const logEl = $('modeRunLog');
+      if (logEl) logEl.textContent = log.join('\n');
+      AIToolboxUI?.toast?.(`${label}: ended ${killed} process(es)` + (failed ? `, ${failed} failed` : ''), failed ? 'warn' : 'ok');
+      loadProcs();
+      loadDash();
+    }
+
+    function seedCommonHogs() {
+      // Optional background apps often safe to close for gaming/focus
+      const seeds = {
+        m1: ['discord', 'spotify', 'steam', 'steamwebhelper', 'slack', 'teams', 'ms-teams', 'onedrive', 'yourphone', 'widgets', 'gamebar'],
+        m2: ['discord', 'chrome', 'msedge', 'firefox', 'onedrive', 'slack', 'teams', 'ms-teams', 'spotify', 'creative cloud'],
+        m3: ['discord', 'chrome', 'msedge', 'firefox', 'steam', 'steamwebhelper', 'spotify', 'slack', 'teams', 'onedrive', 'adobe premiere pro', 'afterfx', 'code'],
+      };
+      MODE_IDS.forEach(mid => {
+        (seeds[mid] || []).forEach(k => setInMode(k, mid, true));
+      });
+      renderModeBars();
+      AIToolboxUI?.toast?.('Seeded common optional apps into M1/M2/M3 (edit freely)', 'ok');
+      if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+    }
+
+    async function api(path, opts = {}) {
+      const r = await fetch(API() + path, {
+        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+        ...opts,
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.detail || r.statusText);
+      }
+      return r.json();
+    }
+
+    async function checkServer() {
+      try {
+        const r = await fetch(API() + '/health', { signal: AbortSignal.timeout(2000) });
+        online = r.ok;
+      } catch { online = false; }
+      const pill = $('serverPill');
+      pill.className = 'pill ' + (online ? 'on' : 'off');
+      pill.textContent = online ? '● Server online' : '○ Server offline';
+      $('offlineBanner').classList.toggle('show', !online);
+      return online;
+    }
+
+    function bandClass(b) {
+      if (b === 'good') return 'good';
+      if (b === 'ok') return 'ok';
+      if (b === 'heavy') return 'heavy';
+      return 'critical';
+    }
+    function scoreColor(s) {
+      if (s >= 75) return 'var(--ok)';
+      if (s >= 50) return 'var(--accent)';
+      if (s >= 30) return 'var(--warn)';
+      return 'var(--danger)';
+    }
+
+    function selectView(v) {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+      document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+      const pane = $('view-' + v);
+      if (pane) pane.classList.add('active');
+      renderModeBars();
+      if (!online && v !== 'modes') return;
+      if (v === 'dash') loadDash();
+      else if (v === 'procs') loadProcs();
+      else if (v === 'modes') { /* lists already via renderModeBars */ }
+      else if (v === 'ratings') loadRatings();
+      else if (v === 'startup') loadStartup();
+      else if (v === 'intel') loadIntel();
+    }
+
+    document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => selectView(b.dataset.view)));
+    document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => selectView(b.dataset.go)));
+
+    async function loadDash() {
+      const o = await api('/tmpro/overview');
+      const s = o.system || {};
+      const r = o.ratings_summary || {};
+      const k = o.knowledge || {};
+      $('dashStats').innerHTML = [
+        { l: 'CPU', v: (s.cpu?.percent ?? 0).toFixed(1) + '%' },
+        { l: 'Memory', v: (s.memory?.percent ?? 0).toFixed(1) + '%' },
+        { l: 'Processes', v: s.process_count ?? '—' },
+        { l: 'KB entries', v: k.process_entries ?? '—' },
+        { l: 'Seen apps', v: k.seen_apps ?? '—' },
+        { l: 'Vuln flags (live board)', v: r.vuln_flagged ?? 0 },
+        { l: 'Resource hogs', v: r.hogs ?? 0 },
+        { l: 'Heavy/critical', v: (r.heavy || 0) + (r.critical || 0) },
+      ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
+      renderModeBars();
+    }
+
+    async function loadProcs() {
+      const search = $('procSearch').value.trim();
+      const sort = $('procSort').value;
+      const data = await api(`/tmpro/processes?sort_by=${encodeURIComponent(sort)}&search=${encodeURIComponent(search)}&limit=300`);
+      lastProcs = data.processes || [];
+      const tb = $('procBody');
+      if (!lastProcs.length) {
+        tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No processes</td></tr>';
+        return;
+      }
+      tb.innerHTML = lastProcs.map(p => {
+        const i = p.intel || {};
+        const e = i.efficiency || {};
+        const flags = [
+          i.resource_hog ? '<span class="tag hog">hog</span>' : '',
+          i.vulnerabilities?.flagged ? `<span class="tag vuln">CVE×${i.vulnerabilities.count}</span>` : '',
+          i.in_knowledge_base ? '<span class="tag kb">KB</span>' : '<span class="tag unk">?</span>',
+        ].filter(Boolean).join(' ');
+        return `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'sel' : ''}">
+          <td class="mono">${p.pid}</td>
+          <td><strong>${esc(p.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(i.title || '')}</div></td>
+          <td>${Number(p.cpu_percent || 0).toFixed(1)}</td>
+          <td>${esc(p.memory_human || '')}<div style="font-size:10px;color:var(--muted)">${Number(p.memory_percent || 0).toFixed(1)}%</div></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="tag ${bandClass(e.band)}">${e.score ?? '—'}</span>
+              <div class="score-bar"><i style="width:${Math.min(100, e.score || 0)}%;background:${scoreColor(e.score || 0)}"></i></div>
+            </div>
+          </td>
+          <td>${flags || '—'}</td>
+          <td>${modeTogglesHtml(p.name)}</td>
+          <td>${i.safe_to_disable ? '<span class="tag ok">maybe</span>' : '<span class="tag critical">no</span>'}</td>
+        </tr>`;
+      }).join('');
+      tb.querySelectorAll('tr[data-pid]').forEach(tr => {
+        tr.onclick = () => openDrawer(+tr.dataset.pid);
+      });
+      bindModeToggleClicks(tb);
+      renderModeBars();
+    }
+
+    async function openDrawer(pid) {
+      selectedPid = pid;
+      try {
+        const p = await api('/tmpro/processes/' + pid);
+        const i = p.intel || {};
+        $('dTitle').textContent = i.title || p.name || 'Process';
+        $('dSub').textContent = `${p.name || ''} · PID ${pid} · ${i.publisher || ''} · ${i.category || ''}`;
+        $('dKv').innerHTML = `
+          <dt>Path</dt><dd class="mono">${esc(p.exe || '—')}</dd>
+          <dt>User</dt><dd>${esc(p.username || '—')}</dd>
+          <dt>CPU / RAM</dt><dd>${Number(p.cpu_percent || 0).toFixed(1)}% · ${esc(p.memory?.rss_human || p.memory_human || '—')}</dd>
+          <dt>Efficiency</dt><dd><span class="tag ${bandClass(i.efficiency?.band)}">${i.efficiency?.score ?? '—'} (${i.efficiency?.band || '?'})</span></dd>
+          <dt>Safe to end?</dt><dd>${i.safe_to_disable ? 'Possibly — read cons first' : 'No / high risk'}</dd>
+        `;
+        $('dPurpose').textContent = i.purpose || '—';
+        $('dPros').innerHTML = (i.disable_pros || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>';
+        $('dCons').innerHTML = (i.disable_cons || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>';
+        $('dIssues').innerHTML = (i.known_issues || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>None listed</li>';
+        const vulns = i.vulnerabilities?.items || [];
+        $('dCves').innerHTML = vulns.length
+          ? vulns.map(c => `<div class="cve"><strong>${esc(c.id)}</strong> ${c.severity ? '· ' + esc(c.severity) : ''} ${c.score != null ? '· ' + c.score : ''}<br>${esc(c.description || '')}${c.url ? `<br><a href="${esc(c.url)}" target="_blank" rel="noopener">NVD</a>` : ''}</div>`).join('')
+          : `<p style="font-size:12px;color:var(--muted)">No cached CVEs. Last check: ${esc(i.vulnerabilities?.last_check || 'never')}. Run Weekly intel refresh.</p>`;
+        $('drawer').classList.add('open');
+        document.querySelectorAll('#procBody tr').forEach(tr => tr.classList.toggle('sel', +tr.dataset.pid === pid));
+      } catch (e) {
+        AIToolboxUI?.toast?.(e.message || String(e), 'warn');
+      }
+    }
+
+    $('btnCloseDrawer').onclick = () => $('drawer').classList.remove('open');
+    $('btnKill').onclick = () => killSel(false);
+    $('btnForce').onclick = () => killSel(true);
+
+    async function killSel(force) {
+      if (!selectedPid) return;
+      if (!confirm((force ? 'Force kill' : 'End') + ' PID ' + selectedPid + '?')) return;
+      try {
+        await api('/network/processes/kill', {
+          method: 'POST',
+          body: JSON.stringify({ pid: selectedPid, force }),
+        });
+        AIToolboxUI?.toast?.('Process ended', 'ok');
+        $('drawer').classList.remove('open');
+        loadProcs();
+      } catch (e) {
+        AIToolboxUI?.toast?.(e.message || String(e), 'warn');
+      }
+    }
+
+    async function loadRatings() {
+      const data = await api('/tmpro/ratings?limit=120');
+      const s = data.summary || {};
+      $('rateStats').innerHTML = [
+        { l: 'Good', v: s.good ?? 0 },
+        { l: 'OK', v: s.ok ?? 0 },
+        { l: 'Heavy', v: s.heavy ?? 0 },
+        { l: 'Critical', v: s.critical ?? 0 },
+        { l: 'Hogs', v: s.hogs ?? 0 },
+        { l: 'CVE flagged', v: s.vuln_flagged ?? 0 },
+      ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
+      $('rateBody').innerHTML = (data.ratings || []).map(r => `
+        <tr data-pid="${r.pid}" style="cursor:pointer">
+          <td><span class="tag ${bandClass(r.band)}">${r.score ?? '—'}</span></td>
+          <td><strong>${esc(r.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(r.title || '')}</div></td>
+          <td>${Number(r.cpu_percent || 0).toFixed(1)}</td>
+          <td>${esc(r.memory_human || '')}</td>
+          <td><span class="tag ${bandClass(r.band)}">${esc(r.band || '')}</span></td>
+          <td>${r.resource_hog ? '<span class="tag hog">hog</span> ' : ''}${r.vuln_count ? `<span class="tag vuln">CVE×${r.vuln_count}</span>` : ''}${!r.in_knowledge_base ? ' <span class="tag unk">unknown</span>' : ''}</td>
+        </tr>
+      `).join('');
+      $('rateBody').querySelectorAll('tr[data-pid]').forEach(tr => {
+        tr.onclick = () => openDrawer(+tr.dataset.pid);
+      });
+    }
+
+    async function loadStartup() {
+      const data = await api('/tmpro/startup');
+      $('startStats').innerHTML = [
+        { l: 'Startup items', v: data.startup_count ?? 0 },
+        { l: 'Services', v: data.service_count ?? 0 },
+        { l: 'Running svcs', v: data.running_services ?? 0 },
+        { l: 'Sched. tasks', v: data.task_count ?? 0 },
+      ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
+      $('startBody').innerHTML = (data.startup || []).slice(0, 80).map(it => {
+        const i = it.intel || {};
+        return `<tr>
+          <td><strong>${esc(it.name)}</strong></td>
+          <td style="font-size:11px;color:var(--muted)">${esc(it.location || '')}</td>
+          <td style="font-size:11px">${esc((i.purpose || '').slice(0, 120))}</td>
+          <td>${i.safe_to_disable ? '<span class="tag ok">maybe</span>' : '<span class="tag critical">careful</span>'}</td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="4">None</td></tr>';
+
+      const svcs = (data.services || []).slice().sort((a, b) => {
+        const ar = a.running ? 0 : 1, br = b.running ? 0 : 1;
+        return ar - br || String(a.name).localeCompare(String(b.name));
+      }).slice(0, 120);
+      $('svcBody').innerHTML = svcs.map(s => {
+        const i = s.intel || {};
+        return `<tr>
+          <td><strong>${esc(s.display_name || s.name)}</strong><div class="mono" style="color:var(--muted)">${esc(s.name)}</div></td>
+          <td><span class="tag ${s.running ? 'good' : 'unk'}">${esc(s.state || '')}</span></td>
+          <td>${esc(s.start_type || '')}</td>
+          <td style="font-size:11px">${esc((i.purpose || '').slice(0, 140))}</td>
+          <td>${i.safe_to_disable ? '<span class="tag ok">maybe</span>' : '<span class="tag critical">no</span>'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function loadIntel() {
+      const k = await api('/tmpro/knowledge');
+      const seen = await api('/tmpro/seen');
+      $('strategyBox').innerHTML = Object.entries(k.strategy || {}).map(([key, val]) =>
+        `<div><strong>${esc(key)}:</strong> ${esc(val)}</div>`
+      ).join('');
+      $('intelStats').innerHTML = [
+        { l: 'KB processes', v: k.process_entries },
+        { l: 'KB services', v: k.service_entries },
+        { l: 'Seen on PC', v: k.seen_apps },
+        { l: 'CVE keys cached', v: k.vuln_keys_cached },
+        { l: 'Last NVD run', v: (k.vuln_meta?.last_refresh || '—').toString().slice(0, 19) },
+      ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v" style="font-size:16px">${esc(x.v)}</div></div>`).join('');
+      $('seenBody').innerHTML = (seen.apps || []).slice(0, 80).map(a => `
+        <tr>
+          <td>${esc(a.name)}</td>
+          <td>${a.run_count ?? 0}</td>
+          <td class="mono" style="font-size:10px">${esc((a.last_seen || '').slice(0, 19))}</td>
+          <td class="mono" style="font-size:10px">${esc((a.last_vuln_check || 'never').toString().slice(0, 19))}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="4">Open Processes once to populate.</td></tr>';
+    }
+
+    async function doRefresh() {
+      if (!online) { AIToolboxUI?.toast?.('Start server first', 'warn'); return; }
+      $('btnDoRefresh').disabled = true;
+      $('refreshLog').textContent = 'Refreshing NVD intel (rate-limited)…';
+      try {
+        const body = {
+          force: !!$('refreshForce').checked,
+          max_apps: parseInt($('refreshMax').value, 10) || 15,
+          only_seen_since_days: 7,
+        };
+        const r = await api('/tmpro/refresh', { method: 'POST', body: JSON.stringify(body) });
+        $('refreshLog').textContent = JSON.stringify(r, null, 2);
+        AIToolboxUI?.toast?.(r.message || 'Refresh done', r.errors?.length ? 'warn' : 'ok');
+        loadIntel();
+      } catch (e) {
+        $('refreshLog').textContent = e.message || String(e);
+        AIToolboxUI?.toast?.(e.message || String(e), 'warn');
+      } finally {
+        $('btnDoRefresh').disabled = false;
+      }
+    }
+
+    $('btnReloadProcs').onclick = () => loadProcs();
+    $('btnReloadRates').onclick = () => loadRatings();
+    $('btnReloadStart').onclick = () => loadStartup();
+    $('btnDoRefresh').onclick = doRefresh;
+    $('btnRefreshIntelDash').onclick = () => { selectView('intel'); setTimeout(doRefresh, 200); };
+    $('procSearch').addEventListener('input', () => { clearTimeout(window._ps); window._ps = setTimeout(loadProcs, 280); });
+    $('procSort').addEventListener('change', loadProcs);
+
+    // Efficiency mode chrome
+    document.querySelectorAll('#navModeRun [data-run-mode]').forEach(b => {
+      b.addEventListener('click', () => runEfficiencyMode(b.dataset.runMode));
+    });
+    $('modeSkipUnsafe')?.addEventListener('change', (e) => {
+      modesState.skipUnsafe = !!e.target.checked;
+      saveModesState(modesState);
+    });
+    $('modeForceKill')?.addEventListener('change', (e) => {
+      modesState.forceKill = !!e.target.checked;
+      saveModesState(modesState);
+    });
+    $('btnSeedCommonHogs')?.addEventListener('click', seedCommonHogs);
+    $('btnClearAllModes')?.addEventListener('click', () => {
+      if (!confirm('Clear all M1/M2/M3 process lists?')) return;
+      modesState.members = {};
+      saveModesState(modesState);
+      renderModeBars();
+      loadProcs();
+      AIToolboxUI?.toast?.('All mode lists cleared', 'ok');
+    });
+    renderModeBars();
+
+    async function startServer() {
+      if (window.AIToolboxAPI?.startServer) {
+        await AIToolboxAPI.startServer({ mode: 'tray', onStatus: (m) => AIToolboxUI?.toast?.(m, '') });
+        await checkServer();
+        if (online) selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash');
+      } else {
+        AIToolboxUI?.toast?.('Use Launcher ▶ Start Server', 'warn');
+      }
+    }
+    $('btnStart').onclick = startServer;
+    $('btnStart2').onclick = startServer;
+
+    if (window.AIToolboxUI?.bindServerControls) {
+      AIToolboxUI.bindServerControls({
+        statusEl: '#serverPill',
+        startBtn: '#btnStart',
+        onOnline: () => { online = true; selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash'); },
+        onOffline: () => { online = false; },
+      });
+    }
+
+    (async () => {
+      await checkServer();
+      if (online) loadDash();
+      setInterval(async () => {
+        await checkServer();
+        const v = document.querySelector('.nav-btn.active')?.dataset.view;
+        if (online && v === 'procs') loadProcs();
+        if (online && v === 'dash') loadDash();
+      }, 8000);
+    })();
+  })();
+  </script>
+</body>
+</html>

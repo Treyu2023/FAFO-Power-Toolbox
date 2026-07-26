@@ -929,7 +929,37 @@ def _pair_stem(name: str) -> str:
         idx = stem.find(suffix)
         if idx > 0:
             stem = stem[:idx]
+    # strip trailing resolution / fps crumbs that break pairing
+    stem = re.sub(r"([_\-.]?)(\d{3,4}x\d{3,4}|\d{2,3}fps|uhd|fhd|qhd|4k|8k|2160p|1440p|1080p|720p)$", "", stem)
     return stem.rstrip("._- ")
+
+
+def _alnum_compact(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+
+def _tail_key(name: str, n: int = 5) -> str:
+    """Last N alphanumeric chars of normalized stem — looser unique-id style match."""
+    compact = _alnum_compact(_pair_stem(name))
+    if len(compact) < 3:
+        return ""
+    n = max(3, min(12, int(n or 5)))
+    if len(compact) <= n:
+        return compact
+    return compact[-n:]
+
+
+def _digit_ids(name: str) -> list[str]:
+    """Long digit runs often act as stable ids when prefixes differ."""
+    return re.findall(r"\d{4,}", Path(name or "").stem)
+
+
+def _parent_folder_hint(m: dict) -> str:
+    rel = (m.get("relative_path") or m.get("rel_path") or m.get("path") or "").replace("\\", "/")
+    parts = [p for p in rel.split("/") if p]
+    if len(parts) >= 2:
+        return parts[-2].lower()
+    return ""
 
 
 def _enrich_pair(row: dict | None) -> dict | None:
@@ -1508,53 +1538,417 @@ def _pick_before_after(a: dict, b: dict) -> tuple[dict, dict, float]:
     b_up = _is_upscaled_name(b["name"])
     if a_up != b_up:
         return (b, a, 0.95) if a_up else (a, b, 0.95)
-    if a.get("size", 0) != b.get("size", 0):
-        return (a, b, 0.85) if a["size"] <= b["size"] else (b, a, 0.85)
+    sa, sb = int(a.get("size") or 0), int(b.get("size") or 0)
+    if sa != sb and sa > 0 and sb > 0:
+        return (a, b, 0.85) if sa <= sb else (b, a, 0.85)
     ratio = SequenceMatcher(None, a["name"].lower(), b["name"].lower()).ratio()
     return (a, b, ratio)
+
+
+def _pair_confidence(a: dict, b: dict, *, method: str, tail_len: int = 5) -> tuple[dict, dict, float, str]:
+    """Score two media rows; returns ordered (before, after, conf, reason)."""
+    before, after, base = _pick_before_after(a, b)
+    a_stem = _pair_stem(before["name"])
+    b_stem = _pair_stem(after["name"])
+    a_tail = _tail_key(before["name"], tail_len)
+    b_tail = _tail_key(after["name"], tail_len)
+    name_r = SequenceMatcher(None, before["name"].lower(), after["name"].lower()).ratio()
+    stem_r = SequenceMatcher(None, a_stem, b_stem).ratio() if a_stem and b_stem else 0.0
+    conf = base
+    reason = method
+
+    if method == "stem":
+        conf = max(base, 0.92 if a_stem and a_stem == b_stem else stem_r)
+        reason = "upscale_suffix" if _is_upscaled_name(after["name"]) else "stem_exact"
+    elif method == "tail":
+        # Same trailing unique chunk (e.g. last 5 alnum) — more hits when prefixes differ
+        conf = 0.72
+        if a_tail and a_tail == b_tail:
+            conf = 0.78 + min(0.12, len(a_tail) * 0.01)
+        conf = max(conf, stem_r * 0.85, name_r * 0.7)
+        if _is_upscaled_name(after["name"]) and not _is_upscaled_name(before["name"]):
+            conf = min(1.0, conf + 0.06)
+        reason = f"tail_{tail_len}"
+    elif method == "digit_id":
+        conf = 0.74
+        if _is_upscaled_name(after["name"]) and not _is_upscaled_name(before["name"]):
+            conf = min(1.0, conf + 0.08)
+        conf = max(conf, stem_r * 0.8)
+        reason = "digit_id"
+    elif method == "folder":
+        conf = max(0.6, stem_r * 0.9, name_r * 0.75)
+        if _is_upscaled_name(after["name"]) and not _is_upscaled_name(before["name"]):
+            conf = min(1.0, conf + 0.05)
+        reason = "same_folder_fuzzy"
+    elif method == "fuzzy":
+        conf = max(stem_r, name_r * 0.92)
+        if _is_upscaled_name(after["name"]) and not _is_upscaled_name(before["name"]):
+            conf = min(1.0, conf + 0.05)
+        # Size cue: larger file often after/upscale
+        sa, sb = int(before.get("size") or 0), int(after.get("size") or 0)
+        if sa > 0 and sb > sa * 1.05:
+            conf = min(1.0, conf + 0.03)
+        reason = "fuzzy_name"
+    else:
+        conf = max(base, stem_r)
+        reason = method or "name_match"
+
+    # Type mismatch heavily discouraged
+    if before.get("type") and after.get("type") and before["type"] != after["type"]:
+        conf *= 0.4
+
+    return before, after, float(min(1.0, conf)), reason
+
+
+def _append_suggestion(
+    suggestions: list[dict],
+    seen: set[frozenset[str]],
+    before: dict,
+    after: dict,
+    conf: float,
+    reason: str,
+    stem: str,
+    min_ratio: float,
+) -> bool:
+    if conf < min_ratio or before["id"] == after["id"]:
+        return False
+    key = frozenset((before["id"], after["id"]))
+    if key in seen:
+        # Keep higher confidence if duplicate method finds same pair
+        for s in suggestions:
+            if frozenset((s["before_id"], s["after_id"])) == key:
+                if conf > s["confidence"]:
+                    s["confidence"] = round(conf, 2)
+                    s["reason"] = reason
+                    s["stem"] = stem
+                return False
+        return False
+    seen.add(key)
+    suggestions.append({
+        "before_id": before["id"],
+        "after_id": after["id"],
+        "before_name": before["name"],
+        "after_name": after["name"],
+        "before_dir_id": before.get("dir_id"),
+        "after_dir_id": after.get("dir_id"),
+        "confidence": round(conf, 2),
+        "stem": stem,
+        "reason": reason,
+        "tail": _tail_key(before["name"]),
+    })
+    return True
 
 
 def suggest_pairs(
     min_ratio: float = 0.55,
     limit: int = 30,
     media_type: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+    tail_len: int = 5,
+    use_tail: bool = True,
+    use_digits: bool = True,
+    use_fuzzy: bool = True,
+    use_folder: bool = True,
 ) -> list[dict]:
-    clauses = ["pair_id IS NULL"]
+    """
+    Suggest before/after pairs using multiple signals:
+    - exact normalized stem
+    - trailing unique-id chunk (last N alnum chars — more hits when prefixes differ)
+    - shared long digit runs
+    - same parent folder + fuzzy stem
+    - general fuzzy name (capped)
+
+    Two-folder mode: when before_dir_id and after_dir_id differ, only match across those dirs.
+    """
+    tail_len = max(3, min(12, int(tail_len or 5)))
+    clauses: list[str] = []
     params: list[Any] = []
+    if unpaired_only:
+        clauses.append("pair_id IS NULL")
     if media_type in ("video", "image"):
         clauses.append("type=?")
         params.append(media_type)
     else:
         clauses.append("type IN ('video', 'image')")
-    where = " AND ".join(clauses)
+    where = " AND ".join(clauses) if clauses else "1=1"
     with connect() as conn:
         rows = conn.execute(f"SELECT * FROM media WHERE {where}", params).fetchall()
     items = [row_to_media(r) for r in rows]
+
+    # --- Two watched folders: Before dir × After dir ---
+    if before_dir_id and after_dir_id:
+        before_items = [m for m in items if m.get("dir_id") == before_dir_id]
+        after_items = [m for m in items if m.get("dir_id") == after_dir_id]
+        if before_dir_id == after_dir_id:
+            items = before_items
+        else:
+            return _suggest_pairs_cross_dirs(
+                before_items,
+                after_items,
+                min_ratio=min_ratio,
+                limit=limit,
+                tail_len=tail_len,
+                use_tail=use_tail,
+                use_digits=use_digits,
+                use_fuzzy=use_fuzzy,
+            )
+
+    return _suggest_pairs_multi(
+        items,
+        min_ratio=min_ratio,
+        limit=limit,
+        tail_len=tail_len,
+        use_tail=use_tail,
+        use_digits=use_digits,
+        use_fuzzy=use_fuzzy,
+        use_folder=use_folder,
+    )
+
+
+def _suggest_pairs_multi(
+    items: list[dict],
+    *,
+    min_ratio: float,
+    limit: int,
+    tail_len: int,
+    use_tail: bool,
+    use_digits: bool,
+    use_fuzzy: bool,
+    use_folder: bool,
+) -> list[dict]:
+    suggestions: list[dict] = []
+    seen: set[frozenset[str]] = set()
+
+    # Pass 1: exact normalized stem
     stems: dict[str, list[dict]] = {}
     for m in items:
         stems.setdefault(_pair_stem(m["name"]), []).append(m)
-
-    suggestions = []
-    seen: set[frozenset[str]] = set()
     for stem, group in stems.items():
-        if len(group) < 2:
+        if len(group) < 2 or not stem:
             continue
         for i in range(len(group)):
             for j in range(i + 1, len(group)):
-                before, after, conf = _pick_before_after(group[i], group[j])
-                if conf < min_ratio:
+                before, after, conf, reason = _pair_confidence(
+                    group[i], group[j], method="stem", tail_len=tail_len
+                )
+                _append_suggestion(suggestions, seen, before, after, conf, reason, stem, min_ratio)
+
+    # Pass 2: tail key (last N alnum) — looser unique id
+    if use_tail:
+        tails: dict[str, list[dict]] = {}
+        for m in items:
+            t = _tail_key(m["name"], tail_len)
+            if t:
+                tails.setdefault(t, []).append(m)
+        for tkey, group in tails.items():
+            if len(group) < 2 or len(group) > 40:
+                # huge buckets are noise (e.g. "00000")
+                continue
+            for i in range(len(group)):
+                for j in range(i + 1, min(len(group), i + 12)):
+                    before, after, conf, reason = _pair_confidence(
+                        group[i], group[j], method="tail", tail_len=tail_len
+                    )
+                    _append_suggestion(
+                        suggestions, seen, before, after, conf, reason, tkey, min_ratio
+                    )
+
+    # Pass 3: shared long digit ids
+    if use_digits:
+        by_digit: dict[str, list[dict]] = {}
+        for m in items:
+            for dig in _digit_ids(m["name"]):
+                by_digit.setdefault(dig, []).append(m)
+        for dig, group in by_digit.items():
+            # de-dupe media that list same id twice
+            uniq: dict[str, dict] = {m["id"]: m for m in group}
+            group = list(uniq.values())
+            if len(group) < 2 or len(group) > 30:
+                continue
+            for i in range(len(group)):
+                for j in range(i + 1, min(len(group), i + 10)):
+                    before, after, conf, reason = _pair_confidence(
+                        group[i], group[j], method="digit_id", tail_len=tail_len
+                    )
+                    _append_suggestion(
+                        suggestions, seen, before, after, conf, reason, dig, min_ratio
+                    )
+
+    # Pass 4: same parent folder + fuzzy stem (handles mixed naming in one batch folder)
+    if use_folder:
+        by_folder: dict[str, list[dict]] = {}
+        for m in items:
+            folder = _parent_folder_hint(m) or m.get("dir_id") or ""
+            if folder:
+                by_folder.setdefault(str(folder), []).append(m)
+        for folder, group in by_folder.items():
+            if len(group) < 2 or len(group) > 80:
+                continue
+            # Prefer pairing upscaled names with non-upscaled in same folder
+            plain = [m for m in group if not _is_upscaled_name(m["name"])]
+            up = [m for m in group if _is_upscaled_name(m["name"])]
+            if plain and up:
+                for b in plain:
+                    best = None
+                    best_conf = 0.0
+                    best_reason = "folder"
+                    for a in up:
+                        before, after, conf, reason = _pair_confidence(
+                            b, a, method="folder", tail_len=tail_len
+                        )
+                        if conf > best_conf:
+                            best_conf, best, best_reason = conf, (before, after), reason
+                    if best and best_conf >= min_ratio:
+                        _append_suggestion(
+                            suggestions, seen, best[0], best[1], best_conf, best_reason,
+                            _pair_stem(best[0]["name"]), min_ratio,
+                        )
+
+    # Pass 5: capped fuzzy among remaining high-signal unpaired (expensive)
+    if use_fuzzy and len(items) <= 400:
+        # Only try items not yet used as before or after
+        used_ids = {s["before_id"] for s in suggestions} | {s["after_id"] for s in suggestions}
+        remain = [m for m in items if m["id"] not in used_ids]
+        # Bias: try plain × upscaled only
+        plain = [m for m in remain if not _is_upscaled_name(m["name"])]
+        up = [m for m in remain if _is_upscaled_name(m["name"])]
+        if plain and up:
+            for b in plain[:120]:
+                best = None
+                best_conf = 0.0
+                for a in up[:200]:
+                    before, after, conf, reason = _pair_confidence(
+                        b, a, method="fuzzy", tail_len=tail_len
+                    )
+                    if conf > best_conf:
+                        best_conf, best = conf, (before, after, reason)
+                if best and best_conf >= max(min_ratio, 0.62):
+                    _append_suggestion(
+                        suggestions, seen, best[0], best[1], best_conf, best[2],
+                        _pair_stem(best[0]["name"]), min_ratio,
+                    )
+
+    suggestions.sort(key=lambda x: (-x["confidence"], x.get("stem") or ""))
+    return suggestions[:limit]
+
+
+def _suggest_pairs_cross_dirs(
+    before_items: list[dict],
+    after_items: list[dict],
+    *,
+    min_ratio: float,
+    limit: int,
+    tail_len: int = 5,
+    use_tail: bool = True,
+    use_digits: bool = True,
+    use_fuzzy: bool = True,
+) -> list[dict]:
+    """Match every Before-folder file to best After-folder candidate(s) with multi-signal passes."""
+    if not before_items or not after_items:
+        return []
+
+    after_by_stem: dict[str, list[dict]] = {}
+    after_by_tail: dict[str, list[dict]] = {}
+    after_by_digit: dict[str, list[dict]] = {}
+    for a in after_items:
+        after_by_stem.setdefault(_pair_stem(a["name"]), []).append(a)
+        t = _tail_key(a["name"], tail_len)
+        if t:
+            after_by_tail.setdefault(t, []).append(a)
+        for dig in _digit_ids(a["name"]):
+            after_by_digit.setdefault(dig, []).append(a)
+
+    suggestions: list[dict] = []
+    used_after: set[str] = set()
+    used_before: set[str] = set()
+
+    def try_candidates(b: dict, candidates: list[dict], method: str) -> bool:
+        best = None
+        best_conf = 0.0
+        best_reason = method
+        for a in candidates:
+            if a["id"] in used_after or a["id"] == b["id"]:
+                continue
+            before, after, conf, reason = _pair_confidence(b, a, method=method, tail_len=tail_len)
+            if conf > best_conf:
+                best_conf, best, best_reason = conf, after, reason
+        if best and best_conf >= min_ratio:
+            used_after.add(best["id"])
+            used_before.add(b["id"])
+            suggestions.append({
+                "before_id": b["id"], "after_id": best["id"],
+                "before_name": b["name"], "after_name": best["name"],
+                "before_dir_id": b.get("dir_id"),
+                "after_dir_id": best.get("dir_id"),
+                "confidence": round(best_conf, 2),
+                "stem": _pair_stem(b["name"]),
+                "reason": best_reason if method == "stem" else f"two_dir_{best_reason}",
+                "tail": _tail_key(b["name"], tail_len),
+            })
+            return True
+        return False
+
+    # Pass 1: exact stem
+    for b in before_items:
+        if b["id"] in used_before:
+            continue
+        try_candidates(b, after_by_stem.get(_pair_stem(b["name"])) or [], "stem")
+
+    # Pass 2: tail key
+    if use_tail:
+        for b in before_items:
+            if b["id"] in used_before:
+                continue
+            t = _tail_key(b["name"], tail_len)
+            if not t:
+                continue
+            try_candidates(b, after_by_tail.get(t) or [], "tail")
+
+    # Pass 3: digit ids
+    if use_digits:
+        for b in before_items:
+            if b["id"] in used_before:
+                continue
+            cands: list[dict] = []
+            for dig in _digit_ids(b["name"]):
+                cands.extend(after_by_digit.get(dig) or [])
+            # unique by id
+            uniq = {c["id"]: c for c in cands}
+            try_candidates(b, list(uniq.values()), "digit_id")
+
+    # Pass 4: fuzzy remaining
+    if use_fuzzy:
+        remaining_before = [b for b in before_items if b["id"] not in used_before]
+        remaining_after = [a for a in after_items if a["id"] not in used_after]
+        for b in remaining_before:
+            best = None
+            best_conf = 0.0
+            best_reason = "fuzzy"
+            for a in remaining_after:
+                if a["id"] == b["id"]:
                     continue
-                key = frozenset((before["id"], after["id"]))
-                if key in seen:
-                    continue
-                seen.add(key)
+                before, after, conf, reason = _pair_confidence(
+                    b, a, method="fuzzy", tail_len=tail_len
+                )
+                if conf > best_conf:
+                    best_conf, best, best_reason = conf, after, reason
+            if best and best_conf >= min_ratio:
+                used_after.add(best["id"])
+                remaining_after = [a for a in remaining_after if a["id"] != best["id"]]
                 suggestions.append({
-                    "before_id": before["id"], "after_id": after["id"],
-                    "before_name": before["name"], "after_name": after["name"],
-                    "confidence": round(conf, 2), "stem": stem,
-                    "reason": "upscale_suffix" if _is_upscaled_name(after["name"]) else "name_match",
+                    "before_id": b["id"], "after_id": best["id"],
+                    "before_name": b["name"], "after_name": best["name"],
+                    "before_dir_id": b.get("dir_id"),
+                    "after_dir_id": best.get("dir_id"),
+                    "confidence": round(best_conf, 2),
+                    "stem": _pair_stem(b["name"]),
+                    "reason": f"two_dir_{best_reason}",
+                    "tail": _tail_key(b["name"], tail_len),
                 })
-    suggestions.sort(key=lambda x: (-x["confidence"], x["stem"]))
+
+    suggestions.sort(key=lambda x: (-x["confidence"], x.get("stem") or ""))
     return suggestions[:limit]
 
 
@@ -1565,15 +1959,29 @@ def auto_pair_upscaled(
     dry_run: bool = False,
     pin: bool = True,
     kind: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    require_upscale_name: bool | None = None,
 ) -> dict[str, Any]:
     media_type = kind if kind in ("video", "image") else None
-    suggestions = suggest_pairs(min_ratio=min_confidence, limit=limit * 3, media_type=media_type)
+    two_dir = bool(before_dir_id and after_dir_id and before_dir_id != after_dir_id)
+    # Two-folder mode: allow same stem without _upscaled suffix (before vs after dirs)
+    if require_upscale_name is None:
+        require_upscale_name = not two_dir
+    suggestions = suggest_pairs(
+        min_ratio=min_confidence,
+        limit=limit * 3,
+        media_type=media_type,
+        before_dir_id=before_dir_id,
+        after_dir_id=after_dir_id,
+        unpaired_only=True,
+    )
     created = []
     skipped = 0
     for s in suggestions:
         if len(created) >= limit:
             break
-        if not _is_upscaled_name(s["after_name"]):
+        if require_upscale_name and not _is_upscaled_name(s["after_name"]):
             skipped += 1
             continue
         if dry_run:
@@ -1591,7 +1999,7 @@ def auto_pair_upscaled(
                 s["after_id"],
                 pair_kind,
                 pinned=pin,
-                source="auto-upscale",
+                source="auto-two-dir" if two_dir else "auto-upscale",
             )
             pair["confidence"] = s["confidence"]
             created.append(pair)
@@ -1602,6 +2010,9 @@ def auto_pair_upscaled(
         "created": len(created),
         "skipped": skipped,
         "pairs": created,
+        "mode": "two_dir" if two_dir else "global",
+        "before_dir_id": before_dir_id,
+        "after_dir_id": after_dir_id,
     }
 
 
