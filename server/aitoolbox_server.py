@@ -663,27 +663,166 @@ def verifone_live_probe(body: CmdLiveProbeBody):
 
 @app.get("/api/verifone/live/import-export")
 def verifone_import_export_status():
-    """Detect Verifone Import-Export Utility install paths on this PC."""
+    """Detect BOTH Import-Export tools (new Base 55+ and legacy SMS) on this PC."""
     return cmd_live.detect_import_export_utility()
 
 
 class CmdLaunchImportExportBody(BaseModel):
     tool_id: str | None = None
+    base_version: str | None = None
+    generation: str | None = None  # new | legacy
 
 
 @app.post("/api/verifone/live/import-export/launch")
 def verifone_import_export_launch(body: CmdLaunchImportExportBody | None = None):
     """
-    Launch ImportExportUtility.exe for SMS/Commander config backups.
-    Uses same per-site Manager credentials as Config Client (entered in the utility UI).
+    Launch NEW ImportExportUtility.exe (Base 55+) or LEGACY SMSImportExport.exe.
+    Login in the GUI is site-specific Manager (same as Config Client).
     """
     tool_id = body.tool_id if body else None
+    base_version = body.base_version if body else None
+    generation = body.generation if body else None
     try:
-        return cmd_live.launch_import_export_utility(tool_id=tool_id)
+        return cmd_live.launch_import_export_utility(
+            tool_id=tool_id, base_version=base_version, generation=generation
+        )
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
     except OSError as e:
         raise HTTPException(500, f"Failed to launch: {e}") from e
+
+
+# --- FAFO SMS Import-Export Shell (CGILink, site Manager, controlled paths) ---
+import sms_ie_ops as sms_ie
+
+
+class SmsIeLoginBody(BaseModel):
+    host: str
+    username: str | None = "Manager"
+    password: str | None = ""
+    otp: str | None = None
+    profile_id: str | None = None
+    site_number: str | None = None  # store label for folders e.g. "Quick N Easy 1" (NOT the password)
+    export_id: str | None = None
+    tool_id: str | None = None  # import_export_utility | sms_import_export
+    base_version: str | None = None
+
+
+class SmsIeExportBody(BaseModel):
+    session_id: str
+    database_ids: list[str] | None = None
+    cmds: list[str] | None = None
+    preset: str | None = None  # plu_core | merchandise | fuel | …
+    save_path: str | None = None
+    timeout: float = 60.0
+
+
+class SmsIeImportBody(BaseModel):
+    session_id: str
+    folder: str | None = None
+    files: list[str] | None = None
+    cmds: list[str] | None = None
+    timeout: float = 90.0
+
+
+@app.get("/api/verifone/sms-ie/tools")
+def verifone_sms_ie_tools():
+    """Both utilities + catalogs + presets."""
+    return sms_ie.detect_tools()
+
+
+@app.get("/api/verifone/sms-ie/databases")
+def verifone_sms_ie_databases(tool_id: str | None = None, base_version: str | None = None):
+    try:
+        return sms_ie.databases_for_tool(tool_id, base_version)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/sms-ie/login")
+def verifone_sms_ie_login(body: SmsIeLoginBody):
+    """
+    CGILink login with site-specific Manager credentials (same as Config Client).
+    password = that store's Manager password; site_number = optional label (e.g. Quick N Easy 1).
+    """
+    try:
+        return sms_ie.login(
+            body.host,
+            username=body.username or "Manager",
+            password=body.password or "",
+            otp=body.otp,
+            profile_id=body.profile_id,
+            site_number=body.site_number,
+            export_id=body.export_id,
+            tool_id=body.tool_id,
+            base_version=body.base_version,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/sms-ie/logout")
+def verifone_sms_ie_logout(session_id: str):
+    return sms_ie.logout(session_id)
+
+
+@app.get("/api/verifone/sms-ie/session")
+def verifone_sms_ie_session(session_id: str | None = None):
+    return sms_ie.session_status(session_id)
+
+
+@app.get("/api/verifone/sms-ie/suggest-path")
+def verifone_sms_ie_suggest_path(
+    site_number: str | None = None,
+    host: str | None = None,
+    export_id: str | None = None,
+    label: str | None = None,
+):
+    return sms_ie.suggest_save_path(
+        site_number=site_number, host=host, export_id=export_id, label=label
+    )
+
+
+@app.post("/api/verifone/sms-ie/export")
+def verifone_sms_ie_export(body: SmsIeExportBody):
+    try:
+        return sms_ie.export_databases(
+            body.session_id,
+            database_ids=body.database_ids,
+            cmds=body.cmds,
+            preset=body.preset,
+            save_path=body.save_path,
+            timeout=body.timeout,
+        )
+    except (ValueError, KeyError, PermissionError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/sms-ie/import")
+def verifone_sms_ie_import(body: SmsIeImportBody):
+    try:
+        return sms_ie.import_files(
+            body.session_id,
+            folder=body.folder,
+            files=body.files,
+            cmds=body.cmds,
+            timeout=body.timeout,
+        )
+    except (ValueError, KeyError, PermissionError, FileNotFoundError, NotADirectoryError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/verifone/sms-ie/folder")
+def verifone_sms_ie_folder(path: str):
+    try:
+        return sms_ie.list_folder_xml(path)
+    except (PermissionError, FileNotFoundError, NotADirectoryError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/verifone/sms-ie/jobs")
+def verifone_sms_ie_jobs(limit: int = 20):
+    return sms_ie.recent_jobs(limit=limit)
 
 
 # --- Journal Browser (T-log periods + transaction search / drill-down) ---
@@ -852,6 +991,19 @@ class BackupStageBody(BaseModel):
     source: str | None = None
 
 
+class BackupStageBulkBody(BaseModel):
+    site_id: str
+    upcs: list[str] | None = None
+    exclude_upcs: list[str] | None = None
+    operation: str = "set"  # set | price_percent | price_amount
+    field: str = "price"
+    value: str | None = None
+    department: str | None = None
+    q: str | None = None
+    source: str | None = None
+    select_all_matches: bool = False
+
+
 class BackupChangeStatusBody(BaseModel):
     site_id: str
     change_id: str
@@ -868,6 +1020,17 @@ class BackupRestoreBody(BaseModel):
     copy_id: str
 
 
+class BackupFinalizeBody(BaseModel):
+    site_id: str
+    note: str | None = None
+    signed_by: str | None = None
+
+
+class BackupRestoreFinalizedBody(BaseModel):
+    site_id: str
+    history_id: str
+
+
 @app.post("/api/verifone/backup/lookup-item")
 def verifone_backup_lookup_item(body: BackupLookupBody):
     """Match a journal receipt line to PLUs.xml in the site's local SMS backup."""
@@ -880,6 +1043,35 @@ def verifone_backup_lookup_item(body: BackupLookupBody):
             description=body.description,
             department=body.department,
             product=body.product,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.get("/api/verifone/backup/{site_id}/plus")
+def verifone_backup_list_plus(
+    site_id: str,
+    q: str | None = None,
+    department: str | None = None,
+    pcode: str | None = None,
+    food_stamp: str | None = None,
+    upc: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    """Browse/filter PLUs from local SMS backup for the bulk PLU editor."""
+    try:
+        return bedit.list_plus(
+            site_id,
+            q=q,
+            department=department,
+            pcode=pcode,
+            food_stamp=food_stamp,
+            upc=upc,
+            limit=limit,
+            offset=offset,
         )
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
@@ -910,6 +1102,28 @@ def verifone_backup_stage(body: BackupStageBody):
         raise HTTPException(403, str(e)) from e
 
 
+@app.post("/api/verifone/backup/stage-bulk")
+def verifone_backup_stage_bulk(body: BackupStageBulkBody):
+    """Stage the same partial update across many selected PLUs (price %/$, EBT, dept, …)."""
+    try:
+        return bedit.stage_bulk(
+            body.site_id,
+            upcs=body.upcs,
+            exclude_upcs=body.exclude_upcs,
+            operation=body.operation,
+            field=body.field,
+            value=body.value,
+            department=body.department,
+            q=body.q,
+            source=body.source,
+            select_all_matches=body.select_all_matches,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
 @app.post("/api/verifone/backup/change-status")
 def verifone_backup_change_status(body: BackupChangeStatusBody):
     try:
@@ -925,7 +1139,7 @@ def verifone_backup_verify_all(site_id: str):
 
 @app.post("/api/verifone/backup/apply")
 def verifone_backup_apply(body: BackupApplyBody):
-    """Apply verified staged edits to local backup files (safe-copy first)."""
+    """Apply verified staged edits to local backup files (safe-copy + protect original first)."""
     try:
         return bedit.apply_verified_changes(body.site_id, only_verified=body.only_verified)
     except (ValueError, FileNotFoundError) as e:
@@ -937,6 +1151,55 @@ def verifone_backup_apply(body: BackupApplyBody):
 @app.get("/api/verifone/backup/{site_id}/safe-copies")
 def verifone_backup_safe_copies(site_id: str):
     return bedit.list_safe_copies(site_id)
+
+
+@app.get("/api/verifone/backup/{site_id}/original")
+def verifone_backup_original_status(site_id: str):
+    """Protected original baseline + finalized history (last 3)."""
+    return bedit.get_original_status(site_id)
+
+
+@app.post("/api/verifone/backup/{site_id}/ensure-original")
+def verifone_backup_ensure_original(site_id: str):
+    """Create protected original snapshot if missing (does not overwrite)."""
+    try:
+        return bedit.ensure_protected_original(site_id, force=False)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/backup/restore-original")
+def verifone_backup_restore_original(body: BackupApplyBody):
+    """Fail-safe: restore protected original over working PLUs.xml."""
+    try:
+        return bedit.restore_from_original(body.site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.post("/api/verifone/backup/finalize-original")
+def verifone_backup_finalize_original(body: BackupFinalizeBody):
+    """Sign-off: archive protected original to history (keep last 3), re-baseline from current."""
+    try:
+        return bedit.finalize_original(
+            body.site_id, note=body.note, signed_by=body.signed_by
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+
+
+@app.post("/api/verifone/backup/restore-finalized")
+def verifone_backup_restore_finalized(body: BackupRestoreFinalizedBody):
+    try:
+        return bedit.restore_finalized(body.site_id, body.history_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
 
 
 @app.post("/api/verifone/backup/restore-safe")
@@ -1031,6 +1294,15 @@ class ManagerPasswordSetBody(BaseModel):
     scheme: str | None = None  # letter_cycle | manual
     note: str | None = ""
     sync_live_profile: bool = True
+    changed_at: str | None = None  # YYYY-MM-DD when password was changed on site
+
+
+class ManagerPasswordDateBody(BaseModel):
+    group_key: str | None = None
+    export_id: str | None = None
+    changed_at: str  # YYYY-MM-DD from site notes (required)
+    interval_days: int | None = None
+    note: str | None = ""
 
 
 @app.post("/api/verifone/master-profile/password/rotate")
@@ -1052,7 +1324,7 @@ def verifone_master_password_rotate(body: ManagerPasswordRotateBody):
 
 @app.post("/api/verifone/master-profile/password/set")
 def verifone_master_password_set(body: ManagerPasswordSetBody):
-    """Set Manager password on site liferaft (parses trailing letter when scheme is letter_cycle)."""
+    """Set Manager password on site liferaft (parses letter-cycle; optional changed_at date)."""
     try:
         gk = sprof.resolve_group_key(body.group_key, body.export_id)
         return sprof.set_manager_password(
@@ -1062,7 +1334,38 @@ def verifone_master_password_set(body: ManagerPasswordSetBody):
             scheme=body.scheme,
             note=body.note or "",
             sync_live_profile=body.sync_live_profile,
+            changed_at=body.changed_at,
         )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/master-profile/password/change-date")
+def verifone_master_password_change_date(body: ManagerPasswordDateBody):
+    """
+    Record last Manager password change date from site notes (YYYY-MM-DD).
+    Recalculates days remaining and next due (interval default 90).
+    """
+    try:
+        gk = sprof.resolve_group_key(body.group_key, body.export_id)
+        return sprof.set_password_change_date(
+            gk,
+            changed_at=body.changed_at,
+            interval_days=body.interval_days,
+            note=body.note or "",
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/verifone/master-profile/password/status")
+def verifone_master_password_status(group_key: str | None = None, export_id: str | None = None):
+    """Letter + days remaining summary for a site (from last known change date)."""
+    try:
+        gk = sprof.resolve_group_key(group_key, export_id)
+        prof = sprof.get_master_profile(group_key=gk, merge_sources=True)
+        status = sprof.password_status_summary((prof or {}).get("credentials") or {})
+        return {"ok": True, "groupKey": gk, "status": status, "hasSaved": bool((prof or {}).get("hasSaved"))}
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -1091,6 +1394,260 @@ def verifone_put_survey(site_id: str, body: VfSurveyBody):
 def verifone_export_survey_md(site_id: str):
     try:
         return vf.export_survey_markdown(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+# --- Fleet tech defaults (SSH maint shell, etc. — machine-local) ---
+import fleet_tech_ops as fleet_tech
+
+
+@app.get("/api/verifone/fleet-tech-defaults")
+def verifone_fleet_tech_defaults(include_password: bool = True):
+    """PuTTY/SSH maint credentials + playbooks stored under %LOCALAPPDATA%\\FAFO (not git)."""
+    return fleet_tech.get_defaults(include_password=include_password)
+
+
+class FleetTechBody(BaseModel):
+    data: dict | None = None
+
+
+@app.put("/api/verifone/fleet-tech-defaults")
+def verifone_fleet_tech_defaults_put(body: FleetTechBody):
+    if not body.data:
+        raise HTTPException(400, "data required")
+    return fleet_tech.save_defaults(body.data)
+
+
+# --- Manager reset via maint SSH (secrets stay machine-local) ---
+import commander_ssh_ops as cmd_ssh
+
+
+class SshResetManagerBody(BaseModel):
+    host: str
+    port: int | None = 22
+    group_key: str | None = None
+    export_id: str | None = None
+    target_letter: str = "A"
+    password_base: str | None = None  # e.g. 6652990 → final A6652990 after force-change
+    update_liferaft: bool = True
+    # Optional one-shot overrides (default: fleet-tech-defaults / Liferaft)
+    ssh_user: str | None = None
+    ssh_password: str | None = None
+
+
+class SshConfirmManagerBody(BaseModel):
+    group_key: str | None = None
+    export_id: str | None = None
+    password: str | None = None  # default: pending target e.g. A6652990
+    use_pending: bool = True
+    mark_changed: bool = True
+
+
+@app.get("/api/verifone/ssh/capabilities")
+def verifone_ssh_capabilities():
+    return cmd_ssh.ssh_capabilities()
+
+
+# --- High-impact tech helpers (dashboard, playbook, preflight, field pack) ---
+import tech_ops as tech
+
+
+@app.get("/api/verifone/docs/user-guide")
+def verifone_user_guide():
+    """
+    Full Commander FAFO user manual (Markdown).
+    Also available as static file under /toolbox/docs/Commander-FAFO-User-Guide.md
+    """
+    from pathlib import Path as _P
+
+    candidates = [
+        _P(__file__).resolve().parent.parent / "docs" / "Commander-FAFO-User-Guide.md",
+        _P(__file__).resolve().parent.parent / "Verifone Tools" / "Commander-FAFO-User-Guide.md",
+    ]
+    for p in candidates:
+        if p.is_file():
+            text = p.read_text(encoding="utf-8")
+            return {
+                "ok": True,
+                "path": str(p),
+                "relativePath": str(p.relative_to(_P(__file__).resolve().parent.parent)),
+                "bytes": len(text.encode("utf-8")),
+                "markdown": text,
+                "toolboxUrl": "/toolbox/docs/Commander-FAFO-User-Guide.md",
+                "title": "FAFO Commander Tools — Feature Guide & User Manual",
+            }
+    raise HTTPException(404, "User guide not found — expected docs/Commander-FAFO-User-Guide.md")
+
+
+@app.get("/api/verifone/tech/password-dashboard")
+def verifone_password_dashboard(days_warn: int = 14):
+    """Sites with Manager letter-cycle overdue / due soon / missing change date."""
+    return tech.password_rotation_dashboard(days_warn=days_warn)
+
+
+@app.get("/api/verifone/tech/dead-manager-playbook")
+def verifone_dead_manager_playbook(
+    group_key: str | None = None,
+    export_id: str | None = None,
+    host: str | None = None,
+):
+    return tech.dead_manager_playbook(group_key=group_key, export_id=export_id, host=host)
+
+
+@app.get("/api/verifone/tech/otp-card")
+def verifone_otp_card():
+    return {"ok": True, "cards": tech.OTP_CHEAT_CARD}
+
+
+class PreflightBody(BaseModel):
+    host: str
+    username: str | None = "Manager"
+    password: str | None = ""
+
+
+@app.post("/api/verifone/tech/preflight")
+def verifone_tech_preflight(body: PreflightBody):
+    """Ping/ports (+ optional CGILink validate) before Journal / IE / SSH."""
+    try:
+        return tech.connectivity_preflight(
+            body.host,
+            username=body.username or "Manager",
+            password=body.password or "",
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+class FieldPackBody(BaseModel):
+    site_id: str
+    group_key: str | None = None
+    include_redacted_share: bool = True
+    seed_layout_if_empty: bool = True
+
+
+@app.post("/api/verifone/tech/field-pack")
+def verifone_field_pack(body: FieldPackBody):
+    """One-click field pack under backup/survey/field-packs/."""
+    try:
+        return tech.build_field_pack(
+            body.site_id,
+            group_key=body.group_key,
+            include_redacted_share=body.include_redacted_share,
+            seed_layout_if_empty=body.seed_layout_if_empty,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, str(e)) from e
+
+
+class CallLogBody(BaseModel):
+    group_key: str | None = None
+    export_id: str | None = None
+    summary: str
+    what_failed: str | None = ""
+    resolved: bool = False
+
+
+@app.post("/api/verifone/tech/log-call")
+def verifone_log_call(body: CallLogBody):
+    """One-tap after-call note into Liferaft emergency block."""
+    try:
+        return tech.log_call_outcome(
+            body.group_key,
+            body.export_id,
+            summary=body.summary,
+            what_failed=body.what_failed or "",
+            resolved=body.resolved,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/verifone/ssh/reset-manager")
+def verifone_ssh_reset_manager(body: SshResetManagerBody):
+    """
+    SSH as maint (local fleet secret) and run ``resetpw manager``.
+    Returns temp Manager password once; does not put secrets in git.
+    Final password (e.g. A6652990) is set in Config Client forced-change, then confirm endpoint.
+    """
+    try:
+        return cmd_ssh.reset_manager_password(
+            body.host,
+            port=body.port or 22,
+            username=body.ssh_user,
+            password=body.ssh_password,
+            group_key=body.group_key,
+            export_id=body.export_id,
+            target_letter=body.target_letter or "A",
+            password_base=body.password_base,
+            update_liferaft=body.update_liferaft,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, str(e)) from e
+
+
+@app.post("/api/verifone/ssh/confirm-manager-password")
+def verifone_ssh_confirm_manager(body: SshConfirmManagerBody):
+    """After Config Client forced change, record final Manager password (A+base) in Liferaft."""
+    try:
+        return cmd_ssh.confirm_manager_final_password(
+            body.group_key,
+            body.export_id,
+            password=body.password,
+            use_pending=body.use_pending,
+            mark_changed=body.mark_changed,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+# --- SITE-INFO.md in backup folder (users, Manager days, network, equipment, topography) ---
+import site_info_ops as site_info
+
+
+class SiteInfoWriteBody(BaseModel):
+    also_seed_layout: bool = False
+
+
+class SiteLayoutSeedBody(BaseModel):
+    force: bool = False
+
+
+@app.get("/api/verifone/sites/{site_id}/site-info")
+def verifone_site_info_preview(site_id: str):
+    """Preview SITE-INFO.md content (POS users, Manager letter/days, network, equipment)."""
+    try:
+        return site_info.build_site_info_markdown(site_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/sites/{site_id}/site-info/write")
+def verifone_site_info_write(site_id: str, body: SiteInfoWriteBody | None = None):
+    """
+    Write SITE-INFO.md into the SMS backup folder.
+    Includes POS passwords (no 90-day rule), Manager letter + days remaining,
+    survey network/routes (reference only — not pushable), equipment from backup.
+    """
+    try:
+        also = body.also_seed_layout if body else False
+        return site_info.write_site_info_md(site_id, also_seed_layout=also)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except OSError as e:
+        raise HTTPException(500, str(e)) from e
+
+
+@app.post("/api/verifone/sites/{site_id}/layout/seed-from-backup")
+def verifone_layout_seed(site_id: str, body: SiteLayoutSeedBody | None = None):
+    """Seed aerial topography defaults from backup (pumps, tanks, registers, CRIND palette)."""
+    try:
+        force = bool(body.force) if body else False
+        return site_info.apply_topography_to_survey(site_id, only_if_empty=not force)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
 

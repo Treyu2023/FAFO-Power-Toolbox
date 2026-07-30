@@ -1295,15 +1295,45 @@ def parse_transactions(xml_text: str) -> dict[str, Any]:
     return _finalize_tx_payload(txs, parse_note=parse_note)
 
 
+def _facet_values(txs: list[dict[str, Any]], *keys: str, from_lines: bool = False) -> list[str]:
+    """Collect unique non-empty facet values from header fields and optionally line items."""
+    out: set[str] = set()
+    for t in txs:
+        for k in keys:
+            v = t.get(k)
+            if isinstance(v, (list, tuple, set)):
+                for item in v:
+                    s = str(item or "").strip()
+                    if s:
+                        out.add(s)
+            else:
+                s = str(v or "").strip()
+                if s:
+                    # multi-tender header "Cash + Credit" → also expose parts
+                    if " + " in s:
+                        for part in s.split(" + "):
+                            p = part.strip()
+                            if p:
+                                out.add(p)
+                    out.add(s)
+        if from_lines:
+            for ln in t.get("lines") or []:
+                for k in keys:
+                    s = str(ln.get(k) or "").strip()
+                    if s:
+                        out.add(s)
+    return sorted(out, key=lambda x: (x.isdigit(), x.zfill(8) if x.isdigit() else x.lower()))
+
+
 def _finalize_tx_payload(
     txs: list[dict[str, Any]], *, parse_note: str | None = None
 ) -> dict[str, Any]:
-    registers = sorted({str(t.get("register") or "") for t in txs if t.get("register")})
-    employees = sorted({str(t.get("employee") or "") for t in txs if t.get("employee")})
-    mops = sorted({str(t.get("mop") or "") for t in txs if t.get("mop")})
-    departments = sorted({str(t.get("department") or "") for t in txs if t.get("department")})
-    fuel_pos = sorted({str(t.get("fuelPosition") or "") for t in txs if t.get("fuelPosition")})
-    dispensers = sorted({str(t.get("dispenser") or "") for t in txs if t.get("dispenser")})
+    registers = _facet_values(txs, "register")
+    employees = _facet_values(txs, "employee")
+    mops = _facet_values(txs, "mop", "mops", from_lines=True)
+    departments = _facet_values(txs, "department", from_lines=True)
+    fuel_pos = _facet_values(txs, "fuelPosition", "fuelPositions", from_lines=True)
+    dispensers = _facet_values(txs, "dispenser", from_lines=True)
 
     total = 0.0
     sale_count = 0
@@ -1322,12 +1352,12 @@ def _finalize_tx_payload(
 
     return {
         "transactions": txs,
-        "registers": [r for r in registers if r],
-        "employees": [e for e in employees if e],
-        "mops": [m for m in mops if m],
-        "departments": [d for d in departments if d],
-        "fuelPositions": [f for f in fuel_pos if f],
-        "dispensers": [d for d in dispensers if d],
+        "registers": registers,
+        "employees": employees,
+        "mops": mops,
+        "departments": departments,
+        "fuelPositions": fuel_pos,
+        "dispensers": dispensers,
         "summary": {
             "count": len(txs),
             "totalAmount": round(total, 2),
@@ -1566,9 +1596,16 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
                 "merchandise",
                 "trxline",
                 "payline",
+                "trpayline",
                 "tenderline",
+                "payment",
+                "paymentline",
+                "tender",
             }
             or cln.endswith("item")
+            or cln.endswith("payline")
+            or "payline" in cln
+            or "tender" in cln
             or line_type.lower().replace(" ", "") in {t.replace(" ", "") for t in _LINE_TYPES}
             # Base 55.02.08 cash rounding payline (description match)
             or "rounding" in (line_type or "").lower()
@@ -1593,6 +1630,30 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
             m = re.search(r"#\s*0*(\d+)", desc_l)
             if m:
                 fuel_pos_l = m.group(1)
+        # MOP lives on paylines (trpPaycode / tender) far more often than header
+        mop_l = _first(
+            lg(
+                "trpPaycode",
+                "tenderType",
+                "paymentMethod",
+                "methodOfPayment",
+                "TenderCode",
+                "cardType",
+                "fuelMOP",
+                "mop",
+                "tender",
+                "paycode",
+                "payCode",
+            )
+        )
+        # paycode often also appears as attribute on trLine type=payline
+        if not mop_l:
+            mop_l = _first(
+                ca.get("trpPaycode"),
+                ca.get("paycode"),
+                ca.get("tender"),
+                ca.get("mop"),
+            )
         line = {
             "type": line_type or cln,
             "description": desc_l,
@@ -1610,6 +1671,7 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
             "product": product,
             "volume": _first(lg("fuelVolume", "volume")),
             "code": _first(lg("code", "status", "flag")),
+            "mop": mop_l,
         }
         # trlDept @number is the department code in official PJR
         if not line["department"]:
@@ -1695,6 +1757,40 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
                 except (TypeError, ValueError):
                     pass
 
+    # Aggregate MOPs from paylines when header tender is missing (typical PJR)
+    line_mops: list[str] = []
+    for ln in lines:
+        m = str(ln.get("mop") or "").strip()
+        if m and m not in line_mops:
+            line_mops.append(m)
+        # sometimes tender name is only in payline description
+        lt = str(ln.get("type") or "").lower()
+        if lt in {"payline", "tender", "trpayline", "payment"} and not m:
+            desc_m = str(ln.get("description") or "").strip()
+            if desc_m and desc_m not in line_mops and "rounding" not in desc_m.lower():
+                line_mops.append(desc_m)
+                ln["mop"] = desc_m
+    if not mop and line_mops:
+        mop = " + ".join(line_mops[:4])
+    elif mop and line_mops:
+        # keep header mop but ensure all tenders searchable
+        for m in line_mops:
+            if m.lower() not in mop.lower():
+                mop = f"{mop} + {m}"
+
+    # Aggregate fuel positions seen on lines (multi-position tickets)
+    line_fps = sorted(
+        {
+            str(ln.get("fuelPosition") or "").strip()
+            for ln in lines
+            if str(ln.get("fuelPosition") or "").strip()
+        }
+    )
+    if not fuel_pos and line_fps:
+        fuel_pos = line_fps[0]
+    elif fuel_pos and line_fps and fuel_pos not in line_fps:
+        line_fps = [fuel_pos] + [f for f in line_fps if f != fuel_pos]
+
     return {
         "transNum": trans_num,
         "eventType": event_type or "",
@@ -1707,9 +1803,11 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
         "qty": qty,
         "amount": amount,
         "mop": mop,
+        "mops": line_mops or ([mop] if mop else []),
         "department": department,
         "barcode": barcode,
         "fuelPosition": fuel_pos,
+        "fuelPositions": line_fps or ([fuel_pos] if fuel_pos else []),
         "dispenser": dispenser,
         "codes": codes,
         "roundingAdjustment": round(rounding_adj, 2) if rounding_adj is not None else None,
@@ -1731,14 +1829,17 @@ def _parse_one_transaction(el: ET.Element, force: bool = False) -> dict[str, Any
                 qty,
                 amount,
                 mop,
+                " ".join(line_mops),
                 department,
                 barcode,
                 fuel_pos,
+                " ".join(line_fps),
                 dispenser,
                 " ".join(codes),
                 f"rounding {rounding_adj}" if rounding_adj is not None else "",
                 " ".join(
-                    f"{L.get('description')} {L.get('product')} {L.get('barcode')} {L.get('fuelPosition')}"
+                    f"{L.get('description')} {L.get('product')} {L.get('barcode')} "
+                    f"{L.get('fuelPosition')} {L.get('mop')} {L.get('department')}"
                     for L in lines
                 ),
             )
@@ -1764,43 +1865,95 @@ def search_transactions(
     q = transactions
     out = []
 
+    def _norm_time(s: str) -> str:
+        """Normalize HH:MM / HH:MM:SS for lexicographic compare."""
+        s = (s or "").strip()
+        if not s:
+            return ""
+        # take first HH:MM:SS-ish token
+        m = re.match(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", s)
+        if not m:
+            return s
+        hh, mm, ss = m.group(1), m.group(2), m.group(3) or "00"
+        return f"{int(hh):02d}:{mm}:{ss}"
+
+    def _field_haystack(t: dict[str, Any], *keys: str) -> str:
+        parts: list[str] = []
+        for k in keys:
+            v = t.get(k)
+            if isinstance(v, (list, tuple, set)):
+                parts.extend(str(x) for x in v if x not in (None, ""))
+            elif v not in (None, ""):
+                parts.append(str(v))
+        for ln in t.get("lines") or []:
+            for k in keys:
+                v = ln.get(k)
+                if v not in (None, ""):
+                    parts.append(str(v))
+        return " | ".join(parts).lower()
+
     def match(t: dict[str, Any]) -> bool:
-        if criteria.get("register") and str(t.get("register") or "") != str(criteria["register"]):
-            # allow contains for multi-reg strings
-            if str(criteria["register"]).lower() not in str(t.get("register") or "").lower():
+        if criteria.get("register"):
+            needle = str(criteria["register"]).strip().lower()
+            hay = _field_haystack(t, "register")
+            if needle not in hay and str(t.get("register") or "").strip().lower() != needle:
                 return False
-        if criteria.get("employee") and str(criteria["employee"]).lower() not in str(t.get("employee") or "").lower():
-            return False
-        if criteria.get("mop") and str(criteria["mop"]).lower() not in str(t.get("mop") or "").lower():
-            return False
-        if criteria.get("department") and str(criteria["department"]).lower() not in str(t.get("department") or "").lower():
-            return False
+        if criteria.get("employee"):
+            needle = str(criteria["employee"]).strip().lower()
+            if needle not in _field_haystack(t, "employee"):
+                return False
+        if criteria.get("mop"):
+            needle = str(criteria["mop"]).strip().lower()
+            hay = _field_haystack(t, "mop", "mops")
+            if needle not in hay:
+                return False
+        if criteria.get("department"):
+            needle = str(criteria["department"]).strip().lower()
+            if needle not in _field_haystack(t, "department"):
+                return False
         if criteria.get("fuelPosition"):
-            fp = str(criteria["fuelPosition"])
-            if fp not in str(t.get("fuelPosition") or "") and not any(
-                fp in str(L.get("fuelPosition") or "") for L in (t.get("lines") or [])
-            ):
+            fp = str(criteria["fuelPosition"]).strip()
+            hay = _field_haystack(t, "fuelPosition", "fuelPositions")
+            fps: set[str] = set()
+            for src in (t.get("fuelPosition"), t.get("fuelPositions")):
+                if isinstance(src, (list, tuple)):
+                    fps.update(str(x).strip() for x in src if x not in (None, ""))
+                elif src not in (None, ""):
+                    fps.add(str(src).strip())
+            for ln in t.get("lines") or []:
+                if ln.get("fuelPosition") not in (None, ""):
+                    fps.add(str(ln.get("fuelPosition")).strip())
+            ok_fp = (
+                fp.lower() in hay
+                or fp in fps
+                or f"#{fp}" in hay
+                or any(x.isdigit() and fp.isdigit() and int(x) == int(fp) for x in fps)
+            )
+            if not ok_fp:
                 return False
         if criteria.get("dispenser"):
-            d = str(criteria["dispenser"]).lower()
-            if d not in str(t.get("dispenser") or "").lower() and not any(
-                d in str(L.get("dispenser") or "").lower() for L in (t.get("lines") or [])
-            ):
+            d = str(criteria["dispenser"]).strip().lower()
+            if d not in _field_haystack(t, "dispenser"):
                 return False
         if criteria.get("transNum") and str(criteria["transNum"]) not in str(t.get("transNum") or ""):
             return False
         if criteria.get("barcode"):
-            b = str(criteria["barcode"])
-            if b not in str(t.get("barcode") or "") and not any(b in str(L.get("barcode") or "") for L in (t.get("lines") or [])):
+            b = str(criteria["barcode"]).strip()
+            if b not in str(t.get("barcode") or "") and not any(
+                b in str(L.get("barcode") or "") for L in (t.get("lines") or [])
+            ):
                 return False
         if criteria.get("code"):
             code = str(criteria["code"]).upper()
             if code not in [str(c).upper() for c in (t.get("codes") or [])]:
                 return False
         if criteria.get("hasFuel") in (True, "true", "1", 1):
-            if not (t.get("fuelPosition") or t.get("dispenser") or any(
-                L.get("fuelPosition") or L.get("product") for L in (t.get("lines") or [])
-            )):
+            if not (
+                t.get("fuelPosition")
+                or t.get("fuelPositions")
+                or t.get("dispenser")
+                or any(L.get("fuelPosition") or L.get("product") for L in (t.get("lines") or []))
+            ):
                 return False
         # amounts
         amt = t.get("amount")
@@ -1817,17 +1970,23 @@ def search_transactions(
             except (TypeError, ValueError):
                 return False
         # time / date string compare (HH:MM or HH:MM:SS / YYYY-MM-DD)
-        if criteria.get("timeFrom") and str(t.get("time") or "") and str(t.get("time")) < str(criteria["timeFrom"]):
-            return False
-        if criteria.get("timeTo") and str(t.get("time") or "") and str(t.get("time")) > str(criteria["timeTo"]):
-            return False
+        t_time = _norm_time(str(t.get("time") or ""))
+        if criteria.get("timeFrom") and t_time:
+            if t_time < _norm_time(str(criteria["timeFrom"])):
+                return False
+        if criteria.get("timeTo") and t_time:
+            if t_time > _norm_time(str(criteria["timeTo"])):
+                return False
         if criteria.get("dateFrom") and str(t.get("date") or "") and str(t.get("date")) < str(criteria["dateFrom"]):
             return False
         if criteria.get("dateTo") and str(t.get("date") or "") and str(t.get("date")) > str(criteria["dateTo"]):
             return False
         if criteria.get("text"):
             needle = str(criteria["text"]).lower().strip()
-            if needle and needle not in (t.get("searchBlob") or ""):
+            blob = (t.get("searchBlob") or "") or _field_haystack(
+                t, "description", "mop", "employee", "register", "barcode", "department", "transNum"
+            )
+            if needle and needle not in blob:
                 return False
         return True
 

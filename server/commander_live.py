@@ -589,28 +589,79 @@ def sapphire_cgi_link(
     scheme: str = "http",
     port: int | None = None,
     timeout: float = 5.0,
+    method: str = "GET",
+    body: bytes | str | None = None,
+    content_type: str | None = None,
+    cgi_name: str = "CGILink",
 ) -> dict[str, Any]:
     """
-    Call Commander/Sapphire CGILink portal.
+    Call Commander/Sapphire CGI portal (CGILink, CGIPLULink, …).
     Example: cmd=validate&user=...&passwd=... → session cookie XML
+    method=POST used by SMS Import-Export style config pushes (ImportPostData).
+    """
+    return sapphire_cgi_request(
+        host,
+        cmd,
+        params=params,
+        scheme=scheme,
+        port=port,
+        timeout=timeout,
+        method=method,
+        body=body,
+        content_type=content_type,
+        cgi_name=cgi_name,
+    )
+
+
+def sapphire_cgi_request(
+    host: str,
+    cmd: str,
+    *,
+    params: dict[str, str] | None = None,
+    scheme: str = "http",
+    port: int | None = None,
+    timeout: float = 5.0,
+    method: str = "GET",
+    body: bytes | str | None = None,
+    content_type: str | None = None,
+    cgi_name: str = "CGILink",
+) -> dict[str, Any]:
+    """
+    Low-level Sapphire CGI call. cgi_name is the cgi-bin script:
+      CGILink (default configs / validate), CGIPLULink (PLUs), CGIUplink (rare).
     """
     q: dict[str, str] = {"cmd": cmd}
     if params:
         q.update(params)
     base = _cgi_base(host, scheme, port)
-    url = f"{base}/cgi-bin/CGILink?{urllib.parse.urlencode(q)}"
+    cgi = (cgi_name or "CGILink").strip().lstrip("/")
+    if not cgi.startswith("cgi-bin/"):
+        cgi = f"cgi-bin/{cgi}"
+    url = f"{base}/{cgi}?{urllib.parse.urlencode(q)}"
     t0 = time.time()
     status = None
     full = ""
     err = None
+    method = (method or "GET").upper()
     try:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        req = urllib.request.Request(url, headers={"User-Agent": "FAFO-Commander-Status-HUD/1.0"})
+        headers = {"User-Agent": "FAFO-SMS-ImportExport-Shell/1.0"}
+        data = None
+        if method == "POST":
+            if body is None:
+                data = b""
+            elif isinstance(body, bytes):
+                data = body
+            else:
+                data = str(body).encode("utf-8")
+            headers["Content-Type"] = content_type or "text/xml; charset=utf-8"
+            headers["Content-Length"] = str(len(data))
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
         with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             status = getattr(resp, "status", None) or resp.getcode()
-            raw = resp.read(20_000_000)  # T-logs can be multi-MB
+            raw = resp.read(40_000_000)  # large PLUs / poscfg exports
             # gzip (e.g. vtranssetz)
             if raw[:2] == b"\x1f\x8b":
                 import gzip
@@ -623,29 +674,42 @@ def sapphire_cgi_link(
     except urllib.error.HTTPError as e:
         status = e.code
         try:
-            full = e.read(65536).decode("utf-8", errors="replace")
+            full = e.read(2_000_000).decode("utf-8", errors="replace")
         except Exception:  # noqa: BLE001
             full = ""
         err = str(e.reason or e)
     except Exception as e:  # noqa: BLE001
         err = str(e)
     parsed = _parse_sapphire_xml(full)
-    # Large T-log / period XML is not a fault just because ElementTree cannot load a truncated tree
+    # Large config / T-log / period XML is not a fault just because ElementTree cannot load a truncated tree
     if parsed.get("isFault") and full and (
         "<trans" in full[:2000].lower()
         or "transset" in full[:2000].lower()
         or "periodlist" in full[:2000].lower()
         or "naxml" in full[:2000].lower()
+        or "<plu" in full[:4000].lower()
+        or "<domain:" in full[:2000].lower()
+        or "<?xml" in full[:200].lower()
     ):
-        parsed["isFault"] = False
-        if parsed.get("faultMessage", "").startswith("XML parse error"):
-            parsed["faultMessage"] = None
+        # Only clear parse-faults when body looks like real payload (not VFI Fault)
+        if not (parsed.get("faultCode") or parsed.get("invalidCredentials") or parsed.get("otpRequired")):
+            if parsed.get("faultMessage", "").startswith("XML parse error") or "parse error" in (
+                parsed.get("faultMessage") or ""
+            ).lower():
+                parsed["isFault"] = False
+                parsed["faultMessage"] = None
+            # Config export bodies often aren't VFI:Response wrappers
+            if parsed.get("isFault") and not parsed.get("faultCode") and len(full) > 200:
+                parsed["isFault"] = False
+                parsed["faultMessage"] = None
     return {
         "url": url,
         "httpStatus": status,
         "ms": round((time.time() - t0) * 1000),
         "httpError": err,
-        # Full response body for journal period lists / T-logs (rawPreview is truncated)
+        "method": method,
+        "cgiName": cgi_name,
+        # Full response body for journal period lists / T-logs / config exports
         "body": full,
         "bodyBytes": len(full or ""),
         **parsed,
@@ -1453,60 +1517,95 @@ def suggested_targets_from_library(limit: int = 40) -> list[dict[str, Any]]:
     return out[:limit]
 
 
-# --- Verifone Import-Export Utility (SMS/Commander config backup tool) --------
-
+# --- Verifone Import-Export utilities (two generations) ----------------------
+#
+# NEW (Base 55+):  ImportExportUtility.exe  — Program Files\Verifone\Import-Export Utility
+# LEGACY:          SMSImportExport.exe      — Program Files (x86)\Verifone\importExportUtil
+#
 # unins000.exe is the Inno Setup uninstaller — never launch that for backups.
-IMPORT_EXPORT_CANDIDATES: list[dict[str, str]] = [
+
+IMPORT_EXPORT_CANDIDATES: list[dict[str, Any]] = [
     {
         "id": "import_export_utility",
-        "label": "Import-Export Utility (current)",
+        "generation": "new",
+        "label": "Import-Export Utility (Base 55+)",
+        "shortLabel": "New (55+)",
         "exe": r"C:\Program Files\Verifone\Import-Export Utility\ImportExportUtility.exe",
         "workdir": r"C:\Program Files\Verifone\Import-Export Utility",
         "cfg": r"C:\Program Files\Verifone\Import-Export Utility\importCfg.xml",
+        "forBase": "55+",
+        "notes": "Modern tool — use for Commander Base 55.x / current WEB packages.",
     },
     {
         "id": "sms_import_export",
+        "generation": "legacy",
         "label": "SMS Import Export (legacy x86)",
+        "shortLabel": "Legacy",
         "exe": r"C:\Program Files (x86)\Verifone\importExportUtil\SMSImportExport.exe",
         "workdir": r"C:\Program Files (x86)\Verifone\importExportUtil",
         "cfg": r"C:\Program Files (x86)\Verifone\importExportUtil\importCfg.xml",
+        "forBase": "pre-55 / older SMS packs",
+        "notes": "Older SMS pack — use only for older bases or when the new tool is missing.",
     },
 ]
 
 IMPORT_EXPORT_GUIDANCE = {
-    "title": "Verifone Import-Export Utility (site backups)",
+    "title": "Two Import-Export utilities (old + new)",
+    "dualTool": (
+        "Laptops often have BOTH installed. "
+        "NEW Import-Export Utility (Base 55+) vs LEGACY SMS Import Export (x86). "
+        "Pick by site base version — not at random."
+    ),
     "uninstallerWarning": (
         "Do not run unins000.exe — that uninstalls the tool. "
-        "Use ImportExportUtility.exe (or SMSImportExport.exe on older installs)."
+        "Use ImportExportUtility.exe (new) or SMSImportExport.exe (legacy)."
     ),
     "login": (
-        "Use the same Config Client credentials as the site (typically Manager + site password). "
-        "If CGILink / Config Client needs a 4-digit OTP, generate it on the register first "
-        "(CSR → Maintenance → Generate/Config OTP), then sign into Import-Export with user/password "
-        "(and OTP if the utility prompts)."
+        "Use the **site-specific Manager** credentials (same as Config Client for THAT store). "
+        "Username is usually Manager; password is that store's Manager password "
+        "(each site has its own digit base — not shared across stores). "
+        "If CGILink needs a 4-digit OTP, generate it on the register first "
+        "(CSR → Maintenance → Generate/Config OTP)."
     ),
     "passwordRotation": (
-        "Manager password often forces a change ~every 90 days: cycle trailing letter A→B→C→D→E→A. "
-        "Keep the HUD site profile password in sync after you rotate it."
+        "Fleet default (~90% of sites): leading capital A–E + site digit base "
+        "(e.g. B6652990 → C6652990, or A123456 → B123456). "
+        "Forced ~every 90 days: enter current, re-enter current, enter new twice. "
+        "Must have 1 capital letter; cannot reuse last 4 (hence A→B→C→D→E→A). "
+        "After live change, Rotate letter in Liferaft so FAFO matches."
     ),
     "backupWorkflow": [
         "Connect laptop to site LAN (same network as Commander).",
         "Confirm HUD can reach host (ping / Config Client URL).",
-        "Launch Import-Export Utility from this HUD (or Start Menu).",
-        "Log in with that site's Manager credentials (same as Config Client).",
-        "Export / backup SMS config to a folder named for the site under your watched Verifone backup root.",
+        "Choose NEW tool for Base 55+ or LEGACY for older bases (or use FAFO SMS IE shell).",
+        "Log in with that site's Manager credentials (site-specific).",
+        "Export selected databases to a folder under your FAFO watched backup root "
+        "(name it with the store label e.g. Quick N Easy 1).",
         "Click Sync folders in Commander Site Console so the new export is indexed.",
     ],
     "suggestedBackupRootNote": (
         "FAFO watches machine-local folders from local-paths.json (VerifoneWatchFolders). "
-        "Drop new exports there (e.g. …\\Verifone Laptop storage\\NC\\{Site Name})."
+        "Drop new exports there (e.g. …\\Verifone Laptop storage\\NC\\Quick N Easy 1\\…)."
     ),
 }
 
 
 def detect_import_export_utility() -> dict[str, Any]:
-    """Locate installed Verifone Import-Export / SMS Import Export tools on this PC."""
+    """
+    Locate BOTH Import-Export tools when present:
+      - New ImportExportUtility (Base 55+)
+      - Legacy SMSImportExport (x86)
+    Prefer sms_ie_ops.detect_tools when available (richer catalog counts).
+    """
+    try:
+        import sms_ie_ops as sie
+
+        return sie.detect_tools()
+    except Exception:  # noqa: BLE001
+        pass
+
     found: list[dict[str, Any]] = []
+    all_c: list[dict[str, Any]] = []
     for c in IMPORT_EXPORT_CANDIDATES:
         exe = Path(c["exe"])
         row = {
@@ -1516,6 +1615,7 @@ def detect_import_export_utility() -> dict[str, Any]:
             "cfgExists": Path(c["cfg"]).is_file() if c.get("cfg") else False,
             "workdirExists": Path(c["workdir"]).is_dir() if c.get("workdir") else False,
         }
+        all_c.append(row)
         if row["installed"]:
             try:
                 st = exe.stat()
@@ -1525,8 +1625,9 @@ def detect_import_export_utility() -> dict[str, Any]:
                 pass
             found.append(row)
 
-    primary = found[0] if found else None
-    # Preferred save location from FAFO watch list
+    new_t = next((t for t in found if t.get("generation") == "new"), None)
+    leg_t = next((t for t in found if t.get("generation") == "legacy"), None)
+    primary = new_t or (found[0] if found else None)
     watch: list[str] = []
     try:
         import verifone_ops as vf
@@ -1538,17 +1639,22 @@ def detect_import_export_utility() -> dict[str, Any]:
     return {
         "ok": True,
         "installed": bool(found),
+        "bothInstalled": bool(new_t and leg_t),
         "primary": primary,
+        "newTool": new_t,
+        "legacyTool": leg_t,
         "tools": found,
-        "allCandidates": [
-            {**c, "installed": Path(c["exe"]).is_file()} for c in IMPORT_EXPORT_CANDIDATES
-        ],
+        "allCandidates": all_c,
+        "recommendedDefault": "import_export_utility" if new_t else (
+            "sms_import_export" if leg_t else None
+        ),
         "guidance": IMPORT_EXPORT_GUIDANCE,
         "suggestedBackupRoots": watch,
         "uninstallerPaths": [
             p
             for p in (
                 r"C:\Program Files\Verifone\Import-Export Utility\unins000.exe",
+                r"C:\Program Files (x86)\Verifone\importExportUtil\unins000.exe",
             )
             if Path(p).is_file()
         ],
@@ -1556,31 +1662,52 @@ def detect_import_export_utility() -> dict[str, Any]:
     }
 
 
-def launch_import_export_utility(tool_id: str | None = None) -> dict[str, Any]:
+def launch_import_export_utility(
+    tool_id: str | None = None,
+    *,
+    base_version: str | None = None,
+    generation: str | None = None,
+) -> dict[str, Any]:
     """
-    Start ImportExportUtility.exe (or legacy SMSImportExport.exe).
-    Credentials are entered in the app UI — same Manager login as the site.
+    Start NEW ImportExportUtility.exe (Base 55+) or LEGACY SMSImportExport.exe.
+    Credentials are entered in the utility UI — site-specific Manager login.
     """
     info = detect_import_export_utility()
     tools = info.get("tools") or []
     if not tools:
         raise FileNotFoundError(
-            "Verifone Import-Export Utility not found. Expected "
+            "Neither Import-Export tool found. Expected new: "
             r"C:\Program Files\Verifone\Import-Export Utility\ImportExportUtility.exe"
+            " or legacy: "
+            r"C:\Program Files (x86)\Verifone\importExportUtil\SMSImportExport.exe"
         )
 
     target = None
     if tool_id:
         target = next((t for t in tools if t.get("id") == tool_id), None)
+    if not target and generation:
+        gen = generation.lower().strip()
+        if gen in {"new", "55", "55+", "modern"}:
+            target = next((t for t in tools if t.get("generation") == "new"), None)
+        elif gen in {"legacy", "old", "sms", "x86"}:
+            target = next((t for t in tools if t.get("generation") == "legacy"), None)
+    if not target and base_version:
+        try:
+            import sms_ie_ops as sie
+
+            rid = sie.recommend_tool_for_base(base_version)
+            target = next((t for t in tools if t.get("id") == rid), None)
+        except Exception:  # noqa: BLE001
+            pass
     if not target:
-        target = tools[0]
+        # Prefer new (55+) when both present
+        target = next((t for t in tools if t.get("generation") == "new"), None) or tools[0]
 
     exe = Path(target["exe"])
     if not exe.is_file():
         raise FileNotFoundError(f"Executable missing: {exe}")
 
     workdir = target.get("workdir") or str(exe.parent)
-    # Launch detached so server is not blocked
     import subprocess
 
     subprocess.Popen(
@@ -1589,16 +1716,19 @@ def launch_import_export_utility(tool_id: str | None = None) -> dict[str, Any]:
         shell=False,
         close_fds=True,
     )
+    gen_label = target.get("shortLabel") or target.get("generation") or target.get("id")
     return {
         "ok": True,
         "launched": str(exe),
         "workdir": workdir,
         "toolId": target.get("id"),
+        "generation": target.get("generation"),
         "label": target.get("label"),
         "loginHint": IMPORT_EXPORT_GUIDANCE["login"],
         "suggestedBackupRoots": info.get("suggestedBackupRoots") or [],
         "note": (
-            "Log into Import-Export with the same site Manager credentials used for Config Client. "
-            "Export into a site folder under your FAFO watched backup root, then Sync."
+            f"Launched {gen_label}. Log in as Manager with this store's password "
+            "(same as Config Client — per site, e.g. Quick N Easy 1). "
+            "Export into a FAFO watched backup folder, then Sync."
         ),
     }

@@ -51,7 +51,7 @@ if ($ext -and $ext -ne '.ico') {
     $DefaultIco
   ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
   if ($preferIco) {
-    Write-Host "Note: Windows shortcuts prefer .ico — using $preferIco for the .lnk"
+    Write-Host "Note: Windows shortcuts prefer .ico - using $preferIco for the .lnk"
     Write-Host "      HTML launcher will still use your image/GIF from tool-icons."
     $lnkIcon = $preferIco
   } else {
@@ -86,4 +86,4 @@ if ($StartMenu) {
 Write-Host ""
 Write-Host "Done. Pin 'AI HTML Toolbox' from the Desktop to the taskbar for a custom icon."
 Write-Host "Shared tool icons: assets\tool-icons\  (Set-FAFOToolIcon.ps1 or Launcher Edit Icons)"
-Write-Host "  .\Scripts\Set-FAFOToolIcon.ps1 -ToolId app -SourcePath `"path\to\icon.ico`""
+Write-Host '  .\Scripts\Set-FAFOToolIcon.ps1 -ToolId app -SourcePath "path\to\icon.ico"'
