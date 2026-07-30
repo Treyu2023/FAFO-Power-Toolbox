@@ -12,41 +12,39 @@ Local browser-based tools for media cataloging, VSR pipeline renaming, and befor
 
 ## Quick start (how to launch)
 
-### 1. Open the launcher
+### First time on this PC (once)
 
-Double-click either location (they are the same project):
+1. Install **Google Chrome** if you do not have it.
+2. Double-click **`Install FAFO Toolbox.bat`**
+3. Follow the prompts (Python, shortcuts, optional “start with Windows”).
+4. When finished, use the **Desktop** shortcuts — you should not need this folder again.
 
-| Location | File |
-|----------|------|
-| Desktop shortcut folder | `AI HTML TOOLBOX\Toolbox Launcher.html` |
-| Git repo | `c:\_git\HTMLPROJECTS\AI HTML TOOLBOX\Toolbox Launcher.html` |
+| File | Purpose |
+|------|---------|
+| **`Install FAFO Toolbox.bat`** | One-time installer (checks what is missing, installs only that) |
+| `SETUP (run once).bat` | Same installer (compatibility alias) |
 
-Open in **Chrome** or **Edge**. Pin it: ⋮ → More tools → Create shortcut → **Open as window**.
+Installer creates:
 
-### 2. Start the Python server (recommended)
+- Desktop **AI HTML Toolbox** (app + servers)
+- Desktop **AI HTML Toolbox - Start Servers** (recover if offline)
+- Start Menu → **AI HTML Toolbox**
+- `aitoolbox://` protocol so in-app **Start Server** works
+- Local Python `.venv` (not global pip)
 
-Full features need the backend on **`http://127.0.0.87:18765`** (dedicated loopback IP + port). This is intentional — it will **not** fight FAFO’s companion or other apps on standard `127.0.0.1:8765`. You can start it **from any major tool page** — no need to leave Media Library / VSR to go find a `.bat` file.
+No admin / UAC required for normal install.
 
-**One-click (preferred):**
+### Every day after that
 
-1. Open **Toolbox Launcher**, **Media Library**, **VSR Pipeline**, or **File Organizer**
-2. Click **▶ Start Server** (or the red/orange offline pill)
-3. Wait for the pill/dot to turn **green** (yellow/gold = starting, up to ~90s)
+| Action | How |
+|--------|-----|
+| Open the app | Desktop **AI HTML Toolbox** (or Start Menu) |
+| Servers offline | Desktop **Start Servers**, tray → Recover, or in-app **▶ Start / Relaunch** |
+| Servers while signed in | Launcher → *Launch with Windows*, or re-run installer and say Yes |
 
-| Where | What you’ll see |
-|-------|------------------|
-| **Launcher** | Banner: **▶ Start Server**, Console, Open Folder, Setup Once |
-| **Media Library** | **▶ Start Server** + offline banner + clickable red pill |
-| **VSR Pipeline** | **▶ Start Server** + clickable orange pill |
-| **File Organizer** | **▶ Start Server** + clickable offline pill |
+Backend: **`http://127.0.0.87:18765`** (toolbox + Verifone). FAFO Local Tab tags: **`127.0.0.1:8765`**. Both can run together. Servers stay **hidden** and **auto-restart** while the tray or a toolbox page is open.
 
-**If the browser blocks launch:**
-
-1. **🖥 Console** (Launcher / Media Library) — visible server window  
-2. **📂 Open Folder** → double-click **`START SERVER.bat`**  
-3. Run **`SETUP (run once).bat`** once — registers `aitoolbox://start` and a desktop shortcut, then in-app Start usually works  
-
-Advanced: `server\start_server.bat` still offers tray / console / autostart menu.
+**If the browser blocks Start:** use Desktop **Start Servers** or the tray icon — not the install folder.
 
 ### 3. First-time tour
 
@@ -207,6 +205,11 @@ Click **🐛 Debug** on the Launcher, Media Library, or VSR Pipeline (or add `?d
 - Python backend (`127.0.0.87:18765`) — scan, rename, ffmpeg thumbs, native folder picker
 - Shared UI kit — tooltips, animations, first-run tutorials, confirm + trust dialogs
 - System tray launcher and optional Windows autostart
+- One-click / Start Server can also start the FAFO Local Tab tagging companion (`127.0.0.1:8765`) alongside the toolbox backend (`127.0.0.87:18765`, Verifone + media)
+- Servers launch **hidden** (no console windows users can close by mistake)
+- **Auto-keep**: tray watchdog + in-page keepalive restart companions if they die while the toolbox is open
+- Relaunch without browsing install folders: Desktop **Start Servers**, Start Menu **AI HTML Toolbox**, system **tray**, or in-app **Relaunch** — local loopback, **no UAC**
+- Launcher panel: companion status, which servers start with one-click, and **Launch with Windows** toggles for servers and/or Chrome app (Startup folder shortcuts; prefs in `%LOCALAPPDATA%\FAFO\launch-prefs.json`)
 
 ---
 

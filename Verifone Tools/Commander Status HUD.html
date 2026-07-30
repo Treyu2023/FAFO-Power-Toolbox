@@ -351,6 +351,7 @@
           </div>
         </div>
         <pre id="jDiag" class="muted" style="display:none;font-size:10px;max-height:140px;overflow:auto;margin:8px 0 0;padding:8px;background:rgba(0,0,0,.35);border-radius:8px;border:1px solid var(--line);white-space:pre-wrap"></pre>
+        <div class="muted" id="jLiveHint" style="font-size:11px;margin:6px 0;color:var(--good)">● Live filter — drills down on loaded data as you change any field (no re-fetch)</div>
         <div class="j-filters" id="jFilters">
           <div><label class="fld">Register</label><select id="jfReg"><option value="">Any</option></select></div>
           <div><label class="fld">Employee</label><select id="jfEmp"><option value="">Any</option></select></div>
@@ -366,8 +367,9 @@
           <div><label class="fld">Time to</label><input id="jfTimeTo" placeholder="HH:MM:SS"></div>
           <div><label class="fld">Text search</label><input id="jfText" placeholder="description, product…"></div>
           <div><label class="fld">Code</label><select id="jfCode"><option value="">Any</option><option>D</option><option>PO</option><option>TE</option><option>VL</option><option value="RND" title="Base 55.02.08 cash rounding payline">RND</option></select></div>
-          <div style="display:flex;align-items:flex-end;padding-bottom:4px">
+          <div style="display:flex;align-items:flex-end;padding-bottom:4px;gap:10px;flex-wrap:wrap">
             <label class="chk" style="margin:0"><input type="checkbox" id="jfHasFuel"> Fuel only</label>
+            <button type="button" class="btn" id="btnJClearFilters" disabled title="Clear all filter fields">Clear filters</button>
           </div>
         </div>
         <div id="jResultMeta" class="muted" style="font-size:12px;margin:6px 0">No period loaded. Prefer a <strong>dated SHIFT</strong> (not Current) for sales $ / qty.</div>
@@ -410,6 +412,7 @@
 
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
   <script>
     // Prefer sticky host / saved profile — never assume a fixed lab site IP.
     const DEFAULT_SITE_HOST = '';
@@ -434,6 +437,8 @@
     let journalSelectedRow = null;
     let journalMode = 'all'; // all | search | filter
     let journalShowSalesOnly = true;
+    let journalFilterTimer = null;
+    let journalSearchMatches = [];
 
     function isCurrentPeriod(p) {
       const lab = String(p.label || p.filename || p.name || p.key || '').toLowerCase();
@@ -1226,13 +1231,192 @@
       const tr = el('jTxBody').querySelector(`tr[data-i="${i}"]`);
       if (tr) tr.scrollIntoView({ block: 'nearest' });
     }
+    function enrichTxForFilter(txs) {
+      (txs || []).forEach(t => {
+        const lines = t.lines || [];
+        if (!t.mop) {
+          const mops = [];
+          lines.forEach(L => {
+            let m = (L.mop || '').toString().trim();
+            const lt = String(L.type || '').toLowerCase();
+            if (!m && (lt.includes('pay') || lt.includes('tender')) && L.description) {
+              const d = String(L.description).trim();
+              if (d && !/rounding/i.test(d)) { m = d; L.mop = m; }
+            }
+            if (m && !mops.includes(m)) mops.push(m);
+          });
+          if (mops.length) { t.mop = mops.join(' + '); t.mops = mops; }
+        } else if (!t.mops) {
+          t.mops = String(t.mop).split(' + ').map(s => s.trim()).filter(Boolean);
+        }
+        if (!t.fuelPosition) {
+          const fp = lines.map(L => L.fuelPosition).find(x => x != null && x !== '');
+          if (fp != null && fp !== '') t.fuelPosition = String(fp);
+        }
+        if (!t.department) {
+          const d = lines.map(L => L.department).find(x => x != null && x !== '');
+          if (d != null && d !== '') t.department = String(d);
+        }
+        if (t.searchBlob && t.mop && !String(t.searchBlob).includes(String(t.mop).toLowerCase())) {
+          t.searchBlob = (t.searchBlob + ' ' + t.mop + ' ' + (t.fuelPosition || '')).toLowerCase();
+        }
+      });
+      return txs;
+    }
+    function collectFacetValues(txs, keys, fromLines) {
+      const out = new Set();
+      const add = (v) => {
+        if (v == null || v === '') return;
+        if (Array.isArray(v)) { v.forEach(add); return; }
+        const s = String(v).trim();
+        if (!s) return;
+        out.add(s);
+        if (s.includes(' + ')) s.split(' + ').forEach(p => { const t = p.trim(); if (t) out.add(t); });
+      };
+      (txs || []).forEach(t => {
+        keys.forEach(k => add(t[k]));
+        if (fromLines) (t.lines || []).forEach(L => keys.forEach(k => add(L[k])));
+      });
+      return Array.from(out).sort((a, b) => {
+        const an = /^\d+$/.test(a), bn = /^\d+$/.test(b);
+        if (an && bn) return Number(a) - Number(b);
+        if (an !== bn) return an ? -1 : 1;
+        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+      });
+    }
+    function buildFacetsFromTx(txs) {
+      return {
+        registers: collectFacetValues(txs, ['register'], false),
+        employees: collectFacetValues(txs, ['employee'], false),
+        mops: collectFacetValues(txs, ['mop', 'mops'], true),
+        departments: collectFacetValues(txs, ['department'], true),
+        fuelPositions: collectFacetValues(txs, ['fuelPosition', 'fuelPositions'], true),
+        dispensers: collectFacetValues(txs, ['dispenser'], true),
+      };
+    }
     function applyFacetOptions(payload) {
-      fillSelect(el('jfReg'), payload.registers || []);
-      fillSelect(el('jfEmp'), payload.employees || []);
-      fillSelect(el('jfMop'), payload.mops || []);
-      fillSelect(el('jfDept'), payload.departments || []);
-      fillSelect(el('jfFuel'), payload.fuelPositions || []);
-      fillSelect(el('jfDisp'), payload.dispensers || []);
+      const fromData = buildFacetsFromTx(journalAllTx);
+      const merge = (a, b) => {
+        const s = new Set([...(a || []), ...(b || [])].map(String).filter(Boolean));
+        return Array.from(s).sort((x, y) => {
+          const xn = /^\d+$/.test(x), yn = /^\d+$/.test(y);
+          if (xn && yn) return Number(x) - Number(y);
+          return x.localeCompare(y, undefined, { sensitivity: 'base' });
+        });
+      };
+      fillSelect(el('jfReg'), merge(payload && payload.registers, fromData.registers));
+      fillSelect(el('jfEmp'), merge(payload && payload.employees, fromData.employees));
+      fillSelect(el('jfMop'), merge(payload && payload.mops, fromData.mops));
+      fillSelect(el('jfDept'), merge(payload && payload.departments, fromData.departments));
+      fillSelect(el('jfFuel'), merge(payload && payload.fuelPositions, fromData.fuelPositions));
+      fillSelect(el('jfDisp'), merge(payload && payload.dispensers, fromData.dispensers));
+    }
+    function jCriteriaIsEmpty(c) {
+      if (!c) return true;
+      return !Object.keys(c).some(k => {
+        const v = c[k];
+        return v !== '' && v !== false && v != null;
+      });
+    }
+    function normJournalTime(s) {
+      s = String(s || '').trim();
+      if (!s) return '';
+      const m = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (!m) return s;
+      return String(Number(m[1])).padStart(2, '0') + ':' + m[2] + ':' + (m[3] || '00');
+    }
+    function txFieldHaystack(t, keys) {
+      const parts = [];
+      keys.forEach(k => {
+        const v = t[k];
+        if (Array.isArray(v)) v.forEach(x => { if (x != null && x !== '') parts.push(String(x)); });
+        else if (v != null && v !== '') parts.push(String(v));
+      });
+      (t.lines || []).forEach(L => {
+        keys.forEach(k => {
+          if (L[k] != null && L[k] !== '') parts.push(String(L[k]));
+        });
+      });
+      return parts.join(' | ').toLowerCase();
+    }
+    function txMatchesCriteria(t, c) {
+      if (!c || jCriteriaIsEmpty(c)) return true;
+      if (c.register && !txFieldHaystack(t, ['register']).includes(String(c.register).trim().toLowerCase())) return false;
+      if (c.employee && !txFieldHaystack(t, ['employee']).includes(String(c.employee).trim().toLowerCase())) return false;
+      if (c.mop && !txFieldHaystack(t, ['mop', 'mops']).includes(String(c.mop).trim().toLowerCase())) return false;
+      if (c.department && !txFieldHaystack(t, ['department']).includes(String(c.department).trim().toLowerCase())) return false;
+      if (c.fuelPosition) {
+        const fp = String(c.fuelPosition).trim();
+        const hay = txFieldHaystack(t, ['fuelPosition', 'fuelPositions']);
+        const fps = new Set();
+        [t.fuelPosition, ...(t.fuelPositions || [])].forEach(x => { if (x != null && x !== '') fps.add(String(x).trim()); });
+        (t.lines || []).forEach(L => { if (L.fuelPosition != null && L.fuelPosition !== '') fps.add(String(L.fuelPosition).trim()); });
+        const ok = hay.includes(fp.toLowerCase()) || fps.has(fp)
+          || [...fps].some(x => /^\d+$/.test(x) && /^\d+$/.test(fp) && Number(x) === Number(fp));
+        if (!ok) return false;
+      }
+      if (c.dispenser && !txFieldHaystack(t, ['dispenser']).includes(String(c.dispenser).trim().toLowerCase())) return false;
+      if (c.transNum && !String(t.transNum || '').includes(String(c.transNum))) return false;
+      if (c.barcode) {
+        const b = String(c.barcode).trim();
+        if (!String(t.barcode || '').includes(b) && !(t.lines || []).some(L => String(L.barcode || '').includes(b))) return false;
+      }
+      if (c.code) {
+        const code = String(c.code).toUpperCase();
+        if (!(t.codes || []).map(x => String(x).toUpperCase()).includes(code)) return false;
+      }
+      if (c.hasFuel === true || c.hasFuel === 'true' || c.hasFuel === 1 || c.hasFuel === '1') {
+        const has = t.fuelPosition || (t.fuelPositions && t.fuelPositions.length)
+          || t.dispenser || (t.lines || []).some(L => L.fuelPosition || L.product);
+        if (!has) return false;
+      }
+      if (c.amountMin !== '' && c.amountMin != null) {
+        if (t.amount == null || Number(t.amount) < Number(c.amountMin)) return false;
+      }
+      if (c.amountMax !== '' && c.amountMax != null) {
+        if (t.amount == null || Number(t.amount) > Number(c.amountMax)) return false;
+      }
+      const tTime = normJournalTime(t.time);
+      if (c.timeFrom && tTime && tTime < normJournalTime(c.timeFrom)) return false;
+      if (c.timeTo && tTime && tTime > normJournalTime(c.timeTo)) return false;
+      if (c.text) {
+        const needle = String(c.text).toLowerCase().trim();
+        const blob = (t.searchBlob || '') || txFieldHaystack(t, [
+          'description', 'mop', 'employee', 'register', 'barcode', 'department', 'transNum', 'fuelPosition',
+        ]);
+        if (needle && !blob.includes(needle)) return false;
+      }
+      return true;
+    }
+    function filterTxLocal(transactions, criteria) {
+      const c = criteria || {};
+      const matched = (transactions || []).filter(t => txMatchesCriteria(t, c));
+      let total = 0;
+      matched.forEach(t => { const n = Number(t.amount); if (!isNaN(n)) total += n; });
+      return { ok: true, count: matched.length, totalAmount: Math.round(total * 100) / 100, matched, criteria: c };
+    }
+    function scheduleJournalLiveFilter() {
+      clearTimeout(journalFilterTimer);
+      journalFilterTimer = setTimeout(() => {
+        if (!journalAllTx.length) {
+          if (el('jLiveHint')) el('jLiveHint').textContent = '● Live filter — load a period first (Get Data)';
+          return;
+        }
+        journalSearch('filter', { silent: true });
+      }, 60);
+    }
+    function clearJournalFilters() {
+      [
+        'jfReg', 'jfEmp', 'jfMop', 'jfDept', 'jfFuel', 'jfDisp',
+        'jfTrans', 'jfBarcode', 'jfAmtMin', 'jfAmtMax', 'jfTimeFrom', 'jfTimeTo', 'jfText', 'jfCode',
+      ].forEach(id => { const n = el(id); if (n) n.value = ''; });
+      if (el('jfHasFuel')) el('jfHasFuel').checked = false;
+      journalMode = 'all';
+      journalSearchMatches = [];
+      journalMatchIdx = -1;
+      applyJournalView();
+      if (el('jLiveHint')) el('jLiveHint').textContent = '● Live filter — cleared · showing full period';
+      if (el('btnJClearFilters')) el('btnJClearFilters').disabled = !journalAllTx.length;
     }
     function showJournalDiag(obj) {
       const box = el('jDiag');
@@ -1356,11 +1540,13 @@
           console.warn('journal fetch attempts', res.attempts);
           return;
         }
-        journalAllTx = res.transactions || [];
+        journalAllTx = enrichTxForFilter(res.transactions || []);
         journalMode = 'all';
         journalMatchIdx = -1;
         applyFacetOptions(res);
-        applyJournalView();
+        if (el('btnJClearFilters')) el('btnJClearFilters').disabled = !journalAllTx.length;
+        if (!jCriteriaIsEmpty(jCriteria())) journalSearch('filter', { silent: true });
+        else applyJournalView();
         const sum = res.summary || {};
         const salesN = journalAllTx.filter(isSaleLikeTx).length;
         el('btnJSearch').disabled = false;
@@ -1424,21 +1610,24 @@
           showJournalDiag({ type: 'periodList', path: res.path, count: journalPeriods.length });
           return;
         }
-        journalAllTx = res.transactions || [];
+        journalAllTx = enrichTxForFilter(res.transactions || []);
         journalMode = 'all';
         journalMatchIdx = -1;
         journalPeriodKey = (res.period && res.period.key) || 'file';
         journalPeriods = res.period ? [res.period] : journalPeriods;
         applyFacetOptions(res);
         renderPeriods();
-        renderTxTable(journalAllTx);
-        const sum = res.summary || {};
-        el('jResultMeta').textContent =
-          `Offline XML · ${res.count || 0} transactions · total $${Number(sum.totalAmount || 0).toFixed(2)} · ${path}`;
+        if (el('btnJClearFilters')) el('btnJClearFilters').disabled = !journalAllTx.length;
+        if (!jCriteriaIsEmpty(jCriteria())) journalSearch('filter', { silent: true });
+        else {
+          applyJournalView();
+          const sum = res.summary || {};
+          el('jResultMeta').textContent =
+            `Offline XML · ${res.count || 0} transactions · total $${Number(sum.totalAmount || 0).toFixed(2)} · ${path}`;
+        }
         el('btnJSearch').disabled = !journalAllTx.length;
         el('btnJFilter').disabled = !journalAllTx.length;
         el('btnJExport').disabled = !journalAllTx.length;
-        // Local search without server period cache: use search-local
         journalSessionId = journalSessionId || 'offline';
         setJournalStatus('Offline XML loaded', true);
         toast(`Loaded ${res.count} transactions from XML`);
@@ -1449,71 +1638,71 @@
         el('btnJXml').disabled = false;
       }
     }
-    async function journalSearch(mode) {
+    async function journalSearch(mode, opts) {
+      const silent = !!(opts && opts.silent);
       if (!journalAllTx.length && journalSessionId && journalSessionId !== 'offline' && journalPeriodKey) {
-        await journalGetData();
+        if (!silent) await journalGetData();
+        else return;
       }
       if (!journalAllTx.length) {
-        toast('Load a period (Get Data) or offline XML first');
+        if (!silent) toast('Load a period (Get Data) or offline XML first');
         return;
       }
-      journalMode = mode || 'search';
-      try {
-        let res;
-        if (journalSessionId && journalSessionId !== 'offline' && journalPeriodKey) {
-          res = await api('/verifone/journal/search', {
-            method: 'POST',
-            body: JSON.stringify({
-              session_id: journalSessionId,
-              period_key: journalPeriodKey,
-              criteria: jCriteria(),
-            }),
-          });
-        } else {
-          res = await api('/verifone/journal/search-local', {
-            method: 'POST',
-            body: JSON.stringify({
-              transactions: journalAllTx,
-              criteria: jCriteria(),
-            }),
-          });
-        }
-        const matched = res.matched || [];
-        if (journalMode === 'filter') {
-          renderTxTable(matched);
-          journalMatchIdx = matched.length ? 0 : -1;
-          if (matched.length) selectTx(0);
-        } else {
-          // search: show all, highlight matches by trans identity
-          const matchKeys = new Set(matched.map(t => (t.transNum || '') + '|' + (t.dateTime || t.time || '')));
-          const matchIndexes = [];
-          journalAllTx.forEach((t, i) => {
-            const k = (t.transNum || '') + '|' + (t.dateTime || t.time || '');
-            if (matchKeys.has(k)) matchIndexes.push(i);
-          });
-          renderTxTable(journalAllTx, matchIndexes);
-          journalMatchIdx = matchIndexes.length ? matchIndexes[0] : -1;
-          if (journalMatchIdx >= 0) selectTx(journalMatchIdx);
-          // store match index list on element for next/prev
-          journalSearch._matches = matchIndexes;
-        }
-        el('jResultMeta').textContent =
-          `${journalMode === 'filter' ? 'Filter' : 'Search'}: ${res.count} match(es) · $${Number(res.totalAmount || 0).toFixed(2)}` +
-          ` · of ${res.totalInPeriod || journalAllTx.length} in period`;
-        el('btnJPrev').disabled = !(journalSearch._matches && journalSearch._matches.length);
-        el('btnJNext').disabled = !(journalSearch._matches && journalSearch._matches.length);
-        if (journalMode === 'filter') {
-          journalSearch._matches = matched.map((_, i) => i);
-          el('btnJPrev').disabled = !matched.length;
-          el('btnJNext').disabled = !matched.length;
-        }
-        toast(`${res.count} match(es)`);
-      } catch (e) {
-        toast(String(e.message || e));
+      journalMode = mode || 'filter';
+      const criteria = jCriteria();
+      if (jCriteriaIsEmpty(criteria) && journalMode === 'filter') {
+        journalSearchMatches = [];
+        journalMatchIdx = -1;
+        applyJournalView();
+        if (el('jLiveHint')) el('jLiveHint').textContent = '● Live filter — no criteria · full period';
+        el('btnJPrev').disabled = true;
+        el('btnJNext').disabled = true;
+        return;
       }
+      // Pure client-side — no re-fetch, works on already-loaded rows (parity with Site Console)
+      const res = filterTxLocal(journalAllTx, criteria);
+      const matched = res.matched || [];
+      if (journalMode === 'filter') {
+        const rows = displayTxRows(matched);
+        renderTxTable(rows);
+        journalMatchIdx = rows.length ? 0 : -1;
+        journalSearchMatches = rows.map((_, i) => i);
+        journalSearch._matches = journalSearchMatches;
+      } else {
+        const base = displayTxRows(journalAllTx);
+        const matchKeys = new Set(matched.map(t => (t.transNum || '') + '|' + (t.dateTime || t.time || '') + '|' + (t.rowId != null ? t.rowId : '')));
+        const matchIndexes = [];
+        base.forEach((t, i) => {
+          const k = (t.transNum || '') + '|' + (t.dateTime || t.time || '') + '|' + (t.rowId != null ? t.rowId : '');
+          if (matchKeys.has(k)) matchIndexes.push(i);
+        });
+        journalSearchMatches = matchIndexes;
+        journalSearch._matches = matchIndexes;
+        renderTxTable(base, matchIndexes);
+        journalMatchIdx = matchIndexes.length ? matchIndexes[0] : -1;
+        if (journalMatchIdx >= 0) selectTx(journalMatchIdx);
+      }
+      el('jResultMeta').textContent =
+        `${journalMode === 'filter' ? 'Filter' : 'Search'}: ${res.count} match(es) · $${Number(res.totalAmount || 0).toFixed(2)}` +
+        ` · of ${journalAllTx.length} loaded · live (no re-fetch)`;
+      if (el('jLiveHint')) {
+        const bits = [];
+        if (criteria.register) bits.push('Reg ' + criteria.register);
+        if (criteria.employee) bits.push('Emp ' + criteria.employee);
+        if (criteria.mop) bits.push('MOP ' + criteria.mop);
+        if (criteria.fuelPosition) bits.push('FP ' + criteria.fuelPosition);
+        if (criteria.timeFrom || criteria.timeTo) bits.push('Time ' + (criteria.timeFrom || '…') + '–' + (criteria.timeTo || '…'));
+        el('jLiveHint').textContent = bits.length
+          ? `● Live · ${res.count} match(es) · ${bits.join(' · ')}`
+          : `● Live filter — ${res.count} match(es)`;
+      }
+      el('btnJPrev').disabled = !journalSearchMatches.length;
+      el('btnJNext').disabled = !journalSearchMatches.length;
+      if (el('btnJClearFilters')) el('btnJClearFilters').disabled = !journalAllTx.length;
+      if (!silent) toast(`${res.count} match(es)`);
     }
     function journalMove(dir) {
-      const matches = journalSearch._matches || [];
+      const matches = journalSearchMatches.length ? journalSearchMatches : (journalSearch._matches || []);
       if (!matches.length) return;
       let pos = matches.indexOf(journalSelectedRow);
       if (pos < 0) pos = matches.indexOf(journalMatchIdx);
@@ -1575,8 +1764,21 @@
     if (el('btnJXml')) el('btnJXml').addEventListener('click', journalLoadXml);
     el('btnJSearch').addEventListener('click', () => journalSearch('search'));
     el('btnJFilter').addEventListener('click', () => journalSearch('filter'));
+    if (el('btnJClearFilters')) el('btnJClearFilters').addEventListener('click', clearJournalFilters);
     el('btnJPrev').addEventListener('click', () => journalMove(-1));
     el('btnJNext').addEventListener('click', () => journalMove(1));
+    // Live drill-down on already-loaded data (same behavior as Site Console)
+    const jFiltersBox = el('jFilters');
+    if (jFiltersBox) {
+      jFiltersBox.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t && t.id && String(t.id).startsWith('jf')) scheduleJournalLiveFilter();
+      });
+      jFiltersBox.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t && t.id && String(t.id).startsWith('jf')) scheduleJournalLiveFilter();
+      });
+    }
     el('btnJLogout').addEventListener('click', async () => {
       if (journalSessionId) {
         try {
@@ -1609,7 +1811,8 @@
       el('jfSalesOnly').addEventListener('change', () => {
         journalShowSalesOnly = !!el('jfSalesOnly').checked;
         journalSelectedRow = null;
-        applyJournalView();
+        if (!jCriteriaIsEmpty(jCriteria())) scheduleJournalLiveFilter();
+        else applyJournalView();
       });
     }
     el('profileSelect').addEventListener('change', () => applyProfile(el('profileSelect').value));

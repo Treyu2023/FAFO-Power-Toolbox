@@ -54,7 +54,7 @@ AI HTML TOOLBOX/
 ## Manual / PowerShell
 
 ```powershell
-cd "C:\_git\HTMLPROJECTS\AI HTML TOOLBOX"
+cd "C:\_Git\repos\html\ai-html-toolbox\production"
 
 # Create .venv + install requirements (no global pip installs)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\Install-PythonEnvironment.ps1

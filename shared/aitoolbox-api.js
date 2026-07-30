@@ -29,6 +29,13 @@
     let serverOnline = null;
     let lastCheck = 0;
 
+    // Page keepalive: while any toolbox HTML page is open, auto-recover offline backend
+    let keepAliveTimer = null;
+    let keepAliveHealing = false;
+    let keepAliveLastHeal = 0;
+    const KEEP_ALIVE_MS = 15000;
+    const KEEP_ALIVE_COOLDOWN_MS = 25000;
+
     async function checkServer(force = false, timeoutMs = 1500) {
         const now = Date.now();
         if (force) serverOnline = null;
@@ -85,18 +92,20 @@
     function tryProtocolLaunch(action = 'start') {
         const allowed = {
             start: 'start',
-            tray: 'start',
+            tray: 'tray',
+            restart: 'restart',
             console: 'console',
             folder: 'folder',
             setup: 'setup',
+            launch: 'launch',
             diagnostics: 'diagnostics',
             'pack-reports': 'pack-reports',
             packreports: 'pack-reports',
             pack: 'pack-reports',
         };
         const key = String(action || 'start').toLowerCase();
-        const act = allowed[key] || (allowed[action] ? allowed[action] : null) || 'start';
-        // Unknown actions used to silently become "start" — keep start as default only when missing
+        const act = allowed[key] || 'start';
+        // act: start | restart | tray | console | folder | setup | launch | …
         const url = 'aitoolbox://' + act;
         dbg()?.log('api', 'info', 'Protocol launch: ' + url);
         try {
@@ -173,13 +182,171 @@
      * @param {{ mode?: 'tray'|'console', waitMs?: number, onStatus?: (msg:string)=>void, allowLegacyHta?: boolean }} opts
      * @returns {Promise<{ ok: boolean, alreadyOnline?: boolean, blocked?: boolean, needsSetup?: boolean }>}
      */
+    /**
+     * Start companions via S1 API when toolbox is up.
+     * opts.toolbox / opts.fafoMeta: true|false to include/exclude (default true).
+     */
+    async function startCompanionServers(opts = {}) {
+        try {
+            if (!(await checkServer(true, 1500))) return null;
+            const body = {
+                toolbox: opts.toolbox !== false,
+                fafoMeta: opts.fafoMeta !== false,
+                waitSec: opts.waitSec != null ? opts.waitSec : 8,
+            };
+            return await api('/launch/companions/start', {
+                method: 'POST',
+                body: JSON.stringify(body),
+                timeoutMs: 20000,
+            });
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Manually stop S1 HTML Toolbox and/or S2 FAFO Local Media Tagger.
+     * Requires S1 online unless only stopping meta (still needs S1 for API).
+     * opts.toolbox / opts.fafoMeta default true (stop both).
+     */
+    async function stopCompanionServers(opts = {}) {
+        if (!(await checkServer(true, 1500))) {
+            throw new Error('S1 HTML Toolbox offline — use Stop-ALL-Servers.bat or tray');
+        }
+        const body = {
+            toolbox: opts.toolbox !== false,
+            fafoMeta: opts.fafoMeta !== false,
+        };
+        return api('/launch/companions/stop', {
+            method: 'POST',
+            body: JSON.stringify(body),
+            timeoutMs: 15000,
+        });
+    }
+
+    async function getLaunchStatus() {
+        if (!(await checkServer(true, 1500))) return null;
+        try {
+            return await api('/launch/status', { timeoutMs: 8000 });
+        } catch {
+            return null;
+        }
+    }
+
+    async function saveLaunchPrefs(prefs) {
+        if (!(await checkServer(true, 1500))) throw new Error('Server offline — start toolbox first');
+        return api('/launch/prefs', {
+            method: 'PUT',
+            body: JSON.stringify(prefs || {}),
+            timeoutMs: 15000,
+        });
+    }
+
+    async function setWindowsStartup(flags) {
+        if (!(await checkServer(true, 1500))) throw new Error('Server offline — start toolbox first');
+        return api('/launch/windows-startup', {
+            method: 'POST',
+            body: JSON.stringify(flags || {}),
+            timeoutMs: 15000,
+        });
+    }
+
+    /**
+     * While this page is open: poll health and relaunch servers if they die.
+     * Pairs with the tray watchdog — minimal effort, no folder hunting.
+     */
+    function startKeepAlive(opts = {}) {
+        const intervalMs = opts.intervalMs != null ? opts.intervalMs : KEEP_ALIVE_MS;
+        if (keepAliveTimer) return keepAliveTimer;
+        keepAliveTimer = setInterval(async () => {
+            if (serverLaunching || keepAliveHealing) return;
+            if (typeof document !== 'undefined' && document.hidden) return;
+            try {
+                const on = await checkServer(true, 1500);
+                if (on) return;
+                const now = Date.now();
+                if (now - keepAliveLastHeal < KEEP_ALIVE_COOLDOWN_MS) return;
+                keepAliveHealing = true;
+                keepAliveLastHeal = now;
+                dbg()?.log('api', 'info', 'KeepAlive: backend offline — auto-relaunch');
+                try {
+                    await startServer({ mode: 'tray', waitMs: 25000, companions: true });
+                } catch (e) {
+                    dbg()?.log('api', 'warn', 'KeepAlive relaunch: ' + (e && e.message || e));
+                } finally {
+                    keepAliveHealing = false;
+                }
+            } catch { /* ignore poll errors */ }
+        }, intervalMs);
+        // First check soon after load (don't wait full interval)
+        setTimeout(async () => {
+            try {
+                if (!(await checkServer(true, 1500)) && !serverLaunching) {
+                    keepAliveLastHeal = Date.now();
+                    await startServer({ mode: 'tray', waitMs: 20000, companions: true });
+                }
+            } catch { /* ignore */ }
+        }, 2500);
+        return keepAliveTimer;
+    }
+
+    function stopKeepAlive() {
+        if (keepAliveTimer) {
+            clearInterval(keepAliveTimer);
+            keepAliveTimer = null;
+        }
+    }
+
+    /**
+     * Relaunch companions without browsing install folders.
+     * Works offline via aitoolbox://restart|start (after SETUP once).
+     */
+    async function relaunchServers(opts = {}) {
+        const waitMs = opts.waitMs != null ? opts.waitMs : 45000;
+        const onStatus = typeof opts.onStatus === 'function' ? opts.onStatus : null;
+        const hard = opts.restart !== false;
+
+        onStatus?.(hard ? 'Relaunching servers…' : 'Starting servers…');
+        tryProtocolLaunch(hard ? 'restart' : 'start');
+
+        // If toolbox is already up, also use API restart (hidden, no UAC)
+        if (hard && (await checkServer(true, 1200))) {
+            try {
+                await api('/launch/companions/restart', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        toolbox: opts.toolbox !== false,
+                        fafoMeta: opts.fafoMeta !== false,
+                        waitSec: 12,
+                    }),
+                    timeoutMs: 25000,
+                });
+            } catch { /* protocol path may still succeed */ }
+        }
+
+        onStatus?.('Waiting for servers…');
+        const ok = await waitForServer(waitMs, 800);
+        if (ok) {
+            onStatus?.('Servers online');
+            try {
+                await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
+            } catch { /* optional */ }
+        }
+        return { ok };
+    }
+
     async function startServer(opts = {}) {
         const mode = opts.mode === 'console' ? 'console' : 'tray';
         const waitMs = opts.waitMs != null ? opts.waitMs : 90000;
         const onStatus = typeof opts.onStatus === 'function' ? opts.onStatus : null;
+        const alsoCompanions = opts.companions !== false;
 
         if (await checkServer(true, 2000)) {
             onStatus?.('Server already online');
+            if (alsoCompanions) {
+                onStatus?.('Starting companion servers…');
+                await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
+            }
             return { ok: true, alreadyOnline: true };
         }
         if (serverLaunching) {
@@ -199,6 +366,10 @@
             if (ok) {
                 onStatus?.('Server online');
                 try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                if (alsoCompanions) {
+                    onStatus?.('Ensuring FAFO tagging companion…');
+                    await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
+                }
                 return { ok: true };
             }
 
@@ -209,6 +380,9 @@
             if (ok) {
                 onStatus?.('Server online');
                 try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                if (alsoCompanions) {
+                    await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
+                }
                 return { ok: true };
             }
 
@@ -219,6 +393,9 @@
                 ok = await waitForServer(Math.min(20000, waitMs), 1000);
                 if (ok) {
                     onStatus?.('Server online');
+                    if (alsoCompanions) {
+                        await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
+                    }
                     return { ok: true };
                 }
             }
@@ -418,6 +595,14 @@
         toolboxFileUrl,
         /** Launch Python server from browser (protocol + HTA). Works from any tool page. */
         startServer,
+        startCompanionServers,
+        stopCompanionServers,
+        relaunchServers,
+        startKeepAlive,
+        stopKeepAlive,
+        getLaunchStatus,
+        saveLaunchPrefs,
+        setWindowsStartup,
         launchToolboxFile,
         openToolboxFolder,
         runSetupOnce,
@@ -1202,4 +1387,16 @@
     };
 
     global.AIToolboxAPI = API;
+
+    // Auto-keep servers alive while any toolbox page is open (no user action needed)
+    if (typeof document !== 'undefined') {
+        const bootKeepAlive = () => {
+            try { startKeepAlive(); } catch { /* ignore */ }
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootKeepAlive, { once: true });
+        } else {
+            bootKeepAlive();
+        }
+    }
 })(typeof window !== 'undefined' ? window : globalThis);

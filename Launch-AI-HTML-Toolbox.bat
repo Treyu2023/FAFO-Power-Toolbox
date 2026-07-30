@@ -1,5 +1,5 @@
 @echo off
-:: One-click thin shell: auto setup if needed → start server → Chrome --app (never Edge).
+:: One-click thin shell: auto setup if needed → companion servers (toolbox/Verifone + FAFO tagging) → Chrome --app (never Edge).
 setlocal EnableExtensions
 cd /d "%~dp0"
 

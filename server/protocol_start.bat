@@ -4,7 +4,9 @@ REM Registered by SETUP (run once).bat as:
 REM   HKCU\Software\Classes\aitoolbox\shell\open\command
 REM
 REM Supported URLs:
-REM   aitoolbox://start          Start server (minimized / tray-style)
+REM   aitoolbox://start          Start companions hidden + tray (no install folder needed)
+REM   aitoolbox://restart        Stop+start companions (relaunch)
+REM   aitoolbox://tray           Ensure system tray helper only
 REM   aitoolbox://console        Start server with visible console
 REM   aitoolbox://folder         Open toolbox root in Explorer
 REM   aitoolbox://setup          Run one-time setup
@@ -27,7 +29,9 @@ if defined RAW (
   echo %RAW%| findstr /I /C:"diagnostics" >nul && set "ACTION=diagnostics"
   echo %RAW%| findstr /I /C:"pack-reports" >nul && set "ACTION=pack"
   echo %RAW%| findstr /I /C:"packreports" >nul && set "ACTION=pack"
-  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" set "ACTION=start"
+  echo %RAW%| findstr /I /C:"restart" >nul && set "ACTION=restart"
+  echo %RAW%| findstr /I /C:"tray" >nul && set "ACTION=tray"
+  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" if /I not "%ACTION%"=="restart" if /I not "%ACTION%"=="tray" set "ACTION=start"
 )
 
 if /I "%ACTION%"=="folder" goto do_folder
@@ -36,6 +40,8 @@ if /I "%ACTION%"=="launch" goto do_launch
 if /I "%ACTION%"=="console" goto do_console
 if /I "%ACTION%"=="diagnostics" goto do_diagnostics
 if /I "%ACTION%"=="pack" goto do_pack
+if /I "%ACTION%"=="restart" goto do_restart
+if /I "%ACTION%"=="tray" goto do_tray
 goto do_start
 
 :do_folder
@@ -43,7 +49,11 @@ start "" explorer.exe "%cd%"
 exit /b 0
 
 :do_setup
-start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\Complete-FAFOSetup.ps1" -ToolboxRoot "%cd%"
+if exist "%cd%\Scripts\Install-FAFOToolbox.ps1" (
+  start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\Install-FAFOToolbox.ps1" -ToolboxRoot "%cd%"
+) else (
+  start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\Complete-FAFOSetup.ps1" -ToolboxRoot "%cd%"
+)
 exit /b 0
 
 :do_launch
@@ -67,14 +77,40 @@ exit /b 0
 start "FAFO Pack Reports" cmd /c "cd /d "%cd%" && powershell -NoProfile -ExecutionPolicy Bypass -File "%cd%\System Tools\PC Reports and Log Viewer\_pack_logs.ps1" -ToolboxRoot "%cd%" & pause"
 exit /b 0
 
-:do_start
-REM Prefer the root launcher (venv-aware, logs startup)
-if exist "%cd%\START SERVER.bat" (
-  start "" "%cd%\START SERVER.bat"
+:do_restart
+REM Full restart of companions (hidden) — stops listeners then starts again
+if exist "%cd%\Scripts\Start-FAFOServers.ps1" (
+  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Restart -Quiet
   exit /b 0
 )
-REM Fallback: start minimized from server folder
+goto do_start
+
+:do_tray
+if exist "%cd%\Scripts\Start-FAFOServers.ps1" (
+  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -TrayOnly -Quiet
+  exit /b 0
+)
+if exist "%cd%\server\start_tray.bat" (
+  start "" /b "%cd%\server\start_tray.bat"
+)
+exit /b 0
+
+:do_start
+REM Multi-server hidden + tray — no install-folder navigation required
+if exist "%cd%\Scripts\Start-FAFOServers.ps1" (
+  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Quiet
+  exit /b 0
+)
+if exist "%cd%\Start Servers.bat" (
+  start "" /b "%cd%\Start Servers.bat"
+  exit /b 0
+)
+REM Fallback: pythonw hidden
 call "%~dp0..\Scripts\use-fafo-python.bat"
 if errorlevel 1 exit /b 1
-start "AI Toolbox Server" /MIN cmd /c "cd /d "%~dp0" && "%FAFO_PYTHON%" aitoolbox_server.py"
+if exist "%FAFO_ROOT%\.venv\Scripts\pythonw.exe" (
+  start "" /b "%FAFO_ROOT%\.venv\Scripts\pythonw.exe" "%~dp0aitoolbox_server.py"
+) else (
+  start "" /b "%FAFO_PYTHON%" "%~dp0aitoolbox_server.py"
+)
 exit /b 0

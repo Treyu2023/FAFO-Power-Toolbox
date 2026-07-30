@@ -23,7 +23,7 @@ if not "%ERR%"=="0" (
   exit /b %ERR%
 )
 
-echo  Next: double-click START SERVER.bat or use the Launcher.
+echo  Next: double-click "Install FAFO Toolbox.bat" once, then use Desktop shortcuts.
 echo.
 pause
 exit /b 0

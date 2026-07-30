@@ -8,7 +8,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$real = "C:\_Git\HTMLPROJECTS\AI HTML TOOLBOX"
+$real = "C:\_Git\repos\html\ai-html-toolbox\production"
 $desktop = [Environment]::GetFolderPath("Desktop")
 if (-not $desktop) {
   $desktop = Join-Path $env:USERPROFILE "OneDrive\Desktop"

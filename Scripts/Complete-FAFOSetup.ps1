@@ -109,7 +109,7 @@ try {
         $steps.Add([ordered]@{ step = 'protocol'; ok = $true })
         Write-Setup " [OK] Protocol registered" 'Green'
     }
-    Write-Setup "      aitoolbox://start | console | folder | setup | launch" 'DarkGray'
+    Write-Setup "      aitoolbox://start | restart | tray | console | folder | setup | launch" 'DarkGray'
 } catch {
     $failed = $true
     $steps.Add([ordered]@{ step = 'protocol'; ok = $false; error = $_.Exception.Message })
@@ -127,7 +127,7 @@ if ($SkipShortcut) {
         $shortcutScript = Join-Path $ToolboxRoot 'Install-Desktop-Shortcut.ps1'
         if (Test-Path -LiteralPath $shortcutScript) {
             $p = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
-                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $shortcutScript
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $shortcutScript, '-StartMenu'
             ) -Wait -PassThru -WindowStyle $(if ($Quiet) { 'Hidden' } else { 'Normal' })
             if ($p.ExitCode -ne 0) { throw "Install-Desktop-Shortcut.ps1 exit $($p.ExitCode)" }
         } else {

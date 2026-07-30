@@ -18,6 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+import re
 
 log = logging.getLogger("aitoolbox.file_metadata")
 
@@ -59,19 +60,84 @@ def system_rating_to_stars(value: int | None) -> int:
 
 
 def normalize_tags(tags: list[str] | None) -> list[str]:
+    """Sanitize tags: max 100 chars, drop metadata dumps / binary noise, max 40 tags."""
     if not tags:
         return []
+    import re
+    TAG_MAX = 100
+    TAGS_MAX = 40
     out: list[str] = []
     seen: set[str] = set()
-    for t in tags:
-        s = str(t).strip()
+
+    def is_prompt_blob(s: str) -> bool:
         if not s:
+            return True
+        seps = s.count(",") + s.count(";") + s.count("|")
+        if len(s) > 80 and seps >= 3:
+            return True
+        if len(s) > 50 and seps >= 5:
+            return True
+        if re.search(
+            r"\b(cinematic|photorealistic|masterpiece|negative prompt|best quality|"
+            r"ultra detailed|highly detailed|volumetric|octane render|unreal engine|"
+            r"trending on artstation|prompt|seed|cfg scale|lora|checkpoint|8k|4k uhd)\b",
+            s,
+            re.I,
+        ):
+            return True
+        return False
+
+    def clean_one(raw: str) -> str | None:
+        s = re.sub(r"[\x00-\x1f\x7f]", " ", str(raw or ""))
+        s = re.sub(r"\s+", " ", s).strip()
+        if not s:
+            return None
+        if is_prompt_blob(s):
+            return None
+        if len(s) > TAG_MAX:
+            # Over hard cap after clean → reject (do not silently keep 100-char soup)
+            return None
+        # JSON / structured
+        if s[:1] in "{[" or re.search(r'"\w+"\s*:', s):
+            return None
+        if len(re.findall(r"[\\/|]", s)) >= 3:
+            return None
+        if re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-", s, re.I) and len(s) > 36:
+            return None
+        if re.search(
+            r"\b(codec|bitrate|fps|resolution|duration|encoder|muxer|handler_name|major_brand)\b",
+            s,
+            re.I,
+        ):
+            return None
+        alnum = sum(ch.isalnum() for ch in s)
+        if len(s) > 8 and alnum / len(s) < 0.4:
+            return None
+        if len(s) > 60 and s.count(" ") >= 8:
+            return None
+        if len(s.split()) > 6:
+            return None
+        return s
+
+    for t in tags:
+        raw = str(t)
+        # Drop whole AI prompt blobs before splitting into fake keywords
+        if is_prompt_blob(raw):
             continue
-        key = s.lower()
-        if key in seen:
+        pieces = re.split(r"[,;|]+", raw)
+        if len(pieces) >= 6 and len(raw) > 60:
             continue
-        seen.add(key)
-        out.append(s)
+        for piece in pieces:
+            s = clean_one(piece)
+            if not s:
+                continue
+            key = s.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(s)
+            if len(out) >= TAGS_MAX:
+                return out
     return out
 
 
@@ -229,7 +295,7 @@ def _read_shell_props(path: Path) -> dict[str, Any] | None:
                     rating = system_rating_to_stars(int(val))
             except Exception:
                 pass
-            return {"tags": tags, "rating": rating, "method": "shell-pywin32"}
+            return {"tags": normalize_tags(tags), "rating": rating, "method": "shell-pywin32"}
         finally:
             pythoncom.CoUninitialize()
     except Exception:
@@ -483,7 +549,7 @@ def _read_shell_props_powershell(path: Path) -> dict[str, Any] | None:
         if isinstance(tags, str):
             tags = [tags]
         rating = system_rating_to_stars(data.get("rating", 0))
-        return {"tags": list(tags), "rating": rating, "method": "shell-powershell"}
+        return {"tags": normalize_tags(list(tags)), "rating": rating, "method": "shell-powershell"}
     except Exception:
         return None
 
@@ -655,10 +721,23 @@ def _read_mutagen(path: Path) -> dict[str, Any] | None:
             raw = (mp4.tags or {}).get("\xa9cmt") or []
             if raw:
                 for item in raw:
-                    for part in str(item).split(";"):
+                    blob = str(item)
+                    # AI prompt dumps often land in ©cmt — skip unless tiny keyword list
+                    if len(blob) > 100:
+                        continue
+                    if blob.count(",") + blob.count(";") >= 3:
+                        continue
+                    if re.search(
+                        r"\b(cinematic|photorealistic|masterpiece|prompt|8k|lora)\b",
+                        blob,
+                        re.I,
+                    ):
+                        continue
+                    for part in blob.replace("|", ";").replace(",", ";").split(";"):
                         part = part.strip()
                         if part:
                             tags.append(part)
+                tags = normalize_tags(tags)
             rating = 0
             rate = (mp4.tags or {}).get("rate")
             if rate:

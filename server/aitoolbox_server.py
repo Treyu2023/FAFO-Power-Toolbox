@@ -2766,6 +2766,7 @@ import security_scan as sec
 import startup_ops as startup
 import task_manager_pro as tmpro
 import setup_ops
+import launch_ops
 import disk_ops as disk
 import hosts_ops as hosts
 import convert_ops as convert
@@ -3144,6 +3145,109 @@ def api_setup_status():
     """First-run / setup completeness for launcher thin-shell UX."""
     try:
         return setup_ops.get_setup_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# --- Multi-server launch prefs + Windows startup ---
+class LaunchPrefsBody(BaseModel):
+    startWithOneClick: dict[str, bool] | None = None
+    windowsStartup: dict[str, bool] | None = None
+    fafoMetaRoot: str | None = None
+
+
+class LaunchCompanionsBody(BaseModel):
+    toolbox: bool | None = None
+    fafoMeta: bool | None = None
+    waitSec: float = 12.0
+
+
+class WindowsStartupBody(BaseModel):
+    servers: bool | None = None
+    app: bool | None = None
+
+
+@app.get("/api/launch/status")
+def api_launch_status():
+    """Companion server health + launch prefs + Windows startup flags."""
+    try:
+        return launch_ops.companion_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/launch/prefs")
+def api_launch_prefs_get():
+    try:
+        return launch_ops.get_prefs()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.put("/api/launch/prefs")
+def api_launch_prefs_put(body: LaunchPrefsBody):
+    try:
+        payload = body.model_dump(exclude_none=True)
+        return launch_ops.apply_prefs_and_startup(payload)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/companions/start")
+def api_launch_companions_start(body: LaunchCompanionsBody | None = None):
+    """Start toolbox and/or FAFO tagging companion (uses prefs when flags omitted)."""
+    try:
+        b = body or LaunchCompanionsBody()
+        return launch_ops.start_companions(
+            toolbox=b.toolbox,
+            fafo_meta=b.fafoMeta,
+            wait_sec=b.waitSec,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/companions/restart")
+def api_launch_companions_restart(body: LaunchCompanionsBody | None = None):
+    """Stop then start companions (hidden). Used by tray / Launcher relaunch."""
+    try:
+        b = body or LaunchCompanionsBody()
+        return launch_ops.restart_companions(
+            toolbox=b.toolbox,
+            fafo_meta=b.fafoMeta,
+            wait_sec=b.waitSec if b.waitSec else 15.0,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/companions/stop")
+def api_launch_companions_stop(body: LaunchCompanionsBody | None = None):
+    """Manually stop S1 HTML Toolbox and/or S2 FAFO Local Media Tagger."""
+    try:
+        b = body or LaunchCompanionsBody()
+        # Default body None fields mean "stop both" in stop_companions
+        return launch_ops.stop_companions(
+            toolbox=b.toolbox if body is not None else None,
+            fafo_meta=b.fafoMeta if body is not None else None,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/launch/windows-startup")
+def api_windows_startup_get():
+    try:
+        return launch_ops.windows_startup_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/windows-startup")
+def api_windows_startup_set(body: WindowsStartupBody):
+    """Enable/disable current-user Startup shortcuts for servers and/or app."""
+    try:
+        return launch_ops.set_windows_startup(servers=body.servers, app=body.app)
     except Exception as e:
         raise HTTPException(500, str(e))
 

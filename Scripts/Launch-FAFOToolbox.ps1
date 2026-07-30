@@ -51,6 +51,22 @@ function Test-HealthEndpoint {
 }
 
 function Start-ToolboxServer {
+    # Multi-server: toolbox (+ Verifone) and optional FAFO Local Tab tagging companion
+    $multi = Join-Path $PSScriptRoot 'Start-FAFOServers.ps1'
+    if (Test-Path -LiteralPath $multi) {
+        $p = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', $multi,
+            '-ToolboxRoot', $ToolboxRoot,
+            '-HealthTimeoutSec', ([Math]::Max(8, [int]($HealthTimeoutSec / 2))),
+            '-Quiet'
+        ) -Wait -PassThru -WindowStyle Hidden
+        if ($p.ExitCode -ne 0) {
+            Write-Launch " [i] Multi-server helper exit $($p.ExitCode) — falling back to toolbox-only" 'DarkGray'
+        } else {
+            return
+        }
+    }
     $startBat = Join-Path $ToolboxRoot 'START SERVER.bat'
     if (Test-Path -LiteralPath $startBat) {
         Start-Process -FilePath $startBat -WorkingDirectory $ToolboxRoot -WindowStyle Minimized
@@ -61,6 +77,15 @@ function Start-ToolboxServer {
         throw "Server python not found: $venvPy"
     }
     Start-Process -FilePath $venvPy -ArgumentList @('aitoolbox_server.py') -WorkingDirectory (Join-Path $ToolboxRoot 'server') -WindowStyle Minimized
+}
+
+function Test-MetaHealthEndpoint {
+    try {
+        $resp = Invoke-WebRequest -Uri 'http://127.0.0.1:8765/api/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300)
+    } catch {
+        return $false
+    }
 }
 
 function Set-ChromeTopMost {
@@ -163,24 +188,33 @@ if (-not $chrome -or -not (Test-Path -LiteralPath $chrome)) {
 }
 Write-Launch " [OK] Chrome: $chrome" 'Green'
 
-# --- Server ---
+# --- Servers (toolbox/Verifone + optional FAFO tagging companion) ---
 if (-not $NoServer) {
-    if (-not (Test-HealthEndpoint)) {
-        Write-Launch " Starting server..." 'Yellow'
+    $tbUp = Test-HealthEndpoint
+    $metaUp = Test-MetaHealthEndpoint
+    if (-not $tbUp -or -not $metaUp) {
+        Write-Launch " Starting companion servers (toolbox + FAFO tagging if configured)..." 'Yellow'
         Start-ToolboxServer
         $deadline = (Get-Date).AddSeconds($HealthTimeoutSec)
-        $up = $false
         while ((Get-Date) -lt $deadline) {
             Start-Sleep -Milliseconds 800
-            if (Test-HealthEndpoint) { $up = $true; break }
+            $tbUp = Test-HealthEndpoint
+            $metaUp = Test-MetaHealthEndpoint
+            if ($tbUp) { break }
         }
-        if ($up) {
-            Write-Launch " [OK] Server online" 'Green'
+        if ($tbUp) {
+            Write-Launch " [OK] Toolbox server online (Verifone + tools)" 'Green'
         } else {
-            Write-Launch " [!] Server did not become healthy in ${HealthTimeoutSec}s - opening UI anyway" 'Yellow'
+            Write-Launch " [!] Toolbox server did not become healthy in ${HealthTimeoutSec}s - opening UI anyway" 'Yellow'
+        }
+        if ($metaUp -or (Test-MetaHealthEndpoint)) {
+            Write-Launch " [OK] FAFO tagging companion online (127.0.0.1:8765)" 'Green'
+        } else {
+            Write-Launch " [i] FAFO tagging companion offline (optional — set explorer-meta path in Launcher)" 'DarkGray'
         }
     } else {
-        Write-Launch " [OK] Server already online" 'Green'
+        Write-Launch " [OK] Toolbox server already online" 'Green'
+        Write-Launch " [OK] FAFO tagging companion already online" 'Green'
     }
 }
 
@@ -210,5 +244,6 @@ if ($TopMost) {
 }
 
 Write-Launch " [OK] Launched thin shell" 'Green'
-Write-Launch "     Server: http://127.0.0.87:18765" 'DarkGray'
+Write-Launch "     Toolbox:  http://127.0.0.87:18765  (Verifone + media + system tools)" 'DarkGray'
+Write-Launch "     FAFO tags: http://127.0.0.1:8765   (Local Tab companion, if found)" 'DarkGray'
 exit 0
