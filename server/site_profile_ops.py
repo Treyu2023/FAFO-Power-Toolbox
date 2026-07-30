@@ -108,18 +108,30 @@ def empty_profile(group_key: str = "") -> dict[str, Any]:
             "configClientPassword": "",
             # Letter-cycle scheme (default ON): base digits + trailing A→B→C→D→E→A
             # Commander remembers last 4 passwords, so 5-letter cycle avoids reuse.
-            "passwordScheme": "letter_cycle",  # letter_cycle | manual
-            "passwordBase": "",  # e.g. 6652990 without letter — derived if empty
+            # Fleet default (~90% of sites): leading A–E letter + site-specific digit base.
+            # Base varies (6652990, 123456, …); cycle is the same everywhere.
+            "passwordScheme": "letter_cycle",  # letter_cycle | manual (only if site differs)
+            "passwordBase": "",  # digits only, e.g. 6652990 / 123456 — derived from full password if empty
             "passwordLetter": "",  # A-E current cycle letter
-            "passwordLetterPosition": "leading",  # leading (C6652990) | trailing (6652990C)
+            "passwordLetterPosition": "leading",  # leading (B6652990) | trailing (6652990B) rare
             "passwordChangeIntervalDays": 90,
             "lastPasswordChangeAt": "",  # ISO date when letter was last advanced / set
             "nextPasswordDueAt": "",  # computed
             "passwordHistory": [],  # [{letter, changedAt, note}] last few rotations (no full pwd)
             "passwordRotationNotes": (
-                "Default scheme: cycle letter A→B→C→D→E→A every ~90 days "
-                "(Commander cannot reuse last 4 passwords). Most sites use a LEADING letter "
-                "(e.g. C6652990 → D6652990). Toggle off for sites that use a different scheme."
+                "FLEET DEFAULT (~90% of sites) — only turn off if this store is different.\n"
+                "Pattern: ONE capital letter (A–E) + site digit base, usually LEADING:\n"
+                "  A{base} → B{base} → C{base} → D{base} → E{base} → A{base} …\n"
+                "Examples: B6652990 → C6652990 · or A123456 → B123456 (base is per site).\n"
+                "Interval: Commander forces a Manager password change ~every 90 days after last change.\n"
+                "On-site prompt flow:\n"
+                "  1) Login with CURRENT password\n"
+                "  2) Forced change: re-enter CURRENT password\n"
+                "  3) Enter NEW password (next letter + same base)\n"
+                "  4) Re-enter NEW password to confirm\n"
+                "Rules: must include 1 capital letter; cannot reuse last 4 passwords "
+                "(5-letter A–E cycle clears the reuse window).\n"
+                "After a successful live change, use Rotate letter in Liferaft so FAFO matches."
             ),
             "otpNotes": (
                 "Config OTP: CSR → Maintenance → Generate/Config OTP (4-digit on register / 7-seg). "
@@ -127,6 +139,16 @@ def empty_profile(group_key: str = "") -> dict[str, Any]:
             ),
             "csrPassword": "",
             "maintenanceMenuPassword": "",
+            # Linux shell (PuTTY/SSH) — fleet default user often "maint"; override per site if rotated
+            "sshHost": "",  # usually Commander LAN IP
+            "sshPort": 22,
+            "sshUser": "maint",
+            "sshPassword": "",  # leave empty to use fleet-tech-defaults.json on this PC
+            "sshHelpDeskNotes": (
+                "Enable Help Desk login on Commander and enter token before/with maint SSH. "
+                "Then: resetpw manager → temp password → Config Client forces new Manager password."
+            ),
+            "sshNotes": "",
             "roles": [],  # {role, username, password, notes}
             "posAccounts": [],  # from possecurity / manual
             "notes": "",
@@ -729,8 +751,9 @@ def parse_manager_password(password: str) -> dict[str, str]:
     """
     Split Manager password into base + cycle letter.
 
-    Field pattern (most sites): leading letter + digits, e.g. C6652990 / D6652990.
-    Also accepts trailing letter (6652990C) if that is what the site uses.
+    Fleet default (~90% of sites): leading letter A–E + digit base,
+    e.g. B6652990, C123456. Base digits are per site; letter cycle is shared.
+    Also accepts trailing letter (6652990B) if that is what the site uses.
     """
     pw = (password or "").strip()
     if not pw:
@@ -973,6 +996,136 @@ def rotate_manager_password(
     }
 
 
+def _parse_change_date(date_str: str | None) -> str:
+    """
+    Accept YYYY-MM-DD or full ISO; return UTC noon ISO for stable day math.
+    Empty → now.
+    """
+    s = (date_str or "").strip()
+    if not s:
+        return datetime.now(timezone.utc).isoformat()
+    try:
+        if len(s) == 10 and s[4] == "-" and s[7] == "-":
+            # date only from site notes / tech clipboard
+            dt = datetime.fromisoformat(s).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+            return dt.isoformat()
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+    except Exception as e:
+        raise ValueError(f"Invalid change date (use YYYY-MM-DD): {date_str}") from e
+
+
+def set_password_change_date(
+    group_key: str,
+    *,
+    changed_at: str | None = None,
+    interval_days: int | None = None,
+    note: str = "",
+) -> dict[str, Any]:
+    """
+    Record when Manager password was last changed on site (tech often writes the date at the store).
+    Recalculates next due and days remaining from that date + interval (default 90).
+    Does not change the password string itself.
+    """
+    gk = resolve_group_key(group_key, None)
+    prof = get_master_profile(group_key=gk, merge_sources=False)
+    cred = enrich_password_fields(prof.get("credentials") or {})
+    when = _parse_change_date(changed_at)
+    if interval_days is not None:
+        try:
+            interval = max(1, int(interval_days))
+        except (TypeError, ValueError):
+            interval = int(cred.get("passwordChangeIntervalDays") or 90)
+        cred["passwordChangeIntervalDays"] = interval
+    else:
+        interval = int(cred.get("passwordChangeIntervalDays") or 90)
+
+    cred["lastPasswordChangeAt"] = when
+    cred["nextPasswordDueAt"] = _add_days_iso(when, interval)
+    hist = list(cred.get("passwordHistory") or [])
+    hist.append(
+        {
+            "fromLetter": cred.get("passwordLetter") or "",
+            "toLetter": cred.get("passwordLetter") or "",
+            "changedAt": when,
+            "note": note or "last-change date recorded (site notes)",
+        }
+    )
+    cred["passwordHistory"] = hist[-12:]
+    cred = enrich_password_fields(cred)
+    # enrich may not recompute due if last already set — force from our when
+    cred["lastPasswordChangeAt"] = when
+    cred["nextPasswordDueAt"] = _add_days_iso(when, interval)
+    cred = enrich_password_fields(cred)
+    prof["credentials"] = cred
+    save_master_profile(gk, prof)
+    return {
+        "ok": True,
+        "groupKey": gk,
+        "passwordLetter": cred.get("passwordLetter"),
+        "passwordBase": cred.get("passwordBase"),
+        "currentPasswordPreview": cred.get("configClientPassword") or "",
+        "nextLetter": cred.get("nextLetter"),
+        "nextPasswordPreview": cred.get("nextPasswordPreview"),
+        "lastPasswordChangeAt": cred.get("lastPasswordChangeAt"),
+        "nextPasswordDueAt": cred.get("nextPasswordDueAt"),
+        "passwordDaysLeft": cred.get("passwordDaysLeft"),
+        "passwordOverdue": cred.get("passwordOverdue"),
+        "passwordChangeIntervalDays": cred.get("passwordChangeIntervalDays"),
+        "message": (
+            f"Last change set to {str(when)[:10]}. "
+            f"Letter {cred.get('passwordLetter') or '—'} · "
+            + (
+                f"OVERDUE by {abs(int(cred.get('passwordDaysLeft') or 0))} day(s)"
+                if cred.get("passwordOverdue")
+                else f"{cred.get('passwordDaysLeft')} day(s) remaining"
+                if cred.get("passwordDaysLeft") is not None
+                else "due date set"
+            )
+            + f" · next due {str(cred.get('nextPasswordDueAt') or '')[:10]}."
+        ),
+        "profile": get_master_profile(group_key=gk, merge_sources=False),
+    }
+
+
+def password_status_summary(cred: dict[str, Any] | None) -> dict[str, Any]:
+    """Compact letter + days remaining for UI cards (Import-Export, overview, etc.)."""
+    c = enrich_password_fields(dict(cred or {}))
+    days = c.get("passwordDaysLeft")
+    overdue = bool(c.get("passwordOverdue"))
+    if c.get("nextPasswordDueAt") is None and not c.get("lastPasswordChangeAt"):
+        status = "unknown"
+        statusText = "No last-change date — enter the date from site notes"
+    elif overdue:
+        status = "overdue"
+        statusText = f"OVERDUE by {abs(int(days or 0))} day(s)"
+    elif days is not None and days <= 14:
+        status = "soon"
+        statusText = f"{days} day(s) left — change soon"
+    elif days is not None:
+        status = "ok"
+        statusText = f"{days} day(s) remaining"
+    else:
+        status = "unknown"
+        statusText = "Due date unknown"
+    return {
+        "letter": c.get("passwordLetter") or "",
+        "base": c.get("passwordBase") or "",
+        "nextLetter": c.get("nextLetter") or "",
+        "nextPasswordPreview": c.get("nextPasswordPreview") or "",
+        "lastPasswordChangeAt": c.get("lastPasswordChangeAt") or "",
+        "nextPasswordDueAt": c.get("nextPasswordDueAt") or "",
+        "passwordDaysLeft": days,
+        "passwordOverdue": overdue,
+        "intervalDays": c.get("passwordChangeIntervalDays") or 90,
+        "status": status,
+        "statusText": statusText,
+        "scheme": c.get("passwordScheme") or "letter_cycle",
+    }
+
+
 def set_manager_password(
     group_key: str,
     password: str,
@@ -981,6 +1134,7 @@ def set_manager_password(
     scheme: str | None = None,
     note: str = "",
     sync_live_profile: bool = True,
+    changed_at: str | None = None,
 ) -> dict[str, Any]:
     """Set full Manager password on site liferaft (parses letter if scheme is letter_cycle)."""
     gk = resolve_group_key(group_key, None)
@@ -1004,22 +1158,27 @@ def set_manager_password(
         if (cred.get("passwordScheme") or "") == "letter_cycle" and not parsed["letter"]:
             # still store as base only
             cred["passwordBase"] = pw
-    now = _utc_now()
     interval = int(cred.get("passwordChangeIntervalDays") or 90)
     if mark_changed:
-        cred["lastPasswordChangeAt"] = now
-        cred["nextPasswordDueAt"] = _add_days_iso(now, interval)
+        when = _parse_change_date(changed_at) if changed_at else _utc_now()
+        cred["lastPasswordChangeAt"] = when
+        cred["nextPasswordDueAt"] = _add_days_iso(when, interval)
         hist = list(cred.get("passwordHistory") or [])
         hist.append(
             {
                 "fromLetter": "",
                 "toLetter": cred.get("passwordLetter") or "",
-                "changedAt": now,
-                "note": note or "password set",
+                "changedAt": when,
+                "note": note or ("password set" + (f" · change date {str(when)[:10]}" if changed_at else "")),
             }
         )
         cred["passwordHistory"] = hist[-12:]
     cred = enrich_password_fields(cred)
+    if mark_changed and cred.get("lastPasswordChangeAt"):
+        # keep explicit date after enrich
+        when = cred["lastPasswordChangeAt"]
+        cred["nextPasswordDueAt"] = _add_days_iso(when, interval)
+        cred = enrich_password_fields(cred)
     prof["credentials"] = cred
     save_master_profile(gk, prof)
     live_sync = _sync_password_to_live_profile(prof, cred.get("configClientPassword") or pw) if sync_live_profile else None
@@ -1032,6 +1191,7 @@ def set_manager_password(
         "nextPasswordDueAt": cred.get("nextPasswordDueAt"),
         "passwordDaysLeft": cred.get("passwordDaysLeft"),
         "passwordOverdue": cred.get("passwordOverdue"),
+        "status": password_status_summary(cred),
         "liveProfileSync": live_sync,
         "profile": get_master_profile(group_key=gk, merge_sources=False),
         "message": "Manager password saved for this site",
