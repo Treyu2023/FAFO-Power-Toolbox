@@ -161,18 +161,38 @@ def build_topography_defaults(dossier: dict[str, Any], survey: dict[str, Any] | 
                     it["label"] = f"Pump {n} · {brand}" if brand else it.get("label")
                 break
         if brand:
+            # Place CRIND next to its pump when we know coordinates
+            pump = next(
+                (
+                    it
+                    for it in items
+                    if it.get("type") == "pump"
+                    and str((it.get("meta") or {}).get("position")) == str(n)
+                ),
+                None,
+            )
+            if pump:
+                cx = int(pump.get("x") or 0) + int(pump.get("w") or 56) // 2 - 20
+                cy = int(pump.get("y") or 0) - 36
+            else:
+                cx = 160 + (int(n) % 8) * 90 if str(n).isdigit() else 160
+                cy = 360
             items.append(
                 {
                     "id": f"crind{n}",
                     "type": "card_reader",
-                    "x": 0,  # user places — stash off canvas until placed
-                    "y": 0,
+                    "x": cx,
+                    "y": max(20, cy),
                     "w": 40,
                     "h": 28,
                     "label": f"CRIND {n} ({brand})",
                     "color": "#a78bfa",
-                    "meta": {"position": n, "dcrBrand": brand, "unplaced": True, "source": "managedmodule/dcr"},
-                    "paletteOnly": True,
+                    "meta": {
+                        "position": n,
+                        "dcrBrand": brand,
+                        "source": "managedmodule/dcr",
+                        "placedFromBackup": True,
+                    },
                 }
             )
 

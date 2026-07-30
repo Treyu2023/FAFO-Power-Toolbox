@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAFO Investor Portal · Sumran</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💎</text></svg>">
+  <script src="shared/aitoolbox-config.js"></script>
+  <style>
+    :root {
+      --bg: #070b0a;
+      --panel: #0e1614;
+      --line: rgba(212,168,75,.28);
+      --gold: #d4a84b;
+      --emerald: #1a9b6e;
+      --mint: #7dffc8;
+      --text: #f0ebe0;
+      --muted: #8a9a92;
+      --danger: #ff6b6b;
+      --private: #c45c26;
+      --public: #1a9b6e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(26,155,110,.18), transparent 50%),
+        var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      padding: 18px 16px 48px;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 12px 20px;
+      align-items: center; justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand h1 {
+      font-size: 20px; font-weight: 700; letter-spacing: .06em;
+      color: var(--gold);
+    }
+    .brand .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .brand .sub strong { color: var(--mint); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted);
+    }
+    .pill.ok { border-color: rgba(26,155,110,.5); color: var(--mint); }
+    .pill.warn { border-color: rgba(212,168,75,.5); color: var(--gold); }
+    .pill.bad { border-color: rgba(255,107,107,.5); color: var(--danger); }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+    .card h2 {
+      font-size: 14px; color: var(--gold); letter-spacing: .08em;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .privacy-banner {
+      background: linear-gradient(90deg, rgba(196,92,38,.2), rgba(26,155,110,.12));
+      border: 1px solid rgba(196,92,38,.45);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 12px; line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .privacy-banner strong { color: var(--gold); }
+    .privacy-banner .cost { color: #ffb087; font-weight: 700; }
+    .privacy-banner .sell { color: var(--mint); font-weight: 700; }
+
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: .04em; }
+    input, select, textarea {
+      width: 100%;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(212,168,75,.25);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--emerald);
+      box-shadow: 0 0 0 2px rgba(26,155,110,.2);
+    }
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+    button, .btn {
+      background: transparent;
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    button.primary { background: var(--emerald); border-color: var(--emerald); color: #04140e; }
+    button.danger { border-color: var(--danger); color: var(--danger); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button:hover:not(:disabled) { filter: brightness(1.1); }
+    .note { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      background: #122; color: var(--mint); border: 1px solid var(--emerald);
+      padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 99;
+      opacity: 0; pointer-events: none; transition: opacity .2s;
+      max-width: 90vw;
+    }
+    .toast.show { opacity: 1; }
+    .toast.err { color: #ffc9c9; border-color: var(--danger); }
+
+    /* Login */
+    #gate { max-width: 420px; margin: 40px auto; }
+    .gate-crest { text-align: center; margin-bottom: 16px; font-size: 36px; }
+    .arabic { font-size: 18px; color: var(--gold); direction: rtl; margin: 6px 0; }
+
+    /* Sheet */
+    .sheet-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+    .sheet-scroll {
+      overflow: auto; max-height: min(58vh, 560px);
+      border: 1px solid var(--line); border-radius: 10px;
+    }
+    table.ledger {
+      border-collapse: collapse; width: 100%; min-width: 720px;
+      font-size: 12px;
+    }
+    table.ledger th, table.ledger td {
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      padding: 6px 8px; text-align: left; vertical-align: middle;
+    }
+    table.ledger th {
+      position: sticky; top: 0; z-index: 2;
+      background: #152420;
+      color: var(--gold); font-weight: 600; white-space: nowrap;
+    }
+    table.ledger th.private, table.ledger td.private {
+      background: rgba(196,92,38,.12);
+    }
+    table.ledger th .tag {
+      display: inline-block; font-size: 9px; padding: 1px 5px;
+      border-radius: 4px; margin-left: 4px; vertical-align: middle;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .tag.priv { background: rgba(196,92,38,.35); color: #ffc9a8; }
+    .tag.pub { background: rgba(26,155,110,.3); color: var(--mint); }
+    table.ledger input.cell {
+      width: 100%; min-width: 72px; padding: 5px 6px; font-size: 12px;
+      border-radius: 6px;
+    }
+    table.ledger input.cell.private {
+      border-color: rgba(196,92,38,.45);
+      background: rgba(80,30,10,.25);
+    }
+    table.ledger tr:hover td { background: rgba(26,155,110,.06); }
+    .col-editor {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+      margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+    }
+    .col-editor .field { min-width: 120px; flex: 1; }
+
+    /* Receipts */
+    .drop {
+      border: 2px dashed rgba(212,168,75,.35);
+      border-radius: 12px; padding: 18px; text-align: center;
+      color: var(--muted); font-size: 13px; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .drop.over { border-color: var(--emerald); background: rgba(26,155,110,.08); color: var(--mint); }
+    .receipt-list { margin-top: 12px; display: grid; gap: 8px; }
+    .receipt-item {
+      display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+      padding: 10px; background: rgba(0,0,0,.25); border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.06); font-size: 12px;
+    }
+    .receipt-item a { color: var(--mint); }
+    .hidden { display: none !important; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tabs button { opacity: .7; }
+    .tabs button.active { opacity: 1; background: rgba(26,155,110,.25); border-color: var(--emerald); color: var(--mint); }
+    code { font-size: 11px; color: var(--mint); }
+    .user-bar { font-size: 12px; color: var(--muted); }
+    .user-bar strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <h1>FAFO Investor Portal</h1>
+        <div class="sub">
+          Private seats: <strong>you</strong> + <strong>Muhammad Sumran Nasir</strong>
+          · Sync → <strong>FAFO Petro</strong>
+        </div>
+        <div class="arabic" lang="ar">محمد سمران ناصر</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <span class="pill" id="serverPill">Server…</span>
+        <span class="pill" id="syncPill">Sync local</span>
+        <span class="user-bar hidden" id="userBar"></span>
+        <button type="button" class="danger hidden" id="btnLogout">Log out</button>
+      </div>
+    </header>
+
+    <div class="privacy-banner" id="privacyBanner">
+      <strong>Business privacy:</strong>
+      Inventory &amp; <span class="sell">sell price</span> may show on FAFO Petro.com.
+      <span class="cost">Our cost / COGS</span> is <strong>never</strong> pushed to public pages —
+      only this toolbox and Sumran’s private page (logged in). Customers pay marked-up prices; cost stays ours.
+    </div>
+
+    <!-- GATE: setup / login -->
+    <section id="gate" class="card">
+      <div class="gate-crest">💎</div>
+      <h2 id="gateTitle">Sign in</h2>
+      <p class="note" id="gateHint" style="margin-bottom:12px">Owner + Sumran only. Passwords stay on this PC under %LOCALAPPDATA%\FAFO\investor.</p>
+      <div id="setupBox" class="hidden">
+        <div class="row">
+          <div>
+            <label>Your password (owner)</label>
+            <input type="password" id="setupOwnerPass" autocomplete="new-password" placeholder="min 6 chars">
+          </div>
+          <div>
+            <label>Sumran’s password</label>
+            <input type="password" id="setupSumranPass" autocomplete="new-password" placeholder="give him this">
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Your display name</label>
+            <input id="setupOwnerName" value="Owner" autocomplete="nickname">
+          </div>
+          <div>
+            <label>Sumran display name</label>
+            <input id="setupSumranName" value="Muhammad Sumran Nasir" autocomplete="nickname">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btnSetup">Create both accounts</button>
+        </div>
+      </div>
+      <div id="loginBox">
+        <div class="row">
+          <div>
+            <label>Username</label>
+            <select id="loginUser">
+              <option value="owner">owner (you)</option>
+              <option value="sumran">sumran (investor)</option>
+            </select>
+          </div>
+          <div>
+            <label>Password</label>
+            <input type="password" id="loginPass" autocomplete="current-password">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btnLogin">Enter portal</button>
+        </div>
+        <p class="note">Link for Sumran (same PC / LAN when server runs):
+          <code id="portalLink">http://127.0.0.87:18765/investor</code>
+        </p>
+      </div>
+    </section>
+
+    <!-- APP -->
+    <section id="app" class="hidden">
+      <div class="tabs">
+        <button type="button" class="active" data-tab="ledger">Ledger</button>
+        <button type="button" data-tab="receipts">Receipts</button>
+        <button type="button" data-tab="sync">FAFO Petro sync</button>
+        <button type="button" data-tab="columns">Categories</button>
+      </div>
+
+      <div id="tab-ledger" class="card">
+        <h2>Spreadsheet · prices, serials &amp; more</h2>
+        <div class="sheet-tools">
+          <input id="sheetTitle" style="max-width:280px" placeholder="Ledger title">
+          <button type="button" class="primary" id="btnSaveSheet">Save</button>
+          <button type="button" id="btnAddRow">+ Row</button>
+          <button type="button" id="btnExportCsv">CSV</button>
+          <button type="button" id="btnPreviewPublic">Preview public (no cost)</button>
+          <span class="note" id="sheetMeta" style="margin:0"></span>
+        </div>
+        <div class="sheet-scroll">
+          <table class="ledger" id="ledgerTable">
+            <thead id="ledgerHead"></thead>
+            <tbody id="ledgerBody"></tbody>
+          </table>
+        </div>
+        <p class="note">Orange columns = <strong>private cost / internal</strong> (not on public FAFO Petro). Green tags = OK for inventory display.</p>
+      </div>
+
+      <div id="tab-receipts" class="card hidden">
+        <h2>Receipts · phone, email, PC</h2>
+        <div class="drop" id="dropZone">
+          Drop files here or click to upload<br>
+          <span class="note">PDF, photos, HEIC, screenshots — any format · max 40&nbsp;MB</span>
+          <input type="file" id="fileInput" multiple class="hidden" accept="*/*">
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Note (optional)</label>
+            <input id="receiptNote" placeholder="e.g. pump part invoice">
+          </div>
+          <div>
+            <label>Link to row id (optional)</label>
+            <input id="receiptRowId" placeholder="row id from ledger">
+          </div>
+        </div>
+        <div class="receipt-list" id="receiptList"></div>
+      </div>
+
+      <div id="tab-sync" class="card hidden">
+        <h2>FAFO Petro.com · dual channel</h2>
+        <p class="note" style="margin-bottom:12px">
+          <strong>Public channel</strong> → inventory + sell price (costs stripped).<br>
+          <strong>Private channel</strong> → full ledger with costs for Sumran’s private page only.
+          Pulls on open when due (default every 8 hours).
+        </p>
+        <div class="row">
+          <div>
+            <label>Site</label>
+            <input id="syncSite" placeholder="https://fafopetro.com">
+          </div>
+          <div>
+            <label>Public inventory URL</label>
+            <input id="syncPublicUrl" placeholder="https://fafopetro.com/api/fafo/inventory">
+          </div>
+          <div>
+            <label>Private ledger URL (Sumran page)</label>
+            <input id="syncPrivateUrl" placeholder="https://fafopetro.com/api/fafo/investor-private">
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Private token (Bearer)</label>
+            <input type="password" id="syncPrivateToken" placeholder="leave blank to keep" autocomplete="off">
+          </div>
+          <div>
+            <label>Public publish token (optional)</label>
+            <input type="password" id="syncPublicToken" placeholder="optional" autocomplete="off">
+          </div>
+          <div>
+            <label>Pull interval (hours)</label>
+            <input type="number" id="syncInterval" min="0.25" step="0.25" value="8">
+          </div>
+        </div>
+        <div class="btn-row">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--text);font-size:12px">
+            <input type="checkbox" id="syncEnabled" style="width:auto"> Enable web sync
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--text);font-size:12px">
+            <input type="checkbox" id="syncPullOnOpen" checked style="width:auto"> Pull when opened
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--text);font-size:12px">
+            <input type="checkbox" id="syncAutoPush" checked style="width:auto"> Push after save
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--text);font-size:12px">
+            <input type="checkbox" id="syncPushPublic" checked style="width:auto"> Push public inventory
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--text);font-size:12px">
+            <input type="checkbox" id="syncPushPrivate" checked style="width:auto"> Push private ledger
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btnSaveSync">Save sync settings</button>
+          <button type="button" id="btnPull">Pull from web now</button>
+          <button type="button" id="btnPush">Push both channels now</button>
+        </div>
+        <pre class="note" id="syncStatus" style="white-space:pre-wrap;margin-top:12px;padding:10px;background:rgba(0,0,0,.3);border-radius:8px"></pre>
+      </div>
+
+      <div id="tab-columns" class="card hidden">
+        <h2>Editable categories (columns)</h2>
+        <p class="note" style="margin-bottom:10px">
+          Add any field Sumran wants. Mark <strong>Private / Cost</strong> for anything that must not hit public FAFO Petro
+          (cost, wholesale, margin, internal notes).
+        </p>
+        <div id="colList"></div>
+        <div class="col-editor">
+          <div class="field">
+            <label>New column name</label>
+            <input id="newColName" placeholder="e.g. Warranty months">
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <select id="newColType">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Visibility</label>
+            <select id="newColVis">
+              <option value="public">Public (inventory OK)</option>
+              <option value="private">Private (toolbox / Sumran only)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:12px">
+              <input type="checkbox" id="newColCost" style="width:auto"> Is cost / COGS
+            </label>
+          </div>
+          <button type="button" class="primary" id="btnAddCol">Add column</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btnSaveCols">Save categories</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+    const origin = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.ORIGIN) || 'http://127.0.0.87:18765';
+    const LS_TOKEN = 'fafo_investor_token';
+    const LS_USER = 'fafo_investor_user';
+
+    let token = localStorage.getItem(LS_TOKEN) || '';
+    let user = null;
+    try { user = JSON.parse(localStorage.getItem(LS_USER) || 'null'); } catch (_) {}
+    let sheet = { title: '', columns: [], rows: [] };
+    let dirty = false;
+
+    const el = (id) => document.getElementById(id);
+    function toast(msg, err) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (err ? ' err' : '');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(() => t.classList.remove('show'), 3800);
+    }
+
+    async function api(path, opts = {}) {
+      const headers = { ...(opts.headers || {}) };
+      if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
+        headers['X-Investor-Token'] = token;
+      }
+      if (opts.body && !(opts.body instanceof FormData) && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      let r;
+      try {
+        r = await fetch(apiBase() + path, { ...opts, headers });
+      } catch (e) {
+        throw new Error('Server offline — start AI HTML Toolbox server first');
+      }
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) {
+        const d = data.detail;
+        const msg = (typeof d === 'string' ? d : (d && (d.msg || d.message))) || data.message || data.error || r.statusText;
+        throw new Error(msg || 'Request failed');
+      }
+      return data;
+    }
+
+    function isCostCol(c) {
+      if (!c) return false;
+      if (c.isCost || c.visibility === 'private' || c.private) return true;
+      const id = String(c.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const name = String(c.name || '').toLowerCase();
+      if (id.includes('cost') || id === 'cogs' || id.includes('wholesale') || id.includes('margin')) return true;
+      return /cost|cogs|wholesale|dealer|margin|profit|our cost/.test(name);
+    }
+
+    function setLoggedIn(u, tok) {
+      user = u;
+      token = tok || token;
+      if (token) localStorage.setItem(LS_TOKEN, token);
+      if (user) localStorage.setItem(LS_USER, JSON.stringify(user));
+      el('gate').classList.add('hidden');
+      el('app').classList.remove('hidden');
+      el('btnLogout').classList.remove('hidden');
+      el('userBar').classList.remove('hidden');
+      el('userBar').innerHTML = `Signed in as <strong>${esc(user.displayName || user.id)}</strong> (${esc(user.role || user.id)})`;
+    }
+
+    function setLoggedOut() {
+      token = '';
+      user = null;
+      localStorage.removeItem(LS_TOKEN);
+      localStorage.removeItem(LS_USER);
+      el('gate').classList.remove('hidden');
+      el('app').classList.add('hidden');
+      el('btnLogout').classList.add('hidden');
+      el('userBar').classList.add('hidden');
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    /* ----- render ledger ----- */
+    function renderSheet() {
+      el('sheetTitle').value = sheet.title || '';
+      const cols = sheet.columns || [];
+      const head = el('ledgerHead');
+      const body = el('ledgerBody');
+      head.innerHTML = '<tr>' + cols.map(c => {
+        const priv = isCostCol(c);
+        const tag = priv
+          ? '<span class="tag priv">private</span>'
+          : '<span class="tag pub">public</span>';
+        return `<th class="${priv ? 'private' : ''}" style="min-width:${c.width || 100}px">${esc(c.name || c.id)}${tag}</th>`;
+      }).join('') + '<th></th></tr>';
+
+      body.innerHTML = (sheet.rows || []).map((row, ri) => {
+        const cells = cols.map(c => {
+          const priv = isCostCol(c);
+          const v = row[c.id] != null ? row[c.id] : '';
+          const type = c.type === 'number' ? 'number' : (c.type === 'date' ? 'date' : 'text');
+          return `<td class="${priv ? 'private' : ''}"><input class="cell ${priv ? 'private' : ''}" data-ri="${ri}" data-ci="${esc(c.id)}" type="${type}" step="any" value="${esc(v)}"></td>`;
+        }).join('');
+        return `<tr>${cells}<td><button type="button" class="danger" data-del-row="${ri}" style="padding:4px 8px">✕</button></td></tr>`;
+      }).join('') || `<tr><td colspan="${cols.length + 1}" style="color:var(--muted);padding:16px">No rows yet — click + Row</td></tr>`;
+
+      body.querySelectorAll('input.cell').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const ri = Number(inp.dataset.ri);
+          const ci = inp.dataset.ci;
+          if (!sheet.rows[ri]) return;
+          sheet.rows[ri][ci] = inp.type === 'number' && inp.value !== '' ? Number(inp.value) : inp.value;
+          dirty = true;
+        });
+      });
+      body.querySelectorAll('[data-del-row]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const ri = Number(btn.getAttribute('data-del-row'));
+          sheet.rows.splice(ri, 1);
+          dirty = true;
+          renderSheet();
+        });
+      });
+
+      el('sheetMeta').textContent = sheet.updatedAt
+        ? `Updated ${sheet.updatedAt}${sheet.updatedBy ? ' · ' + sheet.updatedBy : ''}${dirty ? ' · unsaved' : ''}`
+        : (dirty ? 'Unsaved changes' : '');
+      renderColList();
+    }
+
+    function renderColList() {
+      const box = el('colList');
+      if (!box) return;
+      box.innerHTML = (sheet.columns || []).map((c, i) => {
+        const priv = isCostCol(c);
+        return `<div class="receipt-item">
+          <strong style="min-width:140px">${esc(c.name)}</strong>
+          <code>${esc(c.id)}</code>
+          <span class="tag ${priv ? 'priv' : 'pub'}">${priv ? 'private/cost' : 'public'}</span>
+          <select data-col-vis="${i}" style="width:auto;max-width:160px">
+            <option value="public" ${!priv ? 'selected' : ''}>Public</option>
+            <option value="private" ${priv ? 'selected' : ''}>Private</option>
+          </select>
+          <button type="button" class="danger" data-del-col="${i}" style="padding:4px 8px">Remove</button>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('[data-col-vis]').forEach(sel => {
+        sel.addEventListener('change', () => {
+          const i = Number(sel.getAttribute('data-col-vis'));
+          sheet.columns[i].visibility = sel.value;
+          sheet.columns[i].isCost = sel.value === 'private' && /cost|cogs|wholesale|margin/i.test(sheet.columns[i].name + sheet.columns[i].id);
+          if (sel.value === 'private' && isCostCol(sheet.columns[i])) sheet.columns[i].isCost = true;
+          dirty = true;
+          renderSheet();
+        });
+      });
+      box.querySelectorAll('[data-del-col]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const i = Number(btn.getAttribute('data-del-col'));
+          const id = sheet.columns[i].id;
+          sheet.columns.splice(i, 1);
+          (sheet.rows || []).forEach(r => { delete r[id]; });
+          dirty = true;
+          renderSheet();
+        });
+      });
+    }
+
+    async function loadSheet() {
+      const res = await api('/investor/sheet');
+      sheet = res.sheet || { columns: [], rows: [] };
+      dirty = false;
+      renderSheet();
+    }
+
+    async function saveSheet() {
+      sheet.title = el('sheetTitle').value.trim() || sheet.title;
+      const res = await api('/investor/sheet', {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: sheet.title,
+          columns: sheet.columns,
+          rows: sheet.rows,
+        }),
+      });
+      sheet = res.sheet || sheet;
+      dirty = false;
+      renderSheet();
+      toast(res.message || 'Saved');
+      if (res.webPush) {
+        const wp = res.webPush;
+        if (wp.ok) toast('Also pushed to FAFO Petro (public without costs)');
+        else if (wp.error) toast('Saved local; web push: ' + wp.error, true);
+      }
+      refreshSyncStatus();
+    }
+
+    async function loadReceipts() {
+      const res = await api('/investor/receipts');
+      const list = el('receiptList');
+      const items = res.receipts || [];
+      if (!items.length) {
+        list.innerHTML = '<div class="note">No receipts yet</div>';
+        return;
+      }
+      list.innerHTML = items.map(r => {
+        const url = apiBase() + '/investor/receipts/' + encodeURIComponent(r.id) + '/file?token=' + encodeURIComponent(token);
+        const kb = Math.round((r.size || 0) / 1024);
+        return `<div class="receipt-item">
+          <a href="${url}" target="_blank" rel="noopener">${esc(r.originalName || r.id)}</a>
+          <span class="note" style="margin:0">${kb} KB · ${esc(r.uploadedByName || r.uploadedBy || '')} · ${esc((r.uploadedAt || '').slice(0, 19))}</span>
+          ${r.note ? `<span>${esc(r.note)}</span>` : ''}
+          <button type="button" class="danger" data-del-rec="${esc(r.id)}" style="padding:4px 8px;margin-left:auto">Delete</button>
+        </div>`;
+      }).join('');
+      list.querySelectorAll('[data-del-rec]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this receipt?')) return;
+          await api('/investor/receipts/' + btn.getAttribute('data-del-rec'), { method: 'DELETE' });
+          toast('Receipt deleted');
+          loadReceipts();
+        });
+      });
+    }
+
+    async function uploadFiles(fileList) {
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+      const note = el('receiptNote').value;
+      const rowId = el('receiptRowId').value;
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append('file', f);
+        fd.append('note', note);
+        fd.append('row_id', rowId);
+        await api('/investor/receipts', { method: 'POST', body: fd });
+      }
+      toast('Uploaded ' + files.length + ' file(s)');
+      el('receiptNote').value = '';
+      loadReceipts();
+    }
+
+    function fillSyncForm(s) {
+      if (!s) return;
+      el('syncEnabled').checked = !!s.enabled;
+      el('syncSite').value = s.site || 'https://fafopetro.com';
+      el('syncPublicUrl').value = s.publicUrl || '';
+      el('syncPrivateUrl').value = s.privateUrl || s.remoteUrl || '';
+      el('syncInterval').value = s.intervalHours != null ? s.intervalHours : 8;
+      el('syncPullOnOpen').checked = s.pullOnOpen !== false;
+      el('syncAutoPush').checked = s.autoPushAfterSave !== false;
+      el('syncPushPublic').checked = s.pushPublicInventory !== false;
+      el('syncPushPrivate').checked = s.pushPrivateLedger !== false;
+      el('syncStatus').textContent = JSON.stringify({
+        enabled: s.enabled,
+        lastPullAt: s.lastPullAt,
+        lastPushAt: s.lastPushAt,
+        lastPublicPushAt: s.lastPublicPushAt,
+        lastPrivatePushAt: s.lastPrivatePushAt,
+        lastPullOk: s.lastPullOk,
+        lastPushOk: s.lastPushOk,
+        lastError: s.lastError,
+        stripCostsFromPublic: true,
+        note: 'Public channel never includes our cost',
+      }, null, 2);
+      const pill = el('syncPill');
+      if (s.enabled) {
+        pill.textContent = s.lastPullOk === false || s.lastPushOk === false ? 'Sync issue' : 'Sync on';
+        pill.className = 'pill ' + (s.lastPullOk === false || s.lastPushOk === false ? 'warn' : 'ok');
+      } else {
+        pill.textContent = 'Local only';
+        pill.className = 'pill';
+      }
+    }
+
+    async function refreshSyncStatus() {
+      try {
+        const res = await api('/investor/sync');
+        fillSyncForm(res.sync);
+      } catch (_) {}
+    }
+
+    async function enterApp() {
+      await loadSheet();
+      await loadReceipts();
+      await refreshSyncStatus();
+      // pull from FAFO Petro private if due
+      try {
+        const r = await api('/investor/sync/on-open', { method: 'POST', body: '{}' });
+        if (r.pulled) {
+          toast(r.message || 'Pulled from web');
+          await loadSheet();
+        }
+        if (r.sync) fillSyncForm(r.sync);
+      } catch (_) {}
+    }
+
+    /* ----- wire ----- */
+    el('portalLink').textContent = origin() + '/investor';
+
+    document.querySelectorAll('.tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        ['ledger', 'receipts', 'sync', 'columns'].forEach(t => {
+          el('tab-' + t).classList.toggle('hidden', t !== btn.dataset.tab);
+        });
+      });
+    });
+
+    el('btnLogin').onclick = async () => {
+      try {
+        const res = await api('/investor/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: el('loginUser').value,
+            password: el('loginPass').value,
+          }),
+        });
+        setLoggedIn(res.user, res.token);
+        el('loginPass').value = '';
+        toast(res.message || 'Welcome');
+        await enterApp();
+      } catch (e) {
+        toast(String(e.message || e), true);
+      }
+    };
+    el('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') el('btnLogin').click(); });
+
+    el('btnSetup').onclick = async () => {
+      try {
+        await api('/investor/setup', {
+          method: 'POST',
+          body: JSON.stringify({
+            owner_password: el('setupOwnerPass').value,
+            sumran_password: el('setupSumranPass').value,
+            owner_display: el('setupOwnerName').value,
+            sumran_display: el('setupSumranName').value,
+          }),
+        });
+        toast('Accounts created — log in');
+        el('setupBox').classList.add('hidden');
+        el('loginBox').classList.remove('hidden');
+        el('gateTitle').textContent = 'Sign in';
+      } catch (e) {
+        toast(String(e.message || e), true);
+      }
+    };
+
+    el('btnLogout').onclick = async () => {
+      try { await api('/investor/logout', { method: 'POST', body: '{}' }); } catch (_) {}
+      setLoggedOut();
+      toast('Logged out');
+    };
+
+    el('btnSaveSheet').onclick = () => saveSheet().catch(e => toast(String(e.message || e), true));
+    el('btnAddRow').onclick = () => {
+      const row = { id: Math.random().toString(16).slice(2, 10) };
+      (sheet.columns || []).forEach(c => { row[c.id] = ''; });
+      sheet.rows = sheet.rows || [];
+      sheet.rows.push(row);
+      dirty = true;
+      renderSheet();
+    };
+    el('btnExportCsv').onclick = async () => {
+      try {
+        const r = await fetch(apiBase() + '/investor/sheet.csv', {
+          headers: { Authorization: 'Bearer ' + token, 'X-Investor-Token': token },
+        });
+        const blob = await r.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'fafo-investor-ledger.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (e) { toast(String(e.message || e), true); }
+    };
+    el('btnPreviewPublic').onclick = async () => {
+      try {
+        const res = await api('/investor/public-inventory');
+        const cols = (res.bundle && res.bundle.sheet && res.bundle.sheet.columns) || [];
+        const rows = (res.bundle && res.bundle.sheet && res.bundle.sheet.rows) || [];
+        const hasCost = cols.some(c => isCostCol(c)) || rows.some(r => Object.keys(r).some(k => /cost|cogs/i.test(k)));
+        alert(
+          'Public FAFO Petro preview\n\n' +
+          'Columns: ' + cols.map(c => c.name).join(', ') + '\n' +
+          'Rows: ' + rows.length + '\n' +
+          (hasCost ? '⚠ COST STILL PRESENT — report bug' : '✓ No cost columns (safe for public)') +
+          '\n\n' + (res.message || '')
+        );
+      } catch (e) { toast(String(e.message || e), true); }
+    };
+
+    el('btnAddCol').onclick = () => {
+      const name = el('newColName').value.trim();
+      if (!name) { toast('Name the column', true); return; }
+      let id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'col';
+      const existing = new Set((sheet.columns || []).map(c => c.id));
+      let n = 2, base = id;
+      while (existing.has(id)) id = base + '_' + n++;
+      const vis = el('newColVis').value;
+      const isCost = el('newColCost').checked || vis === 'private' && /cost|cogs|wholesale|margin/i.test(name);
+      sheet.columns = sheet.columns || [];
+      sheet.columns.push({
+        id,
+        name,
+        type: el('newColType').value,
+        width: 120,
+        visibility: isCost ? 'private' : vis,
+        isCost: !!isCost,
+      });
+      (sheet.rows || []).forEach(r => { r[id] = ''; });
+      el('newColName').value = '';
+      el('newColCost').checked = false;
+      dirty = true;
+      renderSheet();
+      toast('Column added — Save categories or Save ledger');
+    };
+    el('btnSaveCols').onclick = () => saveSheet().catch(e => toast(String(e.message || e), true));
+
+    // receipts drop
+    const drop = el('dropZone');
+    drop.addEventListener('click', () => el('fileInput').click());
+    el('fileInput').addEventListener('change', () => {
+      uploadFiles(el('fileInput').files).catch(e => toast(String(e.message || e), true));
+      el('fileInput').value = '';
+    });
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+      e.preventDefault(); drop.classList.add('over');
+    }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+      e.preventDefault(); drop.classList.remove('over');
+    }));
+    drop.addEventListener('drop', e => {
+      uploadFiles(e.dataTransfer.files).catch(err => toast(String(err.message || err), true));
+    });
+
+    el('btnSaveSync').onclick = async () => {
+      try {
+        const body = {
+          enabled: el('syncEnabled').checked,
+          site: el('syncSite').value.trim(),
+          publicUrl: el('syncPublicUrl').value.trim(),
+          privateUrl: el('syncPrivateUrl').value.trim(),
+          intervalHours: Number(el('syncInterval').value) || 8,
+          pullOnOpen: el('syncPullOnOpen').checked,
+          autoPushAfterSave: el('syncAutoPush').checked,
+          pushPublicInventory: el('syncPushPublic').checked,
+          pushPrivateLedger: el('syncPushPrivate').checked,
+        };
+        const pt = el('syncPrivateToken').value;
+        const pbt = el('syncPublicToken').value;
+        if (pt) body.privateToken = pt;
+        if (pbt) body.publicToken = pbt;
+        const res = await api('/investor/sync', { method: 'PUT', body: JSON.stringify(body) });
+        el('syncPrivateToken').value = '';
+        el('syncPublicToken').value = '';
+        fillSyncForm(res.sync);
+        toast(res.message || 'Sync settings saved');
+      } catch (e) { toast(String(e.message || e), true); }
+    };
+    el('btnPull').onclick = async () => {
+      try {
+        const res = await api('/investor/sync/pull?force=true', { method: 'POST', body: '{}' });
+        if (res.sync) fillSyncForm(res.sync);
+        if (res.ok && res.pulled) { toast(res.message || 'Pulled'); await loadSheet(); }
+        else toast(res.error || res.reason || res.message || 'Pull', !res.ok);
+      } catch (e) { toast(String(e.message || e), true); }
+    };
+    el('btnPush').onclick = async () => {
+      try {
+        const res = await api('/investor/sync/push', { method: 'POST', body: '{}' });
+        if (res.sync) fillSyncForm(res.sync);
+        toast(res.message || (res.ok ? 'Pushed' : res.error || 'Push failed'), !res.ok);
+      } catch (e) { toast(String(e.message || e), true); }
+    };
+
+    async function boot() {
+      el('portalLink').textContent = origin() + '/investor';
+      try {
+        await fetch(apiBase() + '/health').then(r => {
+          el('serverPill').textContent = r.ok ? 'Server online' : 'Server down';
+          el('serverPill').className = 'pill ' + (r.ok ? 'ok' : 'bad');
+        });
+      } catch {
+        el('serverPill').textContent = 'Server offline';
+        el('serverPill').className = 'pill bad';
+      }
+      try {
+        const st = await api('/investor/status');
+        if (!st.configured) {
+          el('setupBox').classList.remove('hidden');
+          el('loginBox').classList.add('hidden');
+          el('gateTitle').textContent = 'First-time setup';
+          el('gateHint').textContent = 'Create the only two seats: owner (you) and sumran. Then send him the link + password.';
+        }
+      } catch (e) {
+        el('gateHint').textContent = String(e.message || e);
+      }
+      if (token) {
+        try {
+          const me = await api('/investor/me');
+          setLoggedIn(me.user, token);
+          await enterApp();
+        } catch {
+          setLoggedOut();
+        }
+      }
+    }
+    boot();
+  </script>
+</body>
+</html>

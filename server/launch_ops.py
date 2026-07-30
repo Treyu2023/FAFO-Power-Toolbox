@@ -87,6 +87,12 @@ def _default_prefs() -> dict[str, Any]:
             "servers": False,
             "app": False,
         },
+        # Manual command-board overrides — block auto-start / one-click / Windows startup
+        # for a server without uninstalling. force=True on start APIs can still launch.
+        "blockAutoStart": {
+            "toolboxServer": False,
+            "fafoMetaServer": False,
+        },
         "fafoMetaRoot": None,
         "updatedAt": None,
     }
@@ -118,6 +124,10 @@ def get_prefs() -> dict[str, Any]:
         prefs["windowsStartup"].update(
             {k: bool(v) for k, v in raw["windowsStartup"].items() if k in prefs["windowsStartup"]}
         )
+    if isinstance(raw.get("blockAutoStart"), dict):
+        prefs["blockAutoStart"].update(
+            {k: bool(v) for k, v in raw["blockAutoStart"].items() if k in prefs["blockAutoStart"]}
+        )
     meta = raw.get("fafoMetaRoot") or raw.get("ExplorerMetaRoot")
     if isinstance(meta, str) and meta.strip():
         prefs["fafoMetaRoot"] = meta.strip()
@@ -148,6 +158,10 @@ def save_prefs(updates: dict[str, Any] | None = None) -> dict[str, Any]:
         for k, v in updates["windowsStartup"].items():
             if k in prefs["windowsStartup"]:
                 prefs["windowsStartup"][k] = bool(v)
+    if isinstance(updates.get("blockAutoStart"), dict):
+        for k, v in updates["blockAutoStart"].items():
+            if k in prefs["blockAutoStart"]:
+                prefs["blockAutoStart"][k] = bool(v)
     if "fafoMetaRoot" in updates:
         val = updates["fafoMetaRoot"]
         if val is None or (isinstance(val, str) and not val.strip()):
@@ -162,6 +176,7 @@ def save_prefs(updates: dict[str, Any] | None = None) -> dict[str, Any]:
         "version": PREFS_VERSION,
         "startWithOneClick": prefs["startWithOneClick"],
         "windowsStartup": prefs["windowsStartup"],
+        "blockAutoStart": prefs["blockAutoStart"],
         "fafoMetaRoot": prefs.get("fafoMetaRoot"),
         "updatedAt": prefs["updatedAt"],
     }
@@ -279,6 +294,8 @@ def companion_status() -> dict[str, Any]:
     )
     prefs = get_prefs()
     win = windows_startup_status()
+    block = prefs.get("blockAutoStart") or {}
+    one = prefs.get("startWithOneClick") or {}
     return {
         "prefs": prefs,
         "toolbox": {
@@ -291,6 +308,8 @@ def companion_status() -> dict[str, Any]:
             "endpoint": f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}",
             "listening": toolbox_listening,
             "healthy": bool(toolbox_health.get("ok")),
+            "autoStart": bool(one.get("toolboxServer")),
+            "blockAutoStart": bool(block.get("toolboxServer")),
             "role": "Powers HTML Toolbox apps (media, Verifone, system tools, VSR, file tools)",
             "serves": [
                 "Toolbox Launcher",
@@ -310,6 +329,8 @@ def companion_status() -> dict[str, Any]:
             "endpoint": f"http://{META_HOST}:{META_PORT}",
             "listening": meta_listening,
             "healthy": bool(meta_health.get("ok")),
+            "autoStart": bool(one.get("fafoMetaServer")),
+            "blockAutoStart": bool(block.get("fafoMetaServer")),
             "role": "Powers FAFO Local Media Chrome extension (tags, ratings, pairs, Explorer sync)",
             "serves": [
                 "FAFO Local Media (Chrome new-tab extension)",
@@ -467,20 +488,46 @@ def start_companions(
     toolbox: bool | None = None,
     fafo_meta: bool | None = None,
     wait_sec: float = 12.0,
+    *,
+    force: bool = False,
 ) -> dict[str, Any]:
-    """Start configured companion servers. None = use prefs."""
+    """
+    Start configured companion servers. None = use prefs.
+
+    blockAutoStart in prefs blocks auto/one-click starts unless force=True
+    (manual override from Startup command board).
+    """
     prefs = get_prefs()
+    block = prefs.get("blockAutoStart") or {}
     want_tb = prefs["startWithOneClick"]["toolboxServer"] if toolbox is None else bool(toolbox)
     want_meta = prefs["startWithOneClick"]["fafoMetaServer"] if fafo_meta is None else bool(fafo_meta)
+
+    blocked: list[str] = []
+    if want_tb and block.get("toolboxServer") and not force:
+        want_tb = False
+        blocked.append("toolboxServer")
+    if want_meta and block.get("fafoMetaServer") and not force:
+        want_meta = False
+        blocked.append("fafoMetaServer")
 
     results: list[dict[str, Any]] = []
     if want_tb:
         results.append(start_toolbox_server())
     if want_meta:
         results.append(start_fafo_meta_server())
+    for b in blocked:
+        results.append(
+            {
+                "ok": False,
+                "id": "blocked",
+                "server": b,
+                "skipped": True,
+                "reason": "blockAutoStart — enable from Startup board or pass force=true",
+            }
+        )
 
     deadline = time.time() + max(0.0, wait_sec)
-    while time.time() < deadline:
+    while time.time() < deadline and (want_tb or want_meta):
         st = companion_status()
         tb_ok = (not want_tb) or st["toolbox"]["healthy"] or st["toolbox"]["listening"]
         meta_ok = (not want_meta) or st["fafoMeta"]["healthy"] or st["fafoMeta"]["listening"]
@@ -494,10 +541,12 @@ def start_companions(
     status = companion_status()
     status["tray"] = {"running": _tray_running(), **{k: v for k, v in tray.items() if k != "id"}}
     return {
-        "ok": all(r.get("ok") for r in results if r.get("id") != "tray") if results else True,
+        "ok": all(r.get("ok") for r in results if r.get("id") not in ("tray", "blocked")) if results else True,
         "started": results,
         "status": status,
         "wanted": {"toolboxServer": want_tb, "fafoMetaServer": want_meta},
+        "blocked": blocked,
+        "force": force,
         "hidden": True,
     }
 
@@ -558,6 +607,8 @@ def restart_companions(
     toolbox: bool | None = None,
     fafo_meta: bool | None = None,
     wait_sec: float = 15.0,
+    *,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Stop then start companions (for tray / protocol relaunch)."""
     prefs = get_prefs()
@@ -565,7 +616,7 @@ def restart_companions(
     want_meta = prefs["startWithOneClick"]["fafoMetaServer"] if fafo_meta is None else bool(fafo_meta)
     stopped = stop_companions(toolbox=want_tb, fafo_meta=want_meta)
     time.sleep(0.6)
-    started = start_companions(toolbox=want_tb, fafo_meta=want_meta, wait_sec=wait_sec)
+    started = start_companions(toolbox=want_tb, fafo_meta=want_meta, wait_sec=wait_sec, force=force)
     return {
         "ok": started.get("ok", False),
         "killed": stopped.get("killed", {}),
@@ -707,6 +758,8 @@ def apply_prefs_and_startup(body: dict[str, Any]) -> dict[str, Any]:
     prefs_update: dict[str, Any] = {}
     if "startWithOneClick" in body:
         prefs_update["startWithOneClick"] = body["startWithOneClick"]
+    if "blockAutoStart" in body and isinstance(body["blockAutoStart"], dict):
+        prefs_update["blockAutoStart"] = body["blockAutoStart"]
     if "fafoMetaRoot" in body:
         prefs_update["fafoMetaRoot"] = body["fafoMetaRoot"]
     if "windowsStartup" in body and isinstance(body["windowsStartup"], dict):
