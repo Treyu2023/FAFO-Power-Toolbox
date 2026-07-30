@@ -1,18 +1,21 @@
-# Creates Desktop + optional Start Menu shortcuts with a custom icon.
+# Creates Desktop + Start Menu shortcuts so users never hunt install folders.
 # Prefers shared assets/tool-icons/app.* then legacy assets/AI-HTML-Toolbox.ico
-# Note: Windows .lnk IconLocation works best with .ico; PNG/GIF still work in the HTML launcher.
 param(
   [string]$IconPath = "",
-  [switch]$StartMenu
+  [switch]$StartMenu,
+  [switch]$NoStartMenu
 )
 
 $ErrorActionPreference = 'Stop'
 $ToolboxRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LauncherHtml = Join-Path $ToolboxRoot 'Toolbox Launcher.html'
 $LaunchBat = Join-Path $ToolboxRoot 'Launch-AI-HTML-Toolbox.bat'
+$StartServersBat = Join-Path $ToolboxRoot 'Start Servers.bat'
 $IconsDir = Join-Path $ToolboxRoot 'assets\tool-icons'
 $DefaultIco = Join-Path $ToolboxRoot 'assets\AI-HTML-Toolbox.ico'
-$IconLibrary = 'C:\Users\rkey2\OneDrive\Desktop\AI LOCAL Proj Bin\Completed ICO'
+$wantStartMenu = $true
+if ($NoStartMenu) { $wantStartMenu = $false }
+if ($StartMenu) { $wantStartMenu = $true }
 
 function Resolve-DefaultIcon {
   $manifestPath = Join-Path $IconsDir 'manifest.json'
@@ -33,17 +36,47 @@ function Resolve-DefaultIcon {
   return $null
 }
 
+function New-FafoShortcut {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][string]$Target,
+    [string]$Arguments = '',
+    [string]$WorkDir = $ToolboxRoot,
+    [string]$Description = '',
+    [string]$Icon = $script:LnkIcon
+  )
+  $dir = Split-Path -Parent $Path
+  if (-not (Test-Path -LiteralPath $dir)) {
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+  }
+  $w = New-Object -ComObject WScript.Shell
+  $sc = $w.CreateShortcut($Path)
+  $sc.TargetPath = $Target
+  if ($Arguments) { $sc.Arguments = $Arguments }
+  $sc.WorkingDirectory = $WorkDir
+  $sc.WindowStyle = 7
+  $sc.Description = $Description
+  if ($Icon -and (Test-Path -LiteralPath $Icon)) {
+    $sc.IconLocation = "$Icon,0"
+  }
+  $sc.Save()
+  Write-Host "Created: $Path"
+}
+
 if (-not (Test-Path $LauncherHtml)) { throw "Missing: $LauncherHtml" }
 if (-not (Test-Path $LaunchBat)) { throw "Missing: $LaunchBat" }
+if (-not (Test-Path $StartServersBat)) {
+  $StartServersBat = Join-Path $ToolboxRoot 'START SERVER.bat'
+}
+if (-not (Test-Path $StartServersBat)) { throw "Missing Start Servers.bat" }
 
 if (-not $IconPath) { $IconPath = Resolve-DefaultIcon }
 if (-not $IconPath -or -not (Test-Path $IconPath)) {
-  Write-Host "Icon not found. Using shell default or pick from: $IconLibrary"
+  Write-Host "Icon not found - using default if present"
   if (Test-Path $DefaultIco) { $IconPath = $DefaultIco }
 }
 
-# If a non-ico was chosen for the .lnk, prefer any app.ico / legacy ico for Windows shortcuts
-$lnkIcon = $IconPath
+$script:LnkIcon = $IconPath
 $ext = if ($IconPath) { [IO.Path]::GetExtension($IconPath).ToLowerInvariant() } else { '' }
 if ($ext -and $ext -ne '.ico') {
   $preferIco = @(
@@ -51,39 +84,41 @@ if ($ext -and $ext -ne '.ico') {
     $DefaultIco
   ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
   if ($preferIco) {
-    Write-Host "Note: Windows shortcuts prefer .ico — using $preferIco for the .lnk"
-    Write-Host "      HTML launcher will still use your image/GIF from tool-icons."
-    $lnkIcon = $preferIco
-  } else {
-    Write-Host "Warning: .lnk icons work best as .ico. Launcher UI supports PNG/GIF/etc."
+    Write-Host "Note: Windows shortcuts prefer .ico - using $preferIco for the .lnk"
+    $script:LnkIcon = $preferIco
   }
 }
 
 $desktop = [Environment]::GetFolderPath('Desktop')
-$shortcutPath = Join-Path $desktop 'AI HTML Toolbox.lnk'
 
-$w = New-Object -ComObject WScript.Shell
-$sc = $w.CreateShortcut($shortcutPath)
-$sc.TargetPath = $LaunchBat
-$sc.WorkingDirectory = $ToolboxRoot
-$sc.WindowStyle = 7
-$sc.Description = 'AI HTML Toolbox - local tools launcher'
-if ($lnkIcon -and (Test-Path $lnkIcon)) {
-  $sc.IconLocation = "$lnkIcon,0"
-}
-$sc.Save()
+New-FafoShortcut -Path (Join-Path $desktop 'AI HTML Toolbox.lnk') `
+  -Target $LaunchBat `
+  -Description 'AI HTML Toolbox - app + background servers'
 
-Write-Host "Created: $shortcutPath"
-Write-Host "Icon:    $lnkIcon"
+New-FafoShortcut -Path (Join-Path $desktop 'AI HTML Toolbox - Start Servers.lnk') `
+  -Target $StartServersBat `
+  -Description 'Relaunch FAFO servers in background + tray'
 
-if ($StartMenu) {
-  $sm = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-  $smPath = Join-Path $sm 'AI HTML Toolbox.lnk'
-  Copy-Item -Force $shortcutPath $smPath
-  Write-Host "Created: $smPath"
+if ($wantStartMenu) {
+  $smDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\AI HTML Toolbox'
+  New-FafoShortcut -Path (Join-Path $smDir 'AI HTML Toolbox.lnk') `
+    -Target $LaunchBat `
+    -Description 'AI HTML Toolbox - app + background servers'
+  New-FafoShortcut -Path (Join-Path $smDir 'Start Servers.lnk') `
+    -Target $StartServersBat `
+    -Description 'Relaunch companion servers (hidden) + system tray'
+  $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  $ps1 = Join-Path $ToolboxRoot 'Scripts\Start-FAFOServers.ps1'
+  if (Test-Path -LiteralPath $ps1) {
+    New-FafoShortcut -Path (Join-Path $smDir 'Restart Servers.lnk') `
+      -Target $ps `
+      -Arguments "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ps1`" -ToolboxRoot `"$ToolboxRoot`" -Restart -Quiet" `
+      -Description 'Stop + start companions + tray (hidden)'
+  }
 }
 
 Write-Host ""
-Write-Host "Done. Pin 'AI HTML Toolbox' from the Desktop to the taskbar for a custom icon."
-Write-Host "Shared tool icons: assets\tool-icons\  (Set-FAFOToolIcon.ps1 or Launcher Edit Icons)"
-Write-Host "  .\Scripts\Set-FAFOToolIcon.ps1 -ToolId app -SourcePath `"path\to\icon.ico`""
+Write-Host "Done. Pin AI HTML Toolbox or Start Servers to the taskbar for one-click relaunch."
+Write-Host "Servers run hidden (no console). Tray icon: Restart / Open Launcher."
+Write-Host "No UAC required for local loopback servers."
+Write-Host "Shared tool icons: assets\tool-icons\"

@@ -1,37 +1,37 @@
 @echo off
-title AI Toolbox — Starting Server
+:: Back-compat name: starts companions hidden + tray (same as "Start Servers.bat")
+title AI Toolbox — Starting servers (background)
 cd /d "%~dp0"
 
-call "%~dp0Scripts\use-fafo-python.bat"
-if errorlevel 1 (
-  echo  Run INSTALL-PYTHON.bat first to create .venv
-  echo  ^(If you see "No Python at ...Python312", the old venv is broken — reinstall.^)
+if not exist "%~dp0Scripts\Start-FAFOServers.ps1" (
+  echo Missing Scripts\Start-FAFOServers.ps1
+  echo Run INSTALL-PYTHON.bat / setup first.
   pause
   exit /b 1
 )
 
 echo.
-echo  AI HTML TOOLBOX — Starting server...
-echo  Python: %FAFO_PYTHON%
-echo  Endpoint: http://127.0.0.87:18765  (not 127.0.0.1:8765)
+echo  Starting FAFO servers in the background...
+echo    S1 HTML Toolbox Server     : http://127.0.0.87:18765
+echo       (Media / Verifone / System Tools / File tools)
+echo    S2 FAFO Local Media Tagger : http://127.0.0.1:8765
+echo       (Chrome FAFO Local Media extension tags/ratings)
+echo  No console windows - tray / Desktop Start Servers /
+echo  0-Start-ALL / 1-Start-S1 / 2-Start-S2 / Stop-ALL-Servers.bat
 echo.
 
-REM Do not pip-install into global Python. Use INSTALL-PYTHON.bat for deps.
-echo %FAFO_PYTHON%| findstr /I /C:"\.venv\Scripts\python.exe" >nul
-if errorlevel 1 (
-  echo  [!] Not using local .venv — packages may be missing.
-  echo      Run INSTALL-PYTHON.bat to recreate .venv ^(e.g. after uninstalling Python 3.12^).
-  echo.
+echo [%date% %time%] START SERVER.bat (hidden multi-server)>> "%~dp0server\startup.log"
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%~dp0." -Quiet
+set "EC=%ERRORLEVEL%"
+
+if not "%EC%"=="0" (
+  echo  Start helper exited with code %EC%.
+  echo  Try: INSTALL-PYTHON.bat then this again.
+  pause
+  exit /b %EC%
 )
 
-echo [%date% %time%] START SERVER.bat>> "%~dp0server\startup.log"
-echo python=%FAFO_PYTHON%>> "%~dp0server\startup.log"
-
-REM Use /c so a failed import does not leave a permanent "No Python" window hanging
-start "AI Toolbox Server" /MIN cmd /c "cd /d "%~dp0server" && "%FAFO_PYTHON%" aitoolbox_server.py || (echo. & echo Server exited with an error. & pause)"
-
-echo  Server window started (minimized). Check taskbar if needed.
-echo  Return to Toolbox Launcher — dot should turn green in a few seconds.
-echo.
-timeout /t 4 /nobreak >nul
+echo  Done. Look for the FAFO tray icon ^(or Start Menu / Desktop shortcuts^).
+timeout /t 2 /nobreak >nul
 exit /b 0
