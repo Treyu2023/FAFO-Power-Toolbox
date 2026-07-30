@@ -32,7 +32,7 @@ When you set an icon with the **server running**, the app **copies the file into
 
 ### OneDrive / Desktop (do not use a folder junction)
 
-Keep the **real repo outside OneDrive** (e.g. `C:\_Git\HTMLPROJECTS\AI HTML TOOLBOX`).  
+Keep the **real repo outside OneDrive** (e.g. `C:\_Git\repos\html\ai-html-toolbox\production`).  
 On the Desktop, use only a normal **`.lnk` shortcut** — never a directory junction/symlink named `AI HTML TOOLBOX`.
 
 OneDrive **cannot back up junctions** and will block Desktop backup if one is present.  
