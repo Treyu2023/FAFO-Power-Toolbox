@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAFO Setup Configurator</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
+  <script src="shared/aitoolbox-config.js"></script>
+  <style>
+    :root {
+      --bg: #070a10; --panel: #0e1520; --line: rgba(56,189,248,.22);
+      --accent: #38bdf8; --good: #34d399; --text: #e8eef4; --muted: #8b9bb0; --amber: #fbbf24;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh; color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: radial-gradient(ellipse 70% 40% at 20% 0%, rgba(14,116,144,.35), transparent 50%), var(--bg);
+      padding: 22px 18px 48px;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; }
+    h1 { font-size: 22px; font-weight: 600; color: var(--accent); letter-spacing: .04em; }
+    .sub { color: var(--muted); font-size: 13px; margin: 6px 0 18px; line-height: 1.45; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+      padding: 14px 16px; margin-bottom: 14px;
+    }
+    .card h2 { font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+    .pill { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-right: 6px; }
+    .pill.ok { color: var(--good); border-color: rgba(52,211,153,.4); }
+    .pill.bad { color: #f87171; border-color: rgba(248,113,113,.4); }
+    .workflows { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .wf {
+      border: 1px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer;
+      background: rgba(0,0,0,.25); transition: border-color .15s, background .15s;
+    }
+    .wf:hover { border-color: var(--accent); }
+    .wf.active { border-color: var(--accent); background: rgba(56,189,248,.1); box-shadow: 0 0 0 1px rgba(56,189,248,.25); }
+    .wf strong { display: block; margin-bottom: 4px; }
+    .wf span { font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .mod {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 10px 12px; align-items: start;
+      padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .mod:last-child { border-bottom: none; }
+    .mod label { font-weight: 600; font-size: 13px; cursor: pointer; }
+    .mod .desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .mod .cat { font-size: 10px; color: var(--amber); text-transform: uppercase; letter-spacing: .06em; }
+    input[type=checkbox] { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); }
+    input[type=text] {
+      width: 100%; max-width: 320px; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid var(--line); background: rgba(0,0,0,.35); color: var(--text);
+    }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+    button {
+      background: transparent; border: 1px solid var(--accent); color: var(--accent);
+      padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #041018; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .note { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
+    pre {
+      margin-top: 10px; padding: 10px; background: rgba(0,0,0,.4); border-radius: 8px;
+      font-size: 11px; overflow: auto; max-height: 200px; white-space: pre-wrap;
+    }
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      background: #122; color: var(--good); border: 1px solid var(--good);
+      padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; z-index: 20;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center">
+      <span style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:rgba(56,189,248,.12)">⚙ Setup packs</span>
+      <a href="Startup Command Board.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid rgba(56,189,248,.22);color:var(--muted);text-decoration:none">🖥 Startup board</a>
+      <a href="Toolbox Launcher.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid rgba(56,189,248,.22);color:var(--muted);text-decoration:none">🧰 Launcher</a>
+    </div>
+    <h1>⚙ FAFO Setup Configurator</h1>
+    <p class="sub">
+      Pick a workflow (or customize modules). We build a <strong>personal BAT folder</strong> for you —
+      wrappers only; originals stay put. No servers you didn’t select.
+      After install, use the <strong>Startup board</strong> to monitor and block/force servers.
+    </p>
+
+    <div class="card">
+      <h2>Status</h2>
+      <span class="pill" id="serverPill">Server…</span>
+      <span class="pill" id="catalogPill">Catalog…</span>
+      <p class="note">Catalog lives at <code>setup/install-catalog.json</code> · full list in <code>docs/Install-Catalog.md</code></p>
+    </div>
+
+    <div class="card">
+      <h2>1 · Quick workflow</h2>
+      <div class="workflows" id="workflows"></div>
+      <p class="note">Field techs: choose <strong>Field tech</strong> or <strong>Everything</strong>.</p>
+    </div>
+
+    <div class="card">
+      <h2>2 · Modules</h2>
+      <div id="modules"></div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Pack name &amp; build</h2>
+      <label class="note" for="packName" style="display:block;margin-bottom:4px">Pack folder name</label>
+      <input type="text" id="packName" value="Field-Tech" maxlength="64">
+      <div class="btn-row">
+        <button type="button" class="primary" id="btnBuild">Build my BAT pack</button>
+        <button type="button" id="btnSelectAll">Select all</button>
+        <button type="button" id="btnTechDefault">Tech defaults</button>
+        <button type="button" id="btnOpenCatalog">Open catalog JSON</button>
+      </div>
+      <p class="note" id="outHint">Output: %LOCALAPPDATA%\FAFO\user-setup-packs\&lt;name&gt;\</p>
+      <pre id="result" hidden></pre>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+    const origin = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.ORIGIN) || 'http://127.0.0.87:18765';
+    let catalog = null;
+    let selected = new Set();
+
+    const el = (id) => document.getElementById(id);
+    function toast(msg) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(() => t.classList.remove('show'), 3500);
+    }
+
+    async function api(path, opts) {
+      const headers = { ...(opts && opts.headers || {}) };
+      if (opts && opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      const r = await fetch(apiBase() + path, { ...opts, headers });
+      const text = await r.text();
+      let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) throw new Error((data.detail && (data.detail.msg || data.detail)) || data.message || r.statusText);
+      return data;
+    }
+
+    function renderWorkflows() {
+      const box = el('workflows');
+      box.innerHTML = (catalog.workflows || []).map(w => `
+        <div class="wf" data-wf="${w.id}">
+          <strong>${w.name}</strong>
+          <span>${w.description || ''}</span>
+        </div>`).join('');
+      box.querySelectorAll('.wf').forEach(node => {
+        node.addEventListener('click', () => {
+          box.querySelectorAll('.wf').forEach(n => n.classList.remove('active'));
+          node.classList.add('active');
+          applyWorkflow(node.getAttribute('data-wf'));
+        });
+      });
+      // default field tech
+      const tech = box.querySelector('[data-wf="tech-full"]') || box.querySelector('.wf');
+      if (tech) tech.click();
+    }
+
+    function applyWorkflow(id) {
+      const wf = (catalog.workflows || []).find(w => w.id === id);
+      if (!wf) return;
+      selected = new Set(wf.modules || []);
+      // always core
+      selected.add('core');
+      renderModules();
+      if (id === 'tech-full') el('packName').value = 'Field-Tech';
+      if (id === 'everything') el('packName').value = 'Everything';
+      if (id === 'media-creator') el('packName').value = 'Media-Creator';
+      if (id === 'minimal') el('packName').value = 'Minimal';
+    }
+
+    function renderModules() {
+      const box = el('modules');
+      const mods = catalog.modules || [];
+      box.innerHTML = mods.map(m => {
+        const on = selected.has(m.id) || m.required;
+        const dis = m.required ? 'disabled' : '';
+        return `<div class="mod">
+          <input type="checkbox" data-mod="${m.id}" ${on ? 'checked' : ''} ${dis}>
+          <div>
+            <div class="cat">${m.category || ''}</div>
+            <label>${m.name}${m.required ? ' (required)' : ''}</label>
+            <div class="desc">${m.description || ''}</div>
+          </div>
+          <div class="note">${(m.scripts || []).length} script(s)</div>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('[data-mod]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const id = cb.getAttribute('data-mod');
+          if (cb.checked) selected.add(id);
+          else selected.delete(id);
+          selected.add('core');
+        });
+      });
+    }
+
+    el('btnSelectAll').onclick = () => {
+      selected = new Set((catalog.modules || []).map(m => m.id));
+      renderModules();
+      el('packName').value = 'Everything';
+    };
+    el('btnTechDefault').onclick = () => {
+      const tech = document.querySelector('[data-wf="tech-full"]');
+      if (tech) tech.click();
+    };
+    el('btnOpenCatalog').onclick = () => {
+      window.open(origin() + '/toolbox/setup/install-catalog.json', '_blank');
+    };
+
+    el('btnBuild').onclick = async () => {
+      const packName = (el('packName').value || 'My-FAFO-Setup').trim();
+      const modules = Array.from(selected);
+      try {
+        el('btnBuild').disabled = true;
+        toast('Building pack…');
+        const res = await api('/setup/build-pack', {
+          method: 'POST',
+          body: JSON.stringify({ packName, modules }),
+        });
+        el('result').hidden = false;
+        el('result').textContent = JSON.stringify(res, null, 2);
+        el('outHint').textContent = 'Pack folder: ' + (res.outRoot || res.packPath || '');
+        toast(res.message || 'Pack built');
+        if (res.outRoot) {
+          // try open folder via API
+          try {
+            await api('/setup/open-pack-folder', {
+              method: 'POST',
+              body: JSON.stringify({ path: res.outRoot }),
+            });
+          } catch (_) {}
+        }
+      } catch (e) {
+        // offline fallback: show PowerShell one-liner
+        el('result').hidden = false;
+        const mods = modules.join(',');
+        el('result').textContent =
+          'Server offline or API error: ' + (e.message || e) + '\n\n' +
+          'Run manually from toolbox root:\n\n' +
+          'powershell -NoProfile -ExecutionPolicy Bypass -File .\\Scripts\\Build-UserSetupPack.ps1 ' +
+          '-Modules ' + mods + ' -PackName "' + packName + '"\n';
+        toast(String(e.message || e));
+      } finally {
+        el('btnBuild').disabled = false;
+      }
+    };
+
+    async function boot() {
+      try {
+        const h = await fetch(apiBase() + '/health');
+        el('serverPill').textContent = h.ok ? 'Server online' : 'Server down';
+        el('serverPill').className = 'pill ' + (h.ok ? 'ok' : 'bad');
+      } catch {
+        el('serverPill').textContent = 'Server offline';
+        el('serverPill').className = 'pill bad';
+      }
+      try {
+        // Prefer API; fallback fetch catalog via toolbox static or relative
+        let data;
+        try {
+          data = await api('/setup/catalog');
+          catalog = data.catalog || data;
+        } catch {
+          const r = await fetch('setup/install-catalog.json');
+          catalog = await r.json();
+        }
+        el('catalogPill').textContent = (catalog.modules || []).length + ' modules';
+        el('catalogPill').className = 'pill ok';
+        renderWorkflows();
+      } catch (e) {
+        el('catalogPill').textContent = 'Catalog missing';
+        el('catalogPill').className = 'pill bad';
+        el('modules').innerHTML = '<p class="note">' + (e.message || e) + '</p>';
+      }
+    }
+    boot();
+  </script>
+</body>
+</html>

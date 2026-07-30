@@ -214,6 +214,10 @@
       background-size: 20px 20px; cursor: default; touch-action: none;
     }
     .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .layout-view-toggle .btn.active { background: rgba(56,189,248,.2); border-color: var(--accent); color: var(--accent); }
+    #layout3dHost { min-height: 460px; height: min(62vh, 560px); display: none; }
+    #layout3dHost.active { display: block; }
+    #layout2dHost.hidden-view { display: none; }
     /* Site survey photo OCR (EZ Mode) */
     .ocr-drop {
       border: 1.5px dashed rgba(56,189,248,.4); border-radius: 12px; padding: 18px 14px;
@@ -551,6 +555,7 @@
       <span id="serverPill" class="status-pill warn" role="button" tabindex="0" title="Local FAFO toolbox API on this PC (127.0.0.87:18765). Click when offline to start.">Server…</span>
       <button class="btn primary" id="btnStartServer" type="button" title="Launch the Python toolbox backend from this page (same as other tools / START SERVER.bat)">▶ Start Server</button>
       <input type="search" id="search" placeholder="Search customer, site, phone, equipment…">
+      <button class="btn primary" id="btnQuickStart" type="button" title="Sync backups → create site profiles → sticky notes → seed aerial layouts">⚡ Quick Start</button>
       <button class="btn primary" id="btnSync" title="Rescan all watched folders for new/updated sites">↻ Sync folders</button>
       <button class="btn" id="btnSetRoot" title="Each tech can set their own local backup folders">📁 Watched folders…</button>
       <a class="btn" id="btnLiveHud" href="Commander Status HUD.html" title="Live Commander reachability + credential probe">📡 Status HUD</a>
@@ -643,6 +648,7 @@
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="site-layout-3d.js"></script>
   <script>
     const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
     let groups = [];
@@ -654,7 +660,7 @@
     let fileCache = null;
     let openFileName = null;
     let survey = null;
-    let layoutState = { selectedId: null, drag: null, resize: null, tool: 'select', clipboard: null };
+    let layoutState = { selectedId: null, drag: null, resize: null, tool: 'select', clipboard: null, view3d: null, mode: '2d' };
     let openFileContent = null;
 
     // Journal Browser (CGILink T-log) — state survives tab re-renders
@@ -1051,6 +1057,7 @@
         ['smsie', 'Import-Export'],
         ['survey', 'Site survey'],
         ['layout', 'Aerial layout'],
+        ['gear', 'Gear knowledge'],
         ['files', 'XML files'],
       ];
       const tabTips = {
@@ -1058,6 +1065,8 @@
         journal: 'Live T-log + receipt drill-down. Filters update as you type.',
         plu: 'Browse/filter PLUs, multi-select bulk price/EBT/dept edits, protected original + last-3 finalized backups.',
         smsie: 'SMS Import-Export shell: site Manager login, NEW (55+) vs LEGACY tools, pick databases, control save path, export/import.',
+        gear: 'Tech-editable pros/cons & compatibility. Site-specific by default; promote to multi-site after short yes-checklist. Future: 3D explode CAD-lite.',
+        layout: 'Aerial map from backup seed. Drag equipment. Future: 3D models + explode views on this plan.',
       };
       const tabHtml = tabs.map(([k, lab]) =>
         `<button class="tab ${activeTab === k ? 'active' : ''}" data-tab="${k}" title="${esc(tabTips[k] || '')}">${lab}</button>`
@@ -1073,6 +1082,7 @@
       else if (activeTab === 'smsie') body = renderSmsIeShell(s, d, eq);
       else if (activeTab === 'survey') body = '<div class="empty">Loading survey…</div>';
       else if (activeTab === 'layout') body = '<div class="empty">Loading layout…</div>';
+      else if (activeTab === 'gear') body = '<div class="empty">Loading gear knowledge…</div>';
       else if (activeTab === 'files') body = renderFilesShell();
 
       el('detail').innerHTML = `
@@ -1103,6 +1113,7 @@
       if (activeTab === 'files') loadFiles();
       if (activeTab === 'survey') loadSurveyUI();
       if (activeTab === 'layout') loadLayoutUI();
+      if (activeTab === 'gear') loadGearKnowledgeUI(s, d);
       if (activeTab === 'overview') wireOverviewActions(s);
       if (activeTab === 'journal') wireJournalUI(s, d, eq);
       if (activeTab === 'plu') wirePluEditorUI(s, d);
@@ -2360,6 +2371,42 @@
       }
     }
 
+    /**
+     * One-button site intelligence bootstrap:
+     * sync SMS folders → durable registry shells (even thin) → sticky notes → seed layouts.
+     */
+    async function quickStartSites() {
+      const btn = el('btnQuickStart');
+      if (btn) btn.disabled = true;
+      try {
+        toast('⚡ Quick Start — syncing backups, building site files, seeding layouts…', 6000);
+        const res = await api('/verifone/registry/quick-start', {
+          method: 'POST',
+          body: JSON.stringify({ seed_layouts: true, import_notes: true }),
+        });
+        await refreshStatus();
+        await loadGroups();
+        const sticky = (res.steps || []).find(s => s.step === 'sticky_notes') || {};
+        const layouts = (res.steps || []).find(s => s.step === 'seed_layouts') || {};
+        toast(
+          (res.message || 'Quick Start done') +
+          (sticky.notesScanned != null ? ` · ${sticky.notesScanned} sticky notes` : '') +
+          (layouts.seeded != null ? ` · ${layouts.seeded} layouts seeded` : ''),
+          7000
+        );
+        // Show brief result in a non-blocking way
+        if (res.registryDir) {
+          console.info('[FAFO Quick Start]', res);
+        }
+        return res;
+      } catch (e) {
+        toast(String(e.message || e));
+        throw e;
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     async function setRoot() {
       // Multi-folder manager (each user configures their own local paths)
       openWatchModal();
@@ -3022,6 +3069,248 @@
       }
     }
 
+    function linesToText(arr) {
+      return (arr || []).join('\n');
+    }
+    function textToLines(s) {
+      return String(s || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    }
+
+    /** Tech-editable equipment pros/cons; site-first, promote with yes-checklist. */
+    async function loadGearKnowledgeUI(s, d) {
+      const body = el('detail').querySelector('#tabBody');
+      if (!body) return;
+      const siteKey = (s && (s.customer || s.display_name || s.site_label)) || selectedExportId || 'site';
+      const exportId = selectedExportId || (s && s.id) || '';
+      try {
+        const data = await api(
+          '/verifone/equipment-knowledge?site_key=' + encodeURIComponent(siteKey) +
+          '&export_id=' + encodeURIComponent(exportId) +
+          '&include_library=true'
+        );
+        const criteria = data.promoteCriteria || [];
+        const siteEntries = data.siteEntries || [];
+        const libEntries = data.libraryEntries || [];
+
+        const renderCard = (e, isLib) => {
+          const eq = e.equipment || {};
+          const badge = isLib
+            ? '<span class="chip good">multi-site library</span>'
+            : '<span class="chip amber">this site only</span>';
+          const prom = (!isLib && e.transfer && e.transfer.lastPromotedLibraryId)
+            ? '<span class="chip">promoted</span>' : '';
+          return `
+            <div class="card" data-eid="${esc(e.id)}" style="margin-bottom:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.2)">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px">
+                <strong>${esc(e.title || 'Untitled')}</strong>
+                ${badge}${prom}
+                <span class="note" style="margin:0">${esc(eq.type || '')} · ${esc(eq.manufacturer || '—')} ${esc(eq.modelClass || '')}</span>
+              </div>
+              <div class="note" style="margin:0 0 6px">Updated ${(e.updatedAt || '').slice(0, 19)} · ${esc((e.editors || []).join(', ') || e.author || '')}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+                <div><strong style="color:var(--good)">Pros</strong><ul style="margin:4px 0 0 16px">${(e.pros || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li class="note">—</li>'}</ul></div>
+                <div><strong style="color:#fbbf24">Cons</strong><ul style="margin:4px 0 0 16px">${(e.cons || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li class="note">—</li>'}</ul></div>
+              </div>
+              ${(e.compat || []).length ? `<div class="note" style="margin-top:6px"><strong>Compat:</strong> ${esc((e.compat || []).join(' · '))}</div>` : ''}
+              ${(e.dayZero || []).length ? `<div class="note" style="margin-top:4px"><strong>Day-zero:</strong> ${esc((e.dayZero || []).join(' · '))}</div>` : ''}
+              <div class="j-btn-row" style="margin-top:8px">
+                ${isLib
+                  ? `<button type="button" class="btn primary" data-apply-lib="${esc(e.id)}">Copy to this site</button>`
+                  : `<button type="button" class="btn" data-edit-know="${esc(e.id)}">Edit</button>
+                     <button type="button" class="btn amber" data-promote-know="${esc(e.id)}">Promote multi-site…</button>
+                     <button type="button" class="btn" data-del-know="${esc(e.id)}">Delete</button>`}
+              </div>
+            </div>`;
+        };
+
+        body.innerHTML = `
+          <div class="warn-box">
+            <strong>Field knowledge, not textbook theory.</strong>
+            Techs edit pros/cons, compatibility, and day-zero pain for <em>this</em> store’s gear.
+            Cookie-cutter chains can <strong>promote</strong> a tip to the multi-site library after a short Yes checklist.
+            Future: 3D explode (CAD-lite) views bind to the same entries — without Gilbarco’s commercial CAD price tag.
+          </div>
+          <div class="j-btn-row" style="margin:10px 0">
+            <button type="button" class="btn primary" id="btnNewGearTip">+ New tip for this site</button>
+            <button type="button" class="btn" id="btnRefreshGear">↻ Refresh</button>
+          </div>
+          <div id="gearEditor" class="card" style="display:none;margin-bottom:14px;padding:14px;border:1px solid var(--line);border-radius:12px">
+            <h3 style="margin:0 0 10px;font-size:14px;color:var(--accent)">Edit knowledge</h3>
+            <input type="hidden" id="gkId">
+            <div class="form-grid">
+              <div class="field"><label>Title</label><input id="gkTitle" placeholder="e.g. Gilbarco CRIND on FP 3–6"></div>
+              <div class="field"><label>Type</label>
+                <select id="gkType">
+                  <option value="pump">pump</option><option value="crind">crind</option>
+                  <option value="tank">tank</option><option value="register">register</option>
+                  <option value="tls">tls / ATG</option><option value="network">network</option>
+                  <option value="other">other</option>
+                </select>
+              </div>
+              <div class="field"><label>Manufacturer</label><input id="gkMfr" placeholder="Gilbarco / Wayne / Veeder…"></div>
+              <div class="field"><label>Model class</label><input id="gkModel" placeholder="Encore-class, Ovation-class…"></div>
+            </div>
+            <div class="form-grid" style="margin-top:8px">
+              <div class="field"><label>Pros (one per line)</label><textarea id="gkPros" rows="4" placeholder="Reliable under X&#10;Easy parts path"></textarea></div>
+              <div class="field"><label>Cons (one per line)</label><textarea id="gkCons" rows="4" placeholder="Firmware Y hates Z&#10;Day-zero: need adapter"></textarea></div>
+              <div class="field"><label>Compatibility (one per line)</label><textarea id="gkCompat" rows="3" placeholder="Works with Base 55+&#10;Breaks with old DCR channel…"></textarea></div>
+              <div class="field"><label>Day-zero learnings</label><textarea id="gkDayZero" rows="3" placeholder="First visit gotchas"></textarea></div>
+            </div>
+            <div class="field" style="margin-top:8px"><label>Notes</label><textarea id="gkNotes" rows="2"></textarea></div>
+            <label class="chk-inline" style="margin-top:8px"><input type="checkbox" id="gkCookie"> Cookie-cutter / same layout as other sites in chain</label>
+            <div class="field" style="margin-top:6px"><label>Chain / layout family (optional)</label><input id="gkChain" placeholder="e.g. QNE standard island"></div>
+            <div class="j-btn-row" style="margin-top:10px">
+              <button type="button" class="btn primary" id="btnSaveGear">Save</button>
+              <button type="button" class="btn" id="btnCancelGear">Cancel</button>
+            </div>
+          </div>
+          <div id="gearPromote" class="card" style="display:none;margin-bottom:14px;padding:14px;border:1px solid rgba(245,158,11,.4);border-radius:12px;background:rgba(245,158,11,.06)">
+            <h3 style="margin:0 0 8px;font-size:14px;color:#fbbf24">Promote to multi-site library</h3>
+            <p class="note">Answer <strong>Yes</strong> to all — then other sites can use this tip. Site-only quirks stay un-promoted.</p>
+            <input type="hidden" id="gkPromoteId">
+            <div id="gkCriteria"></div>
+            <div class="j-btn-row" style="margin-top:10px">
+              <button type="button" class="btn primary" id="btnDoPromote">Yes to all → Promote</button>
+              <button type="button" class="btn" id="btnCancelPromote">Cancel</button>
+            </div>
+          </div>
+          <h3 style="font-size:13px;color:var(--muted);margin:12px 0 8px">This site</h3>
+          <div id="gearSiteList">${siteEntries.map(e => renderCard(e, false)).join('') || '<div class="empty">No tips yet — add what you learned today</div>'}</div>
+          <h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">Multi-site library (approved)</h3>
+          <div id="gearLibList">${libEntries.map(e => renderCard(e, true)).join('') || '<div class="note">Nothing promoted yet</div>'}</div>
+          <p class="note" style="margin-top:12px">${esc(data.view3dNote || '')}</p>
+        `;
+
+        const openEditor = (entry) => {
+          el('gearEditor').style.display = 'block';
+          el('gkId').value = (entry && entry.id) || '';
+          el('gkTitle').value = (entry && entry.title) || '';
+          el('gkType').value = (entry && entry.equipment && entry.equipment.type) || 'pump';
+          el('gkMfr').value = (entry && entry.equipment && entry.equipment.manufacturer) || '';
+          el('gkModel').value = (entry && entry.equipment && entry.equipment.modelClass) || '';
+          el('gkPros').value = linesToText(entry && entry.pros);
+          el('gkCons').value = linesToText(entry && entry.cons);
+          el('gkCompat').value = linesToText(entry && entry.compat);
+          el('gkDayZero').value = linesToText(entry && entry.dayZero);
+          el('gkNotes').value = (entry && entry.notes) || '';
+          el('gkCookie').checked = !!(entry && entry.transfer && entry.transfer.cookieCutter);
+          el('gkChain').value = (entry && entry.transfer && entry.transfer.appliesToChain) || '';
+          el('gearEditor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        };
+
+        body.querySelector('#btnNewGearTip')?.addEventListener('click', () => openEditor(null));
+        body.querySelector('#btnCancelGear')?.addEventListener('click', () => { el('gearEditor').style.display = 'none'; });
+        body.querySelector('#btnRefreshGear')?.addEventListener('click', () => loadGearKnowledgeUI(s, d));
+        body.querySelector('#btnSaveGear')?.addEventListener('click', async () => {
+          try {
+            await api('/verifone/equipment-knowledge', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: el('gkId').value || undefined,
+                siteKey,
+                exportId,
+                title: el('gkTitle').value,
+                notes: el('gkNotes').value,
+                pros: textToLines(el('gkPros').value),
+                cons: textToLines(el('gkCons').value),
+                compat: textToLines(el('gkCompat').value),
+                dayZero: textToLines(el('gkDayZero').value),
+                equipment: {
+                  type: el('gkType').value,
+                  manufacturer: el('gkMfr').value,
+                  modelClass: el('gkModel').value,
+                },
+                transfer: {
+                  cookieCutter: el('gkCookie').checked,
+                  appliesToChain: el('gkChain').value,
+                },
+                author: 'tech',
+              }),
+            });
+            toast('Knowledge saved for this site');
+            loadGearKnowledgeUI(s, d);
+          } catch (e) { toast(String(e.message || e)); }
+        });
+
+        body.querySelectorAll('[data-edit-know]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-edit-know');
+            const entry = siteEntries.find(x => x.id === id);
+            openEditor(entry || { id });
+          });
+        });
+        body.querySelectorAll('[data-del-know]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Delete this site tip?')) return;
+            try {
+              await api('/verifone/equipment-knowledge/' + encodeURIComponent(siteKey) + '/' + encodeURIComponent(btn.getAttribute('data-del-know')), { method: 'DELETE' });
+              toast('Deleted');
+              loadGearKnowledgeUI(s, d);
+            } catch (e) { toast(String(e.message || e)); }
+          });
+        });
+        body.querySelectorAll('[data-apply-lib]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              await api('/verifone/equipment-knowledge/apply-library', {
+                method: 'POST',
+                body: JSON.stringify({
+                  siteKey,
+                  libraryEntryId: btn.getAttribute('data-apply-lib'),
+                  exportId,
+                  author: 'tech',
+                }),
+              });
+              toast('Copied library tip to this site — edit freely');
+              loadGearKnowledgeUI(s, d);
+            } catch (e) { toast(String(e.message || e)); }
+          });
+        });
+
+        const openPromote = (entryId) => {
+          el('gearPromote').style.display = 'block';
+          el('gkPromoteId').value = entryId;
+          el('gkCriteria').innerHTML = criteria.map(c => `
+            <label class="chk-inline" style="display:flex;align-items:flex-start;gap:8px;margin:8px 0;font-size:12px">
+              <input type="checkbox" data-crit="${esc(c.id)}" style="margin-top:3px">
+              <span>${esc(c.question)}</span>
+            </label>`).join('');
+          el('gearPromote').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        };
+        body.querySelectorAll('[data-promote-know]').forEach(btn => {
+          btn.addEventListener('click', () => openPromote(btn.getAttribute('data-promote-know')));
+        });
+        body.querySelector('#btnCancelPromote')?.addEventListener('click', () => { el('gearPromote').style.display = 'none'; });
+        body.querySelector('#btnDoPromote')?.addEventListener('click', async () => {
+          const answers = {};
+          body.querySelectorAll('[data-crit]').forEach(cb => {
+            answers[cb.getAttribute('data-crit')] = !!cb.checked;
+          });
+          // require all yes
+          const missing = criteria.filter(c => c.requiredYes && !answers[c.id]);
+          if (missing.length) {
+            toast('Check Yes on all promote questions first', 4000);
+            return;
+          }
+          try {
+            const res = await api('/verifone/equipment-knowledge/promote', {
+              method: 'POST',
+              body: JSON.stringify({
+                siteKey,
+                entryId: el('gkPromoteId').value,
+                answers,
+                author: 'tech',
+              }),
+            });
+            toast(res.message || (res.promoted ? 'Promoted' : 'Not promoted'));
+            loadGearKnowledgeUI(s, d);
+          } catch (e) { toast(String(e.message || e)); }
+        });
+      } catch (e) {
+        body.innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+      }
+    }
+
     async function loadLayoutUI() {
       const body = el('detail').querySelector('#tabBody');
       if (!body || !selectedExportId) return;
@@ -3031,22 +3320,31 @@
           survey = data.survey;
         }
         if (!survey.layout) survey.layout = { width: 1000, height: 700, grid: 20, items: [] };
+        // dispose prior 3D session if any
+        try { if (layoutState.view3d && layoutState.view3d.dispose) layoutState.view3d.dispose(); } catch (_) {}
+        layoutState.view3d = null;
+        layoutState.mode = '2d';
         body.innerHTML = `
-          <div class="warn-box">Drag to move · corner resize · copy/paste · fill &amp; border colors. Save layout with the site survey (local only).</div>
+          <div class="warn-box">Drag to move · corner resize · copy/paste · fill &amp; border colors. Save layout with the site survey (local only). Each site keeps its own layout forever as you refine it.</div>
           <div class="warn-box" style="margin-bottom:8px">
-            Seed pumps / tanks / registers / CRIND labels from the SMS backup, then drag onto the map.
-            Network gear is survey-only (not in backup, not pushable).
+            <strong>From backup:</strong> pumps, tanks, registers, CRIND placed next to their pumps.
+            <strong>3D view:</strong> CAD-lite island from this plan — orbit, click gear for tips, Explode to inspect. Not commercial service CAD.
           </div>
-          <div class="layout-tools">
+          <div class="layout-tools layout-view-toggle">
+            <button type="button" class="btn active" id="btnLayout2d">✏ 2D edit</button>
+            <button type="button" class="btn" id="btnLayout3d">🕹 3D view</button>
+            <span style="width:1px;height:22px;background:var(--line);margin:0 4px"></span>
             <button class="btn primary" id="btnSaveLayout">💾 Save layout</button>
             <button class="btn amber" id="btnSeedLayout" title="Auto-populate from fuelcfg / dispensers / tanks / registers">🌱 Seed from backup</button>
+            <button class="btn" id="btnQuickStartLayout" title="Same as header Quick Start — all sites">⚡ Quick Start all</button>
             <button class="btn" id="btnWriteSiteInfoLayout2" title="Also write SITE-INFO.md into backup folder">📄 SITE-INFO.md</button>
+            <button class="btn amber" id="btnGearFromLayout" title="Create editable pros/cons tip from selected layout item">💡 Tip from selection</button>
             <button class="btn" id="btnCopyItem">Copy</button>
             <button class="btn" id="btnPasteItem">Paste</button>
             <button class="btn" id="btnDelItem">Delete</button>
             <button class="btn" id="btnResetLayout">Reset starter</button>
           </div>
-          <div class="layout-wrap">
+          <div id="layout2dHost" class="layout-wrap">
             <div class="palette">
               <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Add</div>
               ${['building','parking','driveway','pump','crind','card_reader','tank','manhole','register','other'].map(t =>
@@ -3078,9 +3376,11 @@
               <canvas id="siteCanvas" width="${survey.layout.width || 1000}" height="${survey.layout.height || 700}"></canvas>
             </div>
           </div>
-          <p class="note">Ctrl+C / Ctrl+V also copy-paste the selected item. Drag the main window splitter to give this panel more space.</p>
+          <div id="layout3dHost" aria-label="3D site view"></div>
+          <p class="note" id="layoutModeHint">2D: edit positions. Switch to 3D to orbit the island, explode gear, and open site tips on click.</p>
         `;
         wireLayoutEditor(body);
+        wireLayout3dToggle(body);
         body.querySelector('#btnSeedLayout')?.addEventListener('click', async () => {
           if (!selectedExportId) return;
           if (!confirm('Replace empty/starter layout with pumps, tanks, registers from this SMS backup?\n\nIf the map already has many items, use Force only after confirm.')) return;
@@ -3104,13 +3404,156 @@
         body.querySelector('#btnWriteSiteInfoLayout2')?.addEventListener('click', () => {
           if (selectedExportId) writeSiteInfoMd(selectedExportId, true);
         });
+        body.querySelector('#btnQuickStartLayout')?.addEventListener('click', () => {
+          quickStartSites().then(() => { survey = null; loadLayoutUI(); }).catch(() => {});
+        });
+        body.querySelector('#btnGearFromLayout')?.addEventListener('click', async () => {
+          const item = (survey.layout.items || []).find(i => i.id === layoutState.selectedId);
+          if (!item) { toast('Select a pump/CRIND/tank/register on the map first'); return; }
+          const siteKey = (window.__lastSiteCustomer || item.label || selectedExportId || 'site');
+          try {
+            // resolve customer from open site list
+            let sk = siteKey;
+            try {
+              const groupsData = groups || [];
+              for (const g of groupsData) {
+                for (const v of (g.versions || g.sites || [])) {
+                  if (v.id === selectedExportId) {
+                    sk = v.customer || v.display_name || g.groupKey || sk;
+                  }
+                }
+              }
+            } catch (_) {}
+            await api('/verifone/equipment-knowledge/from-layout', {
+              method: 'POST',
+              body: JSON.stringify({
+                siteKey: sk,
+                exportId: selectedExportId,
+                item,
+                author: 'tech',
+              }),
+            });
+            toast('Tip stub created — open Gear knowledge tab to edit pros/cons');
+            activeTab = 'gear';
+            renderDetail();
+          } catch (e) { toast(String(e.message || e)); }
+        });
       } catch (e) {
         body.innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
       }
     }
 
+    function resolveSiteKeyForKnowledge() {
+      let sk = selectedExportId || 'site';
+      try {
+        for (const g of (groups || [])) {
+          for (const v of (g.versions || g.sites || [])) {
+            if (v.id === selectedExportId) {
+              sk = v.customer || v.display_name || g.groupKey || sk;
+            }
+          }
+        }
+      } catch (_) {}
+      return sk;
+    }
+
+    function loadScriptOnce(src) {
+      return new Promise((resolve, reject) => {
+        if (document.querySelector('script[data-fafo-src="' + src + '"]')) {
+          resolve();
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.dataset.fafoSrc = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Failed to load ' + src));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function ensureThreeJs() {
+      if (window.THREE) return;
+      // UMD build only — orbit is implemented in site-layout-3d.js (no OrbitControls CDN)
+      await loadScriptOnce('https://unpkg.com/three@0.160.0/build/three.min.js');
+      if (!window.THREE) throw new Error('Three.js did not attach to window');
+    }
+
+    function wireLayout3dToggle(rootEl) {
+      const host2d = rootEl.querySelector('#layout2dHost');
+      const host3d = rootEl.querySelector('#layout3dHost');
+      const btn2d = rootEl.querySelector('#btnLayout2d');
+      const btn3d = rootEl.querySelector('#btnLayout3d');
+      const hint = rootEl.querySelector('#layoutModeHint');
+
+      async function show2d() {
+        layoutState.mode = '2d';
+        btn2d?.classList.add('active');
+        btn3d?.classList.remove('active');
+        host2d?.classList.remove('hidden-view');
+        host3d?.classList.remove('active');
+        if (hint) hint.textContent = '2D: edit positions. Switch to 3D to orbit the island, explode gear, and open site tips on click.';
+        // keep 3d alive but hidden is ok; optional dispose to free GPU
+      }
+
+      async function show3d() {
+        layoutState.mode = '3d';
+        btn3d?.classList.add('active');
+        btn2d?.classList.remove('active');
+        host2d?.classList.add('hidden-view');
+        host3d?.classList.add('active');
+        if (hint) hint.textContent = '3D CAD-lite: drag to orbit, scroll zoom, click a unit for pros/cons. Explode separates parts for inspection.';
+        try {
+          toast('Loading 3D engine…');
+          await ensureThreeJs();
+          if (!window.FAFOSite3D || !window.FAFOSite3D.mount) {
+            throw new Error('site-layout-3d.js not loaded');
+          }
+          if (layoutState.view3d && layoutState.view3d.dispose) {
+            try { layoutState.view3d.dispose(); } catch (_) {}
+          }
+          const siteKey = resolveSiteKeyForKnowledge();
+          layoutState.view3d = window.FAFOSite3D.mount(host3d, {
+            layout: survey.layout,
+            onSelect: (item) => {
+              layoutState.selectedId = item && item.id;
+            },
+            getKnowledge: async (item) => {
+              try {
+                const et = (item.type === 'card_reader') ? 'crind' : (item.type || '');
+                const data = await api(
+                  '/verifone/equipment-knowledge?site_key=' + encodeURIComponent(siteKey) +
+                  '&export_id=' + encodeURIComponent(selectedExportId || '') +
+                  '&include_library=true' +
+                  (et ? '&equipment_type=' + encodeURIComponent(et) : '')
+                );
+                const siteE = data.siteEntries || [];
+                const libE = data.libraryEntries || [];
+                // prefer tips linked to this layout item
+                const linked = siteE.filter(e => (e.equipment || {}).layoutItemId === item.id);
+                const rest = siteE.filter(e => (e.equipment || {}).layoutItemId !== item.id);
+                return [...linked, ...rest, ...libE.map(e => ({ ...e, scope: 'library' }))];
+              } catch (_) {
+                return [];
+              }
+            },
+          });
+          if (layoutState.selectedId) layoutState.view3d.selectId(layoutState.selectedId);
+          toast('3D site ready — orbit & click gear');
+        } catch (e) {
+          host3d.innerHTML = `<div class="empty" style="padding:24px">${esc(e.message || e)}<br><span class="note">Need network once to load Three.js from CDN, or use 2D edit.</span></div>`;
+          toast(String(e.message || e));
+        }
+      }
+
+      btn2d?.addEventListener('click', () => show2d());
+      btn3d?.addEventListener('click', () => show3d());
+    }
+
     function wireLayoutEditor(rootEl) {
       const canvas = rootEl.querySelector('#siteCanvas');
+      if (!canvas) return;
       const ctx = canvas.getContext('2d');
       const grid = survey.layout.grid || 20;
       layoutState.selectedId = null;
@@ -5886,6 +6329,7 @@
 
     el('search').addEventListener('input', () => renderCards(el('search').value));
     el('btnSync').addEventListener('click', () => syncNow());
+    if (el('btnQuickStart')) el('btnQuickStart').addEventListener('click', () => quickStartSites());
     el('btnSetRoot').addEventListener('click', setRoot);
     el('btnPunch').addEventListener('click', () => makePunch(selectedExportId));
 

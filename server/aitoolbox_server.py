@@ -358,6 +358,791 @@ def commander_redirect():
     )
 
 
+# --- Site Intelligence Registry (persistent growing site dossiers) ---
+import site_registry_ops as site_reg
+
+
+class SiteEnsureBody(BaseModel):
+    display_name: str | None = ""
+    host_ip: str | None = ""
+    address: str | None = ""
+    city: str | None = ""
+    phone: str | None = ""
+    site_id: str | None = ""
+    export_id: str | None = ""
+    export_path: str | None = ""
+    group_key: str | None = ""
+    source: str | None = "manual"
+    note: str | None = ""
+    facts: list[str] | None = None
+    area_tags: list[str] | None = None
+
+
+class SiteQuickStartBody(BaseModel):
+    seed_layouts: bool = True
+    import_notes: bool = True
+
+
+class SiteCachePolicyBody(BaseModel):
+    localHotDays: int | None = None
+    maxLocalGb: float | None = None
+    preferExternalDrive: bool | None = None
+    externalDrivePath: str | None = None
+    coldStore: str | None = None
+    coldStorePath: str | None = None
+    autoEvictUnused: bool | None = None
+    allowFullMirror: bool | None = None
+
+
+@app.get("/api/verifone/registry")
+def api_site_registry_list(q: str = "", status: str = ""):
+    return site_reg.list_sites(q=q, status=status)
+
+
+@app.get("/api/verifone/registry/roadmap")
+def api_site_registry_roadmap():
+    return site_reg.product_roadmap()
+
+
+@app.get("/api/verifone/registry/policy")
+def api_site_registry_policy_get():
+    return {"ok": True, "policy": site_reg.get_cache_policy()}
+
+
+@app.put("/api/verifone/registry/policy")
+def api_site_registry_policy_put(body: SiteCachePolicyBody):
+    return {"ok": True, "policy": site_reg.save_cache_policy(body.model_dump(exclude_unset=True))}
+
+
+@app.post("/api/verifone/registry/ensure")
+def api_site_registry_ensure(body: SiteEnsureBody):
+    return site_reg.ensure_site(
+        display_name=body.display_name or "",
+        host_ip=body.host_ip or "",
+        address=body.address or "",
+        city=body.city or "",
+        phone=body.phone or "",
+        site_id=body.site_id or "",
+        export_id=body.export_id or "",
+        export_path=body.export_path or "",
+        group_key=body.group_key or "",
+        source=body.source or "manual",
+        note=body.note or "",
+        facts=body.facts,
+        area_tags=body.area_tags,
+    )
+
+
+@app.post("/api/verifone/registry/ingest-backups")
+def api_site_registry_ingest():
+    return site_reg.ingest_backups(sync_folders=True)
+
+
+@app.post("/api/verifone/registry/import-sticky-notes")
+def api_site_registry_sticky():
+    return site_reg.import_sticky_notes()
+
+
+@app.post("/api/verifone/registry/seed-area")
+def api_site_registry_area():
+    return site_reg.seed_area_stubs()
+
+
+@app.post("/api/verifone/registry/quick-start")
+def api_site_registry_quick_start(body: SiteQuickStartBody | None = None):
+    """One-button: sync backups → registry shells → sticky notes → seed layouts."""
+    b = body or SiteQuickStartBody()
+    return site_reg.quick_start(seed_layouts=b.seed_layouts, import_notes=b.import_notes)
+
+
+@app.get("/api/verifone/registry/{key}")
+def api_site_registry_get(key: str):
+    site = site_reg.load_site(key)
+    if not site:
+        raise HTTPException(404, "Site not in registry")
+    return {"ok": True, "site": site}
+
+
+# --- Equipment field knowledge (tech-editable pros/cons + promote to multi-site) ---
+import equipment_knowledge_ops as equip_know
+
+
+class EquipKnowledgeBody(BaseModel):
+    id: str | None = None
+    siteKey: str | None = None
+    site_key: str | None = None
+    exportId: str | None = None
+    export_id: str | None = None
+    groupKey: str | None = None
+    group_key: str | None = None
+    title: str | None = None
+    notes: str | None = None
+    pros: list[str] | str | None = None
+    cons: list[str] | str | None = None
+    compat: list[str] | str | None = None
+    dayZero: list[str] | str | None = None
+    day_zero: list[str] | str | None = None
+    equipment: dict | None = None
+    transfer: dict | None = None
+    view3d: dict | None = None
+    author: str | None = "tech"
+
+
+class EquipPromoteBody(BaseModel):
+    siteKey: str
+    entryId: str
+    answers: dict | None = None
+    author: str | None = "tech"
+
+
+class EquipApplyLibBody(BaseModel):
+    siteKey: str
+    libraryEntryId: str
+    exportId: str | None = ""
+    author: str | None = "tech"
+
+
+class EquipFromLayoutBody(BaseModel):
+    siteKey: str
+    exportId: str | None = ""
+    item: dict
+    author: str | None = "tech"
+
+
+@app.get("/api/verifone/equipment-knowledge/criteria")
+def api_equip_know_criteria():
+    return {"ok": True, "criteria": equip_know.promote_criteria()}
+
+
+@app.get("/api/verifone/equipment-knowledge")
+def api_equip_know_list(
+    site_key: str,
+    export_id: str = "",
+    include_library: bool = True,
+    equipment_type: str = "",
+):
+    return equip_know.list_for_site(
+        site_key,
+        export_id=export_id,
+        include_library=include_library,
+        equipment_type=equipment_type,
+    )
+
+
+@app.post("/api/verifone/equipment-knowledge")
+def api_equip_know_save(body: EquipKnowledgeBody):
+    try:
+        payload = body.model_dump(exclude_none=True)
+        author = payload.pop("author", None) or "tech"
+        return equip_know.save_entry(payload, author=author)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.delete("/api/verifone/equipment-knowledge/{site_key}/{entry_id}")
+def api_equip_know_delete(site_key: str, entry_id: str):
+    try:
+        return equip_know.delete_entry(site_key, entry_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/equipment-knowledge/promote")
+def api_equip_know_promote(body: EquipPromoteBody):
+    try:
+        return equip_know.request_promote(
+            body.siteKey,
+            body.entryId,
+            body.answers or {},
+            author=body.author or "tech",
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/equipment-knowledge/apply-library")
+def api_equip_know_apply(body: EquipApplyLibBody):
+    try:
+        return equip_know.apply_library_to_site(
+            body.siteKey,
+            body.libraryEntryId,
+            author=body.author or "tech",
+            export_id=body.exportId or "",
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/verifone/equipment-knowledge/from-layout")
+def api_equip_know_from_layout(body: EquipFromLayoutBody):
+    return equip_know.seed_from_layout_item(
+        body.siteKey,
+        body.item,
+        export_id=body.exportId or "",
+        author=body.author or "tech",
+    )
+
+
+@app.get("/setup")
+def setup_configurator_redirect():
+    """Quick Start setup configurator (personalized BAT packs)."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/toolbox/Setup%20Configurator.html", status_code=307)
+
+
+@app.get("/startup")
+def startup_board_redirect():
+    """Server command board — status, block auto-start, manual override."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/toolbox/Startup%20Command%20Board.html", status_code=307)
+
+
+class SetupPackBody(BaseModel):
+    packName: str | None = "My-FAFO-Setup"
+    modules: list[str] | None = None
+    workflow: str | None = None
+
+
+class SetupOpenPathBody(BaseModel):
+    path: str
+
+
+@app.get("/api/setup/catalog")
+def api_setup_catalog():
+    """Index of install/start scripts — files are not moved."""
+    import json as _json
+
+    cat_path = ROOT / "setup" / "install-catalog.json"
+    if not cat_path.is_file():
+        raise HTTPException(404, "setup/install-catalog.json missing")
+    try:
+        catalog = _json.loads(cat_path.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError) as e:
+        raise HTTPException(500, f"Catalog unreadable: {e}") from e
+    # annotate exists
+    for mod in catalog.get("modules") or []:
+        for sc in mod.get("scripts") or []:
+            rel = sc.get("path") or ""
+            sc["exists"] = (ROOT / rel).is_file() if rel else False
+    for sc in catalog.get("looseScripts") or []:
+        rel = sc.get("path") or ""
+        sc["exists"] = (ROOT / rel).is_file() if rel else False
+    return {"ok": True, "catalog": catalog, "toolboxRoot": str(ROOT)}
+
+
+@app.post("/api/setup/build-pack")
+def api_setup_build_pack(body: SetupPackBody):
+    """Compose personalized BAT pack via Build-UserSetupPack.ps1."""
+    import subprocess
+    import json as _json
+
+    ps1 = ROOT / "Scripts" / "Build-UserSetupPack.ps1"
+    if not ps1.is_file():
+        raise HTTPException(500, "Scripts/Build-UserSetupPack.ps1 missing")
+    pack_name = (body.packName or "My-FAFO-Setup").strip() or "My-FAFO-Setup"
+    args = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(ps1),
+        "-ToolboxRoot",
+        str(ROOT),
+        "-PackName",
+        pack_name,
+        "-AsObject",
+    ]
+    if body.workflow:
+        args.extend(["-Workflow", body.workflow])
+    if body.modules:
+        # PowerShell string array: -Modules a,b,c
+        args.extend(["-Modules", ",".join(body.modules)])
+    try:
+        proc = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(ROOT),
+        )
+    except subprocess.TimeoutExpired as e:
+        raise HTTPException(504, "Pack build timed out") from e
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if proc.returncode != 0:
+        raise HTTPException(500, err or out or f"Build failed code {proc.returncode}")
+    # Last JSON line
+    data = None
+    for line in reversed(out.splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                data = _json.loads(line)
+                break
+            except _json.JSONDecodeError:
+                continue
+    if not data:
+        # AsObject may print object formatting; fallback parse whole
+        try:
+            data = _json.loads(out)
+        except _json.JSONDecodeError:
+            data = {"ok": True, "raw": out, "message": "Pack built (see stdout)"}
+    data.setdefault("ok", True)
+    return data
+
+
+@app.post("/api/setup/open-pack-folder")
+def api_setup_open_pack_folder(body: SetupOpenPathBody):
+    import subprocess
+    from pathlib import Path as _P
+
+    p = _P(body.path or "")
+    if not p.is_dir():
+        raise HTTPException(404, "Folder not found")
+    # Only allow under LOCALAPPDATA\FAFO or toolbox root
+    try:
+        local_fafo = _P(os.environ.get("LOCALAPPDATA") or "") / "FAFO"
+        p.resolve().relative_to(local_fafo.resolve())
+        ok = True
+    except Exception:
+        try:
+            p.resolve().relative_to(ROOT.resolve())
+            ok = True
+        except Exception:
+            ok = False
+    if not ok:
+        raise HTTPException(403, "Path not allowed")
+    subprocess.Popen(["explorer.exe", str(p)], shell=False)
+    return {"ok": True, "path": str(p)}
+
+
+@app.get("/investor")
+def investor_redirect():
+    """Private investor portal (owner + Sumran only) — same-origin as API."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(
+        url="/toolbox/Investor%20Portal.html",
+        status_code=307,
+    )
+
+
+@app.get("/sumran")
+def sumran_redirect():
+    """Alias for investor portal."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/investor", status_code=307)
+
+
+# --- Private Investor Portal (owner + Sumran only) ---
+import investor_ops as investor
+from fastapi import File, Form, Header, UploadFile
+
+
+def _investor_token(
+    authorization: str | None = None,
+    x_investor_token: str | None = None,
+) -> str | None:
+    if x_investor_token:
+        return x_investor_token.strip()
+    if authorization:
+        return authorization.strip()
+    return None
+
+
+class InvestorSetupBody(BaseModel):
+    owner_password: str
+    sumran_password: str
+    owner_display: str | None = "Owner"
+    sumran_display: str | None = "Muhammad Sumran Nasir"
+    force: bool = False
+
+
+class InvestorLoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class InvestorPasswordBody(BaseModel):
+    user_id: str
+    new_password: str
+
+
+class InvestorSheetBody(BaseModel):
+    title: str | None = None
+    columns: list[dict] | None = None
+    rows: list[dict] | None = None
+
+
+class InvestorReceiptMetaBody(BaseModel):
+    note: str | None = None
+    row_id: str | None = None
+
+
+@app.get("/api/investor/status")
+def api_investor_status():
+    return investor.status()
+
+
+@app.post("/api/investor/setup")
+def api_investor_setup(
+    body: InvestorSetupBody,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    """First-time create both seats, or force reset when owner is logged in."""
+    try:
+        if body.force:
+            user = investor.require_user(_investor_token(authorization, x_investor_token))
+            if user["userId"] != "owner":
+                raise HTTPException(403, "Only owner can force-reset accounts")
+        return investor.setup_accounts(
+            body.owner_password,
+            body.sumran_password,
+            owner_display=body.owner_display or "Owner",
+            sumran_display=body.sumran_display or "Muhammad Sumran Nasir",
+            force=bool(body.force),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/login")
+def api_investor_login(body: InvestorLoginBody):
+    try:
+        return investor.login(body.username, body.password)
+    except ValueError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/logout")
+def api_investor_logout(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    return investor.logout(_investor_token(authorization, x_investor_token))
+
+
+@app.get("/api/investor/me")
+def api_investor_me(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return {
+            "ok": True,
+            "user": {
+                "id": user["userId"],
+                "displayName": user["displayName"],
+                "role": user["role"],
+            },
+            "dataDir": str(investor.root_dir()),
+        }
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/password")
+def api_investor_password(
+    body: InvestorPasswordBody,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.change_password(body.user_id, body.new_password, actor=user["userId"])
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/investor/sheet")
+def api_investor_sheet_get(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.get_sheet(user)
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.put("/api/investor/sheet")
+def api_investor_sheet_put(
+    body: InvestorSheetBody,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.save_sheet(
+            user,
+            {
+                "title": body.title,
+                "columns": body.columns,
+                "rows": body.rows,
+            },
+        )
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/investor/sheet.csv")
+def api_investor_sheet_csv(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        csv_text = investor.export_sheet_csv()
+        from fastapi.responses import Response
+
+        return Response(
+            content=csv_text,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="fafo-investor-ledger.csv"'},
+        )
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.get("/api/investor/receipts")
+def api_investor_receipts_list(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.list_receipts(user)
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/receipts")
+async def api_investor_receipts_upload(
+    file: UploadFile = File(...),
+    note: str = Form(""),
+    row_id: str = Form(""),
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        data = await file.read()
+        return investor.save_receipt(
+            user,
+            filename=file.filename or "receipt.bin",
+            data=data,
+            content_type=file.content_type,
+            note=note,
+            row_id=row_id or None,
+        )
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/investor/receipts/{receipt_id}/file")
+def api_investor_receipt_file(
+    receipt_id: str,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+):
+    """Download/view receipt. Token via header or ?token= for <img src> / mobile."""
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token) or token)
+        path, item = investor.get_receipt_file(receipt_id)
+        return FileResponse(
+            path,
+            media_type=item.get("contentType") or "application/octet-stream",
+            filename=item.get("originalName") or path.name,
+        )
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.patch("/api/investor/receipts/{receipt_id}")
+def api_investor_receipt_patch(
+    receipt_id: str,
+    body: InvestorReceiptMetaBody,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.update_receipt_meta(
+            user, receipt_id, note=body.note, row_id=body.row_id
+        )
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.delete("/api/investor/receipts/{receipt_id}")
+def api_investor_receipt_delete(
+    receipt_id: str,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.delete_receipt(user, receipt_id)
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+class InvestorSyncConfigBody(BaseModel):
+    enabled: bool | None = None
+    site: str | None = None
+    remoteUrl: str | None = None
+    publicUrl: str | None = None
+    privateUrl: str | None = None
+    remoteToken: str | None = None
+    privateToken: str | None = None
+    publicToken: str | None = None
+    pullOnOpen: bool | None = None
+    autoPushAfterSave: bool | None = None
+    includeReceiptFiles: bool | None = None
+    pushPublicInventory: bool | None = None
+    pushPrivateLedger: bool | None = None
+    intervalHours: float | None = None
+
+
+@app.get("/api/investor/sync")
+def api_investor_sync_get(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return {"ok": True, "sync": investor.get_sync_config(include_secret=False)}
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.put("/api/investor/sync")
+def api_investor_sync_put(
+    body: InvestorSyncConfigBody,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        user = investor.require_user(_investor_token(authorization, x_investor_token))
+        patch = body.model_dump(exclude_unset=True)
+        # map camelCase already matches
+        return {
+            "ok": True,
+            "sync": investor.save_sync_config(patch, actor=user["userId"]),
+            "message": "Sync settings saved",
+        }
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/investor/sync/pull")
+def api_investor_sync_pull(
+    force: bool = True,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.pull_from_web(force=force)
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/sync/push")
+def api_investor_sync_push(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.push_to_web(force=True)
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/sync/on-open")
+def api_investor_sync_on_open(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    """Auto pull when portal opens (respects 8h / pullOnOpen settings)."""
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.sync_on_open()
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.get("/api/investor/bundle")
+def api_investor_bundle_export(
+    include_files: bool = False,
+    public_only: bool = False,
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.build_bundle(include_files=include_files, public_only=public_only)
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.get("/api/investor/public-inventory")
+def api_investor_public_inventory(
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    """Preview what FAFO Petro public pages receive — costs always stripped."""
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return {
+            "ok": True,
+            "bundle": investor.build_bundle(public_only=True),
+            "message": "Public inventory preview (our cost columns removed)",
+        }
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.post("/api/investor/bundle/import")
+def api_investor_bundle_import(
+    body: dict = Body(...),
+    authorization: str | None = Header(default=None),
+    x_investor_token: str | None = Header(default=None),
+):
+    try:
+        investor.require_user(_investor_token(authorization, x_investor_token))
+        return investor.apply_bundle(body, source="import")
+    except PermissionError as e:
+        raise HTTPException(401, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
 # --- Commander (VAPS) site backup console ---
 
 class VfRootBody(BaseModel):
@@ -3153,6 +3938,7 @@ def api_setup_status():
 class LaunchPrefsBody(BaseModel):
     startWithOneClick: dict[str, bool] | None = None
     windowsStartup: dict[str, bool] | None = None
+    blockAutoStart: dict[str, bool] | None = None
     fafoMetaRoot: str | None = None
 
 
@@ -3160,6 +3946,7 @@ class LaunchCompanionsBody(BaseModel):
     toolbox: bool | None = None
     fafoMeta: bool | None = None
     waitSec: float = 12.0
+    force: bool = False  # ignore blockAutoStart (manual command-board start)
 
 
 class WindowsStartupBody(BaseModel):
@@ -3202,6 +3989,7 @@ def api_launch_companions_start(body: LaunchCompanionsBody | None = None):
             toolbox=b.toolbox,
             fafo_meta=b.fafoMeta,
             wait_sec=b.waitSec,
+            force=bool(b.force),
         )
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -3216,6 +4004,7 @@ def api_launch_companions_restart(body: LaunchCompanionsBody | None = None):
             toolbox=b.toolbox,
             fafo_meta=b.fafoMeta,
             wait_sec=b.waitSec if b.waitSec else 15.0,
+            force=bool(b.force),
         )
     except Exception as e:
         raise HTTPException(500, str(e))
