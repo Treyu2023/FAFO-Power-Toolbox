@@ -18,6 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+import re
 
 log = logging.getLogger("aitoolbox.file_metadata")
 
@@ -68,13 +69,34 @@ def normalize_tags(tags: list[str] | None) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
 
+    def is_prompt_blob(s: str) -> bool:
+        if not s:
+            return True
+        seps = s.count(",") + s.count(";") + s.count("|")
+        if len(s) > 80 and seps >= 3:
+            return True
+        if len(s) > 50 and seps >= 5:
+            return True
+        if re.search(
+            r"\b(cinematic|photorealistic|masterpiece|negative prompt|best quality|"
+            r"ultra detailed|highly detailed|volumetric|octane render|unreal engine|"
+            r"trending on artstation|prompt|seed|cfg scale|lora|checkpoint|8k|4k uhd)\b",
+            s,
+            re.I,
+        ):
+            return True
+        return False
+
     def clean_one(raw: str) -> str | None:
         s = re.sub(r"[\x00-\x1f\x7f]", " ", str(raw or ""))
         s = re.sub(r"\s+", " ", s).strip()
         if not s:
             return None
+        if is_prompt_blob(s):
+            return None
         if len(s) > TAG_MAX:
-            s = s[:TAG_MAX].rsplit(" ", 1)[0].strip() or s[:TAG_MAX].strip()
+            # Over hard cap after clean → reject (do not silently keep 100-char soup)
+            return None
         # JSON / structured
         if s[:1] in "{[" or re.search(r'"\w+"\s*:', s):
             return None
@@ -93,11 +115,19 @@ def normalize_tags(tags: list[str] | None) -> list[str]:
             return None
         if len(s) > 60 and s.count(" ") >= 8:
             return None
+        if len(s.split()) > 6:
+            return None
         return s
 
     for t in tags:
-        # Also split accidental mega-strings
-        for piece in re.split(r"[,;|]+", str(t)):
+        raw = str(t)
+        # Drop whole AI prompt blobs before splitting into fake keywords
+        if is_prompt_blob(raw):
+            continue
+        pieces = re.split(r"[,;|]+", raw)
+        if len(pieces) >= 6 and len(raw) > 60:
+            continue
+        for piece in pieces:
             s = clean_one(piece)
             if not s:
                 continue
@@ -692,8 +722,16 @@ def _read_mutagen(path: Path) -> dict[str, Any] | None:
             if raw:
                 for item in raw:
                     blob = str(item)
-                    # AI prompt dumps often land in ©cmt — skip long prose blobs
-                    if len(blob) > 400:
+                    # AI prompt dumps often land in ©cmt — skip unless tiny keyword list
+                    if len(blob) > 100:
+                        continue
+                    if blob.count(",") + blob.count(";") >= 3:
+                        continue
+                    if re.search(
+                        r"\b(cinematic|photorealistic|masterpiece|prompt|8k|lora)\b",
+                        blob,
+                        re.I,
+                    ):
                         continue
                     for part in blob.replace("|", ";").replace(",", ";").split(";"):
                         part = part.strip()
