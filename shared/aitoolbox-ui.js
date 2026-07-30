@@ -393,10 +393,10 @@
                         startBtn.textContent = startBtn.dataset.label || '▶ Start Server';
                     }
                     if (hintEl) {
-                        hintEl.textContent = 'Browser may have blocked launch — use Console / START SERVER.bat';
+                        hintEl.textContent = 'Browser blocked launch — use Desktop “Start Servers” or tray icon';
                         hintEl.className = (hintEl.className || '').replace(/\b(ok|warn)\b/g, '').trim() + ' warn';
                     }
-                    toast('Start blocked — try Console or START SERVER.bat', 'warn');
+                    toast('Start blocked — Desktop “Start Servers” or tray', 'warn');
                 }
             } catch (e) {
                 starting = false;
@@ -468,43 +468,101 @@
     }
 
     /**
-     * Inject a shared server status bar under nav/header (or at top of body).
-     * Replaces the duplicated IIFE copied into many thin system tools.
-     * @param {{ insertAfter?: string|Element, pollMs?: number, onOnline?: Function, onOffline?: Function }} opts
+     * Inject a consistent multi-server status bar (S1 HTML Toolbox + S2 FAFO Tagger)
+     * with ← Toolbox escape hatch. OLED black + teal/neon accents.
+     * @param {{ insertAfter?: string|Element, pollMs?: number, onOnline?: Function, onOffline?: Function, skipOnLauncher?: boolean }} opts
      */
     function mountServerBar(opts = {}) {
-        if (document.getElementById('tbSharedServerBar')) {
-            return bindServerControls({
-                statusEl: '#tbServerPill',
-                startBtn: '#tbBtnStartServer',
-                hintEl: '#tbServerHint',
-                pollMs: opts.pollMs,
-                onOnline: opts.onOnline,
-                onOffline: opts.onOffline,
-            });
+        // Don't put a second bar on the launcher (it has its own full panel)
+        const isLauncher = /Toolbox Launcher\.html/i.test(location.pathname || location.href || '');
+        if (opts.skipOnLauncher !== false && isLauncher) {
+            return null;
         }
 
-        const endpoint = () => {
-            if (global.AIToolboxAPI?.getEndpointLabel) return global.AIToolboxAPI.getEndpointLabel();
-            return global.AITOOLBOX_CONFIG?.ENDPOINT_LABEL || '127.0.0.87:18765';
-        };
+        if (document.getElementById('tbSharedServerBar')) {
+            return _wireCompanionBar(opts);
+        }
 
         const bar = document.createElement('div');
         bar.id = 'tbSharedServerBar';
-        bar.setAttribute('role', 'status');
-        bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;'
-            + 'border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
-        bar.innerHTML =
-            '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer" '
-            + 'data-tip-title="Backend" data-tip="Green = toolbox server online. Click to start if offline.">Server …</span>'
-            + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;'
-            + 'background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600" '
-            + 'data-tip-title="Start Server" data-tip="Uses aitoolbox:// protocol (no .hta Save prompts). Run Setup Once if nothing happens.">▶ Start Server</button>'
-            + '<button type="button" id="tbBtnServerConsole" style="padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);'
-            + 'background:transparent;color:#aaa;cursor:pointer;font-size:11px" '
-            + 'data-tip="Start via aitoolbox://console (visible window)">🖥 Console</button>'
-            + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
-            + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+        bar.className = 'tb-companion-bar';
+        bar.setAttribute('role', 'navigation');
+        bar.setAttribute('aria-label', 'Toolbox servers and navigation');
+        bar.innerHTML = `
+            <a class="tb-bar-back toolbox-back" id="tbBtnToolbox" href="#"
+               data-tip-title="Toolbox" data-tip="Return to Toolbox Launcher without closing servers.">← Toolbox</a>
+            <div class="tb-bar-servers">
+                <span class="tb-pill off" id="tbPillS1" tabindex="0" role="button"
+                      data-tip-title="S1 HTML Toolbox" data-tip="127.0.0.87:18765 — media, Verifone, system tools. Click to start if offline.">
+                    <i class="tb-dot"></i> S1 Toolbox <em>…</em>
+                </span>
+                <span class="tb-pill off" id="tbPillS2" tabindex="0" role="button"
+                      data-tip-title="S2 FAFO Tagger" data-tip="127.0.0.1:8765 — FAFO Local Media tags/ratings. Click to start if offline.">
+                    <i class="tb-dot"></i> S2 Tagger <em>…</em>
+                </span>
+            </div>
+            <div class="tb-bar-actions">
+                <button type="button" class="tb-btn primary" id="tbBtnStartServer"
+                        data-tip-title="Start All" data-tip="Start S1 + S2 in the background (tray).">▶ Start</button>
+                <button type="button" class="tb-btn" id="tbBtnRelaunchServers"
+                        data-tip-title="Relaunch" data-tip="Force restart S1 + S2.">↺</button>
+                <button type="button" class="tb-btn ghost" id="tbBtnServerConsole"
+                        data-tip="S1 console window (debug)">🖥</button>
+            </div>
+            <span class="tb-bar-hint" id="tbServerHint"></span>
+            <span class="tb-bar-ver" id="tbVer"></span>
+        `;
+
+        // Inject OLED/teal styles once
+        if (!document.getElementById('tbCompanionBarCss')) {
+            const style = document.createElement('style');
+            style.id = 'tbCompanionBarCss';
+            style.textContent = `
+                .tb-companion-bar{
+                    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+                    padding:8px 14px;font:600 12px/1.3 system-ui,Segoe UI,sans-serif;
+                    background:linear-gradient(180deg,#050508 0%,#0a0a10 100%);
+                    border-bottom:1px solid rgba(0,243,255,.22);
+                    box-shadow:0 0 24px rgba(0,243,255,.06), inset 0 1px 0 rgba(0,243,255,.08);
+                    color:#c8d0d8;position:sticky;top:0;z-index:9990;
+                }
+                .tb-bar-back{
+                    color:#00e5ff;text-decoration:none;padding:5px 10px;border-radius:8px;
+                    border:1px solid rgba(0,229,255,.28);background:rgba(0,229,255,.08);
+                    white-space:nowrap;transition:box-shadow .2s,border-color .2s;
+                }
+                .tb-bar-back:hover{border-color:#00f3ff;box-shadow:0 0 12px rgba(0,243,255,.35);color:#fff}
+                .tb-bar-servers{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+                .tb-pill{
+                    display:inline-flex;align-items:center;gap:6px;padding:4px 10px;
+                    border-radius:999px;border:1px solid rgba(255,255,255,.12);
+                    background:rgba(0,0,0,.45);cursor:pointer;user-select:none;
+                    color:#9aa3ad;transition:border-color .2s,box-shadow .2s,color .2s;
+                }
+                .tb-pill em{font-style:normal;opacity:.75;font-weight:500;font-size:11px}
+                .tb-pill .tb-dot{
+                    width:8px;height:8px;border-radius:50%;background:#ff4466;
+                    box-shadow:0 0 6px #ff4466;flex-shrink:0;
+                }
+                .tb-pill.on{border-color:rgba(0,255,136,.45);color:#d8ffe8}
+                .tb-pill.on .tb-dot{background:#00ff88;box-shadow:0 0 8px #00ff88}
+                .tb-pill.wait{border-color:rgba(255,200,0,.4);color:#ffe9a8}
+                .tb-pill.wait .tb-dot{background:#ffc800;box-shadow:0 0 8px #ffc800;animation:ui-pulse-glow 1.2s ease infinite}
+                .tb-pill.off{border-color:rgba(255,68,102,.35)}
+                .tb-bar-actions{display:flex;gap:6px;align-items:center}
+                .tb-btn{
+                    padding:5px 11px;border-radius:8px;border:1px solid rgba(0,243,255,.35);
+                    background:rgba(0,243,255,.1);color:#00f3ff;cursor:pointer;font:600 11px system-ui,sans-serif;
+                }
+                .tb-btn.primary{background:rgba(0,243,255,.18);border-color:#00f3ff}
+                .tb-btn.ghost{background:transparent;border-color:rgba(255,255,255,.18);color:#888}
+                .tb-btn:hover{box-shadow:0 0 12px rgba(0,243,255,.3)}
+                .tb-btn:disabled{opacity:.5;cursor:wait}
+                .tb-bar-hint{color:#6a7380;font-size:11px;font-weight:500;min-width:0;flex:1}
+                .tb-bar-ver{margin-left:auto;opacity:.45;font-size:11px;font-weight:500}
+            `;
+            document.head.appendChild(style);
+        }
 
         let anchor = null;
         if (opts.insertAfter) {
@@ -517,8 +575,14 @@
         }
         if (anchor && anchor.parentNode) {
             anchor.parentNode.insertBefore(bar, anchor.nextSibling);
-        } else {
+        } else if (document.body) {
             document.body.insertBefore(bar, document.body.firstChild);
+        } else {
+            document.addEventListener('DOMContentLoaded', () => {
+                if (!document.getElementById('tbSharedServerBar')) {
+                    document.body.insertBefore(bar, document.body.firstChild);
+                }
+            }, { once: true });
         }
 
         if (global.AITOOLBOX_VERSION) {
@@ -526,33 +590,194 @@
             if (ver) ver.textContent = 'v' + global.AITOOLBOX_VERSION;
         }
 
-        const controls = bindServerControls({
-            statusEl: '#tbServerPill',
-            startBtn: '#tbBtnStartServer',
-            hintEl: '#tbServerHint',
-            pollMs: opts.pollMs,
-            onOnline: opts.onOnline,
-            onOffline: opts.onOffline,
-        });
+        return _wireCompanionBar(opts);
+    }
 
-        const consoleBtn = document.getElementById('tbBtnServerConsole');
-        if (consoleBtn && !consoleBtn._serverBound) {
-            consoleBtn._serverBound = true;
-            consoleBtn.addEventListener('click', async () => {
-                if (!global.AIToolboxAPI?.startServer) return;
-                consoleBtn.disabled = true;
-                try {
-                    await global.AIToolboxAPI.startServer({ mode: 'console', waitMs: 90000 });
-                    await controls.refresh(true);
-                } finally {
-                    consoleBtn.disabled = false;
-                }
+    function _setPill(el, state, detail) {
+        if (!el) return;
+        el.classList.remove('on', 'off', 'wait');
+        el.classList.add(state === 'on' ? 'on' : state === 'wait' ? 'wait' : 'off');
+        const em = el.querySelector('em');
+        if (em) em.textContent = detail || (state === 'on' ? 'online' : state === 'wait' ? '…' : 'offline');
+    }
+
+    function _wireCompanionBar(opts = {}) {
+        const API = () => global.AIToolboxAPI;
+        const back = document.getElementById('tbBtnToolbox');
+        if (back && !back._tbBound) {
+            back._tbBound = true;
+            back.href = launcherHref();
+            back.addEventListener('click', (e) => {
+                // Always re-resolve in case scripts load late
+                back.href = launcherHref();
             });
         }
 
-        try { initTooltips(bar); } catch { /* ignore */ }
-        bar.dataset.endpoint = endpoint();
-        return controls;
+        const pillS1 = document.getElementById('tbPillS1');
+        const pillS2 = document.getElementById('tbPillS2');
+        const startBtn = document.getElementById('tbBtnStartServer');
+        const relaunchBtn = document.getElementById('tbBtnRelaunchServers');
+        const consoleBtn = document.getElementById('tbBtnServerConsole');
+        const hintEl = document.getElementById('tbServerHint');
+        // Legacy alias used by bindServerControls callers
+        const statusEl = pillS1;
+        let starting = false;
+        let pollTimer = null;
+
+        async function probeS2(timeoutMs = 900) {
+            try {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), timeoutMs);
+                const r = await fetch('http://127.0.0.1:8765/api/health', {
+                    signal: ctrl.signal,
+                    cache: 'no-store',
+                });
+                clearTimeout(t);
+                if (!r.ok) return { ok: false };
+                const j = await r.json().catch(() => ({}));
+                return { ok: true, body: j };
+            } catch {
+                return { ok: false };
+            }
+        }
+
+        async function refresh(force = false) {
+            if (starting) return false;
+            const api = API();
+            let s1 = false;
+            let s1Label = 'offline';
+            if (api?.isOnline) {
+                s1 = await api.isOnline(!!force, 2000);
+                if (s1) {
+                    const h = await api.health().catch(() => ({}));
+                    s1Label = h.version ? `v${h.version}` : 'online';
+                }
+            }
+            _setPill(pillS1, s1 ? 'on' : 'off', s1Label);
+
+            // Prefer launch status (includes S2) when S1 is up; else direct probe
+            let s2 = false;
+            let s2Label = 'offline';
+            if (s1 && api?.getLaunchStatus) {
+                try {
+                    const st = await api.getLaunchStatus();
+                    const meta = st?.fafoMeta || {};
+                    s2 = !!(meta.healthy || meta.listening);
+                    s2Label = s2 ? 'online' : (meta.root?.ok === false ? 'path?' : 'offline');
+                } catch {
+                    const p = await probeS2();
+                    s2 = !!p.ok;
+                    s2Label = s2 ? 'online' : 'offline';
+                }
+            } else {
+                const p = await probeS2();
+                s2 = !!p.ok;
+                s2Label = s2 ? 'online' : 'offline';
+            }
+            _setPill(pillS2, s2 ? 'on' : 'off', s2Label);
+
+            if (startBtn) {
+                startBtn.style.display = (s1 && s2) ? 'none' : '';
+                startBtn.disabled = false;
+                startBtn.textContent = startBtn.dataset.label || '▶ Start';
+            }
+            if (hintEl && !starting) {
+                const parts = [];
+                parts.push(s1 ? 'S1 on' : 'S1 off');
+                parts.push(s2 ? 'S2 on' : 'S2 off');
+                hintEl.textContent = parts.join(' · ') + ' · servers stay up when you leave this page';
+            }
+            if (s1) opts.onOnline?.(await api?.health?.().catch(() => ({})));
+            else opts.onOffline?.();
+            return s1;
+        }
+
+        async function startAll(mode) {
+            if (starting || API()?.isServerLaunching?.()) return;
+            starting = true;
+            _setPill(pillS1, 'wait', '…');
+            _setPill(pillS2, 'wait', '…');
+            if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Starting…'; }
+            if (hintEl) hintEl.textContent = 'Starting S1 + S2 in background…';
+            try {
+                const result = await API()?.startServer({
+                    mode: mode === 'console' ? 'console' : 'tray',
+                    waitMs: opts.waitMs || 90000,
+                    companions: true,
+                    onStatus: (msg) => { if (hintEl) hintEl.textContent = msg; },
+                });
+                starting = false;
+                if (result?.ok) toast('Servers online (S1 + S2)', 'ok');
+                else toast('If blocked: Desktop Start Servers or tray', 'warn');
+                await refresh(true);
+            } catch (e) {
+                starting = false;
+                toast('Start failed: ' + (e.message || e), 'warn');
+                await refresh(true);
+            } finally {
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = startBtn.dataset.label || '▶ Start';
+                }
+            }
+        }
+
+        if (startBtn && !startBtn._serverBound) {
+            startBtn._serverBound = true;
+            startBtn.dataset.label = startBtn.textContent || '▶ Start';
+            startBtn.addEventListener('click', () => startAll('tray'));
+        }
+        if (relaunchBtn && !relaunchBtn._serverBound) {
+            relaunchBtn._serverBound = true;
+            relaunchBtn.addEventListener('click', async () => {
+                if (!API()?.relaunchServers) return startAll('tray');
+                relaunchBtn.disabled = true;
+                try {
+                    await API().relaunchServers({ waitMs: 60000 });
+                    await refresh(true);
+                    toast('Servers relaunched', 'ok');
+                } catch (e) {
+                    toast(String(e.message || e), 'warn');
+                } finally {
+                    relaunchBtn.disabled = false;
+                }
+            });
+        }
+        if (consoleBtn && !consoleBtn._serverBound) {
+            consoleBtn._serverBound = true;
+            consoleBtn.addEventListener('click', () => startAll('console'));
+        }
+        const bindPillStart = (el) => {
+            if (!el || el._serverBound) return;
+            el._serverBound = true;
+            el.addEventListener('click', () => startAll('tray'));
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startAll('tray'); }
+            });
+        };
+        bindPillStart(pillS1);
+        bindPillStart(pillS2);
+
+        // Keep legacy single-server bind for pages that still pass custom els
+        if (opts.statusEl || opts.startBtn) {
+            bindServerControls(opts);
+        }
+
+        const pollMs = opts.pollMs != null ? opts.pollMs : 8000;
+        if (pollMs > 0) {
+            pollTimer = setInterval(() => {
+                if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+                refresh(false);
+            }, pollMs);
+        }
+        refresh(true);
+        try { initTooltips(document.getElementById('tbSharedServerBar')); } catch { /* ignore */ }
+
+        return {
+            refresh,
+            start: startAll,
+            stop: () => { if (pollTimer) clearInterval(pollTimer); },
+        };
     }
 
     /**
@@ -675,9 +900,38 @@
         });
     }
 
+    /**
+     * Mount companion bar + toolbox back on every tool page that loads this kit.
+     * Safe to call multiple times; skipped on Toolbox Launcher.
+     */
+    function mountToolChrome(opts = {}) {
+        try { installStabilityGuards({ quiet: false }); } catch { /* ignore */ }
+        try { mountServerBar(opts); } catch (e) { console.warn('[AIToolbox] mountServerBar', e); }
+        // Back link is already in the bar; still ensure sticky if bar was skipped
+        try {
+            if (!document.getElementById('tbSharedServerBar')) ensureToolboxBack();
+        } catch { /* ignore */ }
+    }
+
     // Auto-install on every page that loads the UI kit (low cost, high value)
     if (typeof window !== 'undefined') {
         try { installStabilityGuards({ quiet: false }); } catch { /* ignore */ }
+        const autoMount = () => {
+            try {
+                // Skip pure extension pages / about:blank noise
+                if (!document.body) return;
+                if (document.body.dataset.tbChrome === 'off') return;
+                mountToolChrome({ pollMs: 8000 });
+            } catch (e) {
+                console.warn('[AIToolbox] auto chrome', e);
+            }
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', autoMount, { once: true });
+        } else {
+            // Defer so page scripts can set data-tb-chrome=off if needed
+            setTimeout(autoMount, 0);
+        }
     }
 
     global.AIToolboxUI = {
@@ -698,6 +952,7 @@
         renderWorkflow,
         bindServerControls,
         mountServerBar,
+        mountToolChrome,
         escapeHtml,
         formatBytes,
         getApiBase,
