@@ -34,6 +34,23 @@
       background: rgba(0,0,0,0.35);
       border: 1px solid var(--tf-border);
     }
+    .q-deadline {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 14px; margin-top: 12px; border-radius: 12px;
+      border: 1px solid rgba(61, 158, 255, 0.35);
+      background: rgba(61, 158, 255, 0.08);
+    }
+    .q-deadline .big {
+      font-size: 28px; font-weight: 800; color: var(--tf-accent3);
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 12px rgba(61, 158, 255, 0.4);
+    }
+    .tf-disclaimer {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255, 209, 102, 0.35);
+      background: rgba(255, 209, 102, 0.06);
+      color: var(--tf-accent2); font-size: 11px; line-height: 1.45;
+    }
   </style>
 </head>
 <body class="tf-body">
@@ -84,6 +101,56 @@
       <div class="tf-stat"><div class="val" id="mCode">0%</div><div class="lbl">Coded</div></div>
       <div class="tf-stat"><div class="val warn" id="mReview">0</div><div class="lbl">Open reviews</div></div>
       <div class="tf-stat"><div class="val gold" id="mChecks">0%</div><div class="lbl">Checklist</div></div>
+    </div>
+
+    <div class="tf-panel" id="quarterlyCard">
+      <h2>Quarterly estimated tax <span class="tf-muted" style="font-weight:500;text-transform:none;letter-spacing:0">(SE readiness)</span></h2>
+      <p class="tf-muted" style="margin-bottom:12px">
+        Rough self-employment tax preview for preparedness planning.
+        Formula: <strong style="color:var(--tf-text)">SE tax ≈ 15.3% × 92.35%</strong> of net profit.
+        SS wage base note uses <strong style="color:var(--tf-text)">$184,500</strong> (2026). Federal income tax and safe-harbor rules are not included.
+      </p>
+      <div class="tf-grid tf-grid-3">
+        <div class="tf-field">
+          <label class="tf-label" for="qNet">YTD net profit ($)</label>
+          <input class="tf-input" id="qNet" type="number" min="0" step="100" placeholder="e.g. 48000">
+        </div>
+        <div class="tf-field">
+          <label class="tf-label" for="qMonths">Months covered (YTD)</label>
+          <input class="tf-input" id="qMonths" type="number" min="1" max="12" step="1" value="6">
+        </div>
+        <div class="tf-field">
+          <label class="tf-label" for="qPaid">Estimated tax paid YTD ($)</label>
+          <input class="tf-input" id="qPaid" type="number" min="0" step="50" placeholder="0">
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <button class="tf-btn primary sm" type="button" id="btnQCalc">Calculate</button>
+        <button class="tf-btn sm ghost" type="button" id="btnQDemo">Fill demo figures</button>
+      </div>
+      <div class="tf-grid tf-grid-4">
+        <div class="tf-stat"><div class="val" id="qSeBase">$0</div><div class="lbl">SE tax base</div></div>
+        <div class="tf-stat"><div class="val gold" id="qSeTax">$0</div><div class="lbl">SE tax (annualized)</div></div>
+        <div class="tf-stat"><div class="val" id="qRemain">$0</div><div class="lbl">Remaining SE tax</div></div>
+        <div class="tf-stat"><div class="val warn" id="qPerQ">$0</div><div class="lbl">≈ per remaining installment</div></div>
+      </div>
+      <div class="q-deadline">
+        <div>
+          <div class="tf-label" style="margin:0">Next estimated deadline</div>
+          <div style="font-size:14px;font-weight:700;margin-top:4px" id="qDeadLabel">—</div>
+          <div class="tf-muted" id="qDeadDate" style="margin-top:2px">Enter figures and calculate</div>
+        </div>
+        <div style="text-align:right">
+          <div class="big" id="qDays">—</div>
+          <div class="tf-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:1px">days left</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="tf-label">SS wage base capacity (SE base vs $184,500)</div>
+        <div class="tf-bar"><i id="qSsBar"></i></div>
+        <p class="tf-muted" style="margin-top:6px" id="qSsNote">—</p>
+      </div>
+      <div class="tf-disclaimer" id="qDisclaimer"></div>
     </div>
 
     <p class="tf-footer">Compliance Pulse · Not a substitute for a CPA · Local scoring only</p>
@@ -265,6 +332,85 @@
       TaxForge.toast('Pulse recalculated');
       TaxForge.burst(window.innerWidth / 2, 200, '#ffd166');
     };
+
+    /* —— Quarterly SE estimate card —— */
+    function money(n) {
+      return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    function money2(n) {
+      return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    document.getElementById('qDisclaimer').textContent = TaxForge.DISCLAIMER;
+
+    function loadQuarterlyForm() {
+      const s = TaxForge.storage.get('quarterly.inputs', null);
+      if (s) {
+        if (s.netProfit != null) document.getElementById('qNet').value = s.netProfit;
+        if (s.ytdMonths != null) document.getElementById('qMonths').value = s.ytdMonths;
+        if (s.paidToDate != null) document.getElementById('qPaid').value = s.paidToDate;
+      }
+    }
+
+    function renderQuarterly() {
+      const net = parseFloat(document.getElementById('qNet').value) || 0;
+      const months = Math.min(12, Math.max(1, parseInt(document.getElementById('qMonths').value, 10) || 12));
+      const paid = parseFloat(document.getElementById('qPaid').value) || 0;
+      document.getElementById('qMonths').value = months;
+
+      TaxForge.storage.set('quarterly.inputs', {
+        netProfit: net,
+        ytdMonths: months,
+        paidToDate: paid,
+        at: Date.now(),
+      });
+
+      const r = TaxForge.quarterly.remainingQuarters({
+        netProfit: net,
+        ytdMonths: months,
+        paidToDate: paid,
+      });
+      TaxForge.storage.set('quarterly.last', r);
+
+      document.getElementById('qSeBase').textContent = money2(r.seBase);
+      document.getElementById('qSeTax').textContent = money2(r.seTaxAnnual);
+      document.getElementById('qRemain').textContent = money2(r.remainingTax);
+      document.getElementById('qPerQ').textContent = money2(r.perInstallment);
+
+      const nd = r.nextDeadline;
+      if (nd) {
+        document.getElementById('qDeadLabel').textContent = nd.label + ' estimated tax';
+        document.getElementById('qDeadDate').textContent =
+          nd.date.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) +
+          ' · ' + r.remainingInstallments + ' installment(s) left in cycle';
+        document.getElementById('qDays').textContent = String(Math.max(0, nd.daysLeft));
+      }
+
+      document.getElementById('qSsBar').style.width = Math.min(100, r.ss.pctUsed) + '%';
+      document.getElementById('qSsNote').textContent =
+        'SE base used (annualized): ' + money(r.ss.used) +
+        ' · remaining under $184,500: ' + money(r.ss.remaining) +
+        ' (' + r.ss.pctUsed + '% of wage base note)';
+    }
+
+    document.getElementById('btnQCalc').onclick = () => {
+      renderQuarterly();
+      TaxForge.toast('Quarterly SE preview updated');
+      TaxForge.burst(window.innerWidth / 2, 360, '#3d9eff');
+    };
+    document.getElementById('btnQDemo').onclick = () => {
+      document.getElementById('qNet').value = '52000';
+      document.getElementById('qMonths').value = '6';
+      document.getElementById('qPaid').value = '3500';
+      renderQuarterly();
+      TaxForge.toast('Demo quarterly figures loaded');
+    };
+    ['qNet', 'qMonths', 'qPaid'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', renderQuarterly);
+    });
+
+    loadQuarterlyForm();
+    renderQuarterly();
     render();
   </script>
 </body>

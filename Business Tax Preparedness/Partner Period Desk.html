@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Partner Period Desk — TaxForge</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤝</text></svg>">
+  <link rel="stylesheet" href="taxforge-shared.css">
+  <style>
+    .line-row {
+      display: grid;
+      grid-template-columns: 28px 92px 88px 1fr 150px 100px 90px 70px;
+      gap: 6px;
+      align-items: center;
+      padding: 8px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 12px;
+    }
+    .line-row.head {
+      opacity: 0.65;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--tf-muted);
+    }
+    .line-row input.tf-input, .line-row select.tf-select {
+      padding: 6px 8px;
+      font-size: 11px;
+      border-radius: 8px;
+    }
+    .line-row .amt { font-weight: 700; color: var(--tf-accent2); font-variant-numeric: tabular-nums; text-align: right; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .toolbar .tf-select, .toolbar .tf-input { width: auto; min-width: 120px; }
+    .period-card {
+      background: rgba(0,0,0,0.28);
+      border: 1px solid var(--tf-border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .period-card h3 {
+      font-size: 14px;
+      color: var(--tf-accent);
+      margin-bottom: 8px;
+      letter-spacing: 0.04em;
+    }
+    .tf-disclaimer {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255, 209, 102, 0.35);
+      background: rgba(255, 209, 102, 0.06);
+      color: var(--tf-accent2); font-size: 11px; line-height: 1.45;
+    }
+    .scroll-lines { max-height: 420px; overflow-y: auto; scrollbar-width: thin; }
+    @media (max-width: 960px) {
+      .line-row { grid-template-columns: 1fr 1fr; }
+      .line-row.head { display: none; }
+    }
+  </style>
+</head>
+<body class="tf-body">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="tf-wrap">
+    <header class="tf-header">
+      <div class="tf-badge">Partner desk</div>
+      <h1>🤝 PARTNER PERIOD DESK</h1>
+      <p>
+        Reclass reimbursements that landed in the wrong bucket — without retyping every amount.
+        Roll up by month / year / fiscal period. Track investor parts + profit-share estimates. Export a pack for the expert team.
+      </p>
+    </header>
+    <div id="suiteNav"></div>
+
+    <div class="tf-grid tf-grid-4">
+      <div class="tf-stat"><div class="val" id="stLines">0</div><div class="lbl">Lines</div></div>
+      <div class="tf-stat"><div class="val warn" id="stReclass">0</div><div class="lbl">Need reclass</div></div>
+      <div class="tf-stat"><div class="val gold" id="stReimb">$0</div><div class="lbl">Reimb total</div></div>
+      <div class="tf-stat"><div class="val" id="stPartsInv">$0</div><div class="lbl">Investor parts in</div></div>
+    </div>
+
+    <div class="tf-grid tf-grid-2">
+      <div class="tf-panel">
+        <h2>Settings (local)</h2>
+        <div class="tf-grid tf-grid-2">
+          <div class="tf-field">
+            <label class="tf-label" for="setEntity">Entity</label>
+            <input class="tf-input" id="setEntity" placeholder="FAFO Petro LLC">
+          </div>
+          <div class="tf-field">
+            <label class="tf-label" for="setInvestor">Investor name</label>
+            <input class="tf-input" id="setInvestor" placeholder="Investor">
+          </div>
+          <div class="tf-field">
+            <label class="tf-label" for="setShare">Investor profit share %</label>
+            <input class="tf-input" id="setShare" type="number" min="0" max="100" step="1" value="50">
+          </div>
+          <div class="tf-field">
+            <label class="tf-label" for="setFy">Fiscal year starts (month 1–12)</label>
+            <input class="tf-input" id="setFy" type="number" min="1" max="12" step="1" value="1">
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="tf-btn primary sm" type="button" id="btnSaveSettings">Save settings</button>
+          <span class="tf-muted" id="setHint">1 = calendar year · 10 = Oct fiscal start</span>
+        </div>
+        <div class="tf-disclaimer" id="disclaimer"></div>
+      </div>
+
+      <div class="tf-panel">
+        <h2>Import / fix workflow</h2>
+        <p class="tf-muted" style="margin-bottom:10px">
+          Dump whatever CSV you already have (Investor ledger export, bank, sheet dump).
+          Amounts stay; you only fix <strong>kind</strong> in bulk. No line-by-line rewrite required.
+        </p>
+        <div class="toolbar">
+          <label class="tf-btn primary">
+            Import CSV
+            <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+          </label>
+          <button class="tf-btn sm" type="button" id="btnSample">Load sample mess</button>
+          <button class="tf-btn sm ghost" type="button" id="btnAdd">+ Manual line</button>
+        </div>
+        <div class="toolbar">
+          <select class="tf-select" id="bulkKind"></select>
+          <button class="tf-btn gold sm" type="button" id="btnBulk">Reclass checked → kind</button>
+          <button class="tf-btn sm danger" type="button" id="btnClearAll">Clear all lines</button>
+        </div>
+        <p class="tf-muted">Tip: import first → filter “Needs reclass” → multi-check → bulk reclass to Reimbursement or Investor parts.</p>
+      </div>
+    </div>
+
+    <div class="tf-panel">
+      <h2>Lines</h2>
+      <div class="toolbar">
+        <select class="tf-select" id="filterStatus">
+          <option value="all">All lines</option>
+          <option value="needs-reclass">Needs reclass</option>
+          <option value="ok">Classified OK</option>
+        </select>
+        <select class="tf-select" id="filterKind">
+          <option value="all">All kinds</option>
+        </select>
+        <input class="tf-input" id="filterQ" placeholder="Search description…" style="min-width:160px">
+        <button class="tf-btn sm" type="button" id="btnSelectVisible">Check visible</button>
+        <button class="tf-btn sm ghost" type="button" id="btnSelectNone">Clear checks</button>
+      </div>
+      <div class="line-row head">
+        <div></div><div>Date</div><div>Amount</div><div>Description</div><div>Kind</div><div>Party</div><div>Status</div><div></div>
+      </div>
+      <div class="scroll-lines" id="lineList"></div>
+    </div>
+
+    <div class="tf-panel">
+      <h2>Period rollups</h2>
+      <div class="toolbar">
+        <label class="tf-label" style="margin:0">Group by</label>
+        <select class="tf-select" id="periodType">
+          <option value="month">Calendar month</option>
+          <option value="year">Calendar year</option>
+          <option value="fiscal">Fiscal year</option>
+        </select>
+        <button class="tf-btn primary sm" type="button" id="btnRollup">Refresh rollups</button>
+        <button class="tf-btn gold sm" type="button" id="btnExportJson">Export expert pack (JSON)</button>
+        <button class="tf-btn sm" type="button" id="btnExportMd">Export expert pack (MD)</button>
+        <button class="tf-btn sm ghost" type="button" id="btnExportCsv">Export lines CSV</button>
+      </div>
+      <div id="rollupBox"></div>
+    </div>
+
+    <p class="tf-footer">Partner Period Desk · TaxForge · Local browser storage · Complements Investor Portal parts ledger</p>
+  </div>
+  <script src="taxforge-shared.js"></script>
+  <script>
+    TaxForge.mountFx();
+    document.getElementById('suiteNav').innerHTML = TaxForge.nav('partner');
+    document.getElementById('disclaimer').textContent = TaxForge.DISCLAIMER;
+
+    const $ = (id) => document.getElementById(id);
+    let checks = new Set();
+
+    function money(n) {
+      return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function kindOptions(selected) {
+      return TaxForge.partner.KINDS.map((k) =>
+        `<option value="${k.id}" ${k.id === selected ? 'selected' : ''}>${esc(k.label)}</option>`
+      ).join('');
+    }
+
+    function loadSettingsForm() {
+      const s = TaxForge.partner.getSettings();
+      $('setEntity').value = s.entityName || '';
+      $('setInvestor').value = s.investorName || '';
+      $('setShare').value = s.investorSharePct;
+      $('setFy').value = s.fiscalYearStartMonth;
+    }
+
+    function saveSettingsFromForm() {
+      const s = TaxForge.partner.getSettings();
+      s.entityName = $('setEntity').value.trim() || s.entityName;
+      s.investorName = $('setInvestor').value.trim() || s.investorName;
+      s.investorSharePct = Math.min(100, Math.max(0, parseFloat($('setShare').value) || 0));
+      s.fiscalYearStartMonth = Math.min(12, Math.max(1, parseInt($('setFy').value, 10) || 1));
+      TaxForge.partner.saveSettings(s);
+      TaxForge.toast('Settings saved');
+      renderAll();
+    }
+
+    function getLines() { return TaxForge.partner.getLines(); }
+    function setLines(lines) { TaxForge.partner.saveLines(lines); }
+
+    function filteredLines() {
+      let lines = getLines().slice();
+      const st = $('filterStatus').value;
+      const kind = $('filterKind').value;
+      const q = $('filterQ').value.trim().toLowerCase();
+      if (st === 'needs-reclass') lines = lines.filter((l) => l.status === 'needs-reclass' || l.kind === 'misplaced');
+      if (st === 'ok') lines = lines.filter((l) => l.status !== 'needs-reclass' && l.kind !== 'misplaced');
+      if (kind !== 'all') lines = lines.filter((l) => l.kind === kind);
+      if (q) lines = lines.filter((l) => (l.description + ' ' + (l.vendor || '') + ' ' + (l.sourceNote || '')).toLowerCase().includes(q));
+      lines.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      return lines;
+    }
+
+    function renderStats() {
+      const lines = getLines();
+      const reclass = lines.filter((l) => l.status === 'needs-reclass' || l.kind === 'misplaced').length;
+      const buckets = TaxForge.partner.rollup({ lines, periodType: 'year' });
+      let reimb = 0, partsInv = 0;
+      Object.values(buckets).forEach((b) => { reimb += b.reimbTotal; partsInv += b.partsInvestor; });
+      $('stLines').textContent = lines.length;
+      $('stReclass').textContent = reclass;
+      $('stReimb').textContent = money(reimb);
+      $('stPartsInv').textContent = money(partsInv);
+    }
+
+    function renderLines() {
+      const lines = filteredLines();
+      const box = $('lineList');
+      if (!lines.length) {
+        box.innerHTML = '<p class="tf-muted" style="padding:14px">No lines yet — import a CSV or load the sample mess.</p>';
+        return;
+      }
+      box.innerHTML = lines.map((l) => {
+        const flag = l.status === 'needs-reclass' || l.kind === 'misplaced';
+        return `<div class="line-row" data-id="${esc(l.id)}">
+          <div><input type="checkbox" data-check="${esc(l.id)}" ${checks.has(l.id) ? 'checked' : ''}></div>
+          <div><input class="tf-input" data-f="date" type="date" value="${esc(l.date)}"></div>
+          <div class="amt"><input class="tf-input" data-f="amount" type="number" step="0.01" value="${l.amount}"></div>
+          <div>
+            <input class="tf-input" data-f="description" value="${esc(l.description)}">
+            <div class="tf-muted" style="font-size:10px;margin-top:2px">${esc(l.sourceNote || '')}${l.originalKind ? ' · was: ' + esc(l.originalKind) : ''}</div>
+          </div>
+          <div><select class="tf-select" data-f="kind">${kindOptions(l.kind)}</select></div>
+          <div><select class="tf-select" data-f="party">
+            <option value="owner" ${l.party === 'owner' ? 'selected' : ''}>Owner</option>
+            <option value="investor" ${l.party === 'investor' ? 'selected' : ''}>Investor</option>
+            <option value="company" ${l.party === 'company' ? 'selected' : ''}>Company</option>
+            <option value="unknown" ${l.party === 'unknown' ? 'selected' : ''}>Unknown</option>
+          </select></div>
+          <div><span class="tf-pill ${flag ? 'warn' : 'ok'}">${flag ? 'reclass' : 'ok'}</span></div>
+          <div><button type="button" class="tf-btn sm danger" data-del="${esc(l.id)}">✕</button></div>
+        </div>`;
+      }).join('');
+
+      box.querySelectorAll('[data-check]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const id = inp.getAttribute('data-check');
+          if (inp.checked) checks.add(id); else checks.delete(id);
+        });
+      });
+      box.querySelectorAll('.line-row').forEach((row) => {
+        const id = row.getAttribute('data-id');
+        row.querySelectorAll('[data-f]').forEach((el) => {
+          el.addEventListener('change', () => {
+            const all = getLines();
+            const i = all.findIndex((x) => x.id === id);
+            if (i < 0) return;
+            const f = el.getAttribute('data-f');
+            let v = el.value;
+            if (f === 'amount') v = Math.round((parseFloat(v) || 0) * 100) / 100;
+            if (f === 'kind') {
+              all[i] = TaxForge.partner.reclassify(all[i], v, { party: all[i].party });
+            } else {
+              all[i][f] = v;
+              if (f === 'party') all[i].party = v;
+            }
+            setLines(all);
+            renderAll();
+          });
+        });
+        const del = row.querySelector('[data-del]');
+        if (del) del.addEventListener('click', () => {
+          setLines(getLines().filter((x) => x.id !== id));
+          checks.delete(id);
+          renderAll();
+        });
+      });
+    }
+
+    function renderRollups() {
+      const settings = TaxForge.partner.getSettings();
+      const periodType = $('periodType').value;
+      const buckets = TaxForge.partner.rollup({
+        lines: getLines(),
+        periodType,
+        fiscalStartMonth: settings.fiscalYearStartMonth,
+      });
+      const keys = Object.keys(buckets).sort().reverse();
+      if (!keys.length) {
+        $('rollupBox').innerHTML = '<p class="tf-muted">No periods yet.</p>';
+        return;
+      }
+      $('rollupBox').innerHTML = keys.map((k) => {
+        const b = buckets[k];
+        const sh = TaxForge.partner.shareForBucket(b, settings);
+        return `<div class="period-card">
+          <h3>${esc(k)} · ${b.lineCount} lines${b.needsReclass ? ' · <span class="tf-pill warn">' + b.needsReclass + ' reclass</span>' : ''}</h3>
+          <div class="tf-grid tf-grid-4">
+            <div class="tf-stat"><div class="val" style="font-size:18px">${money(b.sales)}</div><div class="lbl">Sales</div></div>
+            <div class="tf-stat"><div class="val" style="font-size:18px">${money(b.partsCost)}</div><div class="lbl">Parts COGS</div></div>
+            <div class="tf-stat"><div class="val gold" style="font-size:18px">${money(b.grossProfit)}</div><div class="lbl">Gross (sales−parts)</div></div>
+            <div class="tf-stat"><div class="val" style="font-size:18px">${money(b.netAfterOps)}</div><div class="lbl">Net after ops</div></div>
+          </div>
+          <div class="tf-grid tf-grid-4" style="margin-top:8px">
+            <div class="tf-stat"><div class="val warn" style="font-size:16px">${money(b.reimbOwner)}</div><div class="lbl">Reimb → owner</div></div>
+            <div class="tf-stat"><div class="val warn" style="font-size:16px">${money(b.reimbInvestor)}</div><div class="lbl">Reimb → investor</div></div>
+            <div class="tf-stat"><div class="val" style="font-size:16px">${money(b.partsInvestor)}</div><div class="lbl">Investor parts</div></div>
+            <div class="tf-stat"><div class="val gold" style="font-size:16px">${money(sh.investorShare)}</div><div class="lbl">Investor share @ ${sh.investorSharePct}%</div></div>
+          </div>
+          <p class="tf-muted" style="margin-top:8px">
+            Est. investor still owed (share − profit paid): <strong style="color:var(--tf-accent2)">${money(sh.investorOwedEstimate)}</strong>
+            · Profit paid logged: ${money(b.profitPaid)}
+            · Owner share: ${money(sh.ownerShare)}
+          </p>
+        </div>`;
+      }).join('');
+    }
+
+    function renderAll() {
+      renderStats();
+      renderLines();
+      renderRollups();
+    }
+
+    // filters + bulk kind select
+    $('bulkKind').innerHTML = kindOptions('reimb_owner');
+    $('filterKind').innerHTML = '<option value="all">All kinds</option>' + kindOptions('');
+
+    $('btnSaveSettings').onclick = saveSettingsFromForm;
+    $('filterStatus').onchange = renderLines;
+    $('filterKind').onchange = renderLines;
+    $('filterQ').oninput = () => { clearTimeout($('filterQ')._t); $('filterQ')._t = setTimeout(renderLines, 150); };
+    $('periodType').onchange = renderRollups;
+    $('btnRollup').onclick = () => { renderRollups(); TaxForge.toast('Rollups refreshed'); };
+
+    $('btnSelectVisible').onclick = () => {
+      filteredLines().forEach((l) => checks.add(l.id));
+      renderLines();
+    };
+    $('btnSelectNone').onclick = () => { checks.clear(); renderLines(); };
+
+    $('btnBulk').onclick = () => {
+      if (!checks.size) {
+        TaxForge.toast('Check some lines first');
+        return;
+      }
+      const kind = $('bulkKind').value;
+      const all = getLines().map((l) => checks.has(l.id) ? TaxForge.partner.reclassify(l, kind) : l);
+      setLines(all);
+      checks.clear();
+      TaxForge.toast('Reclassified ' + 'lines to ' + kind);
+      TaxForge.burst(window.innerWidth / 2, 200, '#ffd166');
+      renderAll();
+    };
+
+    $('btnAdd').onclick = () => {
+      const lines = getLines();
+      lines.unshift({
+        id: 'pl-' + Date.now(),
+        date: new Date().toISOString().slice(0, 10),
+        amount: 0,
+        description: 'New line',
+        kind: 'misplaced',
+        party: 'unknown',
+        vendor: '',
+        sourceNote: 'manual',
+        originalKind: '',
+        status: 'needs-reclass',
+        createdAt: Date.now(),
+      });
+      setLines(lines);
+      renderAll();
+    };
+
+    $('btnClearAll').onclick = () => {
+      if (!confirm('Clear ALL partner lines from this browser? Settings stay.')) return;
+      setLines([]);
+      checks.clear();
+      renderAll();
+      TaxForge.toast('All lines cleared');
+    };
+
+    $('csvFile').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const text = await f.text();
+      const parsed = TaxForge.partner.parseCsv(text);
+      if (!parsed.rows.length) {
+        TaxForge.toast((parsed.errors && parsed.errors[0]) || 'No rows');
+        e.target.value = '';
+        return;
+      }
+      setLines(parsed.rows.concat(getLines()));
+      TaxForge.toast('Imported ' + parsed.rows.length + ' lines — reclass as needed');
+      TaxForge.burst(window.innerWidth / 2, 220, '#00e8a2');
+      renderAll();
+      e.target.value = '';
+    };
+
+    $('btnSample').onclick = () => {
+      const sample = [
+        'Date,Amount,Description,Category,Source',
+        '2026-01-14,420.00,Verifone kit serial A1,inventory,Investor portal ledger',
+        '2026-01-20,85.50,Home Depot bits I paid,tools,Personal card (wrong spot)',
+        '2026-02-03,1200.00,Parts run Sumran paid,parts,Investor portal',
+        '2026-02-18,65.00,Uber to site — company,travel,Write-off workshop',
+        '2026-03-01,2400.00,Customer job invoice paid,sale,Bank CSV',
+        '2026-03-12,310.00,Should have been reimb to me,misc,Random sheet',
+        '2026-04-05,500.00,Profit share paid Sumran,payout,Bank',
+        '2026-05-22,990.00,More kits investor funded,Investor parts,Portal',
+        '2026-06-10,150.00,My mileage cash out,reimb,Cash',
+        '2026-07-08,3200.00,July installs revenue,sale,Xero export',
+      ].join('\n');
+      const parsed = TaxForge.partner.parseCsv(sample);
+      setLines(parsed.rows);
+      TaxForge.toast('Sample mixed history loaded — fix kinds in bulk');
+      renderAll();
+    };
+
+    function download(filename, text, type) {
+      const blob = new Blob([text], { type: type || 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    }
+
+    $('btnExportJson').onclick = () => {
+      const pack = TaxForge.partner.buildExpertPack({ periodType: $('periodType').value });
+      download('fafo-partner-period-pack.json', JSON.stringify(pack, null, 2), 'application/json');
+      TaxForge.toast('Expert JSON pack downloaded — send to Grok team');
+    };
+    $('btnExportMd').onclick = () => {
+      const pack = TaxForge.partner.buildExpertPack({ periodType: $('periodType').value });
+      download('fafo-partner-period-pack.md', TaxForge.partner.packToMarkdown(pack), 'text/markdown');
+      TaxForge.toast('Expert markdown pack downloaded');
+    };
+    $('btnExportCsv').onclick = () => {
+      const lines = getLines();
+      const header = 'Date,Amount,Description,Kind,Party,Status,Vendor,Source,OriginalKind';
+      const body = lines.map((l) => [
+        l.date,
+        l.amount,
+        '"' + String(l.description || '').replace(/"/g, '""') + '"',
+        l.kind,
+        l.party,
+        l.status,
+        '"' + String(l.vendor || '').replace(/"/g, '""') + '"',
+        '"' + String(l.sourceNote || '').replace(/"/g, '""') + '"',
+        '"' + String(l.originalKind || '').replace(/"/g, '""') + '"',
+      ].join(','));
+      download('fafo-partner-lines.csv', [header].concat(body).join('\n'), 'text/csv');
+      TaxForge.toast('Lines CSV exported');
+    };
+
+    loadSettingsForm();
+    renderAll();
+  </script>
+</body>
+</html>

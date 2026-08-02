@@ -2,9 +2,11 @@
 
 **Product:** TaxForge (Business Tax Preparedness suite)  
 **Host platform:** FAFO Power Toolbox / AI HTML Toolbox (local-first)  
-**Status:** v1 shipped — demo + CSV + Xero OAuth scaffold  
+**Status:** v1.1 — demo + CSV + OAuth scaffold + mileage import + quarterly SE card + Xero proxy design  
 **Audience:** Product, engineering, tax/accounting domain experts, Grok.com partners  
 **Date:** 2026-08-02  
+
+**Disclaimer:** This is not tax, legal, or accounting advice — for preparedness and bookkeeping support only.
 
 ---
 
@@ -39,14 +41,30 @@ Launcher section: **TaxForge & Books**
 | App | Codename role | What it does |
 |-----|---------------|--------------|
 | **TaxForge Hub** | Mission control | Animated landing, recommended 4-step flow, suite navigation |
-| **LedgerLink Console** | Xero bridge | Demo org, chart of accounts, CSV import, OAuth client-id flow, sync health |
-| **Compliance Pulse** | Readiness engine | Weighted score (coding, checklist, volume, reviews), ECG/ring animation |
+| **LedgerLink Console** | Xero bridge | Demo org, chart of accounts, bank CSV import, OAuth client-id flow, sync health, **2026 mileage CSV import** (stage/export) |
+| **Compliance Pulse** | Readiness engine | Weighted score (coding, checklist, volume, reviews), ECG/ring animation, **quarterly SE estimate card** |
 | **Write-Off Workshop** | Deduction forge | Triage uncategorized spend, keyword auto-suggest → Xero accounts, export CSV |
+| **Partner Period Desk** | Reimb + investor periods | Bulk reclass misplaced reimbursements, investor parts, profit-share estimates, month/year/fiscal rollups, expert pack export |
 | **Year-End War Room** | Close-out ops | Deadline orbit, document vault, kanban tasks, JSON preparer pack |
 
 **Shared layer:** `taxforge-shared.css` + `taxforge-shared.js`  
-- LocalStorage namespace `taxforge.*` (apps share org, accounts, transactions, pulse, war-room state)  
-- Particle FX, toasts, demo Xero-shaped data, CSV parser, OAuth URL builder  
+- LocalStorage namespace `taxforge.*` (apps share org, accounts, transactions, pulse, war-room, mileage, quarterly state)  
+- Particle FX, toasts, demo Xero-shaped data, bank CSV parser, OAuth URL builder  
+- **Mileage helpers:** 2026 IRS business rates (72.5¢/mi Jan–Jun, 76¢/mi Jul–Dec), MileIQ-style CSV parse, stage/export  
+- **Quarterly helpers:** SE tax ≈ 15.3% × 92.35% of net; SS wage base note $184,500 (2026); deadline countdown  
+
+### 2026 reference figures (helpers only — verify with IRS / preparer)
+
+| Item | Value used in UI |
+|------|------------------|
+| Business standard mileage H1 (Jan 1 – Jun 30) | **72.5¢/mi** |
+| Business standard mileage H2 (Jul 1 – Dec 31) | **76¢/mi** |
+| SE tax rate (combined) | **15.3%** on **92.35%** of net earnings from self-employment |
+| Social Security wage base (capacity note) | **$184,500** |
+| Federal estimated tax deadlines (calendar year) | Apr 15, Jun 15, Sep 15, Jan 15 (following year) |
+
+Panels that show calculated dollars include the standard disclaimer:  
+*This is not tax, legal, or accounting advice — for preparedness and bookkeeping support only.*
 
 ---
 
@@ -59,9 +77,10 @@ Launcher section: **TaxForge & Books**
         ├─ CSV import (Xero/bank exports)
         ├─ OAuth authorize → auth code only
         │
-        ▼ (future / recommended)
+        ▼ (design ready — see docs/XERO-TOKEN-PROXY-DESIGN.md)
 [Toolbox loopback server 127.0.0.87]
-        │  client_secret via FAFO.Secrets (DPAPI) — never in git/HTML
+        │  client_secret + refresh via FAFO.Secrets (DPAPI) — never in git/HTML
+        │  proposed /api/xero/* (status, token, refresh, tenants, accounts, txns)
         ▼
 [Xero API — tenants, accounts, transactions]
 ```
@@ -70,7 +89,8 @@ Launcher section: **TaxForge & Books**
 - No client secrets in frontend or repo  
 - OAuth code handoff only; token exchange belongs on loopback backend  
 - Local-first: useful offline after first load of static assets  
-- Explicit disclaimer: **not tax advice**
+- Explicit disclaimer: **not tax advice**  
+- Xero live token proxy is **design-only** until Owner supplies app credentials and a follow-on DIR
 
 ---
 
@@ -78,10 +98,12 @@ Launcher section: **TaxForge & Books**
 
 1. Open **Toolbox Launcher** → section **TaxForge & Books** → **TaxForge Hub**  
 2. **LedgerLink Console** → **Load Demo Org** → see accounts + sync health  
-3. Optionally **Seed demo transactions** or import a CSV  
-4. **Compliance Pulse** → **Recalculate** → watch score + factors + checklist  
-5. **Write-Off Workshop** → filter “Needs review” → **Auto-suggest** → **Apply** → export CSV  
-6. **Year-End War Room** → check docs, advance kanban tasks, **Download preparer pack**  
+3. Optionally **Seed demo transactions** or import a bank CSV  
+4. **Mileage import** → **Load sample rows** or pick a MileIQ-style CSV → preview H1/H2 rates → **Stage for Xero (demo)** or **Export deduction CSV**  
+5. **Compliance Pulse** → **Recalculate** → watch score + factors + checklist  
+6. **Quarterly estimated tax** card → enter YTD net (or demo figures) → SE tax, remaining installments, next deadline countdown  
+7. **Write-Off Workshop** → filter “Needs review” → **Auto-suggest** → **Apply** → export CSV  
+8. **Year-End War Room** → check docs, advance kanban tasks, **Download preparer pack**  
 
 **Success moment:** Pulse climbs as coding coverage and checklist improve; preparer pack becomes the artifact you hand an expert (human or Grok).
 
@@ -105,11 +127,12 @@ Launcher section: **TaxForge & Books**
 
 ---
 
-## What’s intentionally *not* in v1
+## What’s intentionally *not* in v1 / v1.1
 
-- Live Xero token exchange / full API sync  
+- Live Xero token exchange / full API sync (**design doc only:** `docs/XERO-TOKEN-PROXY-DESIGN.md`)  
 - Multi-user / cloud sync  
 - Actual e-file or form generation  
+- CPA-grade quarterly safe-harbor / full Form 1040-ES optimization  
 - Jurisdiction-complete tax calendars (US templates only)  
 - Receipt photo OCR  
 
@@ -121,10 +144,11 @@ These are the natural **v2** wedge once experts validate the preparedness loop.
 
 | Milestone | Outcome |
 |-----------|---------|
-| **M1 — Live LedgerLink** | Loopback `/api/xero/*` with FAFO.Secrets; pull accounts + last 90d transactions |
+| **M1 — Live LedgerLink** | Implement `docs/XERO-TOKEN-PROXY-DESIGN.md`: loopback `/api/xero/*` with FAFO.Secrets; pull accounts + last 90d transactions |
 | **M2 — Grok Assist panel** | “Explain score,” “propose codes,” “year-end questions” over local pack |
 | **M3 — Multi-jurisdiction** | AU/UK/US deadline packs; tax-type mapping from Xero |
 | **M4 — Evidence locker** | Attach receipt files/hashes to write-off lines |
+| **M5 — Mileage → Xero write** | Push staged mileage summary via write-scoped proxy (after M1) |
 
 ---
 
@@ -133,14 +157,17 @@ These are the natural **v2** wedge once experts validate the preparedness loop.
 ```
 Business Tax Preparedness/
   TaxForge Hub.html
-  LedgerLink Console.html
-  Compliance Pulse.html
+  LedgerLink Console.html      ← includes Mileage import panel
+  Compliance Pulse.html        ← includes Quarterly SE estimate card
   Write-Off Workshop.html
   Year-End War Room.html
   taxforge-shared.css
-  taxforge-shared.js
-  TAXFORGE-EXPERT-BRIEF.md    ← this document
+  taxforge-shared.js           ← mileage + quarterly helpers
+  TAXFORGE-EXPERT-BRIEF.md     ← this document
   TAXFORGE-EMAIL-TO-EXPERTS.txt
+
+docs/
+  XERO-TOKEN-PROXY-DESIGN.md   ← design-only token proxy sequence + endpoints
 ```
 
 Launcher registration: `Toolbox Launcher.html` → category `Tax`, section **TaxForge & Books**.

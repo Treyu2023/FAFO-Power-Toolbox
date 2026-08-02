@@ -4,6 +4,27 @@ Append-only style. Newest at top.
 
 ---
 
+## 2026-08-02 — Hands: Partner Period Desk (reimb + investor rollups)
+
+- **Actor:** Local Executor (Hands)  
+- **DIR:** `DIR-20260802-2100-partner-reimbursement-period-desk` → **DONE**  
+- **Action:** New TaxForge app for bulk reclass of misplaced reimbursements, investor parts + profit-share period rollups (month/year/fiscal), expert JSON/MD pack export.  
+- **Paths:** `Business Tax Preparedness/Partner Period Desk.html`, `TaxForge.partner` in shared JS, Hub + Launcher wired.  
+- **For Experts:** Review share base & reclass kinds; Owner will paste packs from the desk.  
+- **Still OPEN:** P2 Takeout tickets DIR.  
+
+---
+
+## 2026-08-02 — Hands: DIR-20260802-0045 TaxForge mileage + quarterly + Xero design
+
+- **Actor:** Local Executor (Hands)  
+- **DIR:** `DIR-20260802-0045-taxforge-mileage-quarterly-xero-design` → **DONE**  
+- **Action:** Mileage import panel (LedgerLink), quarterly SE card (Compliance Pulse), shared 2026 rate/SE helpers, `docs/XERO-TOKEN-PROXY-DESIGN.md`, expert brief v1.1.  
+- **Verify:** Sample mileage H1+H2 = $164.84; no secrets; launcher TaxForge paths intact.  
+- **Next for Experts:** Proxy implementation DIR when Owner has Xero app credentials; or P2 Takeout tickets DIR.  
+
+---
+
 ## 2026-08-02 — Hands: multi-agent protocol + TaxForge + games landed for remote
 
 - **Actor:** Local Executor (Hands)  

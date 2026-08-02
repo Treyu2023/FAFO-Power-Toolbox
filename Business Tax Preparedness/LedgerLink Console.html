@@ -39,6 +39,14 @@
     .status-dot.demo { background: var(--tf-accent2); box-shadow: 0 0 8px var(--tf-accent2); }
     @keyframes blink { 50% { opacity: 0.4; } }
     .acct-scroll { max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
+    .mi-scroll { max-height: 240px; overflow-y: auto; scrollbar-width: thin; margin-top: 10px; }
+    .mi-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+    .tf-disclaimer {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255, 209, 102, 0.35);
+      background: rgba(255, 209, 102, 0.06);
+      color: var(--tf-accent2); font-size: 11px; line-height: 1.45;
+    }
   </style>
 </head>
 <body class="tf-body">
@@ -113,6 +121,45 @@
           <tbody></tbody>
         </table>
       </div>
+    </div>
+
+    <div class="tf-panel" id="mileagePanel">
+      <h2>Mileage import <span class="tf-muted" style="font-weight:500;text-transform:none;letter-spacing:0">(2026 IRS rates)</span></h2>
+      <p class="tf-muted" style="margin-bottom:12px">
+        Import a MileIQ-style CSV (<code>Date</code>, <code>Miles</code> / <code>Distance</code>, optional <code>Purpose</code>).
+        Rates applied by trip date: <strong style="color:var(--tf-accent)">72.5¢/mi</strong> Jan–Jun ·
+        <strong style="color:var(--tf-accent2)">76¢/mi</strong> Jul–Dec (2026 business standard mileage).
+      </p>
+      <div class="mi-actions">
+        <label class="tf-btn primary">
+          Choose mileage CSV
+          <input type="file" id="mileageFile" accept=".csv,text/csv" hidden>
+        </label>
+        <button class="tf-btn sm" type="button" id="btnMileageSample">Load sample rows</button>
+        <button class="tf-btn sm ghost" type="button" id="btnMileageClear" disabled>Clear preview</button>
+      </div>
+      <div class="tf-grid tf-grid-4" style="margin-top:14px">
+        <div class="tf-stat"><div class="val" id="miCount">0</div><div class="lbl">Trips</div></div>
+        <div class="tf-stat"><div class="val" id="miMiles">0</div><div class="lbl">Miles</div></div>
+        <div class="tf-stat"><div class="val gold" id="miTotal">$0</div><div class="lbl">Deduction preview</div></div>
+        <div class="tf-stat"><div class="val" id="miSplit">—</div><div class="lbl">H1 / H2 $</div></div>
+      </div>
+      <div class="mi-scroll">
+        <table class="tf-table" id="miTable">
+          <thead>
+            <tr><th>Date</th><th>Miles</th><th>Purpose</th><th>Rate</th><th>Amount</th><th>Half</th></tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="6" class="tf-muted">No mileage loaded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mi-actions">
+        <button class="tf-btn gold" type="button" id="btnMileageStage" disabled>Stage for Xero (demo)</button>
+        <button class="tf-btn" type="button" id="btnMileageExport" disabled>Export deduction CSV</button>
+      </div>
+      <div id="miStageNote" class="tf-muted" style="margin-top:8px"></div>
+      <div class="tf-disclaimer" id="miDisclaimer"></div>
     </div>
 
     <p class="tf-footer">LedgerLink · TaxForge · Demo data is local to this browser</p>
@@ -265,6 +312,7 @@
         org: TaxForge.storage.get('org', null),
         accounts: TaxForge.storage.get('accounts', []),
         transactions: TaxForge.storage.get('transactions', []),
+        mileageStaged: TaxForge.storage.get('mileage.staged', []),
       };
       const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -274,6 +322,145 @@
       TaxForge.toast('JSON pack downloaded');
     };
 
+    /* —— Mileage import (2026 rates) —— */
+    let mileageRows = TaxForge.storage.get('mileage.preview', []);
+
+    function money(n) {
+      return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderMileage() {
+      const sum = TaxForge.mileage.summarize(mileageRows);
+      $('miCount').textContent = sum.count;
+      $('miMiles').textContent = sum.miles.toLocaleString(undefined, { maximumFractionDigits: 1 });
+      $('miTotal').textContent = money(sum.amount);
+      $('miSplit').textContent = sum.count
+        ? money(sum.h1Amount) + ' / ' + money(sum.h2Amount)
+        : '—';
+      const has = sum.count > 0;
+      $('btnMileageStage').disabled = !has;
+      $('btnMileageExport').disabled = !has;
+      $('btnMileageClear').disabled = !has;
+      const tb = $('miTable').querySelector('tbody');
+      if (!has) {
+        tb.innerHTML = '<tr><td colspan="6" class="tf-muted">No mileage loaded yet.</td></tr>';
+        return;
+      }
+      tb.innerHTML = mileageRows.map((r) =>
+        `<tr>
+          <td>${esc(r.date)}</td>
+          <td>${r.miles}</td>
+          <td>${esc(r.purpose || '—')}</td>
+          <td><span class="tf-pill info">${esc(r.rateLabel)}</span></td>
+          <td>${money(r.amount)}</td>
+          <td><span class="tf-pill ${r.half === 'H2' ? 'warn' : 'ok'}">${r.half}</span></td>
+        </tr>`
+      ).join('');
+    }
+
+    function setMileage(rows) {
+      mileageRows = rows || [];
+      TaxForge.storage.set('mileage.preview', mileageRows);
+      renderMileage();
+    }
+
+    $('miDisclaimer').textContent = TaxForge.DISCLAIMER;
+
+    $('mileageFile').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const text = await f.text();
+      const parsed = TaxForge.mileage.parseCsv(text);
+      if (!parsed.rows.length) {
+        TaxForge.toast((parsed.errors && parsed.errors[0]) || 'No mileage rows parsed');
+        e.target.value = '';
+        return;
+      }
+      setMileage(parsed.rows);
+      if (parsed.errors && parsed.errors.length) {
+        TaxForge.toast('Loaded ' + parsed.rows.length + ' trips (' + parsed.errors.length + ' skipped)');
+      } else {
+        TaxForge.toast('Loaded ' + parsed.rows.length + ' mileage trips');
+      }
+      TaxForge.burst(window.innerWidth / 2, 280, '#ffd166');
+      e.target.value = '';
+    };
+
+    $('btnMileageSample').onclick = () => {
+      const sample = [
+        'Date,Miles,Purpose',
+        '2026-03-12,42.5,Client site — Houston',
+        '2026-05-01,18,Parts run',
+        '2026-06-28,61.2,Field service day',
+        '2026-07-03,55,Post-rate change trip',
+        '2026-09-15,33.8,Supplier pickup',
+        '2026-11-20,12,Bank / office run',
+      ].join('\n');
+      const parsed = TaxForge.mileage.parseCsv(sample);
+      setMileage(parsed.rows);
+      TaxForge.toast('Sample 2026 trips loaded (H1 + H2 rates)');
+      TaxForge.burst(window.innerWidth / 2, 280, '#00e8a2');
+    };
+
+    $('btnMileageClear').onclick = () => {
+      setMileage([]);
+      $('miStageNote').textContent = '';
+      TaxForge.toast('Mileage preview cleared');
+    };
+
+    $('btnMileageExport').onclick = () => {
+      if (!mileageRows.length) return;
+      const csv = TaxForge.mileage.toExportCsv(mileageRows);
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'taxforge-mileage-deduction-2026.csv';
+      a.click();
+      TaxForge.toast('Mileage deduction CSV exported');
+    };
+
+    $('btnMileageStage').onclick = () => {
+      if (!mileageRows.length) return;
+      const sum = TaxForge.mileage.summarize(mileageRows);
+      const staged = {
+        at: Date.now(),
+        year: TaxForge.mileage.YEAR,
+        summary: sum,
+        rows: mileageRows,
+        xeroDraft: {
+          note: 'Demo staging only — no live Xero API call',
+          accountCode: '449',
+          accountName: 'Motor Vehicle Expenses',
+          totalAmount: sum.amount,
+          lineCount: sum.count,
+        },
+      };
+      TaxForge.storage.set('mileage.staged', staged);
+      // Optional: append one summary txn into ledger for Write-Off / Pulse visibility
+      const prev = TaxForge.storage.get('transactions', []);
+      const summaryTxn = {
+        id: 'mi-stage-' + Date.now(),
+        date: new Date().toISOString().slice(0, 10),
+        contact: 'Business mileage (staged)',
+        description: 'Mileage ' + sum.miles + ' mi · 2026 std rate preview',
+        accountCode: '449',
+        accountName: 'Motor Vehicle Expenses',
+        amount: sum.amount,
+        tax: 0,
+        status: 'coded',
+        deductible: 'likely',
+        source: 'mileage-stage',
+      };
+      TaxForge.storage.set('transactions', [summaryTxn].concat(prev).slice(0, 500));
+      $('miStageNote').innerHTML =
+        '<span class="tf-pill ok">Staged</span> ' +
+        money(sum.amount) + ' · ' + sum.count + ' trips → account 449 (demo). Live Xero push requires proxy DIR.';
+      TaxForge.toast('Mileage staged for Xero (demo)');
+      TaxForge.burst(window.innerWidth / 2, 300, '#3d9eff');
+      refreshUI();
+    };
+
+    renderMileage();
     loadState();
   </script>
 </body>
