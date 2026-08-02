@@ -4,6 +4,16 @@ Append-only style. Newest at top.
 
 ---
 
+## 2026-08-02 — Hands: B Takeout + C Xero proxy (then git push)
+
+- **Actor:** Grok Build Hands  
+- **DIR B:** `DIR-20260802-0035` Takeout/Timeline → draft tickets → **DONE**  
+- **DIR C:** `DIR-20260802-2200` Xero token proxy impl → **DONE** (`server/xero_ops.py`, `/api/xero/*`, LedgerLink live controls)  
+- **Owner next:** Store Xero Client Secret via LedgerLink (DPAPI); complete OAuth + Exchange; optional Takeout JSON import.  
+- **Git:** commit + push to origin/main after Result/LOG.  
+
+---
+
 ## 2026-08-02 — Workflow: Grok Build incorporated as Hands lane
 
 - **Actor:** Owner + Hands  

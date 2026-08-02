@@ -5175,6 +5175,109 @@ def api_git_open_gh_desktop(body: GitPathAction):
         raise HTTPException(500, str(e))
 
 
+# --- Xero token proxy (loopback; secrets via FAFO DPAPI — never return tokens to browser) ---
+import xero_ops as xero
+
+
+class XeroConfigBody(BaseModel):
+    clientId: str = ""
+    redirectUri: str = ""
+
+
+class XeroSecretBody(BaseModel):
+    clientSecret: str = ""
+
+
+class XeroTokenBody(BaseModel):
+    code: str
+    redirectUri: str = ""
+    clientId: str = ""
+
+
+class XeroTenantBody(BaseModel):
+    tenantId: str
+
+
+@app.get("/api/xero/status")
+def api_xero_status():
+    return xero.status()
+
+
+@app.post("/api/xero/config")
+def api_xero_config(body: XeroConfigBody):
+    return xero.save_public_config(body.clientId, body.redirectUri)
+
+
+@app.post("/api/xero/secrets")
+def api_xero_secrets(body: XeroSecretBody):
+    """Store client secret via DPAPI. Response is presence-only."""
+    if not (body.clientSecret or "").strip():
+        raise HTTPException(400, "clientSecret required")
+    return xero.store_client_secret(body.clientSecret)
+
+
+@app.post("/api/xero/token")
+def api_xero_token(body: XeroTokenBody):
+    try:
+        return xero.exchange_code(body.code, body.redirectUri, body.clientId)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/xero/refresh")
+def api_xero_refresh():
+    try:
+        return xero.refresh_access()
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.delete("/api/xero/session")
+def api_xero_session(purgeSecrets: int = Query(0)):
+    return xero.clear_session(purge_secrets=bool(purgeSecrets))
+
+
+@app.get("/api/xero/tenants")
+def api_xero_tenants():
+    try:
+        tenants = xero.list_tenants()
+        return {"ok": True, "tenants": tenants}
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/xero/tenant")
+def api_xero_tenant(body: XeroTenantBody):
+    try:
+        return xero.select_tenant(body.tenantId)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/xero/accounts")
+def api_xero_accounts():
+    try:
+        return xero.get_accounts()
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/xero/transactions")
+def api_xero_transactions(
+    from_date: str | None = Query(None, alias="from"),
+    to_date: str | None = Query(None, alias="to"),
+    page: int = Query(1),
+):
+    try:
+        return xero.get_transactions(from_date=from_date, to_date=to_date, page=page)
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
 def main():
     host, port = load_bind()
     # Re-bind module globals if env changed after import
