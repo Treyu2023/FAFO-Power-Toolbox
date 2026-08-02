@@ -1,6 +1,6 @@
 # DIR: Expert team bootstrap & first review pass
 
-- **Status:** OPEN  
+- **Status:** DONE  
 - **Priority:** P1  
 - **Owner (expert):** Grok.com expert team (any role)  
 - **Executor:** local Grok agent (hands) — *this package is mostly for Experts first; Hands waits for follow-on DIRs*  
@@ -48,9 +48,9 @@ If Owner re-invokes Hands with “no expert DIRs yet,” Hands may:
 
 ## Acceptance checks
 
-- [ ] Expert team has a clear path to file work for Hands  
-- [ ] At least one follow-on DIR exists **or** Expert Result explains intentional pause  
-- [ ] QUEUE.md reflects reality  
+- [x] Expert team has a clear path to file work for Hands  
+- [x] At least one follow-on DIR exists **or** Expert Result explains intentional pause  
+- [x] QUEUE.md reflects reality  
 
 ## Out of scope
 
@@ -66,10 +66,8 @@ Hands is ready. Use DIR format. Repo is source of truth.
 
 ## Result
 
-_Experts: fill this when bootstrap review is complete._
-
-- **Status:**  
-- **Completed:**  
-- **Summary:**  
-- **Follow-on DIRs created:**  
-- **Blockers:**  
+- **Status:** DONE
+- **Completed:** 2026-08-02
+- **Summary:** Expert team (Grok.com) reviewed protocol, PROJECT-MAP, TaxForge presence, and filed first real work DIR focused on 2026 mileage automation, quarterly SE tax estimator, and design-only Xero token proxy. Builds directly on existing TaxForge suite instead of a parallel overlay.
+- **Follow-on DIRs created:** `DIR-20260802-0045-taxforge-mileage-quarterly-xero-design.md`
+- **Blockers:** None
