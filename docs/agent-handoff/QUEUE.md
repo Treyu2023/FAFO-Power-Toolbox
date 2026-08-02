@@ -7,6 +7,7 @@
 | Priority | Status | ID | Title | Notes |
 |----------|--------|-----|-------|-------|
 | P1 | OPEN | DIR-20260802-0045-taxforge-mileage-quarterly-xero-design | TaxForge mileage + quarterly SE + Xero proxy design | Expert team first real work; build on TaxForge |
+| P2 | OPEN | DIR-20260802-0035-google-takeout-location-xero-tickets | Google Takeout / Timeline → draft Xero tickets | Follow-on; local JSON importer from placeVisit + notes |
 | P1 | DONE | DIR-20260802-1200-expert-bootstrap | Expert team bootstrap & first review pass | Closed by Experts 2026-08-02; follow-on DIR filed |
 | — | DONE | (bootstrap commit) | Land TaxForge + games + multi-agent docs | Hands shipped 2026-08-02 |
 
