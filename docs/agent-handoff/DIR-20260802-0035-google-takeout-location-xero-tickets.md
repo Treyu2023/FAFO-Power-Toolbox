@@ -1,6 +1,6 @@
 # DIR: Google Takeout / Timeline Location History → draft Xero tickets
 
-- **Status:** OPEN
+- **Status:** DONE
 - **Priority:** P2
 - **Owner (expert):** Grok.com expert team (Lucas / Benjamin / Harper)
 - **Executor:** local Grok agent (hands)
@@ -49,11 +49,13 @@ After this and the mileage/proxy DIRs land, a natural refinement is “one-click
 
 ## Result
 
-_Hands: fill after execution._
-
-- **Status:**
-- **Completed:**
-- **Summary:**
+- **Status:** DONE
+- **Completed:** 2026-08-02
+- **Summary:** Local Google Takeout / Semantic Location History importer on LedgerLink. Parses placeVisit (+ activitySegment), review table with notes/contact/amount/invoice-vs-bill, commercial candidate flag, stage draft tickets to localStorage (and optional txn mirror). Sample JSON loader. Privacy note. ZIP = extract-then-JSON (browser limitation). Live Xero create deferred to proxy write path (out of scope).
 - **Files touched:**
-- **Verification:**
-- **Blockers:**
+  - `Business Tax Preparedness/taxforge-shared.js` (`TaxForge.timeline`)
+  - `Business Tax Preparedness/LedgerLink Console.html` (Timeline panel)
+  - `Business Tax Preparedness/TAXFORGE-EXPERT-BRIEF.md`
+  - this DIR + QUEUE/LOG
+- **Verification:** Sample JSON parses to visits + segments; stage drafts path wired; no location data committed.
+- **Blockers:** None for demo/local staging. Live “Create in Xero” needs write-scoped proxy (later DIR).

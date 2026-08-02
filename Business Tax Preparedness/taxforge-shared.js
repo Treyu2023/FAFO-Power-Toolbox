@@ -916,5 +916,304 @@
     return 'misplaced';
   }
 
+  /**
+   * Google Takeout / Timeline / Semantic Location History — local parse only.
+   * Never uploads location data. placeVisit (+ optional activitySegment).
+   */
+  TaxForge.timeline = {
+    parseJson(textOrObj) {
+      let data = textOrObj;
+      if (typeof textOrObj === 'string') {
+        try {
+          data = JSON.parse(textOrObj);
+        } catch (e) {
+          return { visits: [], segments: [], errors: ['Invalid JSON: ' + (e.message || e)] };
+        }
+      }
+      const visits = [];
+      const segments = [];
+      const errors = [];
+      const seen = new Set();
+
+      function pushVisit(raw, idx) {
+        if (!raw || typeof raw !== 'object') return;
+        const loc = raw.location || raw.placeLocation || {};
+        const name = loc.name || raw.name || loc.address || 'Unknown place';
+        const address = loc.address || raw.address || '';
+        const start = pickTs(raw, 'start');
+        const end = pickTs(raw, 'end');
+        const durationMin = durationMinutes(start, end);
+        const lat = loc.latitudeE7 != null ? loc.latitudeE7 / 1e7 : (loc.lat || null);
+        const lng = loc.longitudeE7 != null ? loc.longitudeE7 / 1e7 : (loc.lng || null);
+        const id = 'pv-' + (start || idx) + '-' + String(name).slice(0, 24);
+        if (seen.has(id + address)) return;
+        seen.add(id + address);
+        const commercial = isCommercialCandidate(name, address, durationMin);
+        visits.push({
+          id,
+          kind: 'placeVisit',
+          name: String(name),
+          address: String(address),
+          start,
+          end,
+          durationMin,
+          lat,
+          lng,
+          note: raw.placeVisitImportance || raw.semanticType || '',
+          editableNote: '',
+          selected: false,
+          commercialCandidate: commercial,
+          amount: commercial ? 0 : 0,
+          contact: '',
+          draftType: 'invoice',
+        });
+      }
+
+      function walk(node, depth) {
+        if (!node || depth > 12) return;
+        if (Array.isArray(node)) {
+          node.forEach((n) => walk(n, depth + 1));
+          return;
+        }
+        if (typeof node !== 'object') return;
+        if (node.placeVisit) pushVisit(node.placeVisit, visits.length);
+        // Some exports nest placeVisit fields at top level under timelineObjects
+        if (node.location && (node.duration || node.durationStartTimestampMs || node.startTimestamp)) {
+          if (!node.activitySegment) pushVisit(node, visits.length);
+        }
+        if (node.activitySegment) {
+          const seg = node.activitySegment;
+          const start = pickTs(seg, 'start');
+          const end = pickTs(seg, 'end');
+          const meters = Number(seg.distance || seg.activityDistance || 0) || 0;
+          const miles = meters > 0 ? Math.round((meters / 1609.344) * 100) / 100 : null;
+          segments.push({
+            id: 'as-' + start + '-' + segments.length,
+            kind: 'activitySegment',
+            activity: (seg.activityType || seg.activities && seg.activities[0] && seg.activities[0].activityType) || 'MOVE',
+            start,
+            end,
+            durationMin: durationMinutes(start, end),
+            miles,
+            note: '',
+          });
+        }
+        if (node.timelineObjects) walk(node.timelineObjects, depth + 1);
+        // Monthly Semantic Location History shape
+        Object.keys(node).forEach((k) => {
+          if (k === 'placeVisit' || k === 'activitySegment' || k === 'timelineObjects') return;
+          const v = node[k];
+          if (v && typeof v === 'object') walk(v, depth + 1);
+        });
+      }
+
+      walk(data, 0);
+
+      // Records.json location history (legacy): array of locations — not full placeVisit
+      if (!visits.length && data && Array.isArray(data.locations)) {
+        errors.push('Records.json-style coordinates found but no placeVisit names — export Semantic Location History for named places.');
+      }
+
+      return { visits, segments, errors };
+    },
+
+    sampleJson() {
+      return JSON.stringify({
+        timelineObjects: [
+          {
+            placeVisit: {
+              location: {
+                name: 'Summit Field Services HQ',
+                address: '100 Industrial Blvd, Houston, TX',
+                latitudeE7: 297601000,
+                longitudeE7: -953695000,
+              },
+              duration: {
+                startTimestamp: '2026-03-12T14:05:00.000Z',
+                endTimestamp: '2026-03-12T16:40:00.000Z',
+              },
+            },
+          },
+          {
+            placeVisit: {
+              location: {
+                name: 'Shell',
+                address: 'Fuel stop',
+                latitudeE7: 297800000,
+                longitudeE7: -954000000,
+              },
+              duration: {
+                startTimestamp: '2026-03-12T17:00:00.000Z',
+                endTimestamp: '2026-03-12T17:12:00.000Z',
+              },
+            },
+          },
+          {
+            placeVisit: {
+              location: {
+                name: 'Acme Petro Site 12',
+                address: 'Highway 59 yard',
+              },
+              duration: {
+                startTimestamp: '2026-04-02T09:00:00.000Z',
+                endTimestamp: '2026-04-02T13:30:00.000Z',
+              },
+            },
+          },
+          {
+            activitySegment: {
+              activityType: 'IN_PASSENGER_VEHICLE',
+              distance: 42000,
+              duration: {
+                startTimestamp: '2026-03-12T13:30:00.000Z',
+                endTimestamp: '2026-03-12T14:05:00.000Z',
+              },
+            },
+          },
+        ],
+      }, null, 2);
+    },
+
+    stageDrafts(visits, opts) {
+      const list = (visits || []).filter((v) => v.selected);
+      const drafts = list.map((v, i) => ({
+        id: 'xero-draft-' + Date.now() + '-' + i,
+        type: v.draftType || (opts && opts.defaultType) || 'invoice',
+        contact: v.contact || v.name || 'Location visit',
+        date: (v.start || '').slice(0, 10),
+        description: (v.editableNote || v.note || 'Site visit') + ' · ' + (v.name || '') + (v.address ? ' · ' + v.address : ''),
+        amount: Number(v.amount) || 0,
+        durationMin: v.durationMin,
+        placeName: v.name,
+        address: v.address,
+        status: 'staged-local',
+        source: 'google-timeline',
+        createdAt: Date.now(),
+      }));
+      const prev = TaxForge.storage.get('timeline.drafts', []);
+      TaxForge.storage.set('timeline.drafts', drafts.concat(prev).slice(0, 200));
+      // Also mirror as reviewable transactions for Write-Off / Pulse
+      if (drafts.length) {
+        const txns = drafts.filter((d) => d.amount > 0).map((d) => ({
+          id: d.id,
+          date: d.date,
+          contact: d.contact,
+          description: d.description,
+          accountCode: d.type === 'bill' ? '429' : '',
+          accountName: d.type === 'bill' ? 'General Expenses' : 'Sales',
+          amount: d.amount,
+          tax: 0,
+          status: d.type === 'bill' ? 'coded' : 'needs-review',
+          deductible: d.type === 'bill' ? 'likely' : 'unknown',
+          source: 'timeline-stage',
+        }));
+        if (txns.length) {
+          const prevT = TaxForge.storage.get('transactions', []);
+          TaxForge.storage.set('transactions', txns.concat(prevT).slice(0, 500));
+        }
+      }
+      return drafts;
+    },
+  };
+
+  function pickTs(obj, which) {
+    const d = obj.duration || {};
+    if (which === 'start') {
+      return normalizeIso(
+        d.startTimestamp || d.startTimestampMs || obj.startTimestamp || obj.startTimestampMs
+        || (obj.duration && obj.duration.startTimestamp)
+      );
+    }
+    return normalizeIso(
+      d.endTimestamp || d.endTimestampMs || obj.endTimestamp || obj.endTimestampMs
+    );
+  }
+
+  function normalizeIso(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'number' || /^\d{10,13}$/.test(String(v))) {
+      let n = Number(v);
+      if (n < 1e12) n *= 1000;
+      return new Date(n).toISOString();
+    }
+    const s = String(v);
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString();
+    return s.slice(0, 24);
+  }
+
+  function durationMinutes(start, end) {
+    if (!start || !end) return null;
+    const a = new Date(start).getTime();
+    const b = new Date(end).getTime();
+    if (isNaN(a) || isNaN(b) || b < a) return null;
+    return Math.round((b - a) / 60000);
+  }
+
+  function isCommercialCandidate(name, address, durationMin) {
+    const s = (String(name || '') + ' ' + String(address || '')).toLowerCase();
+    if (/home|residence|apartment/.test(s)) return false;
+    const longEnough = durationMin == null || durationMin >= 45;
+    return longEnough && /site|yard|plant|field|hq|office|shop|depot|station|llc|inc|corp|services|petro|industrial/.test(s);
+  }
+
+  /** Loopback Xero proxy client (browser-safe; never holds secret). */
+  TaxForge.xeroProxy = {
+    base() {
+      try {
+        if (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) {
+          return String(window.AITOOLBOX_CONFIG.API_BASE).replace(/\/$/, '');
+        }
+      } catch (_) {}
+      return 'http://127.0.0.87:18765/api';
+    },
+    async request(path, opts) {
+      const o = opts || {};
+      const headers = Object.assign({ Accept: 'application/json' }, o.headers || {});
+      if (o.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      let r;
+      try {
+        r = await fetch(this.base() + path, {
+          method: o.method || 'GET',
+          headers,
+          body: o.body ? JSON.stringify(o.body) : undefined,
+        });
+      } catch (e) {
+        throw new Error('Toolbox server offline — start server on 127.0.0.87:18765');
+      }
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch (_) { data = { raw: text }; }
+      if (!r.ok) {
+        const msg = (data && (data.detail || data.message || data.error)) || r.statusText;
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      }
+      return data;
+    },
+    status() { return this.request('/xero/status'); },
+    saveConfig(clientId, redirectUri) {
+      return this.request('/xero/config', { method: 'POST', body: { clientId, redirectUri } });
+    },
+    storeSecret(clientSecret) {
+      return this.request('/xero/secrets', { method: 'POST', body: { clientSecret } });
+    },
+    exchangeCode(code, redirectUri, clientId) {
+      return this.request('/xero/token', { method: 'POST', body: { code, redirectUri, clientId } });
+    },
+    refresh() { return this.request('/xero/refresh', { method: 'POST', body: {} }); },
+    disconnect(purgeSecrets) {
+      return this.request('/xero/session?purgeSecrets=' + (purgeSecrets ? '1' : '0'), { method: 'DELETE' });
+    },
+    tenants() { return this.request('/xero/tenants'); },
+    selectTenant(tenantId) {
+      return this.request('/xero/tenant', { method: 'POST', body: { tenantId } });
+    },
+    accounts() { return this.request('/xero/accounts'); },
+    transactions(q) {
+      const qs = q ? '?' + new URLSearchParams(q).toString() : '';
+      return this.request('/xero/transactions' + qs);
+    },
+  };
+
   global.TaxForge = TaxForge;
 })(window);

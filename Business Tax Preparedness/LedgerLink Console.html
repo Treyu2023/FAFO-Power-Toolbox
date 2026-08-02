@@ -6,6 +6,7 @@
   <title>LedgerLink Console — TaxForge</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
   <link rel="stylesheet" href="taxforge-shared.css">
+  <script src="../shared/aitoolbox-config.js"></script>
   <style>
     .link-orb {
       width: 88px; height: 88px; margin: 0 auto 12px; position: relative;
@@ -79,16 +80,25 @@
           <label class="tf-label">Redirect URI (must match Xero app)</label>
           <input class="tf-input" id="redirectUri" readonly>
         </div>
+        <div class="tf-field">
+          <label class="tf-label">Xero Client Secret (stored via loopback → FAFO DPAPI — never in git)</label>
+          <input class="tf-input" id="clientSecret" type="password" placeholder="Paste once, then Store secret" autocomplete="off">
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
           <button class="tf-btn primary" type="button" id="btnDemo">Load Demo Org</button>
           <button class="tf-btn" type="button" id="btnSaveCfg">Save config</button>
+          <button class="tf-btn sm" type="button" id="btnStoreSecret">Store secret on server</button>
           <button class="tf-btn gold" type="button" id="btnOAuth">Start Xero OAuth</button>
+          <button class="tf-btn sm" type="button" id="btnProxyExchange">Exchange code via proxy</button>
+          <button class="tf-btn sm" type="button" id="btnLiveSync">Sync accounts/txns (live)</button>
           <button class="tf-btn danger sm" type="button" id="btnDisconnect">Disconnect</button>
         </div>
         <p class="tf-muted" style="margin-top:12px">
-          OAuth returns an authorization <em>code</em> to this page. Token exchange should run on the toolbox loopback server with a client secret from FAFO Secrets — never store secrets in HTML or git.
+          OAuth returns an authorization <em>code</em> to this page. Token exchange runs on
+          <code>127.0.0.87</code> with client secret in FAFO Secrets — never store secrets in HTML or git.
         </p>
         <div id="oauthNote" class="tf-muted" style="margin-top:8px"></div>
+        <div id="proxyStatus" class="tf-muted" style="margin-top:6px">Proxy: …</div>
       </div>
 
       <div class="tf-panel">
@@ -120,6 +130,46 @@
           <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Tax</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="tf-panel" id="timelinePanel">
+      <h2>Location History / Timeline import <span class="tf-muted" style="font-weight:500;text-transform:none;letter-spacing:0">(Google Takeout)</span></h2>
+      <p class="tf-muted" style="margin-bottom:10px">
+        Import <strong>Semantic Location History</strong> monthly JSON (or Timeline export with <code>placeVisit</code>).
+        Parsing is <strong>100% local</strong> — nothing is uploaded. ZIP: extract first, then pick the JSON file(s).
+      </p>
+      <div class="mi-actions">
+        <label class="tf-btn primary">
+          Choose Timeline JSON
+          <input type="file" id="timelineFile" accept=".json,application/json" multiple hidden>
+        </label>
+        <button class="tf-btn sm" type="button" id="btnTimelineSample">Load sample visits</button>
+        <button class="tf-btn sm ghost" type="button" id="btnTimelineClear">Clear list</button>
+        <button class="tf-btn sm" type="button" id="btnTimelineSelectJobs">Select commercial candidates</button>
+      </div>
+      <div class="tf-grid tf-grid-4" style="margin-top:12px">
+        <div class="tf-stat"><div class="val" id="tlCount">0</div><div class="lbl">Visits</div></div>
+        <div class="tf-stat"><div class="val" id="tlSeg">0</div><div class="lbl">Segments</div></div>
+        <div class="tf-stat"><div class="val gold" id="tlSel">0</div><div class="lbl">Selected</div></div>
+        <div class="tf-stat"><div class="val" id="tlDrafts">0</div><div class="lbl">Staged drafts</div></div>
+      </div>
+      <div class="mi-scroll" style="max-height:280px">
+        <table class="tf-table" id="tlTable">
+          <thead>
+            <tr>
+              <th></th><th>When</th><th>Place</th><th>Duration</th><th>Note</th><th>Contact</th><th>$</th><th>Type</th>
+            </tr>
+          </thead>
+          <tbody><tr><td colspan="8" class="tf-muted">No visits loaded.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="mi-actions">
+        <button class="tf-btn gold" type="button" id="btnTimelineStage">Stage draft tickets (local)</button>
+        <button class="tf-btn sm ghost" type="button" id="btnTimelineExport">Export staged JSON</button>
+      </div>
+      <div class="tf-disclaimer" style="margin-top:10px">
+        Privacy: location history stays in this browser. Not tax/legal advice. Drafts are local until you review and create in Xero.
       </div>
     </div>
 
@@ -185,10 +235,27 @@
       const pending = TaxForge.xero.consumeRedirect();
       if (pending) {
         TaxForge.storage.set('xero.pending_code', { code: pending.code, at: Date.now() });
-        $('oauthNote').innerHTML = '<span class="tf-pill info">OAuth code captured</span> Exchange via secure backend. Demo mode remains available.';
+        $('oauthNote').innerHTML = '<span class="tf-pill info">OAuth code captured</span> Click <strong>Exchange code via proxy</strong> (server must be running).';
         TaxForge.toast('Xero auth code received (pending token exchange)');
       }
       refreshUI();
+      refreshProxyStatus();
+    }
+
+    async function refreshProxyStatus() {
+      const el = $('proxyStatus');
+      if (!el) return;
+      try {
+        const st = await TaxForge.xeroProxy.status();
+        el.innerHTML = 'Proxy: <span class="tf-pill ' + (st.connected ? 'ok' : 'info') + '">' +
+          (st.connected ? 'ready' : 'idle') + '</span>' +
+          ' · secret ' + (st.hasClientSecret ? 'yes' : 'no') +
+          ' · refresh ' + (st.hasRefreshToken ? 'yes' : 'no') +
+          (st.tenantId ? ' · tenant set' : '') +
+          (st.lastError ? ' · <span class="tf-pill warn">err</span>' : '');
+      } catch (e) {
+        el.textContent = 'Proxy: server offline (demo/CSV still work)';
+      }
     }
 
     function refreshUI() {
@@ -238,7 +305,7 @@
       refreshUI();
     };
 
-    $('btnSaveCfg').onclick = () => {
+    $('btnSaveCfg').onclick = async () => {
       const cfg = TaxForge.xero.getConfig();
       cfg.clientId = $('clientId').value.trim();
       cfg.redirectUri = $('redirectUri').value.trim();
@@ -246,8 +313,86 @@
       const org = TaxForge.storage.get('org', TaxForge.demoOrg());
       org.name = $('orgName').value.trim() || org.name;
       TaxForge.storage.set('org', org);
-      TaxForge.toast('Config saved locally');
+      try {
+        await TaxForge.xeroProxy.saveConfig(cfg.clientId, cfg.redirectUri);
+        TaxForge.toast('Config saved locally + proxy');
+      } catch (e) {
+        TaxForge.toast('Saved locally (proxy offline)');
+      }
       refreshUI();
+      refreshProxyStatus();
+    };
+
+    $('btnStoreSecret').onclick = async () => {
+      const secret = $('clientSecret').value.trim();
+      if (!secret) {
+        TaxForge.toast('Paste client secret first');
+        return;
+      }
+      try {
+        await TaxForge.xeroProxy.storeSecret(secret);
+        $('clientSecret').value = '';
+        TaxForge.toast('Client secret stored in FAFO DPAPI (not in HTML)');
+        refreshProxyStatus();
+      } catch (e) {
+        TaxForge.toast(e.message || 'Store secret failed');
+      }
+    };
+
+    $('btnProxyExchange').onclick = async () => {
+      const pending = TaxForge.storage.get('xero.pending_code', null);
+      if (!pending || !pending.code) {
+        TaxForge.toast('No pending OAuth code — Start Xero OAuth first');
+        return;
+      }
+      const cfg = TaxForge.xero.getConfig();
+      try {
+        await TaxForge.xeroProxy.saveConfig(cfg.clientId, cfg.redirectUri || $('redirectUri').value);
+        const res = await TaxForge.xeroProxy.exchangeCode(
+          pending.code,
+          cfg.redirectUri || $('redirectUri').value,
+          cfg.clientId
+        );
+        TaxForge.storage.remove('xero.pending_code');
+        const org = TaxForge.storage.get('org', TaxForge.demoOrg());
+        org.connected = true;
+        org.mode = 'live';
+        org.lastSync = Date.now();
+        org.name = $('orgName').value.trim() || org.name || 'Xero org';
+        TaxForge.storage.set('org', org);
+        $('oauthNote').innerHTML = '<span class="tf-pill ok">Token exchange OK</span> tenants: ' +
+          (res.tenantCount || 0) + ' · expiresIn ' + (res.expiresIn || '?') + 's (tokens stay on server)';
+        TaxForge.toast('Xero connected via loopback proxy');
+        TaxForge.burst(window.innerWidth / 2, 160, '#3d9eff');
+        refreshUI();
+        refreshProxyStatus();
+      } catch (e) {
+        TaxForge.toast(e.message || 'Token exchange failed');
+        refreshProxyStatus();
+      }
+    };
+
+    $('btnLiveSync').onclick = async () => {
+      try {
+        const acc = await TaxForge.xeroProxy.accounts();
+        if (acc.accounts && acc.accounts.length) {
+          TaxForge.storage.set('accounts', acc.accounts);
+        }
+        const tx = await TaxForge.xeroProxy.transactions({ page: '1' });
+        if (tx.transactions && tx.transactions.length) {
+          const prev = TaxForge.storage.get('transactions', []);
+          TaxForge.storage.set('transactions', tx.transactions.concat(prev).slice(0, 500));
+        }
+        const org = TaxForge.storage.get('org', TaxForge.demoOrg());
+        org.connected = true;
+        org.mode = 'live';
+        org.lastSync = Date.now();
+        TaxForge.storage.set('org', org);
+        TaxForge.toast('Synced ' + (acc.count || 0) + ' accounts, ' + (tx.count || 0) + ' txns');
+        refreshUI();
+      } catch (e) {
+        TaxForge.toast(e.message || 'Live sync failed');
+      }
     };
 
     $('btnOAuth').onclick = () => {
@@ -261,15 +406,20 @@
       }
     };
 
-    $('btnDisconnect').onclick = () => {
+    $('btnDisconnect').onclick = async () => {
       if (!confirm('Clear Xero session + local org link? (transactions stay until you clear them elsewhere)')) return;
       TaxForge.xero.clearSession();
+      TaxForge.storage.remove('xero.pending_code');
+      try {
+        await TaxForge.xeroProxy.disconnect(false);
+      } catch (_) { /* offline ok */ }
       const org = TaxForge.storage.get('org', {});
       org.connected = false;
       org.mode = 'none';
       TaxForge.storage.set('org', org);
       TaxForge.toast('Disconnected');
       refreshUI();
+      refreshProxyStatus();
     };
 
     $('btnDemoTx').onclick = () => {
@@ -460,7 +610,163 @@
       refreshUI();
     };
 
+    /* —— Timeline / Takeout —— */
+    let timelineVisits = TaxForge.storage.get('timeline.visits', []);
+    let timelineSegments = TaxForge.storage.get('timeline.segments', []);
+
+    function renderTimeline() {
+      $('tlCount').textContent = timelineVisits.length;
+      $('tlSeg').textContent = timelineSegments.length;
+      $('tlSel').textContent = timelineVisits.filter((v) => v.selected).length;
+      $('tlDrafts').textContent = (TaxForge.storage.get('timeline.drafts', []) || []).length;
+      const tb = $('tlTable').querySelector('tbody');
+      if (!timelineVisits.length) {
+        tb.innerHTML = '<tr><td colspan="8" class="tf-muted">No visits loaded.</td></tr>';
+        return;
+      }
+      tb.innerHTML = timelineVisits.map((v, i) => {
+        const when = (v.start || '').replace('T', ' ').slice(0, 16);
+        const dur = v.durationMin != null ? v.durationMin + 'm' : '—';
+        const badge = v.commercialCandidate ? ' <span class="tf-pill warn">job?</span>' : '';
+        return `<tr data-i="${i}">
+          <td><input type="checkbox" data-tl-sel="${i}" ${v.selected ? 'checked' : ''}></td>
+          <td>${esc(when)}</td>
+          <td><strong>${esc(v.name)}</strong>${badge}<br><span class="tf-muted">${esc(v.address || '')}</span></td>
+          <td>${dur}</td>
+          <td><input class="tf-input" data-tl-note="${i}" value="${esc(v.editableNote || '')}" placeholder="Job note"></td>
+          <td><input class="tf-input" data-tl-contact="${i}" value="${esc(v.contact || '')}" placeholder="Customer"></td>
+          <td><input class="tf-input" data-tl-amt="${i}" type="number" step="0.01" value="${v.amount || 0}" style="width:80px"></td>
+          <td>
+            <select class="tf-select" data-tl-type="${i}" style="min-width:90px">
+              <option value="invoice" ${v.draftType === 'invoice' ? 'selected' : ''}>Invoice</option>
+              <option value="bill" ${v.draftType === 'bill' ? 'selected' : ''}>Bill</option>
+            </select>
+          </td>
+        </tr>`;
+      }).join('');
+
+      tb.querySelectorAll('[data-tl-sel]').forEach((el) => {
+        el.addEventListener('change', () => {
+          const i = +el.getAttribute('data-tl-sel');
+          timelineVisits[i].selected = el.checked;
+          persistTimeline();
+          $('tlSel').textContent = timelineVisits.filter((v) => v.selected).length;
+        });
+      });
+      tb.querySelectorAll('[data-tl-note]').forEach((el) => {
+        el.addEventListener('change', () => {
+          timelineVisits[+el.getAttribute('data-tl-note')].editableNote = el.value;
+          persistTimeline();
+        });
+      });
+      tb.querySelectorAll('[data-tl-contact]').forEach((el) => {
+        el.addEventListener('change', () => {
+          timelineVisits[+el.getAttribute('data-tl-contact')].contact = el.value;
+          persistTimeline();
+        });
+      });
+      tb.querySelectorAll('[data-tl-amt]').forEach((el) => {
+        el.addEventListener('change', () => {
+          timelineVisits[+el.getAttribute('data-tl-amt')].amount = parseFloat(el.value) || 0;
+          persistTimeline();
+        });
+      });
+      tb.querySelectorAll('[data-tl-type]').forEach((el) => {
+        el.addEventListener('change', () => {
+          timelineVisits[+el.getAttribute('data-tl-type')].draftType = el.value;
+          persistTimeline();
+        });
+      });
+    }
+
+    function persistTimeline() {
+      TaxForge.storage.set('timeline.visits', timelineVisits);
+      TaxForge.storage.set('timeline.segments', timelineSegments);
+    }
+
+    function mergeTimelineParse(parsed) {
+      timelineVisits = (parsed.visits || []).concat(timelineVisits).slice(0, 500);
+      timelineSegments = (parsed.segments || []).concat(timelineSegments).slice(0, 500);
+      persistTimeline();
+      renderTimeline();
+      if (parsed.errors && parsed.errors.length) {
+        TaxForge.toast(parsed.errors[0]);
+      } else {
+        TaxForge.toast('Loaded ' + (parsed.visits || []).length + ' visits');
+      }
+    }
+
+    $('timelineFile').onchange = async (e) => {
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      let total = 0;
+      for (const f of files) {
+        if (/\.zip$/i.test(f.name)) {
+          TaxForge.toast('ZIP not expanded in browser — extract Takeout and pick JSON files');
+          continue;
+        }
+        const text = await f.text();
+        const parsed = TaxForge.timeline.parseJson(text);
+        total += (parsed.visits || []).length;
+        mergeTimelineParse(parsed);
+      }
+      if (total) TaxForge.burst(window.innerWidth / 2, 320, '#ffd166');
+      e.target.value = '';
+    };
+
+    $('btnTimelineSample').onclick = () => {
+      const parsed = TaxForge.timeline.parseJson(TaxForge.timeline.sampleJson());
+      timelineVisits = parsed.visits || [];
+      timelineSegments = parsed.segments || [];
+      persistTimeline();
+      renderTimeline();
+      TaxForge.toast('Sample placeVisit data loaded');
+    };
+
+    $('btnTimelineClear').onclick = () => {
+      timelineVisits = [];
+      timelineSegments = [];
+      persistTimeline();
+      renderTimeline();
+      TaxForge.toast('Timeline list cleared');
+    };
+
+    $('btnTimelineSelectJobs').onclick = () => {
+      timelineVisits.forEach((v) => { if (v.commercialCandidate) v.selected = true; });
+      persistTimeline();
+      renderTimeline();
+      TaxForge.toast('Selected commercial visit candidates');
+    };
+
+    $('btnTimelineStage').onclick = () => {
+      const drafts = TaxForge.timeline.stageDrafts(timelineVisits);
+      if (!drafts.length) {
+        TaxForge.toast('Select at least one visit (checkbox)');
+        return;
+      }
+      renderTimeline();
+      refreshUI();
+      TaxForge.toast('Staged ' + drafts.length + ' draft ticket(s) locally');
+      TaxForge.burst(window.innerWidth / 2, 340, '#00e8a2');
+    };
+
+    $('btnTimelineExport').onclick = () => {
+      const pack = {
+        exportedAt: new Date().toISOString(),
+        privacy: 'local-only',
+        drafts: TaxForge.storage.get('timeline.drafts', []),
+        visitsSelected: timelineVisits.filter((v) => v.selected),
+      };
+      const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'taxforge-timeline-drafts.json';
+      a.click();
+      TaxForge.toast('Draft pack exported');
+    };
+
     renderMileage();
+    renderTimeline();
     loadState();
   </script>
 </body>

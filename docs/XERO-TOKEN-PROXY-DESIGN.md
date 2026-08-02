@@ -1,6 +1,7 @@
 # Xero token proxy — design (implementation later)
 
-**Status:** Design only (DIR-20260802-0045)  
+**Status:** Implemented (DIR-20260802 Hands B+C) — see `server/xero_ops.py` + `/api/xero/*`  
+**Original design DIR:** DIR-20260802-0045 (design-only). **Impl:** 2026-08-02 Hands session.  
 **Bind target:** toolbox loopback `127.0.0.87:18765` (see `shared/aitoolbox-bind.json`)  
 **Secrets:** FAFO.Secrets / DPAPI under `%LOCALAPPDATA%\FAFO\Secrets\` — never git, never HTML  
 

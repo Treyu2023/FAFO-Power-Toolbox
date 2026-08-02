@@ -41,7 +41,7 @@ Launcher section: **TaxForge & Books**
 | App | Codename role | What it does |
 |-----|---------------|--------------|
 | **TaxForge Hub** | Mission control | Animated landing, recommended 4-step flow, suite navigation |
-| **LedgerLink Console** | Xero bridge | Demo org, chart of accounts, bank CSV import, OAuth client-id flow, sync health, **2026 mileage CSV import** (stage/export) |
+| **LedgerLink Console** | Xero bridge | Demo org, chart of accounts, bank CSV import, OAuth + **loopback token proxy** (`/api/xero/*`, FAFO DPAPI secrets), live sync when connected, **2026 mileage CSV**, **Google Takeout / Timeline placeVisit → draft tickets** |
 | **Compliance Pulse** | Readiness engine | Weighted score (coding, checklist, volume, reviews), ECG/ring animation, **quarterly SE estimate card** |
 | **Write-Off Workshop** | Deduction forge | Triage uncategorized spend, keyword auto-suggest → Xero accounts, export CSV |
 | **Partner Period Desk** | Reimb + investor periods | Bulk reclass misplaced reimbursements, investor parts, profit-share estimates, month/year/fiscal rollups, expert pack export |
@@ -100,6 +100,8 @@ Panels that show calculated dollars include the standard disclaimer:
 2. **LedgerLink Console** → **Load Demo Org** → see accounts + sync health  
 3. Optionally **Seed demo transactions** or import a bank CSV  
 4. **Mileage import** → **Load sample rows** or pick a MileIQ-style CSV → preview H1/H2 rates → **Stage for Xero (demo)** or **Export deduction CSV**  
+4b. **Location History** → sample or Takeout Semantic JSON → select visits → stage draft tickets (local)  
+4c. **Live Xero** (server on) → Store client secret → OAuth → Exchange code via proxy → Sync accounts/txns  
 5. **Compliance Pulse** → **Recalculate** → watch score + factors + checklist  
 6. **Quarterly estimated tax** card → enter YTD net (or demo figures) → SE tax, remaining installments, next deadline countdown  
 7. **Write-Off Workshop** → filter “Needs review” → **Auto-suggest** → **Apply** → export CSV  
@@ -129,7 +131,8 @@ Panels that show calculated dollars include the standard disclaimer:
 
 ## What’s intentionally *not* in v1 / v1.1
 
-- Live Xero token exchange / full API sync (**design doc only:** `docs/XERO-TOKEN-PROXY-DESIGN.md`)  
+- Xero **write** APIs (create bills/invoices in Xero) — read path + token proxy shipped; draft stage is local first  
+- Continuous Google Maps API access (Takeout JSON import only)  
 - Multi-user / cloud sync  
 - Actual e-file or form generation  
 - CPA-grade quarterly safe-harbor / full Form 1040-ES optimization  
@@ -144,7 +147,7 @@ These are the natural **v2** wedge once experts validate the preparedness loop.
 
 | Milestone | Outcome |
 |-----------|---------|
-| **M1 — Live LedgerLink** | Implement `docs/XERO-TOKEN-PROXY-DESIGN.md`: loopback `/api/xero/*` with FAFO.Secrets; pull accounts + last 90d transactions |
+| **M1 — Live LedgerLink** | **Shipped:** loopback `/api/xero/*` + DPAPI secrets; pull accounts + bank txns/invoices when Owner connects |
 | **M2 — Grok Assist panel** | “Explain score,” “propose codes,” “year-end questions” over local pack |
 | **M3 — Multi-jurisdiction** | AU/UK/US deadline packs; tax-type mapping from Xero |
 | **M4 — Evidence locker** | Attach receipt files/hashes to write-off lines |
