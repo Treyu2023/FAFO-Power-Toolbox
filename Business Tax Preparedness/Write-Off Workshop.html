@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Write-Off Workshop — TaxForge</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
+  <link rel="stylesheet" href="taxforge-shared.css">
+  <style>
+    .txn-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 100px 140px 110px 90px;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 12px;
+      animation: tfCardIn 0.3s ease both;
+    }
+    .txn-row:hover { background: rgba(0,232,162,0.04); }
+    .txn-row .amt { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tf-accent2); text-align: right; }
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .filter-bar .tf-select { width: auto; min-width: 140px; }
+    @media (max-width: 900px) {
+      .txn-row { grid-template-columns: 1fr 1fr; }
+    }
+    .forge-anvil {
+      font-size: 40px;
+      text-align: center;
+      animation: anvil 2.5s ease-in-out infinite;
+      filter: drop-shadow(0 0 12px rgba(255,209,102,0.45));
+    }
+    @keyframes anvil {
+      0%,100% { transform: translateY(0) rotate(0); }
+      40% { transform: translateY(0) rotate(0); }
+      50% { transform: translateY(4px) rotate(-4deg); }
+      60% { transform: translateY(0) rotate(0); }
+    }
+  </style>
+</head>
+<body class="tf-body">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="tf-wrap">
+    <header class="tf-header">
+      <div class="tf-badge">Deduction engine</div>
+      <h1>🛠️ WRITE-OFF WORKSHOP</h1>
+      <p>Triage spend, map to Xero accounts, and export a cleaner review pack for tax prep.</p>
+    </header>
+    <div id="suiteNav"></div>
+
+    <div class="tf-panel">
+      <div class="forge-anvil">⚒️</div>
+      <div class="tf-grid tf-grid-4">
+        <div class="tf-stat"><div class="val" id="sAll">0</div><div class="lbl">In queue</div></div>
+        <div class="tf-stat"><div class="val warn" id="sReview">0</div><div class="lbl">Needs review</div></div>
+        <div class="tf-stat"><div class="val" id="sCoded">0</div><div class="lbl">Coded</div></div>
+        <div class="tf-stat"><div class="val gold" id="sSpend">$0</div><div class="lbl">Review $</div></div>
+      </div>
+    </div>
+
+    <div class="tf-panel">
+      <h2>Transaction forge</h2>
+      <div class="filter-bar">
+        <select class="tf-select" id="filter">
+          <option value="needs-review">Needs review</option>
+          <option value="all">All</option>
+          <option value="coded">Coded</option>
+          <option value="partial">Partial deductible</option>
+        </select>
+        <button class="tf-btn sm" type="button" id="btnAuto">Auto-suggest codes</button>
+        <button class="tf-btn sm primary" type="button" id="btnApplySugs">Apply suggestions</button>
+        <button class="tf-btn sm ghost" type="button" id="btnExport">Export review CSV</button>
+        <button class="tf-btn sm" type="button" id="btnSeed">Seed demo if empty</button>
+      </div>
+      <div class="txn-row" style="opacity:0.6;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--tf-muted)">
+        <div>Date</div><div>Payee / description</div><div class="amt">Amount</div><div>Account</div><div>Deductible</div><div></div>
+      </div>
+      <div id="list"></div>
+    </div>
+
+    <div class="tf-panel">
+      <h2>Rules of thumb (automation hints)</h2>
+      <p class="tf-muted">
+        Auto-suggest matches keywords (fuel → Motor Vehicle, aws/stripe/software → Subscriptions, etc.).
+        Entertainment / meals default to <strong style="color:var(--tf-accent2)">partial</strong> — confirm with your preparer.
+        This tool never files taxes; it speeds clean books.
+      </p>
+    </div>
+    <p class="tf-footer">Write-Off Workshop · Maps to LedgerLink transaction store</p>
+  </div>
+  <script src="taxforge-shared.js"></script>
+  <script>
+    TaxForge.mountFx();
+    document.getElementById('suiteNav').innerHTML = TaxForge.nav('writeoff');
+
+    const RULES = [
+      { re: /fuel|shell|chevron|gas station|petrol/i, code: '449', name: 'Motor Vehicle Expenses', deductible: 'likely' },
+      { re: /aws|azure|google cloud|github|software|saas|adobe|microsoft 365|slack|zoom/i, code: '485', name: 'Subscriptions', deductible: 'likely' },
+      { re: /verizon|at&t|comcast|internet|phone|mobile/i, code: '489', name: 'Telephone & Internet', deductible: 'likely' },
+      { re: /uber|lyft|delta|united|airline|hotel|marriott|airbnb/i, code: '493', name: 'Travel - National', deductible: 'likely' },
+      { re: /facebook ads|google ads|meta ads|advertising|linkedin ads/i, code: '400', name: 'Advertising', deductible: 'likely' },
+      { re: /staples|office depot|printer|ink|paper/i, code: '461', name: 'Printing & Stationery', deductible: 'likely' },
+      { re: /stripe|paypal fee|bank fee|service fee/i, code: '404', name: 'Bank Fees', deductible: 'likely' },
+      { re: /lunch|dinner|cafe|restaurant|meal|coffee|starbucks/i, code: '420', name: 'Entertainment', deductible: 'partial' },
+      { re: /insurance/i, code: '433', name: 'Insurance', deductible: 'likely' },
+      { re: /rent|wework|office lease/i, code: '469', name: 'Rent', deductible: 'likely' },
+    ];
+
+    function getTxns() { return TaxForge.storage.get('transactions', []); }
+    function setTxns(t) { TaxForge.storage.set('transactions', t); }
+    function accounts() { return TaxForge.storage.get('accounts', TaxForge.demoAccounts()); }
+
+    function money(n) {
+      return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function refresh() {
+      let txns = getTxns();
+      const filter = document.getElementById('filter').value;
+      const review = txns.filter((t) => t.status !== 'coded');
+      document.getElementById('sAll').textContent = txns.length;
+      document.getElementById('sReview').textContent = review.length;
+      document.getElementById('sCoded').textContent = txns.filter((t) => t.status === 'coded').length;
+      document.getElementById('sSpend').textContent = money(review.reduce((s, t) => s + (t.amount || 0), 0));
+
+      let view = txns.slice();
+      if (filter === 'needs-review') view = view.filter((t) => t.status !== 'coded');
+      else if (filter === 'coded') view = view.filter((t) => t.status === 'coded');
+      else if (filter === 'partial') view = view.filter((t) => t.deductible === 'partial');
+
+      const accts = accounts();
+      const opts = accts.filter((a) => a.type === 'EXPENSE' || a.type === 'REVENUE' || a.type === 'BANK')
+        .map((a) => `<option value="${a.code}">${a.code} · ${a.name}</option>`).join('');
+
+      document.getElementById('list').innerHTML = view.map((t) => {
+        const pill = t.deductible === 'likely' ? 'ok' : t.deductible === 'partial' ? 'warn' : 'err';
+        return `<div class="txn-row" data-id="${t.id}">
+          <div>${t.date}</div>
+          <div><strong>${esc(t.contact)}</strong><br><span class="tf-muted">${esc(t.description)}</span></div>
+          <div class="amt">${money(t.amount)}</div>
+          <div>
+            <select class="tf-select sm-acct" data-act="acct">
+              <option value="">— uncoded —</option>
+              ${opts}
+            </select>
+          </div>
+          <div>
+            <select class="tf-select" data-act="ded">
+              <option value="likely">Likely</option>
+              <option value="partial">Partial</option>
+              <option value="unknown">Unknown</option>
+              <option value="personal">Personal</option>
+            </select>
+          </div>
+          <div><button class="tf-btn sm" type="button" data-act="save">Save</button></div>
+        </div>`;
+      }).join('') || '<p class="tf-muted" style="padding:12px">No transactions in this filter. Seed demo or import CSV in LedgerLink.</p>';
+
+      document.querySelectorAll('.txn-row').forEach((row) => {
+        const id = row.dataset.id;
+        const t = txns.find((x) => x.id === id);
+        if (!t) return;
+        const acct = row.querySelector('[data-act="acct"]');
+        const ded = row.querySelector('[data-act="ded"]');
+        if (t.accountCode) acct.value = t.accountCode;
+        ded.value = t.deductible || 'unknown';
+        row.querySelector('[data-act="save"]').onclick = () => {
+          const code = acct.value;
+          const acc = accts.find((a) => a.code === code);
+          t.accountCode = code;
+          t.accountName = acc ? acc.name : (code || 'Uncategorized');
+          t.deductible = ded.value;
+          t.status = code ? 'coded' : 'needs-review';
+          setTxns(txns);
+          TaxForge.toast('Saved ' + (t.contact || 'line'));
+          TaxForge.burst(window.innerWidth / 2, 180, '#00e8a2');
+          refresh();
+        };
+      });
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function autoSuggest() {
+      const txns = getTxns();
+      let n = 0;
+      txns.forEach((t) => {
+        if (t.status === 'coded' && t.accountCode) return;
+        const hay = (t.contact + ' ' + t.description);
+        for (const r of RULES) {
+          if (r.re.test(hay)) {
+            t._suggest = { code: r.code, name: r.name, deductible: r.deductible };
+            n++;
+            break;
+          }
+        }
+      });
+      setTxns(txns);
+      TaxForge.toast(n ? n + ' suggestions ready' : 'No new keyword matches');
+      // apply visual: temporarily set select if suggestion
+      refresh();
+      document.querySelectorAll('.txn-row').forEach((row) => {
+        const t = getTxns().find((x) => x.id === row.dataset.id);
+        if (t && t._suggest) {
+          const acct = row.querySelector('[data-act="acct"]');
+          const ded = row.querySelector('[data-act="ded"]');
+          acct.value = t._suggest.code;
+          ded.value = t._suggest.deductible;
+          row.style.boxShadow = 'inset 0 0 0 1px rgba(255,209,102,0.35)';
+        }
+      });
+    }
+
+    function applySuggestions() {
+      const txns = getTxns();
+      let n = 0;
+      txns.forEach((t) => {
+        if (!t._suggest) return;
+        t.accountCode = t._suggest.code;
+        t.accountName = t._suggest.name;
+        t.deductible = t._suggest.deductible;
+        t.status = 'coded';
+        delete t._suggest;
+        n++;
+      });
+      setTxns(txns);
+      TaxForge.toast('Applied ' + n + ' codes');
+      TaxForge.burst(window.innerWidth / 2, 200, '#ffd166');
+      refresh();
+    }
+
+    document.getElementById('filter').onchange = refresh;
+    document.getElementById('btnAuto').onclick = autoSuggest;
+    document.getElementById('btnApplySugs').onclick = applySuggestions;
+    document.getElementById('btnSeed').onclick = () => {
+      if (getTxns().length && !confirm('Replace current transactions with demo set?')) return;
+      setTxns(TaxForge.demoTransactions());
+      if (!TaxForge.storage.get('accounts', []).length) {
+        TaxForge.storage.set('accounts', TaxForge.demoAccounts());
+      }
+      const org = TaxForge.storage.get('org', TaxForge.demoOrg());
+      org.connected = true; org.mode = org.mode || 'demo';
+      TaxForge.storage.set('org', org);
+      TaxForge.toast('Demo transactions loaded');
+      refresh();
+    };
+    document.getElementById('btnExport').onclick = () => {
+      const txns = getTxns();
+      const lines = [['Date','Contact','Description','Amount','AccountCode','AccountName','Deductible','Status']];
+      txns.forEach((t) => lines.push([t.date, t.contact, t.description, t.amount, t.accountCode, t.accountName, t.deductible, t.status]));
+      const csv = lines.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = 'taxforge-writeoff-review.csv';
+      a.click();
+      TaxForge.toast('CSV exported');
+    };
+
+    refresh();
+  </script>
+</body>
+</html>

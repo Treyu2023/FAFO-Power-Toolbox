@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Empire Seed — 3D Civilization</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏛️</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
+<style>
+:root {
+  --bg: #04060d;
+  --panel: rgba(10, 14, 28, 0.94);
+  --accent: #ffd166;
+  --accent2: #00f0ff;
+  --accent3: #ff3d81;
+  --ok: #39ff14;
+  --err: #ff2e63;
+  --text: #f4f7ff;
+  --muted: #8b93b0;
+  --border: rgba(0, 240, 255, 0.35);
+  --glow: 0 0 18px rgba(0, 240, 255, 0.45);
+  --glow-gold: 0 0 20px rgba(255, 209, 102, 0.45);
+  --font: "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%; overflow: hidden; color: var(--text); font-family: var(--font);
+  background: radial-gradient(ellipse at 20% 0%, #101830, var(--bg) 55%);
+}
+a.toolbox-back {
+  position: fixed; top: 10px; left: 12px; z-index: 100;
+  color: var(--accent2); text-decoration: none; font-size: 12px; font-weight: 700;
+  padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(4,6,13,.88); backdrop-filter: blur(8px);
+  transition: .15s;
+}
+a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow); }
+
+#app {
+  display: grid; grid-template-columns: 1fr 330px; grid-template-rows: 52px 1fr 148px;
+  height: 100vh; position: relative; z-index: 1;
+}
+#topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 12px; padding: 0 16px 0 100px;
+  background: linear-gradient(180deg, rgba(16,22,42,.98), rgba(8,10,20,.95));
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 4px 24px rgba(0,240,255,.08);
+}
+#topbar h1 {
+  font-weight: 800; letter-spacing: 3px; font-size: 15px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shine 5s linear infinite; white-space: nowrap;
+}
+@keyframes shine { to { background-position: 200% center; } }
+.stat-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px;
+  background: linear-gradient(135deg, rgba(0,240,255,.08), rgba(255,209,102,.06));
+  border: 1px solid rgba(0,240,255,.22);
+  font-size: 12px; color: var(--muted);
+}
+.stat-pill b { color: var(--text); font-variant-numeric: tabular-nums; }
+.stat-pill.pop { animation: pillPop .35s ease; }
+@keyframes pillPop {
+  40% { transform: scale(1.1); box-shadow: 0 0 16px rgba(57,255,20,.4); }
+}
+#topbar .spacer { flex: 1; }
+.btn {
+  background: transparent; border: 1px solid var(--border); color: var(--accent2);
+  padding: 8px 14px; border-radius: 9px; cursor: pointer; font-weight: 700;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .04em; transition: .15s;
+}
+.btn:hover { box-shadow: var(--glow); background: rgba(0,240,255,.1); transform: translateY(-1px); }
+.btn.primary {
+  background: linear-gradient(135deg, #ffd166, #ff9f1c);
+  color: #1a1000; border-color: #ffd166; box-shadow: 0 0 16px rgba(255,209,102,.3);
+}
+.btn.danger { color: var(--err); border-color: rgba(255,46,99,.5); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.sm { padding: 5px 10px; font-size: 11px; }
+
+#mapWrap {
+  position: relative; overflow: hidden;
+  background: #02040a;
+  border-right: 1px solid rgba(0,240,255,.15);
+}
+#c3d { display: block; width: 100%; height: 100%; cursor: grab; }
+#c3d:active { cursor: grabbing; }
+#fxLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+#mapVignette {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.5) 100%);
+}
+#screenFlash {
+  position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  opacity: 0; transition: opacity .1s; mix-blend-mode: screen;
+}
+#screenFlash.on { opacity: 1; }
+#turnBanner {
+  position: absolute; top: 16%; left: 50%; z-index: 6; pointer-events: none;
+  transform: translate(-50%, -20px) scale(.85);
+  font-size: clamp(22px, 4vw, 36px); font-weight: 800; letter-spacing: 4px;
+  color: var(--accent2); text-shadow: 0 0 24px rgba(0,240,255,.8);
+  opacity: 0; transition: .35s cubic-bezier(.2,1.3,.3,1); white-space: nowrap;
+}
+#turnBanner.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#mapHint {
+  position: absolute; left: 12px; bottom: 10px; z-index: 5;
+  font-size: 11px; color: var(--text);
+  background: rgba(6,10,22,.8); padding: 7px 12px; border-radius: 8px;
+  border: 1px solid rgba(0,240,255,.25); pointer-events: none; max-width: 75%;
+  backdrop-filter: blur(6px);
+}
+#camHint {
+  position: absolute; right: 12px; bottom: 10px; z-index: 5;
+  font-size: 10px; color: var(--muted);
+  background: rgba(6,10,22,.75); padding: 6px 10px; border-radius: 8px;
+  border: 1px solid rgba(255,209,102,.2); pointer-events: none;
+}
+
+#sidebar {
+  background: linear-gradient(180deg, rgba(12,18,36,.97), rgba(8,10,20,.98));
+  border-left: 1px solid rgba(0,240,255,.18);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.side-tabs { display: flex; border-bottom: 1px solid rgba(0,240,255,.15); background: rgba(0,0,0,.25); }
+.side-tabs button {
+  flex: 1; background: transparent; border: none; color: var(--muted);
+  padding: 11px 4px; font-size: 11px; font-weight: 700; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid transparent;
+}
+.side-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+.side-body { flex: 1; overflow-y: auto; padding: 12px; scrollbar-width: thin; }
+.side-body h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--accent2); margin: 12px 0 8px; font-weight: 700;
+}
+.side-body h3:first-child { margin-top: 0; }
+.muted { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.card {
+  background: linear-gradient(145deg, rgba(0,240,255,.06), rgba(255,61,129,.04));
+  border: 1px solid rgba(0,240,255,.18);
+  border-radius: 12px; padding: 11px; margin-bottom: 8px;
+  animation: cardIn .3s ease;
+}
+@keyframes cardIn { from { opacity: 0; transform: translateY(6px); } }
+.card.sel { border-color: var(--accent); box-shadow: 0 0 20px rgba(255,209,102,.15); }
+.card .title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.card .meta { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.card .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.bar {
+  height: 7px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; margin-top: 6px;
+}
+.bar > i {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--accent2), var(--accent), var(--accent3));
+  background-size: 200% 100%; animation: barFlow 2.5s linear infinite; border-radius: 4px;
+}
+@keyframes barFlow { to { background-position: 200% 0; } }
+
+#logbar {
+  grid-column: 1 / -1;
+  background: linear-gradient(0deg, #070a14, #0c1222);
+  border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: 1fr 280px;
+}
+#log {
+  padding: 8px 12px; overflow-y: auto; font-size: 12px; color: var(--muted);
+  line-height: 1.5; font-family: ui-monospace, Consolas, monospace; max-height: 148px;
+}
+#log > div { animation: logIn .25s ease; }
+@keyframes logIn { from { opacity: 0; transform: translateX(-6px); } }
+#log .good { color: var(--ok); }
+#log .bad { color: var(--err); }
+#log .gold { color: var(--accent); }
+#log .info { color: var(--accent2); }
+#actions {
+  border-left: 1px solid rgba(0,240,255,.15);
+  padding: 10px; display: flex; flex-direction: column; gap: 8px; justify-content: center;
+}
+#actions .btn { width: 100%; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 80;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(0,240,255,.15), transparent 40%),
+    radial-gradient(ellipse at 70% 80%, rgba(255,61,129,.12), transparent 40%),
+    rgba(4,6,13,.92);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  backdrop-filter: blur(6px);
+}
+.overlay.hidden { display: none; }
+.modal {
+  width: min(540px, 100%);
+  background: linear-gradient(160deg, rgba(16,24,48,.98), rgba(8,10,22,.98));
+  border: 1px solid var(--border); border-radius: 18px; padding: 28px 26px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.65), var(--glow-gold);
+  animation: modalPop .4s cubic-bezier(.2,1.2,.3,1);
+}
+@keyframes modalPop { from { opacity: 0; transform: scale(.92) translateY(12px); } }
+.modal h2 {
+  font-weight: 800; letter-spacing: 3px; font-size: 26px; margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.modal p { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+.modal .choices { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.choice {
+  text-align: left; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid rgba(0,240,255,.18); background: rgba(0,0,0,.35);
+  color: var(--text); cursor: pointer; transition: .15s;
+}
+.choice:hover, .choice.active {
+  border-color: var(--accent); background: rgba(255,209,102,.1);
+  box-shadow: 0 0 18px rgba(255,209,102,.2);
+}
+.choice b { display: block; color: var(--accent); margin-bottom: 3px; }
+.choice span { font-size: 12px; color: var(--muted); }
+.modal .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.civ-swatch {
+  display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+  vertical-align: middle; margin-right: 4px; border: 1px solid rgba(255,255,255,.35);
+  box-shadow: 0 0 6px currentColor;
+}
+.toast {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%) translateY(-10px) scale(.95);
+  z-index: 90; background: rgba(8,12,28,.95); border: 1px solid var(--border);
+  color: var(--accent2); padding: 11px 20px; border-radius: 12px; font-weight: 700;
+  font-size: 13px; opacity: 0; pointer-events: none; transition: .3s; box-shadow: var(--glow);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+.toast.combat { color: var(--err); border-color: rgba(255,46,99,.5); }
+.toast.good { color: var(--ok); border-color: rgba(57,255,20,.45); }
+.toast.gold { color: var(--accent); border-color: rgba(255,209,102,.45); }
+
+@media (max-width: 900px) {
+  #app { grid-template-columns: 1fr; grid-template-rows: 52px 1fr 200px 120px; }
+  #sidebar { border-left: none; border-top: 1px solid rgba(0,240,255,.15); max-height: 200px; }
+  #logbar { grid-template-columns: 1fr; }
+  #actions { border-left: none; flex-direction: row; flex-wrap: wrap; }
+  #actions .btn { width: auto; flex: 1; }
+}
+</style>
+</head>
+<body>
+<a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
+<div class="toast" id="toast"></div>
+
+<div id="app">
+  <div id="topbar">
+    <h1>🏛️ EMPIRE SEED 3D</h1>
+    <div class="stat-pill"><span>📅</span> Turn <b id="uiTurn">1</b></div>
+    <div class="stat-pill"><span>🔬</span> Science <b id="uiSci">0</b></div>
+    <div class="stat-pill"><span>💰</span> Gold <b id="uiGold">0</b></div>
+    <div class="stat-pill"><span>🏛</span> Cities <b id="uiCities">0</b></div>
+    <div class="stat-pill"><span>⚔</span> Units <b id="uiUnits">0</b></div>
+    <div class="spacer"></div>
+    <button class="btn sm" id="btnHelp" type="button">Help</button>
+    <button class="btn sm" id="btnMenu" type="button">Menu</button>
+  </div>
+
+  <div id="mapWrap">
+    <canvas id="c3d"></canvas>
+    <canvas id="fxLayer"></canvas>
+    <div id="mapVignette"></div>
+    <div id="screenFlash"></div>
+    <div id="turnBanner"></div>
+    <div id="mapHint">Click tiles · select units · End Turn when ready</div>
+    <div id="camHint">RMB / Middle drag: orbit · WASD pan · Scroll zoom · Q/E rotate</div>
+  </div>
+
+  <aside id="sidebar">
+    <div class="side-tabs">
+      <button type="button" class="active" data-tab="sel">Selected</button>
+      <button type="button" data-tab="city">Cities</button>
+      <button type="button" data-tab="tech">Tech</button>
+      <button type="button" data-tab="dip">World</button>
+    </div>
+    <div class="side-body" id="sideBody"></div>
+  </aside>
+
+  <div id="logbar">
+    <div id="log"></div>
+    <div id="actions">
+      <button class="btn primary" id="btnEndTurn" type="button">End Turn</button>
+      <button class="btn" id="btnWait" type="button">Skip Unit</button>
+      <button class="btn danger sm" id="btnDisband" type="button">Disband</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="startOverlay">
+  <div class="modal">
+    <h2>EMPIRE SEED 3D</h2>
+    <p>Found cities, research techs, and conquer rivals on a fully 3D world map — same 4X depth, new isometric battlefield.</p>
+    <div class="choices" id="civChoices"></div>
+    <label class="muted" style="display:block;margin-bottom:6px">Map size</label>
+    <div class="choices" style="flex-direction:row;flex-wrap:wrap" id="sizeChoices">
+      <button type="button" class="choice active" data-size="small"><b>Compact</b><span>18×12 · faster</span></button>
+      <button type="button" class="choice" data-size="medium"><b>Standard</b><span>24×16 · recommended</span></button>
+      <button type="button" class="choice" data-size="large"><b>Vast</b><span>30×20 · long war</span></button>
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="btnStart" type="button">Found Your Empire</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOverlay">
+  <div class="modal">
+    <h2 id="endTitle">Victory</h2>
+    <p id="endBody"></p>
+    <div class="btns"><button class="btn primary" id="btnRestart" type="button">New Game</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="helpOverlay">
+  <div class="modal">
+    <h2>How to play</h2>
+    <p><b style="color:var(--text)">3D camera:</b> right/middle-drag orbit · WASD pan · scroll zoom · Q/E yaw.</p>
+    <p><b style="color:var(--text)">Gameplay:</b> explore · settle (F) · fight by moving onto enemies · queue production in cities · research Transcendence or dominate the map.</p>
+    <div class="btns"><button class="btn primary" id="btnHelpClose" type="button">Got it</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  if (typeof THREE === 'undefined') {
+    document.body.innerHTML = '<div style="color:#fff;padding:40px;font-family:sans-serif">Three.js failed to load (offline?). Check network for the CDN, then reload.</div>';
+    return;
+  }
+
+  // ══════════ DATA ══════════
+  const CIVS = [
+    { id: 'aurora', name: 'Aurora League', color: '#00e5ff', leader: 'Consul Nyra', trait: 'Coastal science +1' },
+    { id: 'ember', name: 'Ember Khanate', color: '#ff4d00', leader: 'Khan Veyra', trait: 'Warriors +1 strength' },
+    { id: 'verdant', name: 'Verdant Circle', color: '#39ff14', leader: 'Elder Moss', trait: 'Food +10% in forests' },
+    { id: 'gilded', name: 'Gilded Dominion', color: '#ffd166', leader: 'Rex Aurelius', trait: 'Gold +1 per city' },
+    { id: 'obsidian', name: 'Obsidian Order', color: '#d500f9', leader: 'Magister Kael', trait: 'Culture buildings cheaper' },
+  ];
+
+  const TERRAIN = {
+    ocean:    { name: 'Ocean',    move: 99, def: 0, food: 1, prod: 0, gold: 1, color: 0x0a3a7a, h: 0.08, walk: false },
+    coast:    { name: 'Coast',    move: 1,  def: 0, food: 1, prod: 0, gold: 2, color: 0x1a9ad4, h: 0.12, walk: true, sail: true },
+    plains:   { name: 'Plains',   move: 1,  def: 0, food: 2, prod: 1, gold: 0, color: 0x6bcf4a, h: 0.28, walk: true },
+    grass:    { name: 'Grassland',move: 1,  def: 0, food: 2, prod: 0, gold: 0, color: 0x2ecc71, h: 0.26, walk: true },
+    forest:   { name: 'Forest',   move: 2,  def: 2, food: 1, prod: 2, gold: 0, color: 0x0d7a35, h: 0.42, walk: true },
+    hills:    { name: 'Hills',    move: 2,  def: 3, food: 1, prod: 2, gold: 1, color: 0xc4923a, h: 0.7,  walk: true },
+    desert:   { name: 'Desert',   move: 1,  def: 0, food: 0, prod: 1, gold: 1, color: 0xf0d24a, h: 0.24, walk: true },
+    mountain: { name: 'Mountain', move: 99, def: 5, food: 0, prod: 1, gold: 0, color: 0x9aa3b5, h: 1.35, walk: false },
+  };
+
+  const RESOURCES = {
+    wheat:  { name: 'Wheat',  food: 2, prod: 0, gold: 0, emoji: '🌾' },
+    iron:   { name: 'Iron',   food: 0, prod: 2, gold: 0, emoji: '⛏' },
+    gold:   { name: 'Gold',   food: 0, prod: 0, gold: 3, emoji: '✨' },
+    cattle: { name: 'Cattle', food: 1, prod: 1, gold: 0, emoji: '🐂' },
+    fish:   { name: 'Fish',   food: 2, prod: 0, gold: 1, emoji: '🐟' },
+  };
+
+  const UNITS = {
+    settler: { name: 'Settler',  emoji: '🚩', str: 0,  moves: 2, cost: 40, class: 'civilian', desc: 'Found a new city on land.' },
+    scout:   { name: 'Scout',    emoji: '🧭', str: 3,  moves: 3, cost: 15, class: 'recon',    desc: 'Fast explorer.' },
+    warrior: { name: 'Warrior',  emoji: '⚔',  str: 8,  moves: 2, cost: 20, class: 'melee',    desc: 'Basic infantry.' },
+    archer:  { name: 'Archer',   emoji: '🏹', str: 10, moves: 2, cost: 28, class: 'ranged',   needs: 'archery', desc: 'Ranged fighter.' },
+    spear:   { name: 'Spearman', emoji: '🔱', str: 12, moves: 2, cost: 32, class: 'melee',    needs: 'bronze',  desc: 'Front-line.' },
+    sword:   { name: 'Swordsman',emoji: '🗡', str: 16, moves: 2, cost: 45, class: 'melee',    needs: 'ironwork',desc: 'Elite infantry.' },
+    horseman:{ name: 'Horseman', emoji: '🐴', str: 14, moves: 4, cost: 40, class: 'cavalry',  needs: 'horseback', desc: 'Mobile strike.' },
+    galley:  { name: 'Galley',   emoji: '⛵', str: 10, moves: 3, cost: 35, class: 'naval',    needs: 'sailing', water: true, desc: 'Coastal warship.' },
+  };
+
+  const BUILDINGS = {
+    granary:   { name: 'Granary',   cost: 30, food: 2, prod: 0, sci: 0, gold: 0, needs: null, desc: '+2 food' },
+    library:   { name: 'Library',   cost: 35, food: 0, prod: 0, sci: 2, gold: 0, needs: 'writing', desc: '+2 science' },
+    barracks:  { name: 'Barracks',  cost: 35, food: 0, prod: 0, sci: 0, gold: 0, needs: 'bronze', unitHp: 2, desc: 'Units +2 HP' },
+    market:    { name: 'Market',    cost: 40, food: 0, prod: 0, sci: 0, gold: 3, needs: 'currency', desc: '+3 gold' },
+    workshop:  { name: 'Workshop',  cost: 45, food: 0, prod: 2, sci: 0, gold: 0, needs: 'construction', desc: '+2 production' },
+    university:{ name: 'University',cost: 60, food: 0, prod: 0, sci: 4, gold: 0, needs: 'education', desc: '+4 science' },
+    walls:     { name: 'Walls',     cost: 40, food: 0, prod: 0, sci: 0, gold: 0, needs: 'masonry', cityDef: 8, desc: 'City +8 def' },
+    wonder:    { name: 'World Spire',cost: 120, food: 0, prod: 0, sci: 3, gold: 3, needs: 'engineering', once: true, score: 50, desc: 'Wonder' },
+  };
+
+  const TECHS = [
+    { id: 'agriculture', name: 'Agriculture', cost: 10, requires: [], unlock: 'Basics' },
+    { id: 'pottery', name: 'Pottery', cost: 20, requires: ['agriculture'], unlock: 'Granary' },
+    { id: 'animal', name: 'Animal Husbandry', cost: 25, requires: ['agriculture'], unlock: 'Pastures' },
+    { id: 'mining', name: 'Mining', cost: 25, requires: ['agriculture'], unlock: 'Hills yield' },
+    { id: 'archery', name: 'Archery', cost: 30, requires: ['agriculture'], unlock: 'Archer' },
+    { id: 'bronze', name: 'Bronze Working', cost: 40, requires: ['mining'], unlock: 'Spearman · Barracks' },
+    { id: 'writing', name: 'Writing', cost: 40, requires: ['pottery'], unlock: 'Library' },
+    { id: 'sailing', name: 'Sailing', cost: 35, requires: ['pottery'], unlock: 'Galley' },
+    { id: 'horseback', name: 'Horseback Riding', cost: 50, requires: ['animal'], unlock: 'Horseman' },
+    { id: 'masonry', name: 'Masonry', cost: 45, requires: ['mining'], unlock: 'Walls' },
+    { id: 'ironwork', name: 'Iron Working', cost: 70, requires: ['bronze'], unlock: 'Swordsman' },
+    { id: 'currency', name: 'Currency', cost: 55, requires: ['writing'], unlock: 'Market' },
+    { id: 'construction', name: 'Construction', cost: 60, requires: ['masonry'], unlock: 'Workshop' },
+    { id: 'philosophy', name: 'Philosophy', cost: 65, requires: ['writing'], unlock: 'Science edge' },
+    { id: 'mathematics', name: 'Mathematics', cost: 70, requires: ['currency'], unlock: 'Production edge' },
+    { id: 'engineering', name: 'Engineering', cost: 90, requires: ['construction', 'mathematics'], unlock: 'World Spire' },
+    { id: 'education', name: 'Education', cost: 100, requires: ['philosophy'], unlock: 'University' },
+    { id: 'machinery', name: 'Machinery', cost: 110, requires: ['engineering'], unlock: 'Military edge' },
+    { id: 'transcendence', name: 'Transcendence', cost: 180, requires: ['education', 'machinery'], unlock: 'SCIENCE VICTORY' },
+  ];
+
+  const SIZES = {
+    small:  { w: 18, h: 12, rivals: 2, turns: 80 },
+    medium: { w: 24, h: 16, rivals: 3, turns: 100 },
+    large:  { w: 30, h: 20, rivals: 4, turns: 140 },
+  };
+
+  // ══════════ STATE ══════════
+  let G = null;
+  let hover = null;
+  let selectedUnit = null;
+  let selectedCity = null;
+  let sideTab = 'sel';
+  let mapSizeKey = 'medium';
+  let chosenCivId = 'aurora';
+  let unitAnims = {};
+  const $ = (id) => document.getElementById(id);
+
+  // ══════════ THREE.JS ══════════
+  const TS = 1; // tile size
+  let renderer, scene, camera, raycaster, pointer;
+  let mapRoot, cityRoot, unitRoot, fxRoot, highlightMesh, moveHintRoot;
+  let tileMeshes = []; // [y][x] mesh
+  let cityMeshes = new Map();
+  let unitMeshes = new Map();
+  let sun, hemi, rimLight;
+  let camCtrl = {
+    target: new THREE.Vector3(0, 0, 0),
+    dist: 22,
+    theta: Math.PI / 4,   // yaw
+    phi: 0.95,           // pitch
+    minDist: 8,
+    maxDist: 55,
+    minPhi: 0.35,
+    maxPhi: 1.35,
+  };
+  let drag = { on: false, mode: null, lx: 0, ly: 0 };
+  let keys = {};
+  let particles3 = [];
+  let clock = new THREE.Clock();
+  let waterPhase = 0;
+
+  function initThree() {
+    const wrap = $('mapWrap');
+    const canvas = $('c3d');
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(wrap.clientWidth, wrap.clientHeight, false);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050a16);
+    scene.fog = new THREE.FogExp2(0x081020, 0.018);
+
+    camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / Math.max(1, wrap.clientHeight), 0.1, 200);
+    raycaster = new THREE.Raycaster();
+    pointer = new THREE.Vector2();
+
+    hemi = new THREE.HemisphereLight(0x88bbff, 0x223311, 0.55);
+    scene.add(hemi);
+    sun = new THREE.DirectionalLight(0xfff0dd, 1.25);
+    sun.position.set(20, 35, 12);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 80;
+    sun.shadow.camera.left = -30;
+    sun.shadow.camera.right = 30;
+    sun.shadow.camera.top = 30;
+    sun.shadow.camera.bottom = -30;
+    scene.add(sun);
+    rimLight = new THREE.DirectionalLight(0x00f0ff, 0.35);
+    rimLight.position.set(-15, 10, -10);
+    scene.add(rimLight);
+
+    // starfield
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 600;
+    const starPos = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      starPos[i * 3] = (Math.random() - 0.5) * 160;
+      starPos[i * 3 + 1] = Math.random() * 40 + 10;
+      starPos[i * 3 + 2] = (Math.random() - 0.5) * 160;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x88ccff, size: 0.08, transparent: true, opacity: 0.7 })));
+
+    mapRoot = new THREE.Group();
+    cityRoot = new THREE.Group();
+    unitRoot = new THREE.Group();
+    fxRoot = new THREE.Group();
+    moveHintRoot = new THREE.Group();
+    scene.add(mapRoot, cityRoot, unitRoot, fxRoot, moveHintRoot);
+
+    // hover highlight
+    const hGeo = new THREE.BoxGeometry(TS * 0.98, 0.08, TS * 0.98);
+    highlightMesh = new THREE.Mesh(hGeo, new THREE.MeshBasicMaterial({
+      color: 0x00f0ff, transparent: true, opacity: 0.55, depthSide: THREE.DoubleSide,
+    }));
+    highlightMesh.visible = false;
+    scene.add(highlightMesh);
+
+    bindThreeInput(canvas);
+    updateCamera();
+  }
+
+  function worldPos(x, y, h) {
+    if (!G) return new THREE.Vector3(x, h || 0, y);
+    return new THREE.Vector3(
+      (x - (G.w - 1) / 2) * TS,
+      h || 0,
+      (y - (G.h - 1) / 2) * TS
+    );
+  }
+
+  function tileHeight(type) {
+    return TERRAIN[type]?.h || 0.2;
+  }
+
+  function updateCamera() {
+    const { target, dist, theta, phi } = camCtrl;
+    camera.position.x = target.x + dist * Math.sin(phi) * Math.sin(theta);
+    camera.position.y = target.y + dist * Math.cos(phi);
+    camera.position.z = target.z + dist * Math.sin(phi) * Math.cos(theta);
+    camera.lookAt(target);
+    if (sun) {
+      sun.position.set(target.x + 18, 32, target.z + 10);
+      sun.target.position.copy(target);
+      sun.target.updateMatrixWorld();
+    }
+  }
+
+  function centerOnPlayer(pid) {
+    const c = G.cities.find((x) => x.owner === pid);
+    if (!c) return;
+    const p = worldPos(c.x, c.y, 0);
+    camCtrl.target.set(p.x, 0, p.z);
+    camCtrl.dist = Math.max(14, Math.min(28, Math.max(G.w, G.h) * 0.9));
+    updateCamera();
+  }
+
+  function clearMap3D() {
+    while (mapRoot.children.length) {
+      const o = mapRoot.children.pop();
+      o.geometry?.dispose?.();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+        else o.material.dispose();
+      }
+    }
+    while (cityRoot.children.length) cityRoot.remove(cityRoot.children[0]);
+    while (unitRoot.children.length) unitRoot.remove(unitRoot.children[0]);
+    cityMeshes.clear();
+    unitMeshes.clear();
+    tileMeshes = [];
+  }
+
+  function buildMap3D() {
+    clearMap3D();
+    if (!G) return;
+    tileMeshes = [];
+    const boxGeoCache = {};
+    function geoForH(h) {
+      const key = h.toFixed(3);
+      if (!boxGeoCache[key]) boxGeoCache[key] = new THREE.BoxGeometry(TS * 0.96, h, TS * 0.96);
+      return boxGeoCache[key];
+    }
+
+    for (let y = 0; y < G.h; y++) {
+      tileMeshes[y] = [];
+      for (let x = 0; x < G.w; x++) {
+        const t = G.map[y][x];
+        const tr = TERRAIN[t.type];
+        const h = tr.h;
+        const mat = new THREE.MeshStandardMaterial({
+          color: tr.color,
+          roughness: t.type === 'ocean' || t.type === 'coast' ? 0.25 : 0.85,
+          metalness: t.type === 'mountain' ? 0.25 : 0.05,
+          emissive: 0x000000,
+          flatShading: true,
+        });
+        const mesh = new THREE.Mesh(geoForH(h), mat);
+        const wp = worldPos(x, y, h / 2);
+        mesh.position.copy(wp);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData = { tx: x, ty: y, baseH: h, type: t.type };
+        mapRoot.add(mesh);
+        tileMeshes[y][x] = mesh;
+
+        // forest trees
+        if (t.type === 'forest') {
+          for (let i = 0; i < 3; i++) {
+            const trunk = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.04, 0.05, 0.25, 5),
+              new THREE.MeshStandardMaterial({ color: 0x5c3a1e, flatShading: true })
+            );
+            const leaves = new THREE.Mesh(
+              new THREE.ConeGeometry(0.16, 0.35, 6),
+              new THREE.MeshStandardMaterial({ color: 0x1fa84a, flatShading: true })
+            );
+            const ox = (Math.random() - 0.5) * 0.45;
+            const oz = (Math.random() - 0.5) * 0.45;
+            trunk.position.set(wp.x + ox, h + 0.12, wp.z + oz);
+            leaves.position.set(wp.x + ox, h + 0.35, wp.z + oz);
+            trunk.castShadow = leaves.castShadow = true;
+            trunk.userData.decor = true;
+            leaves.userData.decor = true;
+            mapRoot.add(trunk, leaves);
+            mesh.userData.decors = mesh.userData.decors || [];
+            mesh.userData.decors.push(trunk, leaves);
+          }
+        }
+        // mountain peak cap
+        if (t.type === 'mountain') {
+          const peak = new THREE.Mesh(
+            new THREE.ConeGeometry(0.28, 0.45, 5),
+            new THREE.MeshStandardMaterial({ color: 0xe8eef8, flatShading: true, roughness: 0.6 })
+          );
+          peak.position.set(wp.x, h + 0.15, wp.z);
+          peak.castShadow = true;
+          peak.userData.decor = true;
+          mapRoot.add(peak);
+          mesh.userData.decors = [peak];
+        }
+        // resource gem
+        if (t.res) {
+          const gem = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.12, 0),
+            new THREE.MeshStandardMaterial({
+              color: t.res === 'gold' ? 0xffd166 : t.res === 'iron' ? 0xaab4c0 : 0x7dff8a,
+              emissive: t.res === 'gold' ? 0x664400 : 0x113311,
+              emissiveIntensity: 0.4,
+              metalness: 0.6,
+              roughness: 0.3,
+            })
+          );
+          gem.position.set(wp.x + 0.28, h + 0.2, wp.z + 0.28);
+          gem.userData.resource = true;
+          gem.userData.bob = Math.random() * Math.PI * 2;
+          mapRoot.add(gem);
+          mesh.userData.resourceMesh = gem;
+        }
+      }
+    }
+    refreshFogMaterials();
+    rebuildCities3D();
+    rebuildUnits3D();
+  }
+
+  function refreshFogMaterials() {
+    if (!G || !tileMeshes.length) return;
+    for (let y = 0; y < G.h; y++) {
+      for (let x = 0; x < G.w; x++) {
+        const t = G.map[y][x];
+        const mesh = tileMeshes[y][x];
+        if (!mesh) continue;
+        const fog = t.fog[0] || 0;
+        const tr = TERRAIN[t.type];
+        const mat = mesh.material;
+        if (fog === 0) {
+          mat.color.setHex(0x0a0e18);
+          mat.emissive.setHex(0x000000);
+          mat.opacity = 1;
+          mat.transparent = false;
+          mesh.visible = true;
+          mesh.scale.y = 0.35;
+          mesh.position.y = (tr.h * 0.35) / 2;
+          if (mesh.userData.decors) mesh.userData.decors.forEach((d) => { d.visible = false; });
+          if (mesh.userData.resourceMesh) mesh.userData.resourceMesh.visible = false;
+        } else {
+          mesh.scale.y = 1;
+          mesh.position.y = tr.h / 2;
+          mat.color.setHex(tr.color);
+          if (fog === 1) {
+            mat.color.multiplyScalar(0.45);
+            mat.emissive.setHex(0x000000);
+          } else {
+            // owner tint
+            if (t.owner != null) {
+              const c = new THREE.Color(player(t.owner).civ.color);
+              mat.emissive.copy(c).multiplyScalar(0.12);
+            } else {
+              mat.emissive.setHex(0x000000);
+            }
+            if (t.type === 'ocean' || t.type === 'coast') {
+              mat.emissive.setHex(0x003355);
+              mat.emissiveIntensity = 0.15;
+            }
+          }
+          if (mesh.userData.decors) mesh.userData.decors.forEach((d) => { d.visible = fog === 2; });
+          if (mesh.userData.resourceMesh) mesh.userData.resourceMesh.visible = fog === 2;
+        }
+      }
+    }
+  }
+
+  function makeCityMesh(city) {
+    const group = new THREE.Group();
+    const col = new THREE.Color(player(city.owner).civ.color);
+    const baseH = tileHeight(G.map[city.y][city.x].type);
+
+    const platform = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.38, 0.42, 0.12, 6),
+      new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, metalness: 0.3, roughness: 0.4 })
+    );
+    platform.position.y = baseH + 0.08;
+    platform.castShadow = true;
+    group.add(platform);
+
+    const tower = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.55 + city.pop * 0.06, 0.22),
+      new THREE.MeshStandardMaterial({ color: 0xf0f4ff, emissive: col, emissiveIntensity: 0.15, roughness: 0.5 })
+    );
+    tower.position.y = baseH + 0.35 + city.pop * 0.03;
+    tower.castShadow = true;
+    group.add(tower);
+
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(0.2, 0.22, 4),
+      new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.4, roughness: 0.35 })
+    );
+    roof.position.y = tower.position.y + 0.35 + city.pop * 0.03;
+    roof.rotation.y = Math.PI / 4;
+    group.add(roof);
+
+    // glow ring
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.45, 0.03, 8, 24),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = baseH + 0.05;
+    ring.userData.pulse = true;
+    group.add(ring);
+
+    if (city.buildings.includes('wonder')) {
+      const spire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.08, 1.2, 6),
+        new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0xffaa00, emissiveIntensity: 0.6 })
+      );
+      spire.position.y = baseH + 1.0;
+      group.add(spire);
+    }
+
+    group.userData.cityId = city.id;
+    const wp = worldPos(city.x, city.y, 0);
+    group.position.set(wp.x, 0, wp.z);
+    return group;
+  }
+
+  function rebuildCities3D() {
+    while (cityRoot.children.length) cityRoot.remove(cityRoot.children[0]);
+    cityMeshes.clear();
+    if (!G) return;
+    G.cities.forEach((city) => {
+      if (!player(city.owner).alive) return;
+      const fog = G.map[city.y][city.x].fog[0] || 0;
+      if (fog === 0 && city.owner !== 0) return;
+      const m = makeCityMesh(city);
+      if (fog === 0) m.visible = false;
+      else if (fog === 1 && city.owner !== 0) m.traverse((c) => { if (c.material) c.material = c.material.clone?.() || c.material; });
+      cityRoot.add(m);
+      cityMeshes.set(city.id, m);
+    });
+  }
+
+  function makeUnitMesh(u) {
+    const group = new THREE.Group();
+    const col = new THREE.Color(player(u.owner).civ.color);
+    const def = UNITS[u.type];
+    const baseH = tileHeight(G.map[u.y][u.x].type);
+
+    const body = new THREE.Mesh(
+      def.class === 'cavalry'
+        ? new THREE.CapsuleGeometry(0.12, 0.18, 4, 8)
+        : def.water
+          ? new THREE.ConeGeometry(0.16, 0.35, 5)
+          : new THREE.CapsuleGeometry(0.11, 0.22, 4, 8),
+      new THREE.MeshStandardMaterial({
+        color: col, emissive: col, emissiveIntensity: 0.35, metalness: 0.2, roughness: 0.45,
+      })
+    );
+    body.position.y = baseH + 0.35;
+    body.castShadow = true;
+    group.add(body);
+
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xffe0c0, roughness: 0.6 })
+    );
+    head.position.y = baseH + 0.55;
+    group.add(head);
+
+    // flag / role marker
+    const flag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.08, 0.02),
+      new THREE.MeshBasicMaterial({ color: def.str > 0 ? 0xff2e63 : 0xffd166 })
+    );
+    flag.position.set(0.12, baseH + 0.62, 0);
+    group.add(flag);
+
+    if (u.owner === 0) {
+      const pip = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0x39ff14 })
+      );
+      pip.position.set(0.16, baseH + 0.48, 0.1);
+      pip.userData.movePip = true;
+      group.add(pip);
+    }
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.22, 0.02, 6, 20),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = baseH + 0.06;
+    ring.userData.selRing = true;
+    ring.visible = false;
+    group.add(ring);
+
+    group.userData.unitId = u.id;
+    return group;
+  }
+
+  function rebuildUnits3D() {
+    // sync meshes with units
+    if (!G) return;
+    const live = new Set(G.units.map((u) => u.id));
+    for (const [id, mesh] of unitMeshes) {
+      if (!live.has(id)) {
+        unitRoot.remove(mesh);
+        unitMeshes.delete(id);
+      }
+    }
+    G.units.forEach((u) => {
+      if (!player(u.owner).alive) return;
+      const fog = G.map[u.y][u.x].fog[0] || 0;
+      if (fog !== 2 && u.owner !== 0) {
+        if (unitMeshes.has(u.id)) unitMeshes.get(u.id).visible = false;
+        return;
+      }
+      if (fog === 0) {
+        if (unitMeshes.has(u.id)) unitMeshes.get(u.id).visible = false;
+        return;
+      }
+      let mesh = unitMeshes.get(u.id);
+      if (!mesh) {
+        mesh = makeUnitMesh(u);
+        unitRoot.add(mesh);
+        unitMeshes.set(u.id, mesh);
+      }
+      mesh.visible = true;
+      const pos = unitDrawPos(u);
+      const h = tileHeight(G.map[u.y][u.x].type);
+      const wp = worldPos(pos.x, pos.y, 0);
+      mesh.position.set(wp.x, 0, wp.z);
+      // update move pip
+      mesh.traverse((c) => {
+        if (c.userData.movePip) c.visible = u.owner === 0 && u.moves > 0;
+        if (c.userData.selRing) {
+          c.visible = selectedUnit && selectedUnit.id === u.id;
+          if (c.visible) c.material.color.set(0x00f0ff);
+        }
+      });
+      // recolor owner
+      const col = new THREE.Color(player(u.owner).civ.color);
+      if (mesh.children[0] && mesh.children[0].material) {
+        mesh.children[0].material.color.copy(col);
+        mesh.children[0].material.emissive.copy(col);
+      }
+    });
+    updateMoveHints3D();
+  }
+
+  function updateMoveHints3D() {
+    while (moveHintRoot.children.length) {
+      const c = moveHintRoot.children.pop();
+      c.geometry?.dispose?.();
+      c.material?.dispose?.();
+    }
+    if (!selectedUnit || selectedUnit.owner !== 0 || selectedUnit.moves <= 0) return;
+    const u = selectedUnit;
+    forEachNeighbor(u.x, u.y, G.w, G.h, (nx, ny) => {
+      const other = unitAt(nx, ny);
+      const city = cityAt(nx, ny);
+      let ok = false, attack = false;
+      if (other && other.owner !== u.owner && unitDef(u).str > 0) { ok = true; attack = true; }
+      else if (city && city.owner !== u.owner && unitDef(u).str > 0) { ok = true; attack = true; }
+      else if (canOccupy(u, nx, ny) && moveCost(u, nx, ny) <= u.moves) ok = true;
+      if (!ok) return;
+      const h = tileHeight(G.map[ny][nx].type);
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(TS * 0.9, 0.07, TS * 0.9),
+        new THREE.MeshBasicMaterial({
+          color: attack ? 0xff2e63 : 0x39ff14,
+          transparent: true,
+          opacity: 0.45,
+        })
+      );
+      const wp = worldPos(nx, ny, h + 0.06);
+      m.position.copy(wp);
+      m.userData.hint = true;
+      moveHintRoot.add(m);
+    });
+  }
+
+  function animateUnitMove(unit, fromX, fromY, toX, toY) {
+    unitAnims[unit.id] = { fromX, fromY, toX, toY, t: 0, dur: 0.22 };
+  }
+  function unitDrawPos(u) {
+    const a = unitAnims[u.id];
+    if (!a) return { x: u.x, y: u.y };
+    const t = Math.min(1, a.t / a.dur);
+    const e = 1 - Math.pow(1 - t, 3);
+    return { x: a.fromX + (a.toX - a.fromX) * e, y: a.fromY + (a.toY - a.fromY) * e };
+  }
+
+  // 3D particles
+  function spawnBurst3(x, y, z, color, count, speed) {
+    const col = new THREE.Color(color);
+    for (let i = 0; i < (count || 16); i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04 + Math.random() * 0.04, 4, 4),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 1 })
+      );
+      mesh.position.set(x, y, z);
+      const a = Math.random() * Math.PI * 2;
+      const elev = Math.random() * Math.PI;
+      const sp = (speed || 2.5) * (0.5 + Math.random());
+      particles3.push({
+        mesh,
+        vx: Math.cos(a) * Math.sin(elev) * sp * 0.08,
+        vy: Math.cos(elev) * sp * 0.08 + 0.05,
+        vz: Math.sin(a) * Math.sin(elev) * sp * 0.08,
+        life: 1,
+        decay: 0.02 + Math.random() * 0.02,
+      });
+      fxRoot.add(mesh);
+    }
+  }
+
+  function fxAtTile(tx, ty, kind) {
+    if (!G) return;
+    const h = tileHeight(G.map[ty][tx].type);
+    const p = worldPos(tx, ty, h + 0.3);
+    if (kind === 'move') spawnBurst3(p.x, p.y, p.z, 0x00f0ff, 10, 1.5);
+    else if (kind === 'combat') {
+      spawnBurst3(p.x, p.y, p.z, 0xff2e63, 22, 3.5);
+      spawnBurst3(p.x, p.y, p.z, 0xffd166, 12, 2);
+      flashScreen('rgba(255,46,99,0.3)', 100);
+    } else if (kind === 'kill') {
+      spawnBurst3(p.x, p.y, p.z, 0xff2e63, 30, 4);
+      flashScreen('rgba(255,209,102,0.25)', 140);
+    } else if (kind === 'found' || kind === 'capture') {
+      spawnBurst3(p.x, p.y + 0.4, p.z, 0xffd166, 28, 3);
+      spawnBurst3(p.x, p.y + 0.4, p.z, 0x39ff14, 16, 2);
+      flashScreen('rgba(255,209,102,0.28)', 160);
+    } else if (kind === 'tech') {
+      spawnBurst3(p.x, p.y + 0.5, p.z, 0x00f0ff, 26, 2.5);
+      flashScreen('rgba(0,240,255,0.25)', 150);
+    }
+  }
+
+  function flashScreen(color, ms) {
+    const el = $('screenFlash');
+    el.style.background = color || 'rgba(0,240,255,0.25)';
+    el.classList.add('on');
+    clearTimeout(flashScreen._t);
+    flashScreen._t = setTimeout(() => el.classList.remove('on'), ms || 120);
+  }
+  function showTurnBanner(text) {
+    const el = $('turnBanner');
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(showTurnBanner._t);
+    showTurnBanner._t = setTimeout(() => el.classList.remove('show'), 900);
+  }
+  function popPill(id) {
+    const el = $(id)?.closest('.stat-pill');
+    if (!el) return;
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+  }
+  function toast(msg, kind) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(toast._tm);
+    toast._tm = setTimeout(() => { t.className = 'toast'; }, 1600);
+  }
+
+  function pickTile(clientX, clientY) {
+    if (!G || !renderer) return null;
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(mapRoot.children, false);
+    for (const h of hits) {
+      if (h.object.userData && h.object.userData.tx != null) {
+        return { x: h.object.userData.tx, y: h.object.userData.ty };
+      }
+    }
+    // plane fallback
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const target = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, target)) {
+      const x = Math.round(target.x / TS + (G.w - 1) / 2);
+      const y = Math.round(target.z / TS + (G.h - 1) / 2);
+      if (x >= 0 && y >= 0 && x < G.w && y < G.h) return { x, y };
+    }
+    return null;
+  }
+
+  function bindThreeInput(canvas) {
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button === 2 || e.button === 1) {
+        drag.on = true;
+        drag.mode = 'orbit';
+        drag.lx = e.clientX;
+        drag.ly = e.clientY;
+        canvas.setPointerCapture(e.pointerId);
+      } else if (e.button === 0) {
+        drag.on = true;
+        drag.mode = 'click';
+        drag.lx = e.clientX;
+        drag.ly = e.clientY;
+        drag.moved = false;
+      }
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (drag.on && drag.mode === 'orbit') {
+        const dx = e.clientX - drag.lx;
+        const dy = e.clientY - drag.ly;
+        drag.lx = e.clientX;
+        drag.ly = e.clientY;
+        camCtrl.theta -= dx * 0.007;
+        camCtrl.phi = Math.max(camCtrl.minPhi, Math.min(camCtrl.maxPhi, camCtrl.phi - dy * 0.007));
+        updateCamera();
+      } else if (drag.on && drag.mode === 'click') {
+        if (Math.hypot(e.clientX - drag.lx, e.clientY - drag.ly) > 6) drag.moved = true;
+      }
+      // hover
+      if (G) {
+        const t = pickTile(e.clientX, e.clientY);
+        if (t && (!hover || hover.x !== t.x || hover.y !== t.y)) {
+          hover = t;
+          const tile = G.map[t.y][t.x];
+          const fog = tile.fog[0] || 0;
+          const tr = TERRAIN[tile.type];
+          if (fog === 0) $('mapHint').textContent = 'Unexplored territory';
+          else {
+            $('mapHint').textContent = `${tr.name}${tile.res ? ' · ' + RESOURCES[tile.res].name : ''}${tile.owner != null ? ' · ' + player(tile.owner).civ.name : ''} · (${t.x},${t.y})`;
+          }
+          const h = fog === 0 ? 0.15 : tr.h;
+          const wp = worldPos(t.x, t.y, h + 0.05);
+          highlightMesh.position.copy(wp);
+          highlightMesh.visible = true;
+          if (sideTab === 'sel' && !selectedUnit && !selectedCity) renderSide();
+        }
+      }
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      if (drag.mode === 'click' && !drag.moved && e.button === 0) {
+        onMapClickTile(pickTile(e.clientX, e.clientY));
+      }
+      drag.on = false;
+      drag.mode = null;
+    });
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      camCtrl.dist = Math.max(camCtrl.minDist, Math.min(camCtrl.maxDist, camCtrl.dist + Math.sign(e.deltaY) * 1.4));
+      updateCamera();
+    }, { passive: false });
+  }
+
+  function onMapClickTile(tile) {
+    if (!G || G.over || !tile) return;
+    const fog = G.map[tile.y][tile.x].fog[0] || 0;
+
+    if (selectedUnit && selectedUnit.owner === 0 && selectedUnit.moves > 0) {
+      if (!(tile.x === selectedUnit.x && tile.y === selectedUnit.y) &&
+          Math.max(Math.abs(selectedUnit.x - tile.x), Math.abs(selectedUnit.y - tile.y)) === 1) {
+        const ok = tryMove(selectedUnit, tile.x, tile.y);
+        if (ok) {
+          if (!G.units.find((u) => u.id === selectedUnit?.id)) selectedUnit = null;
+          else if (selectedUnit.moves <= 0) selectedUnit = nextMovableUnit(0) || selectedUnit;
+          afterWorldChange();
+          return;
+        }
+      }
+    }
+
+    const unitsHere = G.units.filter((u) => u.x === tile.x && u.y === tile.y && (u.owner === 0 || fog === 2));
+    const mine = unitsHere.find((u) => u.owner === 0);
+    if (mine) {
+      selectedUnit = mine;
+      selectedCity = null;
+      sideTab = 'sel';
+      syncTabs();
+      afterWorldChange();
+      return;
+    }
+    const city = cityAt(tile.x, tile.y);
+    if (city && (city.owner === 0 || fog === 2)) {
+      selectedCity = city;
+      selectedUnit = null;
+      sideTab = city.owner === 0 ? 'city' : 'sel';
+      syncTabs();
+      afterWorldChange();
+      return;
+    }
+    if (unitsHere[0]) {
+      selectedUnit = unitsHere[0];
+      selectedCity = null;
+      afterWorldChange();
+      return;
+    }
+    selectedUnit = null;
+    selectedCity = null;
+    afterWorldChange();
+  }
+
+  function syncTabs() {
+    document.querySelectorAll('.side-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === sideTab));
+  }
+
+  function afterWorldChange() {
+    refreshFogMaterials();
+    rebuildCities3D();
+    rebuildUnits3D();
+    refreshUI();
+  }
+
+  function resize() {
+    const wrap = $('mapWrap');
+    if (!renderer || !wrap) return;
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / Math.max(1, h);
+    camera.updateProjectionMatrix();
+    const fx = $('fxLayer');
+    if (fx) { fx.width = w; fx.height = h; }
+  }
+
+  // ══════════ MAPGEN / GAME (same rules) ══════════
+  function mulberry32(a) {
+    return function () {
+      let t = (a += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hash2(x, y, seed) {
+    let n = x * 374761393 + y * 668265263 + seed * 1274126177;
+    n = (n ^ (n >> 13)) * 1274126177;
+    return ((n ^ (n >> 16)) >>> 0) / 4294967296;
+  }
+  function forEachNeighbor(x, y, w, h, fn) {
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < w && ny < h) fn(nx, ny);
+      }
+  }
+  function generateMap(w, h, seed) {
+    const rnd = mulberry32(seed);
+    const grid = [];
+    for (let y = 0; y < h; y++) {
+      grid[y] = [];
+      for (let x = 0; x < w; x++) {
+        const cx = (x / w) * 2 - 1, cy = (y / h) * 2 - 1;
+        const dist = Math.sqrt(cx * cx + cy * cy);
+        let n = 0;
+        for (let o = 1; o <= 4; o++) {
+          n += (hash2(Math.floor(x / (5 / o)), Math.floor(y / (5 / o)), seed + o) - 0.5) / o;
+        }
+        const elev = n - dist * 0.55 + 0.25;
+        const moist = hash2(x + 3, y + 7, seed + 99);
+        let type;
+        if (elev < -0.12) type = 'ocean';
+        else if (elev < 0) type = 'coast';
+        else if (elev > 0.42) type = 'mountain';
+        else if (elev > 0.28) type = 'hills';
+        else if (moist > 0.62 && elev > 0.05) type = 'forest';
+        else if (moist < 0.28 && elev < 0.25) type = 'desert';
+        else if (moist > 0.4) type = 'grass';
+        else type = 'plains';
+        let res = null;
+        if (type !== 'ocean' && type !== 'mountain' && rnd() < 0.08) {
+          if (type === 'coast') res = 'fish';
+          else if (type === 'hills') res = rnd() < 0.5 ? 'iron' : 'gold';
+          else if (type === 'plains' || type === 'grass') res = rnd() < 0.5 ? 'wheat' : 'cattle';
+          else if (type === 'forest') res = 'cattle';
+          else if (type === 'desert' && rnd() < 0.4) res = 'gold';
+        }
+        if (type === 'coast' && rnd() < 0.12) res = 'fish';
+        grid[y][x] = { x, y, type, res, owner: null, city: null, fog: {} };
+      }
+    }
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        if (grid[y][x].type !== 'ocean') continue;
+        let near = false;
+        forEachNeighbor(x, y, w, h, (nx, ny) => {
+          const nt = grid[ny][nx].type;
+          if (nt !== 'ocean' && nt !== 'coast') near = true;
+        });
+        if (near) grid[y][x].type = 'coast';
+      }
+    return grid;
+  }
+  function findStartSpots(map, w, h, count) {
+    const scores = [];
+    for (let y = 2; y < h - 2; y++)
+      for (let x = 2; x < w - 2; x++) {
+        const t = map[y][x];
+        if (!TERRAIN[t.type].walk || t.type === 'coast') continue;
+        let s = 0;
+        for (let dy = -2; dy <= 2; dy++)
+          for (let dx = -2; dx <= 2; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const tt = map[ny][nx], tr = TERRAIN[tt.type];
+            if (tr.walk) s += tr.food + tr.prod;
+            if (tt.res) s += 2;
+          }
+        scores.push({ x, y, s });
+      }
+    scores.sort((a, b) => b.s - a.s);
+    const picks = [], minDist = Math.max(4, Math.floor(Math.min(w, h) / (count + 1)));
+    for (const c of scores) {
+      if (picks.every((p) => Math.hypot(p.x - c.x, p.y - c.y) >= minDist)) {
+        picks.push(c);
+        if (picks.length >= count) break;
+      }
+    }
+    while (picks.length < count && scores.length) picks.push(scores[picks.length % scores.length]);
+    return picks.slice(0, count);
+  }
+
+  function newGame() {
+    const size = SIZES[mapSizeKey];
+    const seed = (Date.now() ^ (Math.random() * 1e9)) | 0;
+    const map = generateMap(size.w, size.h, seed);
+    const rnd = mulberry32(seed ^ 0xabc);
+    const humanCiv = CIVS.find((c) => c.id === chosenCivId) || CIVS[0];
+    const rivals = CIVS.filter((c) => c.id !== humanCiv.id).sort(() => rnd() - 0.5).slice(0, size.rivals);
+    const allCivs = [humanCiv, ...rivals];
+    const spots = findStartSpots(map, size.w, size.h, allCivs.length);
+
+    G = {
+      map, w: size.w, h: size.h, seed,
+      players: allCivs.map((civ, i) => ({
+        id: i, civ, human: i === 0, alive: true, gold: 10, science: 0,
+        researching: 'agriculture', techs: new Set(), score: 0,
+      })),
+      units: [], cities: [], turn: 1, turnLimit: size.turns,
+      nextUnitId: 1, nextCityId: 1, wonderBuilt: false, log: [], over: false,
+    };
+
+    allCivs.forEach((civ, i) => {
+      let { x, y } = spots[i] || { x: 3, y: 3 };
+      if (!TERRAIN[map[y][x].type].walk) {
+        forEachNeighbor(x, y, size.w, size.h, (nx, ny) => {
+          if (TERRAIN[map[ny][nx].type].walk) { x = nx; y = ny; }
+        });
+      }
+      const city = createCity(i, x, y, civ.name.split(' ')[0] + (i === 0 ? ' Capital' : ' ' + (i + 1)));
+      if (i === 0) city.name = civ.name.split(' ')[0] + ' Capital';
+      spawnUnit(i, 'scout', x, y);
+      placeUnitNear(G.units[G.units.length - 1], x, y);
+      spawnUnit(i, 'warrior', x, y);
+      placeUnitNear(G.units[G.units.length - 1], x, y);
+      if (i === 0) {
+        spawnUnit(i, 'settler', x, y);
+        placeUnitNear(G.units[G.units.length - 1], x, y);
+      }
+    });
+
+    updateVision();
+    buildMap3D();
+    centerOnPlayer(0);
+    log('The 3D age begins. Guide the ' + humanCiv.name + ' to glory.', 'gold');
+    log('Orbit the world · found cities · research · conquer.', 'info');
+    refreshUI();
+  }
+
+  function placeUnitNear(unit, cx, cy) {
+    for (const [dx, dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]]) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= G.w || y >= G.h) continue;
+      if (!canOccupy(unit, x, y, true) || unitAt(x, y)) continue;
+      unit.x = x; unit.y = y; return;
+    }
+  }
+  function createCity(ownerId, x, y, name) {
+    const city = {
+      id: G.nextCityId++, owner: ownerId, x, y, name: name || 'City',
+      pop: 1, food: 0, foodNeeded: 15, prod: 0, hp: 20, maxHp: 20,
+      buildings: [], queue: null, border: 1,
+    };
+    G.cities.push(city);
+    G.map[y][x].city = city.id;
+    claimBorders(city);
+    return city;
+  }
+  function claimBorders(city) {
+    const r = city.border;
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        const x = city.x + dx, y = city.y + dy;
+        if (x < 0 || y < 0 || x >= G.w || y >= G.h) continue;
+        const t = G.map[y][x];
+        if (t.type === 'ocean') continue;
+        if (t.city && t.city !== city.id) continue;
+        if (t.owner == null || t.owner === city.owner) t.owner = city.owner;
+      }
+  }
+  function spawnUnit(ownerId, type, x, y) {
+    const def = UNITS[type];
+    const u = {
+      id: G.nextUnitId++, owner: ownerId, type, x, y,
+      moves: def.moves, maxMoves: def.moves,
+      hp: 10 + (def.str > 0 ? Math.floor(def.str / 2) : 5),
+      maxHp: 10 + (def.str > 0 ? Math.floor(def.str / 2) : 5),
+      fortify: 0, slept: false,
+    };
+    G.units.push(u);
+    return u;
+  }
+
+  function player(id) { return G.players[id]; }
+  function human() { return G.players[0]; }
+  function hasTech(pid, techId) { return player(pid).techs.has(techId); }
+  function unitDef(u) { return UNITS[u.type]; }
+  function unitAt(x, y, ignoreId) {
+    return G.units.find((u) => u.x === x && u.y === y && u.id !== ignoreId && player(u.owner).alive);
+  }
+  function cityAt(x, y) {
+    return G.cities.find((c) => c.x === x && c.y === y && player(c.owner).alive);
+  }
+  function canOccupy(unit, x, y, ignoreUnits) {
+    if (x < 0 || y < 0 || x >= G.w || y >= G.h) return false;
+    const t = G.map[y][x], tr = TERRAIN[t.type], def = unitDef(unit);
+    if (def.water) return t.type === 'ocean' || t.type === 'coast';
+    if (t.type === 'ocean' || t.type === 'mountain') return false;
+    if (!tr.walk && t.type !== 'coast') return false;
+    if (!ignoreUnits) {
+      const other = unitAt(x, y, unit.id);
+      if (other && other.owner === unit.owner) return false;
+    }
+    return true;
+  }
+  function moveCost(unit, x, y) {
+    const tr = TERRAIN[G.map[y][x].type];
+    if (unitDef(unit).water) return 1;
+    if (unit.type === 'scout') return tr.move >= 99 ? 99 : 1;
+    return tr.move >= 99 ? 99 : tr.move;
+  }
+  function strengthOf(unit) {
+    let s = unitDef(unit).str;
+    if (!s) return 0;
+    if (player(unit.owner).civ.id === 'ember' && unit.type === 'warrior') s += 1;
+    if (hasTech(unit.owner, 'machinery')) s += 1;
+    s *= unit.hp / unit.maxHp;
+    if (unit.fortify) s *= 1 + unit.fortify * 0.15;
+    return s;
+  }
+  function cityDefense(city) {
+    let d = 6 + city.pop * 2;
+    if (city.buildings.includes('walls')) d += 8;
+    return d * (city.hp / city.maxHp);
+  }
+  function yieldsForTile(x, y, pid) {
+    const t = G.map[y][x], tr = TERRAIN[t.type];
+    let food = tr.food, prod = tr.prod, gold = tr.gold, sci = 0;
+    if (t.res && RESOURCES[t.res]) {
+      const r = RESOURCES[t.res];
+      food += r.food; prod += r.prod; gold += r.gold;
+    }
+    if (hasTech(pid, 'mining') && (t.type === 'hills' || t.type === 'mountain')) prod += 1;
+    if (hasTech(pid, 'animal') && t.res === 'cattle') food += 1;
+    if (player(pid).civ.id === 'verdant' && t.type === 'forest') food = Math.ceil(food * 1.1);
+    if (player(pid).civ.id === 'aurora' && t.type === 'coast') sci += 1;
+    return { food, prod, gold, sci };
+  }
+  function cityYields(city) {
+    const pid = city.owner, r = city.border, tiles = [];
+    let food = 0, prod = 0, gold = 0, sci = 0;
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        const x = city.x + dx, y = city.y + dy;
+        if (x < 0 || y < 0 || x >= G.w || y >= G.h) continue;
+        if (G.map[y][x].owner !== pid && !(dx === 0 && dy === 0)) continue;
+        const yld = yieldsForTile(x, y, pid);
+        tiles.push({ x, y, yld, score: yld.food * 1.2 + yld.prod * 1.4 + yld.gold + yld.sci, center: !dx && !dy });
+      }
+    tiles.sort((a, b) => (b.center - a.center) || (b.score - a.score));
+    const work = tiles.filter((t) => t.center).concat(tiles.filter((t) => !t.center).slice(0, city.pop));
+    const seen = new Set();
+    work.forEach((t) => {
+      const k = t.x + ',' + t.y;
+      if (seen.has(k)) return;
+      seen.add(k);
+      food += t.yld.food; prod += t.yld.prod; gold += t.yld.gold; sci += t.yld.sci;
+    });
+    city.buildings.forEach((b) => {
+      const def = BUILDINGS[b];
+      if (!def) return;
+      food += def.food; prod += def.prod; gold += def.gold; sci += def.sci;
+    });
+    food -= city.pop;
+    if (player(pid).civ.id === 'gilded') gold += 1;
+    if (hasTech(pid, 'philosophy')) sci += 1;
+    if (hasTech(pid, 'mathematics')) prod += 1;
+    return { food, prod: Math.max(0, prod), gold, sci };
+  }
+  function canFoundCity(unit) {
+    if (unit.type !== 'settler') return false;
+    const t = G.map[unit.y][unit.x];
+    if (!TERRAIN[t.type].walk || t.type === 'coast' || t.city) return false;
+    for (const c of G.cities) {
+      if (!player(c.owner).alive) continue;
+      if (Math.hypot(c.x - unit.x, c.y - unit.y) < 3) return false;
+    }
+    return true;
+  }
+  function foundCity(unit) {
+    if (!canFoundCity(unit)) return false;
+    const p = player(unit.owner);
+    const n = G.cities.filter((c) => c.owner === unit.owner).length + 1;
+    const name = p.civ.name.split(' ')[0] + (n === 1 ? ' Capital' : ' ' + n);
+    const fxX = unit.x, fxY = unit.y;
+    createCity(unit.owner, unit.x, unit.y, name);
+    G.units = G.units.filter((u) => u.id !== unit.id);
+    if (selectedUnit && selectedUnit.id === unit.id) selectedUnit = null;
+    log((p.human ? 'You' : p.civ.name) + ' founded ' + name + '!', p.human ? 'good' : 'info');
+    if (p.human) { fxAtTile(fxX, fxY, 'found'); toast('City founded!', 'gold'); }
+    updateVision();
+    return true;
+  }
+  function tryMove(unit, tx, ty) {
+    if (unit.moves <= 0 || (unit.x === tx && unit.y === ty)) return false;
+    if (Math.max(Math.abs(unit.x - tx), Math.abs(unit.y - ty)) !== 1) return false;
+    const other = unitAt(tx, ty), city = cityAt(tx, ty);
+    if (other && other.owner !== unit.owner) return resolveCombat(unit, other);
+    if (city && city.owner !== unit.owner) return attackCity(unit, city);
+    if (!canOccupy(unit, tx, ty)) return false;
+    const cost = moveCost(unit, tx, ty);
+    if (cost >= 99 || cost > unit.moves) return false;
+    animateUnitMove(unit, unit.x, unit.y, tx, ty);
+    unit.x = tx; unit.y = ty; unit.moves -= cost; unit.fortify = 0;
+    if (unit.owner === 0 || G.map[ty][tx].fog[0] === 2) fxAtTile(tx, ty, 'move');
+    updateVision();
+    return true;
+  }
+  function resolveCombat(atk, def) {
+    if (unitDef(atk).str <= 0) return false;
+    let aStr = strengthOf(atk), dStr = strengthOf(def) + TERRAIN[G.map[def.y][def.x].type].def * 0.5;
+    const ratio = (aStr / Math.max(0.5, dStr)) * (0.85 + Math.random() * 0.3);
+    const dmgToDef = Math.max(1, Math.round(4 * ratio));
+    const dmgToAtk = Math.max(1, Math.round(3 / Math.max(0.4, ratio)));
+    def.hp -= dmgToDef; atk.hp -= dmgToAtk; atk.moves = 0; atk.fortify = 0;
+    const ap = player(atk.owner), dp = player(def.owner);
+    log(`${ap.civ.name} hit ${dp.civ.name} for ${dmgToDef}`, ap.human ? 'good' : 'bad');
+    fxAtTile(def.x, def.y, 'combat');
+    if (ap.human || dp.human) toast('⚔ Battle! −' + dmgToDef, 'combat');
+    if (def.hp <= 0) {
+      log(UNITS[def.type].name + ' destroyed!', ap.human ? 'good' : 'bad');
+      fxAtTile(def.x, def.y, 'kill');
+      G.units = G.units.filter((u) => u.id !== def.id);
+      if (atk.hp > 0) { animateUnitMove(atk, atk.x, atk.y, def.x, def.y); atk.x = def.x; atk.y = def.y; }
+    }
+    if (atk.hp <= 0) {
+      log(UNITS[atk.type].name + ' fell.', ap.human ? 'bad' : 'info');
+      G.units = G.units.filter((u) => u.id !== atk.id);
+      if (selectedUnit && selectedUnit.id === atk.id) selectedUnit = null;
+    }
+    checkEliminations();
+    updateVision();
+    return true;
+  }
+  function attackCity(unit, city) {
+    if (unitDef(unit).str <= 0) return false;
+    const ratio = (strengthOf(unit) / Math.max(0.5, cityDefense(city))) * (0.85 + Math.random() * 0.3);
+    const dmg = Math.max(1, Math.round(5 * ratio));
+    const recoil = Math.max(1, Math.round(2.5 / Math.max(0.4, ratio)));
+    city.hp -= dmg; unit.hp -= recoil; unit.moves = 0;
+    log(`${player(unit.owner).civ.name} assaults ${city.name} (−${dmg})`, player(unit.owner).human ? 'good' : 'bad');
+    fxAtTile(city.x, city.y, 'combat');
+    if (unit.hp <= 0) {
+      G.units = G.units.filter((u) => u.id !== unit.id);
+      if (selectedUnit && selectedUnit.id === unit.id) selectedUnit = null;
+    }
+    if (city.hp <= 0) {
+      captureCity(city, unit.owner);
+      if (unit.hp > 0) { animateUnitMove(unit, unit.x, unit.y, city.x, city.y); unit.x = city.x; unit.y = city.y; }
+    }
+    checkEliminations();
+    updateVision();
+    return true;
+  }
+  function captureCity(city, newOwner) {
+    const neu = player(newOwner);
+    log(`${neu.civ.name} captured ${city.name}!`, neu.human ? 'gold' : 'bad');
+    fxAtTile(city.x, city.y, 'capture');
+    toast(city.name + ' captured!', neu.human ? 'good' : 'combat');
+    G.units = G.units.filter((u) => !(u.x === city.x && u.y === city.y && u.owner === city.owner));
+    city.owner = newOwner;
+    city.hp = Math.max(10, Math.floor(city.maxHp * 0.5));
+    city.queue = null;
+    city.pop = Math.max(1, city.pop - 1);
+    claimBorders(city);
+  }
+  function checkEliminations() {
+    G.players.forEach((p) => {
+      if (!p.alive) return;
+      if (!G.cities.some((c) => c.owner === p.id)) {
+        p.alive = false;
+        G.units = G.units.filter((u) => u.owner !== p.id);
+        log(p.civ.name + ' has fallen!', p.human ? 'bad' : 'gold');
+        if (p.human) endGame(false, 'Your empire has been wiped from the map.');
+      }
+    });
+    const alive = G.players.filter((p) => p.alive);
+    if (alive.length === 1 && alive[0].human) endGame(true, 'Domination victory!');
+    else if (alive.length === 1) endGame(false, alive[0].civ.name + ' achieved domination.');
+  }
+  function updateVision() {
+    for (let y = 0; y < G.h; y++)
+      for (let x = 0; x < G.w; x++)
+        if (G.map[y][x].fog[0] === 2) G.map[y][x].fog[0] = 1;
+    const reveal = (x, y, r) => {
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy > r * r + 1) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= G.w || ny >= G.h) continue;
+          G.map[ny][nx].fog[0] = 2;
+        }
+    };
+    G.units.filter((u) => u.owner === 0).forEach((u) => reveal(u.x, u.y, unitDef(u).class === 'recon' ? 3 : 2));
+    G.cities.filter((c) => c.owner === 0).forEach((c) => reveal(c.x, c.y, 2 + c.border));
+  }
+
+  function endTurn() {
+    if (!G || G.over) return;
+    processPlayerTurn(0);
+    for (let i = 1; i < G.players.length; i++) {
+      if (!G.players[i].alive) continue;
+      aiPlay(i);
+      processPlayerTurn(i);
+    }
+    G.turn++;
+    G.units.forEach((u) => {
+      if (!player(u.owner).alive) return;
+      u.moves = u.maxMoves;
+      if (u.slept) u.moves = 0;
+    });
+    updateVision();
+    selectedUnit = nextMovableUnit(0) || selectedUnit;
+    log('—— Turn ' + G.turn + ' ——', 'info');
+    showTurnBanner('TURN ' + G.turn);
+    flashScreen('rgba(0,240,255,0.15)', 180);
+    popPill('uiTurn');
+    checkScoreVictory();
+    afterWorldChange();
+  }
+  function processPlayerTurn(pid) {
+    const p = player(pid);
+    if (!p.alive) return;
+    let totalGold = 0, totalSci = 0;
+    G.cities.filter((c) => c.owner === pid).forEach((city) => {
+      const y = cityYields(city);
+      totalGold += y.gold;
+      totalSci += y.sci + city.pop;
+      city.food += y.food;
+      if (city.food >= city.foodNeeded) {
+        city.food -= city.foodNeeded;
+        city.pop++;
+        city.foodNeeded = 10 + city.pop * 8;
+        city.maxHp = 20 + city.pop * 4;
+        city.hp = Math.min(city.maxHp, city.hp + 4);
+        if (city.pop % 3 === 0) { city.border = Math.min(3, city.border + 1); claimBorders(city); }
+        if (p.human) {
+          log(city.name + ' grew to ' + city.pop + '!', 'good');
+          fxAtTile(city.x, city.y, 'found');
+          popPill('uiCities');
+        }
+      } else if (y.food < 0 && city.pop > 1) {
+        city.food += y.food;
+        if (city.food < -5) { city.pop--; city.food = 0; if (p.human) log(city.name + ' starved!', 'bad'); }
+      }
+      city.hp = Math.min(city.maxHp, city.hp + 1);
+      city.prod += Math.max(0, y.prod);
+      if (city.queue) {
+        if (city.prod >= city.queue.cost) { city.prod -= city.queue.cost; finishQueue(city); }
+      } else if (!p.human) aiChooseProduction(city);
+    });
+    p.gold += totalGold;
+    const maint = G.units.filter((u) => u.owner === pid).length;
+    p.gold -= Math.max(0, maint - 3);
+    if (p.gold < 0) p.gold = 0;
+    p.science += totalSci;
+    progressResearch(pid);
+    p.score = G.cities.filter((c) => c.owner === pid).reduce((s, c) => s + c.pop * 5 + c.buildings.length * 4, 0)
+      + p.techs.size * 8 + G.units.filter((u) => u.owner === pid).length * 2;
+  }
+  function finishQueue(city) {
+    const q = city.queue, p = player(city.owner);
+    if (!q) return;
+    if (q.kind === 'unit') {
+      const u = spawnUnit(city.owner, q.id, city.x, city.y);
+      placeUnitNear(u, city.x, city.y);
+      if (city.buildings.includes('barracks') && unitDef(u).str > 0) { u.hp += 2; u.maxHp += 2; }
+      if (p.human) log(city.name + ' trained ' + UNITS[q.id].name, 'good');
+    } else if (q.kind === 'building') {
+      if (q.id === 'wonder') {
+        if (!G.wonderBuilt) {
+          G.wonderBuilt = true;
+          city.buildings.push('wonder');
+          p.score += 50;
+          log((p.human ? 'You' : p.civ.name) + ' completed the World Spire!', 'gold');
+        }
+      } else if (!city.buildings.includes(q.id)) {
+        city.buildings.push(q.id);
+        if (p.human) log(city.name + ' built ' + BUILDINGS[q.id].name, 'good');
+      }
+    }
+    city.queue = null;
+    if (!p.human) aiChooseProduction(city);
+  }
+  function progressResearch(pid) {
+    const p = player(pid);
+    if (!p.researching) p.researching = nextResearch(pid);
+    const tech = TECHS.find((t) => t.id === p.researching);
+    if (!tech) return;
+    if (p.science >= tech.cost) {
+      p.science -= tech.cost;
+      p.techs.add(tech.id);
+      if (p.human) {
+        log('Discovered ' + tech.name + '!', 'gold');
+        const cap = G.cities.find((c) => c.owner === 0);
+        if (cap) fxAtTile(cap.x, cap.y, 'tech');
+        toast('🔬 ' + tech.name + '!', 'gold');
+        showTurnBanner('TECH: ' + tech.name.toUpperCase());
+        popPill('uiSci');
+      }
+      if (tech.id === 'transcendence') {
+        if (p.human) endGame(true, 'Science victory! Transcendence achieved.');
+        else endGame(false, p.civ.name + ' achieved Transcendence.');
+        return;
+      }
+      p.researching = nextResearch(pid);
+    }
+  }
+  function nextResearch(pid) {
+    const p = player(pid);
+    const avail = TECHS.filter((t) => !p.techs.has(t.id) && t.requires.every((r) => p.techs.has(r)));
+    if (!avail.length) return null;
+    avail.sort((a, b) => a.cost - b.cost);
+    if (p.human && p.researching && avail.some((t) => t.id === p.researching)) return p.researching;
+    return avail[0].id;
+  }
+  function checkScoreVictory() {
+    if (G.turn > G.turnLimit) {
+      const ranked = G.players.filter((p) => p.alive).sort((a, b) => b.score - a.score);
+      if (ranked[0].human) endGame(true, 'Score victory! ' + ranked[0].score + ' pts');
+      else endGame(false, ranked[0].civ.name + ' won on score (' + ranked[0].score + ').');
+    }
+  }
+  function endGame(win, msg) {
+    if (G.over) return;
+    G.over = true;
+    $('endTitle').textContent = win ? 'Victory' : 'Defeat';
+    $('endBody').textContent = msg;
+    $('endOverlay').classList.remove('hidden');
+    log(msg, win ? 'gold' : 'bad');
+    showTurnBanner(win ? 'VICTORY' : 'DEFEAT');
+    flashScreen(win ? 'rgba(255,209,102,0.35)' : 'rgba(255,46,99,0.3)', 300);
+  }
+
+  // AI
+  function aiPlay(pid) {
+    if (!player(pid).researching || player(pid).techs.has(player(pid).researching))
+      player(pid).researching = nextResearch(pid);
+    G.units.filter((u) => u.owner === pid).forEach((u) => {
+      let guard = 0;
+      while (u.moves > 0 && guard++ < 12) {
+        if (u.type === 'settler') {
+          if (canFoundCity(u) && Math.random() < 0.7) { foundCity(u); break; }
+          aiWander(u, true);
+        } else if (unitDef(u).str > 0) {
+          const target = aiFindTarget(u);
+          if (target) {
+            const step = stepToward(u.x, u.y, target.x, target.y, u);
+            if (step) { if (!tryMove(u, step.x, step.y)) u.moves = 0; }
+            else u.moves = 0;
+          } else aiWander(u, false);
+        } else aiWander(u, true);
+      }
+    });
+    G.cities.filter((c) => c.owner === pid).forEach((c) => { if (!c.queue) aiChooseProduction(c); });
+  }
+  function aiChooseProduction(city) {
+    const pid = city.owner;
+    const nCities = G.cities.filter((c) => c.owner === pid).length;
+    const nMilitary = G.units.filter((u) => u.owner === pid && unitDef(u).str > 0).length;
+    const nSettlers = G.units.filter((u) => u.owner === pid && u.type === 'settler').length;
+    if (nCities < 3 && nSettlers < 1 && city.pop >= 2)
+      city.queue = { kind: 'unit', id: 'settler', cost: UNITS.settler.cost };
+    else if (nMilitary < nCities * 2) {
+      const opts = ['warrior'];
+      if (hasTech(pid, 'archery')) opts.push('archer');
+      if (hasTech(pid, 'bronze')) opts.push('spear');
+      if (hasTech(pid, 'ironwork')) opts.push('sword');
+      if (hasTech(pid, 'horseback')) opts.push('horseman');
+      const id = opts[opts.length - 1];
+      city.queue = { kind: 'unit', id, cost: UNITS[id].cost };
+    } else {
+      const bOpts = Object.keys(BUILDINGS).filter((b) => {
+        const def = BUILDINGS[b];
+        if (city.buildings.includes(b)) return false;
+        if (def.once && G.wonderBuilt) return false;
+        if (def.needs && !hasTech(pid, def.needs)) return false;
+        return true;
+      });
+      if (bOpts.length) city.queue = { kind: 'building', id: bOpts[0], cost: BUILDINGS[bOpts[0]].cost };
+      else city.queue = { kind: 'unit', id: 'warrior', cost: UNITS.warrior.cost };
+    }
+  }
+  function aiFindTarget(u) {
+    let best = null, bestD = 99;
+    G.units.forEach((o) => {
+      if (o.owner === u.owner || !player(o.owner).alive) return;
+      const d = Math.hypot(o.x - u.x, o.y - u.y);
+      if (d < bestD) { bestD = d; best = o; }
+    });
+    G.cities.forEach((c) => {
+      if (c.owner === u.owner || !player(c.owner).alive) return;
+      const d = Math.hypot(c.x - u.x, c.y - u.y);
+      if (d < bestD) { bestD = d; best = c; }
+    });
+    return bestD > 10 ? null : best;
+  }
+  function stepToward(x, y, tx, ty, unit) {
+    const opts = [];
+    forEachNeighbor(x, y, G.w, G.h, (nx, ny) => opts.push({ x: nx, y: ny, d: Math.hypot(nx - tx, ny - ty) }));
+    opts.sort((a, b) => a.d - b.d);
+    for (const o of opts) {
+      const other = unitAt(o.x, o.y);
+      if (other && other.owner === unit.owner) continue;
+      if (other && other.owner !== unit.owner) return o;
+      const city = cityAt(o.x, o.y);
+      if (city && city.owner !== unit.owner) return o;
+      if (canOccupy(unit, o.x, o.y) && moveCost(unit, o.x, o.y) <= unit.moves) return o;
+    }
+    return null;
+  }
+  function aiWander(unit, peaceful) {
+    const dirs = [];
+    forEachNeighbor(unit.x, unit.y, G.w, G.h, (nx, ny) => {
+      const other = unitAt(nx, ny);
+      if (other && other.owner === unit.owner) return;
+      if (other && peaceful) return;
+      if (other && other.owner !== unit.owner) { dirs.unshift({ x: nx, y: ny }); return; }
+      if (canOccupy(unit, nx, ny) && moveCost(unit, nx, ny) <= unit.moves) dirs.push({ x: nx, y: ny });
+    });
+    if (!dirs.length) { unit.moves = 0; return; }
+    const pick = dirs[Math.floor(Math.random() * Math.min(3, dirs.length))];
+    tryMove(unit, pick.x, pick.y);
+  }
+
+  // UI
+  function log(msg, cls) {
+    const el = $('log');
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+  function refreshUI() {
+    if (!G) return;
+    const p = human();
+    $('uiTurn').textContent = G.turn + ' / ' + G.turnLimit;
+    $('uiSci').textContent = p.science + (p.researching ? ' → ' + (TECHS.find((t) => t.id === p.researching)?.name || '') : '');
+    $('uiGold').textContent = p.gold;
+    $('uiCities').textContent = G.cities.filter((c) => c.owner === 0).length;
+    $('uiUnits').textContent = G.units.filter((u) => u.owner === 0).length;
+    renderSide();
+  }
+  function renderSide() {
+    const body = $('sideBody');
+    if (sideTab === 'sel') body.innerHTML = renderSelected();
+    else if (sideTab === 'city') body.innerHTML = renderCitiesTab();
+    else if (sideTab === 'tech') body.innerHTML = renderTechTab();
+    else body.innerHTML = renderWorldTab();
+    bindSideActions();
+  }
+  function renderSelected() {
+    if (selectedUnit) {
+      const u = selectedUnit, def = unitDef(u), p = player(u.owner);
+      let html = `<div class="card sel"><div class="title">${def.emoji} ${def.name}</div>
+        <div class="meta"><span class="civ-swatch" style="background:${p.civ.color}"></span>${p.civ.name}<br>
+        HP ${u.hp}/${u.maxHp} · Moves ${u.moves}/${u.maxMoves}<br>Str ${def.str || '—'} · ${def.desc}</div>`;
+      if (u.owner === 0) {
+        html += `<div class="row">`;
+        if (u.type === 'settler') html += `<button class="btn sm primary" data-act="found" ${canFoundCity(u) ? '' : 'disabled'}>Found City</button>`;
+        if (def.str > 0) html += `<button class="btn sm" data-act="fortify">Fortify</button>`;
+        html += `<button class="btn sm" data-act="sleep">${u.slept ? 'Wake' : 'Sleep'}</button></div>`;
+      }
+      return html + `</div><p class="muted">Green tiles = move · Red = attack. Orbit with right-drag.</p>`;
+    }
+    if (selectedCity) return renderCityCard(selectedCity, true);
+    if (hover && G) {
+      const t = G.map[hover.y][hover.x], fog = t.fog[0] || 0;
+      if (fog === 0) return `<p class="muted">Unexplored.</p>`;
+      const tr = TERRAIN[t.type], yld = yieldsForTile(hover.x, hover.y, 0);
+      return `<div class="card"><div class="title">${tr.name}${t.res ? ' · ' + RESOURCES[t.res].emoji + ' ' + RESOURCES[t.res].name : ''}</div>
+        <div class="meta">🌾 ${yld.food} · 🔨 ${yld.prod} · 💰 ${yld.gold}${yld.sci ? ' · 🔬 ' + yld.sci : ''}<br>
+        Move ${tr.move >= 99 ? '∞' : tr.move} · Def +${tr.def}
+        ${t.owner != null ? '<br>' + player(t.owner).civ.name : ''}</div></div>`;
+    }
+    return `<p class="muted">Select a unit or city on the 3D map.<br><br><b style="color:var(--text)">Win:</b> Domination · Transcendence · Score.</p>`;
+  }
+  function renderCityCard(city, detailed) {
+    const y = cityYields(city), p = player(city.owner);
+    let html = `<div class="card ${selectedCity && selectedCity.id === city.id ? 'sel' : ''}" data-city="${city.id}">
+      <div class="title">🏛 ${city.name}</div>
+      <div class="meta"><span class="civ-swatch" style="background:${p.civ.color}"></span>${p.civ.name} · Pop ${city.pop}<br>
+      🌾 ${y.food} · 🔨 ${y.prod} · 💰 ${y.gold} · 🔬 ${y.sci + city.pop}<br>
+      HP ${city.hp}/${city.maxHp} · Growth ${city.food}/${city.foodNeeded}</div>
+      <div class="bar"><i style="width:${Math.min(100, (city.food / city.foodNeeded) * 100)}%"></i></div>`;
+    if (city.queue) {
+      const name = city.queue.kind === 'unit' ? UNITS[city.queue.id].name : BUILDINGS[city.queue.id].name;
+      html += `<div class="meta" style="margin-top:6px">Building: <b style="color:var(--text)">${name}</b> (${city.prod}/${city.queue.cost})</div>
+        <div class="bar"><i style="width:${Math.min(100, (city.prod / city.queue.cost) * 100)}%"></i></div>`;
+    } else html += `<div class="meta" style="margin-top:6px">Idle</div>`;
+    if (city.buildings.length) html += `<div class="meta" style="margin-top:6px">${city.buildings.map((b) => BUILDINGS[b].name).join(', ')}</div>`;
+    if (detailed && city.owner === 0) {
+      html += `<h3>Produce</h3><div class="row">`;
+      Object.keys(UNITS).forEach((id) => {
+        const def = UNITS[id];
+        if (def.needs && !hasTech(0, def.needs)) return;
+        html += `<button class="btn sm" data-prod="unit:${id}">${def.emoji} ${def.name} (${def.cost})</button>`;
+      });
+      Object.keys(BUILDINGS).forEach((id) => {
+        const def = BUILDINGS[id];
+        if (city.buildings.includes(id)) return;
+        if (def.once && G.wonderBuilt) return;
+        if (def.needs && !hasTech(0, def.needs)) return;
+        html += `<button class="btn sm" data-prod="building:${id}">${def.name} (${def.cost})</button>`;
+      });
+      html += `</div>`;
+    }
+    return html + `</div>`;
+  }
+  function renderCitiesTab() {
+    const cities = G.cities.filter((c) => c.owner === 0);
+    return cities.length ? cities.map((c) => renderCityCard(c, selectedCity && selectedCity.id === c.id)).join('') : `<p class="muted">No cities.</p>`;
+  }
+  function renderTechTab() {
+    const p = human();
+    let html = `<p class="muted">Science: <b style="color:var(--text)">${p.science}</b></p>`;
+    if (p.researching) {
+      const t = TECHS.find((x) => x.id === p.researching);
+      if (t) html += `<div class="card sel"><div class="title">🔬 ${t.name}</div>
+        <div class="meta">${t.unlock}<br>${p.science}/${t.cost}</div>
+        <div class="bar"><i style="width:${Math.min(100, (p.science / t.cost) * 100)}%"></i></div></div>`;
+    }
+    html += `<h3>Available</h3>`;
+    TECHS.filter((t) => !p.techs.has(t.id) && t.requires.every((r) => p.techs.has(r))).forEach((t) => {
+      html += `<div class="card" data-tech="${t.id}" style="cursor:pointer"><div class="title">${t.name} (${t.cost})</div>
+        <div class="meta">${t.unlock}</div></div>`;
+    });
+    const done = TECHS.filter((t) => p.techs.has(t.id));
+    html += `<h3>Discovered (${done.length})</h3><p class="muted">${done.map((t) => t.name).join(' · ') || 'None yet'}</p>`;
+    return html;
+  }
+  function renderWorldTab() {
+    let html = `<h3>Civilizations</h3>`;
+    G.players.forEach((p) => {
+      html += `<div class="card"><div class="title"><span class="civ-swatch" style="background:${p.civ.color}"></span>${p.civ.name} ${p.alive ? '' : '💀'}</div>
+        <div class="meta">${p.civ.leader} · ${p.human ? 'You' : 'AI'}<br>
+        Cities ${G.cities.filter((c) => c.owner === p.id).length} · Units ${G.units.filter((u) => u.owner === p.id).length} · Score ${p.score}</div></div>`;
+    });
+    html += `<h3>Camera</h3><p class="muted">Right-drag orbit · WASD pan · Scroll zoom · Q/E rotate · 3D WebGL world</p>`;
+    return html;
+  }
+  function bindSideActions() {
+    $('sideBody').querySelectorAll('[data-act]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!selectedUnit || selectedUnit.owner !== 0) return;
+        const act = btn.getAttribute('data-act');
+        if (act === 'found') {
+          if (foundCity(selectedUnit)) { selectedUnit = null; afterWorldChange(); }
+          else toast('Cannot found here');
+        } else if (act === 'fortify') {
+          selectedUnit.fortify = Math.min(2, selectedUnit.fortify + 1);
+          selectedUnit.moves = 0;
+          toast('Fortifying');
+          afterWorldChange();
+        } else if (act === 'sleep') {
+          selectedUnit.slept = !selectedUnit.slept;
+          if (selectedUnit.slept) selectedUnit.moves = 0;
+          toast(selectedUnit.slept ? 'Sleeping' : 'Awake');
+          afterWorldChange();
+        }
+      });
+    });
+    $('sideBody').querySelectorAll('[data-prod]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!selectedCity || selectedCity.owner !== 0) return;
+        const [kind, id] = btn.getAttribute('data-prod').split(':');
+        selectedCity.queue = { kind, id, cost: kind === 'unit' ? UNITS[id].cost : BUILDINGS[id].cost };
+        toast('Queue: ' + (kind === 'unit' ? UNITS[id].name : BUILDINGS[id].name));
+        refreshUI();
+      });
+    });
+    $('sideBody').querySelectorAll('[data-tech]').forEach((el) => {
+      el.addEventListener('click', () => {
+        human().researching = el.getAttribute('data-tech');
+        toast('Researching ' + TECHS.find((t) => t.id === human().researching).name);
+        refreshUI();
+      });
+    });
+    $('sideBody').querySelectorAll('[data-city]').forEach((el) => {
+      el.addEventListener('click', () => {
+        selectedCity = G.cities.find((c) => c.id === +el.getAttribute('data-city'));
+        selectedUnit = null;
+        if (selectedCity) {
+          const p = worldPos(selectedCity.x, selectedCity.y, 0);
+          camCtrl.target.set(p.x, 0, p.z);
+          updateCamera();
+        }
+        afterWorldChange();
+      });
+    });
+  }
+  function nextMovableUnit(pid) {
+    return G.units.find((u) => u.owner === pid && u.moves > 0 && !u.slept);
+  }
+
+  function buildStartMenu() {
+    const box = $('civChoices');
+    box.innerHTML = '';
+    CIVS.forEach((c) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'choice' + (c.id === chosenCivId ? ' active' : '');
+      b.innerHTML = `<b><span class="civ-swatch" style="background:${c.color}"></span>${c.name}</b><span>${c.leader} — ${c.trait}</span>`;
+      b.addEventListener('click', () => {
+        chosenCivId = c.id;
+        box.querySelectorAll('.choice').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+      });
+      box.appendChild(b);
+    });
+    $('sizeChoices').querySelectorAll('.choice').forEach((b) => {
+      b.addEventListener('click', () => {
+        mapSizeKey = b.getAttribute('data-size');
+        $('sizeChoices').querySelectorAll('.choice').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+      });
+    });
+  }
+  function startGame() {
+    $('startOverlay').classList.add('hidden');
+    $('endOverlay').classList.add('hidden');
+    $('log').innerHTML = '';
+    selectedUnit = null;
+    selectedCity = null;
+    particles3.forEach((p) => fxRoot.remove(p.mesh));
+    particles3 = [];
+    newGame();
+    selectedUnit = nextMovableUnit(0);
+    refreshUI();
+  }
+
+  // loop
+  function frame() {
+    const dt = Math.min(0.05, clock.getDelta());
+    waterPhase += dt;
+
+    // keyboard pan / rotate
+    if (G) {
+      const panSpeed = camCtrl.dist * 0.8 * dt;
+      const forward = new THREE.Vector3(Math.sin(camCtrl.theta), 0, Math.cos(camCtrl.theta));
+      const right = new THREE.Vector3(Math.sin(camCtrl.theta + Math.PI / 2), 0, Math.cos(camCtrl.theta + Math.PI / 2));
+      if (keys.w || keys.ArrowUp) camCtrl.target.addScaledVector(forward, -panSpeed);
+      if (keys.s || keys.ArrowDown) camCtrl.target.addScaledVector(forward, panSpeed);
+      if (keys.a || keys.ArrowLeft) camCtrl.target.addScaledVector(right, -panSpeed);
+      if (keys.d || keys.ArrowRight) camCtrl.target.addScaledVector(right, panSpeed);
+      if (keys.q) camCtrl.theta += dt * 1.2;
+      if (keys.e) camCtrl.theta -= dt * 1.2;
+      updateCamera();
+    }
+
+    // unit anims
+    Object.keys(unitAnims).forEach((id) => {
+      const a = unitAnims[id];
+      a.t += dt;
+      if (a.t >= a.dur) delete unitAnims[id];
+    });
+
+    // water shimmer + resource bob + pulse rings
+    if (G && tileMeshes.length) {
+      for (let y = 0; y < G.h; y++)
+        for (let x = 0; x < G.w; x++) {
+          const mesh = tileMeshes[y][x];
+          const t = G.map[y][x];
+          if ((t.type === 'ocean' || t.type === 'coast') && (t.fog[0] || 0) === 2) {
+            const wave = Math.sin(waterPhase * 2 + x * 0.4 + y * 0.35) * 0.02;
+            mesh.position.y = TERRAIN[t.type].h / 2 + wave;
+            if (mesh.material.emissive) mesh.material.emissiveIntensity = 0.12 + wave * 4;
+          }
+          if (mesh.userData.resourceMesh && mesh.userData.resourceMesh.visible) {
+            const gem = mesh.userData.resourceMesh;
+            gem.rotation.y += dt * 1.5;
+            gem.position.y = TERRAIN[t.type].h + 0.2 + Math.sin(waterPhase * 3 + gem.userData.bob) * 0.05;
+          }
+        }
+    }
+    cityRoot.children.forEach((g) => {
+      g.children.forEach((c) => {
+        if (c.userData.pulse) {
+          const s = 1 + Math.sin(waterPhase * 3) * 0.08;
+          c.scale.set(s, s, s);
+          c.material.opacity = 0.4 + Math.sin(waterPhase * 3) * 0.2;
+        }
+      });
+    });
+    unitRoot.children.forEach((g, i) => {
+      const bob = Math.sin(waterPhase * 4 + i) * 0.03;
+      g.position.y = bob;
+      const uid = g.userData.unitId;
+      const u = G && G.units.find((x) => x.id === uid);
+      if (u) {
+        const pos = unitDrawPos(u);
+        const wp = worldPos(pos.x, pos.y, 0);
+        g.position.x = wp.x;
+        g.position.z = wp.z;
+      }
+    });
+    moveHintRoot.children.forEach((m, i) => {
+      m.material.opacity = 0.3 + Math.sin(waterPhase * 5 + i) * 0.2;
+    });
+    if (highlightMesh.visible) {
+      highlightMesh.material.opacity = 0.35 + Math.sin(waterPhase * 6) * 0.2;
+    }
+
+    // particles
+    for (let i = particles3.length - 1; i >= 0; i--) {
+      const p = particles3[i];
+      p.mesh.position.x += p.vx;
+      p.mesh.position.y += p.vy;
+      p.mesh.position.z += p.vz;
+      p.vy -= 0.003;
+      p.life -= p.decay;
+      p.mesh.material.opacity = Math.max(0, p.life);
+      p.mesh.scale.setScalar(Math.max(0.1, p.life));
+      if (p.life <= 0) {
+        fxRoot.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        p.mesh.material.dispose();
+        particles3.splice(i, 1);
+      }
+    }
+
+    if (renderer && scene && camera) renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+
+  // events
+  window.addEventListener('resize', resize);
+  window.addEventListener('keydown', (e) => {
+    keys[e.key] = true;
+    keys[e.key.toLowerCase?.() || e.key] = true;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (!G || G.over) return;
+    if (e.key === 'Enter') endTurn();
+    if (e.key === ' ') {
+      if (selectedUnit && selectedUnit.owner === 0) {
+        selectedUnit.moves = 0;
+        selectedUnit = nextMovableUnit(0);
+        afterWorldChange();
+      }
+    }
+    if ((e.key === 'f' || e.key === 'F') && selectedUnit && selectedUnit.type === 'settler' && selectedUnit.owner === 0) {
+      if (foundCity(selectedUnit)) { selectedUnit = null; afterWorldChange(); }
+    }
+    if (e.key === 'n' || e.key === 'N') {
+      selectedUnit = nextMovableUnit(0);
+      if (selectedUnit) {
+        const p = worldPos(selectedUnit.x, selectedUnit.y, 0);
+        camCtrl.target.set(p.x, 0, p.z);
+        updateCamera();
+      }
+      afterWorldChange();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.key] = false;
+    keys[e.key.toLowerCase?.() || e.key] = false;
+  });
+
+  $('btnStart').addEventListener('click', startGame);
+  $('btnRestart').addEventListener('click', () => {
+    $('endOverlay').classList.add('hidden');
+    $('startOverlay').classList.remove('hidden');
+  });
+  $('btnMenu').addEventListener('click', () => {
+    if (confirm('Return to menu? Progress will be lost.')) {
+      G = null;
+      clearMap3D();
+      $('startOverlay').classList.remove('hidden');
+    }
+  });
+  $('btnHelp').addEventListener('click', () => $('helpOverlay').classList.remove('hidden'));
+  $('btnHelpClose').addEventListener('click', () => $('helpOverlay').classList.add('hidden'));
+  $('btnEndTurn').addEventListener('click', endTurn);
+  $('btnWait').addEventListener('click', () => {
+    if (selectedUnit && selectedUnit.owner === 0) {
+      selectedUnit.moves = 0;
+      selectedUnit = nextMovableUnit(0);
+      afterWorldChange();
+    }
+  });
+  $('btnDisband').addEventListener('click', () => {
+    if (!selectedUnit || selectedUnit.owner !== 0) return;
+    if (!confirm('Disband unit?')) return;
+    G.units = G.units.filter((u) => u.id !== selectedUnit.id);
+    selectedUnit = nextMovableUnit(0);
+    afterWorldChange();
+  });
+  document.querySelectorAll('.side-tabs button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      sideTab = btn.dataset.tab;
+      syncTabs();
+      renderSide();
+    });
+  });
+
+  // boot
+  initThree();
+  buildStartMenu();
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

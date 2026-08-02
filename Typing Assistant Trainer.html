@@ -1,0 +1,2154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Typing Assistant Trainer — AI HTML Toolbox</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
+  <style>
+    :root {
+      --bg: #050508;
+      --panel: #0c0c12;
+      --accent: #00f3ff;
+      --accent2: #7c5cff;
+      --ok: #00ff88;
+      --err: #ff4d6a;
+      --warn: #ffc800;
+      --combo: #ff9f43;
+      --text: #e8e8ec;
+      --muted: #888;
+      --border: rgba(0, 243, 255, 0.22);
+      --glow: 0 0 14px rgba(0, 243, 255, 0.4);
+      --font-mono: "Cascadia Code", "Consolas", "SF Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 50% -10%, #14142a 0%, transparent 55%),
+        radial-gradient(ellipse at 90% 80%, rgba(124, 92, 255, 0.08) 0%, transparent 40%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      padding: 18px 18px 48px;
+      overflow-x: hidden;
+    }
+    body.combo-glow {
+      animation: comboBg 0.55s ease;
+    }
+    @keyframes comboBg {
+      0% { filter: brightness(1); }
+      35% { filter: brightness(1.12); }
+      100% { filter: brightness(1); }
+    }
+
+    /* Floating particles canvas */
+    #fxCanvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 40;
+    }
+    #screenFlash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 39;
+      opacity: 0;
+      background: radial-gradient(circle at center, rgba(0, 243, 255, 0.18), transparent 55%);
+      transition: opacity 0.15s;
+    }
+    #screenFlash.on { opacity: 1; }
+
+    a.toolbox-back {
+      position: fixed; top: 12px; left: 14px; z-index: 50;
+      color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600;
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px;
+      background: rgba(5, 5, 8, 0.85); letter-spacing: 0.03em;
+      transition: all 0.18s;
+    }
+    a.toolbox-back:hover { background: var(--accent); color: #000; box-shadow: var(--glow); }
+
+    .wrap { max-width: 1040px; margin: 0 auto; position: relative; z-index: 1; }
+
+    header {
+      text-align: center;
+      margin: 8px 0 18px;
+      padding-top: 28px;
+    }
+    header h1 {
+      font-weight: 300;
+      letter-spacing: 3px;
+      font-size: clamp(20px, 4vw, 28px);
+      color: var(--accent);
+      text-shadow: var(--glow);
+    }
+    header p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+    .panel {
+      background: linear-gradient(145deg, rgba(18, 18, 28, 0.95), rgba(10, 10, 16, 0.98));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+      position: relative;
+      overflow: hidden;
+    }
+    .panel.pulse-ok {
+      animation: panelPulse 0.35s ease;
+    }
+    @keyframes panelPulse {
+      0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.35), 0 12px 40px rgba(0,0,0,0.35); }
+      100% { box-shadow: 0 0 0 12px rgba(0, 255, 136, 0), 0 12px 40px rgba(0,0,0,0.35); }
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+    .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .field label {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--muted);
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    select, .btn, textarea, input[type="text"] { font: inherit; }
+    select, input[type="text"] {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      min-width: 120px;
+      outline: none;
+    }
+    input[type="text"] { min-width: 160px; }
+    select:focus, input[type="text"]:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); box-shadow: var(--glow); }
+    .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+    .btn.primary:hover { filter: brightness(1.08); }
+    .btn.ghost { color: var(--text); }
+    .btn.gold { color: var(--warn); border-color: rgba(255, 200, 0, 0.4); }
+    .btn.gold:hover { background: rgba(255, 200, 0, 0.15); box-shadow: 0 0 12px rgba(255,200,0,0.3); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill {
+      background: transparent;
+      border: 1px solid rgba(0, 243, 255, 0.25);
+      color: var(--muted);
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .pill:hover { color: var(--accent); border-color: var(--accent); }
+    .pill.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+    .pill.campaign.active {
+      background: linear-gradient(135deg, #ff9f43, #ffc800);
+      border-color: #ffc800;
+    }
+
+    .toggles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      align-items: center;
+    }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input {
+      appearance: none;
+      width: 36px;
+      height: 20px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.12);
+      position: relative;
+      cursor: pointer;
+      transition: 0.2s;
+      flex-shrink: 0;
+    }
+    .toggle input::after {
+      content: "";
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #aaa;
+      transition: 0.2s;
+    }
+    .toggle input:checked {
+      background: rgba(0, 243, 255, 0.25);
+      border-color: var(--accent);
+    }
+    .toggle input:checked::after {
+      left: 18px;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(0,243,255,0.6);
+    }
+    .toggle span.hi { color: var(--text); }
+
+    .name-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      margin-top: 12px;
+    }
+    .name-row .field { flex: 1; min-width: 180px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .stat {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 8px;
+      text-align: center;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    .stat.pop { animation: statPop 0.28s ease; }
+    @keyframes statPop {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    .stat .val {
+      font-size: 22px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    .stat .val.ok { color: var(--ok); }
+    .stat .val.err { color: var(--err); }
+    .stat .val.warn { color: var(--warn); }
+    .stat .val.combo { color: var(--combo); text-shadow: 0 0 12px rgba(255,159,67,0.5); }
+    .stat .lbl {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .combo-bar {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: linear-gradient(90deg, rgba(255,159,67,0.08), rgba(124,92,255,0.1));
+      border: 1px solid rgba(255,159,67,0.3);
+    }
+    .combo-bar.show { display: flex; flex-wrap: wrap; }
+    .combo-bar .mult {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--combo);
+      text-shadow: 0 0 16px rgba(255,159,67,0.55);
+      min-width: 64px;
+      animation: multPulse 0.4s ease;
+    }
+    @keyframes multPulse {
+      0% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+    .combo-bar .info { flex: 1; min-width: 140px; }
+    .combo-bar .info strong { color: var(--text); font-size: 13px; }
+    .combo-bar .info span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .combo-pips {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .combo-pips i {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.12);
+      display: block;
+      transition: 0.2s;
+    }
+    .combo-pips i.on {
+      background: var(--combo);
+      border-color: var(--combo);
+      box-shadow: 0 0 8px rgba(255,159,67,0.7);
+    }
+    .combo-pips i.hot {
+      background: var(--ok);
+      border-color: var(--ok);
+      box-shadow: 0 0 10px rgba(0,255,136,0.7);
+    }
+
+    .progress-track {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 4px;
+      transition: width 0.1s linear;
+      box-shadow: 0 0 8px rgba(0,243,255,0.4);
+    }
+
+    .prompt-wrap { position: relative; min-height: 150px; }
+    .prompt {
+      font-family: var(--font-mono);
+      font-size: clamp(16px, 2.2vw, 20px);
+      line-height: 1.75;
+      letter-spacing: 0.02em;
+      word-break: break-word;
+      white-space: pre-wrap;
+      padding: 8px 4px;
+      user-select: none;
+      cursor: text;
+    }
+    .prompt .done { color: var(--ok); transition: color 0.1s; }
+    .prompt .done.wrong { color: var(--err); background: rgba(255, 77, 106, 0.12); border-radius: 2px; }
+    .prompt .current {
+      background: rgba(0, 243, 255, 0.22);
+      color: #fff;
+      border-radius: 2px;
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+      animation: caret 1s steps(1) infinite;
+      box-shadow: 0 0 12px rgba(0,243,255,0.35);
+    }
+    .prompt .todo { color: var(--muted); }
+    @keyframes caret {
+      50% { outline-color: transparent; background: rgba(0, 243, 255, 0.08); }
+    }
+
+    .hidden-input {
+      position: absolute; opacity: 0; pointer-events: none;
+      height: 0; width: 0;
+    }
+    .focus-hint {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 10px;
+      min-height: 18px;
+    }
+    .focus-hint.live { color: var(--ok); }
+    .focus-hint.warn { color: var(--warn); }
+
+    /* Floating combo toast */
+    #comboToast {
+      position: fixed;
+      top: 22%;
+      left: 50%;
+      transform: translate(-50%, 0) scale(0.6);
+      z-index: 45;
+      pointer-events: none;
+      opacity: 0;
+      font-weight: 800;
+      font-size: clamp(22px, 5vw, 40px);
+      letter-spacing: 2px;
+      color: var(--combo);
+      text-shadow: 0 0 24px rgba(255,159,67,0.7), 0 0 48px rgba(124,92,255,0.4);
+      transition: opacity 0.15s, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+      text-align: center;
+      white-space: nowrap;
+    }
+    #comboToast.show {
+      opacity: 1;
+      transform: translate(-50%, -10px) scale(1);
+    }
+    #comboToast .sub {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: var(--accent);
+      margin-top: 4px;
+      text-shadow: 0 0 10px rgba(0,243,255,0.5);
+    }
+
+    .kb {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      user-select: none;
+    }
+    .kb-row { display: flex; gap: 5px; justify-content: center; }
+    .key {
+      min-width: 34px; height: 36px; padding: 0 5px;
+      border-radius: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.35);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.1s;
+    }
+    .key.wide { min-width: 50px; font-size: 10px; }
+    .key.space { min-width: 200px; }
+    .key.next {
+      border-color: var(--accent);
+      color: #000;
+      background: var(--accent);
+      box-shadow: var(--glow);
+      transform: translateY(-1px);
+    }
+    .key.pressed {
+      border-color: var(--ok);
+      background: rgba(0, 255, 136, 0.35);
+      color: #fff;
+      box-shadow: 0 0 14px rgba(0,255,136,0.45);
+    }
+    .key.miss {
+      border-color: var(--err);
+      background: rgba(255, 77, 106, 0.35);
+      color: #fff;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 760px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      .key { min-width: 26px; height: 30px; font-size: 10px; }
+      .key.space { min-width: 120px; }
+    }
+
+    .custom-area { display: none; margin-top: 12px; }
+    .custom-area.show { display: block; }
+    .custom-area textarea {
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      padding: 10px 12px;
+      outline: none;
+      line-height: 1.5;
+    }
+
+    /* Campaign map */
+    .campaign-panel { display: none; }
+    .campaign-panel.show { display: block; }
+    .map-wrap {
+      position: relative;
+      min-height: 280px;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 20% 30%, rgba(0,243,255,0.08), transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(124,92,255,0.1), transparent 40%),
+        linear-gradient(160deg, #0a0e18, #0d1220 50%, #0a1018);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      padding: 16px;
+    }
+    .map-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,243,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,243,255,0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none;
+    }
+    .territories {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      position: relative;
+      z-index: 1;
+    }
+    .territory {
+      border-radius: 10px;
+      padding: 12px 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(0,0,0,0.35);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+      position: relative;
+    }
+    .territory:hover:not(.locked) {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,243,255,0.15);
+    }
+    .territory.locked {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: grayscale(0.6);
+    }
+    .territory.conquered {
+      border-color: rgba(0,255,136,0.45);
+      background: linear-gradient(145deg, rgba(0,255,136,0.12), rgba(0,0,0,0.4));
+      box-shadow: 0 0 16px rgba(0,255,136,0.12);
+    }
+    .territory.current {
+      border-color: var(--warn);
+      box-shadow: 0 0 18px rgba(255,200,0,0.25);
+      animation: territoryPulse 2s ease infinite;
+    }
+    @keyframes territoryPulse {
+      0%, 100% { box-shadow: 0 0 10px rgba(255,200,0,0.15); }
+      50% { box-shadow: 0 0 22px rgba(255,200,0,0.35); }
+    }
+    .territory .t-emoji { font-size: 22px; line-height: 1; margin-bottom: 4px; }
+    .territory .t-name { font-size: 12px; font-weight: 700; color: var(--text); }
+    .territory .t-req { font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .territory .t-badge {
+      position: absolute;
+      top: 6px; right: 6px;
+      font-size: 10px;
+    }
+    .campaign-status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .campaign-status strong { color: var(--accent); }
+
+    .history-list, .hs-list {
+      list-style: none;
+      max-height: 240px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .history-list li, .hs-list li {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr auto auto;
+      gap: 8px;
+      padding: 7px 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 11px;
+      color: var(--muted);
+      align-items: center;
+    }
+    .hs-list li {
+      grid-template-columns: 1.4fr 1fr auto auto;
+    }
+    .history-list li span.wpm,
+    .hs-list li span.wpm { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .history-list li span.acc,
+    .hs-list li span.score { color: var(--ok); font-variant-numeric: tabular-nums; font-weight: 600; }
+    .hs-list li .name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty-hist { font-size: 12px; color: var(--muted); padding: 8px 0; }
+
+    .result-banner {
+      display: none;
+      text-align: center;
+      padding: 16px 12px 8px;
+    }
+    .result-banner.show { display: block; animation: fadeUp 0.4s ease; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .result-banner h2 {
+      font-weight: 300;
+      letter-spacing: 2px;
+      color: var(--accent);
+      font-size: 22px;
+      margin-bottom: 6px;
+    }
+    .result-banner.highscore h2 {
+      color: var(--warn);
+      text-shadow: 0 0 20px rgba(255,200,0,0.5);
+    }
+    .result-banner p { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+    .result-stats {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .result-stats .big {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--ok);
+      font-variant-numeric: tabular-nums;
+    }
+    .result-stats .sub {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .tips {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .tips strong { color: var(--text); }
+    .tips kbd {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.35);
+      color: var(--accent);
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .hs-filter {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .hs-filter select { min-width: 160px; font-size: 12px; padding: 6px 10px; }
+
+    .tab-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid rgba(0,243,255,0.2);
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      color: #000;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="fxCanvas"></canvas>
+  <div id="screenFlash"></div>
+  <div id="comboToast"></div>
+  <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
+
+  <div class="wrap">
+    <header>
+      <h1>⌨️ TYPING ASSISTANT TRAINER</h1>
+      <p>Score · combos · campaign conquest · high scores with your name</p>
+    </header>
+
+    <!-- Setup -->
+    <div class="panel">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <div class="field">
+            <label>Mode</label>
+            <div class="pill-row" id="modePills">
+              <button type="button" class="pill active" data-mode="timed">Timed</button>
+              <button type="button" class="pill" data-mode="practice">Practice</button>
+              <button type="button" class="pill" data-mode="lesson">Lessons</button>
+              <button type="button" class="pill" data-mode="code">Code</button>
+              <button type="button" class="pill" data-mode="custom">Custom</button>
+              <button type="button" class="pill campaign" data-mode="campaign">🗺️ Campaign</button>
+            </div>
+          </div>
+        </div>
+        <div class="toolbar-group">
+          <div class="field" id="durationField">
+            <label>Duration</label>
+            <select id="duration">
+              <option value="15">15 sec</option>
+              <option value="30" selected>30 sec</option>
+              <option value="60">60 sec</option>
+              <option value="120">2 min</option>
+            </select>
+          </div>
+          <div class="field" id="lessonField" style="display:none">
+            <label>Lesson</label>
+            <select id="lesson">
+              <option value="home">Home row</option>
+              <option value="top">Top row</option>
+              <option value="bottom">Bottom row</option>
+              <option value="numbers">Numbers</option>
+              <option value="punctuation">Punctuation</option>
+              <option value="caps">Capitals</option>
+            </select>
+          </div>
+          <div class="field" id="difficultyField">
+            <label>Difficulty</label>
+            <select id="difficulty">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <button type="button" class="btn primary" id="btnStart">New Test</button>
+          <button type="button" class="btn ghost" id="btnRestart" title="Restart (Tab)">Restart</button>
+        </div>
+      </div>
+
+      <div class="name-row">
+        <div class="field">
+          <label>Your full name (for high scores)</label>
+          <input type="text" id="playerName" placeholder="e.g. Jordan Lee" maxlength="48" autocomplete="name">
+        </div>
+      </div>
+
+      <div class="toggles">
+        <label class="toggle" title="Strip capitals to lowercase for simpler practice">
+          <input type="checkbox" id="optNoCaps">
+          <span><span class="hi">No capitals</span> — all lowercase</span>
+        </label>
+        <label class="toggle" title="Remove punctuation and symbols">
+          <input type="checkbox" id="optNoPunct">
+          <span><span class="hi">No punctuation</span> — letters & spaces only</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="optSound" checked>
+          <span><span class="hi">Sounds</span> — soft clicks & chimes</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="optFx" checked>
+          <span><span class="hi">Particles</span> — lights & combos</span>
+        </label>
+      </div>
+
+      <div class="custom-area" id="customArea">
+        <label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:6px;font-weight:600">Your practice text — paste anything</label>
+        <textarea id="customText" placeholder="Paste emails, notes, scripts, lyrics, whatever you want to practice…"></textarea>
+      </div>
+    </div>
+
+    <!-- Campaign map -->
+    <div class="panel campaign-panel" id="campaignPanel">
+      <div class="section-title">Campaign — conquer typing territories</div>
+      <div class="map-wrap">
+        <div class="territories" id="territories"></div>
+      </div>
+      <div class="campaign-status">
+        <span>Progress: <strong id="campProgress">0 / 0</strong> territories</span>
+        <span>Selected: <strong id="campSelected">—</strong></span>
+        <button type="button" class="btn gold" id="btnCampStart">Attack Territory</button>
+      </div>
+    </div>
+
+    <!-- Main typing -->
+    <div class="panel" id="mainPanel">
+      <div class="stats">
+        <div class="stat" id="statScoreBox"><div class="val" id="statScore">0</div><div class="lbl">Score</div></div>
+        <div class="stat"><div class="val" id="statWpm">0</div><div class="lbl">WPM</div></div>
+        <div class="stat"><div class="val" id="statAcc">100%</div><div class="lbl">Accuracy</div></div>
+        <div class="stat"><div class="val combo" id="statStreak">0</div><div class="lbl">Streak</div></div>
+        <div class="stat"><div class="val combo" id="statMult">×1</div><div class="lbl">Combo</div></div>
+        <div class="stat"><div class="val" id="statTime">—</div><div class="lbl" id="statTimeLbl">Time</div></div>
+        <div class="stat"><div class="val" id="statErr">0</div><div class="lbl">Errors</div></div>
+      </div>
+
+      <div class="combo-bar" id="comboBar">
+        <div class="mult" id="comboMultLabel">×1</div>
+        <div class="info">
+          <strong id="comboTitle">Warming up</strong>
+          <span id="comboSub">Hit streak milestones for bigger multipliers</span>
+        </div>
+        <div class="combo-pips" id="comboPips"></div>
+      </div>
+
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+      <div class="result-banner" id="resultBanner">
+        <h2 id="resultTitle">Test complete</h2>
+        <p id="resultSub">Nice work.</p>
+        <div class="result-stats">
+          <div><div class="big" id="resultScore">0</div><div class="sub">Score</div></div>
+          <div><div class="big" id="resultWpm">0</div><div class="sub">WPM</div></div>
+          <div><div class="big" id="resultAcc">100%</div><div class="sub">Accuracy</div></div>
+          <div><div class="big" id="resultMult">×1</div><div class="sub">Best combo</div></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button type="button" class="btn primary" id="btnAgain">Try Again</button>
+          <button type="button" class="btn gold" id="btnSaveHs" style="display:none">Save High Score</button>
+        </div>
+      </div>
+
+      <div class="prompt-wrap" id="promptWrap">
+        <div class="prompt" id="prompt" aria-live="polite"></div>
+        <input class="hidden-input" id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Typing input">
+      </div>
+      <div class="focus-hint" id="focusHint">Click the text (or press a key) to focus and start</div>
+    </div>
+
+    <div class="panel">
+      <div class="section-title">Keyboard guide</div>
+      <div class="kb" id="keyboard" aria-hidden="true"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="section-title">🏆 High scores</div>
+        <div class="hs-filter">
+          <select id="hsFilter">
+            <option value="all">All modes</option>
+          </select>
+        </div>
+        <ul class="hs-list" id="hsList"></ul>
+        <div class="empty-hist" id="emptyHs">No high scores yet — finish a run and save your name.</div>
+        <div style="margin-top:10px">
+          <button type="button" class="btn ghost" id="btnClearHs">Clear high scores</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="tab-row">
+          <button type="button" class="tab-btn active" data-tab="history">Recent runs</button>
+          <button type="button" class="tab-btn" data-tab="tips">Tips</button>
+        </div>
+        <div id="tabHistory">
+          <ul class="history-list" id="historyList"></ul>
+          <div class="empty-hist" id="emptyHist">No runs yet.</div>
+          <div style="margin-top:10px">
+            <button type="button" class="btn ghost" id="btnClearHist">Clear history</button>
+          </div>
+        </div>
+        <div id="tabTips" style="display:none">
+          <div class="tips">
+            <p><strong>Combos</strong> fire at streaks of <strong>2 · 7 · 10 · 20 · 30 · 40 · 50</strong> — each multiplies your score. A miss resets the chain.</p>
+            <p style="margin-top:8px"><strong>Campaign</strong> unlocks territories left-to-right. Beat the WPM + accuracy goal to conquer.</p>
+            <p style="margin-top:8px"><strong>Simplify</strong> with No capitals / No punctuation when learning. Custom mode accepts any pasted text.</p>
+            <p style="margin-top:8px"><kbd>Tab</kbd> restarts · high scores store <strong>full name + mode</strong> in this browser only.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="footer-note">Offline · localStorage only · soft Web Audio (no files)</p>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  const KEYS = {
+    history: 'aitoolbox.typingTrainer.history.v2',
+    highscores: 'aitoolbox.typingTrainer.highscores.v2',
+    campaign: 'aitoolbox.typingTrainer.campaign.v2',
+    name: 'aitoolbox.typingTrainer.playerName',
+    prefs: 'aitoolbox.typingTrainer.prefs.v2',
+  };
+  const MAX_HISTORY = 40;
+  const MAX_HS_PER_BUCKET = 10;
+
+  /** Streak milestones → multiplier */
+  const STREAK_TIERS = [
+    { at: 2,  mult: 1.25, name: 'Spark',    color: '#00f3ff' },
+    { at: 7,  mult: 1.5,  name: 'Warm',     color: '#7c5cff' },
+    { at: 10, mult: 2,    name: 'Flow',     color: '#00ff88' },
+    { at: 20, mult: 2.5,  name: 'Blaze',    color: '#ff9f43' },
+    { at: 30, mult: 3,    name: 'Inferno',  color: '#ffc800' },
+    { at: 40, mult: 4,    name: 'Nova',     color: '#ff4d6a' },
+    { at: 50, mult: 5,    name: 'Supernova',color: '#fff' },
+  ];
+
+  const TEXTS = {
+    easy: [
+      "the quick brown fox jumps over the lazy dog near the river bank at dawn",
+      "practice every day and your hands will learn the path without thinking about it",
+      "good posture and relaxed shoulders make long typing sessions easier on the body",
+      "type with a steady rhythm and let accuracy lead while speed grows naturally",
+      "small steps each morning add up to real skill by the end of the month",
+      "keep your eyes on the words ahead and trust your fingers to find each key",
+      "rain taps the window while the kettle sings and the morning light fills the kitchen",
+      "a quiet desk a clear mind and a simple goal are enough to start improving today",
+    ],
+    medium: [
+      "Consistency beats intensity when building muscle memory. Short daily drills outperform rare marathon sessions.",
+      "A calm mind types cleaner text. When you rush, mistakes pile up and your net speed drops.",
+      "Learn the home row first, then expand outward. The pinkies need more patience than the stronger fingers.",
+      "Punctuation and capital letters often cost more time than common words. Drill them until they feel automatic.",
+      "Ergonomic height, soft lighting, and a quiet keyboard help you stay focused longer without fatigue.",
+      "Read slightly ahead of the cursor. Anticipating the next word keeps your cadence smooth and confident.",
+    ],
+    hard: [
+      "The engineer recompiled the module after fixing a race condition that only appeared under concurrent load.",
+      "She calculated the amortization schedule, escrow reserve, and early payoff date before signing the loan.",
+      "Networking: verify DNS, gateway, and MTU before escalating; intermittent packet loss often hides in cabling.",
+      "Refactor when complexity outpaces clarity—not before. Premature abstraction multiplies maintenance cost.",
+      "Measure twice, cut once: benchmarks, logs, and profiles beat hunches when diagnosing production slowdowns.",
+      "Whitespace, brackets, and operators demand precision. One misplaced semicolon can stall an entire deploy.",
+    ],
+  };
+
+  const CODE_SNIPPETS = [
+    "function clamp(n, min, max) {\n  return Math.min(max, Math.max(min, n));\n}",
+    "const sum = nums.reduce((a, b) => a + b, 0);\nconst avg = sum / Math.max(nums.length, 1);",
+    "if (user && user.isActive) {\n  return await fetchProfile(user.id);\n}",
+    "for (let i = 0; i < items.length; i++) {\n  process(items[i]);\n}",
+    "try {\n  await db.save(record);\n} catch (err) {\n  console.error(err);\n}",
+    "export async function loadConfig(path) {\n  const text = await fs.readFile(path, 'utf8');\n  return JSON.parse(text);\n}",
+    "const map = new Map();\nfor (const row of rows) {\n  map.set(row.id, row);\n}",
+    "SELECT id, name, updated_at\nFROM sites\nWHERE active = 1\nORDER BY name ASC;",
+  ];
+
+  const LESSONS = {
+    home: () => drillFrom("asdfjkl; asdf jkl; aa ss dd ff jj kk ll ;; asdfjkl;", 8),
+    top: () => drillFrom("qwertyuiop qwer tyui op qp wo ei rt yu io", 8),
+    bottom: () => drillFrom("zxcvbnm zx cv bn m zz xx cc vv bb nn mm", 8),
+    numbers: () => drillFrom("1234567890 12 34 56 78 90 135 246 789 1024 4096", 6),
+    punctuation: () => drillFrom("it's ok; wait—really? yes! (maybe) [check] {ok} a,b.c:d;e", 5),
+    caps: () => drillFrom("The Quick Brown Fox. Hello World. Type Well. Keep Going. Nice Work.", 4),
+  };
+
+  /** Campaign territories — sequential unlock */
+  const TERRITORIES = [
+    { id: 'meadow',   emoji: '🌿', name: 'Home Meadow',   wpm: 20, acc: 90,  mode: 'lesson', lesson: 'home',  noCaps: true,  noPunct: true,  desc: 'Home row basics' },
+    { id: 'brook',    emoji: '💧', name: 'Quiet Brook',   wpm: 28, acc: 92,  mode: 'timed',  diff: 'easy',   noCaps: true,  noPunct: true,  duration: 30, desc: 'Easy timed flow' },
+    { id: 'village',  emoji: '🏠', name: 'Type Village',  wpm: 35, acc: 93,  mode: 'practice', diff: 'easy', noCaps: false, noPunct: true,  desc: 'Sentences, no punctuation' },
+    { id: 'hills',    emoji: '⛰',  name: 'Rolling Hills', wpm: 40, acc: 94,  mode: 'timed',  diff: 'medium', noCaps: false, noPunct: false, duration: 30, desc: 'Medium pace' },
+    { id: 'forest',   emoji: '🌲', name: 'Word Forest',   wpm: 45, acc: 94,  mode: 'practice', diff: 'medium', desc: 'Full punctuation' },
+    { id: 'bridge',   emoji: '🌉', name: 'Comma Bridge',  wpm: 42, acc: 95,  mode: 'lesson', lesson: 'punctuation', desc: 'Punctuation drill' },
+    { id: 'citadel',  emoji: '🏰', name: 'Cap Citadel',   wpm: 45, acc: 95,  mode: 'lesson', lesson: 'caps', desc: 'Capital letters' },
+    { id: 'canyon',   emoji: '🏜',  name: 'Code Canyon',   wpm: 38, acc: 96,  mode: 'code', desc: 'Code snippets' },
+    { id: 'peak',     emoji: '❄',  name: 'Frost Peak',    wpm: 55, acc: 96,  mode: 'timed',  diff: 'hard', duration: 60, desc: 'Hard 60s endurance' },
+    { id: 'throne',   emoji: '👑', name: 'Speed Throne',  wpm: 65, acc: 97,  mode: 'timed',  diff: 'hard', duration: 60, desc: 'Final boss territory' },
+  ];
+
+  function drillFrom(seed, repeats) {
+    const parts = seed.split(/\s+/).filter(Boolean);
+    const out = [];
+    for (let i = 0; i < repeats * 6; i++) out.push(parts[Math.floor(Math.random() * parts.length)]);
+    return out.join(' ');
+  }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  // ——— DOM ———
+  const $ = (id) => document.getElementById(id);
+  const promptEl = $('prompt');
+  const typer = $('typer');
+  const focusHint = $('focusHint');
+  const progressFill = $('progressFill');
+  const resultBanner = $('resultBanner');
+  const keyboardEl = $('keyboard');
+  const customArea = $('customArea');
+  const customText = $('customText');
+  const mainPanel = $('mainPanel');
+  const comboBar = $('comboBar');
+  const comboToast = $('comboToast');
+  const screenFlash = $('screenFlash');
+  const fxCanvas = $('fxCanvas');
+  const fxCtx = fxCanvas.getContext('2d');
+
+  // ——— State ———
+  let mode = 'timed';
+  let target = '';
+  let index = 0;
+  let startedAt = 0;
+  let timerId = null;
+  let durationSec = 30;
+  let errors = 0;
+  let totalKeystrokes = 0;
+  let correctKeystrokes = 0;
+  let finished = false;
+  let running = false;
+  let wrongFlags = [];
+  let streak = 0;
+  let bestStreak = 0;
+  let score = 0;
+  let bestMult = 1;
+  let pendingHs = null;
+  let selectedTerritory = null;
+  let campaignRun = false; // current run is campaign attack
+
+  // Particles
+  let particles = [];
+  let rafId = null;
+
+  // ——— Audio (soft, not annoying) ———
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (_) { return null; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function tone(freq, dur, type, gain, when) {
+    if (!$('optSound').checked) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t0 = (when || 0) + ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain || 0.04, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+
+  function sfxCorrect() {
+    // soft tick — very quiet
+    tone(880 + Math.random() * 40, 0.045, 'sine', 0.028);
+  }
+  function sfxMiss() {
+    tone(180, 0.08, 'triangle', 0.03);
+  }
+  function sfxCombo(tierIndex) {
+    const base = 440 + tierIndex * 60;
+    tone(base, 0.12, 'sine', 0.05);
+    tone(base * 1.5, 0.14, 'sine', 0.035, 0.04);
+    tone(base * 2, 0.16, 'triangle', 0.025, 0.08);
+  }
+  function sfxFinish(high) {
+    if (high) {
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, 'sine', 0.045, i * 0.08));
+    } else {
+      tone(523, 0.12, 'sine', 0.04);
+      tone(659, 0.14, 'sine', 0.035, 0.08);
+    }
+  }
+  function sfxConquer() {
+    [392, 523, 659, 784, 1046].forEach((f, i) => tone(f, 0.2, 'triangle', 0.04, i * 0.07));
+  }
+
+  // ——— Particles / FX ———
+  function resizeCanvas() {
+    fxCanvas.width = window.innerWidth;
+    fxCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function spawnBurst(x, y, color, count, speed) {
+    if (!$('optFx').checked) return;
+    const n = count || 8;
+    const sp = speed || 2.5;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + Math.random() * 0.4;
+      const v = sp * (0.6 + Math.random() * 0.8);
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - 0.5,
+        life: 1,
+        decay: 0.018 + Math.random() * 0.02,
+        size: 2 + Math.random() * 3,
+        color: color || '#00f3ff',
+        glow: true,
+      });
+    }
+  }
+
+  function spawnSparkles(x, y, mult) {
+    if (!$('optFx').checked) return;
+    const n = Math.min(40, 12 + mult * 6);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 1 + Math.random() * (2 + mult * 0.4);
+      particles.push({
+        x: x + (Math.random() - 0.5) * 30,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - 1.5,
+        life: 1,
+        decay: 0.012 + Math.random() * 0.015,
+        size: 1.5 + Math.random() * 4,
+        color: pick(['#00f3ff', '#7c5cff', '#00ff88', '#ff9f43', '#ffc800', '#fff']),
+        glow: true,
+      });
+    }
+  }
+
+  function flashScreen(color) {
+    if (!$('optFx').checked) return;
+    screenFlash.style.background = `radial-gradient(circle at center, ${color || 'rgba(0,243,255,0.16)'}, transparent 55%)`;
+    screenFlash.classList.add('on');
+    setTimeout(() => screenFlash.classList.remove('on'), 120);
+  }
+
+  function showComboToast(text, sub) {
+    comboToast.innerHTML = escapeHtml(text) + (sub ? `<span class="sub">${escapeHtml(sub)}</span>` : '');
+    comboToast.classList.add('show');
+    clearTimeout(showComboToast._t);
+    showComboToast._t = setTimeout(() => comboToast.classList.remove('show'), 900);
+  }
+
+  function tickFx() {
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.04;
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      fxCtx.globalAlpha = Math.max(0, p.life);
+      if (p.glow) {
+        fxCtx.shadowBlur = 12;
+        fxCtx.shadowColor = p.color;
+      } else {
+        fxCtx.shadowBlur = 0;
+      }
+      fxCtx.fillStyle = p.color;
+      fxCtx.beginPath();
+      fxCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      fxCtx.fill();
+    }
+    fxCtx.globalAlpha = 1;
+    fxCtx.shadowBlur = 0;
+    rafId = requestAnimationFrame(tickFx);
+  }
+  tickFx();
+
+  // ——— Simplify text ———
+  function simplifyText(text) {
+    let t = text;
+    if ($('optNoCaps').checked) t = t.toLowerCase();
+    if ($('optNoPunct').checked) {
+      // keep letters, numbers, spaces, newlines
+      t = t.replace(/[^\p{L}\p{N}\s]/gu, '');
+      t = t.replace(/[ \t]+/g, ' ');
+      t = t.replace(/ ?\n ?/g, '\n');
+      t = t.replace(/\n{3,}/g, '\n\n').trim();
+    }
+    return t;
+  }
+
+  // ——— Combo / score ———
+  function currentMult() {
+    let m = 1;
+    for (const t of STREAK_TIERS) {
+      if (streak >= t.at) m = t.mult;
+    }
+    return m;
+  }
+
+  function tierForStreak(s) {
+    let found = null;
+    for (const t of STREAK_TIERS) {
+      if (s >= t.at) found = t;
+    }
+    return found;
+  }
+
+  function onStreakHit() {
+    const tier = STREAK_TIERS.find((t) => t.at === streak);
+    if (!tier) return;
+    bestMult = Math.max(bestMult, tier.mult);
+    sfxCombo(STREAK_TIERS.indexOf(tier));
+    showComboToast(`${tier.name}! ×${tier.mult}`, `${streak} streak`);
+    flashScreen(tier.color + '33');
+    document.body.classList.remove('combo-glow');
+    void document.body.offsetWidth;
+    document.body.classList.add('combo-glow');
+    const rect = promptEl.getBoundingClientRect();
+    spawnSparkles(rect.left + rect.width / 2, rect.top + 40, tier.mult);
+    updateComboUI(true);
+  }
+
+  function addScore(base) {
+    const m = currentMult();
+    const gain = Math.round(base * m);
+    score += gain;
+    return gain;
+  }
+
+  function updateComboUI(pop) {
+    const m = currentMult();
+    const tier = tierForStreak(streak);
+    comboBar.classList.add('show');
+    $('comboMultLabel').textContent = '×' + m;
+    $('comboMultLabel').style.animation = 'none';
+    if (pop) {
+      void $('comboMultLabel').offsetWidth;
+      $('comboMultLabel').style.animation = '';
+    }
+    $('statMult').textContent = '×' + m;
+    $('statStreak').textContent = String(streak);
+    if (tier) {
+      $('comboTitle').textContent = tier.name + ' chain';
+      $('comboSub').textContent = streak + ' correct in a row · score ×' + m;
+      $('statMult').className = 'val combo';
+      $('statStreak').className = 'val combo';
+    } else {
+      $('comboTitle').textContent = streak > 0 ? 'Building…' : 'Warming up';
+      const next = STREAK_TIERS[0];
+      $('comboSub').textContent = streak > 0
+        ? (next.at - streak) + ' more to ×' + next.mult
+        : 'Hit streak 2 for first multiplier';
+    }
+    // pips
+    const pips = $('comboPips');
+    pips.innerHTML = '';
+    STREAK_TIERS.forEach((t) => {
+      const i = document.createElement('i');
+      if (streak >= t.at) i.classList.add(t.at >= 20 ? 'hot' : 'on');
+      i.title = t.at + ' → ×' + t.mult + ' ' + t.name;
+      pips.appendChild(i);
+    });
+  }
+
+  // ——— Keyboard ———
+  const ROWS = [
+    ['`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
+    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\\'],
+    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', "'"],
+    ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/'],
+    [' '],
+  ];
+  function keyId(ch) {
+    if (ch === ' ') return 'key-space';
+    return 'key-' + encodeURIComponent(ch.toLowerCase());
+  }
+  function buildKeyboard() {
+    keyboardEl.innerHTML = '';
+    ROWS.forEach((row, ri) => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'kb-row';
+      if (ri === 3) {
+        const shift = document.createElement('div');
+        shift.className = 'key wide';
+        shift.id = 'key-shift';
+        shift.textContent = 'shift';
+        rowEl.appendChild(shift);
+      }
+      row.forEach((k) => {
+        const el = document.createElement('div');
+        el.className = 'key' + (k === ' ' ? ' space' : '');
+        el.id = keyId(k);
+        el.textContent = k === ' ' ? 'space' : k;
+        rowEl.appendChild(el);
+      });
+      keyboardEl.appendChild(rowEl);
+    });
+  }
+  function clearKeyStates() {
+    keyboardEl.querySelectorAll('.key').forEach((k) => k.classList.remove('next', 'pressed', 'miss'));
+  }
+  function highlightNext() {
+    clearKeyStates();
+    if (finished || index >= target.length) return;
+    const ch = target[index];
+    const lower = ch.toLowerCase();
+    const el = document.getElementById(keyId(lower === '\n' ? ' ' : lower));
+    if (el) el.classList.add('next');
+    if (ch !== ch.toLowerCase() && /[A-Z]/.test(ch)) {
+      const sh = document.getElementById('key-shift');
+      if (sh) sh.classList.add('next');
+    }
+  }
+  function flashKey(ch, ok) {
+    const lower = (ch === '\n' ? ' ' : ch).toLowerCase();
+    const el = document.getElementById(keyId(lower));
+    if (!el) return;
+    el.classList.remove('next', 'pressed', 'miss');
+    el.classList.add(ok ? 'pressed' : 'miss');
+    setTimeout(() => {
+      el.classList.remove('pressed', 'miss');
+      highlightNext();
+    }, 110);
+  }
+
+  // ——— Prompt render ———
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function renderPrompt() {
+    if (!target) {
+      promptEl.innerHTML = '<span class="todo">Press New Test to begin…</span>';
+      return;
+    }
+    let html = '';
+    for (let i = 0; i < target.length; i++) {
+      const raw = target[i];
+      const ch = raw === '\n' ? '↵\n' : escapeHtml(raw);
+      const space = raw === ' ' ? '&nbsp;' : ch;
+      if (i < index) {
+        html += `<span class="done${wrongFlags[i] ? ' wrong' : ''}">${space}</span>`;
+      } else if (i === index) {
+        const display = raw === ' ' ? '&nbsp;' : (raw === '\n' ? '↵\n' : escapeHtml(raw));
+        html += `<span class="current">${display}</span>`;
+      } else {
+        html += `<span class="todo">${space}</span>`;
+      }
+    }
+    promptEl.innerHTML = html;
+  }
+
+  // ——— Stats ———
+  function elapsedMs() {
+    if (!startedAt) return 0;
+    return Math.max(0, Date.now() - startedAt);
+  }
+  function minutes() {
+    return Math.max(elapsedMs() / 60000, 1 / 60000);
+  }
+  function calcWpm() {
+    return Math.max(0, Math.round((correctKeystrokes / 5) / minutes()));
+  }
+  function calcAccuracy() {
+    if (totalKeystrokes === 0) return 100;
+    return Math.max(0, Math.min(100, Math.round((correctKeystrokes / totalKeystrokes) * 100)));
+  }
+  function formatClock(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m + ':' + String(r).padStart(2, '0');
+  }
+
+  function popStat(id) {
+    const el = $(id);
+    if (!el) return;
+    const box = el.closest('.stat');
+    if (!box) return;
+    box.classList.remove('pop');
+    void box.offsetWidth;
+    box.classList.add('pop');
+  }
+
+  function updateStats() {
+    const wpm = running || finished ? calcWpm() : 0;
+    const acc = calcAccuracy();
+    $('statWpm').textContent = String(wpm);
+    $('statAcc').textContent = acc + '%';
+    $('statErr').textContent = String(errors);
+    $('statScore').textContent = String(score);
+    $('statAcc').className = 'val' + (acc >= 95 ? ' ok' : acc >= 85 ? '' : ' warn');
+    $('statErr').className = 'val' + (errors === 0 ? ' ok' : errors > 10 ? ' err' : ' warn');
+    $('statScore').className = 'val' + (score > 0 ? ' ok' : '');
+
+    if (mode === 'timed' || (campaignRun && selectedTerritory && selectedTerritory.duration)) {
+      const dur = campaignRun && selectedTerritory?.duration ? selectedTerritory.duration : durationSec;
+      const left = Math.max(0, dur - elapsedMs() / 1000);
+      $('statTime').textContent = running || finished ? left.toFixed(1) + 's' : dur + 's';
+      $('statTimeLbl').textContent = 'Left';
+      const pct = running ? Math.min(100, (elapsedMs() / 1000 / dur) * 100) : 0;
+      progressFill.style.width = pct + '%';
+      if (running && left <= 0) finishTest('time');
+    } else {
+      const pct = target.length ? (index / target.length) * 100 : 0;
+      $('statTime').textContent = running || finished ? formatClock(elapsedMs()) : '—';
+      $('statTimeLbl').textContent = 'Time';
+      progressFill.style.width = pct + '%';
+    }
+  }
+
+  function stopTimer() {
+    if (timerId) { clearInterval(timerId); timerId = null; }
+  }
+  function startTimer() {
+    stopTimer();
+    timerId = setInterval(updateStats, 100);
+  }
+
+  // ——— Mode keys for high scores ———
+  function optionKey() {
+    if (campaignRun && selectedTerritory) {
+      return 'campaign:' + selectedTerritory.id;
+    }
+    if (mode === 'timed') return 'timed:' + $('difficulty').value + ':' + $('duration').value;
+    if (mode === 'practice') return 'practice:' + $('difficulty').value;
+    if (mode === 'lesson') return 'lesson:' + $('lesson').value;
+    if (mode === 'code') return 'code';
+    if (mode === 'custom') return 'custom';
+    if (mode === 'campaign') return 'campaign';
+    return mode;
+  }
+  function optionLabel(key) {
+    if (!key) return '—';
+    if (key.startsWith('campaign:')) {
+      const id = key.split(':')[1];
+      const t = TERRITORIES.find((x) => x.id === id);
+      return t ? '🗺️ ' + t.name : key;
+    }
+    const map = {
+      code: 'Code',
+      custom: 'Custom',
+      campaign: 'Campaign',
+    };
+    if (map[key]) return map[key];
+    if (key.startsWith('timed:')) {
+      const [, d, sec] = key.split(':');
+      return `Timed · ${d} · ${sec}s`;
+    }
+    if (key.startsWith('practice:')) return 'Practice · ' + key.split(':')[1];
+    if (key.startsWith('lesson:')) return 'Lesson · ' + key.split(':')[1];
+    return key;
+  }
+
+  // ——— Text generation ———
+  function getRawText() {
+    if (campaignRun && selectedTerritory) {
+      const t = selectedTerritory;
+      if (t.mode === 'lesson') return (LESSONS[t.lesson] || LESSONS.home)();
+      if (t.mode === 'code') return pick(CODE_SNIPPETS);
+      if (t.mode === 'timed' || t.mode === 'practice') {
+        const pool = TEXTS[t.diff || 'medium'] || TEXTS.medium;
+        if (t.mode === 'timed') {
+          const chunks = [];
+          const need = (t.duration || 30) >= 60 ? 4 : 2;
+          for (let i = 0; i < need; i++) chunks.push(pick(pool));
+          return chunks.join(' ');
+        }
+        return pick(pool);
+      }
+    }
+    if (mode === 'custom') {
+      const t = (customText.value || '').replace(/\r\n/g, '\n').trim();
+      return t || 'Paste some text above then press New Test to practice your own content.';
+    }
+    if (mode === 'lesson') {
+      return (LESSONS[$('lesson').value] || LESSONS.home)();
+    }
+    if (mode === 'code') return pick(CODE_SNIPPETS);
+    const diff = $('difficulty').value;
+    const pool = TEXTS[diff] || TEXTS.medium;
+    if (mode === 'timed') {
+      const chunks = [];
+      const need = durationSec >= 60 ? 4 : 2;
+      for (let i = 0; i < need; i++) chunks.push(pick(pool));
+      return chunks.join(' ');
+    }
+    return pick(pool);
+  }
+
+  function getTargetText() {
+    // campaign may force simplify flags temporarily
+    if (campaignRun && selectedTerritory) {
+      const t = selectedTerritory;
+      const prevCaps = $('optNoCaps').checked;
+      const prevPunct = $('optNoPunct').checked;
+      // apply territory simplify for generation only if specified
+      if (t.noCaps != null) $('optNoCaps').checked = !!t.noCaps;
+      if (t.noPunct != null) $('optNoPunct').checked = !!t.noPunct;
+      const text = simplifyText(getRawText());
+      // restore user prefs after generate? Better keep territory settings during campaign run.
+      // User can still toggle manually mid-run if they want.
+      return text || 'ready';
+    }
+    return simplifyText(getRawText()) || 'ready';
+  }
+
+  // ——— Run lifecycle ———
+  function newTest(reuseText) {
+    stopTimer();
+    finished = false;
+    running = false;
+    startedAt = 0;
+    index = 0;
+    errors = 0;
+    totalKeystrokes = 0;
+    correctKeystrokes = 0;
+    streak = 0;
+    bestStreak = 0;
+    score = 0;
+    bestMult = 1;
+    pendingHs = null;
+    durationSec = parseInt($('duration').value, 10) || 30;
+    if (!reuseText) target = getTargetText();
+    wrongFlags = new Array(target.length).fill(false);
+    resultBanner.classList.remove('show', 'highscore');
+    $('btnSaveHs').style.display = 'none';
+    progressFill.style.width = '0%';
+    renderPrompt();
+    highlightNext();
+    updateComboUI(false);
+    updateStats();
+    focusHint.textContent = 'Click the text (or press a key) to focus and start';
+    focusHint.className = 'focus-hint';
+    typer.value = '';
+    typer.focus();
+  }
+
+  function beginRun() {
+    if (running || finished || !target) return;
+    running = true;
+    startedAt = Date.now();
+    startTimer();
+    focusHint.textContent = 'Typing… combos multiply your score';
+    focusHint.className = 'focus-hint live';
+    ensureAudio();
+  }
+
+  function finishTest(reason) {
+    if (finished) return;
+    finished = true;
+    running = false;
+    stopTimer();
+    updateStats();
+    highlightNext();
+
+    const wpm = calcWpm();
+    const acc = calcAccuracy();
+    // bonus for accuracy / finish
+    if (acc >= 98) score += Math.round(50 * bestMult);
+    if (reason === 'complete') score += Math.round(100 * bestMult);
+
+    $('resultScore').textContent = String(score);
+    $('resultWpm').textContent = String(wpm);
+    $('resultAcc').textContent = acc + '%';
+    $('resultMult').textContent = '×' + bestMult;
+
+    let title = 'Test complete';
+    let sub = 'Score saved to recent runs.';
+    let conquered = false;
+
+    if (campaignRun && selectedTerritory) {
+      const t = selectedTerritory;
+      const pass = wpm >= t.wpm && acc >= t.acc;
+      if (pass) {
+        title = 'Territory conquered!';
+        sub = `${t.emoji} ${t.name} is yours — ${wpm} WPM · ${acc}%`;
+        conquered = true;
+        conquerTerritory(t.id);
+        sfxConquer();
+        flashScreen('rgba(0,255,136,0.2)');
+        spawnSparkles(window.innerWidth / 2, window.innerHeight / 3, 5);
+      } else {
+        title = 'Not yet…';
+        sub = `Need ${t.wpm}+ WPM and ${t.acc}%+ accuracy (got ${wpm} / ${acc}%). Try again!`;
+        sfxFinish(false);
+      }
+    } else if (reason === 'time') {
+      title = "Time's up";
+      sub = `${durationSec}s · ${wpm} WPM · score ${score}`;
+      sfxFinish(false);
+    } else {
+      title = 'Passage complete';
+      sub = `Finished with ${wpm} WPM and ×${bestMult} best combo.`;
+      sfxFinish(false);
+    }
+
+    const bucket = optionKey();
+    const isHs = isHighScore(bucket, score, wpm);
+    if (isHs && score > 0) {
+      resultBanner.classList.add('highscore');
+      if (!conquered) title = '🏆 New high score!';
+      sub += ' Enter your full name above and save.';
+      $('btnSaveHs').style.display = '';
+      pendingHs = { bucket, score, wpm, acc, bestMult, errors, at: Date.now() };
+      sfxFinish(true);
+    }
+
+    $('resultTitle').textContent = title;
+    $('resultSub').textContent = sub;
+    resultBanner.classList.add('show');
+
+    saveHistory({
+      at: Date.now(),
+      mode: campaignRun ? 'campaign' : mode,
+      bucket,
+      score,
+      wpm,
+      acc,
+      errors,
+      bestMult,
+      bestStreak,
+      durationMs: elapsedMs(),
+    });
+    renderHistory();
+
+    // auto-save if name present
+    if (pendingHs && getPlayerName()) {
+      saveHighScore(pendingHs);
+      pendingHs = null;
+      $('btnSaveHs').style.display = 'none';
+      $('resultSub').textContent = sub + ' High score saved for ' + getPlayerName() + '.';
+    }
+  }
+
+  // ——— Typing ———
+  function onType(e) {
+    typer.value = '';
+    if (finished) return;
+    if (!target) return;
+
+    const key = e.key;
+    if (key === 'Tab') {
+      e.preventDefault();
+      newTest(true);
+      return;
+    }
+    if (key === 'Escape') {
+      e.preventDefault();
+      typer.focus();
+      return;
+    }
+    if (key.length > 1 && key !== 'Enter' && key !== 'Backspace') return;
+
+    e.preventDefault();
+    beginRun();
+
+    if (key === 'Backspace') {
+      if (index > 0) {
+        // optional: allow backspace without killing streak heavily
+        index--;
+        renderPrompt();
+        highlightNext();
+        updateStats();
+      }
+      return;
+    }
+
+    const expected = target[index];
+    let got = key;
+    if (key === 'Enter') got = '\n';
+    if (got.length !== 1 && got !== '\n') return;
+
+    totalKeystrokes++;
+    const ok = got === expected;
+
+    if (ok) {
+      correctKeystrokes++;
+      streak++;
+      bestStreak = Math.max(bestStreak, streak);
+      const gain = addScore(10);
+      flashKey(expected, true);
+      sfxCorrect();
+
+      // particles at caret
+      const cur = promptEl.querySelector('.current');
+      if (cur && $('optFx').checked) {
+        const r = cur.getBoundingClientRect();
+        const mult = currentMult();
+        const count = 4 + Math.min(12, Math.floor(mult * 3));
+        const color = tierForStreak(streak)?.color || '#00f3ff';
+        spawnBurst(r.left + r.width / 2, r.top + r.height / 2, color, count, 1.8 + mult * 0.3);
+        if (streak >= 10 && streak % 5 === 0) {
+          flashScreen(color + '22');
+        }
+      }
+
+      // streak milestones
+      if (STREAK_TIERS.some((t) => t.at === streak)) {
+        onStreakHit();
+        popStat('statMult');
+      }
+
+      index++;
+      // bonus score already applied
+      if (gain && score % 100 < gain) popStat('statScore');
+
+      renderPrompt();
+      highlightNext();
+      updateComboUI(false);
+      updateStats();
+      mainPanel.classList.remove('pulse-ok');
+      void mainPanel.offsetWidth;
+      if (streak > 0 && streak % 10 === 0) mainPanel.classList.add('pulse-ok');
+
+      if (index >= target.length) {
+        const isTimed = mode === 'timed' || (campaignRun && selectedTerritory?.mode === 'timed');
+        if (isTimed && !finished) {
+          const extra = ' ' + getTargetText();
+          target += extra;
+          wrongFlags = wrongFlags.concat(new Array(extra.length).fill(false));
+          renderPrompt();
+          highlightNext();
+        } else {
+          finishTest('complete');
+        }
+      }
+    } else {
+      errors++;
+      if (index < wrongFlags.length) wrongFlags[index] = true;
+      streak = 0;
+      flashKey(got === '\n' ? ' ' : got, false);
+      sfxMiss();
+      updateComboUI(false);
+      renderPrompt();
+      updateStats();
+      const cur = promptEl.querySelector('.current');
+      if (cur) {
+        cur.style.background = 'rgba(255,77,106,0.4)';
+        setTimeout(() => { if (cur) cur.style.background = ''; }, 100);
+      }
+    }
+  }
+
+  // ——— Storage: history / HS / campaign ———
+  function getPlayerName() {
+    return ($('playerName').value || '').trim();
+  }
+
+  function loadJson(key, fallback) {
+    try {
+      const v = JSON.parse(localStorage.getItem(key) || 'null');
+      return v == null ? fallback : v;
+    } catch (_) {
+      return fallback;
+    }
+  }
+  function saveJson(key, val) {
+    localStorage.setItem(key, JSON.stringify(val));
+  }
+
+  function saveHistory(entry) {
+    let list = loadJson(KEYS.history, []);
+    if (!Array.isArray(list)) list = [];
+    list.unshift(entry);
+    if (list.length > MAX_HISTORY) list = list.slice(0, MAX_HISTORY);
+    saveJson(KEYS.history, list);
+  }
+
+  function loadHighScores() {
+    const data = loadJson(KEYS.highscores, {});
+    return data && typeof data === 'object' ? data : {};
+  }
+
+  function isHighScore(bucket, sc, wpm) {
+    const all = loadHighScores();
+    const list = all[bucket] || [];
+    if (list.length < MAX_HS_PER_BUCKET) return sc > 0;
+    const worst = list[list.length - 1];
+    return sc > (worst.score || 0) || (sc === worst.score && wpm > (worst.wpm || 0));
+  }
+
+  function saveHighScore(entry) {
+    const name = getPlayerName();
+    if (!name) {
+      alert('Enter your full name above to save a high score.');
+      return false;
+    }
+    const all = loadHighScores();
+    const bucket = entry.bucket;
+    if (!all[bucket]) all[bucket] = [];
+    all[bucket].push({
+      name,
+      score: entry.score,
+      wpm: entry.wpm,
+      acc: entry.acc,
+      bestMult: entry.bestMult,
+      errors: entry.errors,
+      at: entry.at || Date.now(),
+    });
+    all[bucket].sort((a, b) => (b.score - a.score) || (b.wpm - a.wpm));
+    all[bucket] = all[bucket].slice(0, MAX_HS_PER_BUCKET);
+    saveJson(KEYS.highscores, all);
+    renderHighScores();
+    return true;
+  }
+
+  function allBucketKeys() {
+    const keys = new Set();
+    // standard options
+    ['easy', 'medium', 'hard'].forEach((d) => {
+      ['15', '30', '60', '120'].forEach((s) => keys.add('timed:' + d + ':' + s));
+      keys.add('practice:' + d);
+    });
+    Object.keys(LESSONS).forEach((l) => keys.add('lesson:' + l));
+    keys.add('code');
+    keys.add('custom');
+    TERRITORIES.forEach((t) => keys.add('campaign:' + t.id));
+    // also any saved
+    Object.keys(loadHighScores()).forEach((k) => keys.add(k));
+    return [...keys];
+  }
+
+  function fillHsFilter() {
+    const sel = $('hsFilter');
+    const cur = sel.value || 'all';
+    sel.innerHTML = '<option value="all">All modes</option>';
+    allBucketKeys().forEach((k) => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = optionLabel(k);
+      sel.appendChild(opt);
+    });
+    sel.value = [...sel.options].some((o) => o.value === cur) ? cur : 'all';
+  }
+
+  function renderHighScores() {
+    fillHsFilter();
+    const filter = $('hsFilter').value;
+    const all = loadHighScores();
+    const ul = $('hsList');
+    const empty = $('emptyHs');
+    ul.innerHTML = '';
+
+    let rows = [];
+    if (filter === 'all') {
+      Object.keys(all).forEach((bucket) => {
+        (all[bucket] || []).forEach((h) => rows.push({ ...h, bucket }));
+      });
+      rows.sort((a, b) => (b.score - a.score) || (b.wpm - a.wpm));
+      rows = rows.slice(0, 20);
+    } else {
+      rows = (all[filter] || []).map((h) => ({ ...h, bucket: filter }));
+    }
+
+    if (!rows.length) {
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    rows.forEach((h) => {
+      const li = document.createElement('li');
+      li.innerHTML =
+        `<span class="name" title="${escapeHtml(h.name)}">${escapeHtml(h.name)}</span>` +
+        `<span title="${escapeHtml(optionLabel(h.bucket))}">${escapeHtml(optionLabel(h.bucket))}</span>` +
+        `<span class="score">${h.score}</span>` +
+        `<span class="wpm">${h.wpm} wpm</span>`;
+      ul.appendChild(li);
+    });
+  }
+
+  function renderHistory() {
+    const list = loadJson(KEYS.history, []);
+    const ul = $('historyList');
+    const empty = $('emptyHist');
+    ul.innerHTML = '';
+    if (!list.length) {
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    list.slice(0, 15).forEach((h) => {
+      const li = document.createElement('li');
+      const when = new Date(h.at);
+      const timeStr = when.toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+      li.innerHTML =
+        `<span>${escapeHtml(optionLabel(h.bucket || h.mode))} · ${escapeHtml(timeStr)}</span>` +
+        `<span class="wpm">${h.score || 0} pts</span>` +
+        `<span class="acc">${h.wpm} wpm</span>` +
+        `<span>×${h.bestMult || 1}</span>`;
+      ul.appendChild(li);
+    });
+  }
+
+  // ——— Campaign ———
+  function loadCampaign() {
+    const data = loadJson(KEYS.campaign, { conquered: [] });
+    if (!Array.isArray(data.conquered)) data.conquered = [];
+    return data;
+  }
+  function saveCampaign(data) {
+    saveJson(KEYS.campaign, data);
+  }
+  function isUnlocked(idx, conquered) {
+    if (idx === 0) return true;
+    return conquered.includes(TERRITORIES[idx - 1].id);
+  }
+  function conquerTerritory(id) {
+    const data = loadCampaign();
+    if (!data.conquered.includes(id)) {
+      data.conquered.push(id);
+      saveCampaign(data);
+    }
+    renderCampaign();
+  }
+  function renderCampaign() {
+    const data = loadCampaign();
+    const box = $('territories');
+    box.innerHTML = '';
+    let conqueredCount = 0;
+    TERRITORIES.forEach((t, idx) => {
+      const unlocked = isUnlocked(idx, data.conquered);
+      const conquered = data.conquered.includes(t.id);
+      if (conquered) conqueredCount++;
+      const el = document.createElement('div');
+      el.className = 'territory'
+        + (conquered ? ' conquered' : '')
+        + (!unlocked ? ' locked' : '')
+        + (selectedTerritory && selectedTerritory.id === t.id ? ' current' : '');
+      el.innerHTML =
+        `<div class="t-badge">${conquered ? '✅' : unlocked ? '⚔' : '🔒'}</div>` +
+        `<div class="t-emoji">${t.emoji}</div>` +
+        `<div class="t-name">${escapeHtml(t.name)}</div>` +
+        `<div class="t-req">${t.wpm}+ WPM · ${t.acc}%+ · ${escapeHtml(t.desc || '')}</div>`;
+      if (unlocked) {
+        el.addEventListener('click', () => {
+          selectedTerritory = t;
+          // apply territory simplify defaults
+          if (t.noCaps != null) $('optNoCaps').checked = !!t.noCaps;
+          if (t.noPunct != null) $('optNoPunct').checked = !!t.noPunct;
+          if (t.duration) $('duration').value = String(t.duration);
+          if (t.diff) $('difficulty').value = t.diff;
+          if (t.lesson) $('lesson').value = t.lesson;
+          renderCampaign();
+          $('campSelected').textContent = t.name;
+        });
+      }
+      box.appendChild(el);
+    });
+    $('campProgress').textContent = conqueredCount + ' / ' + TERRITORIES.length;
+    if (selectedTerritory) $('campSelected').textContent = selectedTerritory.name;
+    else $('campSelected').textContent = '— pick a territory';
+  }
+
+  function startCampaignAttack() {
+    if (!selectedTerritory) {
+      // pick first unconquered unlocked
+      const data = loadCampaign();
+      for (let i = 0; i < TERRITORIES.length; i++) {
+        if (isUnlocked(i, data.conquered) && !data.conquered.includes(TERRITORIES[i].id)) {
+          selectedTerritory = TERRITORIES[i];
+          break;
+        }
+      }
+      if (!selectedTerritory) selectedTerritory = TERRITORIES[0];
+      renderCampaign();
+    }
+    campaignRun = true;
+    // scroll to typing area
+    mainPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    newTest(false);
+    showComboToast(selectedTerritory.emoji + ' ' + selectedTerritory.name, 'Conquer: ' + selectedTerritory.wpm + ' WPM · ' + selectedTerritory.acc + '%');
+  }
+
+  // ——— Mode UI ———
+  function setMode(next) {
+    mode = next;
+    campaignRun = mode === 'campaign';
+    document.querySelectorAll('#modePills .pill').forEach((p) => {
+      p.classList.toggle('active', p.dataset.mode === mode);
+    });
+    $('durationField').style.display = mode === 'timed' ? '' : 'none';
+    $('lessonField').style.display = mode === 'lesson' ? '' : 'none';
+    $('difficultyField').style.display = (mode === 'timed' || mode === 'practice') ? '' : 'none';
+    customArea.classList.toggle('show', mode === 'custom');
+    $('campaignPanel').classList.toggle('show', mode === 'campaign');
+    if (mode === 'campaign') {
+      renderCampaign();
+      // don't auto-start until Attack
+      stopTimer();
+      target = '';
+      renderPrompt();
+      focusHint.textContent = 'Pick a territory and press Attack Territory';
+      focusHint.className = 'focus-hint';
+    } else {
+      campaignRun = false;
+      newTest(false);
+    }
+  }
+
+  // ——— Prefs ———
+  function loadPrefs() {
+    const p = loadJson(KEYS.prefs, {});
+    if (p.noCaps) $('optNoCaps').checked = true;
+    if (p.noPunct) $('optNoPunct').checked = true;
+    if (p.sound === false) $('optSound').checked = false;
+    if (p.fx === false) $('optFx').checked = false;
+    const name = localStorage.getItem(KEYS.name) || '';
+    if (name) $('playerName').value = name;
+  }
+  function savePrefs() {
+    saveJson(KEYS.prefs, {
+      noCaps: $('optNoCaps').checked,
+      noPunct: $('optNoPunct').checked,
+      sound: $('optSound').checked,
+      fx: $('optFx').checked,
+    });
+    localStorage.setItem(KEYS.name, getPlayerName());
+  }
+
+  // ——— Events ———
+  document.querySelectorAll('#modePills .pill').forEach((p) => {
+    p.addEventListener('click', () => setMode(p.dataset.mode));
+  });
+  $('btnStart').addEventListener('click', () => {
+    if (mode === 'campaign') {
+      startCampaignAttack();
+    } else {
+      campaignRun = false;
+      newTest(false);
+    }
+  });
+  $('btnRestart').addEventListener('click', () => newTest(true));
+  $('btnAgain').addEventListener('click', () => {
+    if (mode === 'campaign') startCampaignAttack();
+    else newTest(false);
+  });
+  $('btnCampStart').addEventListener('click', startCampaignAttack);
+  $('btnSaveHs').addEventListener('click', () => {
+    if (!pendingHs) return;
+    if (saveHighScore(pendingHs)) {
+      pendingHs = null;
+      $('btnSaveHs').style.display = 'none';
+      $('resultSub').textContent = 'High score saved for ' + getPlayerName() + '!';
+      sfxFinish(true);
+    }
+  });
+  $('duration').addEventListener('change', () => {
+    if (mode === 'timed' && !campaignRun) newTest(false);
+  });
+  $('difficulty').addEventListener('change', () => {
+    if (!campaignRun) newTest(false);
+  });
+  $('lesson').addEventListener('change', () => {
+    if (!campaignRun) newTest(false);
+  });
+  ['optNoCaps', 'optNoPunct'].forEach((id) => {
+    $(id).addEventListener('change', () => {
+      savePrefs();
+      if (!running && !finished) newTest(false);
+    });
+  });
+  ['optSound', 'optFx'].forEach((id) => {
+    $(id).addEventListener('change', savePrefs);
+  });
+  $('playerName').addEventListener('change', savePrefs);
+  $('playerName').addEventListener('blur', savePrefs);
+  $('hsFilter').addEventListener('change', renderHighScores);
+  $('btnClearHist').addEventListener('click', () => {
+    if (confirm('Clear recent run history?')) {
+      localStorage.removeItem(KEYS.history);
+      renderHistory();
+    }
+  });
+  $('btnClearHs').addEventListener('click', () => {
+    if (confirm('Clear ALL high scores for every mode?')) {
+      localStorage.removeItem(KEYS.highscores);
+      renderHighScores();
+    }
+  });
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      $('tabHistory').style.display = tab === 'history' ? '' : 'none';
+      $('tabTips').style.display = tab === 'tips' ? '' : 'none';
+    });
+  });
+
+  promptEl.addEventListener('click', () => typer.focus());
+  $('promptWrap').addEventListener('click', () => typer.focus());
+  mainPanel.addEventListener('click', (e) => {
+    if (e.target.closest('button')) return;
+    typer.focus();
+  });
+  typer.addEventListener('keydown', onType);
+  typer.addEventListener('focus', () => {
+    if (!finished) {
+      focusHint.textContent = running ? 'Typing… combos multiply your score' : 'Ready — start typing';
+      focusHint.className = 'focus-hint live';
+    }
+  });
+  typer.addEventListener('blur', () => {
+    if (!finished && !running) {
+      focusHint.textContent = 'Click the text (or press a key) to focus and start';
+      focusHint.className = 'focus-hint';
+    } else if (!finished && running) {
+      focusHint.textContent = 'Focus lost — click to continue';
+      focusHint.className = 'focus-hint warn';
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' && document.activeElement !== customText && document.activeElement !== $('playerName')) {
+      e.preventDefault();
+      newTest(true);
+      return;
+    }
+    if (document.activeElement === customText || document.activeElement === $('playerName')) return;
+    if (document.activeElement !== typer && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      typer.focus();
+    }
+  });
+
+  // Init
+  buildKeyboard();
+  loadPrefs();
+  renderHistory();
+  renderHighScores();
+  renderCampaign();
+  updateComboUI(false);
+  setMode('timed');
+})();
+  </script>
+</body>
+</html>

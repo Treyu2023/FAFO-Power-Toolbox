@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LedgerLink Console — TaxForge</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+  <link rel="stylesheet" href="taxforge-shared.css">
+  <style>
+    .link-orb {
+      width: 88px; height: 88px; margin: 0 auto 12px; position: relative;
+    }
+    .link-orb .core {
+      position: absolute; inset: 18px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #00e8a2, #0a3a30);
+      box-shadow: 0 0 24px rgba(0,232,162,0.5);
+      animation: orbPulse 2s ease-in-out infinite;
+    }
+    .link-orb .ring {
+      position: absolute; inset: 0; border-radius: 50%;
+      border: 2px dashed rgba(61,158,255,0.5);
+      animation: spin 12s linear infinite;
+    }
+    .link-orb .ring2 {
+      position: absolute; inset: 8px; border-radius: 50%;
+      border: 2px solid rgba(255,209,102,0.35);
+      animation: spin 8s linear infinite reverse;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes orbPulse {
+      0%,100% { transform: scale(1); }
+      50% { transform: scale(1.06); box-shadow: 0 0 32px rgba(0,232,162,0.7); }
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+      margin-right: 6px; background: var(--tf-muted);
+    }
+    .status-dot.on { background: var(--tf-ok); box-shadow: 0 0 8px var(--tf-ok); animation: blink 1.5s infinite; }
+    .status-dot.demo { background: var(--tf-accent2); box-shadow: 0 0 8px var(--tf-accent2); }
+    @keyframes blink { 50% { opacity: 0.4; } }
+    .acct-scroll { max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
+  </style>
+</head>
+<body class="tf-body">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="tf-wrap">
+    <header class="tf-header">
+      <div class="tf-badge xero">Xero bridge</div>
+      <h1>🔗 LEDGERLINK CONSOLE</h1>
+      <p>Connect, import, and keep the chart of accounts healthy for tax season automation.</p>
+    </header>
+    <div id="suiteNav"></div>
+
+    <div class="tf-grid tf-grid-2">
+      <div class="tf-panel">
+        <h2>Connection</h2>
+        <div class="link-orb"><div class="ring"></div><div class="ring2"></div><div class="core"></div></div>
+        <p style="text-align:center;margin-bottom:12px">
+          <span class="status-dot" id="connDot"></span>
+          <strong id="connLabel">Not connected</strong>
+        </p>
+        <div class="tf-field">
+          <label class="tf-label">Organization name</label>
+          <input class="tf-input" id="orgName" placeholder="Your business legal name">
+        </div>
+        <div class="tf-field">
+          <label class="tf-label">Xero Client ID (local only — not committed)</label>
+          <input class="tf-input" id="clientId" placeholder="Paste from Xero Developer app" autocomplete="off">
+        </div>
+        <div class="tf-field">
+          <label class="tf-label">Redirect URI (must match Xero app)</label>
+          <input class="tf-input" id="redirectUri" readonly>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="tf-btn primary" type="button" id="btnDemo">Load Demo Org</button>
+          <button class="tf-btn" type="button" id="btnSaveCfg">Save config</button>
+          <button class="tf-btn gold" type="button" id="btnOAuth">Start Xero OAuth</button>
+          <button class="tf-btn danger sm" type="button" id="btnDisconnect">Disconnect</button>
+        </div>
+        <p class="tf-muted" style="margin-top:12px">
+          OAuth returns an authorization <em>code</em> to this page. Token exchange should run on the toolbox loopback server with a client secret from FAFO Secrets — never store secrets in HTML or git.
+        </p>
+        <div id="oauthNote" class="tf-muted" style="margin-top:8px"></div>
+      </div>
+
+      <div class="tf-panel">
+        <h2>Sync health</h2>
+        <div class="tf-grid tf-grid-2" style="margin-bottom:12px">
+          <div class="tf-stat"><div class="val" id="stAccounts">0</div><div class="lbl">Accounts</div></div>
+          <div class="tf-stat"><div class="val gold" id="stTxns">0</div><div class="lbl">Transactions</div></div>
+          <div class="tf-stat"><div class="val" id="stCoded">0%</div><div class="lbl">Coded</div></div>
+          <div class="tf-stat"><div class="val warn" id="stReview">0</div><div class="lbl">Needs review</div></div>
+        </div>
+        <div class="tf-label">Coding coverage</div>
+        <div class="tf-bar"><i id="codeBar"></i></div>
+        <p class="tf-muted" style="margin-top:10px" id="lastSync">Last sync: never</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+          <label class="tf-btn">
+            Import Xero / bank CSV
+            <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+          </label>
+          <button class="tf-btn ghost sm" type="button" id="btnDemoTx">Seed demo transactions</button>
+          <button class="tf-btn sm" type="button" id="btnExport">Export JSON pack</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tf-panel">
+      <h2>Chart of accounts <span class="tf-muted" style="font-weight:500;text-transform:none;letter-spacing:0">(Xero-style)</span></h2>
+      <div class="acct-scroll">
+        <table class="tf-table" id="acctTable">
+          <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Tax</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="tf-footer">LedgerLink · TaxForge · Demo data is local to this browser</p>
+  </div>
+  <script src="taxforge-shared.js"></script>
+  <script>
+    TaxForge.mountFx();
+    document.getElementById('suiteNav').innerHTML = TaxForge.nav('ledger');
+
+    const $ = (id) => document.getElementById(id);
+    $('redirectUri').value = location.href.split('#')[0].split('?')[0];
+
+    function loadState() {
+      const org = TaxForge.storage.get('org', null) || { name: '', mode: 'none', connected: false };
+      const cfg = TaxForge.xero.getConfig();
+      $('orgName').value = org.name || '';
+      $('clientId').value = cfg.clientId || '';
+      if (!cfg.redirectUri) {
+        cfg.redirectUri = $('redirectUri').value;
+        TaxForge.xero.saveConfig(cfg);
+      } else $('redirectUri').value = cfg.redirectUri;
+
+      const pending = TaxForge.xero.consumeRedirect();
+      if (pending) {
+        TaxForge.storage.set('xero.pending_code', { code: pending.code, at: Date.now() });
+        $('oauthNote').innerHTML = '<span class="tf-pill info">OAuth code captured</span> Exchange via secure backend. Demo mode remains available.';
+        TaxForge.toast('Xero auth code received (pending token exchange)');
+      }
+      refreshUI();
+    }
+
+    function refreshUI() {
+      const org = TaxForge.storage.get('org', { connected: false, mode: 'none' });
+      const accounts = TaxForge.storage.get('accounts', []);
+      const txns = TaxForge.storage.get('transactions', []);
+      const coded = txns.filter((t) => t.status === 'coded').length;
+      const pct = txns.length ? Math.round((coded / txns.length) * 100) : 0;
+      const review = txns.filter((t) => t.status !== 'coded').length;
+
+      $('connDot').className = 'status-dot' + (org.connected ? (org.mode === 'demo' ? ' demo' : ' on') : '');
+      $('connLabel').textContent = org.connected
+        ? (org.mode === 'demo' ? 'Demo org loaded' : 'Connected (live session)')
+        : 'Not connected';
+      $('stAccounts').textContent = accounts.length;
+      $('stTxns').textContent = txns.length;
+      $('stCoded').textContent = pct + '%';
+      $('stCoded').className = 'val' + (pct >= 85 ? '' : pct >= 50 ? ' warn' : ' err');
+      $('stReview').textContent = review;
+      $('codeBar').style.width = pct + '%';
+      $('lastSync').textContent = 'Last sync: ' + (org.lastSync ? new Date(org.lastSync).toLocaleString() : 'never')
+        + (org.name ? ' · ' + org.name : '');
+
+      const tb = $('acctTable').querySelector('tbody');
+      tb.innerHTML = accounts.map((a) =>
+        `<tr><td><code>${a.code}</code></td><td>${esc(a.name)}</td><td><span class="tf-pill info">${a.type}</span></td><td>${a.taxType || '—'}</td></tr>`
+      ).join('') || '<tr><td colspan="4" class="tf-muted">No accounts yet — load demo or connect Xero.</td></tr>';
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    $('btnDemo').onclick = () => {
+      const org = TaxForge.demoOrg();
+      org.connected = true;
+      org.mode = 'demo';
+      org.lastSync = Date.now();
+      org.name = $('orgName').value.trim() || org.name;
+      TaxForge.storage.set('org', org);
+      TaxForge.storage.set('accounts', TaxForge.demoAccounts());
+      if (!TaxForge.storage.get('transactions', []).length) {
+        TaxForge.storage.set('transactions', TaxForge.demoTransactions());
+      }
+      TaxForge.toast('Demo org + chart of accounts loaded');
+      TaxForge.burst(window.innerWidth / 2, 160, '#00e8a2');
+      refreshUI();
+    };
+
+    $('btnSaveCfg').onclick = () => {
+      const cfg = TaxForge.xero.getConfig();
+      cfg.clientId = $('clientId').value.trim();
+      cfg.redirectUri = $('redirectUri').value.trim();
+      TaxForge.xero.saveConfig(cfg);
+      const org = TaxForge.storage.get('org', TaxForge.demoOrg());
+      org.name = $('orgName').value.trim() || org.name;
+      TaxForge.storage.set('org', org);
+      TaxForge.toast('Config saved locally');
+      refreshUI();
+    };
+
+    $('btnOAuth').onclick = () => {
+      try {
+        $('btnSaveCfg').click();
+        const url = TaxForge.xero.buildAuthUrl();
+        TaxForge.toast('Opening Xero login…');
+        location.href = url;
+      } catch (e) {
+        TaxForge.toast(e.message || 'OAuth failed');
+      }
+    };
+
+    $('btnDisconnect').onclick = () => {
+      if (!confirm('Clear Xero session + local org link? (transactions stay until you clear them elsewhere)')) return;
+      TaxForge.xero.clearSession();
+      const org = TaxForge.storage.get('org', {});
+      org.connected = false;
+      org.mode = 'none';
+      TaxForge.storage.set('org', org);
+      TaxForge.toast('Disconnected');
+      refreshUI();
+    };
+
+    $('btnDemoTx').onclick = () => {
+      TaxForge.storage.set('transactions', TaxForge.demoTransactions());
+      const org = TaxForge.storage.get('org', TaxForge.demoOrg());
+      org.lastSync = Date.now();
+      TaxForge.storage.set('org', org);
+      TaxForge.toast('Demo transactions seeded');
+      refreshUI();
+    };
+
+    $('csvFile').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const text = await f.text();
+      const rows = TaxForge.parseXeroCsv(text);
+      if (!rows.length) {
+        TaxForge.toast('No rows parsed — check CSV headers');
+        return;
+      }
+      const prev = TaxForge.storage.get('transactions', []);
+      TaxForge.storage.set('transactions', rows.concat(prev).slice(0, 500));
+      const org = TaxForge.storage.get('org', TaxForge.demoOrg());
+      org.lastSync = Date.now();
+      org.connected = true;
+      if (!org.mode || org.mode === 'none') org.mode = 'csv';
+      TaxForge.storage.set('org', org);
+      if (!TaxForge.storage.get('accounts', []).length) {
+        TaxForge.storage.set('accounts', TaxForge.demoAccounts());
+      }
+      TaxForge.toast('Imported ' + rows.length + ' lines');
+      TaxForge.burst(window.innerWidth / 2, 200, '#3d9eff');
+      refreshUI();
+      e.target.value = '';
+    };
+
+    $('btnExport').onclick = () => {
+      const pack = {
+        exportedAt: new Date().toISOString(),
+        org: TaxForge.storage.get('org', null),
+        accounts: TaxForge.storage.get('accounts', []),
+        transactions: TaxForge.storage.get('transactions', []),
+      };
+      const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'taxforge-ledgerlink-pack.json';
+      a.click();
+      TaxForge.toast('JSON pack downloaded');
+    };
+
+    loadState();
+  </script>
+</body>
+</html>
