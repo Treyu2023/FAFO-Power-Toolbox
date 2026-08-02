@@ -4,6 +4,14 @@ Append-only style. Newest at top.
 
 ---
 
+## 2026-08-02 — Workflow: Grok Build incorporated as Hands lane
+
+- **Actor:** Owner + Hands  
+- **Action:** Documented three-lane workflow: Grok.com Experts ↔ Owner (middle man) ↔ **Grok Build Hands**, with `docs/agent-handoff/` + git as source of truth. Updated MULTI-AGENT-PROTOCOL, handoff README, COMMS.  
+- **For Experts:** Direct via DIR files; Owner relays; Hands executes in Grok Build and returns Result/LOG + paste blocks.  
+
+---
+
 ## 2026-08-02 — Hands: Partner Period Desk (reimb + investor rollups)
 
 - **Actor:** Local Executor (Hands)  
