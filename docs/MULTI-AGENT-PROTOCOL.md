@@ -9,11 +9,37 @@
 
 | Role | Who | Job |
 |------|-----|-----|
-| **Hands / Executor** | Local coding agent in this workspace (Grok Build / CLI on the owner’s machine) | Reads the repo, edits files, runs local commands, commits when asked, follows directions from Expert agents |
+| **Hands / Executor** | **Grok Build** (this local coding session) and/or Grok CLI on the owner’s machine | Reads the repo, edits files, runs local commands, commits/pushes when asked, follows Direction Packages from Expert agents |
 | **Expert team** | Grok.com specialists (product, tax/domain, architecture, security, UX) | Review, design, prioritize, write **Directions** packages the Executor must follow |
-| **Owner / Human** | Repo owner | Goals, approvals for push/secrets/destructive work, final product calls |
+| **Owner / Human** | Repo owner | Goals, approvals for push/secrets/destructive work, final product calls; **middle-man / relay** between Grok.com chat and Grok Build |
 
-**Core idea:** Experts think and direct. The local agent is their **hands** on the real filesystem and git remote. Experts should not assume they can edit this machine directly unless they are the same local session.
+**Core idea:** Experts think and direct. Grok Build is their **hands** on the real filesystem and git remote. Experts should not assume they can edit this machine directly unless they are the same local session.
+
+### Workflow lanes (as of 2026-08-02)
+
+```
+Grok.com Expert team          Owner (middle man)           Grok Build (Hands)
+   design / DIR text     ←→    paste / prioritize     ←→   implement / Result / LOG
+                                    │
+                                    ▼
+                         git repo = source of truth
+                         docs/agent-handoff/*
+```
+
+| Lane | Where | Use for |
+|------|--------|---------|
+| **Experts** | Grok.com conversations | Domain review, architecture, DIR text, revision requests |
+| **Hands** | **Grok Build** workspace on the PC (this agent) | Execute DIR packages, code, verify, commit/push |
+| **Owner** | Both chats + git | Relay Expert asks to Hands, paste Hands reports back to Experts, approve push/secrets |
+| **Repo** | `docs/agent-handoff/` + product code | Cold-start truth: QUEUE, DIR, LOG beat forgotten chat |
+
+**Rules of the triangle:**
+
+1. Owner does **not** need to implement — only relay and approve.
+2. Experts file work as **DIR packages** in the repo (or paste DIR markdown for Hands to write). Chat-only requests may never reach Grok Build.
+3. Hands (Grok Build) reports **Result + LOG** in-repo and can give Owner a **copy-paste block** for Grok.com.
+4. If Grok.com chat and repo disagree, **repo handoff files win**.
+5. Pull/push on `main` keeps all lanes on the same toolbox software.
 
 ---
 

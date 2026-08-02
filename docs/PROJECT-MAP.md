@@ -70,10 +70,12 @@ Launcher: category **Tax**, section **TaxForge & Books**.
 ## How agents should navigate
 
 1. `AGENTS.md` — security & layout non-negotiables  
-2. `docs/MULTI-AGENT-PROTOCOL.md` — Expert ↔ Hands protocol  
+2. `docs/MULTI-AGENT-PROTOCOL.md` — Expert ↔ Owner ↔ **Grok Build Hands** lanes  
 3. `docs/agent-handoff/QUEUE.md` — what to do next  
 4. Suite-specific briefs under product folders  
-5. Implement with local tools; report in handoff LOG  
+5. Hands = Grok Build (local); implement with tools; report in handoff LOG; Owner relays to Grok.com  
+
+**Collaboration shape:** Grok.com Experts design → Owner relays → Grok Build executes on disk/git → Result in repo + paste-back to Experts.
 
 ---
 

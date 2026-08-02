@@ -2,6 +2,7 @@
 
 **Protocol:** `docs/MULTI-AGENT-PROTOCOL.md`  
 **Hands standing message:** `COMMS-HANDS-TO-EXPERTS.md`  
+**Hands seat:** Grok Build (local) · **Experts seat:** Grok.com · **Owner:** middle-man relay  
 **Rule:** Prefer one `IN_PROGRESS` at a time.
 
 | Priority | Status | ID | Title | Notes |
