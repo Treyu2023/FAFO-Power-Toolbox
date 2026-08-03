@@ -28,6 +28,8 @@
 
     let serverOnline = null;
     let lastCheck = 0;
+    /** Consecutive failed probes — avoids single flaky fetch flipping UI to offline. */
+    let failStreak = 0;
 
     // Page keepalive: while any toolbox HTML page is open, auto-recover offline backend
     let keepAliveTimer = null;
@@ -36,19 +38,81 @@
     const KEEP_ALIVE_MS = 15000;
     const KEEP_ALIVE_COOLDOWN_MS = 25000;
 
-    async function checkServer(force = false, timeoutMs = 1500) {
+    async function probeHealthOnce(timeoutMs) {
+        refreshApiBase();
+        const r = await fetch(`${apiBase()}/health`, {
+            signal: AbortSignal.timeout(timeoutMs),
+            cache: 'no-store',
+            mode: 'cors',
+            credentials: 'omit',
+        });
+        return !!r && r.ok;
+    }
+
+    /**
+     * Probe S1 (HTML Toolbox Server @ 127.0.0.87:18765 by default).
+     * - Caches "online" for ~4s, "offline" only ~1s (recover quickly)
+     * - Retries once on failure
+     * - Hysteresis: while previously online, need 2 fails (unless force) before flipping offline
+     *   so navigation / brief busy periods don't flash Offline on every tool page.
+     */
+    async function checkServer(force = false, timeoutMs = 2500) {
         const now = Date.now();
-        if (force) serverOnline = null;
-        if (!force && serverOnline !== null && now - lastCheck < 3000) return serverOnline;
+        const ms = Math.max(800, Number(timeoutMs) || 2500);
+        if (!force && serverOnline === true && now - lastCheck < 4000) return true;
+        if (!force && serverOnline === false && now - lastCheck < 1000) return false;
+
+        let ok = false;
         try {
-            refreshApiBase();
-            const r = await fetch(`${apiBase()}/health`, { signal: AbortSignal.timeout(timeoutMs) });
-            serverOnline = r.ok;
+            ok = await probeHealthOnce(ms);
         } catch {
-            serverOnline = false;
+            ok = false;
         }
-        lastCheck = now;
-        return serverOnline;
+        // One retry — first paint / navigation often races a single failed fetch
+        if (!ok) {
+            try {
+                await new Promise((r) => setTimeout(r, 120));
+                ok = await probeHealthOnce(Math.max(ms, 3000));
+            } catch {
+                ok = false;
+            }
+        }
+
+        lastCheck = Date.now();
+        if (ok) {
+            failStreak = 0;
+            serverOnline = true;
+            return true;
+        }
+
+        failStreak += 1;
+        // force=true (Recheck / Start Server wait) reports raw truth after retries
+        if (force || serverOnline !== true || failStreak >= 2) {
+            serverOnline = false;
+            return false;
+        }
+        // Optimistic: keep "online" for one blip so tool pages don't lie after home said UP
+        return true;
+    }
+
+    /** Absolute http URL for a tool page when served by S1 (preferred over file://). */
+    function toolboxOrigin() {
+        const c = global.AITOOLBOX_CONFIG;
+        if (c && c.ORIGIN) return String(c.ORIGIN).replace(/\/$/, '');
+        return 'http://127.0.0.87:18765';
+    }
+
+    /**
+     * Build http://127.0.0.87:18765/toolbox/... URL for a relative tool path.
+     * Using the S1 origin keeps shared scripts + health checks consistent across pages.
+     */
+    function toolPageUrl(relativePath) {
+        const rel = String(relativePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\.\//, '')
+            .replace(/^\//, '');
+        const encoded = rel.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+        return toolboxOrigin() + '/toolbox/' + encoded;
     }
 
     async function waitForServer(maxMs = 90000, intervalMs = 1000) {
@@ -539,6 +603,8 @@
             const c = global.AITOOLBOX_CONFIG;
             return (c && c.ENDPOINT_LABEL) || '127.0.0.87:18765';
         },
+        getOrigin() { return toolboxOrigin(); },
+        toolPageUrl,
         refreshBind() { return refreshApiBase(); },
 
         /**
