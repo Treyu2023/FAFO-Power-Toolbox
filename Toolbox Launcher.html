@@ -1287,11 +1287,12 @@
             {
                 id: 'typing-assistant-trainer',
                 name: 'Typing Assistant Trainer',
-                desc: 'WPM, combos, campaign conquest, high scores by name — custom text, simplify toggles, particles & soft SFX',
+                desc: 'Keystroke Chronicles campaign, bonus rounds, mini-games (Word Rush / Ghost Pace), WPM combos & high scores — works offline',
                 path: 'Typing Assistant Trainer.html',
                 category: 'Games',
                 emoji: '⌨️',
-                offlineOk: true
+                offlineOk: true,
+                featured: true
             },
             {
                 id: 'empire-seed',
@@ -1599,18 +1600,29 @@
                     return;
                 }
                 try {
-                    if (tool.needsServer && window.AIToolboxAPI?.isOnline) {
-                        const on = await AIToolboxAPI.isOnline(false, 800).catch(() => false);
+                    // Prefer S1 http://127.0.0.87:18765/toolbox/... so tool pages
+                    // load from the same origin as the API (fixes "online on home,
+                    // offline after change pages" when opened as file:// or mixed).
+                    let dest = tool.path;
+                    let on = false;
+                    if (window.AIToolboxAPI?.isOnline) {
+                        on = await AIToolboxAPI.isOnline(false, 2500).catch(() => false);
                         if (!on) {
-                            try {
-                                AIToolboxUI.toast(
-                                    tool.name + ' works best with ▶ Start Server — opening anyway…',
-                                    'warn'
-                                );
-                            } catch (e) { /* ignore */ }
+                            // one forced recheck — first probe can race navigation
+                            on = await AIToolboxAPI.isOnline(true, 3500).catch(() => false);
                         }
                     }
-                    window.location.href = tool.path;
+                    if (on && window.AIToolboxAPI?.toolPageUrl) {
+                        dest = AIToolboxAPI.toolPageUrl(tool.path);
+                    } else if (tool.needsServer && !on) {
+                        try {
+                            AIToolboxUI.toast(
+                                tool.name + ' works best with ▶ Start S1 Server — opening local file…',
+                                'warn'
+                            );
+                        } catch (e) { /* ignore */ }
+                    }
+                    window.location.href = dest;
                 } catch (e) {
                     console.error('[Launcher] open tool failed', tool.id, e);
                     try { AIToolboxUI.toast('Could not open ' + tool.name + ': ' + (e.message || e), 'warn'); } catch (_) {}

@@ -311,27 +311,40 @@
         };
         let starting = false;
         let pollTimer = null;
+        let lastUiOnline = null;
 
         async function refresh(force = false) {
-            if (starting) return false;
+            // While starting, keep waiting UI — never paint offline mid-launch
+            if (starting) {
+                if (statusEl) {
+                    statusEl.textContent = opts.waitText || ('Starting S1 @ ' + endpoint() + '…');
+                    statusEl.className = (statusEl.className || '').replace(/\b(ok|online|warn|wait|offline|bad)\b/g, '').trim() + ' warn wait';
+                }
+                return false;
+            }
             if (!API()?.isOnline) {
                 if (statusEl) {
-                    statusEl.textContent = opts.offlineText || ('○ Offline — ' + endpoint());
+                    statusEl.textContent = opts.offlineText || ('○ Offline — load shared/aitoolbox-api.js');
                     statusEl.className = (statusEl.className || '').replace(/\b(ok|online|warn|wait|offline|bad)\b/g, '').trim() + ' warn offline';
                 }
                 if (startBtn) startBtn.style.display = '';
                 return false;
             }
-            const on = await API().isOnline(!!force, starting ? 3000 : 2000);
+            let on = await API().isOnline(!!force, 2800);
+            // Soft recheck before painting red (stops home=up / tool-page=offline flicker)
+            if (!force && lastUiOnline === true && on === false) {
+                on = await API().isOnline(true, 3500);
+            }
+            lastUiOnline = on;
             if (statusEl) {
                 if (on) {
                     statusEl.textContent = opts.onlineText || ('● Online @ ' + endpoint());
                     statusEl.className = (statusEl.className || '').replace(/\b(ok|online|warn|wait|offline|bad)\b/g, '').trim() + ' ok online';
-                    statusEl.title = 'Toolbox backend ' + endpoint();
+                    statusEl.title = 'Toolbox backend S1 ' + endpoint() + ' (not FAFO :8765)';
                 } else {
-                    statusEl.textContent = opts.offlineText || ('○ Offline — click or ▶ Start');
+                    statusEl.textContent = opts.offlineText || ('○ Offline — ▶ Start S1 @ ' + endpoint());
                     statusEl.className = (statusEl.className || '').replace(/\b(ok|online|warn|wait|offline|bad)\b/g, '').trim() + ' warn offline';
-                    statusEl.title = 'Start server on ' + endpoint();
+                    statusEl.title = 'Start HTML Toolbox Server on ' + endpoint();
                 }
             }
             if (startBtn) {
@@ -341,7 +354,7 @@
             }
             if (hintEl && !starting) {
                 hintEl.textContent = on
-                    ? ('Connected · ' + endpoint())
+                    ? ('Connected · S1 ' + endpoint())
                     : ('Backend: ' + endpoint() + ' (unique — not FAFO :8765)');
                 hintEl.className = (hintEl.className || '').replace(/\b(ok|warn)\b/g, '').trim() + (on ? ' ok' : '');
             }
@@ -824,6 +837,20 @@
      * Walks up from the current URL until a candidate works, falls back to ../ climbs.
      */
     function launcherHref() {
+        // Prefer S1-served launcher so Back always lands on a page with live health
+        try {
+            const origin = global.AITOOLBOX_CONFIG?.ORIGIN
+                || global.AIToolboxAPI?.getOrigin?.()
+                || 'http://127.0.0.87:18765';
+            if (location.protocol === 'http:' || location.protocol === 'https:') {
+                // Same host as toolbox server → use absolute path on that origin
+                if (location.hostname === '127.0.0.87' || location.port === '18765') {
+                    return origin.replace(/\/$/, '') + '/toolbox/Toolbox%20Launcher.html';
+                }
+            }
+            // file:// or other — still deep-link to live server when possible
+            return origin.replace(/\/$/, '') + '/toolbox/Toolbox%20Launcher.html';
+        } catch { /* fall through */ }
         try {
             const scripts = document.getElementsByTagName('script');
             for (let i = scripts.length - 1; i >= 0; i--) {
@@ -833,7 +860,6 @@
                 }
             }
         } catch { /* ignore */ }
-        // Depth from path segments under toolbox root (best-effort)
         const depth = (location.pathname.match(/\//g) || []).length;
         const up = depth > 2 ? '../'.repeat(Math.min(depth - 1, 4)) : '../';
         return up + 'Toolbox Launcher.html';
