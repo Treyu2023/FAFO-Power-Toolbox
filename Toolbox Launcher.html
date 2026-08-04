@@ -22,6 +22,31 @@
             color: var(--text);
             font-family: 'Segoe UI', system-ui, sans-serif;
             padding: 28px 24px 48px;
+            overflow-x: hidden;
+        }
+        body.lx-select-flash {
+            animation: launcherSelectFlash 0.4s ease;
+        }
+        @keyframes launcherSelectFlash {
+            0% { filter: brightness(1); }
+            35% { filter: brightness(1.08) saturate(1.1); }
+            100% { filter: brightness(1); }
+        }
+        /* Content sits above ambient FX layer */
+        body.lx-active header,
+        body.lx-active .server-banner,
+        body.lx-active .get-started,
+        body.lx-active .toolbar-top,
+        body.lx-active .section-nav,
+        body.lx-active .filter-bar,
+        body.lx-active .featured-strip,
+        body.lx-active .section-hub,
+        body.lx-active .tools-panel,
+        body.lx-active .section-header,
+        body.lx-active footer,
+        body.lx-active .sumran-band {
+            position: relative;
+            z-index: 2;
         }
         header {
             text-align: center;
@@ -860,6 +885,7 @@
     <script src="shared/aitoolbox-api.js"></script>
     <script src="shared/aitoolbox-ui.js"></script>
     <script src="shared/aitoolbox-cinematic.js"></script>
+    <script src="shared/aitoolbox-launcher-fx.js"></script>
     <script>
         const TOOLS = [
             {
@@ -1639,13 +1665,19 @@
                 wrap.appendChild(fb);
             }
 
-            card.addEventListener('click', async () => {
+            card.addEventListener('click', async (ev) => {
                 if (editMode) {
                     editingToolId = tool.id;
                     iconPicker.click();
                     return;
                 }
                 try {
+                    // Polish: random select animation + soft chime before navigate
+                    try {
+                        if (window.AIToolboxLauncherFX?.onToolSelect) {
+                            await AIToolboxLauncherFX.onToolSelect(card, ev);
+                        }
+                    } catch (_) { /* ignore fx errors */ }
                     // Prefer S1 http://127.0.0.87:18765/toolbox/... so tool pages
                     // load from the same origin as the API (fixes "online on home,
                     // offline after change pages" when opened as file:// or mixed).
@@ -1701,7 +1733,14 @@
                     </div>
                     <p>${sec.desc}</p>
                     <div class="hub-previews">${previews}</div>`;
-                card.addEventListener('click', () => setActiveSection(sec.id));
+                card.addEventListener('click', async (ev) => {
+                    try {
+                        if (window.AIToolboxLauncherFX?.onToolSelect) {
+                            await AIToolboxLauncherFX.onToolSelect(card, ev);
+                        }
+                    } catch (_) { /* ignore */ }
+                    setActiveSection(sec.id);
+                });
                 sectionHub.appendChild(card);
             }
             try { AIToolboxUI.initTooltips(sectionHub); } catch (e) { /* ignore */ }
@@ -2437,6 +2476,12 @@
             } catch (err) {
                 console.warn('[Launcher] cine settings', err);
             }
+            // After closing settings and re-picking folders, refresh marquee on next focus
+            const refresh = () => {
+                try { window.AIToolboxLauncherFX?.refreshMarquee?.(); } catch (_) { /* ignore */ }
+            };
+            setTimeout(refresh, 800);
+            window.addEventListener('focus', refresh, { once: true });
         });
 
         async function bootLauncher() {
@@ -2450,6 +2495,15 @@
                 }
             } catch (err) {
                 console.warn('[Launcher] cinematic skipped due to error', err);
+            }
+
+            // Ambient polish: muted video marquee, idle light trails, mouse FX, select anims
+            try {
+                if (window.AIToolboxLauncherFX?.start) {
+                    await AIToolboxLauncherFX.start();
+                }
+            } catch (err) {
+                console.warn('[Launcher] FX skipped', err);
             }
 
             // Last themed section is restored via loadSavedSection() already called above

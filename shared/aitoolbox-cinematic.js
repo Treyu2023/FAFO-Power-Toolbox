@@ -1399,12 +1399,37 @@ body.cine-active { overflow: hidden; }
         }, 0);
     }
 
+    /**
+     * Collect muted BG clips from the 3 intro slots (folder/file picks).
+     * Used by the launcher marquee — already proxy-scaled when needed.
+     */
+    async function getMarqueeClips(onStatus) {
+        const slots = ['bg-neon', 'bg-producer', 'bg-main'];
+        const out = [];
+        for (const slot of slots) {
+            try {
+                const info = await resolveVideoUrl(slot, onStatus);
+                if (info && info.url) {
+                    out.push({
+                        url: info.url,
+                        label: info.label || slot,
+                        slot,
+                        revoke: info.revoke || null
+                    });
+                }
+            } catch (_) { /* skip slot */ }
+        }
+        return out;
+    }
+
     global.AIToolboxCinematic = {
         play,
         openSettings,
         getPrefs: () => loadPrefs(),
         setPrefs: savePrefs,
         playTarget,
+        getMarqueeClips,
+        resolveVideoUrl,
         DURATION_MS
     };
 })(typeof window !== 'undefined' ? window : globalThis);
