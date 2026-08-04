@@ -42,6 +42,261 @@
       100% { filter: brightness(1); }
     }
 
+    /* ——— Soft ambient lighting (menus / anti burn-in) ——— */
+    #ambient {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+      opacity: 1;
+      transition: opacity 0.6s ease;
+    }
+    body.no-ambient #ambient { opacity: 0; visibility: hidden; }
+    body.fire-hot #ambient { opacity: 0.55; }
+    body.fire-inferno #ambient { opacity: 0.35; }
+
+    .amb-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(72px);
+      mix-blend-mode: screen;
+      will-change: transform, opacity;
+      opacity: 0.55;
+    }
+    .amb-a {
+      width: min(62vw, 720px);
+      height: min(62vw, 720px);
+      left: -12%;
+      top: -18%;
+      background: radial-gradient(circle, rgba(0, 243, 255, 0.28) 0%, rgba(0, 243, 255, 0) 68%);
+      animation: ambDriftA 48s ease-in-out infinite alternate;
+    }
+    .amb-b {
+      width: min(55vw, 640px);
+      height: min(55vw, 640px);
+      right: -14%;
+      bottom: -10%;
+      background: radial-gradient(circle, rgba(124, 92, 255, 0.3) 0%, rgba(124, 92, 255, 0) 70%);
+      animation: ambDriftB 56s ease-in-out infinite alternate;
+    }
+    .amb-c {
+      width: min(48vw, 520px);
+      height: min(48vw, 520px);
+      left: 35%;
+      top: 42%;
+      background: radial-gradient(circle, rgba(0, 255, 136, 0.14) 0%, rgba(255, 159, 67, 0.1) 40%, transparent 70%);
+      animation: ambDriftC 64s ease-in-out infinite alternate;
+    }
+    .amb-d {
+      width: min(40vw, 420px);
+      height: min(40vw, 420px);
+      left: 55%;
+      top: 8%;
+      background: radial-gradient(circle, rgba(255, 77, 106, 0.1) 0%, rgba(124, 92, 255, 0.12) 45%, transparent 72%);
+      animation: ambDriftD 72s ease-in-out infinite alternate;
+    }
+    @keyframes ambDriftA {
+      0%   { transform: translate(0, 0) scale(1); opacity: 0.4; filter: blur(72px) hue-rotate(0deg); }
+      50%  { transform: translate(18vw, 12vh) scale(1.15); opacity: 0.62; filter: blur(80px) hue-rotate(25deg); }
+      100% { transform: translate(8vw, 28vh) scale(0.95); opacity: 0.48; filter: blur(68px) hue-rotate(-18deg); }
+    }
+    @keyframes ambDriftB {
+      0%   { transform: translate(0, 0) scale(1.05); opacity: 0.38; filter: blur(72px) hue-rotate(0deg); }
+      50%  { transform: translate(-16vw, -14vh) scale(1.2); opacity: 0.58; filter: blur(84px) hue-rotate(-30deg); }
+      100% { transform: translate(-6vw, -22vh) scale(0.9); opacity: 0.42; filter: blur(70px) hue-rotate(22deg); }
+    }
+    @keyframes ambDriftC {
+      0%   { transform: translate(0, 0) scale(1); opacity: 0.28; filter: blur(76px) hue-rotate(0deg); }
+      33%  { transform: translate(-12vw, -8vh) scale(1.18); opacity: 0.45; filter: blur(88px) hue-rotate(40deg); }
+      66%  { transform: translate(10vw, 10vh) scale(0.92); opacity: 0.35; filter: blur(70px) hue-rotate(-35deg); }
+      100% { transform: translate(-4vw, 6vh) scale(1.08); opacity: 0.4; filter: blur(78px) hue-rotate(15deg); }
+    }
+    @keyframes ambDriftD {
+      0%   { transform: translate(0, 0) scale(0.95); opacity: 0.22; filter: blur(70px) hue-rotate(0deg); }
+      100% { transform: translate(-20vw, 18vh) scale(1.25); opacity: 0.4; filter: blur(90px) hue-rotate(55deg); }
+    }
+
+    /* Slow diagonal light sweep across the whole UI */
+    .amb-sweep {
+      position: absolute;
+      inset: -20%;
+      background: linear-gradient(
+        105deg,
+        transparent 0%,
+        transparent 38%,
+        rgba(0, 243, 255, 0.045) 46%,
+        rgba(124, 92, 255, 0.06) 50%,
+        rgba(255, 159, 67, 0.04) 54%,
+        transparent 62%,
+        transparent 100%
+      );
+      background-size: 220% 220%;
+      animation: ambSweep 28s linear infinite;
+      mix-blend-mode: soft-light;
+    }
+    @keyframes ambSweep {
+      0%   { background-position: 120% 40%; opacity: 0.35; }
+      40%  { opacity: 0.7; }
+      100% { background-position: -40% 60%; opacity: 0.4; }
+    }
+
+    /* Gentle breathing vignette — keeps edges from burning static black */
+    .amb-vignette {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(5, 5, 8, 0.35) 100%);
+      animation: ambVignette 22s ease-in-out infinite alternate;
+    }
+    @keyframes ambVignette {
+      0%   { opacity: 0.55; transform: scale(1); }
+      100% { opacity: 0.85; transform: scale(1.04); }
+    }
+
+    /* Very slow full-field hue wash (OLED / long idle) */
+    .amb-wash {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(160deg,
+          rgba(0, 243, 255, 0.04) 0%,
+          transparent 35%,
+          rgba(124, 92, 255, 0.05) 55%,
+          transparent 75%,
+          rgba(0, 255, 136, 0.03) 100%);
+      animation: ambWash 90s ease-in-out infinite alternate;
+      mix-blend-mode: soft-light;
+    }
+    @keyframes ambWash {
+      0%   { filter: hue-rotate(0deg); opacity: 0.5; }
+      50%  { filter: hue-rotate(40deg); opacity: 0.85; }
+      100% { filter: hue-rotate(-30deg); opacity: 0.6; }
+    }
+
+    /* Soft sheen + breathing border on every panel (menus / cards) */
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      z-index: 0;
+      background: linear-gradient(
+        125deg,
+        transparent 0%,
+        rgba(0, 243, 255, 0.06) 28%,
+        rgba(124, 92, 255, 0.07) 48%,
+        rgba(255, 159, 67, 0.04) 68%,
+        transparent 100%
+      );
+      background-size: 240% 240%;
+      animation: panelSheen 16s ease-in-out infinite;
+      opacity: 0.85;
+    }
+    .panel::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      z-index: 0;
+      box-shadow:
+        inset 0 0 0 1px rgba(0, 243, 255, 0.06),
+        0 0 28px rgba(0, 243, 255, 0.04);
+      animation: panelBreath 9s ease-in-out infinite alternate;
+    }
+    .panel > * { position: relative; z-index: 1; }
+    @keyframes panelSheen {
+      0%   { background-position: 0% 40%; opacity: 0.45; }
+      50%  { background-position: 100% 60%; opacity: 0.9; }
+      100% { background-position: 40% 100%; opacity: 0.55; }
+    }
+    @keyframes panelBreath {
+      0% {
+        box-shadow:
+          inset 0 0 0 1px rgba(0, 243, 255, 0.05),
+          0 0 20px rgba(0, 243, 255, 0.03);
+      }
+      50% {
+        box-shadow:
+          inset 0 0 0 1px rgba(124, 92, 255, 0.12),
+          0 0 36px rgba(124, 92, 255, 0.08);
+      }
+      100% {
+        box-shadow:
+          inset 0 0 0 1px rgba(0, 255, 136, 0.08),
+          0 0 28px rgba(0, 243, 255, 0.06);
+      }
+    }
+    body.no-ambient .panel::before,
+    body.no-ambient .panel::after {
+      animation: none;
+      opacity: 0;
+    }
+
+    /* Mode pills / toolbar soft pulse so static chrome doesn't burn in */
+    .pill-row .pill:not(.active) {
+      animation: pillIdle 11s ease-in-out infinite alternate;
+    }
+    .pill-row .pill:nth-child(2n) { animation-delay: -2.5s; }
+    .pill-row .pill:nth-child(3n) { animation-delay: -5s; }
+    .pill-row .pill:nth-child(4n) { animation-delay: -7.5s; }
+    @keyframes pillIdle {
+      0%   { border-color: rgba(0, 243, 255, 0.18); box-shadow: none; }
+      50%  { border-color: rgba(124, 92, 255, 0.32); box-shadow: 0 0 10px rgba(124, 92, 255, 0.08); }
+      100% { border-color: rgba(0, 255, 136, 0.22); box-shadow: 0 0 8px rgba(0, 243, 255, 0.06); }
+    }
+    body.no-ambient .pill-row .pill:not(.active) { animation: none; }
+
+    .stat {
+      animation: statGlow 14s ease-in-out infinite alternate;
+    }
+    .stat:nth-child(2) { animation-delay: -3s; }
+    .stat:nth-child(3) { animation-delay: -6s; }
+    .stat:nth-child(4) { animation-delay: -9s; }
+    .stat:nth-child(5) { animation-delay: -1.5s; }
+    .stat:nth-child(6) { animation-delay: -4.5s; }
+    @keyframes statGlow {
+      0%   { border-color: rgba(0, 243, 255, 0.18); background: rgba(0, 0, 0, 0.35); }
+      50%  { border-color: rgba(124, 92, 255, 0.28); background: rgba(12, 10, 22, 0.45); }
+      100% { border-color: rgba(0, 255, 136, 0.2); background: rgba(0, 8, 10, 0.4); }
+    }
+    body.no-ambient .stat { animation: none; }
+
+    header h1 {
+      animation: titleGlow 12s ease-in-out infinite alternate;
+    }
+    @keyframes titleGlow {
+      0%   { color: #00f3ff; text-shadow: 0 0 14px rgba(0, 243, 255, 0.4); filter: hue-rotate(0deg); }
+      50%  { color: #a78bfa; text-shadow: 0 0 22px rgba(124, 92, 255, 0.55); filter: hue-rotate(8deg); }
+      100% { color: #5eead4; text-shadow: 0 0 18px rgba(0, 255, 200, 0.45); filter: hue-rotate(-6deg); }
+    }
+    body.no-ambient header h1 { animation: none; }
+
+    a.toolbox-back {
+      animation: backGlow 10s ease-in-out infinite alternate;
+    }
+    @keyframes backGlow {
+      0%   { border-color: rgba(0, 243, 255, 0.22); box-shadow: none; }
+      100% { border-color: rgba(124, 92, 255, 0.4); box-shadow: 0 0 12px rgba(124, 92, 255, 0.15); }
+    }
+    body.no-ambient a.toolbox-back { animation: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #ambient,
+      .panel::before,
+      .panel::after,
+      .pill-row .pill:not(.active),
+      .stat,
+      header h1,
+      a.toolbox-back {
+        animation: none !important;
+      }
+      #ambient { opacity: 0.25; }
+      .amb-sweep, .amb-wash { display: none; }
+    }
+
     /* Heat stages — ambient smoke/flames intensify with streak */
     body.fire-warm {
       background:
@@ -149,9 +404,12 @@
       color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600;
       padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px;
       background: rgba(5, 5, 8, 0.85); letter-spacing: 0.03em;
-      transition: all 0.18s;
+      transition: background 0.18s, color 0.18s;
     }
-    a.toolbox-back:hover { background: var(--accent); color: #000; box-shadow: var(--glow); }
+    a.toolbox-back:hover {
+      background: var(--accent); color: #000; box-shadow: var(--glow);
+      animation: none;
+    }
 
     .wrap { max-width: 1040px; margin: 0 auto; position: relative; z-index: 1; }
 
@@ -166,6 +424,7 @@
       font-size: clamp(20px, 4vw, 28px);
       color: var(--accent);
       text-shadow: var(--glow);
+      /* titleGlow defined with ambient lighting */
     }
     header p { color: var(--muted); font-size: 13px; margin-top: 6px; }
 
@@ -178,9 +437,13 @@
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
       position: relative;
       overflow: hidden;
+      isolation: isolate;
     }
     .panel.pulse-ok {
       animation: panelPulse 0.35s ease;
+    }
+    .panel.pulse-ok::after {
+      animation: none;
     }
     @keyframes panelPulse {
       0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.35), 0 12px 40px rgba(0,0,0,0.35); }
@@ -343,7 +606,7 @@
       text-align: center;
       transition: transform 0.15s, border-color 0.15s;
     }
-    .stat.pop { animation: statPop 0.28s ease; }
+    .stat.pop { animation: statPop 0.28s ease, statGlow 14s ease-in-out infinite alternate; }
     @keyframes statPop {
       0% { transform: scale(1); }
       40% { transform: scale(1.08); }
@@ -1121,6 +1384,16 @@
   </style>
 </head>
 <body>
+  <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
+  <div id="ambient" aria-hidden="true">
+    <div class="amb-wash"></div>
+    <div class="amb-blob amb-a"></div>
+    <div class="amb-blob amb-b"></div>
+    <div class="amb-blob amb-c"></div>
+    <div class="amb-blob amb-d"></div>
+    <div class="amb-sweep"></div>
+    <div class="amb-vignette"></div>
+  </div>
   <canvas id="fxCanvas"></canvas>
   <div id="fireRibbon" aria-hidden="true"></div>
   <div id="screenFlash"></div>
@@ -1223,6 +1496,10 @@
         <label class="toggle">
           <input type="checkbox" id="optFx" checked>
           <span><span class="hi">Particles</span> — lights & combos</span>
+        </label>
+        <label class="toggle" title="Soft color drifts & sweeps on menus — helps prevent screen burn-in">
+          <input type="checkbox" id="optAmbient" checked>
+          <span><span class="hi">Ambient light</span> — soft shifts (anti burn-in)</span>
         </label>
       </div>
 
@@ -2499,6 +2776,9 @@
     box.classList.remove('pop');
     void box.offsetWidth;
     box.classList.add('pop');
+    // Drop .pop after the bounce so ambient statGlow keeps running
+    clearTimeout(box._popT);
+    box._popT = setTimeout(() => box.classList.remove('pop'), 320);
   }
 
   function updateStats() {
@@ -3760,12 +4040,18 @@
   }
 
   // ——— Prefs ———
+  function applyAmbientPref() {
+    const on = $('optAmbient') ? $('optAmbient').checked : true;
+    document.body.classList.toggle('no-ambient', !on);
+  }
   function loadPrefs() {
     const p = loadJson(KEYS.prefs, {});
     if (p.noCaps) $('optNoCaps').checked = true;
     if (p.noPunct) $('optNoPunct').checked = true;
     if (p.sound === false) $('optSound').checked = false;
     if (p.fx === false) $('optFx').checked = false;
+    if (p.ambient === false && $('optAmbient')) $('optAmbient').checked = false;
+    applyAmbientPref();
     const name = localStorage.getItem(KEYS.name) || '';
     if (name) $('playerName').value = name;
   }
@@ -3775,8 +4061,10 @@
       noPunct: $('optNoPunct').checked,
       sound: $('optSound').checked,
       fx: $('optFx').checked,
+      ambient: $('optAmbient') ? $('optAmbient').checked : true,
     });
     localStorage.setItem(KEYS.name, getPlayerName());
+    applyAmbientPref();
   }
 
   // ——— Events ———
@@ -3859,8 +4147,8 @@
       if (!running && !finished) newTest(false);
     });
   });
-  ['optSound', 'optFx'].forEach((id) => {
-    $(id).addEventListener('change', savePrefs);
+  ['optSound', 'optFx', 'optAmbient'].forEach((id) => {
+    if ($(id)) $(id).addEventListener('change', savePrefs);
   });
   $('playerName')?.addEventListener('input', () => syncNameFields($('playerName')));
   $('playerName')?.addEventListener('change', () => { syncNameFields($('playerName')); savePrefs(); });
