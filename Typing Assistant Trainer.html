@@ -1167,6 +1167,7 @@
           <div class="field" id="durationField">
             <label>Duration</label>
             <select id="duration">
+              <option value="0">No limit</option>
               <option value="15">15 sec</option>
               <option value="30" selected>30 sec</option>
               <option value="60">60 sec</option>
@@ -1368,7 +1369,7 @@
             <p><strong>Campaign story</strong> — The Keystroke Chronicles. Conquer territories left-to-right, unlock journal entries, earn stars, and trigger <strong>bonus rounds</strong> when you crush the goals.</p>
             <p style="margin-top:8px"><strong>Mini-games</strong> — Word Rush, Perfect Path (lives), Storm Keys, Echo Phrase, and Ghost Pace. All pure typing practice with arcade pressure.</p>
             <p style="margin-top:8px"><strong>Combos</strong> tier often: <strong>2 · 5 · 8 · 12 · 16 · 20 · 25 · 30 · 35 · 40 · 50 · 60 · 75 · 100</strong>. Smoke &amp; flames build as you heat up.</p>
-            <p style="margin-top:8px"><strong>❤️ Boards</strong> — 3 lives, <strong>−0.5</strong> per miss, <strong>+1 life every 30 clean chars</strong>. Clear each story board (unique sounds &amp; backgrounds). Timed also offers <strong>5 min</strong> and <strong>10 min</strong> runs.</p>
+            <p style="margin-top:8px"><strong>❤️ Boards</strong> — 3 lives, <strong>−0.5</strong> per miss, <strong>+1 life every 30 clean chars</strong>. Clearing a board only advances you — run continues until <strong>lives = 0</strong> or the optional <strong>timer</strong> (pick <em>No limit</em> for lives-only). Boards cycle forever with unique themes/sounds. Timed mode also has <strong>5 / 10 min</strong>.</p>
             <p style="margin-top:8px"><strong>Simplify</strong> with No capitals / No punctuation when learning. <kbd>Tab</kbd> restarts · scores stay in this browser only.</p>
           </div>
         </div>
@@ -1762,6 +1763,8 @@
   let cleanSinceLife = 0;    // toward +1 life (every 30)
   let boardsCleared = 0;
   let totalCleanRun = 0;
+  /** After advanceBoard(), skip the normal index++ so we don't skip the first glyph */
+  let skipNextIndexInc = false;
 
   // Particles
   let particles = [];
@@ -1947,48 +1950,70 @@
     if ($('boardTrackFill')) $('boardTrackFill').style.width = pct + '%';
   }
 
+  /** Load board content mid-run without ending the session. */
+  function loadBoardIntoRun(idx) {
+    boardIndex = ((idx % STORY_BOARDS.length) + STORY_BOARDS.length) % STORY_BOARDS.length;
+    boardCleanChars = 0;
+    const next = STORY_BOARDS[boardIndex];
+    applyBoardTheme(next);
+    if (next.noCaps != null) $('optNoCaps').checked = !!next.noCaps;
+    if (next.noPunct != null) $('optNoPunct').checked = !!next.noPunct;
+    target = simplifyText(next.text()) || 'keep going';
+    // Ensure enough text so we never "complete" right after a board clear
+    if (target.length < 40) {
+      target = (target + ' ' + simplifyText(next.text())).trim();
+    }
+    index = 0;
+    wrongFlags = new Array(target.length).fill(false);
+    skipNextIndexInc = true; // caller already counted the clear keystroke
+    renderPrompt();
+    highlightNext();
+    updateBoardHud();
+    updateLivesUI();
+    focusHint.textContent = `Entering ${next.emoji} ${next.name}… keep typing!`;
+    focusHint.className = 'focus-hint live';
+  }
+
+  /**
+   * Board clear = progress only. Never ends the run.
+   * Cycles all story boards forever until lives hit 0 or optional timer ends.
+   */
   function advanceBoard() {
+    if (finished || !boardsRun) return;
     const b = STORY_BOARDS[boardIndex];
     boardsCleared++;
     score += Math.round(200 * currentMult());
     sfxBoardClear();
     setCompanion('win', `${b.emoji} ${b.name} cleared!`);
-    showComboToast(`${b.emoji} Board clear!`, b.name);
     spawnSparkles(window.innerWidth / 2, window.innerHeight * 0.35, 5);
     document.body.classList.add('board-clear-flash');
     setTimeout(() => document.body.classList.remove('board-clear-flash'), 700);
-    if (boardIndex < STORY_BOARDS.length - 1) {
-      boardIndex++;
-      boardCleanChars = 0;
-      const next = STORY_BOARDS[boardIndex];
-      applyBoardTheme(next);
-      if (next.noCaps != null) $('optNoCaps').checked = !!next.noCaps;
-      if (next.noPunct != null) $('optNoPunct').checked = !!next.noPunct;
-      // Load next board text mid-run
-      target = simplifyText(next.text()) || 'ready';
-      index = 0;
-      wrongFlags = new Array(target.length).fill(false);
-      renderPrompt();
-      highlightNext();
-      updateBoardHud();
-      updateLivesUI();
-      focusHint.textContent = `Entering ${next.emoji} ${next.name}…`;
-      focusHint.className = 'focus-hint live';
-      showComboToast(next.emoji + ' ' + next.name, next.quote || 'New board');
-    } else {
-      // Loop zen summit for endless endgame
-      boardCleanChars = 0;
-      const zen = STORY_BOARDS[STORY_BOARDS.length - 1];
-      applyBoardTheme(zen);
-      target = simplifyText(zen.text()) || 'ready';
-      index = 0;
-      wrongFlags = new Array(target.length).fill(false);
-      renderPrompt();
-      highlightNext();
-      updateBoardHud();
-      showComboToast('✨ Summit loop', 'All boards cleared — keep going!');
-    }
+
+    const nextIdx = (boardIndex + 1) % STORY_BOARDS.length;
+    const lap = boardsCleared >= STORY_BOARDS.length
+      ? ` · lap ${Math.floor(boardsCleared / STORY_BOARDS.length) + 1}`
+      : '';
+    loadBoardIntoRun(nextIdx);
+    const next = STORY_BOARDS[boardIndex];
+    showComboToast(
+      `${b.emoji} Cleared! → ${next.emoji} ${next.name}`,
+      `${boardsCleared} board(s)${lap} · lives ${lives.toFixed(1)}`
+    );
     popStat('statScore');
+    // Never call finishTest here — only lives ≤ 0 or timer end the run
+  }
+
+  /**
+   * Keep appending text so a passage/board end never stops the run by itself.
+   * Boards: until lives (timer ends via updateStats). Timed/storm/ghost: until timer.
+   * Practice / lesson / code / custom: endless free play.
+   */
+  function shouldKeepFeedingText() {
+    if (finished || !running) return false;
+    if (boardsRun) return lives > 0;
+    if (isTimedModeActive()) return true;
+    if (mode === 'practice' || mode === 'lesson' || mode === 'code' || mode === 'custom') return true;
+    return false;
   }
 
   function updateWordRushHud() {
@@ -2487,14 +2512,17 @@
     $('statErr').className = 'val' + (errors === 0 ? ' ok' : errors > 10 ? ' err' : ' warn');
     $('statScore').className = 'val' + (score > 0 ? ' ok' : '');
 
-    if (isTimedModeActive()) {
+    if (isTimedModeActive() && durationSec > 0) {
       const dur = durationSec;
       const left = Math.max(0, dur - elapsedMs() / 1000);
-      $('statTime').textContent = running || finished ? left.toFixed(1) + 's' : dur + 's';
+      // Friendly display for long runs
+      const leftLabel = left >= 60
+        ? `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`
+        : left.toFixed(1) + 's';
+      $('statTime').textContent = running || finished ? leftLabel : (dur >= 60 ? (dur / 60) + 'm' : dur + 's');
       $('statTimeLbl').textContent = 'Left';
       const pct = running ? Math.min(100, (elapsedMs() / 1000 / dur) * 100) : 0;
       progressFill.style.width = pct + '%';
-      // Ghost pace meter: how far ahead/behind
       if (running && miniRun && miniConfig?.type === 'ghost') {
         const ghostChars = Math.round((miniConfig.targetWpm || 50) / 60 * (elapsedMs() / 1000) * 5);
         const delta = correctKeystrokes - ghostChars;
@@ -2504,6 +2532,13 @@
         focusHint.className = 'focus-hint ' + (delta >= 0 ? 'live' : 'warn');
       }
       if (running && left <= 0) finishTest('time');
+    } else if (boardsRun) {
+      // Lives-only boards: show elapsed + board progress on the bar
+      $('statTime').textContent = running || finished ? formatClock(elapsedMs()) : '∞';
+      $('statTimeLbl').textContent = 'Elapsed';
+      const b = STORY_BOARDS[boardIndex];
+      const pct = b ? Math.min(100, (boardCleanChars / Math.max(1, b.need)) * 100) : 0;
+      progressFill.style.width = pct + '%';
     } else {
       const pct = target.length ? (index / target.length) * 100 : 0;
       $('statTime').textContent = running || finished ? formatClock(elapsedMs()) : '—';
@@ -2572,6 +2607,8 @@
     if (miniRun && miniConfig) {
       return miniConfig.type === 'storm' || miniConfig.type === 'ghost' || !!miniConfig.duration;
     }
+    // Boards: optional countdown when duration > 0 ("No limit" = 0 → lives only)
+    if (boardsRun && durationSec > 0) return true;
     return mode === 'timed' || (campaignRun && selectedTerritory?.mode === 'timed');
   }
 
@@ -2734,7 +2771,10 @@
     }
     updateLivesUI();
     updateBoardHud();
-    durationSec = parseInt($('duration').value, 10) || 30;
+    // Allow 0 = no time limit (important for Boards lives-only)
+    const durRaw = parseInt($('duration').value, 10);
+    durationSec = Number.isFinite(durRaw) ? durRaw : 30;
+    if (mode === 'timed' && durationSec <= 0) durationSec = 30; // timed needs a clock
     // Mini-game / bonus may force duration
     if (miniRun && miniConfig) {
       if (miniConfig.duration) durationSec = miniConfig.duration;
@@ -2744,6 +2784,7 @@
     if (campaignRun && selectedTerritory?.duration) {
       durationSec = selectedTerritory.duration;
     }
+    skipNextIndexInc = false;
     if (!reuseText) target = getTargetText();
     wrongFlags = new Array(target.length).fill(false);
     resultBanner.classList.remove('show', 'highscore');
@@ -2758,9 +2799,12 @@
     updateBoardHud();
     if (boardsRun) {
       const b = STORY_BOARDS[boardIndex];
-      focusHint.textContent = `${b.emoji} ${b.name} · 3 lives · +1 every 30 clean · −0.5 per miss`;
+      const timerHint = durationSec > 0
+        ? (durationSec >= 60 ? `${durationSec / 60}m timer` : `${durationSec}s timer`)
+        : 'no time limit';
+      focusHint.textContent = `${b.emoji} ${b.name} · 3 lives · clear boards forever · ${timerHint}`;
       focusHint.className = 'focus-hint';
-      setCompanion('focus', b.quote || 'Survive the boards.');
+      setCompanion('focus', b.quote || 'Survive the boards — clear never ends the run.');
     } else {
       focusHint.textContent = miniRun
         ? `Mini-game: ${miniConfig?.title || miniConfig?.name || 'challenge'} — click & type`
@@ -2916,10 +2960,16 @@
       }
     } else if (boardsRun || reason === 'lives') {
       const b = STORY_BOARDS[boardIndex];
-      title = lives <= 0 ? 'Out of lives' : 'Boards run complete';
+      if (reason === 'lives' || lives <= 0) {
+        title = 'Out of lives';
+      } else if (reason === 'time') {
+        title = "Time's up";
+      } else {
+        title = 'Boards run complete';
+      }
       sub = `${boardsCleared} board(s) cleared · reached ${b?.emoji || ''} ${b?.name || '—'} · ${totalCleanRun} clean chars · ${wpm} WPM · ${acc}%`;
       setCompanion(boardsCleared > 0 ? 'win' : 'lose', sub);
-      if (boardsCleared >= STORY_BOARDS.length - 1) sfxFinish(true);
+      if (boardsCleared >= STORY_BOARDS.length - 1 || reason === 'time') sfxFinish(true);
       else sfxFinish(false);
       clearBoardTheme();
     } else if (reason === 'time') {
@@ -3056,6 +3106,7 @@
           }
         }
         const b = STORY_BOARDS[boardIndex];
+        // Clear board → advance only (run continues until lives / timer)
         if (b && boardCleanChars >= b.need) {
           advanceBoard();
         }
@@ -3073,7 +3124,6 @@
         const count = 4 + Math.min(14, Math.floor(mult * 3));
         const color = tierForStreak(streak)?.color || '#00f3ff';
         spawnBurst(cx, cy, color, count, 1.8 + mult * 0.3);
-        // Continuous micro-smoke / sparks while hot
         if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, cy + 4, 0.5 + heat * 0.25);
         if (heat >= 2) spawnFlames(cx, cy + 2, 0.55 + heat * 0.25);
         if (heat >= 3 && streak % 3 === 0) {
@@ -3094,7 +3144,11 @@
       }
       setFireMode(heatFromStreak(streak));
 
-      index++;
+      if (skipNextIndexInc) {
+        skipNextIndexInc = false;
+      } else {
+        index++;
+      }
       if (gain && score % 100 < gain) popStat('statScore');
 
       renderPrompt();
@@ -3106,12 +3160,10 @@
       if (streak > 0 && streak % 10 === 0) mainPanel.classList.add('pulse-ok');
 
       if (index >= target.length) {
-        // Word rush: advance to next word instead of finishing
         if (miniRun && miniConfig?.type === 'wordrush') {
           advanceWordRush();
           return;
         }
-        // Echo: repeat phrase 3 times
         if (miniRun && miniConfig?.type === 'echo') {
           echoRound++;
           score += Math.round(80 * currentMult());
@@ -3130,19 +3182,20 @@
           showComboToast('Echo ' + echoRound + '/3', 'Type it again — cleaner if you can');
           return;
         }
-        if ((isTimedModeActive() || boardsRun) && !finished) {
-          // append more text for timed / ghost / storm / boards survival
+        // Keep feeding text — never stop just because a passage/board chunk ended
+        if (shouldKeepFeedingText()) {
           let extra;
           if (miniRun && miniConfig?.type === 'storm') {
             extra = ' ' + buildMiniTarget({ type: 'storm' });
           } else if (miniRun && miniConfig?.type === 'ghost') {
             extra = ' ' + pick(TEXTS.medium);
           } else if (boardsRun) {
-            const b = STORY_BOARDS[boardIndex];
-            extra = ' ' + simplifyText(b.text());
+            const bb = STORY_BOARDS[boardIndex];
+            extra = ' ' + simplifyText(bb.text());
           } else {
             extra = ' ' + getTargetText();
           }
+          if (!extra || !String(extra).trim()) extra = ' keep going';
           target += extra;
           wrongFlags = wrongFlags.concat(new Array(extra.length).fill(false));
           renderPrompt();
@@ -3663,7 +3716,8 @@
     document.querySelectorAll('#modePills .pill').forEach((p) => {
       p.classList.toggle('active', p.dataset.mode === mode);
     });
-    $('durationField').style.display = mode === 'timed' ? '' : 'none';
+    // Boards can use optional timer (pick "No limit" for lives-only)
+    $('durationField').style.display = (mode === 'timed' || mode === 'boards') ? '' : 'none';
     $('lessonField').style.display = mode === 'lesson' ? '' : 'none';
     $('difficultyField').style.display = (mode === 'timed' || mode === 'practice') ? '' : 'none';
     customArea.classList.toggle('show', mode === 'custom');
@@ -3691,9 +3745,15 @@
       boardCleanChars = 0;
       cleanSinceLife = 0;
       totalCleanRun = 0;
+      // Boards default to lives-only; timer is optional (user can pick 5/10 min etc.)
+      if ($('duration')) $('duration').value = '0';
       newTest(false);
-      setCompanion('focus', 'Boards mode: 3 lives · +1 every 30 clean · −0.5 per miss.');
+      setCompanion('focus', 'Boards: stages cycle forever — only lives (or a timer you set) end the run.');
     } else {
+      // Timed needs a clock; restore 30s if we left Boards on "No limit"
+      if (mode === 'timed' && $('duration') && $('duration').value === '0') {
+        $('duration').value = '30';
+      }
       newTest(false);
       setCompanion('idle');
     }
