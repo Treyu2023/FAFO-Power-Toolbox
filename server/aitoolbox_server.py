@@ -4041,6 +4041,75 @@ def api_windows_startup_set(body: WindowsStartupBody):
         raise HTTPException(500, str(e))
 
 
+class ToolsLaunchBody(BaseModel):
+    """Allowlisted local Windows tools that browsers cannot run directly (.bat / elevated)."""
+    id: str
+    action: str | None = "run"  # run | folder | ui
+
+
+@app.post("/api/tools/launch")
+def api_tools_launch(body: ToolsLaunchBody):
+    """
+    Launch allowlisted desktop tools (elevated PowerShell, Explorer, etc.).
+    Used when Chrome cannot execute .bat/.ps1 from http:// toolbox pages.
+    """
+    import subprocess
+
+    tid = (body.id or "").strip().lower()
+    action = (body.action or "run").strip().lower()
+
+    # Explicit allowlist only — never run arbitrary paths from the browser
+    if tid in ("ghost-device-cleaner", "ghost", "ghost-cleaner", "ghostcleaner"):
+        folder = ROOT / "GhostDeviceCleaner"
+        if action in ("folder", "open-folder"):
+            target = folder
+            if not target.is_dir():
+                raise HTTPException(404, "GhostDeviceCleaner folder missing")
+            subprocess.Popen(["explorer.exe", str(target)], shell=False)
+            return {"ok": True, "launched": "folder", "path": str(target)}
+
+        if action in ("ui", "html", "page"):
+            html = folder / "Clear-GhostDevices.html"
+            if not html.is_file():
+                raise HTTPException(404, "Clear-GhostDevices.html missing")
+            # Prefer mshta for the HTA-style shell; fall back to default association
+            try:
+                subprocess.Popen(["mshta.exe", str(html)], cwd=str(folder), shell=False)
+            except OSError:
+                subprocess.Popen(["cmd.exe", "/c", "start", "", str(html)], cwd=str(folder), shell=False)
+            return {"ok": True, "launched": "ui", "path": str(html)}
+
+        # Default: elevated cleaner (UAC prompt → picker UI in PowerShell)
+        bat = folder / "Run-Cleaner-Elevated.bat"
+        ps1 = folder / "Clear-GhostDevices.ps1"
+        if bat.is_file():
+            creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat)],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "ghost-elevated", "via": "Run-Cleaner-Elevated.bat"}
+        if ps1.is_file():
+            # Direct elevate if bat missing
+            ps = r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+            ps = os.path.expandvars(ps)
+            arg = (
+                f"Start-Process -FilePath '{ps}' -Verb RunAs -ArgumentList "
+                f"@('-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','{ps1}')"
+            )
+            subprocess.Popen(
+                [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", arg],
+                cwd=str(folder),
+                shell=False,
+            )
+            return {"ok": True, "launched": "ghost-elevated", "via": "Clear-GhostDevices.ps1"}
+        raise HTTPException(404, "Ghost cleaner scripts missing")
+
+    raise HTTPException(400, f"Unknown or blocked tool launch id: {tid}")
+
+
 @app.get("/api/network/listening")
 def api_network_listening():
     try:

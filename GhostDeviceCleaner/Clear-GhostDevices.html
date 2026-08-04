@@ -2,24 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ghost Device Cleaner — AI HTML Toolbox</title>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
-  <HTA:APPLICATION
-    id="ghostCleanerApp"
-    APPLICATIONNAME="Ghost Device Cleaner"
-    BORDER="thin"
-    BORDERSTYLE="normal"
-    CAPTION="yes"
-    MAXIMIZEBUTTON="no"
-    MINIMIZEBUTTON="yes"
-    SHOWINTASKBAR="yes"
-    SINGLEINSTANCE="yes"
-    SYSMENU="yes"
-    VERSION="1.1"
-    WINDOWSTATE="normal"
-    SCROLL="no"
-  />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -31,10 +16,11 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
+      padding-top: 64px;
     }
     .card {
       width: 100%;
-      max-width: 520px;
+      max-width: 560px;
       background: rgba(15, 23, 42, 0.92);
       border: 1px solid rgba(148, 163, 184, 0.18);
       border-radius: 18px;
@@ -55,7 +41,7 @@
     }
     h1 { font-size: 28px; line-height: 1.2; margin-bottom: 10px; color: #f8fafc; }
     p { color: #94a3b8; line-height: 1.6; margin-bottom: 14px; font-size: 14px; }
-    ul { margin: 0 0 22px 18px; color: #cbd5e1; font-size: 13px; line-height: 1.7; }
+    ul { margin: 0 0 18px 18px; color: #cbd5e1; font-size: 13px; line-height: 1.7; }
     .warn {
       background: rgba(245, 158, 11, 0.12);
       border: 1px solid rgba(245, 158, 11, 0.28);
@@ -63,10 +49,20 @@
       border-radius: 12px;
       padding: 14px 16px;
       font-size: 13px;
-      margin-bottom: 22px;
+      margin-bottom: 18px;
+      line-height: 1.5;
     }
+    .status {
+      font-size: 12px;
+      min-height: 1.4em;
+      margin-bottom: 14px;
+      color: #94a3b8;
+    }
+    .status.ok { color: #4ade80; }
+    .status.err { color: #f87171; }
+    .status.wait { color: #fcd34d; }
     .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-    a.launch, a.secondary-link {
+    button.launch, button.secondary, a.secondary-link {
       display: inline-block;
       text-decoration: none;
       border-radius: 12px;
@@ -74,23 +70,25 @@
       font-size: 14px;
       font-weight: 600;
       text-align: center;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
     }
-    a.launch {
+    button.launch {
       background: linear-gradient(135deg, #3b82f6, #2563eb);
       color: #ffffff;
       flex: 1 1 220px;
     }
-    a.secondary-link {
+    button.launch:disabled { opacity: 0.55; cursor: wait; }
+    button.secondary, a.secondary-link {
       background: rgba(148, 163, 184, 0.12);
       color: #e2e8f0;
       border: 1px solid rgba(148, 163, 184, 0.22);
     }
-    .footer { margin-top: 18px; font-size: 12px; color: #64748b; }
+    .footer { margin-top: 18px; font-size: 12px; color: #64748b; line-height: 1.5; }
     .toolbox-nav {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 0; left: 0; right: 0;
       display: flex;
       justify-content: center;
       gap: 10px;
@@ -99,7 +97,7 @@
       border-bottom: 1px solid rgba(0, 243, 255, 0.2);
       z-index: 10;
     }
-    body { padding-top: 56px; }
+    code { font-size: 12px; color: #93c5fd; }
   </style>
 </head>
 <body>
@@ -107,8 +105,8 @@
     <a class="ui-btn ghost" href="../Toolbox Launcher.html">← Toolbox Launcher</a>
   </nav>
   <div class="card">
-    <div class="badge">Windows Maintenance</div>
-    <h1>Ghost Device Cleaner</h1>
+    <div class="badge">Windows Maintenance · Elevated</div>
+    <h1>👻 Ghost Device Cleaner</h1>
     <p>
       Removes phantom monitors and other disconnected devices that can cause
       brief black-screen flashes when Windows re-scans your displays.
@@ -118,26 +116,90 @@
       <li>Only targets devices marked phantom or unknown</li>
       <li>Skips active monitors, NVIDIA GPU, and system devices</li>
       <li>Defaults to <strong>monitor/display ghosts</strong> plus stacked <strong>PlayStation VR2</strong> entries</li>
-      <li>PS VR2 interfaces use the <code>USBDevice</code> class — these are always included when phantom</li>
       <li>Opens a <strong>picker window</strong> so you select which devices to remove</li>
-      <li>Second picker lets you <strong>purge driver packages</strong> per device when available</li>
       <li>Requires typing <strong>YES</strong> after selection before deleting</li>
-      <li>Writes a log file to the <code>logs</code> folder</li>
+      <li>Writes a log under the tool’s <code>logs</code> folder</li>
     </ul>
 
     <div class="warn">
-      Click Run below, approve the UAC prompt, pick devices in the grid, then type <strong>YES</strong> in PowerShell.
-      No page scripts are used — the button launches a local batch file directly.
+      Browsers cannot run <code>.bat</code> files from a web page (they only download them).
+      This page launches the cleaner through the <strong>S1 toolbox server</strong> or the
+      <strong>aitoolbox://ghost</strong> protocol — then approve the <strong>UAC</strong> prompt.
     </div>
 
+    <div class="status" id="status">Ready — click Run to launch elevated PowerShell.</div>
+
     <div class="actions">
-      <a class="launch" href="Run-Cleaner-Elevated.bat">Run Ghost Device Cleaner</a>
-      <a class="secondary-link" href="Open-Folder.bat">Open Folder</a>
+      <button type="button" class="launch" id="btnRun">▶ Run Ghost Device Cleaner</button>
+      <button type="button" class="secondary" id="btnFolder">📂 Open Folder</button>
     </div>
 
     <div class="footer">
-      Run-Cleaner-Elevated.bat · Clear-GhostDevices.ps1 · Clear-GhostDevices.html
+      Fallback if nothing happens: open Explorer →
+      <code>GhostDeviceCleaner\Run-Cleaner-Elevated.bat</code>
+      · or run <code>aitoolbox://ghost</code> after SETUP.
     </div>
   </div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script>
+    (function () {
+      const status = document.getElementById('status');
+      const btnRun = document.getElementById('btnRun');
+      const btnFolder = document.getElementById('btnFolder');
+
+      function setStatus(msg, kind) {
+        status.textContent = msg || '';
+        status.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      async function launch(action) {
+        const busy = action === 'run';
+        if (busy) {
+          btnRun.disabled = true;
+          setStatus('Launching… approve UAC if Windows asks.', 'wait');
+        }
+        try {
+          if (window.AIToolboxAPI?.launchLocalTool) {
+            const r = await AIToolboxAPI.launchLocalTool('ghost-device-cleaner', { action });
+            setStatus(
+              action === 'folder'
+                ? 'Opened GhostDeviceCleaner folder.'
+                : 'Launched (' + (r.via || r.launched || 'ok') + '). Complete the UAC + picker windows.',
+              'ok'
+            );
+            return;
+          }
+          // Minimal fallback without full API bundle
+          if (window.AIToolboxAPI?.tryProtocolLaunch) {
+            AIToolboxAPI.tryProtocolLaunch('ghost');
+            setStatus('Triggered aitoolbox://ghost — approve the browser/protocol prompt if shown.', 'wait');
+            return;
+          }
+          // Last resort: protocol via hidden iframe
+          const iframe = document.createElement('iframe');
+          iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0';
+          iframe.src = 'aitoolbox://ghost';
+          document.body.appendChild(iframe);
+          setTimeout(() => iframe.remove(), 3000);
+          setStatus('Tried aitoolbox://ghost. If nothing opened, run Run-Cleaner-Elevated.bat from the tool folder.', 'wait');
+        } catch (e) {
+          setStatus('Launch failed: ' + (e.message || e) + ' — use Run-Cleaner-Elevated.bat manually.', 'err');
+        } finally {
+          btnRun.disabled = false;
+        }
+      }
+
+      btnRun.addEventListener('click', () => launch('run'));
+      btnFolder.addEventListener('click', () => launch('folder'));
+
+      // Auto-run when opened with ?run=1 (launcher native open)
+      const params = new URLSearchParams(location.search);
+      if (params.get('run') === '1' || params.get('autostart') === '1') {
+        setTimeout(() => launch('run'), 200);
+      }
+    })();
+  </script>
 </body>
 </html>
