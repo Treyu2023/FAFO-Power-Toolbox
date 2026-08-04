@@ -191,6 +191,7 @@
   </style>
 </head>
 <body>
+  <a class="toolbox-back" href="Toolbox Launcher.html" style="position:fixed;top:10px;left:12px;z-index:9999;color:#7dffc8;text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(125,255,200,.35)">← Toolbox</a>
   <div class="wrap">
     <header>
       <div class="brand">
@@ -932,5 +933,54 @@
     }
     boot();
   </script>
+
+<script data-tool-polish="investor-portal">
+/* Tool polish: investor-portal — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "investor-portal";
+  const TOOL_NAME = "Investor Portal (Sumran)";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="inv">
+(function(){
+  try {
+    if (!sessionStorage.getItem('inv_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('inv_tip','1');
+      AIToolboxUI.toast('Investor Portal · private Sumran desk · Esc = launcher', 'ok');
+    }
+  } catch(_){}
+})();
+</script>
 </body>
 </html>
