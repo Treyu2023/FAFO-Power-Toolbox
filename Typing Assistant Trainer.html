@@ -42,6 +42,90 @@
       100% { filter: brightness(1); }
     }
 
+    /* Heat stages — ambient smoke/flames intensify with streak */
+    body.fire-warm {
+      background:
+        radial-gradient(ellipse at 50% 100%, rgba(255, 120, 40, 0.12) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% -10%, #14142a 0%, transparent 55%),
+        radial-gradient(ellipse at 90% 80%, rgba(124, 92, 255, 0.08) 0%, transparent 40%),
+        var(--bg);
+    }
+    body.fire-hot {
+      background:
+        radial-gradient(ellipse at 50% 105%, rgba(255, 80, 0, 0.22) 0%, transparent 50%),
+        radial-gradient(ellipse at 20% 100%, rgba(255, 160, 0, 0.12) 0%, transparent 40%),
+        radial-gradient(ellipse at 80% 100%, rgba(255, 40, 0, 0.1) 0%, transparent 40%),
+        radial-gradient(ellipse at 50% -10%, #1a1020 0%, transparent 55%),
+        var(--bg);
+    }
+    body.fire-inferno {
+      background:
+        radial-gradient(ellipse at 50% 110%, rgba(255, 60, 0, 0.32) 0%, transparent 55%),
+        radial-gradient(ellipse at 15% 100%, rgba(255, 140, 0, 0.18) 0%, transparent 42%),
+        radial-gradient(ellipse at 85% 100%, rgba(255, 20, 0, 0.16) 0%, transparent 42%),
+        radial-gradient(ellipse at 50% 0%, rgba(80, 20, 0, 0.25) 0%, transparent 50%),
+        var(--bg);
+      animation: infernoPulse 1.8s ease-in-out infinite alternate;
+    }
+    @keyframes infernoPulse {
+      from { filter: brightness(1); }
+      to { filter: brightness(1.06) saturate(1.15); }
+    }
+    body.fire-hot #mainPanel,
+    body.fire-inferno #mainPanel {
+      box-shadow:
+        0 0 40px rgba(255, 100, 0, 0.25),
+        0 0 80px rgba(255, 40, 0, 0.12),
+        0 12px 40px rgba(0, 0, 0, 0.35);
+      border-color: rgba(255, 140, 40, 0.45);
+    }
+    body.fire-inferno #mainPanel {
+      animation: panelHeat 0.9s ease-in-out infinite alternate;
+    }
+    @keyframes panelHeat {
+      from { box-shadow: 0 0 30px rgba(255, 80, 0, 0.2), 0 12px 40px rgba(0,0,0,0.35); }
+      to { box-shadow: 0 0 55px rgba(255, 120, 0, 0.4), 0 0 90px rgba(255, 40, 0, 0.2), 0 12px 40px rgba(0,0,0,0.35); }
+    }
+    .combo-bar.fire-lit {
+      border-color: rgba(255, 140, 40, 0.55);
+      background: linear-gradient(90deg, rgba(255, 80, 0, 0.15), rgba(255, 200, 0, 0.08), rgba(255, 40, 0, 0.12));
+      box-shadow: 0 0 24px rgba(255, 100, 0, 0.25);
+    }
+    .combo-bar.fire-lit .mult {
+      color: #ff9f43;
+      text-shadow: 0 0 16px rgba(255, 120, 0, 0.8);
+      animation: multFlicker 0.35s ease-in-out infinite alternate;
+    }
+    @keyframes multFlicker {
+      from { transform: scale(1); filter: brightness(1); }
+      to { transform: scale(1.06); filter: brightness(1.2); }
+    }
+    #fireRibbon {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      height: 120px;
+      pointer-events: none;
+      z-index: 38;
+      opacity: 0;
+      transition: opacity 0.4s;
+      background: linear-gradient(to top,
+        rgba(255, 40, 0, 0.35) 0%,
+        rgba(255, 120, 0, 0.12) 40%,
+        transparent 100%);
+      mix-blend-mode: screen;
+    }
+    body.fire-warm #fireRibbon { opacity: 0.45; }
+    body.fire-hot #fireRibbon { opacity: 0.75; height: 160px; }
+    body.fire-inferno #fireRibbon {
+      opacity: 1;
+      height: 200px;
+      animation: ribbonRoar 0.6s ease-in-out infinite alternate;
+    }
+    @keyframes ribbonRoar {
+      from { filter: brightness(0.9) hue-rotate(0deg); }
+      to { filter: brightness(1.2) hue-rotate(-8deg); }
+    }
+
     /* Floating particles canvas */
     #fxCanvas {
       position: fixed;
@@ -627,6 +711,51 @@
       text-shadow: 0 0 20px rgba(255,200,0,0.5);
     }
     .result-banner p { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+    .result-name-row {
+      display: none;
+      max-width: 360px;
+      margin: 0 auto 14px;
+      text-align: left;
+    }
+    .result-banner.highscore .result-name-row,
+    .result-banner.show-name .result-name-row { display: block; }
+    .result-name-row label {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--warn);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .result-name-row input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 200, 0, 0.45);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 15px;
+      outline: none;
+      box-shadow: 0 0 16px rgba(255, 200, 0, 0.15);
+    }
+    .result-name-row input:focus {
+      border-color: var(--warn);
+      box-shadow: 0 0 20px rgba(255, 200, 0, 0.35);
+    }
+    .result-name-row .hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 5px;
+    }
+    .name-row input#playerName {
+      width: 100%;
+      min-width: 200px;
+      pointer-events: auto;
+      position: relative;
+      z-index: 5;
+    }
     .result-stats {
       display: flex;
       justify-content: center;
@@ -859,6 +988,7 @@
 </head>
 <body>
   <canvas id="fxCanvas"></canvas>
+  <div id="fireRibbon" aria-hidden="true"></div>
   <div id="screenFlash"></div>
   <div id="comboToast"></div>
   <div id="reactionLayer"></div>
@@ -1036,6 +1166,11 @@
           <div><div class="big" id="resultAcc">100%</div><div class="sub">Accuracy</div></div>
           <div><div class="big" id="resultMult">×1</div><div class="sub">Best combo</div></div>
         </div>
+        <div class="result-name-row" id="resultNameRow">
+          <label for="resultName">Your name for the high-score board</label>
+          <input type="text" id="resultName" placeholder="Type your full name here" maxlength="48" autocomplete="name">
+          <div class="hint">Click the field and type — then hit Save High Score</div>
+        </div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
           <button type="button" class="btn primary" id="btnAgain">Try Again</button>
           <button type="button" class="btn gold" id="btnSaveHs" style="display:none">Save High Score</button>
@@ -1085,7 +1220,7 @@
           <div class="tips">
             <p><strong>Campaign story</strong> — The Keystroke Chronicles. Conquer territories left-to-right, unlock journal entries, earn stars, and trigger <strong>bonus rounds</strong> when you crush the goals.</p>
             <p style="margin-top:8px"><strong>Mini-games</strong> — Word Rush, Perfect Path (lives), Storm Keys, Echo Phrase, and Ghost Pace. All pure typing practice with arcade pressure.</p>
-            <p style="margin-top:8px"><strong>Combos</strong> fire at streaks of <strong>2 · 7 · 10 · 20 · 30 · 40 · 50</strong>. Glyph (your key-spirit) reacts live to hits, misses, and combos.</p>
+            <p style="margin-top:8px"><strong>Combos</strong> tier often: <strong>2 · 5 · 8 · 12 · 16 · 20 · 25 · 30 · 35 · 40 · 50 · 60 · 75 · 100</strong>. Smoke &amp; flames build as you heat up. Glyph reacts live.</p>
             <p style="margin-top:8px"><strong>Simplify</strong> with No capitals / No punctuation when learning. <kbd>Tab</kbd> restarts · scores stay in this browser only.</p>
           </div>
         </div>
@@ -1129,15 +1264,22 @@
     word: ['CLEARED', 'NEXT!', 'RUSH', 'GOT IT'],
   };
 
-  /** Streak milestones → multiplier */
+  /** Streak milestones → multiplier + heat (smoke/flames) */
   const STREAK_TIERS = [
-    { at: 2,  mult: 1.25, name: 'Spark',    color: '#00f3ff' },
-    { at: 7,  mult: 1.5,  name: 'Warm',     color: '#7c5cff' },
-    { at: 10, mult: 2,    name: 'Flow',     color: '#00ff88' },
-    { at: 20, mult: 2.5,  name: 'Blaze',    color: '#ff9f43' },
-    { at: 30, mult: 3,    name: 'Inferno',  color: '#ffc800' },
-    { at: 40, mult: 4,    name: 'Nova',     color: '#ff4d6a' },
-    { at: 50, mult: 5,    name: 'Supernova',color: '#fff' },
+    { at: 2,   mult: 1.15, name: 'Spark',     color: '#00f3ff', heat: 0 },
+    { at: 5,   mult: 1.3,  name: 'Ember',     color: '#7c5cff', heat: 0 },
+    { at: 8,   mult: 1.5,  name: 'Warm',      color: '#a78bfa', heat: 1 },
+    { at: 12,  mult: 1.75, name: 'Kindle',    color: '#00ff88', heat: 1 },
+    { at: 16,  mult: 2,    name: 'Flow',      color: '#34d399', heat: 1 },
+    { at: 20,  mult: 2.25, name: 'Blaze',     color: '#ff9f43', heat: 2 },
+    { at: 25,  mult: 2.5,  name: 'Torch',     color: '#fb923c', heat: 2 },
+    { at: 30,  mult: 3,    name: 'Inferno',   color: '#ffc800', heat: 2 },
+    { at: 35,  mult: 3.5,  name: 'Wildfire',  color: '#f97316', heat: 3 },
+    { at: 40,  mult: 4,    name: 'Nova',      color: '#ff4d6a', heat: 3 },
+    { at: 50,  mult: 5,    name: 'Supernova', color: '#fff',    heat: 3 },
+    { at: 60,  mult: 6,    name: 'Solar',     color: '#fde68a', heat: 3 },
+    { at: 75,  mult: 7.5,  name: 'Plasma',    color: '#fef08a', heat: 3 },
+    { at: 100, mult: 10,   name: 'Singularity', color: '#fff7ed', heat: 3 },
   ];
 
   const TEXTS = {
@@ -1503,7 +1645,10 @@
     $('wrCleared').textContent = String(wordRushCleared);
   }
 
-  // ——— Particles / FX ———
+  // ——— Particles / FX (sparks + smoke + flames) ———
+  let ambientFireTimer = 0;
+  let fireHeatLevel = 0; // 0–3 from streak tiers
+
   function resizeCanvas() {
     fxCanvas.width = window.innerWidth;
     fxCanvas.height = window.innerHeight;
@@ -1511,14 +1656,32 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
+  function heatFromStreak(s) {
+    const t = tierForStreak(s);
+    return t && t.heat != null ? t.heat : (s >= 35 ? 3 : s >= 20 ? 2 : s >= 8 ? 1 : 0);
+  }
+
+  function setFireMode(level) {
+    fireHeatLevel = Math.max(0, Math.min(3, level | 0));
+    document.body.classList.remove('fire-warm', 'fire-hot', 'fire-inferno');
+    comboBar?.classList.remove('fire-lit');
+    if (fireHeatLevel >= 1) document.body.classList.add('fire-warm');
+    if (fireHeatLevel >= 2) {
+      document.body.classList.add('fire-hot');
+      comboBar?.classList.add('fire-lit');
+    }
+    if (fireHeatLevel >= 3) document.body.classList.add('fire-inferno');
+  }
+
   function spawnBurst(x, y, color, count, speed) {
-    if (!$('optFx').checked) return;
+    if (!$('optFx')?.checked) return;
     const n = count || 8;
     const sp = speed || 2.5;
     for (let i = 0; i < n; i++) {
       const a = (Math.PI * 2 * i) / n + Math.random() * 0.4;
       const v = sp * (0.6 + Math.random() * 0.8);
       particles.push({
+        kind: 'spark',
         x, y,
         vx: Math.cos(a) * v,
         vy: Math.sin(a) * v - 0.5,
@@ -1527,17 +1690,19 @@
         size: 2 + Math.random() * 3,
         color: color || '#00f3ff',
         glow: true,
+        grav: 0.04,
       });
     }
   }
 
   function spawnSparkles(x, y, mult) {
-    if (!$('optFx').checked) return;
-    const n = Math.min(40, 12 + mult * 6);
+    if (!$('optFx')?.checked) return;
+    const n = Math.min(48, 14 + mult * 7);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const v = 1 + Math.random() * (2 + mult * 0.4);
       particles.push({
+        kind: 'spark',
         x: x + (Math.random() - 0.5) * 30,
         y: y + (Math.random() - 0.5) * 20,
         vx: Math.cos(a) * v,
@@ -1547,12 +1712,81 @@
         size: 1.5 + Math.random() * 4,
         color: pick(['#00f3ff', '#7c5cff', '#00ff88', '#ff9f43', '#ffc800', '#fff']),
         glow: true,
+        grav: 0.03,
       });
     }
   }
 
+  /** Rising flame tongue particles (on-fire feedback) */
+  function spawnFlames(x, y, intensity) {
+    if (!$('optFx')?.checked) return;
+    const n = Math.min(28, 6 + Math.floor(intensity * 5));
+    for (let i = 0; i < n; i++) {
+      const hot = Math.random();
+      const color = hot > 0.72 ? '#fff7cc'
+        : hot > 0.45 ? '#ffc800'
+        : hot > 0.2 ? '#ff9f43'
+        : '#ff4d1a';
+      particles.push({
+        kind: 'flame',
+        x: x + (Math.random() - 0.5) * 18,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: (Math.random() - 0.5) * 0.9,
+        vy: -(1.2 + Math.random() * 2.8 * intensity),
+        life: 1,
+        decay: 0.02 + Math.random() * 0.025,
+        size: 3 + Math.random() * 6 * Math.min(2, intensity),
+        color,
+        glow: true,
+        wobble: Math.random() * Math.PI * 2,
+        grav: -0.02,
+      });
+    }
+  }
+
+  /** Soft smoke puffs (warm → dense when blazing) */
+  function spawnSmoke(x, y, intensity) {
+    if (!$('optFx')?.checked) return;
+    const n = Math.min(16, 3 + Math.floor(intensity * 4));
+    for (let i = 0; i < n; i++) {
+      const g = 40 + Math.floor(Math.random() * 50);
+      particles.push({
+        kind: 'smoke',
+        x: x + (Math.random() - 0.5) * 22,
+        y: y + (Math.random() - 0.5) * 8,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: -(0.4 + Math.random() * 1.1),
+        life: 1,
+        decay: 0.008 + Math.random() * 0.01,
+        size: 6 + Math.random() * 14 * Math.min(1.8, intensity),
+        color: `rgba(${g},${g},${g + 8},0.55)`,
+        glow: false,
+        grav: -0.015,
+      });
+    }
+  }
+
+  /** Floor jets of flame/smoke while heat is high */
+  function ambientFireTick() {
+    if (!$('optFx')?.checked || fireHeatLevel < 1 || finished) return;
+    const w = fxCanvas.width || window.innerWidth;
+    const h = fxCanvas.height || window.innerHeight;
+    const rate = fireHeatLevel === 1 ? 0.35 : fireHeatLevel === 2 ? 0.7 : 1.1;
+    ambientFireTimer += rate;
+    while (ambientFireTimer >= 1) {
+      ambientFireTimer -= 1;
+      const x = Math.random() * w;
+      const y = h - 4 - Math.random() * 10;
+      if (Math.random() < 0.55) spawnFlames(x, y, fireHeatLevel * 0.7);
+      else spawnSmoke(x, y, fireHeatLevel * 0.9);
+      if (fireHeatLevel >= 3 && Math.random() < 0.25) {
+        spawnFlames(w * 0.5 + (Math.random() - 0.5) * w * 0.4, h - 8, 2.2);
+      }
+    }
+  }
+
   function flashScreen(color) {
-    if (!$('optFx').checked) return;
+    if (!$('optFx')?.checked) return;
     screenFlash.style.background = `radial-gradient(circle at center, ${color || 'rgba(0,243,255,0.16)'}, transparent 55%)`;
     screenFlash.classList.add('on');
     setTimeout(() => screenFlash.classList.remove('on'), 120);
@@ -1562,33 +1796,59 @@
     comboToast.innerHTML = escapeHtml(text) + (sub ? `<span class="sub">${escapeHtml(sub)}</span>` : '');
     comboToast.classList.add('show');
     clearTimeout(showComboToast._t);
-    showComboToast._t = setTimeout(() => comboToast.classList.remove('show'), 900);
+    showComboToast._t = setTimeout(() => comboToast.classList.remove('show'), 1100);
   }
 
   function tickFx() {
     fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    ambientFireTick();
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.04;
+      if (p.kind === 'flame') {
+        p.wobble = (p.wobble || 0) + 0.18;
+        p.vx += Math.sin(p.wobble) * 0.08;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.grav != null ? p.grav : -0.02;
+        p.size *= 0.985;
+      } else if (p.kind === 'smoke') {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.99;
+        p.vy += p.grav != null ? p.grav : -0.015;
+        p.size *= 1.012;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.grav != null ? p.grav : 0.04;
+      }
       p.life -= p.decay;
-      if (p.life <= 0) {
+      if (p.life <= 0 || p.size < 0.3) {
         particles.splice(i, 1);
         continue;
       }
-      fxCtx.globalAlpha = Math.max(0, p.life);
+      const alpha = Math.max(0, p.kind === 'smoke' ? p.life * 0.55 : p.life);
+      fxCtx.globalAlpha = alpha;
       if (p.glow) {
-        fxCtx.shadowBlur = 12;
+        fxCtx.shadowBlur = p.kind === 'flame' ? 18 : 12;
         fxCtx.shadowColor = p.color;
       } else {
         fxCtx.shadowBlur = 0;
       }
       fxCtx.fillStyle = p.color;
       fxCtx.beginPath();
-      fxCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      if (p.kind === 'flame') {
+        // elongated flame blob
+        const rw = p.size * (0.55 + 0.45 * p.life);
+        const rh = p.size * (1.1 + 0.9 * (1 - p.life));
+        fxCtx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
+      } else {
+        fxCtx.arc(p.x, p.y, Math.max(0.4, p.size * (p.kind === 'smoke' ? 1 : p.life)), 0, Math.PI * 2);
+      }
       fxCtx.fill();
     }
+    // Cap particle budget for smooth 60fps
+    if (particles.length > 420) particles.splice(0, particles.length - 420);
     fxCtx.globalAlpha = 1;
     fxCtx.shadowBlur = 0;
     rafId = requestAnimationFrame(tickFx);
@@ -1632,12 +1892,31 @@
     bestMult = Math.max(bestMult, tier.mult);
     sfxCombo(STREAK_TIERS.indexOf(tier));
     showComboToast(`${tier.name}! ×${tier.mult}`, `${streak} streak`);
-    flashScreen(tier.color + '33');
+    flashScreen(tier.color + '44');
     document.body.classList.remove('combo-glow');
     void document.body.offsetWidth;
     document.body.classList.add('combo-glow');
     const rect = promptEl.getBoundingClientRect();
-    spawnSparkles(rect.left + rect.width / 2, rect.top + 40, tier.mult);
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + Math.min(60, rect.height * 0.35);
+    spawnSparkles(cx, cy, tier.mult);
+    if (tier.heat >= 1) {
+      spawnSmoke(cx, cy + 20, 1 + tier.heat * 0.5);
+      spawnFlames(cx, cy + 10, 0.8 + tier.heat * 0.6);
+    }
+    if (tier.heat >= 2) {
+      spawnFlames(cx - 40, cy + 30, tier.heat);
+      spawnFlames(cx + 40, cy + 30, tier.heat);
+      spawnSmoke(cx, cy + 40, tier.heat);
+    }
+    if (tier.heat >= 3) {
+      // screen-edge flare
+      for (let i = 0; i < 6; i++) {
+        spawnFlames(Math.random() * window.innerWidth, window.innerHeight - 8, 2.5);
+      }
+      flashScreen('rgba(255,80,0,0.28)');
+    }
+    setFireMode(tier.heat || heatFromStreak(streak));
     updateComboUI(true);
   }
 
@@ -1662,7 +1941,10 @@
     $('statStreak').textContent = String(streak);
     if (tier) {
       $('comboTitle').textContent = tier.name + ' chain';
-      $('comboSub').textContent = streak + ' correct in a row · score ×' + m;
+      const heatWord = (tier.heat || 0) >= 3 ? ' · 🔥 ON FIRE'
+        : (tier.heat || 0) >= 2 ? ' · 🔥 blazing'
+        : (tier.heat || 0) >= 1 ? ' · 💨 heating up' : '';
+      $('comboSub').textContent = streak + ' correct in a row · score ×' + m + heatWord;
       $('statMult').className = 'val combo';
       $('statStreak').className = 'val combo';
     } else {
@@ -1672,13 +1954,14 @@
         ? (next.at - streak) + ' more to ×' + next.mult
         : 'Hit streak 2 for first multiplier';
     }
-    // pips
+    setFireMode(heatFromStreak(streak));
+    // pips — denser milestones
     const pips = $('comboPips');
     pips.innerHTML = '';
     STREAK_TIERS.forEach((t) => {
       const i = document.createElement('i');
-      if (streak >= t.at) i.classList.add(t.at >= 20 ? 'hot' : 'on');
-      i.title = t.at + ' → ×' + t.mult + ' ' + t.name;
+      if (streak >= t.at) i.classList.add(t.heat >= 2 || t.at >= 20 ? 'hot' : 'on');
+      i.title = t.at + ' → ×' + t.mult + ' ' + t.name + (t.heat ? ' · heat ' + t.heat : '');
       pips.appendChild(i);
     });
   }
@@ -2021,6 +2304,8 @@
     bestMult = 1;
     pendingHs = null;
     lastResultMeta = null;
+    setFireMode(0);
+    resultBanner.classList.remove('show-name', 'highscore');
     if (!miniRun) {
       lives = 0;
       livesMax = 0;
@@ -2213,10 +2498,8 @@
     const bucket = optionKey();
     const isHs = isHighScore(bucket, score, wpm);
     if (isHs && score > 0) {
-      resultBanner.classList.add('highscore');
       if (!conquered && !(miniRun && miniConfig)) title = '🏆 New high score!';
-      sub += ' Enter your full name above and save.';
-      $('btnSaveHs').style.display = '';
+      sub += ' Type your name below and Save.';
       pendingHs = { bucket, score, wpm, acc, bestMult, errors, at: Date.now() };
       sfxFinish(true);
     }
@@ -2224,6 +2507,20 @@
     $('resultTitle').textContent = title;
     $('resultSub').textContent = sub;
     resultBanner.classList.add('show');
+    if (isHs && score > 0) {
+      showHsNamePrompt();
+      // Auto-save only if name already filled (don't block typing a new one)
+      if (getPlayerName()) {
+        if (saveHighScore(pendingHs)) {
+          pendingHs = null;
+          $('btnSaveHs').style.display = 'none';
+          $('resultSub').textContent = sub + ' Saved for ' + getPlayerName() + '.';
+        }
+      }
+    } else {
+      resultBanner.classList.remove('show-name');
+    }
+    setFireMode(0);
 
     if ($('btnResultBonus')) {
       $('btnResultBonus').style.display = offerBonus ? '' : 'none';
@@ -2248,14 +2545,6 @@
       durationMs: elapsedMs(),
     });
     renderHistory();
-
-    if (pendingHs && getPlayerName()) {
-      saveHighScore(pendingHs);
-      pendingHs = null;
-      $('btnSaveHs').style.display = 'none';
-      $('resultSub').textContent = sub + ' High score saved for ' + getPlayerName() + '.';
-    }
-
     // leave miniRun flag until next start so Try Again works
   }
 
@@ -2309,15 +2598,23 @@
       sfxCorrect();
 
       const cur = promptEl.querySelector('.current');
-      if (cur && $('optFx').checked) {
+      if (cur && $('optFx')?.checked) {
         const r = cur.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
         const mult = currentMult();
-        const count = 4 + Math.min(12, Math.floor(mult * 3));
+        const heat = heatFromStreak(streak);
+        const count = 4 + Math.min(14, Math.floor(mult * 3));
         const color = tierForStreak(streak)?.color || '#00f3ff';
-        spawnBurst(r.left + r.width / 2, r.top + r.height / 2, color, count, 1.8 + mult * 0.3);
-        if (streak >= 10 && streak % 5 === 0) {
-          flashScreen(color + '22');
+        spawnBurst(cx, cy, color, count, 1.8 + mult * 0.3);
+        // Continuous micro-smoke / sparks while hot
+        if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, cy + 4, 0.5 + heat * 0.25);
+        if (heat >= 2) spawnFlames(cx, cy + 2, 0.55 + heat * 0.25);
+        if (heat >= 3 && streak % 3 === 0) {
+          spawnFlames(cx, cy, 1.4);
+          flashScreen('rgba(255,90,0,0.12)');
         }
+        if (streak >= 8 && streak % 4 === 0) flashScreen(color + '22');
       }
 
       if (STREAK_TIERS.some((t) => t.at === streak)) {
@@ -2325,10 +2622,11 @@
         popStat('statMult');
         setCompanion('fire');
         reactAtCaret('fire');
-      } else if (streak > 0 && streak % 8 === 0) {
-        setCompanion('good');
-        reactAtCaret('good');
+      } else if (streak > 0 && streak % 5 === 0) {
+        setCompanion(heatFromStreak(streak) >= 2 ? 'fire' : 'good');
+        reactAtCaret(heatFromStreak(streak) >= 2 ? 'fire' : 'good');
       }
+      setFireMode(heatFromStreak(streak));
 
       index++;
       if (gain && score % 100 < gain) popStat('statScore');
@@ -2388,10 +2686,18 @@
       errors++;
       if (index < wrongFlags.length) wrongFlags[index] = true;
       streak = 0;
+      setFireMode(0);
       flashKey(got === '\n' ? ' ' : got, false);
       sfxMiss();
       setCompanion('miss');
       reactAtCaret('miss');
+      // ash puff on miss
+      const curMiss = promptEl.querySelector('.current');
+      if (curMiss && $('optFx')?.checked) {
+        const r = curMiss.getBoundingClientRect();
+        spawnSmoke(r.left + r.width / 2, r.top, 1.2);
+        spawnBurst(r.left + r.width / 2, r.top, '#ff4d6a', 6, 2);
+      }
       updateComboUI(false);
       renderPrompt();
       updateStats();
@@ -2420,8 +2726,42 @@
   }
 
   // ——— Storage: history / HS / campaign ———
+  function isNameFieldActive() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const id = el.id || '';
+    if (id === 'playerName' || id === 'resultName' || id === 'customText') return true;
+    const tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+  }
+
   function getPlayerName() {
-    return ($('playerName').value || '').trim();
+    // Prefer result-banner field when visible (high-score moment)
+    const rn = ($('resultName')?.value || '').trim();
+    if (rn) return rn;
+    return ($('playerName')?.value || '').trim();
+  }
+
+  function syncNameFields(from) {
+    const v = (from?.value != null ? from.value : getPlayerName());
+    if ($('playerName') && from !== $('playerName')) $('playerName').value = v;
+    if ($('resultName') && from !== $('resultName')) $('resultName').value = v;
+    try { localStorage.setItem(KEYS.name, v.trim()); } catch (_) {}
+  }
+
+  function showHsNamePrompt() {
+    resultBanner.classList.add('show-name', 'highscore');
+    $('btnSaveHs').style.display = '';
+    if ($('resultName') && !$('resultName').value) {
+      $('resultName').value = ($('playerName')?.value || '');
+    }
+    // Defer focus so click/finish UI doesn't steal it
+    setTimeout(() => {
+      try {
+        $('resultName')?.focus();
+        $('resultName')?.select?.();
+      } catch (_) {}
+    }, 80);
   }
 
   function loadJson(key, fallback) {
@@ -2458,9 +2798,12 @@
   }
 
   function saveHighScore(entry) {
+    syncNameFields($('resultName') || $('playerName'));
     const name = getPlayerName();
     if (!name) {
-      alert('Enter your full name above to save a high score.');
+      showHsNamePrompt();
+      try { AIToolboxUI?.toast?.('Type your name in the gold box, then Save', 'warn'); } catch (_) {}
+      alert('Type your name in the field on the results panel, then click Save High Score.');
       return false;
     }
     const all = loadHighScores();
@@ -2919,12 +3262,17 @@
     if (pendingBonus?.territory) showBonusOverlay(pendingBonus.territory);
   });
   $('btnSaveHs').addEventListener('click', () => {
-    if (!pendingHs) return;
+    if (!pendingHs) {
+      showHsNamePrompt();
+      return;
+    }
+    syncNameFields($('resultName'));
     if (saveHighScore(pendingHs)) {
       pendingHs = null;
       $('btnSaveHs').style.display = 'none';
       $('resultSub').textContent = 'High score saved for ' + getPlayerName() + '!';
       sfxFinish(true);
+      spawnSparkles(window.innerWidth / 2, window.innerHeight * 0.35, 4);
     }
   });
   $('duration').addEventListener('change', () => {
@@ -2945,8 +3293,19 @@
   ['optSound', 'optFx'].forEach((id) => {
     $(id).addEventListener('change', savePrefs);
   });
-  $('playerName').addEventListener('change', savePrefs);
-  $('playerName').addEventListener('blur', savePrefs);
+  $('playerName')?.addEventListener('input', () => syncNameFields($('playerName')));
+  $('playerName')?.addEventListener('change', () => { syncNameFields($('playerName')); savePrefs(); });
+  $('playerName')?.addEventListener('blur', () => { syncNameFields($('playerName')); savePrefs(); });
+  // Critical: stop game key-capture while typing a name
+  $('resultName')?.addEventListener('keydown', (e) => { e.stopPropagation(); });
+  $('resultName')?.addEventListener('input', () => syncNameFields($('resultName')));
+  $('resultName')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter' && pendingHs) {
+      e.preventDefault();
+      $('btnSaveHs')?.click();
+    }
+  });
+  $('playerName')?.addEventListener('keydown', (e) => { e.stopPropagation(); });
   $('hsFilter').addEventListener('change', renderHighScores);
   $('btnClearHist').addEventListener('click', () => {
     if (confirm('Clear recent run history?')) {
@@ -2993,16 +3352,19 @@
     }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab' && document.activeElement !== customText && document.activeElement !== $('playerName')) {
+    // Never steal keys from name / custom text / any form field
+    if (isNameFieldActive()) return;
+    if (e.key === 'Tab') {
       e.preventDefault();
       newTest(true);
       return;
     }
-    if (document.activeElement === customText || document.activeElement === $('playerName')) return;
     if (document.activeElement !== typer && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // After a finished run, don't yank focus away from save UI
+      if (finished && pendingHs) return;
       typer.focus();
     }
-  });
+  }, true);
 
   // Init
   buildKeyboard();
