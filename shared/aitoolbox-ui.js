@@ -939,6 +939,26 @@
         } catch { /* ignore */ }
     }
 
+    /** Esc (when not typing / in a modal) returns to Toolbox Launcher. */
+    function bindEscToLauncher() {
+        if (typeof document === 'undefined' || document.documentElement.dataset.tbEsc === '1') return;
+        document.documentElement.dataset.tbEsc = '1';
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            if (document.body?.dataset?.tbEsc === 'off') return;
+            // Don't steal Esc from typing trainer fields, dialogs, or pointer-lock games
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+            if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal, .cine-root')) return;
+            if (document.pointerLockElement) return;
+            // Skip on launcher itself
+            if (/Toolbox Launcher/i.test(document.title) || /Toolbox Launcher\.html/i.test(location.pathname)) return;
+            try {
+                location.href = launcherHref();
+            } catch { /* ignore */ }
+        }, true);
+    }
+
     // Auto-install on every page that loads the UI kit (low cost, high value)
     if (typeof window !== 'undefined') {
         try { installStabilityGuards({ quiet: false }); } catch { /* ignore */ }
@@ -948,6 +968,7 @@
                 if (!document.body) return;
                 if (document.body.dataset.tbChrome === 'off') return;
                 mountToolChrome({ pollMs: 8000 });
+                bindEscToLauncher();
             } catch (e) {
                 console.warn('[AIToolbox] auto chrome', e);
             }
@@ -963,6 +984,10 @@
     global.AIToolboxUI = {
         initTooltips,
         toast,
+        launcherHref,
+        ensureToolboxBack,
+        bindEscToLauncher,
+        mountToolChrome,
         confirmAction,
         isTrusted,
         setTrusted,

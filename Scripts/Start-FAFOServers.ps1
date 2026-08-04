@@ -151,22 +151,104 @@ function Save-MetaRootHint([string]$Path) {
     } catch {}
 }
 
+function Test-PythonExe([string]$Exe) {
+    if (-not $Exe -or -not (Test-Path -LiteralPath $Exe)) { return $false }
+    try {
+        # Avoid Start-Process -ArgumentList path-splitting bugs; use ProcessStartInfo
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $Exe
+        $psi.Arguments = '-c "import sys"'
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardError = $true
+        $psi.RedirectStandardOutput = $true
+        $p = [System.Diagnostics.Process]::Start($psi)
+        if (-not $p.WaitForExit(8000)) {
+            try { $p.Kill() } catch {}
+            return $false
+        }
+        return ($p.ExitCode -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Get-ToolboxPython {
-    $py = Join-Path $ToolboxRoot '.venv\Scripts\python.exe'
-    if (Test-Path -LiteralPath $py) { return $py }
+    # Prefer local .venv, then known production tree, then Resolve-FAFOPython / system.
+    $candidates = New-Object System.Collections.Generic.List[string]
+    [void]$candidates.Add((Join-Path $ToolboxRoot '.venv\Scripts\python.exe'))
+    # Canonical production install (Desktop copy often lacks .venv after OneDrive/sync)
+    [void]$candidates.Add('C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv\Scripts\python.exe')
+    [void]$candidates.Add((Join-Path (Split-Path $ToolboxRoot -Parent) 'HTML Toolbox AI tools\production\.venv\Scripts\python.exe'))
+    [void]$candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'))
+    [void]$candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'))
+    foreach ($py in $candidates) {
+        if (-not (Test-Path -LiteralPath $py)) { continue }
+        # Prefer first existing path; soft-test but don't discard solely on flaky probe
+        if (Test-PythonExe $py) {
+            return (Resolve-Path -LiteralPath $py).Path
+        }
+        # Fallback: path exists and is python.exe — try anyway (probe can false-negative)
+        if ($py -match 'python\.exe$') {
+            Write-Srv " [i] Using python without probe OK: $py" 'DarkGray'
+            return (Resolve-Path -LiteralPath $py).Path
+        }
+    }
+    $resolver = Join-Path $PSScriptRoot 'Resolve-FAFOPython.ps1'
+    if (Test-Path -LiteralPath $resolver) {
+        try {
+            $resolved = & $resolver -ToolboxRoot $ToolboxRoot 2>$null
+            if ($resolved -and (Test-Path -LiteralPath ([string]$resolved))) {
+                return [string]$resolved
+            }
+        } catch {}
+    }
     return $null
 }
 
 function Get-ToolboxPythonw {
     # Tray / GUI helpers: pythonw is fine.
     $w = Join-Path $ToolboxRoot '.venv\Scripts\pythonw.exe'
-    if (Test-Path -LiteralPath $w) { return $w }
-    return (Get-ToolboxPython)
+    if (Test-Path -LiteralPath $w) { return (Resolve-Path -LiteralPath $w).Path }
+    $py = Get-ToolboxPython
+    if (-not $py) { return $null }
+    $sibling = Join-Path (Split-Path $py -Parent) 'pythonw.exe'
+    if (Test-Path -LiteralPath $sibling) { return (Resolve-Path -LiteralPath $sibling).Path }
+    return $py
 }
 
 function Get-ServerPython {
     # Servers: python.exe + CreateNoWindow is more reliable than pythonw on some paths.
     return (Get-ToolboxPython)
+}
+
+function Ensure-LoopbackHost([string]$HostAddr) {
+    # S1 binds 127.0.0.87 — Windows only has 127.0.0.1 by default.
+    if (-not $HostAddr -or $HostAddr -eq '127.0.0.1' -or $HostAddr -eq '0.0.0.0' -or $HostAddr -eq '::1') {
+        return $true
+    }
+    if ($HostAddr -notmatch '^127\.') { return $true }
+    try {
+        $hit = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -eq $HostAddr }
+        if ($hit) { return $true }
+    } catch {}
+    $alias = 'Loopback Pseudo-Interface 1'
+    try {
+        New-NetIPAddress -IPAddress $HostAddr -PrefixLength 8 -InterfaceAlias $alias -ErrorAction Stop | Out-Null
+        Write-Srv " [OK] Added loopback alias $HostAddr (needed for S1 bind)" 'Green'
+        return $true
+    } catch {
+        try {
+            $out = netsh interface ipv4 add address name="$alias" addr=$HostAddr mask=255.0.0.0 2>&1
+            if ($LASTEXITCODE -eq 0 -or "$out" -match 'already|exists|Ok') {
+                Write-Srv " [OK] Loopback alias $HostAddr via netsh" 'Green'
+                return $true
+            }
+        } catch {}
+        Write-Srv " [!] Could not add $HostAddr to loopback — S1 may fail to bind. Run elevated once or re-run setup." 'Yellow'
+        return $false
+    }
 }
 
 function Start-HiddenProcess {
@@ -295,7 +377,15 @@ if ($Restart) {
 $started = @()
 $pyServer = Get-ServerPython
 if (-not $pyServer -and ($wantToolbox -or $wantMeta)) {
-    throw "Missing .venv — run INSTALL-PYTHON.bat first"
+    throw "Missing Python venv — run INSTALL-PYTHON.bat first (or keep production .venv at C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv)"
+}
+if ($pyServer) {
+    Write-Srv " Python: $pyServer" 'DarkGray'
+}
+
+# S1 needs 127.0.0.87 assigned on loopback (not present on a stock Windows install)
+if ($wantToolbox) {
+    $null = Ensure-LoopbackHost $tbHost
 }
 
 # --- S1 HTML Toolbox Server ---
@@ -306,9 +396,19 @@ if ($wantToolbox) {
     } else {
         Write-Srv " Starting S1 HTML Toolbox Server (hidden)..." 'Yellow'
         $serverPy = Join-Path $ToolboxRoot 'server\aitoolbox_server.py'
-        if (-not (Test-Path -LiteralPath $serverPy)) { throw "Missing $serverPy" }
+        if (-not (Test-Path -LiteralPath $serverPy)) {
+            # Fall back to canonical production tree
+            $alt = 'C:\_Git\repos\html\HTML Toolbox AI tools\production\server\aitoolbox_server.py'
+            if (Test-Path -LiteralPath $alt) {
+                $serverPy = $alt
+                Write-Srv "     using production server.py" 'DarkGray'
+            } else {
+                throw "Missing $serverPy"
+            }
+        }
         try {
-            $null = Start-HiddenProcess -FilePath $pyServer -ArgumentList @($serverPy) -WorkingDirectory (Join-Path $ToolboxRoot 'server')
+            $workDir = Split-Path -Parent $serverPy
+            $null = Start-HiddenProcess -FilePath $pyServer -ArgumentList @($serverPy) -WorkingDirectory $workDir
             $started += [pscustomobject]@{ id = 'toolbox'; ok = $true; started = $true; hidden = $true }
         } catch {
             Write-Srv " [!] S1 HTML Toolbox start failed: $($_.Exception.Message)" 'Red'
