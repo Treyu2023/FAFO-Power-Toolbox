@@ -1,6 +1,7 @@
 /**
  * AI HTML Toolbox — 90s production-style launch cinematics
  * Three ~5s screens, Space/Enter/Click to skip, folder-backed video BGs.
+ * 4K/heavy sources are auto-downscaled to a light 720p (or 540p) proxy for smooth playback.
  */
 (function (global) {
     'use strict';
@@ -11,11 +12,28 @@
     const IDB_VER = 1;
     const STORE = 'handles';
 
+    /** Playback proxies — intros only need a short loop, not full 4K masters */
+    const PROXY_SECONDS = 8;
+    const PROXY_FPS = 24;
+    const PROXY_SIZE_SOFT_CAP = 28 * 1024 * 1024; // always proxy blobs bigger than this
+
     const DEFAULT_PREFS = {
         skipOnLaunch: false,   // daily-driver: skip intros
         muteVideo: true,
         lastPlayedAt: 0
     };
+
+    /** Pick a target size based on the machine so weak PCs stay smooth. */
+    function playTarget() {
+        const mem = typeof navigator.deviceMemory === 'number' ? navigator.deviceMemory : 8;
+        const cores = typeof navigator.hardwareConcurrency === 'number' ? navigator.hardwareConcurrency : 4;
+        // Low-end / laptop integrated: 540p
+        if (mem <= 4 || cores <= 4) {
+            return { maxW: 960, maxH: 540, bitrate: 1_500_000, label: '540p' };
+        }
+        // Everything else: 720p is plenty for fullscreen dimmed BGs
+        return { maxW: 1280, maxH: 720, bitrate: 2_500_000, label: '720p' };
+    }
 
     /** @type {{ skipOnLaunch: boolean, muteVideo: boolean, lastPlayedAt: number }} */
     let prefs = loadPrefs();
@@ -102,7 +120,7 @@
         }
     }
 
-    async function pickVideoFile(slotKey) {
+    async function pickVideoFile(slotKey, onStatus) {
         return new Promise((resolve) => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -113,32 +131,323 @@
                 const file = input.files && input.files[0];
                 input.remove();
                 if (!file) { resolve(null); return; }
-                // Persist as blob for next launches (no re-pick)
+                // Downscale heavy 4K masters once on pick, then persist the light proxy
+                let storeBlob = file;
+                let optimized = false;
+                let optLabel = '';
+                try {
+                    if (onStatus) onStatus('Optimizing video for smooth playback…');
+                    const ready = await ensureLightProxy(file, {
+                        cacheKey: proxyCacheKey('file', file.name, file.size, file.lastModified || 0),
+                        onStatus
+                    });
+                    if (ready && ready.blob) {
+                        storeBlob = ready.blob;
+                        optimized = !!ready.scaled;
+                        optLabel = ready.scaleLabel || '';
+                    }
+                } catch (e) {
+                    console.warn('[Cine] optimize on pick failed — storing original', e);
+                }
                 try {
                     await idbPut(slotKey, {
                         kind: 'file',
                         name: file.name,
-                        type: file.type,
-                        blob: file,
+                        type: storeBlob.type || file.type || 'video/webm',
+                        blob: storeBlob,
+                        optimized,
+                        scaleLabel: optLabel,
+                        originalSize: file.size,
                         savedAt: Date.now()
                     });
                 } catch (e) {
                     console.warn('[Cine] could not persist video file', e);
                 }
-                resolve(file);
+                resolve(storeBlob);
             };
             input.click();
         });
     }
 
-    async function resolveVideoUrl(slotKey) {
+    function proxyCacheKey(kind, name, size, mtime) {
+        return 'proxy:' + [kind, name || 'v', size || 0, mtime || 0, playTarget().label].join('|');
+    }
+
+    function loadVideoMeta(blobOrFile) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(blobOrFile);
+            const v = document.createElement('video');
+            v.preload = 'metadata';
+            v.muted = true;
+            v.playsInline = true;
+            v.setAttribute('playsinline', '');
+            let settled = false;
+            const done = (ok, data) => {
+                if (settled) return;
+                settled = true;
+                v.onloadedmetadata = null;
+                v.onerror = null;
+                if (!ok) {
+                    try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+                    reject(data || new Error('video meta failed'));
+                    return;
+                }
+                resolve({ video: v, url, width: v.videoWidth || 0, height: v.videoHeight || 0, duration: v.duration || 0 });
+            };
+            v.onloadedmetadata = () => done(true);
+            v.onerror = () => done(false, new Error('could not load video'));
+            setTimeout(() => {
+                if (!settled) done(false, new Error('video meta timeout'));
+            }, 12000);
+            v.src = url;
+        });
+    }
+
+    function pickRecorderMime() {
+        const candidates = [
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm',
+            'video/mp4'
+        ];
+        for (const m of candidates) {
+            if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) {
+                return m;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Re-encode a short loop at 720p/540p so 4K masters never hit the GPU during intros.
+     */
+    async function downscaleVideoBlob(blobOrFile, opts) {
+        opts = opts || {};
+        const target = playTarget();
+        const maxW = opts.maxW || target.maxW;
+        const maxH = opts.maxH || target.maxH;
+        const bitrate = opts.bitrate || target.bitrate;
+        const mime = pickRecorderMime();
+        if (!mime) throw new Error('MediaRecorder not supported');
+
+        const meta = await loadVideoMeta(blobOrFile);
+        const { video, url, width, height, duration } = meta;
+        try {
+            if (!width || !height) throw new Error('unknown video size');
+
+            const scale = Math.min(1, maxW / width, maxH / height);
+            // Even-dimension canvas for encoder friendliness
+            let w = Math.max(2, Math.round((width * scale) / 2) * 2);
+            let h = Math.max(2, Math.round((height * scale) / 2) * 2);
+            // Cap absolute pixels hard
+            if (w * h > maxW * maxH) {
+                const s2 = Math.sqrt((maxW * maxH) / (w * h));
+                w = Math.max(2, Math.round((w * s2) / 2) * 2);
+                h = Math.max(2, Math.round((h * s2) / 2) * 2);
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+            if (!ctx) throw new Error('no 2d context');
+
+            const stream = canvas.captureStream(PROXY_FPS);
+            const rec = new MediaRecorder(stream, {
+                mimeType: mime,
+                videoBitsPerSecond: bitrate
+            });
+            const chunks = [];
+            rec.ondataavailable = (e) => {
+                if (e.data && e.data.size) chunks.push(e.data);
+            };
+
+            const clipSec = Math.min(
+                PROXY_SECONDS,
+                Number.isFinite(duration) && duration > 0 ? duration : PROXY_SECONDS
+            );
+
+            video.muted = true;
+            video.currentTime = 0;
+            try { await video.play(); } catch (_) { /* ignore autoplay quirks */ }
+
+            const outBlob = await new Promise((resolve, reject) => {
+                let finished = false;
+                const finish = () => {
+                    if (finished) return;
+                    finished = true;
+                    try { video.pause(); } catch (_) { /* ignore */ }
+                    try {
+                        if (rec.state !== 'inactive') rec.stop();
+                    } catch (e) {
+                        reject(e);
+                    }
+                };
+
+                rec.onstop = () => {
+                    const blob = new Blob(chunks, { type: mime.split(';')[0] || 'video/webm' });
+                    resolve(blob);
+                };
+                rec.onerror = () => reject(rec.error || new Error('recorder error'));
+
+                try { rec.start(200); } catch (e) { reject(e); return; }
+
+                const t0 = performance.now();
+                const draw = () => {
+                    if (finished) return;
+                    try {
+                        ctx.drawImage(video, 0, 0, w, h);
+                    } catch (_) { /* ignore frame glitches */ }
+                    const elapsed = (performance.now() - t0) / 1000;
+                    const vTime = video.currentTime || 0;
+                    if (opts.onStatus && Math.floor(elapsed * 4) % 2 === 0) {
+                        const pct = Math.min(99, Math.round((Math.max(vTime, elapsed) / clipSec) * 100));
+                        opts.onStatus(`Scaling ${width}×${height} → ${w}×${h} (${pct}%)`);
+                    }
+                    if (vTime >= clipSec - 0.05 || elapsed >= clipSec + 0.6 || video.ended) {
+                        finish();
+                        return;
+                    }
+                    requestAnimationFrame(draw);
+                };
+                requestAnimationFrame(draw);
+                // Hard stop so we never hang on bad metadata
+                setTimeout(finish, (clipSec + 1.2) * 1000);
+            });
+
+            if (!outBlob || outBlob.size < 1000) throw new Error('proxy encode empty');
+            return {
+                blob: outBlob,
+                width: w,
+                height: h,
+                scaleLabel: `${w}×${h}`,
+                sourceW: width,
+                sourceH: height
+            };
+        } finally {
+            try { video.removeAttribute('src'); video.load(); } catch (_) { /* ignore */ }
+            try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+        }
+    }
+
+    function needsDownscale(width, height, byteSize) {
+        const t = playTarget();
+        if (byteSize && byteSize > PROXY_SIZE_SOFT_CAP) return true;
+        if (!width || !height) return !!(byteSize && byteSize > 12 * 1024 * 1024);
+        return width > t.maxW || height > t.maxH;
+    }
+
+    /**
+     * Return a lightweight blob for smooth intro playback (cached in IDB).
+     */
+    async function ensureLightProxy(blobOrFile, opts) {
+        opts = opts || {};
+        const cacheKey = opts.cacheKey || proxyCacheKey('anon', blobOrFile.name || 'clip', blobOrFile.size, blobOrFile.lastModified || 0);
+        const t = playTarget();
+
+        // Cached proxy for this machine class
+        try {
+            const cached = await idbGet(cacheKey);
+            if (cached && cached.blob && cached.blob.size > 1000) {
+                return {
+                    blob: cached.blob,
+                    scaled: true,
+                    fromCache: true,
+                    scaleLabel: cached.scaleLabel || t.label
+                };
+            }
+        } catch (_) { /* ignore */ }
+
+        // Already a small optimized store?
+        if (blobOrFile._cineOptimized) {
+            return { blob: blobOrFile, scaled: true, scaleLabel: blobOrFile._scaleLabel || t.label };
+        }
+
+        let width = 0;
+        let height = 0;
+        try {
+            const meta = await loadVideoMeta(blobOrFile);
+            width = meta.width;
+            height = meta.height;
+            try { meta.video.removeAttribute('src'); meta.video.load(); } catch (_) { /* ignore */ }
+            try { URL.revokeObjectURL(meta.url); } catch (_) { /* ignore */ }
+        } catch (_) { /* probe failed — may still try encode or pass-through */ }
+
+        if (!needsDownscale(width, height, blobOrFile.size)) {
+            return { blob: blobOrFile, scaled: false, scaleLabel: width ? `${width}×${height}` : 'native' };
+        }
+
+        if (opts.onStatus) {
+            opts.onStatus(`Optimizing ${width || '?'}×${height || '?'} → ${t.label}…`);
+        }
+
+        try {
+            const result = await downscaleVideoBlob(blobOrFile, {
+                onStatus: opts.onStatus,
+                maxW: t.maxW,
+                maxH: t.maxH,
+                bitrate: t.bitrate
+            });
+            try {
+                await idbPut(cacheKey, {
+                    kind: 'proxy',
+                    blob: result.blob,
+                    scaleLabel: result.scaleLabel,
+                    sourceW: result.sourceW,
+                    sourceH: result.sourceH,
+                    target: t.label,
+                    savedAt: Date.now()
+                });
+            } catch (e) {
+                console.warn('[Cine] could not cache proxy', e);
+            }
+            return {
+                blob: result.blob,
+                scaled: true,
+                scaleLabel: result.scaleLabel,
+                fromCache: false
+            };
+        } catch (e) {
+            console.warn('[Cine] downscale failed — using original (may lag)', e);
+            if (opts.onStatus) opts.onStatus('Using original video (optimize failed)');
+            return { blob: blobOrFile, scaled: false, scaleLabel: 'original', error: String(e && e.message || e) };
+        }
+    }
+
+    async function resolveVideoUrl(slotKey, onStatus) {
         const saved = await idbGet(slotKey);
         if (!saved) return { url: null, label: 'No media folder — synthetic neon BG', source: null };
 
         if (saved.kind === 'file' && saved.blob) {
             try {
-                const url = URL.createObjectURL(saved.blob);
-                return { url, label: saved.name || 'Saved video', source: 'file', revoke: url };
+                // Re-optimize legacy 4K blobs that were saved before proxy support
+                const ready = await ensureLightProxy(saved.blob, {
+                    cacheKey: proxyCacheKey('slot', slotKey, saved.blob.size, saved.savedAt || 0),
+                    onStatus
+                });
+                // Upgrade stored entry if we just scaled a heavy original
+                if (ready.scaled && !ready.fromCache && !saved.optimized) {
+                    try {
+                        await idbPut(slotKey, {
+                            ...saved,
+                            blob: ready.blob,
+                            type: ready.blob.type || saved.type,
+                            optimized: true,
+                            scaleLabel: ready.scaleLabel,
+                            originalSize: saved.originalSize || saved.blob.size,
+                            savedAt: Date.now()
+                        });
+                    } catch (_) { /* ignore upgrade fail */ }
+                }
+                const url = URL.createObjectURL(ready.blob);
+                const tag = ready.scaled ? ` · ${ready.scaleLabel || playTarget().label}` : '';
+                return {
+                    url,
+                    label: (saved.name || 'Saved video') + tag,
+                    source: 'file',
+                    revoke: url,
+                    scaled: ready.scaled
+                };
             } catch (_) { /* fall through */ }
         }
 
@@ -157,12 +466,18 @@
                 }
                 const pick = vids[Math.floor(Math.random() * vids.length)];
                 const file = await pick.getFile();
-                const url = URL.createObjectURL(file);
+                const ready = await ensureLightProxy(file, {
+                    cacheKey: proxyCacheKey('dir', (saved.name || 'dir') + '/' + pick.name, file.size, file.lastModified || 0),
+                    onStatus
+                });
+                const url = URL.createObjectURL(ready.blob);
+                const tag = ready.scaled ? ` · ${ready.scaleLabel || playTarget().label}` : '';
                 return {
                     url,
-                    label: `${saved.name || 'Folder'} · ${pick.name}`,
+                    label: `${saved.name || 'Folder'} · ${pick.name}${tag}`,
                     source: 'dir',
-                    revoke: url
+                    revoke: url,
+                    scaled: ready.scaled
                 };
             } catch (e) {
                 console.warn('[Cine] folder read failed', e);
@@ -205,6 +520,12 @@ body.cine-active { overflow: hidden; }
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; z-index: 0;
   filter: brightness(0.45) saturate(1.15) contrast(1.05);
+}
+/* Prefer compositor path; proxies are already ≤720p so paint stays cheap */
+.cine-bg-video {
+  transform: translateZ(0);
+  will-change: transform;
+  background: #000;
 }
 .cine-bg-synth {
   background:
@@ -672,7 +993,12 @@ body.cine-active { overflow: hidden; }
             video.muted = prefs.muteVideo !== false;
             video.loop = true;
             video.playsInline = true;
+            video.preload = 'auto';
             video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
+            video.disablePictureInPicture = true;
+            // Keep decode cost low even if a full-res file slips through
+            try { video.setAttribute('width', String(playTarget().maxW)); } catch (_) { /* ignore */ }
             video.style.display = 'none';
             stage.appendChild(video);
 
@@ -741,21 +1067,48 @@ body.cine-active { overflow: hidden; }
         }
 
         async function loadBg(stageObj) {
+            const loadToken = (stageObj._loadToken = (stageObj._loadToken || 0) + 1);
             stopVideo(stageObj);
-            const info = await resolveVideoUrl(stageObj.meta.slot);
+            // Keep synth visible while 4K → proxy encodes so the intro never freezes on a black frame
+            stageObj.synth.style.opacity = '1';
+            stageObj.video.style.display = 'none';
+            if (mediaLabel) mediaLabel.textContent = 'Loading BG…';
+
+            const info = await resolveVideoUrl(stageObj.meta.slot, (msg) => {
+                if (mediaLabel && !settled && stages[idx] === stageObj) mediaLabel.textContent = msg;
+            });
+            const stale = settled || stages[idx] !== stageObj || stageObj._loadToken !== loadToken;
+            if (stale) {
+                if (info && info.revoke) {
+                    try { URL.revokeObjectURL(info.revoke); } catch (_) { /* ignore */ }
+                }
+                return;
+            }
             if (mediaLabel) mediaLabel.textContent = info.label || '';
             if (info.url) {
                 stageObj.video.src = info.url;
                 stageObj.video.style.display = 'block';
-                stageObj.synth.style.opacity = '0';
+                // Fade synth under the light proxy once frames are rolling
+                stageObj.synth.style.opacity = '0.15';
                 currentRevoke = info.revoke || null;
                 try {
                     stageObj.video.muted = prefs.muteVideo !== false;
                     await stageObj.video.play();
+                    if (stages[idx] === stageObj && stageObj._loadToken === loadToken) {
+                        stageObj.synth.style.opacity = '0';
+                    }
                 } catch (e) {
                     // Autoplay with sound often blocked — force mute retry
                     stageObj.video.muted = true;
-                    try { await stageObj.video.play(); } catch (_) { /* ignore */ }
+                    try {
+                        await stageObj.video.play();
+                        if (stages[idx] === stageObj && stageObj._loadToken === loadToken) {
+                            stageObj.synth.style.opacity = '0';
+                        }
+                    } catch (_) {
+                        stageObj.synth.style.opacity = '1';
+                        stageObj.video.style.display = 'none';
+                    }
                 }
             } else {
                 stageObj.synth.style.opacity = '1';
@@ -860,7 +1213,9 @@ body.cine-active { overflow: hidden; }
                 const h = await pickDirectory(slot);
                 if (h) await loadBg(stages[idx]);
             } else if (act === 'file') {
-                const f = await pickVideoFile(slot);
+                const f = await pickVideoFile(slot, (msg) => {
+                    if (mediaLabel && !settled) mediaLabel.textContent = msg;
+                });
                 if (f) await loadBg(stages[idx]);
             }
         }
@@ -1000,6 +1355,8 @@ body.cine-active { overflow: hidden; }
           </label>
           <p style="color:#888;margin-bottom:10px;line-height:1.4;">
             Each of the 3 screens can use its own video folder (random pick) or a single file. Chrome/Edge recommended for folders.
+            <br><br>
+            <strong style="color:#c8d0dc;">4K / heavy clips auto-scale to ${playTarget().label}</strong> (short ~8s loop, cached) so intros stay smooth on any machine.
           </p>
           <div style="display:grid;gap:8px;margin-bottom:12px;">
             <button type="button" data-folder="bg-neon" class="ui-btn ghost" style="width:100%">📁 Neon Ninja BG folder</button>
@@ -1047,6 +1404,7 @@ body.cine-active { overflow: hidden; }
         openSettings,
         getPrefs: () => loadPrefs(),
         setPrefs: savePrefs,
+        playTarget,
         DURATION_MS
     };
 })(typeof window !== 'undefined' ? window : globalThis);
