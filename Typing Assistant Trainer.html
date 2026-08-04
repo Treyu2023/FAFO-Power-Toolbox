@@ -438,13 +438,29 @@
     .prompt {
       font-family: var(--font-mono);
       font-size: clamp(16px, 2.2vw, 20px);
-      line-height: 1.75;
+      line-height: 1.85;
       letter-spacing: 0.02em;
-      word-break: break-word;
-      white-space: pre-wrap;
+      /* Never split a word mid-glyph — whole words wrap to the next line */
+      word-break: normal;
+      overflow-wrap: normal;
+      white-space: normal;
       padding: 8px 4px;
       user-select: none;
       cursor: text;
+    }
+    /* Keep each word as one unit (char spans can't break inside) */
+    .prompt .word {
+      display: inline-block;
+      white-space: nowrap;
+      vertical-align: baseline;
+    }
+    .prompt .ws {
+      /* normal space — browser may wrap here */
+      white-space: normal;
+    }
+    .prompt .nl {
+      display: block;
+      height: 0.35em;
     }
     .prompt .done { color: var(--ok); transition: color 0.1s; }
     .prompt .done.wrong { color: var(--err); background: rgba(255, 77, 106, 0.12); border-radius: 2px; }
@@ -456,6 +472,11 @@
       outline-offset: 1px;
       animation: caret 1s steps(1) infinite;
       box-shadow: 0 0 12px rgba(0,243,255,0.35);
+    }
+    /* Space under caret still has a visible hit box without blocking wrap */
+    .prompt .current.space-caret {
+      min-width: 0.55em;
+      display: inline-block;
     }
     .prompt .todo { color: var(--muted); }
     @keyframes caret {
@@ -2371,24 +2392,54 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+  function charClass(i) {
+    if (i < index) return 'done' + (wrongFlags[i] ? ' wrong' : '');
+    if (i === index) return 'current';
+    return 'todo';
+  }
+
+  function charHtml(i) {
+    const raw = target[i];
+    const cls = charClass(i);
+    if (raw === '\n') {
+      // Visual break + real line wrap point
+      return `<span class="${cls}">↵</span><span class="nl" aria-hidden="true"></span>`;
+    }
+    if (raw === ' ') {
+      // Real space so the browser wraps between words (not mid-word)
+      if (i === index) {
+        return `<span class="${cls} space-caret"> </span>`;
+      }
+      return `<span class="${cls} ws"> </span>`;
+    }
+    return `<span class="${cls}">${escapeHtml(raw)}</span>`;
+  }
+
+  /**
+   * Render prompt with word-level grouping so lines never split a word.
+   * Spaces / newlines are the only wrap points.
+   */
   function renderPrompt() {
     if (!target) {
       promptEl.innerHTML = '<span class="todo">Press New Test to begin…</span>';
       return;
     }
     let html = '';
-    for (let i = 0; i < target.length; i++) {
+    let i = 0;
+    while (i < target.length) {
       const raw = target[i];
-      const ch = raw === '\n' ? '↵\n' : escapeHtml(raw);
-      const space = raw === ' ' ? '&nbsp;' : ch;
-      if (i < index) {
-        html += `<span class="done${wrongFlags[i] ? ' wrong' : ''}">${space}</span>`;
-      } else if (i === index) {
-        const display = raw === ' ' ? '&nbsp;' : (raw === '\n' ? '↵\n' : escapeHtml(raw));
-        html += `<span class="current">${display}</span>`;
-      } else {
-        html += `<span class="todo">${space}</span>`;
+      if (raw === ' ' || raw === '\n') {
+        html += charHtml(i);
+        i++;
+        continue;
       }
+      // Consume a full word (letters/punct/etc until space or newline)
+      let j = i;
+      while (j < target.length && target[j] !== ' ' && target[j] !== '\n') j++;
+      html += '<span class="word">';
+      for (let k = i; k < j; k++) html += charHtml(k);
+      html += '</span>';
+      i = j;
     }
     promptEl.innerHTML = html;
   }
