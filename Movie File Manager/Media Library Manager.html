@@ -35,13 +35,17 @@
         }
 
         .top-bar {
-            padding: 10px 16px; background: var(--panel); border-bottom: 1px solid rgba(0,243,255,0.2);
-            display: flex; align-items: center; gap: 12px; flex-wrap: wrap; z-index: 10;
+            padding: 8px 12px; background: var(--panel); border-bottom: 1px solid rgba(0,243,255,0.2);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; z-index: 10;
         }
-        .top-bar h1 { font-size: 16px; font-weight: 500; color: var(--accent); letter-spacing: 1px; margin-right: auto; }
+        .top-bar h1 { font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 1px; margin-right: 4px; }
+        .top-bar-primary, .top-bar-tools {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .top-bar-tools { margin-left: auto; }
         .btn {
             background: transparent; border: 1px solid var(--accent); color: var(--accent);
-            padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 700;
+            padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 700;
             text-transform: uppercase; transition: all 0.15s; white-space: nowrap;
         }
         .btn:hover, .btn.active { background: var(--accent); color: #000; box-shadow: var(--glow); }
@@ -49,6 +53,34 @@
         .btn.danger:hover { background: var(--danger); color: #fff; }
         .btn.purple { border-color: var(--accent2); color: var(--accent2); }
         .btn.purple:hover { background: var(--accent2); color: #fff; }
+        .btn.orange { border-color: var(--accent3); color: var(--accent3); }
+        .btn.orange:hover { background: var(--accent3); color: #000; }
+        /* Compact overflow menus — hide the option wall until needed */
+        .menu-wrap { position: relative; display: inline-flex; }
+        .menu-pop {
+            display: none; position: absolute; top: calc(100% + 4px); right: 0;
+            min-width: 240px; max-width: min(320px, 90vw);
+            background: #0e0e16; border: 1px solid rgba(0,243,255,0.35);
+            border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+            padding: 6px; z-index: 40;
+        }
+        .menu-wrap.open .menu-pop { display: block; }
+        .menu-pop button, .menu-pop a {
+            display: block; width: 100%; text-align: left;
+            background: transparent; border: none; color: var(--text);
+            padding: 9px 10px; border-radius: 6px; cursor: pointer;
+            font-size: 12px; font-weight: 600; text-decoration: none;
+        }
+        .menu-pop button:hover, .menu-pop a:hover {
+            background: rgba(0,243,255,0.1); color: var(--accent);
+        }
+        .menu-pop .menu-hint {
+            font-size: 10px; color: var(--muted); padding: 6px 10px 8px; line-height: 1.35;
+            border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px;
+        }
+        .menu-pop .menu-sep {
+            height: 1px; background: rgba(255,255,255,0.06); margin: 4px 6px;
+        }
 
         .main {
             flex: 1; display: grid;
@@ -711,48 +743,68 @@
 <body>
 
     <div class="top-bar animate-in">
-        <h1>🗂️ Media Library Manager</h1>
-        <span class="server-pill offline" id="serverStatus" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = rename, Explorer tags, pairs on disk, ffmpeg thumbs, native picker, smart lists. Red/yellow = offline or starting — click this pill or ▶ Start Server to launch from this page (no need to leave for a .bat).">Server …</span>
-        <button class="btn" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from this page (same as Launcher/VSR). Waits for green (up to ~90s). If blocked: 🖥 Console, 📂 Open Folder → START SERVER.bat, or ⚙ Setup Once.">▶ Start Server</button>
-        <button class="btn" id="btnServerConsole" style="display:none" data-tip-title="Console" data-tip="Visible server window — use when the browser blocks silent Start.">🖥 Console</button>
-        <span class="trust-status-bar" id="trustStatusBar" data-tip-title="Trust active" data-tip="Some rename confirmations are skipped. Reset per-type in Settings → Trust.">🔓 Trust active</span>
-        <button class="btn" id="btnHome" data-tip="Return to the main toolbox launcher">← Launcher</button>
-        <button class="btn orange" id="btnOrganizer" data-tip="Rename, tag, rank & merge folders — no thumbnail grid" onclick="location.href='File Organizer.html'">✏️ File Organizer</button>
-        <button class="ui-btn" id="btnTutorial" data-tip="Interactive walkthrough — hover any control for quick help">🎓 Get Started</button>
-        <button class="btn" id="btnAddDir" data-tip-title="Watch folder" data-tip="Add a folder to the library index. Files are scanned and searchable — nothing is moved or copied.">+ Add Folder</button>
-        <button class="btn" id="btnNativeDir" data-tip-title="Native Picker" data-tip="Windows folder picker via Python server. Needs green pill — use ▶ Start Server on this page if offline.">📂 Native Picker</button>
-        <button class="btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new/moved/deleted files. Also re-imports Explorer tags and auto-relinks pairs from UP-#### tags on disk.">↻ Rescan</button>
-        <button class="btn purple" id="btnPair" data-tip-title="Pair" data-tip="Select exactly 2 files (1st = Before/source, 2nd = After/upscaled). Saves a locked pair, opens the comparator, and stamps UP-#### + role tags on both files (and on disk when server is green).">🔗 Pair Selected</button>
-        <button class="btn purple" id="btnSuggest" data-tip-title="Pair Studio" data-tip="Multi-signal suggestions (stem, last-N id tail, digit ids, folder fuzzy). Assign Left/Right slots independently when names are mixed up. Play next while reviewing.">✨ Pair Studio</button>
-        <button class="btn orange" id="btnTwoDirPairs" data-tip-title="Two-folder pairs" data-tip="Point at a Before folder and an After folder (watched directories). Suggests and batch-creates pairs across those two trees — best after consolidating batch folders.">📁 Two-Folder Pairs</button>
-        <button class="btn orange" id="btnAutoPair" data-tip-title="Auto-link upscales" data-tip="Scans for originals + upscaled siblings (_upscaled, _vsr, etc.), creates locked UP-#### pairs, and writes source/upscaled tags into the files.">⚡ Auto-Link Upscale Pairs</button>
-        <button class="btn" id="btnRelinkPairs" data-tip-title="Relink pairs" data-tip="Pair codes (UP-####) are written into both files. If you move files to other folders, rescan or click here to rebuild catalog links from those tags. Path changes alone do not erase the pair.">🔗 Relink Pairs from Tags</button>
-        <button class="btn orange" id="btnPairHealth" data-tip-title="Pair health" data-tip="Dashboard: complete / partial / broken pairs, orphan UP-#### tags, unpaired upscale filenames.">🩺 Pair Health</button>
-        <button class="btn" id="btnVerifyTags" data-tip-title="Verify tags on disk" data-tip="Compare catalog tags/rank vs file metadata (+ .fafo.json sidecars). Optionally rewrite disk to match catalog.">✔ Verify Tags</button>
-        <button class="btn" id="btnPairMap" data-tip-title="Pair map" data-tip="Export/import a JSON map of all UP-#### pairs (survives DB wipes / new PC).">🗺️ Pair Map</button>
-        <button class="btn" onclick="location.href='VSR Pipeline Manager.html'" data-tip="Two-stage VSR rename pipeline with smart matching">⚡ VSR Pipeline</button>
-        <button class="btn" id="btnSettings" data-tip-title="Settings" data-tip="Thumbnail hotkey, sidecar thumbs, Explorer tags, UI scale &amp; panel layout.">⚙ Settings</button>
-        <button class="ui-btn" id="btnFaq" data-tip-title="Q&amp;A" data-tip="Short answers: start server, pairs after moves, Explorer tags, ZIP vs re-encode, USB archive, FAFO.">❓ Q&amp;A</button>
-        <button class="ui-btn ghost" id="btnDebug" data-tip-title="Debug mode" data-tip="Echo errors and API events to a panel — copy log instead of describing bugs. Persists until turned off.">🐛 Debug</button>
-        <div class="ui-scale-bar" data-tip-title="Display scale" data-tip="UI scale zooms the whole app. Tag size / columns only affect the tag library column. Drag panel edges to resize.">
-            <label for="uiScaleSelect">UI</label>
-            <select id="uiScaleSelect" aria-label="App UI scale">
-                <option value="0.85">85%</option>
-                <option value="1" selected>100%</option>
-                <option value="1.1">110%</option>
-                <option value="1.25">125%</option>
-                <option value="1.4">140%</option>
-            </select>
-            <label for="tagScaleSelect">Tags</label>
-            <select id="tagScaleSelect" aria-label="Tag chip size">
-                <option value="sm">S</option>
-                <option value="md" selected>M</option>
-                <option value="lg">L</option>
-                <option value="xl">XL</option>
-            </select>
-            <button type="button" class="btn" id="btnToggleTagsPanel" title="Show/hide tag library column">🏷 Tags</button>
-            <button type="button" class="btn" id="btnToggleDetailPanel" title="Show/hide detail/preview column">▦ Detail</button>
-            <button type="button" class="btn" id="btnResetLayout" title="Reset panel widths &amp; scale">↺ Layout</button>
+        <div class="top-bar-primary">
+            <h1>🗂️ Media Library</h1>
+            <span class="server-pill offline" id="serverStatus" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = rename, Explorer tags, pairs on disk, ffmpeg thumbs, native picker, smart lists. Red/yellow = offline or starting — click this pill or ▶ Start Server to launch from this page (no need to leave for a .bat).">Server …</span>
+            <button class="btn" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from this page (same as Launcher/VSR). Waits for green (up to ~90s). If blocked: 🖥 Console, 📂 Open Folder → START SERVER.bat, or ⚙ Setup Once.">▶ Start Server</button>
+            <button class="btn" id="btnServerConsole" style="display:none" data-tip-title="Console" data-tip="Visible server window — use when the browser blocks silent Start.">🖥 Console</button>
+            <span class="trust-status-bar" id="trustStatusBar" data-tip-title="Trust active" data-tip="Some rename confirmations are skipped. Reset per-type in Settings → Trust.">🔓 Trust active</span>
+            <button class="btn" id="btnHome" data-tip="Return to the main toolbox launcher">← Launcher</button>
+            <button class="btn" id="btnAddDir" data-tip-title="Watch folder" data-tip="Add a folder to the library index. Files are scanned and searchable — nothing is moved or copied.">+ Folder</button>
+            <button class="btn" id="btnNativeDir" data-tip-title="Native Picker" data-tip="Windows folder picker via Python server. Needs green pill — use ▶ Start Server on this page if offline.">📂 Pick</button>
+            <button class="btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new/moved/deleted files. Also re-imports Explorer tags and auto-relinks pairs from UP-#### tags on disk.">↻ Rescan</button>
+            <button class="btn purple" id="btnPair" data-tip-title="Pair" data-tip="Select exactly 2 files (1st = Before/source, 2nd = After/upscaled). Saves a locked pair, opens the comparator, and stamps UP-#### + role tags on both files (and on disk when server is green).">🔗 Pair</button>
+            <button class="btn purple" id="btnSuggest" data-tip-title="Pair Studio" data-tip="Multi-signal suggestions (stem, last-N id tail, digit ids, folder fuzzy). Assign Left/Right slots independently when names are mixed up. Play next while reviewing.">✨ Pair Studio</button>
+        </div>
+        <div class="top-bar-tools">
+            <div class="menu-wrap" id="menuPairsWrap">
+                <button type="button" class="btn purple" id="btnPairsMenu" data-tip-title="More pairing" data-tip="Two-folder pairs, auto-link, health, relink, pair map, and Compare Hub.">Pairs ▾</button>
+                <div class="menu-pop" id="menuPairs" role="menu">
+                    <div class="menu-hint">Advanced pairing &amp; review — primary Pair + Pair Studio stay on the bar.</div>
+                    <button type="button" id="btnTwoDirPairs">📁 Two-folder pairs</button>
+                    <button type="button" id="btnAutoPair">⚡ Auto-link upscale pairs</button>
+                    <button type="button" id="btnRelinkPairs">🔗 Relink pairs from tags</button>
+                    <button type="button" id="btnPairHealth">🩺 Pair health</button>
+                    <button type="button" id="btnPairMap">🗺️ Pair map export/import</button>
+                    <div class="menu-sep"></div>
+                    <a href="Compare Hub.html#pairs">⇄ Compare Hub (pair review + sliders)</a>
+                </div>
+            </div>
+            <div class="menu-wrap" id="menuToolsWrap">
+                <button type="button" class="btn" id="btnToolsMenu" data-tip-title="Library tools" data-tip="Duplicates, organizer, VSR, verify tags, help.">Tools ▾</button>
+                <div class="menu-pop" id="menuTools" role="menu">
+                    <div class="menu-hint">Less-used actions live here so the top bar stays short.</div>
+                    <a href="Media Hub.html#duplicates" id="linkDupHub">🗑️ Duplicates (Media Hub)</a>
+                    <button type="button" id="btnOrganizer">✏️ File Organizer</button>
+                    <a href="VSR Pipeline Manager.html">⚡ VSR Pipeline</a>
+                    <button type="button" id="btnVerifyTags">✔ Verify tags on disk</button>
+                    <div class="menu-sep"></div>
+                    <button type="button" id="btnTutorial">🎓 Get Started tour</button>
+                    <button type="button" id="btnFaq">❓ Q&amp;A</button>
+                    <button type="button" id="btnDebug">🐛 Debug</button>
+                    <button type="button" id="btnSettings">⚙ Settings</button>
+                </div>
+            </div>
+            <div class="ui-scale-bar" data-tip-title="Display scale" data-tip="UI scale zooms the whole app. Tag size / columns only affect the tag library column. Drag panel edges to resize.">
+                <label for="uiScaleSelect">UI</label>
+                <select id="uiScaleSelect" aria-label="App UI scale">
+                    <option value="0.85">85%</option>
+                    <option value="1" selected>100%</option>
+                    <option value="1.1">110%</option>
+                    <option value="1.25">125%</option>
+                    <option value="1.4">140%</option>
+                </select>
+                <label for="tagScaleSelect">Tags</label>
+                <select id="tagScaleSelect" aria-label="Tag chip size">
+                    <option value="sm">S</option>
+                    <option value="md" selected>M</option>
+                    <option value="lg">L</option>
+                    <option value="xl">XL</option>
+                </select>
+                <button type="button" class="btn" id="btnToggleTagsPanel" title="Show/hide tag library column">🏷</button>
+                <button type="button" class="btn" id="btnToggleDetailPanel" title="Show/hide detail/preview column">▦</button>
+                <button type="button" class="btn" id="btnResetLayout" title="Reset panel widths &amp; scale">↺</button>
+            </div>
         </div>
     </div>
 
@@ -2809,12 +2861,44 @@
                 if (opts.match) params.set('match', opts.match);
                 if (opts.deep) params.set('deep', '1');
                 if (opts.label) params.set('label', opts.label);
-                const url = `../File Tools/Duplicate File Manager.html?${params}`;
+                // Prefer Media Hub so Library + Duplicates stay one workspace
+                const url = `Media Hub.html?${params}#duplicates`;
                 window.open(url, '_blank');
-                showToast(`Opening duplicate scan: ${folder.split(/[/\\]/).pop() || folder}`, 'ok');
+                showToast(`Opening duplicates: ${folder.split(/[/\\]/).pop() || folder}`, 'ok');
             } catch (e) {
                 showToast(e.message, 'warn');
             }
+        }
+
+        function wireTopMenus() {
+            const wraps = [
+                { wrap: 'menuPairsWrap', btn: 'btnPairsMenu' },
+                { wrap: 'menuToolsWrap', btn: 'btnToolsMenu' },
+            ];
+            const closeAll = () => {
+                wraps.forEach(({ wrap }) => document.getElementById(wrap)?.classList.remove('open'));
+            };
+            wraps.forEach(({ wrap, btn }) => {
+                const w = document.getElementById(wrap);
+                const b = document.getElementById(btn);
+                if (!w || !b) return;
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const willOpen = !w.classList.contains('open');
+                    closeAll();
+                    if (willOpen) w.classList.add('open');
+                });
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.menu-wrap')) closeAll();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeAll();
+            });
+            // Organizer was previously an inline navigation button
+            document.getElementById('btnOrganizer')?.addEventListener('click', () => {
+                location.href = 'Media Hub.html#organizer';
+            });
         }
 
         async function renderPage() {
@@ -4783,6 +4867,8 @@
             updateTrustStatusBar();
             showToast('All rename confirmations restored', 'ok');
         };
+
+        wireTopMenus();
 
         document.getElementById('btnSettings').onclick = () => {
             document.getElementById('setThumbKey').value = settings.thumb_shortcut || settings.thumbShortcut || 'KeyT';

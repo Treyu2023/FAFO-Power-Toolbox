@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compare Hub — Pairs · Video · Image</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⇄</text></svg>">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <style>
+    :root {
+      --bg: #050508; --panel: #0c0c12; --accent: #a78bfa; --accent2: #00f3ff;
+      --text: #e8e8ec; --muted: #888; --ok: #00ff88;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column;
+    }
+    .hub-bar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 12px;
+      background: linear-gradient(180deg, #12101a, #0a0a10);
+      border-bottom: 1px solid rgba(167, 139, 250, 0.35);
+      z-index: 5;
+    }
+    .hub-bar h1 {
+      font-size: 14px; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--accent); margin-right: 6px;
+    }
+    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+    .hub-tab {
+      appearance: none; border: 1px solid rgba(167, 139, 250, 0.35);
+      background: transparent; color: var(--muted);
+      padding: 7px 12px; border-radius: 999px; cursor: pointer;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+      transition: 0.15s;
+    }
+    .hub-tab:hover { color: #ddd; border-color: var(--accent); }
+    .hub-tab.active {
+      background: rgba(167, 139, 250, 0.2);
+      color: #fff; border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(167, 139, 250, 0.3);
+    }
+    .hub-meta { font-size: 10px; color: var(--muted); max-width: 300px; line-height: 1.35; }
+    .hub-actions { display: flex; gap: 6px; align-items: center; }
+    .hub-actions a, .hub-actions button {
+      font-size: 11px; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.14); background: transparent;
+      color: var(--muted); text-decoration: none; cursor: pointer; font-weight: 600;
+    }
+    .hub-actions a:hover, .hub-actions button:hover {
+      color: var(--accent2); border-color: var(--accent2);
+    }
+    .frame-wrap { flex: 1; min-height: 0; position: relative; background: #000; }
+    .frame-wrap iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      border: 0; background: #050508;
+    }
+    .loading {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 13px; pointer-events: none;
+      background: radial-gradient(ellipse at 50% 30%, #1a1430, #050508 70%);
+      transition: opacity 0.3s;
+    }
+    .loading.hide { opacity: 0; }
+  </style>
+</head>
+<body>
+  <header class="hub-bar">
+    <h1>⇄ COMPARE HUB</h1>
+    <div class="hub-tabs" id="hubTabs" role="tablist">
+      <button type="button" class="hub-tab active" data-tab="pairs" role="tab">Pair Review</button>
+      <button type="button" class="hub-tab" data-tab="video" role="tab">Video Comparator</button>
+      <button type="button" class="hub-tab" data-tab="image" role="tab">Image Comparator</button>
+    </div>
+    <div class="hub-meta" id="hubMeta">Find pairs, accept/reject, then open the matching slider comparator.</div>
+    <div class="hub-actions">
+      <a href="../Toolbox Launcher.html">← Launcher</a>
+      <a href="Media Hub.html" title="Library + duplicates + organizer">🗂️ Media Hub</a>
+      <button type="button" id="btnPopout" title="Open this tab full-window">↗ Pop out</button>
+    </div>
+  </header>
+  <div class="frame-wrap">
+    <div class="loading" id="loading">Loading compare workspace…</div>
+    <iframe id="hubFrame" title="Compare workspace" allow="autoplay; fullscreen"></iframe>
+  </div>
+
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script>
+    (function () {
+      const TABS = {
+        pairs: {
+          path: 'Pair Review Queue.html',
+          toolboxPath: 'Movie File Manager/Pair Review Queue.html',
+          title: 'Pair Review',
+          meta: 'Review before/after pairs, accept or reject, batch-fix catalog links — then jump to a comparator.'
+        },
+        video: {
+          path: '../Video Tools/Video Comparison Slider Tool.html',
+          toolboxPath: 'Video Tools/Video Comparison Slider Tool.html',
+          title: 'Video Comparator',
+          meta: 'Side-by-side / slider sync playback for upscaled vs source video pairs.'
+        },
+        image: {
+          path: '../Image tools/Image Comparitor With Slider.html',
+          toolboxPath: 'Image tools/Image Comparitor With Slider.html',
+          title: 'Image Comparator',
+          meta: 'Before/after image slider with blend & loupe.'
+        }
+      };
+
+      const frame = document.getElementById('hubFrame');
+      const loading = document.getElementById('loading');
+      const meta = document.getElementById('hubMeta');
+      let current = 'pairs';
+
+      function tabFromHash() {
+        const h = (location.hash || '').replace(/^#/, '').toLowerCase();
+        if (h === 'pair' || h === 'pairs' || h === 'review' || h === 'queue') return 'pairs';
+        if (h === 'video' || h === 'vid' || h === 'vc') return 'video';
+        if (h === 'image' || h === 'img' || h === 'ic') return 'image';
+        if (h === '' || h === 'compare') return 'pairs';
+        return TABS[h] ? h : 'pairs';
+      }
+
+      async function resolveSrc(tab) {
+        const t = TABS[tab];
+        let src = t.path;
+        const qs = location.search || '';
+        try {
+          if (window.AIToolboxAPI?.isOnline && window.AIToolboxAPI?.toolPageUrl) {
+            const on = await AIToolboxAPI.isOnline(false, 1500).catch(() => false);
+            if (on) src = AIToolboxAPI.toolPageUrl(t.toolboxPath);
+          }
+        } catch (_) { /* ignore */ }
+        if (qs) {
+          src += (String(src).includes('?') ? '&' : '?') + qs.replace(/^\?/, '');
+        }
+        return src;
+      }
+
+      async function showTab(id, pushHash) {
+        if (!TABS[id]) id = 'pairs';
+        current = id;
+        document.querySelectorAll('.hub-tab').forEach((b) => {
+          b.classList.toggle('active', b.dataset.tab === id);
+        });
+        const t = TABS[id];
+        document.title = t.title + ' — Compare Hub';
+        meta.textContent = t.meta.replace(/<[^>]+>/g, '');
+        meta.innerHTML = t.meta;
+        if (pushHash !== false) {
+          if (location.hash.replace(/^#/, '') !== id) {
+            history.replaceState(null, '', '#' + id);
+          }
+        }
+        loading.classList.remove('hide');
+        loading.textContent = 'Loading ' + t.title + '…';
+        frame.onload = () => loading.classList.add('hide');
+        frame.src = await resolveSrc(id);
+      }
+
+      document.getElementById('hubTabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('.hub-tab');
+        if (!btn) return;
+        showTab(btn.dataset.tab, true);
+      });
+
+      document.getElementById('btnPopout').addEventListener('click', async () => {
+        window.open(await resolveSrc(current), '_blank');
+      });
+
+      window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
+      showTab(tabFromHash(), true);
+    })();
+  </script>
+</body>
+</html>
