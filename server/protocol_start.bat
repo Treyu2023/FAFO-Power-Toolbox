@@ -13,6 +13,7 @@ REM   aitoolbox://setup          Run one-time setup
 REM   aitoolbox://launch         One-click: setup if needed + server + Chrome shell
 REM   aitoolbox://diagnostics    Full system diagnostics + pack report library
 REM   aitoolbox://pack-reports   Rebuild catalog.js / logs-data.js only
+REM   aitoolbox://ghost          Ghost Device Cleaner (elevated UAC + picker)
 
 setlocal EnableExtensions
 cd /d "%~dp0.."
@@ -21,6 +22,7 @@ set "ACTION=start"
 set "RAW=%~1"
 if defined RAW (
   REM crude contains checks (URLs are ASCII) — more specific actions first
+  echo %RAW%| findstr /I /C:"ghost" >nul && set "ACTION=ghost"
   echo %RAW%| findstr /I /C:"console" >nul && set "ACTION=console"
   echo %RAW%| findstr /I /C:"folder" >nul && set "ACTION=folder"
   echo %RAW%| findstr /I /C:"open" >nul && set "ACTION=folder"
@@ -31,9 +33,10 @@ if defined RAW (
   echo %RAW%| findstr /I /C:"packreports" >nul && set "ACTION=pack"
   echo %RAW%| findstr /I /C:"restart" >nul && set "ACTION=restart"
   echo %RAW%| findstr /I /C:"tray" >nul && set "ACTION=tray"
-  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" if /I not "%ACTION%"=="restart" if /I not "%ACTION%"=="tray" set "ACTION=start"
+  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" if /I not "%ACTION%"=="restart" if /I not "%ACTION%"=="tray" if /I not "%ACTION%"=="ghost" set "ACTION=start"
 )
 
+if /I "%ACTION%"=="ghost" goto do_ghost
 if /I "%ACTION%"=="folder" goto do_folder
 if /I "%ACTION%"=="setup" goto do_setup
 if /I "%ACTION%"=="launch" goto do_launch
@@ -43,6 +46,19 @@ if /I "%ACTION%"=="pack" goto do_pack
 if /I "%ACTION%"=="restart" goto do_restart
 if /I "%ACTION%"=="tray" goto do_tray
 goto do_start
+
+:do_ghost
+REM Elevated Ghost Device Cleaner — UAC then PowerShell picker
+if exist "%cd%\GhostDeviceCleaner\Run-Cleaner-Elevated.bat" (
+  start "" "%cd%\GhostDeviceCleaner\Run-Cleaner-Elevated.bat"
+  exit /b 0
+)
+if exist "%cd%\GhostDeviceCleaner\Clear-GhostDevices.ps1" (
+  start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe' -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','\"%cd%\GhostDeviceCleaner\Clear-GhostDevices.ps1\"')"
+  exit /b 0
+)
+start "" explorer.exe "%cd%\GhostDeviceCleaner"
+exit /b 1
 
 :do_folder
 start "" explorer.exe "%cd%"

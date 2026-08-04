@@ -1189,10 +1189,13 @@
             {
                 id: 'ghost-device-cleaner',
                 name: 'Ghost Device Cleaner',
-                desc: 'Selection-capable ghost device manager — purge pesky residual devices',
+                desc: 'Elevated cleaner for phantom monitors / devices (UAC + picker) — not a plain web page',
                 path: 'GhostDeviceCleaner/Clear-GhostDevices.html',
                 category: 'System',
-                emoji: '👻'
+                emoji: '👻',
+                // Real work is elevated .ps1 — browsers cannot run .bat links from http://
+                nativeLaunch: 'ghost-device-cleaner',
+                featured: true
             },
             {
                 id: 'lan-task-manager',
@@ -1678,6 +1681,37 @@
                             await AIToolboxLauncherFX.onToolSelect(card, ev);
                         }
                     } catch (_) { /* ignore fx errors */ }
+
+                    // Native Windows tools (elevated cleaners, etc.) — API / protocol, not page nav alone
+                    if (tool.nativeLaunch && window.AIToolboxAPI?.launchLocalTool) {
+                        try {
+                            AIToolboxUI.toast('Launching ' + tool.name + '… approve UAC if prompted', 'ok');
+                        } catch (_) { /* ignore */ }
+                        try {
+                            const r = await AIToolboxAPI.launchLocalTool(tool.nativeLaunch, { action: 'run' });
+                            console.info('[Launcher] native launch', tool.id, r);
+                            // Also open the info page so the user has docs / fallback buttons
+                            try {
+                                let dest = tool.path;
+                                if (window.AIToolboxAPI?.isOnline) {
+                                    const on = await AIToolboxAPI.isOnline(false, 1200).catch(() => false);
+                                    if (on && AIToolboxAPI.toolPageUrl) dest = AIToolboxAPI.toolPageUrl(tool.path);
+                                }
+                                window.open(dest, '_blank', 'noopener');
+                            } catch (_) { /* ignore secondary page */ }
+                            return;
+                        } catch (ne) {
+                            console.warn('[Launcher] native launch failed, opening page', ne);
+                            try {
+                                AIToolboxUI.toast(
+                                    tool.name + ': auto-launch failed — use Run on the next page (or Start Server + retry)',
+                                    'warn'
+                                );
+                            } catch (_) { /* ignore */ }
+                            // fall through to open HTML landing
+                        }
+                    }
+
                     // Prefer S1 http://127.0.0.87:18765/toolbox/... so tool pages
                     // load from the same origin as the API (fixes "online on home,
                     // offline after change pages" when opened as file:// or mixed).

@@ -166,6 +166,10 @@
             'pack-reports': 'pack-reports',
             packreports: 'pack-reports',
             pack: 'pack-reports',
+            ghost: 'ghost',
+            'ghost-cleaner': 'ghost',
+            ghostcleaner: 'ghost',
+            'ghost-device-cleaner': 'ghost',
         };
         const key = String(action || 'start').toLowerCase();
         const act = allowed[key] || 'start';
@@ -675,6 +679,36 @@
         tryProtocolLaunch,
         isServerLaunching,
         isLaunching: isServerLaunching,
+
+        /**
+         * Launch allowlisted desktop tools (e.g. elevated Ghost Device Cleaner).
+         * Tries S1 API first, then aitoolbox:// protocol fallback.
+         * @param {string} toolId e.g. 'ghost-device-cleaner'
+         * @param {{ action?: string }} opts action: run | folder | ui
+         */
+        async launchLocalTool(toolId, opts = {}) {
+            const id = String(toolId || '').trim();
+            const action = opts.action || 'run';
+            if (!id) throw new Error('tool id required');
+            try {
+                if (await checkServer(true, 1500)) {
+                    const r = await api('/tools/launch', {
+                        method: 'POST',
+                        body: JSON.stringify({ id, action }),
+                        timeoutMs: 8000,
+                    });
+                    if (r && r.ok !== false) return { ok: true, via: 'api', ...r };
+                }
+            } catch (e) {
+                dbg()?.log('api', 'warn', 'launchLocalTool API failed: ' + (e.message || e));
+            }
+            // Protocol fallback (works offline if SETUP registered aitoolbox://)
+            if (/ghost/i.test(id) || action === 'ghost') {
+                tryProtocolLaunch('ghost');
+                return { ok: true, via: 'protocol', id, action: 'ghost' };
+            }
+            throw new Error('Could not launch local tool (server offline and no protocol match)');
+        },
 
         async listDirectories() {
             if (await checkServer()) return api('/directories');
