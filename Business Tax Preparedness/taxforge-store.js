@@ -546,10 +546,12 @@
     return { added, skipped, total: existing.length };
   }
 
-  global.TaxForge = {
+  // Merge with taxforge-shared.js if already loaded (do not wipe suite helpers)
+  const api = {
     KEYS,
     EXPENSE_CATEGORIES,
     DEFAULT_SETTINGS,
+    DEFAULT_CHECKLIST,
     uid,
     load,
     save,
@@ -579,4 +581,5 @@
     importMileIQTrips,
     tripFingerprint
   };
+  global.TaxForge = Object.assign(global.TaxForge || {}, api);
 })(typeof window !== 'undefined' ? window : globalThis);
