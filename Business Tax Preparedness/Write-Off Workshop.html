@@ -58,6 +58,21 @@
       </div>
     </div>
 
+    <div class="tf-panel" id="bankImportPanel">
+      <h2>Import bank / card CSV</h2>
+      <p class="tf-muted" style="margin-bottom:10px">
+        Drop a bank or card export (Chase, BofA, Amex, generic Date/Description/Amount).
+        Rows merge into the queue as <strong>needs review</strong> — nothing is auto-filed.
+        Organization only; not tax advice.
+      </p>
+      <div id="bankDrop" class="tf-drop" style="border:1px dashed rgba(0,232,162,0.35);border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:rgba(0,0,0,0.2)">
+        <div style="font-size:13px;font-weight:700;margin-bottom:6px">Drop CSV here or click to browse</div>
+        <div class="tf-muted" style="font-size:11px">Supports Date + Description + Amount (or Debit/Credit columns)</div>
+        <input type="file" id="bankFile" accept=".csv,text/csv" hidden>
+      </div>
+      <div id="bankImportStatus" class="tf-muted" style="margin-top:8px;font-size:12px;min-height:1.2em"></div>
+    </div>
+
     <div class="tf-panel">
       <h2>Transaction forge</h2>
       <div class="filter-bar">
@@ -70,6 +85,7 @@
         <button class="tf-btn sm" type="button" id="btnAuto">Auto-suggest codes</button>
         <button class="tf-btn sm primary" type="button" id="btnApplySugs">Apply suggestions</button>
         <button class="tf-btn sm ghost" type="button" id="btnExport">Export review CSV</button>
+        <button class="tf-btn sm" type="button" id="btnImportBank">Import bank CSV</button>
         <button class="tf-btn sm" type="button" id="btnSeed">Seed demo if empty</button>
       </div>
       <div class="txn-row" style="opacity:0.6;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--tf-muted)">
@@ -231,9 +247,187 @@
       refresh();
     }
 
+    function parseCsvLine(line) {
+      const out = [];
+      let cur = '';
+      let q = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (q) {
+          if (ch === '"') {
+            if (line[i + 1] === '"') { cur += '"'; i++; }
+            else q = false;
+          } else cur += ch;
+        } else if (ch === '"') q = true;
+        else if (ch === ',') { out.push(cur); cur = ''; }
+        else cur += ch;
+      }
+      out.push(cur);
+      return out;
+    }
+
+    function normHeader(h) {
+      return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+    }
+
+    function parseMoney(raw) {
+      if (raw == null || raw === '') return null;
+      let s = String(raw).trim();
+      if (!s) return null;
+      const neg = /^\(.*\)$/.test(s) || /^-/.test(s);
+      s = s.replace(/[(),$\s]/g, '').replace(/^-/, '');
+      const n = parseFloat(s);
+      if (!Number.isFinite(n)) return null;
+      return neg ? -Math.abs(n) : n;
+    }
+
+    function parseLooseDate(raw) {
+      if (!raw) return '';
+      const s = String(raw).trim();
+      const d = new Date(s);
+      if (!Number.isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + day;
+      }
+      // M/D/YYYY
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        let yy = parseInt(m[3], 10);
+        if (yy < 100) yy += 2000;
+        return yy + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
+      }
+      return s.slice(0, 10);
+    }
+
+    /** Generic bank/card CSV → Write-Off transactions (needs-review). */
+    function parseBankCsv(text, sourceName) {
+      const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
+      const errors = [];
+      if (lines.length < 2) return { rows: [], errors: ['File looks empty'] };
+
+      // Find header row (first line with date-like + amount-like headers)
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(15, lines.length); i++) {
+        const n = parseCsvLine(lines[i]).map(normHeader);
+        const hasDate = n.some((h) => /date|posted|transactiondate/.test(h));
+        const hasAmt = n.some((h) => /amount|debit|credit|withdrawal|deposit/.test(h));
+        if (hasDate && hasAmt) { headerIdx = i; break; }
+      }
+      const headers = parseCsvLine(lines[headerIdx]).map(normHeader);
+      const idx = (cands) => {
+        for (const c of cands) {
+          const i = headers.indexOf(c);
+          if (i >= 0) return i;
+        }
+        // fuzzy includes
+        for (let i = 0; i < headers.length; i++) {
+          if (cands.some((c) => headers[i].includes(c))) return i;
+        }
+        return -1;
+      };
+      const iDate = idx(['date', 'posteddate', 'transactiondate', 'transdate', 'postingdate']);
+      const iDesc = idx(['description', 'payee', 'memo', 'name', 'details', 'narrative', 'merchant']);
+      const iAmt = idx(['amount', 'transactionamount', 'value']);
+      const iDebit = idx(['debit', 'withdrawal', 'withdrawals']);
+      const iCredit = idx(['credit', 'deposit', 'deposits']);
+      if (iDate < 0) errors.push('No date column found');
+      if (iDesc < 0 && iAmt < 0 && iDebit < 0) errors.push('No description/amount columns found');
+
+      const rows = [];
+      for (let r = headerIdx + 1; r < lines.length; r++) {
+        const cells = parseCsvLine(lines[r]);
+        if (!cells.some((c) => String(c).trim())) continue;
+        const date = parseLooseDate(iDate >= 0 ? cells[iDate] : '');
+        let amount = null;
+        if (iAmt >= 0) amount = parseMoney(cells[iAmt]);
+        else {
+          const d = iDebit >= 0 ? parseMoney(cells[iDebit]) : null;
+          const c = iCredit >= 0 ? parseMoney(cells[iCredit]) : null;
+          if (d != null && d !== 0) amount = -Math.abs(d); // spend as negative? Workshop often stores absolute spend
+          else if (c != null && c !== 0) amount = Math.abs(c);
+        }
+        // Normalize: expenses as positive spend amounts (workshop uses positive $ for review)
+        if (amount != null && amount < 0) amount = Math.abs(amount);
+        const desc = String(iDesc >= 0 ? (cells[iDesc] || '') : cells.join(' ')).trim();
+        if (!date && !desc) continue;
+        if (amount == null || amount === 0) continue;
+        rows.push({
+          id: 'bank_' + Date.now().toString(36) + '_' + r + '_' + Math.random().toString(36).slice(2, 6),
+          date: date || '',
+          contact: desc.slice(0, 80),
+          description: desc + (sourceName ? ' · ' + sourceName : ''),
+          amount: Math.round(amount * 100) / 100,
+          accountCode: '',
+          accountName: '',
+          deductible: 'likely',
+          status: 'needs-review',
+          source: 'bank-csv',
+        });
+      }
+      return { rows, errors, headerIdx, headers };
+    }
+
+    async function importBankFile(file) {
+      const status = document.getElementById('bankImportStatus');
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = parseBankCsv(text, file.name);
+        if (!parsed.rows.length) {
+          status.textContent = 'No rows imported. ' + (parsed.errors.join(' · ') || 'Check CSV headers (Date, Description, Amount).');
+          TaxForge.toast('Import failed — see note under drop zone');
+          return;
+        }
+        const existing = getTxns();
+        const mode = existing.length
+          ? (confirm('Merge ' + parsed.rows.length + ' bank rows into the queue?\n\nOK = merge\nCancel = replace all transactions') ? 'merge' : 'replace')
+          : 'merge';
+        // If user cancelled confirm for replace path when empty... treat as merge
+        let next;
+        if (mode === 'replace') next = parsed.rows;
+        else next = existing.concat(parsed.rows);
+        setTxns(next);
+        if (!TaxForge.storage.get('accounts', []).length) {
+          TaxForge.storage.set('accounts', TaxForge.demoAccounts());
+        }
+        status.textContent = 'Imported ' + parsed.rows.length + ' rows from ' + file.name +
+          (parsed.errors.length ? ' · notes: ' + parsed.errors.join('; ') : '');
+        TaxForge.toast('Bank CSV: +' + parsed.rows.length + ' transactions');
+        TaxForge.burst?.(window.innerWidth / 2, 180, '#00e8a2');
+        document.getElementById('filter').value = 'needs-review';
+        refresh();
+      } catch (e) {
+        status.textContent = 'Import error: ' + (e.message || e);
+        TaxForge.toast('Import error');
+      }
+    }
+
+    const bankDrop = document.getElementById('bankDrop');
+    const bankFile = document.getElementById('bankFile');
+    bankDrop.addEventListener('click', () => bankFile.click());
+    bankDrop.addEventListener('dragover', (e) => { e.preventDefault(); bankDrop.style.borderColor = 'var(--tf-accent)'; });
+    bankDrop.addEventListener('dragleave', () => { bankDrop.style.borderColor = ''; });
+    bankDrop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      bankDrop.style.borderColor = '';
+      const f = e.dataTransfer?.files?.[0];
+      if (f) importBankFile(f);
+    });
+    bankFile.addEventListener('change', () => {
+      const f = bankFile.files?.[0];
+      if (f) importBankFile(f);
+      bankFile.value = '';
+    });
+
     document.getElementById('filter').onchange = refresh;
     document.getElementById('btnAuto').onclick = autoSuggest;
     document.getElementById('btnApplySugs').onclick = applySuggestions;
+    document.getElementById('btnImportBank').onclick = () => {
+      document.getElementById('bankImportPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      bankFile.click();
+    };
     document.getElementById('btnSeed').onclick = () => {
       if (getTxns().length && !confirm('Replace current transactions with demo set?')) return;
       setTxns(TaxForge.demoTransactions());
