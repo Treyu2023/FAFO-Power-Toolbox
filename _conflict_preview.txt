@@ -1,0 +1,541 @@
+
+===== Toolbox Launcher.html conflict #1 lines 946-1001 =====
+--- HEAD (43 lines) ---
+                id: 'phone-assist-navigator',
+                name: 'Phone Assist Navigator',
+                desc: 'Walk CSR / Commander / TLS menus with someone on the phone ΓÇö mock screens + say-this script + SSH resetpw playbook',
+                path: 'Verifone Tools/Phone Assist Navigator.html',
+                category: 'Verifone',
+                emoji: '≡ƒô₧',
+                featured: true,
+                needsServer: false,
+                localOnly: true
+            },
+            {
+                id: 'investor-portal',
+                name: 'Investor Portal (Sumran)',
+                desc: 'Private ledger for you + Muhammad Sumran Nasir ΓÇö prices, serials, custom columns, receipts. FAFO Petro sync: public inventory without costs; private page kee
+                path: 'Investor Portal.html',
+                category: 'Verifone',
+                emoji: '≡ƒÆÄ',
+                featured: true,
+                needsServer: true,
+                localOnly: true
+            },
+            {
+                id: 'setup-configurator',
+                name: 'Setup Configurator',
+                desc: 'Quick Start: pick modules (tech / media / everything), build a personal BAT pack ΓÇö no extra servers you did not ask for. Linked to Startup board.',
+                path: 'Setup Configurator.html',
+                category: 'System',
+                emoji: 'ΓÜÖ',
+                featured: true,
+                needsServer: true,
+                offlineOk: true
+            },
+            {
+                id: 'startup-command-board',
+                name: 'Startup Command Board',
+                desc: 'Live S1/S2 status, start/stop/restart, block auto-connect override, Windows startup toggles. Pair with Setup packs.',
+                path: 'Startup Command Board.html',
+                category: 'System',
+                emoji: '≡ƒûÑ',
+                featured: true,
+                needsServer: true
+            },
+            {
+--- COMMIT (10 lines) ---
+                id: 'progress-map-mythos',
+                name: 'Progress Map & Mythos',
+                desc: 'Dev roadmap, milestones, tree rings / map / skyline gems, chamber vault (adventure game is TECH QUEST)',
+                path: 'Progress Map/Progress Map.html',
+                category: 'Developer',
+                emoji: 'Γùê',
+                featured: true,
+                offlineOk: true
+            },
+            {
+
+===== Toolbox Launcher.html conflict #2 lines 1433-1459 =====
+--- HEAD (16 lines) ---
+                id: 'typing-assistant-trainer',
+                name: 'Typing Assistant Trainer',
+                desc: 'Keystroke Chronicles campaign, bonus rounds, mini-games (Word Rush / Ghost Pace), WPM combos & high scores ΓÇö works offline',
+                path: 'Typing Assistant Trainer.html',
+                category: 'Games',
+                emoji: 'Γî¿∩╕Å',
+                offlineOk: true,
+                featured: true
+            },
+            {
+                id: 'empire-seed',
+                name: 'Empire Seed 3D',
+                desc: 'Civilization-style 4X in WebGL 3D ΓÇö extruded terrain, orbit camera, cities, armies & tech tree',
+                path: 'Empire Seed.html',
+                category: 'Games',
+                emoji: '≡ƒÅ¢∩╕Å'
+--- COMMIT (8 lines) ---
+                id: 'tech-quest',
+                name: 'TECH QUEST',
+                desc: 'FFT├ùShining Force field-tech RPG ΓÇö 7 classes, recruits, gear, shops, Veryfony finale, Treasure Room',
+                path: 'Tech Quest/Tech Quest.html',
+                category: 'Games',
+                emoji: '≡ƒö¿',
+                featured: true,
+                offlineOk: true
+
+===== Toolbox Launcher.html conflict #3 lines 1520-1530 =====
+--- HEAD (4 lines) ---
+                name: 'TaxForge & Books',
+                emoji: '≡ƒº╛',
+                color: '#00e8a2',
+                desc: 'Business tax preparedness ΓÇö Xero, readiness pulse, partner/reimb periods, write-offs, year-end close.',
+--- COMMIT (4 lines) ---
+                name: 'Business Tax',
+                emoji: '≡ƒº╛',
+                color: '#ffc800',
+                desc: 'TaxForge: mileage, quarterly estimates, write-offs, year-end checklist (organization only ΓÇö not tax advice).',
+
+===== server/aitoolbox_server.py conflict #1 lines 4044-4156 =====
+--- HEAD (67 lines) ---
+class ToolsLaunchBody(BaseModel):
+    """Allowlisted local Windows tools that browsers cannot run directly (.bat / elevated)."""
+    id: str
+    action: str | None = "run"  # run | folder | ui
+
+
+@app.post("/api/tools/launch")
+def api_tools_launch(body: ToolsLaunchBody):
+    """
+    Launch allowlisted desktop tools (elevated PowerShell, Explorer, etc.).
+    Used when Chrome cannot execute .bat/.ps1 from http:// toolbox pages.
+    """
+    import subprocess
+
+    tid = (body.id or "").strip().lower()
+    action = (body.action or "run").strip().lower()
+
+    # Explicit allowlist only ΓÇö never run arbitrary paths from the browser
+    if tid in ("ghost-device-cleaner", "ghost", "ghost-cleaner", "ghostcleaner"):
+        folder = ROOT / "GhostDeviceCleaner"
+        if action in ("folder", "open-folder"):
+            target = folder
+            if not target.is_dir():
+                raise HTTPException(404, "GhostDeviceCleaner folder missing")
+            subprocess.Popen(["explorer.exe", str(target)], shell=False)
+            return {"ok": True, "launched": "folder", "path": str(target)}
+
+        if action in ("ui", "html", "page"):
+            html = folder / "Clear-GhostDevices.html"
+            if not html.is_file():
+                raise HTTPException(404, "Clear-GhostDevices.html missing")
+            # Prefer mshta for the HTA-style shell; fall back to default association
+            try:
+                subprocess.Popen(["mshta.exe", str(html)], cwd=str(folder), shell=False)
+            except OSError:
+                subprocess.Popen(["cmd.exe", "/c", "start", "", str(html)], cwd=str(folder), shell=False)
+            return {"ok": True, "launched": "ui", "path": str(html)}
+
+        # Default: elevated cleaner (UAC prompt ΓåÆ picker UI in PowerShell)
+        bat = folder / "Run-Cleaner-Elevated.bat"
+        ps1 = folder / "Clear-GhostDevices.ps1"
+        if bat.is_file():
+            creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat)],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "ghost-elevated", "via": "Run-Cleaner-Elevated.bat"}
+... +17 more
+--- COMMIT (43 lines) ---
+@app.get("/api/launch/watchdog/status")
+def api_watchdog_status():
+    """Server watchdog report + whether monitor process is running."""
+    try:
+        return launch_ops.watchdog_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/start")
+def api_watchdog_start():
+    """Start the S1/S2 watchdog monitor (hidden)."""
+    try:
+        return launch_ops.watchdog_start()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/install")
+def api_watchdog_install():
+    """Install login/poll keep-alive + start watchdog."""
+    try:
+        return launch_ops.watchdog_install()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/open-status")
+def api_watchdog_open_status():
+    """Open server-watchdog-status.html (generate if needed)."""
+    try:
+        return launch_ops.watchdog_open_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/open-folder")
+def api_watchdog_open_folder():
+    """Open Explorer to the watchdog .bat files in the toolbox root."""
+    try:
+        return launch_ops.watchdog_open_bats_folder()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+===== server/protocol_start.bat conflict #1 lines 16-23 =====
+--- HEAD (1 lines) ---
+REM   aitoolbox://ghost          Ghost Device Cleaner (elevated UAC + picker)
+--- COMMIT (4 lines) ---
+REM   aitoolbox://watchdog       Start S1/S2 server watchdog
+REM   aitoolbox://watchdog-status Open watchdog status HTML
+REM   aitoolbox://watchdog-install Install watchdog Startup + poll task
+REM   aitoolbox://watchdog-folder  Explorer select Start-Server-Watchdog.bat
+
+===== server/protocol_start.bat conflict #2 lines 32-39 =====
+--- HEAD (1 lines) ---
+  echo %RAW%| findstr /I /C:"ghost" >nul && set "ACTION=ghost"
+--- COMMIT (4 lines) ---
+  echo %RAW%| findstr /I /C:"watchdog-status" >nul && set "ACTION=watchdog-status"
+  echo %RAW%| findstr /I /C:"watchdog-install" >nul && set "ACTION=watchdog-install"
+  echo %RAW%| findstr /I /C:"watchdog-folder" >nul && set "ACTION=watchdog-folder"
+  echo %RAW%| findstr /I /C:"watchdog" >nul && if /I not "%ACTION%"=="watchdog-status" if /I not "%ACTION%"=="watchdog-install" if /I not "%ACTION%"=="watchdog-folder" set "ACTION=
+
+===== server/protocol_start.bat conflict #3 lines 50-63 =====
+--- HEAD (4 lines) ---
+  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%
+)
+
+if /I "%ACTION%"=="ghost" goto do_ghost
+--- COMMIT (7 lines) ---
+  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%
+)
+
+if /I "%ACTION%"=="watchdog-status" goto do_watchdog_status
+if /I "%ACTION%"=="watchdog-install" goto do_watchdog_install
+if /I "%ACTION%"=="watchdog-folder" goto do_watchdog_folder
+if /I "%ACTION%"=="watchdog" goto do_watchdog
+
+===== server/protocol_start.bat conflict #4 lines 74-117 =====
+--- HEAD (12 lines) ---
+:do_ghost
+REM Elevated Ghost Device Cleaner ΓÇö UAC then PowerShell picker
+if exist "%cd%\GhostDeviceCleaner\Run-Cleaner-Elevated.bat" (
+  start "" "%cd%\GhostDeviceCleaner\Run-Cleaner-Elevated.bat"
+  exit /b 0
+)
+if exist "%cd%\GhostDeviceCleaner\Clear-GhostDevices.ps1" (
+  start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe' -Verb RunAs -ArgumentLi
+  exit /b 0
+)
+start "" explorer.exe "%cd%\GhostDeviceCleaner"
+exit /b 1
+--- COMMIT (29 lines) ---
+:do_watchdog
+if exist "%cd%\Start-Server-Watchdog.bat" (
+  start "" "%cd%\Start-Server-Watchdog.bat"
+) else if exist "%cd%\server\server_watchdog.py" (
+  start "" /MIN "%cd%\.venv\Scripts\pythonw.exe" "%cd%\server\server_watchdog.py"
+)
+exit /b 0
+
+:do_watchdog_status
+if exist "%cd%\Open-Server-Watchdog-Status.bat" (
+  start "" "%cd%\Open-Server-Watchdog-Status.bat"
+) else (
+  start "" explorer.exe "%LOCALAPPDATA%\FAFO\Devices\%COMPUTERNAME%\Reports"
+)
+exit /b 0
+
+:do_watchdog_install
+if exist "%cd%\Install-Server-Watchdog.bat" (
+  start "" "%cd%\Install-Server-Watchdog.bat"
+)
+exit /b 0
+
+:do_watchdog_folder
+if exist "%cd%\Start-Server-Watchdog.bat" (
+  start "" explorer.exe /select,"%cd%\Start-Server-Watchdog.bat"
+) else (
+  start "" explorer.exe "%cd%"
+)
+exit /b 0
+
+===== shared/aitoolbox-api.js conflict #1 lines 169-179 =====
+--- HEAD (4 lines) ---
+            ghost: 'ghost',
+            'ghost-cleaner': 'ghost',
+            ghostcleaner: 'ghost',
+            'ghost-device-cleaner': 'ghost',
+--- COMMIT (4 lines) ---
+            watchdog: 'watchdog',
+            'watchdog-status': 'watchdog-status',
+            'watchdog-install': 'watchdog-install',
+            'watchdog-folder': 'watchdog-folder',
+
+===== shared/aitoolbox-cinematic.js conflict #1 lines 15-27 =====
+--- HEAD (5 lines) ---
+    /** Playback proxies ΓÇö intros only need a short loop, not full 4K masters */
+    const PROXY_SECONDS = 8;
+    const PROXY_FPS = 24;
+    const PROXY_SIZE_SOFT_CAP = 28 * 1024 * 1024; // always proxy blobs bigger than this
+
+--- COMMIT (5 lines) ---
+    /**
+     * scaleMode:
+     *  - fit       ΓåÆ keep AR, fit entire video in viewport (letterbox; scales to fit height/width)
+     *  - center1x  ΓåÆ 1:1 natural pixels, centered; if any edge overflows screen ΓåÆ scale to 50%
+     */
+
+===== shared/aitoolbox-cinematic.js conflict #2 lines 35-51 =====
+--- HEAD (13 lines) ---
+    /** Pick a target size based on the machine so weak PCs stay smooth. */
+    function playTarget() {
+        const mem = typeof navigator.deviceMemory === 'number' ? navigator.deviceMemory : 8;
+        const cores = typeof navigator.hardwareConcurrency === 'number' ? navigator.hardwareConcurrency : 4;
+        // Low-end / laptop integrated: 540p
+        if (mem <= 4 || cores <= 4) {
+            return { maxW: 960, maxH: 540, bitrate: 1_500_000, label: '540p' };
+        }
+        // Everything else: 720p is plenty for fullscreen dimmed BGs
+        return { maxW: 1280, maxH: 720, bitrate: 2_500_000, label: '720p' };
+    }
+
+    /** @type {{ skipOnLaunch: boolean, muteVideo: boolean, lastPlayedAt: number }} */
+--- COMMIT (1 lines) ---
+    /** @type {{ skipOnLaunch: boolean, muteVideo: boolean, scaleMode: string, lastPlayedAt: number }} */
+
+===== shared/aitoolbox-cinematic.js conflict #3 lines 285-587 =====
+--- HEAD (246 lines) ---
+    function proxyCacheKey(kind, name, size, mtime) {
+        return 'proxy:' + [kind, name || 'v', size || 0, mtime || 0, playTarget().label].join('|');
+    }
+
+    function loadVideoMeta(blobOrFile) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(blobOrFile);
+            const v = document.createElement('video');
+            v.preload = 'metadata';
+            v.muted = true;
+            v.playsInline = true;
+            v.setAttribute('playsinline', '');
+            let settled = false;
+            const done = (ok, data) => {
+                if (settled) return;
+                settled = true;
+                v.onloadedmetadata = null;
+                v.onerror = null;
+                if (!ok) {
+                    try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+                    reject(data || new Error('video meta failed'));
+                    return;
+                }
+                resolve({ video: v, url, width: v.videoWidth || 0, height: v.videoHeight || 0, duration: v.duration || 0 });
+            };
+            v.onloadedmetadata = () => done(true);
+            v.onerror = () => done(false, new Error('could not load video'));
+            setTimeout(() => {
+                if (!settled) done(false, new Error('video meta timeout'));
+            }, 12000);
+            v.src = url;
+        });
+    }
+
+    function pickRecorderMime() {
+        const candidates = [
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm',
+            'video/mp4'
+        ];
+        for (const m of candidates) {
+            if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) {
+                return m;
+            }
+        }
+        return '';
+    }
+
+    /**
+... +196 more
+--- COMMIT (54 lines) ---
+    /**
+     * Collect video file handles under a directory (recursive, depth-limited).
+     * @param {FileSystemDirectoryHandle} dirHandle
+     * @param {number} [maxDepth]
+     * @returns {Promise<Array<{ handle: FileSystemFileHandle, name: string, key: string }>>}
+     */
+    async function collectVideosFromDir(dirHandle, maxDepth = 5) {
+        const out = [];
+        async function walk(dir, depth, prefix) {
+            if (depth > maxDepth || out.length >= 500) return;
+            try {
+                for await (const entry of dir.values()) {
+                    if (out.length >= 500) break;
+                    if (entry.kind === 'file') {
+                        if (VIDEO_NAME_RE.test(entry.name)) {
+                            const key = prefix ? prefix + '/' + entry.name : entry.name;
+                            out.push({ handle: entry, name: entry.name, key });
+                        }
+                    } else if (entry.kind === 'directory') {
+                        // Skip common junk / system folders
+                        if (/^(\.|\$|node_modules|__pycache__|System Volume)/i.test(entry.name)) continue;
+                        const nextPrefix = prefix ? prefix + '/' + entry.name : entry.name;
+                        await walk(entry, depth + 1, nextPrefix);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Cine] walk failed at', prefix || dir.name, e);
+            }
+        }
+        await walk(dirHandle, 0, '');
+        return out;
+    }
+
+    function pickRandomVideo(vids, slotKey, saved) {
+        if (!vids.length) return null;
+        if (vids.length === 1) return vids[0];
+
+        const lastKey = lastPlayedBySlot[slotKey] || saved.lastPlayed || null;
+        let pool = lastKey ? vids.filter((v) => v.key !== lastKey && v.name !== lastKey) : vids.slice();
+        if (!pool.length) pool = vids.slice();
+
+        // crypto when available (less ΓÇ£stuckΓÇ¥ than Math.random in some embeds)
+        let idx;
+        if (global.crypto && typeof global.crypto.getRandomValues === 'function') {
+            const buf = new Uint32Array(1);
+            global.crypto.getRandomValues(buf);
+            idx = buf[0] % pool.length;
+        } else {
+            idx = Math.floor(Math.random() * pool.length);
+        }
+... +4 more
+
+===== shared/aitoolbox-cinematic.js conflict #4 lines 594-630 =====
+--- HEAD (27 lines) ---
+                // Re-optimize legacy 4K blobs that were saved before proxy support
+                const ready = await ensureLightProxy(saved.blob, {
+                    cacheKey: proxyCacheKey('slot', slotKey, saved.blob.size, saved.savedAt || 0),
+                    onStatus
+                });
+                // Upgrade stored entry if we just scaled a heavy original
+                if (ready.scaled && !ready.fromCache && !saved.optimized) {
+                    try {
+                        await idbPut(slotKey, {
+                            ...saved,
+                            blob: ready.blob,
+                            type: ready.blob.type || saved.type,
+                            optimized: true,
+                            scaleLabel: ready.scaleLabel,
+                            originalSize: saved.originalSize || saved.blob.size,
+                            savedAt: Date.now()
+                        });
+                    } catch (_) { /* ignore upgrade fail */ }
+                }
+                const url = URL.createObjectURL(ready.blob);
+                const tag = ready.scaled ? ` ┬╖ ${ready.scaleLabel || playTarget().label}` : '';
+                return {
+                    url,
+                    label: (saved.name || 'Saved video') + tag,
+                    source: 'file',
+                    revoke: url,
+                    scaled: ready.scaled
+--- COMMIT (7 lines) ---
+                const url = URL.createObjectURL(saved.blob);
+                return {
+                    url,
+                    label: (saved.name || 'Saved video') + ' ┬╖ single file',
+                    source: 'file',
+                    revoke: url,
+                    count: 1,
+
+===== shared/aitoolbox-cinematic.js conflict #5 lines 648-689 =====
+--- HEAD (14 lines) ---
+                const pick = vids[Math.floor(Math.random() * vids.length)];
+                const file = await pick.getFile();
+                const ready = await ensureLightProxy(file, {
+                    cacheKey: proxyCacheKey('dir', (saved.name || 'dir') + '/' + pick.name, file.size, file.lastModified || 0),
+                    onStatus
+                });
+                const url = URL.createObjectURL(ready.blob);
+                const tag = ready.scaled ? ` ┬╖ ${ready.scaleLabel || playTarget().label}` : '';
+                return {
+                    url,
+                    label: `${saved.name || 'Folder'} ┬╖ ${pick.name}${tag}`,
+                    source: 'dir',
+                    revoke: url,
+                    scaled: ready.scaled
+--- COMMIT (25 lines) ---
+                const pick = pickRandomVideo(vids, slotKey, saved);
+                if (!pick) {
+                    return { url: null, label: 'No video pick', source: 'dir', count: vids.length };
+                }
+                lastPlayedBySlot[slotKey] = pick.key;
+                // Persist last played (do not break directory handle)
+                try {
+                    await idbPut(slotKey, {
+                        kind: 'dir',
+                        handle: saved.handle,
+                        name: saved.name,
+                        savedAt: saved.savedAt || Date.now(),
+                        lastPlayed: pick.key,
+                    });
+                } catch (_) { /* ignore */ }
+
+                const file = await pick.handle.getFile();
+                const url = URL.createObjectURL(file);
+                return {
+                    url,
+                    label: `${saved.name || 'Folder'} ┬╖ ${vids.length} videos ┬╖ now: ${pick.name}`,
+                    source: 'dir',
+                    revoke: url,
+                    count: vids.length,
+                    picked: pick.name,
+
+===== shared/aitoolbox-cinematic.js conflict #6 lines 1304-1331 =====
+--- HEAD (16 lines) ---
+            // Keep synth visible while 4K ΓåÆ proxy encodes so the intro never freezes on a black frame
+            stageObj.synth.style.opacity = '1';
+            stageObj.video.style.display = 'none';
+            if (mediaLabel) mediaLabel.textContent = 'Loading BGΓÇª';
+
+            const info = await resolveVideoUrl(stageObj.meta.slot, (msg) => {
+                if (mediaLabel && !settled && stages[idx] === stageObj) mediaLabel.textContent = msg;
+            });
+            const stale = settled || stages[idx] !== stageObj || stageObj._loadToken !== loadToken;
+            if (stale) {
+                if (info && info.revoke) {
+                    try { URL.revokeObjectURL(info.revoke); } catch (_) { /* ignore */ }
+                }
+                return;
+            }
+            if (mediaLabel) mediaLabel.textContent = info.label || '';
+--- COMMIT (9 lines) ---
+            const info = await resolveVideoUrl(stageObj.meta.slot);
+            if (mediaLabel) {
+                let label = info.label || '';
+                if (info.source === 'dir' && info.count === 1) {
+                    label += ' ┬╖ only 1 video found';
+                }
+                mediaLabel.textContent = label;
+                mediaLabel.title = label;
+            }
+
+===== shared/aitoolbox-cinematic.js conflict #7 lines 1664-1670 =====
+--- HEAD (3 lines) ---
+            Each of the 3 screens can use its own video folder (random pick) or a single file. Chrome/Edge recommended for folders.
+            <br><br>
+            <strong style="color:#c8d0dc;">4K / heavy clips auto-scale to ${playTarget().label}</strong> (short ~8s loop, cached) so intros stay smooth on any machine.
+--- COMMIT (1 lines) ---
+            Each screen can use a <strong>folder</strong> (random video) or a single <strong>file</strong>. Both work with either scale mode.

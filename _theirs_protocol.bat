@@ -13,7 +13,6 @@ REM   aitoolbox://setup          Run one-time setup
 REM   aitoolbox://launch         One-click: setup if needed + server + Chrome shell
 REM   aitoolbox://diagnostics    Full system diagnostics + pack report library
 REM   aitoolbox://pack-reports   Rebuild catalog.js / logs-data.js only
-REM   aitoolbox://ghost          Ghost Device Cleaner (elevated UAC + picker)
 REM   aitoolbox://watchdog       Start S1/S2 server watchdog
 REM   aitoolbox://watchdog-status Open watchdog status HTML
 REM   aitoolbox://watchdog-install Install watchdog Startup + poll task
@@ -26,7 +25,6 @@ set "ACTION=start"
 set "RAW=%~1"
 if defined RAW (
   REM crude contains checks (URLs are ASCII) ΓÇö more specific actions first
-  echo %RAW%| findstr /I /C:"ghost" >nul && set "ACTION=ghost"
   echo %RAW%| findstr /I /C:"watchdog-status" >nul && set "ACTION=watchdog-status"
   echo %RAW%| findstr /I /C:"watchdog-install" >nul && set "ACTION=watchdog-install"
   echo %RAW%| findstr /I /C:"watchdog-folder" >nul && set "ACTION=watchdog-folder"
@@ -41,10 +39,9 @@ if defined RAW (
   echo %RAW%| findstr /I /C:"packreports" >nul && set "ACTION=pack"
   echo %RAW%| findstr /I /C:"restart" >nul && set "ACTION=restart"
   echo %RAW%| findstr /I /C:"tray" >nul && set "ACTION=tray"
-    echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" if /I not "%ACTION%"=="restart" if /I not "%ACTION%"=="tray" if /I not "%ACTION%"=="ghost" if /I not "%ACTION%"=="watchdog" if /I not "%ACTION%"=="watchdog-status" if /I not "%ACTION%"=="watchdog-install" if /I not "%ACTION%"=="watchdog-folder" set "ACTION=start"
+  echo %RAW%| findstr /I /C:"start" >nul && if /I not "%ACTION%"=="console" if /I not "%ACTION%"=="folder" if /I not "%ACTION%"=="setup" if /I not "%ACTION%"=="launch" if /I not "%ACTION%"=="diagnostics" if /I not "%ACTION%"=="pack" if /I not "%ACTION%"=="restart" if /I not "%ACTION%"=="tray" if /I not "%ACTION%"=="watchdog" if /I not "%ACTION%"=="watchdog-status" if /I not "%ACTION%"=="watchdog-install" if /I not "%ACTION%"=="watchdog-folder" set "ACTION=start"
 )
 
-if /I "%ACTION%"=="ghost" goto do_ghost
 if /I "%ACTION%"=="watchdog-status" goto do_watchdog_status
 if /I "%ACTION%"=="watchdog-install" goto do_watchdog_install
 if /I "%ACTION%"=="watchdog-folder" goto do_watchdog_folder
@@ -58,20 +55,6 @@ if /I "%ACTION%"=="pack" goto do_pack
 if /I "%ACTION%"=="restart" goto do_restart
 if /I "%ACTION%"=="tray" goto do_tray
 goto do_start
-
-:do_ghost
-REM Elevated Ghost Device Cleaner ΓÇö UAC then PowerShell picker
-if exist "%cd%\GhostDeviceCleaner\Run-Cleaner-Elevated.bat" (
-  start "" "%cd%\GhostDeviceCleaner\Run-Cleaner-Elevated.bat"
-  exit /b 0
-)
-if exist "%cd%\GhostDeviceCleaner\Clear-GhostDevices.ps1" (
-  start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe' -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','\"%cd%\GhostDeviceCleaner\Clear-GhostDevices.ps1\"')"
-  exit /b 0
-)
-start "" explorer.exe "%cd%\GhostDeviceCleaner"
-exit /b 1
-
 
 :do_watchdog
 if exist "%cd%\Start-Server-Watchdog.bat" (

@@ -20,6 +20,7 @@
     const DEFAULT_PREFS = {
         skipOnLaunch: false,   // daily-driver: skip intros
         muteVideo: true,
+        scaleMode: 'fit',      // 'fit' | 'center1x'
         lastPlayedAt: 0
     };
 
@@ -40,7 +41,9 @@
 
     function loadPrefs() {
         try {
-            return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') };
+            const raw = { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') };
+            if (raw.scaleMode !== 'fit' && raw.scaleMode !== 'center1x') raw.scaleMode = 'fit';
+            return raw;
         } catch (_) {
             return { ...DEFAULT_PREFS };
         }
@@ -48,8 +51,93 @@
 
     function savePrefs(patch) {
         prefs = { ...prefs, ...patch };
+        if (prefs.scaleMode !== 'fit' && prefs.scaleMode !== 'center1x') prefs.scaleMode = 'fit';
         try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch (_) { /* ignore */ }
         return prefs;
+    }
+
+    /**
+     * Apply video layout for the active scale mode.
+     * @param {HTMLVideoElement} video
+     * @param {string} [mode]
+     */
+    function applyVideoScale(video, mode) {
+        if (!video) return;
+        const m = mode || prefs.scaleMode || 'fit';
+        video.classList.remove('mode-fit', 'mode-center1x');
+        video.dataset.scaleMode = m;
+
+        // Clear any previous layout hooks
+        if (video._cineOnMeta) {
+            try { video.removeEventListener('loadedmetadata', video._cineOnMeta); } catch (_) { /* ignore */ }
+            video._cineOnMeta = null;
+        }
+
+        // Common absolute positioning inside full-screen stage
+        video.style.position = 'absolute';
+        video.style.right = 'auto';
+        video.style.bottom = 'auto';
+        video.style.margin = '0';
+        video.style.inset = 'auto';
+        video.style.maxWidth = 'none';
+        video.style.maxHeight = 'none';
+        video.style.transformOrigin = 'center center';
+
+        if (m === 'center1x') {
+            video.classList.add('mode-center1x');
+
+            /**
+             * True optical center: display box size in CSS px, then
+             * left = (viewportW - displayW) / 2, top = (viewportH - displayH) / 2.
+             * Avoids translate(-50%,-50%)+scale() drift (wrong box before metadata,
+             * and % translate is relative to the element, not the window).
+             */
+            const layout = () => {
+                const stage = video.parentElement;
+                const vw = (stage && stage.clientWidth) || window.innerWidth || document.documentElement.clientWidth;
+                const vh = (stage && stage.clientHeight) || window.innerHeight || document.documentElement.clientHeight;
+                const w = video.videoWidth || 0;
+                const h = video.videoHeight || 0;
+                if (!w || !h || !vw || !vh) return;
+
+                // 1:1 natural pixels; if any edge would go off-screen → 50% zoom
+                const overflow = w > vw || h > vh;
+                const scale = overflow ? 0.5 : 1;
+                const dispW = w * scale;
+                const dispH = h * scale;
+
+                video.style.width = dispW + 'px';
+                video.style.height = dispH + 'px';
+                video.style.left = Math.round((vw - dispW) / 2) + 'px';
+                video.style.top = Math.round((vh - dispH) / 2) + 'px';
+                video.style.transform = 'none';
+                video.style.objectFit = 'fill'; // we already chose the box size
+                video.dataset.scaleApplied = String(scale);
+                video.dataset.centerBox = dispW + 'x' + dispH + '@' + vw + 'x' + vh;
+            };
+
+            video._cineLayout = layout;
+            video._cineOnMeta = layout;
+            if (video.readyState >= 1) {
+                layout();
+                // Second pass after layout/paint (intrinsic size sometimes settles late)
+                requestAnimationFrame(() => requestAnimationFrame(layout));
+            } else {
+                video.addEventListener('loadedmetadata', layout);
+            }
+            return;
+        }
+
+        // fit — maintain AR, fit fully in viewport (letterbox as needed)
+        video.classList.add('mode-fit');
+        video.style.left = '0';
+        video.style.top = '0';
+        video.style.width = '100%';
+        video.style.height = '100%';
+        video.style.transform = 'none';
+        video.style.objectFit = 'contain';
+        video.dataset.scaleApplied = 'fit';
+        video._cineLayout = null;
     }
 
     function openIdb() {
@@ -104,6 +192,10 @@
         }
     }
 
+    const VIDEO_NAME_RE = /\.(mp4|webm|mov|mkv|avi|m4v|mpg|mpeg|wmv)$/i;
+    /** @type {Record<string, string>} last file key played per slot (avoid immediate repeats) */
+    const lastPlayedBySlot = Object.create(null);
+
     async function pickDirectory(slotKey) {
         if (!window.showDirectoryPicker) {
             alert('Folder pick needs Chrome/Edge. Use “Pick video file” instead.');
@@ -111,7 +203,15 @@
         }
         try {
             const handle = await window.showDirectoryPicker({ id: 'cine-' + slotKey, mode: 'read' });
-            await idbPut(slotKey, { kind: 'dir', handle, name: handle.name, savedAt: Date.now() });
+            // Replace any prior single-file blob for this slot; clear last-played so next load is free to pick any
+            delete lastPlayedBySlot[slotKey];
+            await idbPut(slotKey, {
+                kind: 'dir',
+                handle,
+                name: handle.name,
+                savedAt: Date.now(),
+                lastPlayed: null,
+            });
             return handle;
         } catch (e) {
             if (e && e.name === 'AbortError') return null;
@@ -150,6 +250,7 @@
                     console.warn('[Cine] optimize on pick failed — storing original', e);
                 }
                 try {
+                    delete lastPlayedBySlot[slotKey];
                     await idbPut(slotKey, {
                         kind: 'file',
                         name: file.name,
@@ -418,6 +519,7 @@
         const saved = await idbGet(slotKey);
         if (!saved) return { url: null, label: 'No media folder — synthetic neon BG', source: null };
 
+        // Explicit single file always wins until user picks a folder again
         if (saved.kind === 'file' && saved.blob) {
             try {
                 // Re-optimize legacy 4K blobs that were saved before proxy support
@@ -455,14 +557,14 @@
             const ok = await ensureDirPermission(saved.handle);
             if (!ok) return { url: null, label: 'Folder permission needed — re-pick folder', source: 'dir' };
             try {
-                const vids = [];
-                for await (const entry of saved.handle.values()) {
-                    if (entry.kind === 'file' && /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(entry.name)) {
-                        vids.push(entry);
-                    }
-                }
+                const vids = await collectVideosFromDir(saved.handle, 5);
                 if (!vids.length) {
-                    return { url: null, label: `Folder “${saved.name || '…'}” has no videos`, source: 'dir' };
+                    return {
+                        url: null,
+                        label: `Folder “${saved.name || '…'}” — no videos (checked subfolders too)`,
+                        source: 'dir',
+                        count: 0,
+                    };
                 }
                 const pick = vids[Math.floor(Math.random() * vids.length)];
                 const file = await pick.getFile();
@@ -481,7 +583,7 @@
                 };
             } catch (e) {
                 console.warn('[Cine] folder read failed', e);
-                return { url: null, label: 'Could not read folder videos', source: 'dir' };
+                return { url: null, label: 'Could not read folder videos — re-pick folder', source: 'dir' };
             }
         }
 
@@ -518,8 +620,26 @@ body.cine-active { overflow: hidden; }
 
 .cine-bg-video, .cine-bg-synth {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; z-index: 0;
+  object-fit: contain; z-index: 0;
   filter: brightness(0.45) saturate(1.15) contrast(1.05);
+  background: #000;
+}
+/* 1:1 mode: JS sets exact left/top/width/height in px so window center = video center */
+.cine-bg-video.mode-center1x {
+  inset: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill !important;
+  transform: none !important;
+}
+.cine-bg-video.mode-fit {
+  inset: 0;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  transform: none;
 }
 /* Prefer compositor path; proxies are already ≤720p so paint stays cheap */
 .cine-bg-video {
@@ -989,7 +1109,7 @@ body.cine-active { overflow: hidden; }
             stage.appendChild(synth);
 
             const video = document.createElement('video');
-            video.className = 'cine-bg-video';
+            video.className = 'cine-bg-video mode-fit';
             video.muted = prefs.muteVideo !== false;
             video.loop = true;
             video.playsInline = true;
@@ -1000,6 +1120,7 @@ body.cine-active { overflow: hidden; }
             // Keep decode cost low even if a full-res file slips through
             try { video.setAttribute('width', String(playTarget().maxW)); } catch (_) { /* ignore */ }
             video.style.display = 'none';
+            applyVideoScale(video, prefs.scaleMode);
             stage.appendChild(video);
 
             stage.appendChild(el('div', 'cine-vignette'));
@@ -1018,10 +1139,14 @@ body.cine-active { overflow: hidden; }
         const screenLabel = el('div', 'cine-screen-label', screens[0].label);
         const progress = el('div', 'cine-progress', '<i></i>');
         const hud = el('div', 'cine-hud');
+        const scaleLabel = (prefs.scaleMode === 'center1x')
+            ? '1:1 center (50% if off-screen)'
+            : 'Fit AR (full frame)';
         hud.innerHTML = `
           <div class="left">
-            <button type="button" data-act="folder">📁 BG folder</button>
-            <button type="button" data-act="file">🎬 BG video</button>
+            <button type="button" data-act="folder" title="Pick a folder of videos for this screen (random each play)">📁 Folder</button>
+            <button type="button" data-act="file" title="Pick one video file for this screen">🎬 Video</button>
+            <button type="button" data-act="scale" title="Toggle: Fit (keep aspect) ↔ 1:1 center (50% if too big)">${scaleLabel}</button>
             <button type="button" data-act="mute">${prefs.muteVideo !== false ? '🔇 Muted' : '🔊 Sound'}</button>
             <span class="cine-media-label" data-media-label>…</span>
           </div>
@@ -1086,11 +1211,18 @@ body.cine-active { overflow: hidden; }
             }
             if (mediaLabel) mediaLabel.textContent = info.label || '';
             if (info.url) {
+                // Force a fresh load so the browser does not reuse the previous frame/source
+                try {
+                    stageObj.video.pause();
+                    stageObj.video.removeAttribute('src');
+                    stageObj.video.load();
+                } catch (_) { /* ignore */ }
                 stageObj.video.src = info.url;
                 stageObj.video.style.display = 'block';
                 // Fade synth under the light proxy once frames are rolling
                 stageObj.synth.style.opacity = '0.15';
                 currentRevoke = info.revoke || null;
+                applyVideoScale(stageObj.video, prefs.scaleMode);
                 try {
                     stageObj.video.muted = prefs.muteVideo !== false;
                     await stageObj.video.play();
@@ -1110,10 +1242,36 @@ body.cine-active { overflow: hidden; }
                         stageObj.video.style.display = 'none';
                     }
                 }
+                // Re-apply after metadata + a frame later (1:1 needs real videoWidth/Height)
+                const relayout = () => applyVideoScale(stageObj.video, prefs.scaleMode);
+                if (stageObj.video.readyState >= 1) {
+                    relayout();
+                    requestAnimationFrame(() => requestAnimationFrame(relayout));
+                } else {
+                    stageObj.video.addEventListener('loadedmetadata', () => {
+                        relayout();
+                        requestAnimationFrame(() => requestAnimationFrame(relayout));
+                    }, { once: true });
+                }
             } else {
                 stageObj.synth.style.opacity = '1';
                 stageObj.video.style.display = 'none';
             }
+        }
+
+        function refreshScaleButtons() {
+            const btn = hud.querySelector('[data-act="scale"]');
+            if (!btn) return;
+            btn.textContent = (prefs.scaleMode === 'center1x')
+                ? '1:1 center (50% if off-screen)'
+                : 'Fit AR (full frame)';
+        }
+
+        function onResizeLayout() {
+            const v = stages[idx] && stages[idx].video;
+            if (!v || v.style.display === 'none') return;
+            // Full re-apply so 1:1 recenters to the stage box after resize
+            applyVideoScale(v, prefs.scaleMode);
         }
 
         function tickProgress() {
@@ -1209,6 +1367,16 @@ body.cine-active { overflow: hidden; }
                 savePrefs({ muteVideo: next });
                 btn.textContent = next ? '🔇 Muted' : '🔊 Sound';
                 stages[idx].video.muted = next;
+            } else if (act === 'scale') {
+                // Toggle Fit AR ↔ 1:1 center (50% if off-screen)
+                const next = (prefs.scaleMode === 'center1x') ? 'fit' : 'center1x';
+                savePrefs({ scaleMode: next });
+                refreshScaleButtons();
+                stages.forEach((s) => {
+                    if (s.video && s.video.style.display !== 'none') {
+                        applyVideoScale(s.video, next);
+                    }
+                });
             } else if (act === 'folder') {
                 const h = await pickDirectory(slot);
                 if (h) await loadBg(stages[idx]);
@@ -1222,15 +1390,18 @@ body.cine-active { overflow: hidden; }
 
         function cleanup() {
             document.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('resize', onResizeLayout);
             root.removeEventListener('click', onClickRoot);
             hud.removeEventListener('click', onHudClick);
             hud.removeEventListener('change', onHudClick);
         }
 
         document.addEventListener('keydown', onKey, true);
+        window.addEventListener('resize', onResizeLayout);
         root.addEventListener('click', onClickRoot);
         hud.addEventListener('click', onHudClick);
         hud.addEventListener('change', onHudClick);
+        refreshScaleButtons();
 
         await showScreen(0);
         return donePromise;
@@ -1335,11 +1506,13 @@ body.cine-active { overflow: hidden; }
         pop.id = 'cineSettingsPop';
         pop.style.cssText = [
             'position:fixed', 'z-index:100000', 'right:16px', 'top:60px',
-            'width:min(360px,92vw)', 'padding:16px',
+            'width:min(400px,94vw)', 'max-height:min(90vh,720px)', 'overflow:auto', 'padding:16px',
             'background:#0c0c12', 'border:1px solid rgba(0,243,255,0.35)',
             'border-radius:12px', 'box-shadow:0 12px 40px rgba(0,0,0,0.55)',
             'font-size:12px', 'color:#e8e8ec'
         ].join(';');
+        const fitChecked = prefs.scaleMode !== 'center1x' ? 'checked' : '';
+        const oneChecked = prefs.scaleMode === 'center1x' ? 'checked' : '';
         pop.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <strong style="color:#00f3ff;letter-spacing:.08em;">INTRO CINEMATICS</strong>
@@ -1349,26 +1522,49 @@ body.cine-active { overflow: hidden; }
             <input type="checkbox" data-skip ${prefs.skipOnLaunch ? 'checked' : ''}>
             Skip intros on launch (daily driver)
           </label>
-          <label style="display:flex;gap:8px;align-items:center;margin-bottom:14px;cursor:pointer;">
+          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;cursor:pointer;">
             <input type="checkbox" data-mute ${prefs.muteVideo !== false ? 'checked' : ''}>
             Mute background videos
           </label>
+
+          <div style="margin-bottom:14px;padding:10px;border:1px solid rgba(0,243,255,0.2);border-radius:8px;background:rgba(0,0,0,0.35);">
+            <div style="color:#00f3ff;font-size:10px;letter-spacing:.12em;margin-bottom:8px;text-transform:uppercase;">Video scale</div>
+            <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;cursor:pointer;line-height:1.35;">
+              <input type="radio" name="cineScale" data-scale="fit" ${fitChecked} style="margin-top:3px;">
+              <span><strong>Fit (keep aspect)</strong><br>
+              <span style="color:#888">Scale to fit the screen (full frame visible — letterbox if needed)</span></span>
+            </label>
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;line-height:1.35;">
+              <input type="radio" name="cineScale" data-scale="center1x" ${oneChecked} style="margin-top:3px;">
+              <span><strong>1:1 center</strong><br>
+              <span style="color:#888">Natural pixels, centered. If it goes off-screen → <strong>50%</strong> zoom</span></span>
+            </label>
+          </div>
+
           <p style="color:#888;margin-bottom:10px;line-height:1.4;">
             Each of the 3 screens can use its own video folder (random pick) or a single file. Chrome/Edge recommended for folders.
             <br><br>
             <strong style="color:#c8d0dc;">4K / heavy clips auto-scale to ${playTarget().label}</strong> (short ~8s loop, cached) so intros stay smooth on any machine.
           </p>
-          <div style="display:grid;gap:8px;margin-bottom:12px;">
-            <button type="button" data-folder="bg-neon" class="ui-btn ghost" style="width:100%">📁 Neon Ninja BG folder</button>
-            <button type="button" data-folder="bg-producer" class="ui-btn ghost" style="width:100%">📁 Producer BG folder</button>
-            <button type="button" data-folder="bg-main" class="ui-btn ghost" style="width:100%">📁 Main / FAFO BG folder</button>
+          <div style="display:grid;gap:10px;margin-bottom:12px;">
+            ${['bg-neon|Neon Ninja','bg-producer|Producer','bg-main|Main / FAFO'].map((row) => {
+                const [slot, title] = row.split('|');
+                return `
+              <div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;">
+                <div style="font-size:11px;color:#00f3ff;margin-bottom:6px;">${title}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                  <button type="button" data-folder="${slot}" style="width:100%">📁 Folder</button>
+                  <button type="button" data-file="${slot}" style="width:100%">🎬 Video</button>
+                </div>
+              </div>`;
+            }).join('')}
           </div>
           <button type="button" data-replay class="ui-btn primary" style="width:100%">▶ Replay intro now</button>
         `;
         // Style buttons if ui-btn missing
-        pop.querySelectorAll('button[data-folder],button[data-replay]').forEach(b => {
+        pop.querySelectorAll('button[data-folder],button[data-file],button[data-replay]').forEach(b => {
             if (!b.classList.contains('ui-btn')) {
-                b.style.cssText += ';background:transparent;border:1px solid #00f3ff;color:#00f3ff;padding:8px;border-radius:6px;cursor:pointer;';
+                b.style.cssText += ';background:transparent;border:1px solid #00f3ff;color:#00f3ff;padding:8px;border-radius:6px;cursor:pointer;font-size:11px;';
             }
         });
         document.body.appendChild(pop);
@@ -1376,10 +1572,24 @@ body.cine-active { overflow: hidden; }
         pop.querySelector('[data-x]').onclick = () => pop.remove();
         pop.querySelector('[data-skip]').onchange = (e) => savePrefs({ skipOnLaunch: e.target.checked });
         pop.querySelector('[data-mute]').onchange = (e) => savePrefs({ muteVideo: e.target.checked });
+        pop.querySelectorAll('input[data-scale]').forEach((inp) => {
+            inp.onchange = () => {
+                if (!inp.checked) return;
+                savePrefs({ scaleMode: inp.getAttribute('data-scale') });
+            };
+        });
         pop.querySelectorAll('[data-folder]').forEach(btn => {
             btn.onclick = async () => {
-                await pickDirectory(btn.getAttribute('data-folder'));
-                btn.textContent = '✓ ' + btn.textContent.replace(/^✓\s*/, '');
+                const slot = btn.getAttribute('data-folder');
+                const h = await pickDirectory(slot);
+                if (h) btn.textContent = '✓ Folder set';
+            };
+        });
+        pop.querySelectorAll('[data-file]').forEach(btn => {
+            btn.onclick = async () => {
+                const slot = btn.getAttribute('data-file');
+                const f = await pickVideoFile(slot);
+                if (f) btn.textContent = '✓ Video set';
             };
         });
         pop.querySelector('[data-replay]').onclick = async () => {

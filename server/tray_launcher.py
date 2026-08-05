@@ -32,6 +32,40 @@ except ImportError:
 WATCH_INTERVAL_SEC = 12
 # Don't hammer restarts if something is deeply broken
 RESTART_COOLDOWN_SEC = 20
+_TRAY_MUTEX = "Local\\FAFO_Tray_Launcher_v1"
+
+
+def _tray_log(msg: str) -> None:
+    try:
+        import os
+        from datetime import datetime
+
+        pc = os.environ.get("COMPUTERNAME", "PC")
+        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+        log_dir = base / "FAFO" / "Devices" / pc / "Logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
+        with (log_dir / "tray-launcher.log").open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
+def _acquire_tray_mutex():
+    """Prevent duplicate tray processes (they can block each other's heals)."""
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+
+        handle = ctypes.windll.kernel32.CreateMutexW(None, False, _TRAY_MUTEX)  # type: ignore[attr-defined]
+        if ctypes.windll.kernel32.GetLastError() == 183:  # type: ignore[attr-defined]
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)  # type: ignore[attr-defined]
+            return None
+        return handle
+    except Exception:
+        return True
 
 
 def _chrome_path() -> Path | None:
@@ -73,7 +107,20 @@ def open_launcher() -> None:
 def ensure_servers() -> dict:
     if launch_ops:
         # start_companions also ensures tray — already running, fine
-        return launch_ops.start_companions(wait_sec=10)
+        try:
+            result = launch_ops.start_companions(wait_sec=12)
+            st = result.get("status") or {}
+            tb = st.get("toolbox") or {}
+            meta = st.get("fafoMeta") or {}
+            _tray_log(
+                f"ensure_servers ok={result.get('ok')} "
+                f"S1={tb.get('healthy') or tb.get('listening')} "
+                f"S2={meta.get('healthy') or meta.get('listening')}"
+            )
+            return result
+        except Exception as e:
+            _tray_log(f"ensure_servers error: {e}")
+            return {"ok": False, "error": str(e)}
     ps1 = TOOLBOX_ROOT / "Scripts" / "Start-FAFOServers.ps1"
     if ps1.is_file():
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -151,6 +198,16 @@ def status_line(watching: bool = True) -> str:
 
 
 def main() -> None:
+    mutex = _acquire_tray_mutex()
+    if mutex is None:
+        _tray_log("duplicate tray exit — another tray_launcher already holds mutex")
+        # Still poke companions once in case primary is stuck
+        try:
+            ensure_servers()
+        except Exception:
+            pass
+        return
+
     try:
         import pystray
         from PIL import Image, ImageDraw
@@ -164,11 +221,13 @@ def main() -> None:
             if time.time() - last < RESTART_COOLDOWN_SEC:
                 continue
             if _need_heal():
+                _tray_log("headless heal")
                 ensure_servers()
                 last = time.time()
         return
 
     state = {"busy": False, "last_heal": 0.0, "watch": True}
+    _tray_log("tray started")
 
     # First bring-up
     threading.Thread(target=ensure_servers, daemon=True).start()
@@ -260,10 +319,13 @@ def main() -> None:
             if now - state["last_heal"] < RESTART_COOLDOWN_SEC:
                 continue
             if _need_heal():
+                _tray_log("watchdog heal triggered")
                 state["busy"] = True
                 try:
                     ensure_servers()
                     state["last_heal"] = time.time()
+                except Exception as e:
+                    _tray_log(f"watchdog heal error: {e}")
                 finally:
                     state["busy"] = False
                 try:
