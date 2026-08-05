@@ -4108,6 +4108,49 @@ def api_tools_launch(body: ToolsLaunchBody):
         raise HTTPException(404, "Ghost cleaner scripts missing")
 
     raise HTTPException(400, f"Unknown or blocked tool launch id: {tid}")
+@app.get("/api/launch/watchdog/status")
+def api_watchdog_status():
+    """Server watchdog report + whether monitor process is running."""
+    try:
+        return launch_ops.watchdog_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/start")
+def api_watchdog_start():
+    """Start the S1/S2 watchdog monitor (hidden)."""
+    try:
+        return launch_ops.watchdog_start()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/install")
+def api_watchdog_install():
+    """Install login/poll keep-alive + start watchdog."""
+    try:
+        return launch_ops.watchdog_install()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/open-status")
+def api_watchdog_open_status():
+    """Open server-watchdog-status.html (generate if needed)."""
+    try:
+        return launch_ops.watchdog_open_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/watchdog/open-folder")
+def api_watchdog_open_folder():
+    """Open Explorer to the watchdog .bat files in the toolbox root."""
+    try:
+        return launch_ops.watchdog_open_bats_folder()
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @app.get("/api/network/listening")

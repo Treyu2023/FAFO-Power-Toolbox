@@ -12,6 +12,14 @@ S1 and S2 use different loopback addresses so they never fight each other.
 ## Auto-launch & tracking
 
 - **Tray icon** keeps enabled servers alive (auto-restart if they die).
+- **Server Watchdog** (recommended): independent single-instance monitor that health-checks S1+S2 every 15s, auto-heals, detects crash loops / duplicate processes, writes reports, and can toast when attention is required.
+  - **In the app (easiest):** Toolbox Launcher → **🛡 Server Watchdog** card, or banner **🛡 Watchdog**
+    - ▶ Start monitor · 📊 Open status · ⚙ Install auto-start · 📂 Bat files (Explorer selects the .bat)
+  - Manual bats (same actions): `Install-Server-Watchdog.bat` · `Start-Server-Watchdog.bat` · `Open-Server-Watchdog-Status.bat`
+  - Protocol (no Save As): `aitoolbox://watchdog` · `watchdog-status` · `watchdog-install` · `watchdog-folder`
+  - Status page: `%LOCALAPPDATA%\FAFO\Devices\%COMPUTERNAME%\Reports\server-watchdog-status.html`
+  - Log: `...\Logs\server-watchdog.log` · S1/S2 process logs: `S1-toolbox-server.log`, `S2-fafo-meta-server.log`
+  - Critical flag: `...\Reports\ATTENTION-SERVERS.txt` (only present when action needed)
 - **Launcher page** keep-alive while open.
 - **Windows Startup** optional (Launcher → Launch with Windows → Save prefs).
 - **Prefs** (this PC only): `%LOCALAPPDATA%\FAFO\launch-prefs.json`

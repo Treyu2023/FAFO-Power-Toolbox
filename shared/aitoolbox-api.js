@@ -170,10 +170,14 @@
             'ghost-cleaner': 'ghost',
             ghostcleaner: 'ghost',
             'ghost-device-cleaner': 'ghost',
+            watchdog: 'watchdog',
+            'watchdog-status': 'watchdog-status',
+            'watchdog-install': 'watchdog-install',
+            'watchdog-folder': 'watchdog-folder',
         };
         const key = String(action || 'start').toLowerCase();
         const act = allowed[key] || 'start';
-        // act: start | restart | tray | console | folder | setup | launch | …
+        // act: start | restart | tray | console | folder | setup | launch | watchdog* …
         const url = 'aitoolbox://' + act;
         dbg()?.log('api', 'info', 'Protocol launch: ' + url);
         try {
@@ -214,6 +218,15 @@
         }
         if (/setup \(run once\)\.bat$/i.test(lower) || /^setup.*\.bat$/i.test(lower)) {
             return tryProtocolLaunch('setup');
+        }
+        if (/start-server-watchdog\.bat$/i.test(lower)) {
+            return tryProtocolLaunch('watchdog');
+        }
+        if (/open-server-watchdog-status\.bat$/i.test(lower)) {
+            return tryProtocolLaunch('watchdog-status');
+        }
+        if (/install-server-watchdog\.bat$/i.test(lower)) {
+            return tryProtocolLaunch('watchdog-install');
         }
 
         const url = toolboxFileUrl(name);
@@ -317,6 +330,68 @@
             body: JSON.stringify(flags || {}),
             timeoutMs: 15000,
         });
+    }
+
+    /**
+     * Server watchdog helpers. Prefer S1 API when online; fall back to aitoolbox:// protocol.
+     */
+    async function getWatchdogStatus() {
+        if (await checkServer(true, 1500)) {
+            try {
+                return await api('/launch/watchdog/status', { timeoutMs: 8000 });
+            } catch {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    async function startWatchdog() {
+        if (await checkServer(true, 1500)) {
+            try {
+                return await api('/launch/watchdog/start', { method: 'POST', timeoutMs: 20000 });
+            } catch (e) {
+                dbg()?.log('api', 'warn', 'watchdog API start failed: ' + (e && e.message || e));
+            }
+        }
+        tryProtocolLaunch('watchdog');
+        return { ok: true, via: 'protocol', action: 'watchdog' };
+    }
+
+    async function installWatchdog() {
+        if (await checkServer(true, 1500)) {
+            try {
+                return await api('/launch/watchdog/install', { method: 'POST', timeoutMs: 60000 });
+            } catch (e) {
+                dbg()?.log('api', 'warn', 'watchdog API install failed: ' + (e && e.message || e));
+            }
+        }
+        tryProtocolLaunch('watchdog-install');
+        return { ok: true, via: 'protocol', action: 'watchdog-install' };
+    }
+
+    async function openWatchdogStatus() {
+        if (await checkServer(true, 1500)) {
+            try {
+                return await api('/launch/watchdog/open-status', { method: 'POST', timeoutMs: 30000 });
+            } catch (e) {
+                dbg()?.log('api', 'warn', 'watchdog open-status API failed: ' + (e && e.message || e));
+            }
+        }
+        tryProtocolLaunch('watchdog-status');
+        return { ok: true, via: 'protocol', action: 'watchdog-status' };
+    }
+
+    async function openWatchdogBatsFolder() {
+        if (await checkServer(true, 1500)) {
+            try {
+                return await api('/launch/watchdog/open-folder', { method: 'POST', timeoutMs: 10000 });
+            } catch (e) {
+                dbg()?.log('api', 'warn', 'watchdog open-folder API failed: ' + (e && e.message || e));
+            }
+        }
+        tryProtocolLaunch('watchdog-folder');
+        return { ok: true, via: 'protocol', action: 'watchdog-folder' };
     }
 
     /**
@@ -673,6 +748,11 @@
         getLaunchStatus,
         saveLaunchPrefs,
         setWindowsStartup,
+        getWatchdogStatus,
+        startWatchdog,
+        installWatchdog,
+        openWatchdogStatus,
+        openWatchdogBatsFolder,
         launchToolboxFile,
         openToolboxFolder,
         runSetupOnce,

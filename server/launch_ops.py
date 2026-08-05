@@ -281,16 +281,35 @@ def _http_health(url: str, timeout: float = 1.5) -> dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
+def _http_health_resilient(url: str) -> dict[str, Any]:
+    """Health check with a short retry — avoids false 'wedged' during cold start / reload."""
+    first = _http_health(url, timeout=1.2)
+    if first.get("ok"):
+        return first
+    time.sleep(0.35)
+    second = _http_health(url, timeout=3.0)
+    if second.get("ok"):
+        second["retried"] = True
+        return second
+    # Prefer the more informative error
+    err = second.get("error") or first.get("error") or "health failed"
+    return {"ok": False, "error": err, "retried": True}
+
+
 def companion_status() -> dict[str, Any]:
     """Health of toolbox + FAFO meta companions."""
     meta_info = resolve_fafo_meta_root(persist=False)
     toolbox_listening = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
     meta_listening = _port_open(META_HOST, META_PORT)
     toolbox_health = (
-        _http_health(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health") if toolbox_listening else {"ok": False}
+        _http_health_resilient(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health")
+        if toolbox_listening
+        else {"ok": False}
     )
     meta_health = (
-        _http_health(f"http://{META_HOST}:{META_PORT}/api/health") if meta_listening else {"ok": False}
+        _http_health_resilient(f"http://{META_HOST}:{META_PORT}/api/health")
+        if meta_listening
+        else {"ok": False}
     )
     prefs = get_prefs()
     win = windows_startup_status()
@@ -378,13 +397,42 @@ def _server_python() -> Path | None:
     return _venv_python(prefer_windowless=False)
 
 
-def _popen_hidden(args: list[str], cwd: Path) -> subprocess.Popen:
-    """Start without a console. Prefer list-args (no shell) so paths with spaces work."""
+def _device_logs_dir() -> Path:
+    pc = os.environ.get("COMPUTERNAME", "PC")
+    root = _localappdata() / "FAFO" / "Devices" / pc / "Logs"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _popen_hidden(
+    args: list[str],
+    cwd: Path,
+    log_stem: str | None = None,
+) -> subprocess.Popen:
+    """Start without a console. Prefer list-args (no shell) so paths with spaces work.
+
+    When log_stem is set, stdout/stderr append to device Logs (so crashes are diagnosable).
+    """
+    stdout = subprocess.DEVNULL
+    stderr = subprocess.DEVNULL
+    log_handles: list[Any] = []
+    if log_stem:
+        try:
+            log_path = _device_logs_dir() / f"{log_stem}.log"
+            # line-buffered text not available for Popen binary; append bytes
+            fh = open(log_path, "ab", buffering=0)
+            fh.write(f"\n--- start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode("utf-8", "replace"))
+            log_handles.append(fh)
+            stdout = fh
+            stderr = fh
+        except OSError:
+            stdout = subprocess.DEVNULL
+            stderr = subprocess.DEVNULL
     kwargs: dict[str, Any] = {
         "cwd": str(cwd),
         "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
+        "stdout": stdout,
+        "stderr": stderr,
     }
     if IS_WINDOWS:
         # CREATE_NO_WINDOW alone is enough; DETACHED can drop child reliability on some builds
@@ -396,7 +444,11 @@ def _popen_hidden(args: list[str], cwd: Path) -> subprocess.Popen:
             kwargs["startupinfo"] = si
         except Exception:
             pass
-    return subprocess.Popen(args, **kwargs)
+    proc = subprocess.Popen(args, **kwargs)
+    # Keep file handles open for process lifetime; store on process to avoid GC close
+    if log_handles:
+        setattr(proc, "_fafo_log_handles", log_handles)
+    return proc
 
 
 def _tray_running() -> bool:
@@ -448,7 +500,7 @@ def start_toolbox_server() -> dict[str, Any]:
     if not server_py.is_file():
         return {"ok": False, "error": f"Missing {server_py}", "id": "toolbox"}
     try:
-        _popen_hidden([str(py), str(server_py)], root / "server")
+        _popen_hidden([str(py), str(server_py)], root / "server", log_stem="S1-toolbox-server")
         return {"ok": True, "started": True, "via": "python-hidden", "id": "toolbox", "hidden": True}
     except OSError as e:
         return {"ok": False, "error": str(e), "id": "toolbox"}
@@ -470,7 +522,7 @@ def start_fafo_meta_server() -> dict[str, Any]:
     server_py = root / "server.py"
     try:
         if py and server_py.is_file():
-            _popen_hidden([str(py), str(server_py)], root)
+            _popen_hidden([str(py), str(server_py)], root, log_stem="S2-fafo-meta-server")
             return {
                 "ok": True,
                 "started": True,
@@ -784,3 +836,220 @@ def apply_prefs_and_startup(body: dict[str, Any]) -> dict[str, Any]:
         "applied": win_result,
         "companions": companion_status(),
     }
+
+
+# ── Server Watchdog (S1/S2 monitor) ──────────────────────────────────────────
+
+WATCHDOG_BATS = {
+    "start": "Start-Server-Watchdog.bat",
+    "install": "Install-Server-Watchdog.bat",
+    "status": "Open-Server-Watchdog-Status.bat",
+}
+
+
+def _device_reports() -> Path:
+    pc = os.environ.get("COMPUTERNAME", "PC")
+    return _localappdata() / "FAFO" / "Devices" / pc / "Reports"
+
+
+def _device_logs() -> Path:
+    pc = os.environ.get("COMPUTERNAME", "PC")
+    return _localappdata() / "FAFO" / "Devices" / pc / "Logs"
+
+
+def watchdog_paths() -> dict[str, Any]:
+    root = toolbox_root()
+    reports = _device_reports()
+    logs = _device_logs()
+    bats = {k: str(root / v) for k, v in WATCHDOG_BATS.items()}
+    return {
+        "toolboxRoot": str(root),
+        "bats": bats,
+        "statusHtml": str(reports / "server-watchdog-status.html"),
+        "statusJson": str(reports / "server-watchdog-status.json"),
+        "attentionFlag": str(reports / "ATTENTION-SERVERS.txt"),
+        "log": str(logs / "server-watchdog.log"),
+        "script": str(root / "server" / "server_watchdog.py"),
+    }
+
+
+def _watchdog_running() -> list[int]:
+    pids: list[int] = []
+    try:
+        import psutil  # type: ignore
+
+        for p in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                name = (p.info.get("name") or "").lower()
+                if name not in ("python.exe", "pythonw.exe"):
+                    continue
+                cmd = " ".join(str(x) for x in (p.info.get("cmdline") or [])).lower()
+                if "server_watchdog.py" in cmd:
+                    pids.append(int(p.info["pid"]))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return pids
+
+
+def watchdog_status() -> dict[str, Any]:
+    paths = watchdog_paths()
+    status_json = Path(paths["statusJson"])
+    attention = Path(paths["attentionFlag"])
+    report: dict[str, Any] | None = None
+    if status_json.is_file():
+        try:
+            report = json.loads(status_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            report = None
+    pids = _watchdog_running()
+    return {
+        "ok": True,
+        "running": len(pids) > 0,
+        "pids": pids,
+        "attentionRequired": bool(attention.is_file())
+        or bool(report and report.get("attentionRequired")),
+        "report": report,
+        "paths": paths,
+        "batsPresent": {
+            k: Path(v).is_file() for k, v in (paths.get("bats") or {}).items()
+        },
+    }
+
+
+def _popen_bat(bat_path: Path) -> dict[str, Any]:
+    if not bat_path.is_file():
+        return {"ok": False, "error": f"Missing {bat_path.name}", "path": str(bat_path)}
+    try:
+        # cmd /c start so bat opens independently and returns immediately
+        if IS_WINDOWS:
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "", str(bat_path)],
+                cwd=str(bat_path.parent),
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.Popen([str(bat_path)], cwd=str(bat_path.parent))
+        return {"ok": True, "launched": str(bat_path)}
+    except OSError as e:
+        return {"ok": False, "error": str(e), "path": str(bat_path)}
+
+
+def watchdog_start() -> dict[str, Any]:
+    """Start the long-running server_watchdog process (or bat)."""
+    if _watchdog_running():
+        return {"ok": True, "alreadyRunning": True, "status": watchdog_status()}
+    root = toolbox_root()
+    py = _server_python()
+    script = root / "server" / "server_watchdog.py"
+    if py and script.is_file():
+        try:
+            # Prefer pythonw when available
+            pyw = Path(str(py).replace("python.exe", "pythonw.exe"))
+            exe = pyw if pyw.is_file() else py
+            _popen_hidden([str(exe), str(script)], root / "server", log_stem="server-watchdog-run")
+            time.sleep(0.8)
+            return {"ok": True, "started": True, "via": "python", "status": watchdog_status()}
+        except OSError as e:
+            bat = root / WATCHDOG_BATS["start"]
+            r = _popen_bat(bat)
+            r["pythonError"] = str(e)
+            r["status"] = watchdog_status()
+            return r
+    return {**_popen_bat(root / WATCHDOG_BATS["start"]), "status": watchdog_status()}
+
+
+def watchdog_install() -> dict[str, Any]:
+    """Register Startup entry + 5-min poll task, then start watchdog."""
+    root = toolbox_root()
+    py = _server_python()
+    script = root / "server" / "server_watchdog.py"
+    result: dict[str, Any] = {"ok": False}
+    if py and script.is_file():
+        try:
+            r = subprocess.run(
+                [str(py), str(script), "--install-task"],
+                cwd=str(root / "server"),
+                capture_output=True,
+                text=True,
+                timeout=60,
+                creationflags=_CREATE_FLAGS if IS_WINDOWS else 0,
+            )
+            try:
+                result = json.loads(r.stdout or "{}")
+            except json.JSONDecodeError:
+                result = {
+                    "ok": r.returncode == 0,
+                    "stdout": (r.stdout or "")[:800],
+                    "stderr": (r.stderr or "")[:400],
+                }
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+    else:
+        result = _popen_bat(root / WATCHDOG_BATS["install"])
+    started = watchdog_start()
+    return {
+        "ok": bool(result.get("ok")) or bool(started.get("ok")),
+        "install": result,
+        "start": started,
+        "status": watchdog_status(),
+    }
+
+
+def watchdog_open_status() -> dict[str, Any]:
+    """Open the HTML status page (generate with --once if missing)."""
+    paths = watchdog_paths()
+    html = Path(paths["statusHtml"])
+    if not html.is_file():
+        # One-shot generate
+        root = toolbox_root()
+        py = _server_python()
+        script = root / "server" / "server_watchdog.py"
+        if py and script.is_file():
+            try:
+                subprocess.run(
+                    [str(py), str(script), "--once"],
+                    cwd=str(root / "server"),
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                    creationflags=_CREATE_FLAGS if IS_WINDOWS else 0,
+                )
+            except Exception:
+                pass
+    if html.is_file() and IS_WINDOWS:
+        try:
+            os.startfile(str(html))  # type: ignore[attr-defined]
+            return {"ok": True, "opened": str(html), "status": watchdog_status()}
+        except OSError as e:
+            return {"ok": False, "error": str(e), "path": str(html)}
+    # Fallback bat
+    r = _popen_bat(toolbox_root() / WATCHDOG_BATS["status"])
+    r["status"] = watchdog_status()
+    return r
+
+
+def watchdog_open_bats_folder() -> dict[str, Any]:
+    """Open Explorer at toolbox root, preferably selecting Start-Server-Watchdog.bat."""
+    root = toolbox_root()
+    bat = root / WATCHDOG_BATS["start"]
+    if not IS_WINDOWS:
+        return {"ok": False, "error": "Windows only", "path": str(root)}
+    try:
+        if bat.is_file():
+            subprocess.Popen(
+                ["explorer.exe", f"/select,{bat}"],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            return {"ok": True, "selected": str(bat), "folder": str(root)}
+        subprocess.Popen(
+            ["explorer.exe", str(root)],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        return {"ok": True, "folder": str(root)}
+    except OSError as e:
+        return {"ok": False, "error": str(e), "folder": str(root)}
