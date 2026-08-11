@@ -33,7 +33,14 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 </style>
 </head>
 <body>
-<nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span style="color:var(--accent)">DISK SPACE ANALYZER</span></nav>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <a href="Startup Service Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(52,211,153,.08)">← Startup Manager</a>
+    <a href="../File Tools/Duplicate File Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Duplicate Finder →</a>
+  </div>
+  <span style="color:var(--accent)">DISK SPACE ANALYZER</span>
+</nav>
 <div class="wrap">
 <h1 style="font-size:22px">Disk Space Analyzer</h1>
 <p style="color:var(--muted);font-size:13px;margin:8px 0 16px">Find what's eating your drives — large files, heavy folders, and junk candidates. <strong>Click</strong> a drive to select it · <strong>double-click</strong> to start a scan.</p>
@@ -43,11 +50,14 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 <input class="inp" id="scanPath" placeholder="Folder path e.g. C:\Users\You\Downloads">
 <button class="btn ghost" id="btnPick" type="button">Browse…</button>
 <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">Min MB <input class="inp" id="minMb" type="number" min="1" value="5" style="min-width:70px;width:80px"></label>
-<button class="btn" id="btnScan">Scan</button>
+<button class="btn" id="btnScan" title="Scan (Enter when path focused)">Scan</button>
 <button class="btn ghost" id="btnStop" type="button" disabled>Stop</button>
+<button class="btn ghost" id="btnExportFiles" type="button" title="Export large files CSV">↓ CSV</button>
+<button class="btn ghost" id="btnRefreshDrives" type="button" title="Refresh drives (R)">↻ Drives</button>
+<span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
 </span></div>
 <div style="padding:16px 18px"><div class="log" id="log"></div></div></div>
-<div class="panel"><div class="ph">Largest files <input class="inp" id="fileFilter" placeholder="Filter files…" style="min-width:160px;max-width:220px"></div><div class="tw" id="largeFiles"><div style="padding:24px;text-align:center;color:var(--muted)">Run a scan</div></div></div>
+<div class="panel"><div class="ph">Largest files <input class="inp" id="fileFilter" placeholder="Filter files… (/)" style="min-width:160px;max-width:220px"></div><div class="tw" id="largeFiles"><div style="padding:24px;text-align:center;color:var(--muted)">Run a scan</div></div></div>
 <div class="panel"><div class="ph">Top folders · Junk candidates <span id="junkInfo" style="color:var(--muted);font-weight:400"></span></div><div class="tw" id="folders"></div></div>
 </div>
 <script src="../shared/aitoolbox-config.js"></script>
@@ -55,6 +65,7 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml ? UI().escapeHtml(s) : String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -99,9 +110,11 @@ async function loadOverview() {
       document.getElementById('scanPath').value =
         folders.find(f => f.name === 'Downloads')?.path || folders[0].path || '';
     }
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Drives ' + new Date().toLocaleTimeString();
   } catch (e) {
     document.getElementById('drives').innerHTML =
-      `<div class="card" style="grid-column:1/-1;color:var(--warn)">${esc(e.message || e)}</div>`;
+      `<div class="card" style="grid-column:1/-1;color:var(--warn)"><strong>Server offline</strong> — ${esc(e.message || e)}<br><span style="font-size:12px">START SERVER.bat · 127.0.0.87:18765 · press R</span></div>`;
   }
 }
 
@@ -189,7 +202,37 @@ document.getElementById('btnScan').onclick = () => {
 };
 
 document.getElementById('btnStop').onclick = () => { stopScan(); log('Scan stopped'); };
-document.getElementById('fileFilter').oninput = renderLargeFiles;
+let fileFilterTimer = null;
+document.getElementById('fileFilter').oninput = () => {
+  clearTimeout(fileFilterTimer);
+  fileFilterTimer = setTimeout(renderLargeFiles, 200);
+};
+document.getElementById('btnExportFiles')?.addEventListener('click', () => {
+  if (!lastResult?.large_files?.length) { log('Run a scan first', true); return; }
+  const q = (document.getElementById('fileFilter').value || '').toLowerCase();
+  let rows = (lastResult.large_files || []).slice();
+  if (q) rows = rows.filter(f => (f.name + ' ' + f.folder).toLowerCase().includes(q));
+  const escCsv = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = ['size,size_bytes,name,folder'].concat(rows.map(f =>
+    [f.size_human, f.size, f.name, f.folder].map(escCsv).join(',')
+  ));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = 'disk-large-files-' + Date.now() + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  log('Exported ' + rows.length + ' file row(s)');
+});
+document.getElementById('btnRefreshDrives')?.addEventListener('click', loadOverview);
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('fileFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); loadOverview(); }
+});
 
 document.getElementById('btnPick').onclick = async () => {
   try {

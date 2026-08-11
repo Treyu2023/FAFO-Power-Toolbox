@@ -122,19 +122,23 @@
     .kpi .l { color: var(--muted); font-size: 9px; text-transform: uppercase; }
     .kpi .v { font-weight: 700; color: var(--accent); margin-top: 2px; word-break: break-all; }
   </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 </head>
 <body>
   <a class="toolbox-back" href="../Toolbox Launcher.html" style="position:fixed;top:10px;left:12px;z-index:9999;color:#38bdf8;text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(56,189,248,.35)">← Toolbox</a>
   <header>
     <div>
-      <h1>ðŸ“ž Phone Assist Navigator</h1>
+      <h1>📞 Phone Assist Navigator</h1>
       <div class="sub">Walk CSR / Commander / TLS menus with the person on the phone — same path they see</div>
     </div>
     <div class="tabs" id="deviceTabs"></div>
     <div class="nav-row" style="margin:0">
+      <a class="btn" href="Commander Site Console.html" title="Counterpart · site dossiers">⛽ Console</a>
+      <a class="btn" href="Pre-Reload Punch List.html" title="Counterpart · pre-reload punch list">✅ Pre-Reload</a>
       <button type="button" class="btn" id="btnHome">🏠 Root</button>
       <button type="button" class="btn" id="btnBack">← Back</button>
       <button type="button" class="btn amber" id="btnSsh">🔑 SSH / resetpw</button>
+      <button type="button" class="btn" id="btnCopySession" title="Copy call-session summary">📋 Session</button>
       <a class="btn" href="http://127.0.0.87:18765/toolbox/docs/Commander-FAFO-User-Guide.md" target="_blank" title="Full FAFO Commander user manual">📖 Guide</a>
     </div>
   </header>
@@ -701,6 +705,61 @@ Update Liferaft: letter + last changed = today.`;
       } catch (_) { toast('Copy failed'); }
     });
 
+    const LS_PA = 'fafo_phone_assist_state';
+    function savePaState() {
+      try {
+        localStorage.setItem(LS_PA, JSON.stringify({
+          device, nodeId, host: el('siteHost').value || '',
+        }));
+      } catch (_) {}
+    }
+    function loadPaState() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_PA) || 'null');
+        if (!raw) return;
+        if (raw.host) el('siteHost').value = raw.host;
+        if (raw.device && TREES[raw.device]) device = raw.device;
+        if (raw.nodeId && tree().nodes[raw.nodeId]) nodeId = raw.nodeId;
+      } catch (_) {}
+    }
+    async function copySessionSummary() {
+      const n = node();
+      const lines = [
+        'Phone Assist — call session',
+        '===========================',
+        'Device: ' + (tree().label || device),
+        'Path: ' + (el('crumb')?.innerText || '—'),
+        'Screen: ' + (n?.title || nodeId),
+        'Host: ' + (el('siteHost').value || '—'),
+        'Say: ' + (el('sayText')?.textContent || '—'),
+        'Tech: ' + (el('techText')?.textContent || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        toast('Session summary copied');
+      } catch (_) { toast('Copy failed'); }
+    }
+    el('btnCopySession')?.addEventListener('click', copySessionSummary);
+    const _renderAll = renderAll;
+    renderAll = function () { _renderAll(); savePaState(); };
+    el('siteHost').addEventListener('change', savePaState);
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'b' || e.key === 'B') el('btnBack')?.click();
+      else if (e.key === 'h' || e.key === 'H') el('btnHome')?.click();
+      else if (e.key === 's' || e.key === 'S') copySessionSummary();
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'phone-assist',
+        helpLines: ['B — back', 'H — root', 'S — copy session summary'],
+      });
+    } catch (_) {}
+
+    loadPaState();
     renderAll();
     loadFleetShell();
   </script>
@@ -753,6 +812,7 @@ Update Liferaft: letter + last changed = today.`;
   } catch(_){}
 })();
 </script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 </body>
 </html>
 

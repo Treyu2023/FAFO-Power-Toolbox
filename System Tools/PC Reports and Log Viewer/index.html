@@ -478,8 +478,12 @@
       </div>
       <a href="../PC Diagnostics HUD.html" class="btn primary" style="display:block;text-align:center;text-decoration:none;margin-top:4px"
          title="Run a configurable system scan with interactive HUD">🩺 Open Diagnostics HUD</a>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+        <a href="../Event Viewer.html" class="chip" style="text-decoration:none" title="Counterpart · live Windows events">📜 Event Viewer</a>
+        <a href="../System Health Dashboard.html" class="chip" style="text-decoration:none">Health Hub</a>
+      </div>
 
-      <input id="q" class="search" type="search" placeholder="Search reports…" autocomplete="off" />
+      <input id="q" class="search" type="search" placeholder="Search reports… (/)" autocomplete="off" />
 
       <div class="report-filters" id="reportFilters">
         <div style="margin-bottom:12px">
@@ -512,11 +516,13 @@
           <div>
             <h2>System reports</h2>
             <div class="sub" id="subtitle">Browse diagnostics, firmware, and fix logs</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:4px" id="lastUpdated">—</div>
           </div>
           <div class="stats">
             <div class="pill"><b>Reports</b><span id="statTotal">0</span></div>
             <div class="pill"><b>Warnings</b><span id="statWarn" style="color:var(--warn)">0</span></div>
             <div class="pill"><b>Fixes</b><span id="statOk" style="color:var(--ok)">0</span></div>
+            <button type="button" class="btn" id="btnExportCatalog" title="Export filtered catalog JSON">↓ JSON</button>
           </div>
         </div>
         <div id="serverBanner" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(251,191,36,.08);color:#fcd34d;font-size:0.85rem"></div>
@@ -708,6 +714,8 @@
       document.getElementById("statOk").textContent = catalog.reports.filter(r => r.category === "Fixes" || r.severity === "ok").length;
       document.getElementById("subtitle").textContent =
         `${rows.length} shown · ${catalog.machine || "local"} · catalog ${catalog.generatedAt || ""}`;
+      const lu = document.getElementById("lastUpdated");
+      if (lu) lu.textContent = "Updated " + new Date().toLocaleTimeString() + (catalog.generatedAt ? " · pack " + catalog.generatedAt : "");
 
       if (!rows.length) {
         const emptyHint = !catalog.reports.length
@@ -1144,6 +1152,45 @@
       }
     }
 
+    // QoL: export filtered catalog + keyboard focus search + remember filter prefs
+    const PCR_PREF = "fafo_pc_reports_prefs_v1";
+    try {
+      const p = JSON.parse(localStorage.getItem(PCR_PREF) || "{}");
+      if (p.q) document.getElementById("q").value = p.q;
+    } catch (_) {}
+    const qEl = document.getElementById("q");
+    if (qEl) {
+      const orig = qEl.oninput;
+      qEl.addEventListener("input", () => {
+        try { localStorage.setItem(PCR_PREF, JSON.stringify({ q: qEl.value })); } catch (_) {}
+      });
+    }
+    document.getElementById("btnExportCatalog")?.addEventListener("click", () => {
+      const rows = typeof filtered === "function" ? filtered() : (catalog.reports || []);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        machine: catalog.machine,
+        generatedAt: catalog.generatedAt,
+        filter: document.getElementById("q")?.value || "",
+        reports: rows,
+      };
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+      a.download = "pc-reports-catalog-" + Date.now() + ".json";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+    document.addEventListener("keydown", (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        const view = document.querySelector(".nav-tab.active")?.dataset.view;
+        if (view === "logs") document.getElementById("logSearch")?.focus();
+        else document.getElementById("q")?.focus();
+      }
+    });
+
     boot();
   </script>
 
@@ -1195,5 +1242,6 @@
   } catch(_){}
 })();
 </script>
+  <script src="../../shared/aitoolbox-pro.js"></script>
 </body>
 </html>

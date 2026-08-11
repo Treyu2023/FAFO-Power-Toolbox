@@ -224,6 +224,11 @@
 <body>
     <nav class="toolbox-nav">
         <a href="../Toolbox Launcher.html">← Toolbox</a>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+            <a href="FAFO Task Manager Pro.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(56,189,248,.08)">Task Manager Pro →</a>
+            <a href="IP Profile Switcher.html" style="color:var(--muted);text-decoration:none;font-size:11px;font-weight:600;padding:4px 10px;border:1px solid var(--border);border-radius:999px">IP Profiles</a>
+            <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+        </div>
         <span class="title">LAN & TASK MANAGER</span>
         <span id="serverStatus" class="status-pill offline"><span class="status-dot"></span> Server offline</span>
     </nav>
@@ -282,7 +287,7 @@
                     <div class="panel-head">
                         <h2>Processes</h2>
                         <div class="toolbar">
-                            <input class="inp" id="procSearch" placeholder="Search name, PID, path…" style="min-width:200px">
+                            <input class="inp" id="procSearch" placeholder="Search name, PID, path… (/)" style="min-width:200px">
                             <select class="sel" id="procSort">
                                 <option value="cpu">Sort: CPU</option>
                                 <option value="memory">Sort: Memory</option>
@@ -290,7 +295,9 @@
                                 <option value="name">Sort: Name</option>
                                 <option value="pid">Sort: PID</option>
                             </select>
-                            <button class="btn" id="btnRefreshProcs">Refresh</button>
+                            <button class="btn" id="btnRefreshProcs" title="Refresh (R)">Refresh</button>
+                            <button class="btn" id="btnExportProcs" type="button" title="Export process list CSV">↓ CSV</button>
+                            <a class="btn" href="FAFO Task Manager Pro.html" style="text-decoration:none" title="Pro intel + efficiency modes">Pro →</a>
                         </div>
                     </div>
                     <div class="data-table-wrap" id="procTableWrap">
@@ -478,6 +485,7 @@
     <script src="../shared/aitoolbox-debug.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
     (function () {
         'use strict';
@@ -969,6 +977,76 @@
             d.textContent = s;
             return d.innerHTML;
         }
+
+        // Prefs + export + keyboard QoL
+        const PREF_KEY = 'fafo_lan_task_prefs_v1';
+        try {
+            const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+            if (p.procSearch && $('procSearch')) $('procSearch').value = p.procSearch;
+            if (p.procSort && $('procSort')) $('procSort').value = p.procSort;
+            if (p.connSearch && $('connSearch')) $('connSearch').value = p.connSearch;
+            if (p.connKind && $('connKind')) $('connKind').value = p.connKind;
+        } catch (_) {}
+        function saveLanPrefs() {
+            try {
+                localStorage.setItem(PREF_KEY, JSON.stringify({
+                    procSearch: $('procSearch')?.value || '',
+                    procSort: $('procSort')?.value || 'cpu',
+                    connSearch: $('connSearch')?.value || '',
+                    connKind: $('connKind')?.value || '',
+                }));
+            } catch (_) {}
+        }
+        function markUpdated() {
+            const el = document.getElementById('lastUpdated');
+            if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        }
+        const _loadProcesses = loadProcesses;
+        loadProcesses = async function () {
+            await _loadProcesses();
+            saveLanPrefs();
+            markUpdated();
+        };
+        const _loadDashboard = typeof loadDashboard === 'function' ? loadDashboard : null;
+        if (_loadDashboard) {
+            loadDashboard = async function () {
+                await _loadDashboard();
+                markUpdated();
+            };
+        }
+        $('btnExportProcs')?.addEventListener('click', () => {
+            const rows = [...document.querySelectorAll('#procTable tbody tr')].filter(tr => !tr.querySelector('.empty'));
+            if (!rows.length) return;
+            const hdr = ['pid', 'name', 'cpu', 'memory', 'threads', 'net', 'user', 'status'];
+            const lines = [hdr.join(',')];
+            rows.forEach(tr => {
+                const cells = [...tr.querySelectorAll('td')].slice(0, 8).map(td => {
+                    const s = (td.textContent || '').trim().replace(/"/g, '""');
+                    return /[",\n]/.test(s) ? '"' + s + '"' : s;
+                });
+                if (cells.length) lines.push(cells.join(','));
+            });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+            a.download = 'lan-processes-' + Date.now() + '.csv';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        });
+        document.addEventListener('keydown', (e) => {
+            const t = e.target;
+            const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+            if (e.key === '/' && !typing) {
+                e.preventDefault();
+                const view = document.querySelector('.nav-btn.active')?.dataset.view;
+                if (view === 'connections') $('connSearch')?.focus();
+                else $('procSearch')?.focus();
+                return;
+            }
+            if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                refreshCurrentView?.();
+            }
+        });
 
         // Events
         $('btnRefreshProcs').addEventListener('click', loadProcesses);

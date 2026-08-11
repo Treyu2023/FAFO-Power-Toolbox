@@ -30,7 +30,14 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align
 </style>
 </head>
 <body>
-<nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span style="color:var(--accent)">STARTUP & SERVICE MANAGER</span></nav>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <a href="FAFO Task Manager Pro.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(167,139,250,.08)">← Task Manager Pro</a>
+    <a href="Disk Space Analyzer.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Disk Analyzer →</a>
+  </div>
+  <span style="color:var(--accent)">STARTUP & SERVICE MANAGER</span>
+</nav>
 <div class="wrap">
 <h1 style="font-size:22px;margin-bottom:4px">Startup & Service Manager</h1>
 <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Control what runs at boot — startup folders, registry, scheduled tasks, and Windows services. Filter is local (fast); disable actions may need admin on the toolbox server.</p>
@@ -42,8 +49,10 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align
 <div class="panel"><div class="ph">
 <span id="tabTitle">Startup Items</span>
 <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-<input class="inp" id="filter" placeholder="Filter name / command…">
-<button class="btn" id="btnRefresh">Refresh</button>
+<input class="inp" id="filter" placeholder="Filter name / command… (/)">
+<button class="btn" id="btnRefresh" title="Refresh (R)">Refresh</button>
+<button class="btn" id="btnExportCsv" type="button" title="Export current tab CSV">↓ CSV</button>
+<span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
 </span>
 </div>
 <div class="tw" id="tableWrap"></div></div>
@@ -54,6 +63,7 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
@@ -74,10 +84,12 @@ async function load() {
     document.getElementById('cSvc').textContent = data.service_count ?? (data.services || []).length;
     setMsg('');
     render();
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     data = null;
     document.getElementById('tableWrap').innerHTML =
-      `<div style="padding:24px;text-align:center;color:#fbbf24">${esc(e.message || e)}</div>`;
+      `<div style="padding:24px;text-align:center;color:#fbbf24"><strong>Server offline</strong><br>${esc(e.message || e)}<br><span style="font-size:12px">Start with START SERVER.bat · 127.0.0.87:18765 · press R</span></div>`;
     setMsg(e.message || String(e));
   }
 }
@@ -158,16 +170,68 @@ function render() {
   });
 }
 
+const PREF_KEY = 'fafo_startup_mgr_prefs_v1';
+try {
+  const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+  if (p.filter) document.getElementById('filter').value = p.filter;
+  if (p.tab && ['startup', 'tasks', 'services'].includes(p.tab)) {
+    tab = p.tab;
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  }
+} catch (_) {}
+function savePrefs() {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify({ filter: document.getElementById('filter').value, tab }));
+  } catch (_) {}
+}
+
 document.querySelectorAll('.tab').forEach(t => {
   t.onclick = () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active');
     tab = t.dataset.tab;
+    savePrefs();
     render();
   };
 });
 document.getElementById('btnRefresh').onclick = load;
-document.getElementById('filter').oninput = render;
+let filterTimer = null;
+document.getElementById('filter').oninput = () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => { savePrefs(); render(); }, 200);
+};
+document.getElementById('btnExportCsv')?.addEventListener('click', () => {
+  if (!data) return;
+  let rows = [];
+  let hdr = [];
+  if (tab === 'startup') {
+    hdr = ['name', 'category', 'location', 'command'];
+    rows = (data.startup || []).filter(matchesFilter).map(i => [i.name, i.category, i.location, i.command]);
+  } else if (tab === 'tasks') {
+    hdr = ['name', 'schedule', 'command', 'enabled'];
+    rows = (data.tasks || []).filter(matchesFilter).map(i => [i.name, i.schedule, i.command, i.enabled]);
+  } else {
+    hdr = ['display_name', 'name', 'state', 'start_type', 'enabled'];
+    rows = (data.services || []).filter(matchesFilter).map(i => [i.display_name || i.name, i.name, i.state, i.start_type, i.enabled]);
+  }
+  const escCsv = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [hdr.join(',')].concat(rows.map(r => r.map(escCsv).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = 'startup-' + tab + '-' + Date.now() + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  UI()?.toast?.('Exported CSV', 'ok');
+});
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('filter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
+});
 
 UI()?.mountServerBar?.({ onOnline: load });
 load();

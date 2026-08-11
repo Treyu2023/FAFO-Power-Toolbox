@@ -45,9 +45,14 @@
         <span id="serverStatus" class="pill warn" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = matching, rename, ffmpeg. Orange = offline — click this pill or ▶ Start Server to launch from this page (same as Launcher / Media Library).">Server …</span>
         <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from VSR. Waits for green. If blocked: open Launcher Console / START SERVER.bat, or run SETUP (run once).bat once.">▶ Start Server</button>
         <button class="ui-btn ghost" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+        <button class="ui-btn ghost" onclick="location.href='Media Hub.html'" title="Library + dups + organizer">🗂️ Media Hub</button>
+        <button class="ui-btn ghost" onclick="location.href='Compare Hub.html'" title="Guided match + pair review + sliders">⇄ Compare Hub</button>
+        <button class="ui-btn ghost" onclick="location.href='Pair Review Queue.html'" title="Keyboard pair review">🔎 Review</button>
         <button class="ui-btn ghost" onclick="location.href='Media Library Manager.html'">Library</button>
         <button class="ui-btn" id="btnTutorial" data-tip="Interactive walkthrough — hover any ⓘ for quick help too">🎓 Get Started</button>
         <button class="ui-btn primary" id="btnPreview" data-tip="Scans folders, matches files by duration + fingerprint, shows proposed renames before you apply">↻ Refresh Preview</button>
+        <button class="ui-btn ghost" id="btnVsrReport" title="Copy VSR preview report" data-tip="Copy match summary to clipboard">📋 Report</button>
+        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent)">1-5</kbd> tabs · <kbd style="font:10px Consolas;color:var(--accent)">P</kbd> preview · <kbd style="font:10px Consolas;color:var(--accent)">E</kbd> report</span>
         <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and API events to debug panel">🐛 Debug</button>
     </div>
     <div id="vsrWorkflowBar"></div>
@@ -168,6 +173,7 @@ _interp.*$</textarea>
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const API = () => window.AIToolboxAPI;
         const UI = () => window.AIToolboxUI;
@@ -204,13 +210,19 @@ _interp.*$</textarea>
             });
         }
 
+        const LS_VSR_TAB = 'fafo_vsr_last_tab';
         function switchTab(name) {
             activeVsrTab = name;
             document.querySelectorAll('.ui-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
             document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+            try { localStorage.setItem(LS_VSR_TAB, name); } catch (_) {}
             updateVsrWorkflow();
         }
         document.querySelectorAll('.ui-tab').forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+        try {
+            const lastTab = localStorage.getItem(LS_VSR_TAB);
+            if (lastTab && document.getElementById('panel-' + lastTab)) switchTab(lastTab);
+        } catch (_) {}
         ['f_source', 'f_stage1', 'f_stage2'].forEach(id => {
             document.getElementById(id).addEventListener('input', updateVsrWorkflow);
         });
@@ -222,6 +234,57 @@ _interp.*$</textarea>
             document.getElementById('btnDebug').classList.toggle('debug-on', next);
             document.getElementById('btnDebug').textContent = next ? '🐛 Debug ON' : '🐛 Debug';
         };
+
+        async function copyVsrReport() {
+            const s1 = lastPreview?.stage1 || [];
+            const s2 = lastPreview?.stage2 || [];
+            const unmatched = lastPreview?.unmatched || lastPreview?.unmatched_files || [];
+            const lines = [
+                'FAFO VSR Pipeline — session report',
+                'Time: ' + new Date().toISOString(),
+                'Server: ' + (document.getElementById('serverStatus')?.textContent || '').trim(),
+                'Source: ' + (document.getElementById('f_source')?.value || ''),
+                'Stage I folder: ' + (document.getElementById('f_stage1')?.value || ''),
+                'Stage II folder: ' + (document.getElementById('f_stage2')?.value || ''),
+                'Stage I matches: ' + s1.length,
+                'Stage II matches: ' + s2.length,
+                'Unmatched: ' + (Array.isArray(unmatched) ? unmatched.length : (unmatched || '—')),
+                'Active tab: ' + activeVsrTab,
+                '',
+                '— Stage I (up to 40) —',
+                ...s1.slice(0, 40).map((m, i) =>
+                    (i + 1) + '. ' + (m.source_name || m.source || m.src || '?') +
+                    ' → ' + (m.proposed_name || m.rename || m.dest_name || '?') +
+                    (m.score != null ? ' · ' + Math.round((m.score <= 1 ? m.score * 100 : m.score)) + '%' : '')
+                ),
+                '',
+                '— Stage II (up to 40) —',
+                ...s2.slice(0, 40).map((m, i) =>
+                    (i + 1) + '. ' + (m.source_name || m.source || m.src || '?') +
+                    ' → ' + (m.proposed_name || m.rename || m.dest_name || '?') +
+                    (m.score != null ? ' · ' + Math.round((m.score <= 1 ? m.score * 100 : m.score)) + '%' : '')
+                ),
+            ];
+            const text = lines.join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI()?.toast?.('VSR report copied', 'ok');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btnVsrReport')?.addEventListener('click', copyVsrReport);
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            const tabMap = { '1': 'setup', '2': 'rename', '3': 'teach', '4': 'dupes', '5': 'tags' };
+            if (tabMap[e.key]) { e.preventDefault(); switchTab(tabMap[e.key]); }
+            if (e.key === 'p' || e.key === 'P') {
+                e.preventDefault();
+                document.getElementById('btnPreview')?.click();
+            }
+            if (e.key === 'e' || e.key === 'E') {
+                e.preventDefault();
+                copyVsrReport();
+            }
+        });
 
         function updateTrustBadges() {
             document.getElementById('trustBadge1').textContent = UI().isTrusted('vsr_stage1') ? '✓ Trusted — skips confirm' : '';

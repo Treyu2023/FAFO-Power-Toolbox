@@ -165,8 +165,11 @@
     <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
     <button class="ui-btn primary" id="btnStartServer" type="button">▶ Start Server</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'" title="Process-of-elimination matching">🎯 Guided Match</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'" title="Compare Hub pair review tab">⇄ Compare Hub</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">VSR</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
+    <button class="ui-btn ghost" type="button" id="btnExportReview" title="Copy review session report">📋 Export</button>
     <span id="modeHint" style="margin-left:auto;font-size:11px;color:var(--muted)"></span>
   </div>
 
@@ -212,6 +215,11 @@
         <strong>Review matches one-by-one before bulk rename.</strong><br>
         Load a VSR preview, catalog pairs, or suggestions — then use keyboard shortcuts to accept or reject.<br><br>
         Needs the toolbox server online (green pill).
+        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px">
+          <button class="ui-btn primary" type="button" id="btnEmptyLoad">↻ Load queue</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'">🎯 Guided Match first</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">⚡ Open VSR</button>
+        </div>
       </div>
     </div>
 
@@ -286,6 +294,7 @@
   <script src="../shared/aitoolbox-debug.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -832,6 +841,7 @@
 
     // Wire buttons
     document.getElementById('btnLoad').onclick = loadQueue;
+    document.getElementById('btnEmptyLoad')?.addEventListener('click', () => loadQueue());
     document.getElementById('btnAccept').onclick = () => setDecision('accept');
     document.getElementById('btnReject').onclick = () => setDecision('reject');
     document.getElementById('btnSkip').onclick = () => setDecision('skip');
@@ -868,6 +878,58 @@
     document.getElementById('btnSavePairs').onclick = saveAcceptedPairs;
     document.getElementById('btnDeleteRejected').onclick = deleteRejectedPairs;
 
+    const LS_REVIEW = 'fafo_pair_review_settings_v1';
+    function saveReviewSettings() {
+      try {
+        localStorage.setItem(LS_REVIEW, JSON.stringify({
+          source: document.getElementById('sourceSelect').value,
+          onlyRename: document.getElementById('onlyRename').checked,
+          minScore: document.getElementById('minScore').value,
+          autoNext: document.getElementById('chkAutoNext')?.checked !== false,
+        }));
+      } catch (_) {}
+    }
+    function restoreReviewSettings() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_REVIEW) || 'null');
+        if (!raw) return;
+        if (raw.source) document.getElementById('sourceSelect').value = raw.source;
+        if (typeof raw.onlyRename === 'boolean') document.getElementById('onlyRename').checked = raw.onlyRename;
+        if (raw.minScore != null) document.getElementById('minScore').value = raw.minScore;
+        if (document.getElementById('chkAutoNext') && typeof raw.autoNext === 'boolean')
+          document.getElementById('chkAutoNext').checked = raw.autoNext;
+      } catch (_) {}
+    }
+    ['sourceSelect', 'onlyRename', 'minScore', 'chkAutoNext'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', saveReviewSettings);
+    });
+
+    async function exportReviewReport() {
+      const c = counts();
+      const cur = current();
+      const lines = [
+        'FAFO Pair Review Queue — session report',
+        'Time: ' + new Date().toISOString(),
+        'Source: ' + document.getElementById('sourceSelect').value,
+        'Queue size: ' + c.total,
+        'Accepted: ' + c.accept + ' · Rejected: ' + c.reject + ' · Skipped: ' + c.skip + ' · Left: ' + c.left,
+        'Position: ' + (queue.length ? (index + 1) : 0) + ' / ' + c.total,
+        cur ? ('Current: ' + (cur.label || cur.beforeName + ' ↔ ' + cur.afterName)) : 'Current: —',
+        '',
+        '— Decisions —',
+        ...queue.map((q, i) =>
+          (i + 1) + '. [' + q.decision + '] ' + (q.label || (q.beforeName + ' ↔ ' + q.afterName)) +
+          (q.score != null ? ' · ' + scoreLabel(q.score) : '')
+        ),
+      ];
+      const text = lines.join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('Review report copied', 'ok');
+      } catch (_) { prompt('Copy report:', text); }
+    }
+    document.getElementById('btnExportReview')?.addEventListener('click', exportReviewReport);
+
     document.addEventListener('keydown', (e) => {
       if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
       const k = e.key;
@@ -890,9 +952,14 @@
       else if (k === ' ') { e.preventDefault(); togglePlay(); }
       else if (k === 'c' || k === 'C') { e.preventDefault(); openComparator(); }
       else if (k === 'u' || k === 'U') { e.preventDefault(); undoDecision(); }
+      else if ((k === 'e' || k === 'E') && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        exportReviewReport();
+      }
     });
 
     // Query params: ?source=vsr&stage=1  or source=catalog|suggest
+    restoreReviewSettings();
     (function applyQuery() {
       const src = (params.get('source') || '').toLowerCase();
       const stage = params.get('stage') || '1';

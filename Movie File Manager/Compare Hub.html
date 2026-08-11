@@ -66,11 +66,28 @@
       transition: opacity 0.3s;
     }
     .loading.hide { opacity: 0; }
+    .server-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,200,0,.4);
+      color: #ffc800; background: rgba(255,200,0,.08); white-space: nowrap;
+    }
+    .server-badge.ok { color: var(--ok); border-color: rgba(0,255,136,.45); background: rgba(0,255,136,.1); }
+    .server-badge.bad { color: #ff6b8a; border-color: rgba(255,68,102,.45); background: rgba(255,68,102,.1); cursor: pointer; }
+    .kbd-hint {
+      font-size: 10px; color: var(--muted); padding: 4px 8px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.08); white-space: nowrap;
+    }
+    .kbd-hint kbd {
+      font-family: Consolas, monospace; font-size: 10px; color: var(--accent2);
+      padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
+      background: rgba(0,0,0,.35);
+    }
   </style>
 </head>
 <body>
   <header class="hub-bar">
     <h1>⇄ COMPARE HUB</h1>
+    <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
     <div class="hub-tabs" id="hubTabs" role="tablist">
       <button type="button" class="hub-tab active" data-tab="match" role="tab">Guided Match</button>
       <button type="button" class="hub-tab" data-tab="pairs" role="tab">Pair Review</button>
@@ -78,9 +95,14 @@
       <button type="button" class="hub-tab" data-tab="image" role="tab">Image Comparator</button>
     </div>
     <div class="hub-meta" id="hubMeta">Guided match: try up to 10 candidates per file — you decide. Then review or open sliders.</div>
+    <span class="kbd-hint" title="Keyboard"><kbd>1</kbd>–<kbd>4</kbd> tabs · <kbd>R</kbd> report</span>
     <div class="hub-actions">
       <a href="../Toolbox Launcher.html">← Launcher</a>
       <a href="Media Hub.html" title="Library + duplicates + organizer">🗂️ Media Hub</a>
+      <a href="VSR Pipeline Manager.html" title="VSR match &amp; rename">⚡ VSR</a>
+      <a href="Guided Pair Match.html" title="Open Guided Match full window">🎯 Match</a>
+      <a href="Pair Review Queue.html" title="Open Pair Review full window">🔎 Review</a>
+      <button type="button" id="btnCopyReport" title="Copy compare hub session summary">📋 Report</button>
       <button type="button" id="btnPopout" title="Open this tab full-window">↗ Pop out</button>
     </div>
   </header>
@@ -90,6 +112,7 @@
   </div>
 
   <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     (function () {
       const TABS = {
@@ -122,6 +145,7 @@
       const frame = document.getElementById('hubFrame');
       const loading = document.getElementById('loading');
       const meta = document.getElementById('hubMeta');
+      const LS_TAB = 'fafo_compare_hub_last_tab';
       let current = 'match';
 
       function tabFromHash() {
@@ -130,8 +154,27 @@
         if (h === 'pair' || h === 'pairs' || h === 'review' || h === 'queue') return 'pairs';
         if (h === 'video' || h === 'vid' || h === 'vc') return 'video';
         if (h === 'image' || h === 'img' || h === 'ic') return 'image';
-        if (h === '' || h === 'compare') return 'match';
+        if (h === '' || h === 'compare') {
+          try {
+            const last = localStorage.getItem(LS_TAB);
+            if (last && TABS[last]) return last;
+          } catch (_) {}
+          return 'match';
+        }
         return TABS[h] ? h : 'match';
+      }
+
+      async function pingServer() {
+        const badge = document.getElementById('serverBadge');
+        if (!badge) return;
+        try {
+          const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
+          badge.textContent = on ? '● Online' : '○ Offline';
+          badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
+        } catch (_) {
+          badge.textContent = '○ Offline';
+          badge.className = 'server-badge bad';
+        }
       }
 
       async function resolveSrc(tab) {
@@ -160,6 +203,7 @@
         document.title = t.title + ' — Compare Hub';
         meta.textContent = t.meta.replace(/<[^>]+>/g, '');
         meta.innerHTML = t.meta;
+        try { localStorage.setItem(LS_TAB, id); } catch (_) {}
         if (pushHash !== false) {
           if (location.hash.replace(/^#/, '') !== id) {
             history.replaceState(null, '', '#' + id);
@@ -171,6 +215,24 @@
         frame.src = await resolveSrc(id);
       }
 
+      async function copyHubReport() {
+        const t = TABS[current] || TABS.match;
+        const text = [
+          'FAFO Compare Hub — session report',
+          'Time: ' + new Date().toISOString(),
+          'Active workspace: ' + (t.title || current),
+          'URL: ' + location.href,
+          'Server: ' + (document.getElementById('serverBadge')?.textContent || 'unknown'),
+          '',
+          'Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator',
+          'Counterparts: Media Hub · VSR · Pair Review · Guided Match',
+        ].join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          window.AIToolboxUI?.toast?.('Compare report copied', 'ok');
+        } catch (_) { prompt('Copy report:', text); }
+      }
+
       document.getElementById('hubTabs').addEventListener('click', (e) => {
         const btn = e.target.closest('.hub-tab');
         if (!btn) return;
@@ -180,13 +242,22 @@
       document.getElementById('btnPopout').addEventListener('click', async () => {
         window.open(await resolveSrc(current), '_blank');
       });
+      document.getElementById('btnCopyReport').addEventListener('click', copyHubReport);
+      document.getElementById('serverBadge')?.addEventListener('click', () => {
+        if (document.getElementById('serverBadge').classList.contains('bad'))
+          location.href = '../Toolbox Launcher.html';
+        else pingServer();
+      });
 
       window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
       showTab(tabFromHash(), true);
+      pingServer();
+      setInterval(pingServer, 20000);
       document.addEventListener('keydown', function hubTabKeys(e){
         if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
         const map = { '1':'match', '2':'pairs', '3':'video', '4':'image' };
         if (map[e.key]) showTab(map[e.key], true);
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyHubReport(); }
       });
     })();
   </script>

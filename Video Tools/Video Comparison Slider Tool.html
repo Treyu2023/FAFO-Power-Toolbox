@@ -279,9 +279,17 @@
 
         .kbd-hint { font-size: 10px; color: #666; margin-top: 4px; }
     </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 </head>
 <body data-fx="none">
 <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+<div class="counterpart-bar" id="vidCompareNav" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 16px 0 120px;font-size:11px">
+  <a href="../Image tools/Image Comparitor With Slider.html" style="color:var(--neon-accent);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(0,243,255,.3);border-radius:6px">🖼️ Image Compare</a>
+  <a href="../Movie File Manager/Compare Hub.html#video" style="color:var(--neon-accent);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(0,243,255,.3);border-radius:6px">⇄ Compare Hub</a>
+  <a href="../Movie File Manager/Pair Review Queue.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px">🔎 Pair Review</a>
+  <button type="button" id="btn-mirror-ab" class="btn" style="font-size:11px;padding:4px 10px" title="Reset slider to 50% and re-sync A/B timelines">🪞 Mirror / Sync A-B</button>
+  <button type="button" id="btn-copy-pair-report" class="btn" style="font-size:11px;padding:4px 10px" title="Copy current pair report">📋 Report</button>
+</div>
 
     <div class="control-panel-wrapper fx-border" id="panelWrapper">
         <div class="control-panel fx-border">
@@ -342,7 +350,7 @@
                     <input type="range" id="sweep-speed" style="width:60px;" min="0.001" max="0.03" step="0.001" value="0.005">
                 </div>
             </div>
-            <div class="kbd-hint">Space: Play/Pause · ←/→: Frame · F: Fullscreen · S: Save Pair · P: Pairs Panel · 1/2: A-B Loop</div>
+            <div class="kbd-hint">Space: Play/Pause · ←/→: Frame · F: Fullscreen · S: Save Pair · P: Pairs · W: Swap · M: Mirror/sync · R: Report · 1/2: A-B Loop</div>
         </div>
         <div class="collapse-tab" id="btn-collapse">▲ Collapse</div>
     </div>
@@ -459,6 +467,7 @@
 <script src="../shared/aitoolbox-ui.js"></script>
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const DB_NAME = 'AIVideoComparator';
         const DB_VER = 1;
@@ -1513,6 +1522,47 @@
             [handleBefore, handleAfter] = [handleAfter, handleBefore];
         });
 
+        function mirrorSyncAB() {
+            try {
+                if (typeof setSliderPosition === 'function') setSliderPosition(0.5);
+                else currentSliderPercent = 0.5;
+            } catch (_) { currentSliderPercent = 0.5; }
+            try {
+                if (elBefore && elAfter && elAfter.currentTime != null) {
+                    elBefore.currentTime = elAfter.currentTime;
+                }
+            } catch (_) {}
+            try {
+                if (elBefore && elAfter) {
+                    if (elAfter.paused) elBefore.pause();
+                    else elBefore.play().catch(() => {});
+                }
+            } catch (_) {}
+            showToast('A/B mirrored · slider 50% · times synced');
+        }
+        document.getElementById('btn-mirror-ab')?.addEventListener('click', mirrorSyncAB);
+
+        async function copyPairReport() {
+            const left = document.getElementById('status-before')?.innerText || '—';
+            const right = document.getElementById('status-after')?.innerText || '—';
+            const text = [
+                'FAFO Video Comparator — pair report',
+                'Time: ' + new Date().toISOString(),
+                'Before: ' + left,
+                'After: ' + right,
+                'Swapped: ' + !!isSwapped,
+                'Slider %: ' + Math.round((currentSliderPercent || 0) * 100),
+                'Mode: ' + (document.getElementById('compare-mode')?.value || ''),
+                'Orient: ' + (document.getElementById('split-orient')?.value || ''),
+                'URL: ' + location.href,
+            ].join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast('Pair report copied');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btn-copy-pair-report')?.addEventListener('click', copyPairReport);
+
         document.getElementById('btn-screenshot').addEventListener('click', () => {
             if (!nativeWidth) return;
             const cvs = document.createElement('canvas');
@@ -1545,15 +1595,18 @@
         // --- Keyboard shortcuts ---
         document.addEventListener('keydown', e => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-            if (!elAfter) return;
+            if (!elAfter && e.code !== 'KeyR') return;
             switch (e.code) {
-                case 'Space': e.preventDefault(); document.getElementById('btn-play').click(); break;
-                case 'ArrowRight': e.preventDefault(); document.getElementById('btn-next-frame').click(); break;
-                case 'ArrowLeft': e.preventDefault(); document.getElementById('btn-prev-frame').click(); break;
+                case 'Space': e.preventDefault(); document.getElementById('btn-play')?.click(); break;
+                case 'ArrowRight': e.preventDefault(); document.getElementById('btn-next-frame')?.click(); break;
+                case 'ArrowLeft': e.preventDefault(); document.getElementById('btn-prev-frame')?.click(); break;
                 case 'KeyF': e.preventDefault(); toggleFullscreen(); break;
                 case 'KeyS': if (e.ctrlKey) break; e.preventDefault(); saveCurrentPair(); break;
                 case 'KeyP': e.preventDefault(); document.getElementById('btn-pairs').click(); break;
                 case 'KeyN': e.preventDefault(); stepPair(1, true); break;
+                case 'KeyW': e.preventDefault(); document.getElementById('btn-swap')?.click(); break;
+                case 'KeyM': e.preventDefault(); mirrorSyncAB(); break;
+                case 'KeyR': e.preventDefault(); copyPairReport(); break;
                 case 'Digit1': if (abLoopActive) { abPointA = elAfter.currentTime; updateABMarkers(); showToast(`A = ${abPointA.toFixed(2)}s`); } break;
                 case 'Digit2': if (abLoopActive) { abPointB = elAfter.currentTime; updateABMarkers(); showToast(`B = ${abPointB.toFixed(2)}s`); } break;
             }

@@ -202,6 +202,11 @@
 <body>
   <nav class="nav">
     <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <a href="LAN Task Manager.html" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(0,243,255,.06)">← LAN Task Manager</a>
+      <a href="Startup Service Manager.html" style="font-size:11px;color:var(--accent2);text-decoration:none;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(167,139,250,.08)">Startup Manager →</a>
+      <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+    </div>
     <span class="t">FAFO TASK MANAGER PRO</span>
     <span class="pill off" id="serverPill">○ Checking…</span>
     <button class="btn sm" id="btnStart" type="button">▶ Start Server</button>
@@ -210,7 +215,6 @@
       <button class="btn sm danger" type="button" data-run-mode="m2" id="navRunM2">⚡ M2</button>
       <button class="btn sm danger" type="button" data-run-mode="m3" id="navRunM3">⚡ M3</button>
     </div>
-    <a href="LAN Task Manager.html" style="font-size:12px;color:var(--muted)">Classic LAN/Task Manager →</a>
   </nav>
   <div class="banner" id="offlineBanner">
     <strong>Server offline</strong>
@@ -260,7 +264,7 @@
           <div class="panel-h">
             <h2>Running processes</h2>
             <div class="toolbar">
-              <input class="inp" id="procSearch" placeholder="Filter name / path…" style="min-width:180px">
+              <input class="inp" id="procSearch" placeholder="Filter name / path… (/)" style="min-width:180px">
               <select class="sel" id="procSort">
                 <option value="cpu">Sort: CPU</option>
                 <option value="memory">Sort: Memory</option>
@@ -268,7 +272,9 @@
                 <option value="efficiency">Sort: Efficiency (worst first)</option>
                 <option value="risk">Sort: Vuln risk</option>
               </select>
-              <button class="btn" type="button" id="btnReloadProcs">Refresh</button>
+              <button class="btn" type="button" id="btnReloadProcs" title="Refresh (R)">Refresh</button>
+              <button class="btn" type="button" id="btnExportProcsCsv" title="Export CSV">↓ CSV</button>
+              <a class="btn" href="Startup Service Manager.html" style="text-decoration:none">Startup →</a>
             </div>
           </div>
           <div class="table-wrap" id="procTableWrap">
@@ -431,6 +437,7 @@
   <script src="../shared/aitoolbox-version.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
   (() => {
     'use strict';
@@ -821,6 +828,11 @@
         return;
       }
       lastProcs = data.processes || [];
+      const lu = document.getElementById('lastUpdated');
+      if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
+      try {
+        localStorage.setItem('fafo_tmpro_filter_v1', JSON.stringify({ search: search, sort: sort }));
+      } catch (_) {}
       const tb = $('procBody');
       if (!lastProcs.length) {
         tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No processes</td></tr>';
@@ -1016,7 +1028,43 @@
       }
     }
 
+    try {
+      const pf = JSON.parse(localStorage.getItem('fafo_tmpro_filter_v1') || '{}');
+      if (pf.search && $('procSearch')) $('procSearch').value = pf.search;
+      if (pf.sort && $('procSort')) $('procSort').value = pf.sort;
+    } catch (_) {}
     $('btnReloadProcs').onclick = () => loadProcs();
+    $('btnExportProcsCsv')?.addEventListener('click', () => {
+      if (!lastProcs?.length) { AIToolboxUI?.toast?.('No process rows', 'warn'); return; }
+      const hdr = ['pid', 'name', 'cpu_percent', 'memory_human', 'memory_percent', 'efficiency_score', 'title'];
+      const escCsv = (v) => {
+        const s = String(v ?? '');
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const lines = [hdr.join(',')].concat(lastProcs.map(p => [
+        p.pid, p.name, p.cpu_percent, p.memory_human, p.memory_percent,
+        p.intel?.efficiency?.score ?? '', p.intel?.title || ''
+      ].map(escCsv).join(',')));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+      a.download = 'tmpro-processes-' + Date.now() + '.csv';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      AIToolboxUI?.toast?.('Exported CSV', 'ok');
+    });
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (e.key === '/' && !typing) { e.preventDefault(); $('procSearch')?.focus(); return; }
+      if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const v = document.querySelector('.nav-btn.active')?.dataset.view;
+        if (v === 'procs') loadProcs();
+        else if (v === 'startup') loadStartup?.();
+        else if (v === 'ratings') loadRatings?.();
+        else loadProcs();
+      }
+    });
     $('btnReloadRates').onclick = () => loadRatings();
     $('btnReloadStart').onclick = () => loadStartup();
     $('btnDoRefresh').onclick = doRefresh;

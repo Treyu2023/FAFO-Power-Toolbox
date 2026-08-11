@@ -169,11 +169,25 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
 
 .legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11px;color:var(--muted);margin-top:8px}
 .legend span{display:inline-flex;align-items:center;gap:5px}
+.nav-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nav-chip{
+  font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
+  color:var(--accent);text-decoration:none;font-weight:600;background:rgba(0,243,255,.06);
+}
+.nav-chip:hover{background:rgba(0,243,255,.14)}
+.nav-chip.primary{border-color:rgba(167,139,250,.5);color:#c4b5fd;background:rgba(167,139,250,.1)}
+.meta-line{font-size:11px;color:var(--muted)}
+.vitals{position:sticky;top:48px;z-index:12;background:rgba(5,5,8,.88);padding:6px 0 10px;backdrop-filter:blur(8px)}
 </style>
 </head>
 <body>
 <nav class="nav">
   <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="nav-chips">
+    <a class="nav-chip primary" href="System Health Desk.html">Health Desk →</a>
+    <a class="nav-chip primary" href="PC Diagnostics HUD.html">PC Diagnostics →</a>
+    <a class="nav-chip" href="Secrets Presence Console.html">Secrets</a>
+  </div>
   <span class="t">HOME HEALTH HUB</span>
   <span id="pill" class="status bad">Offline</span>
 </nav>
@@ -182,10 +196,21 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
   <p class="sub">Plain-English status for this PC — live vitals, watch/act alerts, and expandable sections. Full dumps stay in the Report Library; process control lives in Task Manager.</p>
 
   <div class="toolbar">
-    <button class="btn" id="btnRefresh">Refresh hub</button>
+    <button class="btn" id="btnRefresh" title="Refresh (R)">Refresh hub</button>
     <button class="btn ghost" id="btnFullScan" type="button">Run full scan</button>
     <button class="btn ghost" id="btnGenReport" type="button">Save English report</button>
-    <label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 15s</label>
+    <button class="btn ghost" id="btnExportJson" type="button" title="Export hub snapshot JSON">↓ JSON</button>
+    <button class="btn ghost" id="btnCopySummary" type="button" title="Copy plain-English summary">Copy summary</button>
+    <label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto
+      <select class="sel" id="autoInterval" style="background:var(--panel);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:6px;font-size:11px;margin-left:4px">
+        <option value="15" selected>15s</option>
+        <option value="30">30s</option>
+        <option value="60">60s</option>
+      </select>
+    </label>
+    <span class="meta-line" id="lastUpdated">—</span>
+    <a class="btn ghost" href="System Health Desk.html" style="text-decoration:none">Health Desk</a>
+    <a class="btn ghost" href="PC Diagnostics HUD.html" style="text-decoration:none">PC Diagnostics</a>
     <a class="btn ghost" href="PC Reports and Log Viewer/index.html" style="text-decoration:none">Report Library</a>
     <a class="btn ghost" href="Event Viewer.html" style="text-decoration:none">Event Viewer</a>
     <a class="btn ghost" href="Event Deep Dive.html" style="text-decoration:none" title="Opens without auto-scan — click Run there">Event Deep Dive</a>
@@ -249,6 +274,7 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
@@ -516,6 +542,8 @@ async function load() {
     renderAlerts(d);
     renderSections(d);
     renderProcPreview(d);
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     document.getElementById('alerts').innerHTML =
       `<div class="alert warn"><div class="title">Dashboard error</div><div class="plain">${esc(e.message || e)}</div></div>`;
@@ -527,11 +555,47 @@ function setupAuto() {
   if (timer) clearInterval(timer);
   timer = null;
   if (document.getElementById('autoRefresh').checked) {
+    const sec = Math.max(10, Number(document.getElementById('autoInterval')?.value || 15));
     // Pause when tab is hidden so background hub does not keep hammering the PC
     timer = setInterval(() => {
       if (document.hidden) return;
       load();
-    }, 15000);
+    }, sec * 1000);
+  }
+  try {
+    localStorage.setItem('fafo_health_hub_auto_v1', JSON.stringify({
+      auto: document.getElementById('autoRefresh').checked,
+      interval: document.getElementById('autoInterval')?.value || '15',
+    }));
+  } catch (_) {}
+}
+
+function exportHubJson() {
+  if (!lastData) { toast('Nothing to export yet', false); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(lastData, null, 2)], { type: 'application/json' }));
+  a.download = `health-hub-${Date.now()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('Exported hub JSON');
+}
+
+async function copyHubSummary() {
+  if (!lastData) { toast('Nothing to copy yet', false); return; }
+  const o = lastData.overall || {};
+  const alerts = lastData.alerts || [];
+  const lines = [
+    `Health Hub · ${o.headline || o.level || 'status'} · ${lastData.timestamp || new Date().toISOString()}`,
+    o.summary || o.plainEnglish || '',
+    `CPU ${lastData.vitals?.cpu?.value ?? lastData.cpu?.percent ?? '—'} · Mem ${lastData.vitals?.memory?.value ?? lastData.memory?.percent ?? '—'}`,
+    `Alerts: ${alerts.length}`,
+    ...alerts.slice(0, 8).map(a => `• [${a.level}] ${a.title || a.id}: ${a.plainEnglish || a.message || ''}`),
+  ];
+  try {
+    await navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
+    toast('Summary copied');
+  } catch {
+    toast('Clipboard blocked', false);
   }
 }
 
@@ -640,7 +704,24 @@ async function genReport() {
 document.getElementById('btnRefresh').onclick = load;
 document.getElementById('btnFullScan').onclick = runFullScan;
 document.getElementById('btnGenReport').onclick = genReport;
+document.getElementById('btnExportJson').onclick = exportHubJson;
+document.getElementById('btnCopySummary').onclick = copyHubSummary;
 document.getElementById('autoRefresh').onchange = setupAuto;
+document.getElementById('autoInterval')?.addEventListener('change', setupAuto);
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    load();
+  }
+});
+try {
+  const p = JSON.parse(localStorage.getItem('fafo_health_hub_auto_v1') || '{}');
+  if (typeof p.auto === 'boolean') document.getElementById('autoRefresh').checked = p.auto;
+  if (p.interval && document.querySelector(`#autoInterval option[value="${p.interval}"]`))
+    document.getElementById('autoInterval').value = p.interval;
+} catch (_) {}
 UI()?.mountServerBar?.({ onOnline: load });
 load();
 setupAuto();

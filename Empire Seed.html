@@ -244,10 +244,17 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
   #actions .btn { width: auto; flex: 1; }
 }
 </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 </head>
 <body>
 <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
 <div class="toast" id="toast"></div>
+<div id="esQoLBar" style="position:fixed;top:10px;right:12px;z-index:9999;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:min(520px,90vw);justify-content:flex-end">
+  <a href="Typing Assistant Trainer.html" style="font:600 11px system-ui;color:#c4b5fd;text-decoration:none;padding:5px 9px;border-radius:8px;background:rgba(5,5,12,.92);border:1px solid rgba(167,139,250,.4)" title="Counterpart · Typing Trainer">⌨️ Typing</a>
+  <a href="Bloodmoon Survivor.html" style="font:600 11px system-ui;color:#f87171;text-decoration:none;padding:5px 9px;border-radius:8px;background:rgba(5,5,12,.92);border:1px solid rgba(248,113,113,.4)" title="Break · Bloodmoon">🦇 Bloodmoon</a>
+  <button type="button" class="btn sm" id="esMuteBtn" title="Mute toggle (persists)">🔊</button>
+  <button type="button" class="btn sm" id="esExportBtn" title="Export empire summary">📋 Export</button>
+</div>
 
 <div id="app">
   <div id="topbar">
@@ -268,8 +275,8 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
     <div id="mapVignette"></div>
     <div id="screenFlash"></div>
     <div id="turnBanner"></div>
-    <div id="mapHint">Click tiles · select units · End Turn when ready</div>
-    <div id="camHint">RMB / Middle drag: orbit · WASD pan · Scroll zoom · Q/E rotate</div>
+    <div id="mapHint">Click tiles · select units · End Turn when ready · Esc menu</div>
+    <div id="camHint">RMB / Middle drag: orbit · WASD pan · Scroll zoom · Q/E rotate · M mute</div>
   </div>
 
   <aside id="sidebar">
@@ -2214,7 +2221,60 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
       AIToolboxUI.toast('Empire Seed 3D · Esc returns to launcher', 'ok');
     }
   } catch(_){}
+
+  // QoL: mute persist · export empire summary · counterpart bar already in DOM
+  const LS_MUTE = 'fafo_empire_mute';
+  window.ES_MUTED = localStorage.getItem(LS_MUTE) === '1';
+  function syncMute() {
+    const b = document.getElementById('esMuteBtn');
+    if (b) b.textContent = window.ES_MUTED ? '🔇' : '🔊';
+  }
+  syncMute();
+  function toggleMute() {
+    window.ES_MUTED = !window.ES_MUTED;
+    try { localStorage.setItem(LS_MUTE, window.ES_MUTED ? '1' : '0'); } catch (_) {}
+    syncMute();
+    try {
+      const t = document.getElementById('toast');
+      if (t) { t.textContent = window.ES_MUTED ? 'Muted' : 'Sound on'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1200); }
+    } catch (_) {}
+  }
+  document.getElementById('esMuteBtn')?.addEventListener('click', toggleMute);
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+    if (e.key === 'm' || e.key === 'M') toggleMute();
+  });
+  document.getElementById('esExportBtn')?.addEventListener('click', () => {
+    const turn = document.getElementById('uiTurn')?.textContent || '—';
+    const sci = document.getElementById('uiSci')?.textContent || '—';
+    const gold = document.getElementById('uiGold')?.textContent || '—';
+    const cities = document.getElementById('uiCities')?.textContent || '—';
+    const units = document.getElementById('uiUnits')?.textContent || '—';
+    const text = [
+      'Empire Seed 3D — summary',
+      '=======================',
+      'Turn: ' + turn,
+      'Science: ' + sci,
+      'Gold: ' + gold,
+      'Cities: ' + cities,
+      'Units: ' + units,
+      'Time: ' + new Date().toISOString(),
+    ].join('\n');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        try { AIToolboxUI?.toast?.('Empire summary copied', 'ok'); } catch (_) {}
+      });
+    }
+  });
+  try {
+    window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+      toolId: 'empire-seed',
+      helpLines: ['M — mute (persists)', 'Export — copy turn/cities/units summary', 'Counterparts: Typing Trainer · Bloodmoon'],
+    });
+  } catch (_) {}
 })();
 </script>
+  <script src="shared/aitoolbox-pro.js"></script>
 </body>
 </html>

@@ -101,8 +101,13 @@
   </style>
 </head>
 <body>
-  <nav class="toolbox-nav">
+  <nav class="toolbox-nav" style="justify-content:space-between">
     <a class="ui-btn ghost" href="../Toolbox Launcher.html">← Toolbox Launcher</a>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <a href="../System Tools/Hardware Board Map.html" style="color:#93c5fd;text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid rgba(59,130,246,.35);border-radius:999px;background:rgba(59,130,246,.1)">Hardware Board Map →</a>
+      <a href="../System Tools/PC Diagnostics HUD.html" style="color:#94a3b8;text-decoration:none;font-size:11px;font-weight:600;padding:4px 10px;border:1px solid rgba(148,163,184,.25);border-radius:999px">PC Diagnostics</a>
+      <span class="pill" id="pill" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid rgba(148,163,184,.35);color:#94a3b8">S1…</span>
+    </div>
   </nav>
   <div class="card">
     <div class="badge">Windows Maintenance · Elevated</div>
@@ -128,11 +133,16 @@
     </div>
 
     <div class="status" id="status">Ready — click Run to launch elevated PowerShell.</div>
+    <div id="offlineBox" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.1);color:#fcd34d;font-size:13px;line-height:1.5">
+      <strong>S1 offline</strong> — protocol / .bat still work. Prefer <code>START SERVER.bat</code> (bind <code>127.0.0.87:18765</code>) for reliable launch, then recheck with <strong>R</strong>.
+    </div>
 
     <div class="actions">
-      <button type="button" class="launch" id="btnRun">▶ Run Ghost Device Cleaner</button>
+      <button type="button" class="launch" id="btnRun" title="Run (Enter / L)">▶ Run Ghost Device Cleaner</button>
       <button type="button" class="secondary" id="btnFolder">📂 Open Folder</button>
+      <button type="button" class="secondary" id="btnCopyTip">📋 Copy tip</button>
     </div>
+    <p style="font-size:11px;color:#64748b;margin-top:10px">Last S1 check: <span id="lastPing">—</span> · Shortcuts: <strong>L</strong> run · <strong>R</strong> recheck · open <a href="../System Tools/Hardware Board Map.html" style="color:#93c5fd">Board Map</a> for ports</p>
 
     <div class="footer">
       Fallback if nothing happens: open Explorer →
@@ -143,6 +153,7 @@
 
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     (function () {
       const status = document.getElementById('status');
@@ -191,8 +202,59 @@
         }
       }
 
+      async function pingServer() {
+        const pill = document.getElementById('pill');
+        const box = document.getElementById('offlineBox');
+        const lp = document.getElementById('lastPing');
+        try {
+          const on = await window.AIToolboxAPI?.isOnline?.(true, 1500);
+          if (lp) lp.textContent = new Date().toLocaleTimeString();
+          if (pill) {
+            pill.textContent = on ? 'S1 online' : 'S1 offline';
+            pill.style.color = on ? '#4ade80' : '#f87171';
+            pill.style.borderColor = on ? 'rgba(74,222,128,.4)' : 'rgba(248,113,113,.4)';
+          }
+          if (box) box.style.display = on ? 'none' : 'block';
+          return !!on;
+        } catch (_) {
+          if (lp) lp.textContent = new Date().toLocaleTimeString();
+          if (pill) { pill.textContent = 'S1 offline'; pill.style.color = '#f87171'; }
+          if (box) box.style.display = 'block';
+          return false;
+        }
+      }
+
       btnRun.addEventListener('click', () => launch('run'));
       btnFolder.addEventListener('click', () => launch('folder'));
+      document.getElementById('btnCopyTip')?.addEventListener('click', async () => {
+        const tip = [
+          'Ghost Device Cleaner tip',
+          '1) Prefer S1 online (START SERVER.bat · 127.0.0.87:18765)',
+          '2) Click Run — approve UAC',
+          '3) In the picker, select only phantom devices',
+          '4) Type YES to confirm deletion',
+          '5) Fallback: GhostDeviceCleaner\\Run-Cleaner-Elevated.bat',
+          'Related: System Tools\\Hardware Board Map.html',
+        ].join('\n');
+        try {
+          await navigator.clipboard.writeText(tip);
+          setStatus('Tip copied.', 'ok');
+        } catch {
+          setStatus('Clipboard blocked.', 'err');
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === 'Enter' || e.key === 'l' || e.key === 'L') {
+          if (t && (t.tagName === 'BUTTON' || t.tagName === 'A') && e.key === 'Enter') return;
+          e.preventDefault();
+          launch('run');
+        }
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); pingServer(); }
+      });
+      pingServer();
 
       // Auto-run when opened with ?run=1 (launcher native open)
       const params = new URLSearchParams(location.search);

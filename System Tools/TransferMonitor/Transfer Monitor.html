@@ -138,6 +138,10 @@
 <body>
   <nav class="toolbox-nav">
     <a class="ui-btn ghost" href="../../Toolbox Launcher.html">← Toolbox Launcher</a>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <a href="../LAN Task Manager.html" style="color:#67e8f9;text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid rgba(0,243,255,.25);border-radius:999px">LAN Task Manager</a>
+      <a href="../Disk Space Analyzer.html" style="color:#94a3b8;text-decoration:none;font-size:11px;font-weight:600;padding:4px 10px;border:1px solid rgba(148,163,184,.25);border-radius:999px">Disk Analyzer</a>
+    </div>
     <span class="t">TRANSFER MONITOR</span>
     <span class="pill" id="pill">S1…</span>
   </nav>
@@ -163,11 +167,17 @@
     </ul>
 
     <div class="status" id="status">Ready — click Launch to open the pin-on-top monitor.</div>
+    <div id="offlineBox" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fcd34d;font-size:13px;line-height:1.5">
+      <strong>Server offline</strong> — launch still works via protocol / .bat, but S1 improves reliability.
+      Use <strong>▶ Start Server</strong> above or <code>START SERVER.bat</code> (bind <code>127.0.0.87:18765</code>).
+    </div>
 
     <div class="actions">
-      <button type="button" class="launch" id="btnRun">▶ Launch Transfer Monitor</button>
+      <button type="button" class="launch" id="btnRun" title="Launch (Enter / L)">▶ Launch Transfer Monitor</button>
       <button type="button" class="secondary" id="btnFolder">📂 Open Folder</button>
+      <button type="button" class="secondary" id="btnCopyTip" title="Copy launch tip">📋 Copy tip</button>
     </div>
+    <p style="font-size:11px;color:#64748b;margin-top:10px">Last S1 check: <span id="lastPing">—</span> · Shortcuts: <strong>L</strong> launch · <strong>R</strong> recheck server</p>
 
     <div class="footer">
       Fallback: run <code>System Tools\TransferMonitor\Launch-TransferMonitor.bat</code>
@@ -180,6 +190,7 @@
   <script src="../../shared/aitoolbox-version.js"></script>
   <script src="../../shared/aitoolbox-api.js"></script>
   <script src="../../shared/aitoolbox-ui.js"></script>
+  <script src="../../shared/aitoolbox-pro.js"></script>
   <script>
     (function () {
       const status = document.getElementById('status');
@@ -199,16 +210,23 @@
       }
 
       async function pingServer() {
+        const lp = document.getElementById('lastPing');
+        const box = document.getElementById('offlineBox');
         try {
           const on = await window.AIToolboxAPI?.isOnline?.(true, 1500);
+          if (lp) lp.textContent = new Date().toLocaleTimeString();
           if (on) {
             setPill(true, 'S1 online');
+            if (box) box.style.display = 'none';
             return true;
           }
           setPill(false, 'S1 offline');
+          if (box) box.style.display = 'block';
           return false;
         } catch (_) {
+          if (lp) lp.textContent = new Date().toLocaleTimeString();
           setPill(false, 'S1 offline');
+          if (box) box.style.display = 'block';
           return false;
         }
       }
@@ -252,16 +270,35 @@
 
       btnRun.addEventListener('click', () => launch('run'));
       btnFolder.addEventListener('click', () => launch('folder'));
+      document.getElementById('btnCopyTip')?.addEventListener('click', async () => {
+        const tip = [
+          'Transfer Monitor launch tip',
+          '1) Prefer S1 online (START SERVER.bat · 127.0.0.87:18765)',
+          '2) Click Launch Transfer Monitor on this page',
+          '3) Fallback: System Tools\\TransferMonitor\\Launch-TransferMonitor.bat',
+          '4) Protocol: aitoolbox://transfer-monitor (after SETUP)',
+        ].join('\n');
+        try {
+          await navigator.clipboard.writeText(tip);
+          setStatus('Launch tip copied to clipboard.', 'ok');
+        } catch {
+          setStatus('Clipboard blocked — tip is in the footer.', 'err');
+        }
+      });
 
-      // Keyboard: Enter launches when focus is not in a field (page has no inputs)
+      // Keyboard: Enter/L launch · R recheck server
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          const t = e.target;
-          if (t && (t.tagName === 'BUTTON' || t.tagName === 'A')) return;
-          if (document.activeElement === btnRun || document.activeElement === document.body) {
-            e.preventDefault();
-            launch('run');
-          }
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === 'Enter' || e.key === 'l' || e.key === 'L') {
+          if (t && (t.tagName === 'BUTTON' || t.tagName === 'A') && e.key === 'Enter') return;
+          e.preventDefault();
+          launch('run');
+        }
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          pingServer();
         }
       });
 
@@ -271,7 +308,7 @@
       }
 
       pingServer();
-      window.AIToolboxUI?.mountServerBar?.({ onOnline: () => { setPill(true, 'S1 online'); } });
+      window.AIToolboxUI?.mountServerBar?.({ onOnline: () => { setPill(true, 'S1 online'); const b = document.getElementById('offlineBox'); if (b) b.style.display = 'none'; } });
     })();
   </script>
 <script data-tool-polish="transfer-monitor">

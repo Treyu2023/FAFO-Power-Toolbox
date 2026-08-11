@@ -544,13 +544,16 @@ details.tech pre{
         </div>
       </div>
       <a class="navlink" href="../Toolbox Launcher.html">← Toolbox</a>
+      <a class="navlink" href="System Health Dashboard.html" title="Counterpart · Health Hub">Health Hub</a>
+      <a class="navlink" href="Hardware Board Map.html" title="Counterpart · Board Map">Board Map</a>
       <a class="navlink" href="PC Reports and Log Viewer/index.html">Reports</a>
-      <a class="navlink" href="System Health Dashboard.html">Live metrics</a>
     </div>
     <div class="topbar-right">
       <span id="pill" class="live-pill"><span class="dot"></span> Checking…</span>
-      <button type="button" class="btn sm ghost" id="btnReloadLatest" title="Load last saved report">↺ Last</button>
-      <button type="button" class="btn sm primary" id="btnRunTop">▶ Scan</button>
+      <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+      <button type="button" class="btn sm ghost" id="btnCopySummaryTop" title="Copy diagnostics summary">Copy</button>
+      <button type="button" class="btn sm ghost" id="btnReloadLatest" title="Load last saved report (L)">↺ Last</button>
+      <button type="button" class="btn sm primary" id="btnRunTop" title="Run scan (R)">▶ Scan</button>
     </div>
   </header>
 
@@ -597,9 +600,11 @@ details.tech pre{
       <div class="side-card">
         <div class="side-card-h">Quick links</div>
         <div class="side-card-b" style="display:flex;flex-direction:column;gap:6px">
+          <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="System Health Dashboard.html">🩺 Health Hub</a>
+          <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="Hardware Board Map.html">🔌 Board Map</a>
           <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="Disk Space Analyzer.html">💾 Disk analyzer</a>
           <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="Startup Service Manager.html">🚀 Startup manager</a>
-          <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="GhostDeviceCleaner/Clear-GhostDevices.html">👻 Ghost devices</a>
+          <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="../GhostDeviceCleaner/Clear-GhostDevices.html">👻 Ghost devices</a>
           <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="Malware Defender.html">🛡️ Malware defender</a>
         </div>
       </div>
@@ -701,6 +706,7 @@ details.tech pre{
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 (function () {
   'use strict';
@@ -900,6 +906,8 @@ details.tech pre{
     }
     $('emptyState').style.display = 'none';
     $('results').style.display = '';
+    const lu = $('lastUpdated');
+    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
     const o = r.overall || {};
     const sev = o.severity || 'info';
@@ -1274,8 +1282,8 @@ details.tech pre{
     document.querySelectorAll('.tile').forEach((t) => t.classList.remove('active'));
   };
 
-  $('btnCopySummary').onclick = async () => {
-    if (!report) return;
+  async function copyDiagSummary() {
+    if (!report) { toast('No report loaded yet'); return; }
     const lines = [
       'PC Diagnostics — ' + ((report.meta && report.meta.deviceId) || ''),
       (report.overall && report.overall.label) + ' (score ' + (report.overall && report.overall.score) + ')',
@@ -1292,7 +1300,17 @@ details.tech pre{
     } catch {
       toast('Clipboard blocked by browser');
     }
-  };
+  }
+  $('btnCopySummary').onclick = copyDiagSummary;
+  const btnCopyTop = $('btnCopySummaryTop');
+  if (btnCopyTop) btnCopyTop.onclick = copyDiagSummary;
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); $('btnRunTop')?.click(); }
+    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); $('btnReloadLatest')?.click(); }
+  });
 
   $('btnExportJson').onclick = () => {
     if (!report) return;

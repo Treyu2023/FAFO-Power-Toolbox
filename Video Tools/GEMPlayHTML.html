@@ -96,6 +96,9 @@
     <nav class="toolbox-nav">
         <a href="../Toolbox Launcher.html">← Toolbox</a>
         <div class="hud-controls">
+            <a href="../Movie File Manager/Media Hub.html" style="color:#00f3ff;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(0,243,255,.3);border-radius:6px" title="Media Hub">🗂️ Hub</a>
+            <a href="Video Comparison Slider Tool.html" style="color:#00f3ff;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(0,243,255,.3);border-radius:6px" title="Video Comparator">🎬 Compare</a>
+            <a href="../System Tools/Batch Media Converter.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(255,255,255,.12);border-radius:6px" title="Batch convert">🔄 Convert</a>
             <button type="button" id="btnPick" title="Pick another folder">📁 Folder</button>
             <button type="button" id="btnShuffle" title="Reshuffle all slots">🔀 Shuffle</button>
             <button type="button" id="btnMute" title="Toggle mute">🔇 Unmute</button>
@@ -109,15 +112,20 @@
                 <option value="contain">Contain</option>
                 <option value="cover">Cover</option>
             </select>
+            <button type="button" id="btnWallReport" title="Copy wall session report">📋</button>
             <span id="statusText">Pick a folder of videos</span>
         </div>
-        <span style="color:#00f3ff;opacity:.7;font-size:11px">FAFO VIDEO WALL</span>
+        <span style="color:#00f3ff;opacity:.7;font-size:11px">FAFO VIDEO WALL · <span style="opacity:.8">S shuffle · M mute · 1-4 layout</span></span>
     </nav>
 
     <div id="setupOverlay">
         <h1>FAFO VIDEO WALL</h1>
         <p>Pick a folder (Chrome/Edge). Scans recursively for video files and fills a multi-slot wall that auto-cycles when clips end.</p>
         <button class="btn" id="loadDirectoryBtn">Select Media Directory</button>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">
+            <button class="btn secondary" type="button" id="btnEmptyCompare" onclick="location.href='Video Comparison Slider Tool.html'">🎬 Video Compare</button>
+            <button class="btn secondary" type="button" onclick="location.href='../Movie File Manager/Media Hub.html'">🗂️ Media Hub</button>
+        </div>
         <button class="btn secondary" id="btnBackToolbox" type="button">← Back to Toolbox</button>
         <div class="hint-keys">Keys: <strong>S</strong> shuffle · <strong>M</strong> mute · <strong>1–4</strong> layouts · Esc overlay</div>
     </div>
@@ -273,32 +281,75 @@
             document.getElementById('btnMute').textContent = muted ? '🔇 Unmute' : '🔊 Mute';
         }
 
+        // Remember layout / fit
+        const LS_WALL = 'fafo_video_wall_settings_v1';
+        try {
+            const saved = JSON.parse(localStorage.getItem(LS_WALL) || 'null');
+            if (saved?.layout) document.getElementById('layoutSelect').value = saved.layout;
+            if (saved?.fit) {
+                document.getElementById('fitSelect').value = saved.fit;
+                objectFit = saved.fit;
+            }
+            if (typeof saved?.muted === 'boolean') {
+                muted = saved.muted;
+                document.getElementById('btnMute').textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+            }
+        } catch (_) {}
+        function saveWallSettings() {
+            try {
+                localStorage.setItem(LS_WALL, JSON.stringify({
+                    layout: document.getElementById('layoutSelect').value,
+                    fit: document.getElementById('fitSelect').value,
+                    muted,
+                }));
+            } catch (_) {}
+        }
+
         // Init default grid
-        applyLayout('4x2');
+        applyLayout(document.getElementById('layoutSelect').value || '4x2');
 
         document.getElementById('loadDirectoryBtn').addEventListener('click', () => pickAndLoad(false));
         document.getElementById('btnPick').addEventListener('click', () => pickAndLoad(false));
         document.getElementById('btnShuffle').addEventListener('click', shuffleAll);
-        document.getElementById('btnMute').addEventListener('click', toggleMute);
-        document.getElementById('btnBackToolbox').addEventListener('click', () => {
+        document.getElementById('btnMute').addEventListener('click', () => { toggleMute(); saveWallSettings(); });
+        document.getElementById('btnBackToolbox')?.addEventListener('click', () => {
             location.href = '../Toolbox Launcher.html';
         });
         document.getElementById('layoutSelect').addEventListener('change', (e) => {
             applyLayout(e.target.value);
+            saveWallSettings();
         });
         document.getElementById('fitSelect').addEventListener('change', (e) => {
             objectFit = e.target.value;
             document.querySelectorAll('video').forEach(v => { v.style.objectFit = objectFit; });
+            saveWallSettings();
+        });
+        document.getElementById('btnWallReport')?.addEventListener('click', async () => {
+            const text = [
+                'FAFO Video Wall — session report',
+                'Time: ' + new Date().toISOString(),
+                'Videos loaded: ' + videoFiles.length,
+                'Layout: ' + document.getElementById('layoutSelect').value,
+                'Fit: ' + objectFit,
+                'Muted: ' + muted,
+                'Active slots: ' + activeSlots,
+                'Status: ' + (document.getElementById('statusText')?.textContent || ''),
+            ].join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                setStatus('Report copied');
+            } catch (_) { prompt('Copy report:', text); }
         });
 
         document.addEventListener('keydown', (e) => {
             if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
             if (e.key === 's' || e.key === 'S') shuffleAll();
-            if (e.key === 'm' || e.key === 'M') toggleMute();
-            if (e.key === '1') { document.getElementById('layoutSelect').value = '2x2'; applyLayout('2x2'); }
-            if (e.key === '2') { document.getElementById('layoutSelect').value = '3x2'; applyLayout('3x2'); }
-            if (e.key === '3') { document.getElementById('layoutSelect').value = '4x2'; applyLayout('4x2'); }
-            if (e.key === '4') { document.getElementById('layoutSelect').value = '3x3'; applyLayout('3x3'); }
+            if (e.key === 'm' || e.key === 'M') { toggleMute(); saveWallSettings(); }
+            if (e.key === '1') { document.getElementById('layoutSelect').value = '2x2'; applyLayout('2x2'); saveWallSettings(); }
+            if (e.key === '2') { document.getElementById('layoutSelect').value = '3x2'; applyLayout('3x2'); saveWallSettings(); }
+            if (e.key === '3') { document.getElementById('layoutSelect').value = '4x2'; applyLayout('4x2'); saveWallSettings(); }
+            if (e.key === '4') { document.getElementById('layoutSelect').value = '3x3'; applyLayout('3x3'); saveWallSettings(); }
+            if (e.key === 'r' || e.key === 'R') document.getElementById('btnWallReport')?.click();
             if (e.key === 'Escape' && overlay.style.display === 'none') {
                 overlay.style.display = 'flex';
                 overlay.style.opacity = '1';
@@ -356,5 +407,6 @@
   });
 })();
 </script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 </body>
 </html>

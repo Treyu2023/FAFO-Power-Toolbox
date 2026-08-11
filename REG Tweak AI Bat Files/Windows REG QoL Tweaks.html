@@ -88,6 +88,10 @@
 <body>
   <nav class="nav">
     <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <a href="../System Tools/System Health Dashboard.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(167,139,250,.08)">Health Hub</a>
+      <a href="../System Tools/Startup Service Manager.html" style="color:var(--muted);text-decoration:none;font-size:11px;font-weight:600;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Startup Manager</a>
+    </div>
     <span class="t">WINDOWS REG QoL TWEAKS</span>
     <a class="btn ghost" href="Open-Folder.bat" id="btnOpenFolder" style="display:none">Open Folder</a>
   </nav>
@@ -105,8 +109,10 @@
     </div>
 
     <div class="toolbar">
-      <input class="inp" id="search" type="search" placeholder="Filter tweaks…">
+      <input class="inp" id="search" type="search" placeholder="Filter tweaks… (/)">
       <div class="chip-row" id="cats"></div>
+      <span id="tweakCount" style="font-size:12px;color:var(--muted);margin-left:auto">—</span>
+      <button type="button" class="btn ghost" id="btnCopyList" title="Copy visible tweak list">Copy list</button>
     </div>
 
     <div id="list"></div>
@@ -120,6 +126,7 @@
   </div>
 
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     const TWEAKS = [
       {
@@ -193,11 +200,28 @@
       return hay.includes(q);
     }
 
+    const PREF_KEY = 'fafo_reg_qol_prefs_v1';
+    try {
+      const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+      if (p.q) document.getElementById('search').value = p.q;
+      if (p.cat && cats.includes(p.cat)) activeCat = p.cat;
+    } catch (_) {}
+    function savePrefs() {
+      try {
+        localStorage.setItem(PREF_KEY, JSON.stringify({
+          q: document.getElementById('search').value,
+          cat: activeCat,
+        }));
+      } catch (_) {}
+    }
+
     function renderList() {
       const q = (document.getElementById('search').value || '').trim().toLowerCase();
       const list = document.getElementById('list');
       const shown = TWEAKS.filter(t => matches(t, q));
       document.getElementById('empty').classList.toggle('hidden', shown.length > 0);
+      const countEl = document.getElementById('tweakCount');
+      if (countEl) countEl.textContent = shown.length + ' / ' + TWEAKS.length + ' tweaks';
       list.innerHTML = shown.map(t => `
         <article class="card" data-id="${esc(t.id)}">
           <div class="meta">${esc(t.cat)}</div>
@@ -209,9 +233,42 @@
           </div>
         </article>
       `).join('');
+      savePrefs();
     }
 
-    document.getElementById('search').addEventListener('input', renderList);
+    // Patch category clicks to save prefs
+    const _renderCats = renderCats;
+    renderCats = function () {
+      _renderCats();
+      document.querySelectorAll('#cats .chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          // original onclick already set activeCat + renderList
+          savePrefs();
+        });
+      });
+    };
+
+    let searchTimer = null;
+    document.getElementById('search').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderList, 180);
+    });
+    document.getElementById('btnCopyList')?.addEventListener('click', async () => {
+      const q = (document.getElementById('search').value || '').trim().toLowerCase();
+      const shown = TWEAKS.filter(t => matches(t, q));
+      const lines = shown.map(t => `[${t.cat}] ${t.name} — ${t.file}`);
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        window.AIToolboxUI?.toast?.('Copied ' + shown.length + ' tweaks', 'ok');
+      } catch {
+        window.AIToolboxUI?.toast?.('Clipboard blocked', 'warn');
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('search')?.focus(); }
+    });
     renderCats();
     renderList();
 

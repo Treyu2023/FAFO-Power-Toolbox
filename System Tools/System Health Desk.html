@@ -6,6 +6,7 @@
   <title>System Health Desk — FAFO Ops</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
   <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #050a0c; --panel: rgba(8,22,20,0.94); --accent: #00e8a2; --accent2: #ffd166;
@@ -87,7 +88,16 @@
     .scroll { max-height: 260px; overflow: auto; }
     .footer { text-align: center; font-size: 11px; color: var(--muted); margin-top: 12px; }
     .err-box { color: var(--warn); font-size: 12px; margin-top: 8px; }
+    .nav-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+    .nav-chip {
+      font-size: 11px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+      color: var(--accent); text-decoration: none; font-weight: 700; background: rgba(0,232,162,.06);
+    }
+    .nav-chip:hover { background: rgba(0,232,162,.14); }
+    .nav-chip.primary { border-color: rgba(61,158,255,.45); color: var(--accent3); }
+    label.auto { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
   </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 </head>
 <body>
   <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
@@ -96,10 +106,24 @@
       <div class="badge">Ops · Admin · Loopback only</div>
       <h1>🩺 SYSTEM HEALTH DESK</h1>
       <p>Live-ish metrics for this PC + toolbox server. Privileged data via loopback API — no free-form shell.</p>
+      <div class="nav-chips">
+        <a class="nav-chip primary" href="System Health Dashboard.html">← Health Hub</a>
+        <a class="nav-chip primary" href="Secrets Presence Console.html">Secrets Presence →</a>
+        <a class="nav-chip" href="PC Diagnostics HUD.html">PC Diagnostics</a>
+      </div>
     </header>
 
     <div class="toolbar">
-      <button class="primary" type="button" id="btnRefresh">Refresh now</button>
+      <button class="primary" type="button" id="btnRefresh" title="Refresh (R)">Refresh now</button>
+      <button type="button" id="btnExport">↓ JSON</button>
+      <button type="button" id="btnCopy">Copy summary</button>
+      <label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto
+        <select id="autoInterval" style="background:#04140f;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 6px">
+          <option value="15" selected>15s</option>
+          <option value="30">30s</option>
+          <option value="60">60s</option>
+        </select>
+      </label>
       <span class="muted" id="statusLine">Loading…</span>
     </div>
 
@@ -152,6 +176,9 @@
     (function () {
       const apiBase = (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
       const $ = (id) => document.getElementById(id);
+      let lastData = null;
+      let autoTimer = null;
+      const PREF = 'fafo_health_desk_auto_v1';
 
       function pctClass(n) {
         if (n == null || isNaN(n)) return '';
@@ -183,11 +210,12 @@
           if (!d || d.ok === false && !d.host) {
             throw new Error((d && d.error) || ('HTTP ' + r.status));
           }
+          lastData = d;
           render(d);
-          $('statusLine').textContent = 'Updated ' + (d.generatedAt || '') + ' · cache ~' + (d.cacheTtlSec || 10) + 's';
+          $('statusLine').textContent = 'Updated ' + (d.generatedAt || new Date().toLocaleTimeString()) + ' · cache ~' + (d.cacheTtlSec || 10) + 's';
           $('errBox').textContent = (d.errors && d.errors.length) ? ('Partial: ' + d.errors.join('; ')) : '';
         } catch (e) {
-          $('statusLine').textContent = 'Failed — is toolbox server running on loopback?';
+          $('statusLine').textContent = 'Failed — start toolbox server (START SERVER.bat · 127.0.0.87:18765)';
           $('errBox').textContent = e.message || String(e);
         }
         $('btnRefresh').disabled = false;
@@ -240,9 +268,53 @@
         $('tbMem').innerHTML = rowsHtml(procs.topMemory);
       }
 
+      function setupAuto() {
+        if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+        if (!$('autoRefresh').checked) return;
+        const sec = Math.max(10, Number($('autoInterval').value || 15));
+        autoTimer = setInterval(() => { if (!document.hidden) load(false); }, sec * 1000);
+        try {
+          localStorage.setItem(PREF, JSON.stringify({ auto: $('autoRefresh').checked, interval: $('autoInterval').value }));
+        } catch (_) {}
+      }
+
       $('btnRefresh').onclick = () => load(true);
+      $('btnExport').onclick = () => {
+        if (!lastData) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(lastData, null, 2)], { type: 'application/json' }));
+        a.download = 'health-desk-' + Date.now() + '.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      };
+      $('btnCopy').onclick = async () => {
+        if (!lastData) return;
+        const d = lastData;
+        const lines = [
+          'System Health Desk · ' + (d.generatedAt || new Date().toISOString()),
+          'Host: ' + ((d.host && d.host.hostname) || '—'),
+          'CPU: ' + (d.cpu && d.cpu.percent != null ? Math.round(d.cpu.percent) + '%' : '—'),
+          'Mem: ' + (d.memory && d.memory.percent != null ? Math.round(d.memory.percent) + '%' : '—'),
+          'Disk free: ' + ((d.diskSystem && d.diskSystem.freeHuman) || '—'),
+          'Uptime: ' + ((d.uptime && d.uptime.human) || '—'),
+          'Server: ' + ((d.toolbox && (d.toolbox.serverUp || d.toolbox.portListening)) ? 'UP' : 'DOWN'),
+        ];
+        try { await navigator.clipboard.writeText(lines.join('\n')); } catch (_) {}
+      };
+      $('autoRefresh').onchange = setupAuto;
+      $('autoInterval').onchange = setupAuto;
+      document.addEventListener('keydown', (e) => {
+        const t = e.target;
+        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+        if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(true); }
+      });
+      try {
+        const p = JSON.parse(localStorage.getItem(PREF) || '{}');
+        if (typeof p.auto === 'boolean') $('autoRefresh').checked = p.auto;
+        if (p.interval) $('autoInterval').value = p.interval;
+      } catch (_) {}
       load(false);
-      setInterval(() => load(false), 15000);
+      setupAuto();
     })();
   </script>
 </body>

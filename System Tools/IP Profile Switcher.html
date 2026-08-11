@@ -131,6 +131,11 @@ fieldset.box legend {
 <body>
 <nav class="nav">
   <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <a href="LAN Task Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(0,243,255,.06)">← LAN Task Manager</a>
+    <a href="Hosts DNS Blocker.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Hosts DNS →</a>
+    <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+  </div>
   <span style="color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.08em">IP PROFILE SWITCHER</span>
 </nav>
 
@@ -152,10 +157,12 @@ fieldset.box legend {
     <div class="ph">Saved setups — one-click apply</div>
     <div class="pb">
       <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <input class="inp" id="profileFilter" placeholder="Filter setups… (/)" style="margin:0;min-width:160px;flex:0 1 200px">
         <button type="button" class="btn" id="btnExport" title="Download all setups as JSON (works offline from browser storage)">⬇ Export / backup</button>
         <button type="button" class="btn" id="btnBackupStamp" title="Download a timestamped backup copy">⏱ Timestamped backup</button>
         <button type="button" class="btn" id="btnImport">⬆ Import setups</button>
         <button type="button" class="btn ghost" id="btnCopyBackupHint" title="Copy path tip">📋 Path tip</button>
+        <button type="button" class="btn ghost" id="btnRefreshAdapters" title="Refresh adapters (R)">↻ Adapters</button>
         <input type="file" id="importFile" accept=".json,application/json" style="display:none">
         <span style="font-size:11px;color:var(--muted);line-height:1.4;flex:1;min-width:200px">
           Portable file: <code style="color:var(--accent)">Toolbox\data\ip_profiles.json</code>
@@ -285,6 +292,7 @@ fieldset.box legend {
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
 const LS_KEY = 'aitoolbox_ip_profiles_v1';
@@ -731,11 +739,22 @@ function downloadScript(p) {
 
 function renderProfiles() {
   const box = document.getElementById('profiles');
+  const q = (document.getElementById('profileFilter')?.value || '').trim().toLowerCase();
+  let list = profiles;
+  if (q) {
+    list = profiles.filter(p =>
+      ((p.name || '') + ' ' + (p.ip || '') + ' ' + (p.adapter || '') + ' ' + (p.adapterLabel || '') + ' ' + (p.notes || '') + ' ' + (p.mode || '')).toLowerCase().includes(q)
+    );
+  }
   if (!profiles.length) {
     box.innerHTML = '<div class="empty">No setups yet. Fill the form and click <strong>Save setup</strong>, or capture your current IP.</div>';
     return;
   }
-  box.innerHTML = profiles.map(p => {
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">No setups match filter.</div>';
+    return;
+  }
+  box.innerHTML = list.map(p => {
     const adName = (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN)
       ? '★ Active adapter (auto)'
       : (p.adapterLabel || p.adapter || '—');
@@ -851,6 +870,8 @@ async function loadAdapters() {
   fillAdapterSelects();
   renderAdapters();
   updateStatusBar();
+  const lu = document.getElementById('lastUpdated');
+  if (lu) lu.textContent = serverOnline ? ('Adapters ' + new Date().toLocaleTimeString()) : 'Server offline';
 }
 
 async function syncProfilesFromServer() {
@@ -1132,6 +1153,20 @@ document.getElementById('importFile').onchange = async (ev) => {
     toast(e.message || 'Import failed', false);
   }
 };
+
+// Profile filter + keyboard QoL
+let profileFilterTimer = null;
+document.getElementById('profileFilter')?.addEventListener('input', () => {
+  clearTimeout(profileFilterTimer);
+  profileFilterTimer = setTimeout(renderProfiles, 200);
+});
+document.getElementById('btnRefreshAdapters')?.addEventListener('click', () => loadAdapters());
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('profileFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); loadAdapters(); }
+});
 
 // Persist auto-select options + re-apply when toggled
 (function initOpts() {

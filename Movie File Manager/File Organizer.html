@@ -197,10 +197,14 @@
         <span class="server-pill offline" id="serverStatus" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = full power. Offline = click this pill or ▶ Start Server to launch the Python backend from this page (same as Media Library / Launcher).">Server …</span>
         <button class="btn" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from File Organizer. Waits for green. If blocked: Launcher → Console / Open Folder → START SERVER.bat, or SETUP (run once).bat.">▶ Start Server</button>
         <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
+        <a class="nav-link" href="Media Hub.html" title="Library + Duplicates + Organizer">🗂️ Media Hub</a>
         <a class="nav-link" href="Media Library Manager.html">🗂️ Media Library</a>
         <span class="nav-link active">✏️ File Organizer</span>
+        <a class="nav-link" href="Media Hub.html#duplicates" title="Duplicate cleanup">🗑️ Duplicates</a>
         <a class="nav-link" href="VSR Pipeline Manager.html">⚡ VSR Pipeline</a>
         <button class="btn" id="btnRescan">↻ Rescan</button>
+        <button class="btn" id="btnOrgReport" title="Copy organizer session report">📋 Report</button>
+        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent3)">/</kbd> focus search · <kbd style="font:10px Consolas;color:var(--accent3)">R</kbd> rescan · <kbd style="font:10px Consolas;color:var(--accent3)">E</kbd> report</span>
         <button class="ui-btn ghost" id="btnDebug">🐛 Debug</button>
     </nav>
 
@@ -280,7 +284,15 @@
                     </thead>
                     <tbody id="fileTableBody"></tbody>
                 </table>
-                <div class="empty" id="emptyState" style="display:none;">No files match. Add folders in Media Library and rescan.</div>
+                <div class="empty" id="emptyState" style="display:none;">
+                    <strong style="color:var(--text)">No files match</strong><br>
+                    Add watch folders in Media Library, then rescan — or clear filters.<br>
+                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">
+                        <button class="btn orange" type="button" id="btnEmptyRescan">↻ Rescan</button>
+                        <a class="btn" href="Media Library Manager.html" style="text-decoration:none">Open Library</a>
+                        <a class="btn" href="Media Hub.html#duplicates" style="text-decoration:none">Duplicates →</a>
+                    </div>
+                </div>
             </div>
             <div class="list-footer">
                 <span id="listStats">0 items</span>
@@ -378,6 +390,7 @@
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const PAGE_SIZE = 100;
         const API = () => window.AIToolboxAPI;
@@ -938,9 +951,29 @@
             } catch (e) { UI().toast(e.message, 'warn'); }
         }
 
-        document.getElementById('searchInput').oninput = () => { page = 0; loadItems(); };
-        document.getElementById('filterType').onchange = () => { page = 0; loadItems(); };
-        document.getElementById('sortBy').onchange = () => { page = 0; loadItems(); };
+        const LS_ORG = 'fafo_file_organizer_settings_v1';
+        function saveOrgSettings() {
+            try {
+                localStorage.setItem(LS_ORG, JSON.stringify({
+                    search: document.getElementById('searchInput').value,
+                    type: document.getElementById('filterType').value,
+                    sort: document.getElementById('sortBy').value,
+                }));
+            } catch (_) {}
+        }
+        function restoreOrgSettings() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(LS_ORG) || 'null');
+                if (!raw) return;
+                if (raw.search != null) document.getElementById('searchInput').value = raw.search;
+                if (raw.type != null) document.getElementById('filterType').value = raw.type;
+                if (raw.sort != null) document.getElementById('sortBy').value = raw.sort;
+            } catch (_) {}
+        }
+        restoreOrgSettings();
+        document.getElementById('searchInput').oninput = () => { page = 0; saveOrgSettings(); loadItems(); };
+        document.getElementById('filterType').onchange = () => { page = 0; saveOrgSettings(); loadItems(); };
+        document.getElementById('sortBy').onchange = () => { page = 0; saveOrgSettings(); loadItems(); };
         document.getElementById('btnPrev').onclick = () => { if (page > 0) { page--; loadItems(); } };
         document.getElementById('btnNext').onclick = () => {
             if (page < Math.ceil(total / PAGE_SIZE) - 1) { page++; loadItems(); }
@@ -1032,13 +1065,51 @@
                 UI().toast(`Copied ${(res.paths||[]).filter(p=>p.path).length} paths`, 'ok');
             } catch (e) { UI().toast(e.message, 'warn'); }
         };
-        document.getElementById('btnRescan').onclick = async () => {
+        async function doRescan() {
             const dirs = await API().listDirectories();
             for (const d of dirs) await API().scanDirectory(d.id);
             UI().toast('Rescan complete', 'ok');
             await refreshVirtualFolders();
             await loadItems();
-        };
+        }
+        document.getElementById('btnRescan').onclick = doRescan;
+        document.getElementById('btnEmptyRescan')?.addEventListener('click', doRescan);
+        document.getElementById('btnOrgReport')?.addEventListener('click', async () => {
+            const stats = document.getElementById('listStats')?.textContent || '';
+            const text = [
+                'FAFO File Organizer — session report',
+                'Time: ' + new Date().toISOString(),
+                'Server: ' + (document.getElementById('serverStatus')?.textContent || '').trim(),
+                'Search: ' + (document.getElementById('searchInput').value || '(none)'),
+                'Type: ' + (document.getElementById('filterType').value || 'all'),
+                'Sort: ' + (document.getElementById('sortBy').value || ''),
+                'Selected: ' + (typeof selected !== 'undefined' ? selected.size : 0),
+                'List: ' + stats,
+                'URL: ' + location.href,
+            ].join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI().toast('Organizer report copied', 'ok');
+            } catch (_) { prompt('Copy report:', text); }
+        });
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.key !== 'Escape') {
+                if (e.key === '/' && e.target.id !== 'searchInput') return;
+                if (e.key !== '/') return;
+            }
+            const tag = e.target?.tagName || '';
+            if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(tag)) {
+                e.preventDefault();
+                document.getElementById('searchInput')?.focus();
+                return;
+            }
+            if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+            if (e.key === 'r' || e.key === 'R') { e.preventDefault(); doRescan(); }
+            if (e.key === 'e' || e.key === 'E') {
+                e.preventDefault();
+                document.getElementById('btnOrgReport')?.click();
+            }
+        });
         document.getElementById('btnDebug').onclick = () => {
             const d = window.AIToolboxDebug;
             d?.setEnabled(!d?.enabled());

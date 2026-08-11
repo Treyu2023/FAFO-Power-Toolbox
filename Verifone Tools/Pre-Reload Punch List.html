@@ -8,6 +8,7 @@
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #05080c; --panel: #0c1218; --line: rgba(56, 189, 248, 0.18);
@@ -83,10 +84,11 @@
   <nav class="nav">
     <a href="../Toolbox Launcher.html">← Toolbox</a>
     <span style="color:var(--accent);font-size:12px;letter-spacing:.06em">VERIFONE · PUNCH LIST</span>
-    <div style="display:flex;gap:12px;align-items:center">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <span class="pill off" id="serverPill">Server…</span>
-      <a href="Commander Site Console.html">Commander Console →</a>
-      <a href="Commander Status HUD.html">Status HUD →</a>
+      <a href="Phone Assist Navigator.html" title="Counterpart · walk menus on the phone">📞 Phone Assist</a>
+      <a href="Commander Site Console.html" title="Counterpart · site dossiers">⛽ Console</a>
+      <button type="button" class="btn ghost" id="btnCopyPunchStatus" style="padding:6px 10px;font-size:11px" title="Copy status summary">📋 Copy status</button>
     </div>
   </nav>
 
@@ -109,10 +111,11 @@
         <option value="">Start server + set watched folders first…</option>
       </select>
 
-      <div class="actions">
+      <div class="actions" style="position:sticky;bottom:8px;background:rgba(12,18,24,.92);padding:10px 0;z-index:5">
         <button class="btn primary" type="button" id="btnCreateOpen" disabled>▶ Create &amp; open punch list</button>
         <button class="btn ghost" type="button" id="btnStartServer">▶ Start server</button>
         <button class="btn ghost" type="button" id="btnOpenConsole">⛽ Commander Console</button>
+        <button class="btn ghost" type="button" id="btnOpenPhone">📞 Phone Assist</button>
         <button class="btn ghost" type="button" id="btnOpenFolder">📂 Open VerifoneLibrary</button>
       </div>
       <div class="status" id="status">Checking backend…</div>
@@ -194,9 +197,11 @@
           sel.innerHTML = '<option value="">No sites indexed — open Console → Watched folders → Sync</option>';
           sel.disabled = true;
           btn.disabled = true;
-          setStatus('Server up, but no site exports indexed yet. Set watched SMS backup folders in Commander Site Console.', 'warn');
+          setStatus('Server up, but no site exports indexed yet. Open Commander Site Console → Watched folders → Sync, or Phone Assist while you wait.', 'warn');
           return;
         }
+        const lastSite = (() => { try { return localStorage.getItem('fafo_prpl_site') || ''; } catch { return ''; } })();
+        if (lastSite && options.some(o => o.id === lastSite)) sel.value = lastSite;
         sel.innerHTML = options.map(o => `<option value="${o.id.replace(/"/g, '')}">${o.label.replace(/</g, '&lt;')}</option>`).join('');
         sel.disabled = false;
         btn.disabled = false;
@@ -250,6 +255,32 @@
 
     el('btnOpenConsole').addEventListener('click', () => {
       location.href = 'Commander Site Console.html';
+    });
+    el('btnOpenPhone')?.addEventListener('click', () => {
+      location.href = 'Phone Assist Navigator.html';
+    });
+    el('siteSelect')?.addEventListener('change', () => {
+      try { localStorage.setItem('fafo_prpl_site', el('siteSelect').value || ''); } catch (_) {}
+    });
+    el('btnCopyPunchStatus')?.addEventListener('click', async () => {
+      const lines = [
+        'Pre-Reload Punch List — status',
+        '==============================',
+        'Site: ' + (el('siteSelect')?.selectedOptions?.[0]?.textContent || el('siteSelect')?.value || '—'),
+        'Server: ' + (el('serverPill')?.textContent || '—'),
+        'Status: ' + (el('status')?.textContent || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        setStatus('Status summary copied', 'ok');
+      } catch (_) { setStatus('Copy failed', 'bad'); }
+    });
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Enter' && !el('btnCreateOpen')?.disabled) el('btnCreateOpen')?.click();
     });
 
     el('btnOpenFolder').addEventListener('click', async () => {

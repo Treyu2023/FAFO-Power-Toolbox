@@ -142,6 +142,7 @@
             #info-panel { width: calc(100% - 32px); }
         }
     </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 </head>
 <body>
     <div id="loading-overlay">
@@ -157,11 +158,14 @@
         <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
         <div id="title-block">
             <h1>SOLAR SYSTEM DEBRIS TRACKER</h1>
-            <p>NORAD TLE propagation · CelesTrak archived catalogs · SGP4/SDP4</p>
+            <p>NORAD TLE propagation · CelesTrak archived catalogs · SGP4/SDP4 · Space pause · C copy focus</p>
         </div>
-        <div class="status-pill">
-            <div class="status-dot loading" id="status-dot"></div>
-            <span id="status-text">Loading orbital data…</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn" type="button" id="btn-copy-focus" title="Copy focused object / stats summary">📋 Copy focus</button>
+          <div class="status-pill">
+              <div class="status-dot loading" id="status-dot"></div>
+              <span id="status-text">Loading orbital data…</span>
+          </div>
         </div>
     </div>
 
@@ -971,14 +975,44 @@ COSMOS 2251 DEB
         composer.setSize(window.innerWidth, window.innerHeight);
     }
 
+    const LS_SOLAR = 'fafo_solar_debris_prefs';
+    function saveSolarPrefs() {
+        try {
+            localStorage.setItem(LS_SOLAR, JSON.stringify({
+                speedIdx,
+                viewMode: typeof viewMode !== 'undefined' ? viewMode : 'solar',
+                lockPlanet: document.getElementById('lock-planet')?.value,
+                lockDist: document.getElementById('lock-distance')?.value,
+                camLock: document.getElementById('cam-lock')?.checked,
+                bloom: document.getElementById('gfx-bloom')?.checked,
+                trails: document.getElementById('gfx-trails')?.checked,
+                labels: document.getElementById('gfx-labels')?.checked,
+                atmo: document.getElementById('gfx-atmo')?.checked,
+                debrisSize: document.getElementById('debris-size')?.value,
+                cats: {
+                    fengyun: document.getElementById('cat-fengyun')?.checked,
+                    iridium: document.getElementById('cat-iridium')?.checked,
+                    cosmos: document.getElementById('cat-cosmos')?.checked,
+                    analyst: document.getElementById('cat-analyst')?.checked,
+                },
+            }));
+        } catch (_) {}
+    }
+    function loadSolarPrefs() {
+        try {
+            return JSON.parse(localStorage.getItem(LS_SOLAR) || 'null');
+        } catch { return null; }
+    }
+
     function setupUI() {
-        document.getElementById('btn-play').onclick = () => { playing = true; };
-        document.getElementById('btn-pause').onclick = () => { playing = false; };
+        document.getElementById('btn-play').onclick = () => { playing = true; saveSolarPrefs(); };
+        document.getElementById('btn-pause').onclick = () => { playing = false; saveSolarPrefs(); };
         document.getElementById('btn-now').onclick = () => { simDate = new Date(); updateSimTimeInput(); };
 
         document.getElementById('speed-slider').oninput = e => {
             speedIdx = parseInt(e.target.value);
             document.getElementById('speed-val').textContent = SPEED_STEPS[speedIdx].toLocaleString() + '×';
+            saveSolarPrefs();
         };
 
         document.getElementById('sim-time').onchange = e => {
@@ -1057,8 +1091,86 @@ COSMOS 2251 DEB
 
         simDate = new Date();
         updateSimTimeInput();
+        // restore prefs
+        const pref = loadSolarPrefs();
+        if (pref) {
+            if (pref.speedIdx != null) {
+                speedIdx = pref.speedIdx;
+                const sl = document.getElementById('speed-slider');
+                if (sl) sl.value = speedIdx;
+            }
+            if (pref.lockPlanet && document.getElementById('lock-planet')) {
+                document.getElementById('lock-planet').value = pref.lockPlanet;
+                lockPlanetName = pref.lockPlanet;
+            }
+            if (pref.lockDist != null && document.getElementById('lock-distance')) {
+                document.getElementById('lock-distance').value = pref.lockDist;
+                document.getElementById('lock-dist-val').textContent = parseFloat(pref.lockDist).toFixed(1);
+            }
+            if (pref.camLock != null && document.getElementById('cam-lock')) {
+                document.getElementById('cam-lock').checked = pref.camLock;
+                lockEnabled = !!pref.camLock;
+            }
+            ['gfx-bloom','gfx-trails','gfx-labels','gfx-atmo'].forEach((id, i) => {
+                const keys = ['bloom','trails','labels','atmo'];
+                if (pref[keys[i]] != null && document.getElementById(id)) document.getElementById(id).checked = pref[keys[i]];
+            });
+            if (pref.debrisSize != null && document.getElementById('debris-size')) document.getElementById('debris-size').value = pref.debrisSize;
+            if (pref.cats) {
+                if (pref.cats.fengyun != null) document.getElementById('cat-fengyun').checked = pref.cats.fengyun;
+                if (pref.cats.iridium != null) document.getElementById('cat-iridium').checked = pref.cats.iridium;
+                if (pref.cats.cosmos != null) document.getElementById('cat-cosmos').checked = pref.cats.cosmos;
+                if (pref.cats.analyst != null) document.getElementById('cat-analyst').checked = pref.cats.analyst;
+            }
+        }
         document.getElementById('speed-val').textContent = SPEED_STEPS[speedIdx].toLocaleString() + '×';
         updateLockDistanceUI(lockOffset.length());
+
+        function copyFocusSummary() {
+            const name = document.getElementById('info-name')?.textContent || '—';
+            const body = document.getElementById('info-body')?.innerText || '';
+            const stats = ['stat-total','stat-visible','stat-leo','stat-meo'].map(id => {
+                const el = document.getElementById(id);
+                return el ? el.textContent : '0';
+            });
+            const text = [
+                'Solar System Debris Tracker',
+                '==========================',
+                'Focus: ' + name,
+                body,
+                '',
+                'Totals: ' + stats[0] + ' · Visible: ' + stats[1] + ' · LEO: ' + stats[2] + ' · MEO/HEO: ' + stats[3],
+                'Speed: ' + (SPEED_STEPS[speedIdx] || '') + '× · Playing: ' + !!playing,
+                'Time: ' + new Date().toISOString(),
+            ].join('\n');
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    try { AIToolboxUI?.toast?.('Focus summary copied', 'ok'); } catch (_) {}
+                });
+            }
+        }
+        document.getElementById('btn-copy-focus')?.addEventListener('click', copyFocusSummary);
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target && e.target.tagName) || '';
+            const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+            if (typing) return;
+            if (e.key === ' ' || e.code === 'Space') {
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+                e.preventDefault();
+                playing = !playing;
+                try { AIToolboxUI?.toast?.(playing ? 'Playing' : 'Paused', 'ok'); } catch (_) {}
+                saveSolarPrefs();
+            } else if (e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+                e.preventDefault();
+                copyFocusSummary();
+            }
+        });
+        ['cam-lock','lock-planet','lock-distance','gfx-bloom','gfx-trails','gfx-labels','gfx-atmo','debris-size',
+         'cat-fengyun','cat-iridium','cat-cosmos','cat-analyst'].forEach(id => {
+            const n = document.getElementById(id);
+            if (n) n.addEventListener('change', saveSolarPrefs);
+            if (n) n.addEventListener('input', saveSolarPrefs);
+        });
     }
 
     // ─── Boot ──────────────────────────────────────────────────────────────────
@@ -1116,10 +1228,17 @@ COSMOS 2251 DEB
   try {
     if (!sessionStorage.getItem('solar_tip') && window.AIToolboxUI?.toast) {
       sessionStorage.setItem('solar_tip','1');
-      AIToolboxUI.toast('Debris Tracker · drag to orbit · Esc = launcher', 'ok');
+      AIToolboxUI.toast('Debris Tracker · Space pause · Shift+C copy focus', 'ok');
     }
+  } catch(_){}
+  try {
+    window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+      toolId: 'solar-debris',
+      helpLines: ['Space — play/pause', 'Shift+C — copy focus summary', 'View prefs persist in localStorage'],
+    });
   } catch(_){}
 })();
 </script>
+  <script src="shared/aitoolbox-pro.js"></script>
 </body>
 </html>

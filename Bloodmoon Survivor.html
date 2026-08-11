@@ -402,9 +402,16 @@
   }
   #minimapCanvas { width: 100%; height: 100%; }
 </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 </head>
 <body>
 <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
+<div id="bmQoLBar" style="position:fixed;top:10px;right:12px;z-index:9999;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+  <a href="Typing Assistant Trainer.html" style="font:600 11px system-ui;color:#c4b5fd;text-decoration:none;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(167,139,250,.4)" title="Counterpart · Typing Trainer">⌨️ Typing Trainer</a>
+  <a href="Empire Seed.html" style="font:600 11px system-ui;color:#fbbf24;text-decoration:none;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(251,191,36,.4)" title="Break · Empire Seed">👑 Empire Seed</a>
+  <button type="button" id="bmMuteBtn" style="font:600 11px system-ui;color:#e8e0f0;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(255,255,255,.2);cursor:pointer" title="Mute toggle (persists)">🔊 Sound</button>
+  <button type="button" id="bmExportScore" style="font:600 11px system-ui;color:#e8e0f0;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(255,255,255,.2);cursor:pointer" title="Export run / high score">📋 Score</button>
+</div>
 <div id="gameWrap">
   <canvas id="game"></canvas>
 
@@ -414,6 +421,7 @@
     <div class="charSelect" id="charSelect"></div>
     <button class="btn" id="startBtn">Enter the Night</button>
     <button class="btn secondary" id="howToBtn">How to Play</button>
+    <p style="margin-top:14px;font-size:12px;color:var(--muted)">ESC pause · M mute · score export in corner</p>
   </div>
 
   <div id="howToScreen" class="overlay hidden">
@@ -430,6 +438,7 @@
 
   <div id="pauseScreen" class="overlay hidden">
     <h2 style="font-family:Cinzel,serif;color:var(--gold);letter-spacing:3px;">PAUSED</h2>
+    <p style="color:var(--muted);font-size:13px;margin-top:8px">ESC or Resume · M mute · 📋 Score exports this run</p>
     <button class="btn" id="resumeBtn" style="margin-top:24px;">Resume</button>
     <button class="btn secondary" id="quitBtn">Quit to Menu</button>
   </div>
@@ -1533,7 +1542,66 @@
       // let game handle unlock first
     }
   }, true);
+
+  // QoL: mute persist · high-score export · pause hint (M key)
+  const LS_MUTE = 'fafo_bloodmoon_mute';
+  const LS_HS = 'fafo_bloodmoon_highscores';
+  window.BM_MUTED = localStorage.getItem(LS_MUTE) === '1';
+  function syncMuteBtn() {
+    const b = document.getElementById('bmMuteBtn');
+    if (!b) return;
+    b.textContent = window.BM_MUTED ? '🔇 Muted' : '🔊 Sound';
+  }
+  syncMuteBtn();
+  document.getElementById('bmMuteBtn')?.addEventListener('click', () => {
+    window.BM_MUTED = !window.BM_MUTED;
+    try { localStorage.setItem(LS_MUTE, window.BM_MUTED ? '1' : '0'); } catch (_) {}
+    syncMuteBtn();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      window.BM_MUTED = !window.BM_MUTED;
+      try { localStorage.setItem(LS_MUTE, window.BM_MUTED ? '1' : '0'); } catch (_) {}
+      syncMuteBtn();
+    }
+  });
+  function exportScore() {
+    let best = [];
+    try { best = JSON.parse(localStorage.getItem(LS_HS) || '[]'); } catch { best = []; }
+    const killTxt = document.getElementById('killDisplay')?.textContent;
+    const timeTxt = document.getElementById('timeDisplay')?.textContent;
+    const killN = killTxt != null && killTxt !== '' ? parseInt(killTxt, 10) : null;
+    const run = {
+      at: new Date().toISOString(),
+      kills: Number.isFinite(killN) ? killN : null,
+      time: timeTxt || null,
+      state: document.getElementById('pauseScreen')?.classList.contains('hidden') === false ? 'paused'
+        : document.getElementById('hud')?.classList.contains('hidden') === false ? 'playing' : 'menu',
+    };
+    if (run.kills != null) {
+      best.push({ kills: run.kills, time: run.time, at: run.at });
+      best.sort((a, b) => (b.kills || 0) - (a.kills || 0));
+      best = best.slice(0, 20);
+      try { localStorage.setItem(LS_HS, JSON.stringify(best)); } catch (_) {}
+    }
+    const text = JSON.stringify({ current: run, highscores: best }, null, 2);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        try { AIToolboxUI?.toast?.('Bloodmoon score JSON copied', 'ok'); } catch (_) {}
+      });
+    }
+  }
+  document.getElementById('bmExportScore')?.addEventListener('click', exportScore);
+  try {
+    window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+      toolId: 'bloodmoon',
+      helpLines: ['ESC — pause', 'M — mute (persists)', 'Score button exports run + best kills'],
+    });
+  } catch (_) {}
 })();
 </script>
+  <script src="shared/aitoolbox-pro.js"></script>
 </body>
 </html>
