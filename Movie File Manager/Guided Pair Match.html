@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guided Pair Match — AI HTML Toolbox</title>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <style>
+    :root {
+      --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.2);
+      --accent: #00f3ff; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24;
+      --danger: #f87171; --text: #e2e8f0; --muted: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: radial-gradient(ellipse at 40% -10%, #0f1a2e, var(--bg) 55%);
+      color: var(--text); min-height: 100vh;
+      padding-bottom: 110px; /* room for sticky legend */
+    }
+    .top {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      background: rgba(5,5,8,.95); position: sticky; top: 0; z-index: 30;
+    }
+    .top h1 { font-size: 15px; color: var(--accent); letter-spacing: .04em; font-weight: 700; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; }
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 14px;
+    }
+    .controls label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .controls input[type="number"], .controls select {
+      background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 8px; border-radius: 6px; width: 70px;
+    }
+    .progress {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 14px; font-size: 12px;
+    }
+    .progress .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); }
+    .progress strong { color: var(--text); }
+    .bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; display: flex; }
+    .bar span { display: block; height: 100%; transition: width .2s; }
+    .bar .done { background: var(--ok); }
+    .bar .try { background: rgba(0,243,255,.35); }
+    .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+    .pane {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      overflow: hidden; min-height: 280px; display: flex; flex-direction: column;
+    }
+    .pane-h {
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+      display: flex; justify-content: space-between; gap: 8px;
+    }
+    .pane-h .name { color: var(--text); text-transform: none; font-weight: 600; font-size: 12px;
+      max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-box {
+      flex: 1; background: #000; min-height: 220px; max-height: 42vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .media-box video, .media-box img { max-width: 100%; max-height: 42vh; object-fit: contain; width: 100%; height: 100%; }
+    .media-box .empty { color: var(--muted); font-size: 12px; padding: 20px; text-align: center; }
+    .info {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px 16px; margin-bottom: 12px;
+    }
+    .info h2 { font-size: 15px; margin-bottom: 8px; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; font-size: 12px; }
+    .meta .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .score { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; border: 1px solid var(--border); }
+    .score.high { color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .score.mid { color: var(--warn); border-color: rgba(251,191,36,.4); }
+    .score.low { color: var(--danger); border-color: rgba(248,113,113,.4); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+    .ui-btn.match { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.12); }
+    .ui-btn.match:hover { background: var(--ok); color: #04120a; }
+    .ui-btn.nomatch { border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,.1); }
+    .ui-btn.nomatch:hover { background: var(--danger); color: #1a0505; }
+    .ui-btn.undo-main {
+      border-color: var(--warn); color: var(--warn); background: rgba(251,191,36,.1);
+      font-weight: 700;
+    }
+    .ui-btn.undo-main:hover:not(:disabled) { background: var(--warn); color: #1a1200; }
+    .ui-btn.undo-main:disabled { opacity: .4; cursor: not-allowed; }
+    .queue-strip {
+      display: flex; flex-wrap: wrap; gap: 4px; max-height: 56px; overflow: auto; margin-top: 8px;
+    }
+    .qdot {
+      width: 22px; height: 22px; border-radius: 6px; font-size: 9px;
+      border: 1px solid var(--border); color: var(--muted);
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.25);
+    }
+    .qdot.cur { border-color: var(--accent); color: var(--accent); }
+    .qdot.yes { background: rgba(74,222,128,.25); color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .qdot.no { background: rgba(248,113,113,.15); color: var(--danger); }
+    .qdot.skip { background: rgba(251,191,36,.12); color: var(--warn); }
+    .empty-state {
+      text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
+    }
+    .log {
+      margin-top: 14px; font-size: 11px; color: var(--muted); font-family: Consolas, monospace;
+      max-height: 120px; overflow: auto; background: rgba(0,0,0,.25); border-radius: 8px; padding: 10px;
+    }
+    .undo-hint {
+      font-size: 11px; color: var(--muted); margin-left: 4px;
+    }
+    .undo-hint.has { color: var(--warn); }
+
+    /* ── Sticky on-screen key legend ── */
+    .key-legend {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+      background: linear-gradient(180deg, rgba(8,10,18,.92), rgba(5,5,8,.98));
+      border-top: 1px solid rgba(0,243,255,.28);
+      box-shadow: 0 -8px 32px rgba(0,0,0,.55);
+      padding: 10px 14px 12px;
+      backdrop-filter: blur(10px);
+    }
+    .key-legend-inner {
+      max-width: 1280px; margin: 0 auto;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; justify-content: center;
+    }
+    .key-legend-title {
+      width: 100%; text-align: center; font-size: 10px; text-transform: uppercase;
+      letter-spacing: .12em; color: var(--muted); margin-bottom: 2px;
+    }
+    .key-chip {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; min-width: 72px; padding: 8px 10px 7px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.35);
+      transition: transform .08s ease, border-color .08s, box-shadow .08s, background .08s, color .08s;
+      cursor: default; user-select: none;
+    }
+    .key-chip .key-glyph {
+      font-family: Consolas, 'Segoe UI', monospace;
+      font-size: 13px; font-weight: 800; letter-spacing: .04em;
+      color: var(--accent);
+      min-height: 22px; display: flex; align-items: center; gap: 4px;
+    }
+    .key-chip .key-glyph kbd {
+      display: inline-block; padding: 2px 7px; border-radius: 5px;
+      border: 1px solid rgba(0,243,255,.35);
+      background: rgba(0,243,255,.08);
+      font-size: 12px; font-weight: 800; color: var(--accent);
+      box-shadow: 0 2px 0 rgba(0,0,0,.4);
+    }
+    .key-chip .key-label {
+      font-size: 10px; color: var(--muted); text-align: center; line-height: 1.25; max-width: 90px;
+    }
+    .key-chip.pressed,
+    .key-chip.flash {
+      transform: translateY(1px) scale(1.04);
+      border-color: var(--accent);
+      background: rgba(0,243,255,.18);
+      box-shadow: 0 0 18px rgba(0,243,255,.35), inset 0 0 12px rgba(0,243,255,.12);
+    }
+    .key-chip.pressed .key-glyph kbd,
+    .key-chip.flash .key-glyph kbd {
+      background: var(--accent); color: #041018; border-color: var(--accent);
+      box-shadow: none;
+    }
+    .key-chip.pressed .key-label,
+    .key-chip.flash .key-label { color: #e8f8ff; }
+    .key-chip[data-action="match"].pressed,
+    .key-chip[data-action="match"].flash {
+      border-color: var(--ok); background: rgba(74,222,128,.2);
+      box-shadow: 0 0 18px rgba(74,222,128,.35);
+    }
+    .key-chip[data-action="match"].pressed .key-glyph kbd,
+    .key-chip[data-action="match"].flash .key-glyph kbd {
+      background: var(--ok); color: #04120a; border-color: var(--ok);
+    }
+    .key-chip[data-action="reject"].pressed,
+    .key-chip[data-action="reject"].flash {
+      border-color: var(--danger); background: rgba(248,113,113,.18);
+      box-shadow: 0 0 18px rgba(248,113,113,.3);
+    }
+    .key-chip[data-action="reject"].pressed .key-glyph kbd,
+    .key-chip[data-action="reject"].flash .key-glyph kbd {
+      background: var(--danger); color: #1a0505; border-color: var(--danger);
+    }
+    .key-chip[data-action="undo"].pressed,
+    .key-chip[data-action="undo"].flash {
+      border-color: var(--warn); background: rgba(251,191,36,.18);
+      box-shadow: 0 0 18px rgba(251,191,36,.3);
+    }
+    .key-chip[data-action="undo"].pressed .key-glyph kbd,
+    .key-chip[data-action="undo"].flash .key-glyph kbd {
+      background: var(--warn); color: #1a1200; border-color: var(--warn);
+    }
+    .key-chip.clickable { cursor: pointer; }
+    .key-chip.clickable:hover { border-color: rgba(0,243,255,.4); }
+    @media (max-width: 700px) {
+      .key-chip { min-width: 58px; padding: 6px 6px; }
+      .key-chip .key-label { font-size: 9px; }
+      body { padding-bottom: 140px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <h1>🎯 Guided Pair Match</h1>
+    <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
+    <button class="ui-btn primary" type="button" id="btnStartServer">▶ Start Server</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#match'">Compare Hub</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">Media Hub</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">Pair Review</button>
+  </div>
+
+  <div class="wrap">
+    <div class="controls">
+      <button class="ui-btn primary" type="button" id="btnStart">▶ Start / Resume queue</button>
+      <button class="ui-btn ghost" type="button" id="btnReset" title="Clear session rejections & stats">Reset session</button>
+      <label>Max tries per file
+        <input type="number" id="maxTries" min="3" max="30" value="10">
+      </label>
+      <label>Min score %
+        <input type="number" id="minPct" min="20" max="95" value="40">
+      </label>
+      <label>Kind
+        <select id="kindFilter" style="width:auto">
+          <option value="">All</option>
+          <option value="video">Video</option>
+          <option value="image">Image</option>
+        </select>
+      </label>
+      <label title="Prefer non-upscale names as anchors (originals first)">
+        <input type="checkbox" id="preferSources" checked> Sources first
+      </label>
+      <span id="statusLine" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+    </div>
+
+    <div class="progress" id="progressBox">
+      <div class="row">
+        <span>Anchor <strong id="anchorIdx">0</strong> / <strong id="anchorTotal">0</strong>
+          · Try <strong id="tryIdx">0</strong> / <strong id="tryMax">10</strong></span>
+        <span>
+          <span style="color:var(--ok)" id="nMatched">0 matched</span> ·
+          <span style="color:var(--warn)" id="nSkipped">0 skipped</span> ·
+          <span style="color:var(--danger)" id="nExhausted">0 exhausted</span>
+        </span>
+      </div>
+      <div class="bar"><span class="done" id="barDone" style="width:0%"></span><span class="try" id="barTry" style="width:0%"></span></div>
+      <div class="queue-strip" id="tryDots"></div>
+    </div>
+
+    <div id="emptyState" class="empty-state">
+      <strong style="color:var(--text)">Process-of-elimination pairing</strong><br>
+      Take one unpaired file, show the best match candidates one-by-one (up to 10).<br>
+      Use the <strong>key legend</strong> at the bottom — keys light up when pressed.<br>
+      <strong>Z / ⌫</strong> step back (history up to 50) · <strong>double-tap Z</strong> jumps back 5 · <strong>F</strong> forward 1.<br><br>
+      Needs the toolbox server and a scanned library.
+    </div>
+
+    <div id="activeUI" style="display:none">
+      <div class="stage">
+        <div class="pane">
+          <div class="pane-h"><span>Anchor (locked)</span><span class="name" id="anchorName">—</span></div>
+          <div class="media-box" id="anchorMedia"><div class="empty">—</div></div>
+        </div>
+        <div class="pane">
+          <div class="pane-h"><span>Candidate</span><span class="name" id="candName">—</span></div>
+          <div class="media-box" id="candMedia"><div class="empty">—</div></div>
+        </div>
+      </div>
+
+      <div class="info">
+        <h2 id="pairTitle">—</h2>
+        <div class="meta">
+          <div><div class="lbl">Confidence</div><div><span class="score" id="scorePill">—</span></div></div>
+          <div><div class="lbl">Reason</div><div id="reasonVal">—</div></div>
+          <div><div class="lbl">Proposed roles</div><div id="rolesVal">—</div></div>
+          <div><div class="lbl">Type</div><div id="typeVal">—</div></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="ui-btn match" type="button" id="btnYes">✓ Match (Y)</button>
+        <button class="ui-btn nomatch" type="button" id="btnNo">✗ Not this (N)</button>
+        <button class="ui-btn ghost" type="button" id="btnSkip">Skip anchor (S)</button>
+        <button class="ui-btn ghost" type="button" id="btnPlay">⏯ Play both</button>
+        <button class="ui-btn undo-main" type="button" id="btnUndo" disabled title="Back 1 · double-tap jumps 5 (history up to 50)">↩ Back (Z)</button>
+        <button class="ui-btn ghost" type="button" id="btnRedo" disabled title="Forward 1 step">↪ Forward (F)</button>
+        <span class="undo-hint" id="undoHint">History empty</span>
+      </div>
+    </div>
+
+    <div class="log" id="sessionLog">Session log…</div>
+  </div>
+
+  <!-- Always-visible keyboard legend -->
+  <div class="key-legend" id="keyLegend" role="group" aria-label="Keyboard shortcuts">
+    <div class="key-legend-title">Keyboard · keys light up when pressed · Back up to 50 · double-tap Back jumps 5 · Forward +1</div>
+    <div class="key-legend-inner">
+      <div class="key-chip clickable" data-action="match" data-keys="y,enter" title="Lock this pair">
+        <div class="key-glyph"><kbd>Y</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>⏎</kbd></div>
+        <div class="key-label">Match</div>
+      </div>
+      <div class="key-chip clickable" data-action="reject" data-keys="n,x,arrowright" title="Reject this candidate">
+        <div class="key-glyph"><kbd>N</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>X</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>→</kbd></div>
+        <div class="key-label">Not this</div>
+      </div>
+      <div class="key-chip clickable" data-action="skip" data-keys="s" title="Skip this anchor file">
+        <div class="key-glyph"><kbd>S</kbd></div>
+        <div class="key-label">Skip file</div>
+      </div>
+      <div class="key-chip clickable" data-action="play" data-keys=" ,space" title="Play or pause both previews">
+        <div class="key-glyph"><kbd>Space</kbd></div>
+        <div class="key-label">Play both</div>
+      </div>
+      <div class="key-chip clickable" data-action="compare" data-keys="c" title="Open comparator after next match">
+        <div class="key-glyph"><kbd>C</kbd></div>
+        <div class="key-label">Compare next</div>
+      </div>
+      <div class="key-chip clickable" data-action="undo" data-keys="z,backspace" title="Back 1 · double-tap within 0.4s = back 5 (max 50 history)">
+        <div class="key-glyph"><kbd>Z</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>⌫</kbd></div>
+        <div class="key-label">Back · 2× = −5</div>
+      </div>
+      <div class="key-chip clickable" data-action="redo" data-keys="f" title="Forward 1 step">
+        <div class="key-glyph"><kbd>F</kbd></div>
+        <div class="key-label">Forward +1</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-version.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script>
+    const API = () => window.AIToolboxAPI;
+    const UI = () => window.AIToolboxUI;
+    const STORAGE = 'fafo_guided_pair_match_v1';
+
+    /** @type {any} */
+    let state = {
+      anchors: [],
+      anchorIndex: 0,
+      tryIndex: 0,
+      candidates: [],
+      rejected: {},
+      matched: 0,
+      skipped: 0,
+      exhausted: 0,
+      log: [],
+    };
+    let busy = false;
+
+    const MAX_HISTORY = 50;
+    /** @type {{ type: string, label: string, before: object, after: object, pairId?: string|null, pairPayload?: object|null }[]} */
+    let history = [];
+    /** Index of last applied entry; -1 = at origin (before any action). */
+    let historyCursor = -1;
+    /** Double-tap Back within this window = jump 5. */
+    const DOUBLE_MS = 400;
+    let pendingBackTimer = null;
+    let lastBackTapAt = 0;
+
+    function esc(s) {
+      return UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function toast(m, t) { UI()?.toast?.(m, t || ''); }
+
+    function snapshotCore() {
+      return {
+        anchorIndex: state.anchorIndex,
+        tryIndex: state.tryIndex,
+        candidates: state.candidates.slice(),
+        rejected: JSON.parse(JSON.stringify(state.rejected)),
+        matched: state.matched,
+        skipped: state.skipped,
+        exhausted: state.exhausted,
+        anchors: state.anchors.slice(),
+      };
+    }
+
+    function restoreCore(snap) {
+      state.anchorIndex = snap.anchorIndex;
+      state.tryIndex = snap.tryIndex;
+      state.candidates = (snap.candidates || []).slice();
+      state.rejected = JSON.parse(JSON.stringify(snap.rejected || {}));
+      state.matched = snap.matched || 0;
+      state.skipped = snap.skipped || 0;
+      state.exhausted = snap.exhausted || 0;
+      if (snap.anchors) state.anchors = snap.anchors.slice();
+    }
+
+    function clearHistory() {
+      history = [];
+      historyCursor = -1;
+      if (pendingBackTimer) { clearTimeout(pendingBackTimer); pendingBackTimer = null; }
+      lastBackTapAt = 0;
+      updateHistoryUi();
+    }
+
+    /**
+     * Push a completed action. Truncates any redo branch.
+     * @param {{ type: string, label: string, before: object, after: object, pairId?: string|null, pairPayload?: object|null }} entry
+     */
+    function pushHistory(entry) {
+      // Drop redo future
+      if (historyCursor < history.length - 1) {
+        history = history.slice(0, historyCursor + 1);
+      }
+      history.push(entry);
+      // Cap at 50
+      while (history.length > MAX_HISTORY) {
+        history.shift();
+      }
+      historyCursor = history.length - 1;
+      updateHistoryUi();
+    }
+
+    function canBack() { return historyCursor >= 0; }
+    function canForward() { return historyCursor < history.length - 1; }
+    function backAvailable() { return historyCursor + 1; }
+    function forwardAvailable() { return history.length - 1 - historyCursor; }
+
+    function updateHistoryUi() {
+      const btnBack = document.getElementById('btnUndo');
+      const btnFwd = document.getElementById('btnRedo');
+      const hint = document.getElementById('undoHint');
+      if (!btnBack || !hint) return;
+      const backN = backAvailable();
+      const fwdN = forwardAvailable();
+      btnBack.disabled = backN <= 0;
+      if (btnFwd) btnFwd.disabled = fwdN <= 0;
+      if (backN <= 0 && fwdN <= 0) {
+        hint.textContent = 'History empty (0/50)';
+        hint.classList.remove('has');
+        return;
+      }
+      const nextBack = backN > 0 ? (history[historyCursor]?.label || history[historyCursor]?.type) : '—';
+      const nextFwd = fwdN > 0 ? (history[historyCursor + 1]?.label || history[historyCursor + 1]?.type) : '—';
+      hint.textContent = `Back ${backN}/50 · next ↩ ${nextBack}` +
+        (fwdN > 0 ? ` · Forward ${fwdN} · next ↪ ${nextFwd}` : '');
+      hint.classList.add('has');
+    }
+
+    function saveSession() {
+      try {
+        localStorage.setItem(STORAGE, JSON.stringify({
+          rejected: state.rejected,
+          matched: state.matched,
+          skipped: state.skipped,
+          exhausted: state.exhausted,
+          anchorIndex: state.anchorIndex,
+        }));
+      } catch { /* ignore */ }
+    }
+
+    function loadSession() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORAGE) || '{}');
+        if (raw.rejected) state.rejected = raw.rejected;
+        if (raw.matched) state.matched = raw.matched || 0;
+        if (raw.skipped) state.skipped = raw.skipped || 0;
+        if (raw.exhausted) state.exhausted = raw.exhausted || 0;
+      } catch { /* ignore */ }
+    }
+
+    function logLine(msg) {
+      const ts = new Date().toLocaleTimeString();
+      state.log.unshift(`[${ts}] ${msg}`);
+      state.log = state.log.slice(0, 80);
+      document.getElementById('sessionLog').textContent = state.log.join('\n') || 'Session log…';
+    }
+
+    function scoreClass(c) {
+      const p = c <= 1 ? Math.round(c * 100) : Math.round(c);
+      if (p >= 75) return 'high';
+      if (p >= 50) return 'mid';
+      return 'low';
+    }
+
+    function scoreLabel(c) {
+      if (c == null) return '—';
+      return (c <= 1 ? Math.round(c * 100) : Math.round(c)) + '%';
+    }
+
+    function maxTries() {
+      return Math.max(3, Math.min(30, parseInt(document.getElementById('maxTries').value, 10) || 10));
+    }
+
+    function minRatio() {
+      return Math.max(0.2, Math.min(0.95, (parseInt(document.getElementById('minPct').value, 10) || 40) / 100));
+    }
+
+    function currentAnchor() {
+      return state.anchors[state.anchorIndex] || null;
+    }
+
+    function currentCandidate() {
+      return state.candidates[state.tryIndex] || null;
+    }
+
+    function rejectedFor(anchorId) {
+      if (!state.rejected[anchorId]) state.rejected[anchorId] = [];
+      return state.rejected[anchorId];
+    }
+
+    function setMedia(el, mediaId, kind, name) {
+      if (!mediaId) {
+        el.innerHTML = '<div class="empty">No media</div>';
+        return;
+      }
+      const url = API().mediaFileUrl(mediaId);
+      const isImage = kind === 'image' || /\.(png|jpe?g|webp|gif|bmp)$/i.test(name || '');
+      el.innerHTML = isImage
+        ? `<img alt="" src="${esc(url)}">`
+        : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
+      const m = el.querySelector('img,video');
+      if (m) m.onerror = () => { el.innerHTML = '<div class="empty">Preview failed</div>'; };
+    }
+
+    function updateProgress() {
+      const total = state.anchors.length;
+      const aIdx = total ? state.anchorIndex + 1 : 0;
+      const mt = maxTries();
+      document.getElementById('anchorIdx').textContent = String(aIdx);
+      document.getElementById('anchorTotal').textContent = String(total);
+      document.getElementById('tryIdx').textContent = String(Math.min(state.tryIndex + 1, state.candidates.length || 0));
+      document.getElementById('tryMax').textContent = String(mt);
+      document.getElementById('nMatched').textContent = state.matched + ' matched';
+      document.getElementById('nSkipped').textContent = state.skipped + ' skipped';
+      document.getElementById('nExhausted').textContent = state.exhausted + ' exhausted';
+
+      const donePct = total ? (state.anchorIndex / total) * 100 : 0;
+      const tryPct = total ? (1 / total) * ((state.tryIndex + 1) / Math.max(1, mt)) * 100 : 0;
+      document.getElementById('barDone').style.width = Math.min(100, donePct) + '%';
+      document.getElementById('barTry').style.width = Math.min(100 - donePct, tryPct) + '%';
+
+      const dots = document.getElementById('tryDots');
+      const n = Math.max(state.candidates.length, mt);
+      dots.innerHTML = Array.from({ length: n }, (_, i) => {
+        let cls = 'qdot';
+        if (i === state.tryIndex) cls += ' cur';
+        if (i < state.tryIndex) cls += ' no';
+        return `<span class="${cls}">${i + 1}</span>`;
+      }).join('');
+    }
+
+    function render() {
+      updateProgress();
+      updateHistoryUi();
+      const anchor = currentAnchor();
+      const cand = currentCandidate();
+      const empty = document.getElementById('emptyState');
+      const active = document.getElementById('activeUI');
+
+      if (!anchor || !state.anchors.length) {
+        empty.style.display = '';
+        active.style.display = 'none';
+        if (!state.anchors.length) {
+          empty.innerHTML = '<strong style="color:var(--text)">No unpaired anchors</strong><br>Scan folders in Media Library, then Start again.<br><span style="opacity:.8">Keys below always work once a queue is running.</span>';
+        } else if (state.anchorIndex >= state.anchors.length) {
+          empty.innerHTML = `<strong style="color:var(--text)">Queue complete</strong><br>
+            Matched ${state.matched} · Skipped ${state.skipped} · Exhausted ${state.exhausted}.<br>
+            <button class="ui-btn primary" type="button" id="btnRestart" style="margin-top:12px">Run again</button>
+            <button class="ui-btn undo-main" type="button" id="btnUndoDone" style="margin-top:12px;margin-left:8px" ${canBack() ? '' : 'disabled'}>↩ Back (Z)</button>
+            <button class="ui-btn ghost" type="button" id="btnRedoDone" style="margin-top:12px;margin-left:8px" ${canForward() ? '' : 'disabled'}>↪ Forward (F)</button>`;
+          document.getElementById('btnRestart')?.addEventListener('click', () => startQueue(true));
+          document.getElementById('btnUndoDone')?.addEventListener('click', () => requestBack());
+          document.getElementById('btnRedoDone')?.addEventListener('click', () => redoSteps(1));
+        }
+        return;
+      }
+
+      empty.style.display = 'none';
+      active.style.display = '';
+
+      document.getElementById('anchorName').textContent = anchor.name || '—';
+      setMedia(document.getElementById('anchorMedia'), anchor.id, anchor.type, anchor.name);
+
+      if (!cand) {
+        document.getElementById('candName').textContent = 'No candidates';
+        document.getElementById('candMedia').innerHTML = '<div class="empty">No more candidates — exhausting this anchor</div>';
+        document.getElementById('pairTitle').textContent = 'No match candidates left for this file';
+        document.getElementById('scorePill').textContent = '—';
+        document.getElementById('reasonVal').textContent = '—';
+        document.getElementById('rolesVal').textContent = '—';
+        document.getElementById('typeVal').textContent = anchor.type || '—';
+        return;
+      }
+
+      document.getElementById('candName').textContent = cand.candidate_name || cand.after_name || '—';
+      setMedia(document.getElementById('candMedia'), cand.candidate_id, cand.type, cand.candidate_name);
+
+      document.getElementById('pairTitle').textContent =
+        `${cand.before_name || '?'}  →  ${cand.after_name || '?'}`;
+      const pill = document.getElementById('scorePill');
+      pill.textContent = scoreLabel(cand.confidence);
+      pill.className = 'score ' + scoreClass(cand.confidence);
+      document.getElementById('reasonVal').textContent = cand.reason || '—';
+      document.getElementById('rolesVal').textContent =
+        `Before: ${cand.before_name} · After: ${cand.after_name}`;
+      document.getElementById('typeVal').textContent = cand.type || anchor.type || '—';
+    }
+
+    async function loadCandidatesForAnchor() {
+      const anchor = currentAnchor();
+      if (!anchor) return;
+      const exclude = rejectedFor(anchor.id).slice();
+      const data = await API().pairCandidates(anchor.id, {
+        limit: maxTries(),
+        minRatio: minRatio(),
+        excludeIds: exclude,
+      });
+      state.candidates = data.candidates || [];
+      state.tryIndex = 0;
+      document.getElementById('statusLine').textContent =
+        `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers`;
+      if (!state.candidates.length) {
+        logLine(`No candidates for ${anchor.name} — skip`);
+        // Treat as exhaust without stacking undo of auto-advance noise unless user just acted
+        state.exhausted++;
+        state.anchorIndex++;
+        state.tryIndex = 0;
+        state.candidates = [];
+        saveSession();
+        if (state.anchorIndex >= state.anchors.length) {
+          render();
+          return;
+        }
+        return loadCandidatesForAnchor();
+      }
+      logLine(`Anchor: ${anchor.name} · ${state.candidates.length} candidates`);
+      render();
+    }
+
+    function advanceAnchor() {
+      state.anchorIndex++;
+      state.tryIndex = 0;
+      state.candidates = [];
+      saveSession();
+      if (state.anchorIndex >= state.anchors.length) {
+        render();
+        toast('Guided match queue finished', 'ok');
+        return;
+      }
+      loadCandidatesForAnchor().catch(e => {
+        toast(e.message || String(e), 'warn');
+        logLine('Error: ' + (e.message || e));
+      });
+    }
+
+    async function startQueue(forceReload) {
+      busy = true;
+      document.getElementById('btnStart').disabled = true;
+      document.getElementById('statusLine').textContent = 'Loading unpaired queue…';
+      try {
+        if (!(await API().isOnline(true))) {
+          await API().startServer({ mode: 'tray', waitMs: 60000 });
+        }
+        if (!(await API().isOnline(true))) throw new Error('Server offline');
+
+        const kind = document.getElementById('kindFilter').value || null;
+        const preferSources = document.getElementById('preferSources').checked;
+        const res = await API().pairAnchors({
+          limit: 400,
+          kind: kind || undefined,
+          preferSources,
+        });
+        state.anchors = res.anchors || [];
+        if (forceReload) {
+          state.anchorIndex = 0;
+          state.tryIndex = 0;
+          state.candidates = [];
+          clearHistory();
+        }
+        if (state.anchorIndex >= state.anchors.length) state.anchorIndex = 0;
+        if (!state.anchors.length) {
+          toast('No unpaired media — rescan library', 'warn');
+          render();
+          return;
+        }
+        logLine(`Loaded ${state.anchors.length} unpaired anchors`);
+        toast(`${state.anchors.length} unpaired files in queue`, 'ok');
+        await loadCandidatesForAnchor();
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+        logLine('Start failed: ' + (e.message || e));
+      } finally {
+        busy = false;
+        document.getElementById('btnStart').disabled = false;
+      }
+    }
+
+    async function acceptMatch() {
+      if (busy) return;
+      const cand = currentCandidate();
+      const anchor = currentAnchor();
+      if (!cand || !anchor) return;
+
+      const before = snapshotCore();
+      const pairPayload = {
+        beforeMediaId: cand.before_id,
+        afterMediaId: cand.after_id,
+        name: `${cand.before_name} ↔ ${cand.after_name}`,
+        kind: cand.type || anchor.type || 'video',
+        pinned: true,
+        notes: 'guided-pair-match',
+      };
+      busy = true;
+      try {
+        const pair = await API().savePair(pairPayload);
+        state.matched++;
+        logLine(`MATCH ${cand.before_name} ↔ ${cand.after_name} (${scoreLabel(cand.confidence)})`);
+        toast('Pair locked · Z = back · F = forward', 'ok');
+
+        // Advance after match
+        state.anchorIndex++;
+        state.tryIndex = 0;
+        state.candidates = [];
+        saveSession();
+
+        const after = snapshotCore();
+        pushHistory({
+          type: 'match',
+          label: `Match ${cand.before_name} ↔ ${cand.after_name}`,
+          before,
+          after,
+          pairId: pair.id || pair.pair_id || null,
+          pairPayload,
+        });
+
+        if (window.__openCompareAfterMatch) {
+          const url = API().comparatorUrl({ id: pair.id, kind: pair.kind || 'video' }, {});
+          window.open(url, '_blank');
+        }
+        if (state.anchorIndex >= state.anchors.length) {
+          // Keep after snapshot as end-of-queue
+          if (historyCursor >= 0 && history[historyCursor]) {
+            history[historyCursor].after = snapshotCore();
+          }
+          render();
+          toast('Guided match queue finished', 'ok');
+          return;
+        }
+        await loadCandidatesForAnchor();
+        // Store post-load position so Forward lands on the next candidate screen
+        if (historyCursor >= 0 && history[historyCursor]?.type === 'match') {
+          history[historyCursor].after = snapshotCore();
+        }
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+        logLine('Match failed: ' + (e.message || e));
+      } finally {
+        busy = false;
+      }
+    }
+
+    function rejectCandidate() {
+      if (busy) return;
+      const cand = currentCandidate();
+      const anchor = currentAnchor();
+      if (!cand || !anchor) return;
+
+      const before = snapshotCore();
+      rejectedFor(anchor.id).push(cand.candidate_id);
+      logLine(`No: ${cand.candidate_name} vs ${anchor.name}`);
+      state.tryIndex++;
+      saveSession();
+
+      if (state.tryIndex >= state.candidates.length || state.tryIndex >= maxTries()) {
+        state.exhausted++;
+        logLine(`Exhausted tries for ${anchor.name} — next anchor`);
+        state.anchorIndex++;
+        state.tryIndex = 0;
+        state.candidates = [];
+        saveSession();
+        const after = snapshotCore();
+        pushHistory({
+          type: 'exhaust',
+          label: `Exhausted ${anchor.name} (last: ${cand.candidate_name})`,
+          before,
+          after,
+          pairId: null,
+          pairPayload: null,
+        });
+        if (state.anchorIndex >= state.anchors.length) {
+          render();
+          return;
+        }
+        loadCandidatesForAnchor().then(() => {
+          if (historyCursor >= 0 && history[historyCursor]?.type === 'exhaust') {
+            history[historyCursor].after = snapshotCore();
+          }
+        }).catch(e => toast(e.message || String(e), 'warn'));
+        return;
+      }
+
+      const after = snapshotCore();
+      pushHistory({
+        type: 'reject',
+        label: `Reject ${cand.candidate_name}`,
+        before,
+        after,
+        pairId: null,
+        pairPayload: null,
+      });
+      render();
+    }
+
+    function skipAnchor() {
+      if (busy) return;
+      const anchor = currentAnchor();
+      if (!anchor) return;
+      const before = snapshotCore();
+      state.skipped++;
+      logLine(`Skip anchor ${anchor.name}`);
+      state.anchorIndex++;
+      state.tryIndex = 0;
+      state.candidates = [];
+      saveSession();
+      const after = snapshotCore();
+      pushHistory({
+        type: 'skip',
+        label: `Skip ${anchor.name}`,
+        before,
+        after,
+        pairId: null,
+        pairPayload: null,
+      });
+      if (state.anchorIndex >= state.anchors.length) {
+        render();
+        return;
+      }
+      loadCandidatesForAnchor().then(() => {
+        if (historyCursor >= 0 && history[historyCursor]?.type === 'skip') {
+          history[historyCursor].after = snapshotCore();
+        }
+      }).catch(e => toast(e.message || String(e), 'warn'));
+    }
+
+    /**
+     * Step backward `n` history entries (max available, cap 50 stack).
+     * Double-tap Back requests n=5 via requestBack().
+     */
+    async function undoSteps(n) {
+      if (busy) return;
+      n = Math.max(1, Math.min(n | 0, backAvailable()));
+      if (n <= 0) {
+        toast('Nothing to go back to', 'warn');
+        return;
+      }
+      busy = true;
+      try {
+        const start = historyCursor;
+        const target = historyCursor - n + 1; // oldest entry we will undo
+        // Delete pairs for match actions in reverse order (newest first)
+        for (let i = start; i >= target; i--) {
+          const a = history[i];
+          if (a?.type === 'match' && a.pairId && API().deletePair) {
+            try {
+              await API().deletePair(a.pairId);
+              logLine(`Back: deleted pair ${a.pairId}`);
+            } catch (e) {
+              logLine('Back: pair delete note: ' + (e.message || e));
+            }
+          }
+        }
+        restoreCore(history[target].before);
+        historyCursor = target - 1;
+        saveSession();
+        const labels = history.slice(target, start + 1).map(h => h.label || h.type).reverse();
+        logLine(`BACK ×${n}: ${labels.join(' ← ')}`);
+        toast(n === 1 ? `Back: ${history[target].label || history[target].type}` : `Back ×${n}`, 'ok');
+        updateHistoryUi();
+        if (!state.candidates.length && currentAnchor()) {
+          await loadCandidatesForAnchor();
+        } else {
+          render();
+        }
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      } finally {
+        busy = false;
+      }
+    }
+
+    /**
+     * Re-apply one step forward (redo).
+     */
+    async function redoSteps(n) {
+      if (busy) return;
+      n = Math.max(1, Math.min(n | 0, forwardAvailable()));
+      if (n <= 0) {
+        toast('Nothing to go forward to', 'warn');
+        return;
+      }
+      busy = true;
+      try {
+        for (let k = 0; k < n; k++) {
+          const next = history[historyCursor + 1];
+          if (!next) break;
+          // Re-create pair if this was a match
+          if (next.type === 'match' && next.pairPayload) {
+            try {
+              const pair = await API().savePair(next.pairPayload);
+              next.pairId = pair.id || pair.pair_id || next.pairId;
+              logLine(`Forward: re-locked pair ${next.pairId}`);
+            } catch (e) {
+              logLine('Forward match re-lock failed: ' + (e.message || e));
+              toast('Could not re-lock pair: ' + (e.message || e), 'warn');
+              break;
+            }
+          }
+          restoreCore(next.after);
+          historyCursor++;
+        }
+        saveSession();
+        logLine(`FORWARD ×${n}`);
+        toast(n === 1 ? `Forward: ${history[historyCursor]?.label || ''}` : `Forward ×${n}`, 'ok');
+        updateHistoryUi();
+        if (!state.candidates.length && currentAnchor()) {
+          await loadCandidatesForAnchor();
+        } else {
+          render();
+        }
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      } finally {
+        busy = false;
+      }
+    }
+
+    /** Single tap = back 1; double-tap within DOUBLE_MS = back 5. */
+    function requestBack() {
+      const now = Date.now();
+      if (lastBackTapAt && (now - lastBackTapAt) < DOUBLE_MS) {
+        // Double tap — cancel pending single and jump 5
+        if (pendingBackTimer) {
+          clearTimeout(pendingBackTimer);
+          pendingBackTimer = null;
+        }
+        lastBackTapAt = 0;
+        undoSteps(5);
+        return;
+      }
+      lastBackTapAt = now;
+      if (pendingBackTimer) clearTimeout(pendingBackTimer);
+      pendingBackTimer = setTimeout(() => {
+        pendingBackTimer = null;
+        lastBackTapAt = 0;
+        undoSteps(1);
+      }, DOUBLE_MS);
+    }
+
+    function playBoth() {
+      document.querySelectorAll('#activeUI video').forEach(v => {
+        if (v.paused) v.play().catch(() => {});
+        else v.pause();
+      });
+    }
+
+    /* ── Key legend highlight ── */
+    function normalizeKey(e) {
+      if (e.key === ' ') return 'space';
+      if (e.key === 'Enter') return 'enter';
+      if (e.key === 'ArrowRight') return 'arrowright';
+      if (e.key === 'Backspace') return 'backspace';
+      return String(e.key || '').toLowerCase();
+    }
+
+    function chipsForKey(keyName) {
+      return [...document.querySelectorAll('.key-chip')].filter(chip => {
+        const keys = (chip.dataset.keys || '').split(',').map(s => s.trim().toLowerCase());
+        return keys.includes(keyName) || keys.includes(keyName === ' ' ? 'space' : keyName);
+      });
+    }
+
+    function setChipPressed(keyName, on) {
+      chipsForKey(keyName).forEach(chip => {
+        chip.classList.toggle('pressed', !!on);
+      });
+    }
+
+    function flashAction(action) {
+      document.querySelectorAll(`.key-chip[data-action="${action}"]`).forEach(chip => {
+        chip.classList.add('flash');
+        setTimeout(() => chip.classList.remove('flash'), 180);
+      });
+    }
+
+    function runAction(action) {
+      flashAction(action);
+      if (action === 'match') acceptMatch();
+      else if (action === 'reject') rejectCandidate();
+      else if (action === 'skip') skipAnchor();
+      else if (action === 'play') playBoth();
+      else if (action === 'compare') {
+        window.__openCompareAfterMatch = true;
+        toast('Will open comparator on next match', 'ok');
+      }
+      else if (action === 'undo') requestBack();
+      else if (action === 'redo') redoSteps(1);
+    }
+
+    // Wire buttons
+    document.getElementById('btnStart').onclick = () => startQueue(false);
+    document.getElementById('btnReset').onclick = () => {
+      if (!confirm('Clear session rejections, counters, and history?')) return;
+      state.rejected = {};
+      state.matched = state.skipped = state.exhausted = 0;
+      state.anchorIndex = 0;
+      state.tryIndex = 0;
+      state.candidates = [];
+      clearHistory();
+      saveSession();
+      logLine('Session reset');
+      render();
+    };
+    document.getElementById('btnYes').onclick = () => runAction('match');
+    document.getElementById('btnNo').onclick = () => runAction('reject');
+    document.getElementById('btnSkip').onclick = () => runAction('skip');
+    document.getElementById('btnPlay').onclick = () => runAction('play');
+    document.getElementById('btnUndo').onclick = () => requestBack();
+    document.getElementById('btnRedo').onclick = () => redoSteps(1);
+
+    // Legend chips clickable
+    document.getElementById('keyLegend').addEventListener('click', (e) => {
+      const chip = e.target.closest('.key-chip');
+      if (!chip) return;
+      runAction(chip.dataset.action);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      const key = normalizeKey(e);
+      setChipPressed(key, true);
+
+      if (key === 'y' || key === 'enter') { e.preventDefault(); runAction('match'); }
+      else if (key === 'n' || key === 'x' || key === 'arrowright') { e.preventDefault(); runAction('reject'); }
+      else if (key === 's') { e.preventDefault(); runAction('skip'); }
+      else if (key === 'space') { e.preventDefault(); runAction('play'); }
+      else if (key === 'c') {
+        e.preventDefault();
+        runAction('compare');
+      }
+      else if (key === 'z' || key === 'backspace') {
+        e.preventDefault();
+        requestBack(); // single = −1, double within 400ms = −5
+      }
+      else if (key === 'f') {
+        e.preventDefault();
+        runAction('redo');
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      const key = normalizeKey(e);
+      setChipPressed(key, false);
+    });
+    window.addEventListener('blur', () => {
+      document.querySelectorAll('.key-chip.pressed').forEach(c => c.classList.remove('pressed'));
+    });
+
+    if (UI()?.bindServerControls) {
+      UI().bindServerControls({
+        statusEl: '#serverPill',
+        startBtn: '#btnStartServer',
+      });
+    }
+
+    loadSession();
+    render();
+    if (new URLSearchParams(location.search).get('autoload') === '1') {
+      startQueue(false);
+    }
+  </script>
+</body>
+</html>

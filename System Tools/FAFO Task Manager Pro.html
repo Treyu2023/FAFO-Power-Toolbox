@@ -88,7 +88,14 @@
     .btn.sm { padding: 5px 8px; font-size: 10px; }
     .btn:disabled { opacity: .45; cursor: wait; }
 
-    .table-wrap { overflow: auto; max-height: 520px; }
+    .table-wrap { overflow: auto; max-height: 520px; position: relative; }
+    .list-freeze-pill {
+      display: none; position: sticky; top: 0; z-index: 5;
+      margin: 0; padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+      text-align: center; color: #fcd34d; background: rgba(20,16,8,0.92);
+      border-bottom: 1px solid rgba(251,191,36,0.35);
+    }
+    .table-wrap.is-frozen .list-freeze-pill { display: block; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th {
       position: sticky; top: 0; background: #0a0e18; z-index: 2;
@@ -264,7 +271,8 @@
               <button class="btn" type="button" id="btnReloadProcs">Refresh</button>
             </div>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap" id="procTableWrap">
+            <div class="list-freeze-pill" id="procFreezePill">⏸ Live refresh paused while scrolling</div>
             <table>
               <thead>
                 <tr>
@@ -774,16 +782,53 @@
       renderModeBars();
     }
 
+    let listScrollFrozen = false;
+    let listScrollResumeTimer = null;
+    let loadProcsPending = false;
+
+    function setListScrollFrozen(on) {
+      listScrollFrozen = !!on;
+      const wrap = $('procTableWrap');
+      if (wrap) wrap.classList.toggle('is-frozen', listScrollFrozen);
+      if (!listScrollFrozen && loadProcsPending) {
+        loadProcsPending = false;
+        loadProcs().catch(() => {});
+      }
+    }
+
+    function wireProcScrollFreeze() {
+      const wrap = $('procTableWrap');
+      if (!wrap || wrap.dataset.freezeWired) return;
+      wrap.dataset.freezeWired = '1';
+      wrap.addEventListener('scroll', () => {
+        setListScrollFrozen(true);
+        clearTimeout(listScrollResumeTimer);
+        // Resume auto-refresh shortly after scrolling stops
+        listScrollResumeTimer = setTimeout(() => setListScrollFrozen(false), 450);
+      }, { passive: true });
+    }
+
     async function loadProcs() {
+      if (listScrollFrozen) {
+        loadProcsPending = true;
+        return;
+      }
       const search = $('procSearch').value.trim();
       const sort = $('procSort').value;
       const data = await api(`/tmpro/processes?sort_by=${encodeURIComponent(sort)}&search=${encodeURIComponent(search)}&limit=300`);
+      if (listScrollFrozen) {
+        loadProcsPending = true;
+        return;
+      }
       lastProcs = data.processes || [];
       const tb = $('procBody');
       if (!lastProcs.length) {
         tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No processes</td></tr>';
         return;
       }
+      // Preserve scroll position across refresh so the row under the cursor doesn't jump
+      const wrap = $('procTableWrap');
+      const prevScroll = wrap ? wrap.scrollTop : 0;
       tb.innerHTML = lastProcs.map(p => {
         const i = p.intel || {};
         const e = i.efficiency || {};
@@ -813,6 +858,8 @@
       });
       bindModeToggleClicks(tb);
       renderModeBars();
+      if (wrap) wrap.scrollTop = prevScroll;
+      wireProcScrollFreeze();
     }
 
     async function openDrawer(pid) {
@@ -1024,12 +1071,41 @@
     (async () => {
       await checkServer();
       if (online) loadDash();
-      setInterval(async () => {
+      // Adaptive poll: pause when tab hidden; slower when idle views; normal for live process list
+      let pollMs = 8000;
+      let pollTimer = null;
+      function desiredPollMs() {
+        if (document.hidden) return 0; // paused
+        const v = document.querySelector('.nav-btn.active')?.dataset.view;
+        if (v === 'procs') return 5000;   // live process view
+        if (v === 'dash') return 12000;   // overview
+        return 20000;                    // static intel / modes / ratings
+      }
+      async function tick() {
+        if (document.hidden) return;
         await checkServer();
         const v = document.querySelector('.nav-btn.active')?.dataset.view;
-        if (online && v === 'procs') loadProcs();
+        // Skip process re-render while user is scrolling the list
+        if (online && v === 'procs' && !listScrollFrozen) loadProcs();
+        else if (online && v === 'procs' && listScrollFrozen) loadProcsPending = true;
         if (online && v === 'dash') loadDash();
-      }, 8000);
+      }
+      wireProcScrollFreeze();
+      function armPoll() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null;
+        pollMs = desiredPollMs();
+        if (!pollMs) return;
+        pollTimer = setInterval(tick, pollMs);
+      }
+      document.addEventListener('visibilitychange', () => {
+        armPoll();
+        if (!document.hidden) tick().catch(() => {});
+      });
+      document.querySelectorAll('.nav-btn').forEach((b) => {
+        b.addEventListener('click', () => setTimeout(armPoll, 50));
+      });
+      armPoll();
     })();
   })();
   </script>

@@ -4,6 +4,15 @@ Append-only style. Newest at top.
 
 ---
 
+## 2026-08-11 — Public hygiene: owner-private modules removed from git
+
+- **Actor:** Grok Build  
+- **Action:** Untracked/gitignored TaxForge suite, Investor Portal, Xero proxy ops/routes, private launcher tiles. Server optionally loads private modules when present locally.  
+- **Note:** Owner machine retains files on disk. See `private/README.md`.  
+- **History:** Older commits may still contain removed paths until history rewrite (optional).
+
+---
+
 ## 2026-08-02 — Hands: B Takeout + C Xero proxy (then git push)
 
 - **Actor:** Grok Build Hands  

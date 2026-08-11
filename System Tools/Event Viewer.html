@@ -106,18 +106,25 @@ tr:hover td{background:rgba(255,255,255,.03)}
   <div class="callout">
     <strong>How to read this:</strong>
     Green/Fine themes are normal clutter. Yellow means watch if you feel a symptom. Red means act or investigate the related hardware/app.
+    Defaults use a <strong>6-hour lite sample</strong> so opening this tool does not bog the PC — widen the window or sample size only when you need more history.
     For ranked “what’s wrong + what to try first,” open
-    <a href="Event Deep Dive.html?run=1" style="color:var(--accent);font-weight:700">Event Deep Dive</a>.
+    <a href="Event Deep Dive.html" style="color:var(--accent);font-weight:700">Event Deep Dive</a>
+    (it waits for you to click Run).
   </div>
 
   <div class="toolbar">
-    <a class="btn" href="Event Deep Dive.html?run=1" style="text-decoration:none">Deep dive (ranked fixes)</a>
+    <a class="btn" href="Event Deep Dive.html" style="text-decoration:none" title="Opens ranked analysis — run when ready (avoids auto-scanning on open)">Deep dive (ranked fixes)</a>
     <button class="btn" id="btnRefresh">Refresh</button>
-    <select class="sel" id="hours">
-      <option value="6">Last 6 hours</option>
-      <option value="24" selected>Last 24 hours</option>
+    <select class="sel" id="hours" title="Smaller windows load much faster">
+      <option value="6" selected>Last 6 hours (fast)</option>
+      <option value="24">Last 24 hours</option>
       <option value="72">Last 3 days</option>
-      <option value="168">Last 7 days</option>
+      <option value="168">Last 7 days (heavier)</option>
+    </select>
+    <select class="sel" id="sampleSize" title="How many events to sample from Windows">
+      <option value="150" selected>Lite sample</option>
+      <option value="300">Normal sample</option>
+      <option value="500">Deep sample</option>
     </select>
     <input class="inp" id="search" placeholder="Search provider or message…" style="min-width:200px">
     <select class="sel" id="logFilter">
@@ -128,6 +135,7 @@ tr:hover td{background:rgba(255,255,255,.03)}
     <a class="btn ghost" href="System Health Dashboard.html" style="text-decoration:none">Health Hub</a>
     <a class="btn ghost" href="PC Reports and Log Viewer/index.html" style="text-decoration:none">Report Library</a>
   </div>
+  <p id="loadHint" class="sub" style="margin-top:-8px;margin-bottom:12px;display:none"></p>
 
   <div class="stats" id="stats"></div>
 
@@ -169,9 +177,27 @@ let summary = null;
 let timeline = null;
 let activeTheme = null;
 let tab = 'themes';
+let loadGen = 0; // ignore stale responses when user changes filters mid-flight
 
 function qs(name) {
   return new URLSearchParams(location.search).get(name);
+}
+
+function sampleMax() {
+  const n = Number(document.getElementById('sampleSize')?.value || 150);
+  return Number.isFinite(n) ? Math.max(50, Math.min(n, 800)) : 150;
+}
+
+function setLoadHint(msg) {
+  const el = document.getElementById('loadHint');
+  if (!el) return;
+  if (!msg) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.textContent = msg;
 }
 
 function setPill(ok, text) {
@@ -299,76 +325,114 @@ function switchTab(name) {
   document.getElementById('view-providers').classList.toggle('hidden', name !== 'providers');
 }
 
-async function loadSummary() {
+async function loadSummary(gen) {
   const hours = document.getElementById('hours').value;
-  const s = await UI().apiFetch(`/events/summary?hours=${hours}&max_events=400`);
+  const max = sampleMax();
+  setLoadHint(`Sampling themes (last ${hours}h · up to ${max} events)…`);
+  const s = await UI().apiFetch(`/events/summary?hours=${hours}&max_events=${max}`);
+  if (gen !== loadGen) return;
   summary = s;
   renderStats(s);
   renderThemes(s);
   renderProviders(s);
+  setLoadHint(
+    `Sampled ${s.sampled ?? '—'} events · ${(s.themes || []).length} themes · window ${s.windowHours || hours}h`
+  );
 }
 
-async function loadTimeline() {
+async function loadTimeline(gen) {
   const hours = document.getElementById('hours').value;
   const q = document.getElementById('search').value.trim();
   const log = document.getElementById('logFilter').value;
-  const params = new URLSearchParams({ hours, max_events: '200' });
+  // Timeline stays smaller than summary — list view only needs recent hits
+  const max = Math.min(200, Math.max(80, Math.floor(sampleMax() * 0.6)));
+  const params = new URLSearchParams({ hours, max_events: String(max) });
   if (q) params.set('q', q);
   if (log) params.set('log', log);
   if (activeTheme) params.set('theme', activeTheme);
+  setLoadHint(`Loading timeline (up to ${max} rows)…`);
   const data = await UI().apiFetch('/events/query?' + params.toString());
+  if (gen !== loadGen) return;
   timeline = data;
   renderTimeline(data);
+  const n = (data?.events || []).length;
+  setLoadHint(`Timeline: ${n}${data?.limited ? '+' : ''} row(s)`);
 }
 
 async function load() {
   const btn = document.getElementById('btnRefresh');
+  const gen = ++loadGen;
   btn.disabled = true;
   try {
     await UI().apiFetch('/health');
+    if (gen !== loadGen) return;
     setPill(true, 'Connected');
   } catch {
+    if (gen !== loadGen) return;
     setPill(false, 'Server offline');
+    setLoadHint('');
     document.getElementById('view-themes').innerHTML =
       '<div class="panel"><div class="pb">Server offline — start the toolbox server, then refresh.</div></div>';
     btn.disabled = false;
     return;
   }
   try {
-    await loadSummary();
-    if (tab === 'timeline' || activeTheme) await loadTimeline();
+    // Themes first (cheap enough for hub). Timeline only when user asks or deep-link.
+    await loadSummary(gen);
+    if (gen !== loadGen) return;
+    if (tab === 'timeline' || activeTheme) await loadTimeline(gen);
   } catch (e) {
+    if (gen !== loadGen) return;
+    setLoadHint('');
     document.getElementById('view-themes').innerHTML =
       `<div class="panel"><div class="pb" style="color:var(--danger)">${esc(e.message || e)}</div></div>`;
   }
-  btn.disabled = false;
+  if (gen === loadGen) btn.disabled = false;
 }
 
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     switchTab(t.dataset.tab);
-    if (t.dataset.tab === 'timeline' && !timeline) loadTimeline().catch(console.error);
+    if (t.dataset.tab === 'timeline' && !timeline) {
+      const gen = loadGen;
+      loadTimeline(gen).catch(console.error);
+    }
   });
 });
 document.getElementById('btnRefresh').onclick = load;
-document.getElementById('hours').onchange = load;
+document.getElementById('hours').onchange = () => {
+  timeline = null;
+  load();
+};
+document.getElementById('sampleSize').onchange = () => {
+  timeline = null;
+  load();
+};
 document.getElementById('logFilter').onchange = () => {
-  if (tab === 'timeline') loadTimeline();
+  if (tab === 'timeline') {
+    const gen = ++loadGen;
+    loadTimeline(gen).catch(console.error);
+  }
 };
 let searchTimer = null;
 document.getElementById('search').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     if (tab !== 'timeline') switchTab('timeline');
-    loadTimeline().catch(console.error);
-  }, 350);
+    const gen = ++loadGen;
+    loadTimeline(gen).catch(console.error);
+  }, 450);
 });
 
 // Deep link: ?theme=disk-retries or ?q=Bluetooth
 const t0 = qs('theme');
 const q0 = qs('q');
+const h0 = qs('hours');
+const s0 = qs('sample');
 if (t0) activeTheme = t0;
 if (q0) document.getElementById('search').value = q0;
+if (h0 && ['6', '24', '72', '168'].includes(h0)) document.getElementById('hours').value = h0;
+if (s0 && ['150', '300', '500'].includes(s0)) document.getElementById('sampleSize').value = s0;
 if (t0 || q0) tab = 'timeline';
 
 UI()?.mountServerBar?.({ onOnline: load });

@@ -152,12 +152,14 @@ fieldset.box legend {
     <div class="ph">Saved setups — one-click apply</div>
     <div class="pb">
       <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-        <button type="button" class="btn" id="btnExport">⬇ Export setups file</button>
-        <button type="button" class="btn" id="btnImport">⬆ Import setups file</button>
+        <button type="button" class="btn" id="btnExport" title="Download all setups as JSON (works offline from browser storage)">⬇ Export / backup</button>
+        <button type="button" class="btn" id="btnBackupStamp" title="Download a timestamped backup copy">⏱ Timestamped backup</button>
+        <button type="button" class="btn" id="btnImport">⬆ Import setups</button>
+        <button type="button" class="btn ghost" id="btnCopyBackupHint" title="Copy path tip">📋 Path tip</button>
         <input type="file" id="importFile" accept=".json,application/json" style="display:none">
-        <span style="font-size:11px;color:var(--muted);line-height:1.4">
-          Portable file lives at <code style="color:var(--accent)">AI HTML TOOLBOX\data\ip_profiles.json</code>
-          — copy that file (or the whole Toolbox folder) to another PC.
+        <span style="font-size:11px;color:var(--muted);line-height:1.4;flex:1;min-width:200px">
+          Portable file: <code style="color:var(--accent)">Toolbox\data\ip_profiles.json</code>
+          · Export works even offline (from this browser). Keep a backup before mass-editing adapters.
         </span>
       </div>
       <div id="profiles" class="profiles"></div>
@@ -1015,33 +1017,74 @@ document.getElementById('btnRefresh').onclick = () => {
   refresh();
 };
 
-// --- Portable export / import ---
+// --- Portable export / import / backup ---
+function buildExportBlob() {
+  const list = loadLocalProfiles();
+  return {
+    format: 'aitoolbox-ip-profiles',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    profile_count: list.length,
+    profiles: list,
+    toolbox_relative_path: 'data/ip_profiles.json',
+    instructions:
+      'Place at <AI HTML TOOLBOX>/data/ip_profiles.json or use Import in IP Profile Switcher. ' +
+      'Browser localStorage is also used; Import merges by profile id.',
+  };
+}
+
+function downloadJson(obj, filename) {
+  const text = JSON.stringify(obj, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 document.getElementById('btnExport').onclick = async () => {
   try {
     let blob;
     if (ipApiOnline) {
-      blob = await api('/ip/profiles/export');
+      try {
+        blob = await api('/ip/profiles/export');
+      } catch (_) {
+        blob = buildExportBlob();
+      }
     } else {
-      blob = {
-        format: 'aitoolbox-ip-profiles',
-        version: 1,
-        exported_at: new Date().toISOString(),
-        profiles: loadLocalProfiles(),
-        toolbox_relative_path: 'data/ip_profiles.json',
-        instructions: 'Place at <AI HTML TOOLBOX>/data/ip_profiles.json or use Import in IP Profile Switcher.',
-      };
+      blob = buildExportBlob();
     }
-    // Keep localStorage in sync
     if (blob.profiles) saveLocalProfiles(blob.profiles);
-    const text = JSON.stringify(blob, null, 2);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    a.download = 'ip_profiles.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('Exported ip_profiles.json — copy into Toolbox\\data\\ on the other PC', true);
+    const n = (blob.profiles || []).length;
+    downloadJson(blob, 'ip_profiles.json');
+    toast(`Exported ${n} setup(s) → ip_profiles.json (copy into Toolbox\\data\\ if moving PCs)`, true);
+    showBanner(`Backup downloaded (${n} setup${n === 1 ? '' : 's'}). Safe offline copy is also in this browser.`, 'ok');
   } catch (e) {
     toast(e.message || 'Export failed', false);
+  }
+};
+document.getElementById('btnBackupStamp').onclick = () => {
+  try {
+    const blob = buildExportBlob();
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    downloadJson(blob, `ip_profiles_backup_${stamp}.json`);
+    toast(`Timestamped backup (${blob.profile_count} setup(s))`, true);
+  } catch (e) {
+    toast(e.message || 'Backup failed', false);
+  }
+};
+document.getElementById('btnCopyBackupHint').onclick = async () => {
+  const tip =
+    'IP Profile Switcher backup tips:\n' +
+    '1) Click Export / backup (or Timestamped backup)\n' +
+    '2) Optional portable path: <Toolbox>\\data\\ip_profiles.json\n' +
+    '3) Import merges by id — existing setups with same id are replaced\n' +
+    '4) Apply still needs elevated toolbox server (or use Download apply .bat)';
+  try {
+    await navigator.clipboard.writeText(tip);
+    toast('Backup tips copied', true);
+  } catch (_) {
+    toast(tip, true);
   }
 };
 document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
@@ -1050,15 +1093,22 @@ document.getElementById('importFile').onchange = async (ev) => {
   ev.target.value = '';
   if (!file) return;
   try {
+    // Safety: auto local backup before merge
+    try {
+      const pre = buildExportBlob();
+      downloadJson(pre, `ip_profiles_pre_import_${Date.now()}.json`);
+    } catch (_) {}
     const text = await file.text();
     const blob = JSON.parse(text);
     const list = blob.profiles || (Array.isArray(blob) ? blob : null);
     if (!list) throw new Error('File has no profiles array');
     // Merge into localStorage
     const map = new Map(loadLocalProfiles().map(p => [p.id, p]));
+    let added = 0;
     list.forEach(p => {
       if (!p || !p.name) return;
       const id = p.id || uid();
+      if (!map.has(id)) added++;
       map.set(id, { ...p, id, updated_at: new Date().toISOString() });
     });
     saveLocalProfiles([...map.values()]);
@@ -1077,7 +1127,7 @@ document.getElementById('importFile').onchange = async (ev) => {
     }
     renderProfiles();
     updateStatusBar();
-    toast('Imported ' + list.length + ' setup(s)', true);
+    toast(`Imported ${list.length} setup(s) · ${added} new · pre-import backup downloaded`, true);
   } catch (e) {
     toast(e.message || 'Import failed', false);
   }

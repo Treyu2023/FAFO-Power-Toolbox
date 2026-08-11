@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Health Desk — FAFO Ops</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+  <script src="../shared/aitoolbox-config.js"></script>
+  <style>
+    :root {
+      --bg: #050a0c; --panel: rgba(8,22,20,0.94); --accent: #00e8a2; --accent2: #ffd166;
+      --accent3: #3d9eff; --warn: #ff9f1c; --err: #ff4d6d; --ok: #39ff14;
+      --text: #e8fff6; --muted: #7a9a90; --border: rgba(0,232,162,0.28);
+      --font: "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100%; color: var(--text); font-family: var(--font);
+      background:
+        radial-gradient(ellipse at 10% -10%, rgba(0,232,162,0.1), transparent 45%),
+        radial-gradient(ellipse at 90% 100%, rgba(61,158,255,0.08), transparent 40%),
+        var(--bg);
+      padding: 18px 18px 40px; overflow-x: hidden;
+    }
+    a.back {
+      position: fixed; top: 12px; left: 14px; z-index: 100;
+      color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 700;
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px;
+      background: rgba(5,10,12,0.88);
+    }
+    a.back:hover { background: rgba(0,232,162,0.12); }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    header { text-align: center; padding: 40px 12px 16px; }
+    header h1 {
+      font-size: clamp(22px, 4vw, 30px); font-weight: 800; letter-spacing: 2px;
+      background: linear-gradient(100deg, var(--accent), var(--accent2), var(--accent3));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .badge {
+      display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 999px;
+      border: 1px solid var(--border); font-size: 11px; font-weight: 700;
+      color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .panel {
+      background: linear-gradient(155deg, rgba(10,36,32,0.95), rgba(6,14,16,0.98));
+      border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; margin-bottom: 14px;
+    }
+    .panel h2 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px;
+      color: var(--accent); font-weight: 700; margin-bottom: 12px;
+    }
+    .grid { display: grid; gap: 12px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 900px) { .grid-2, .grid-4 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } }
+    .stat {
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px; text-align: center;
+    }
+    .stat .val { font-size: 22px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .stat .val.warn { color: var(--warn); }
+    .stat .val.err { color: var(--err); }
+    .stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-top: 4px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    button {
+      background: transparent; border: 1px solid var(--border); color: var(--accent);
+      padding: 8px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 12px;
+    }
+    button.primary {
+      background: linear-gradient(135deg, #00e8a2, #00b37a); color: #04140f; border-color: #00e8a2;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .muted { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 700;
+    }
+    .pill.ok { background: rgba(57,255,20,0.15); color: var(--ok); }
+    .pill.warn { background: rgba(255,159,28,0.15); color: var(--warn); }
+    .pill.err { background: rgba(255,77,109,0.15); color: var(--err); }
+    .pill.info { background: rgba(61,158,255,0.15); color: var(--accent3); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 8px 6px; border-bottom: 1px solid rgba(0,232,162,0.15); }
+    td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .scroll { max-height: 260px; overflow: auto; }
+    .footer { text-align: center; font-size: 11px; color: var(--muted); margin-top: 12px; }
+    .err-box { color: var(--warn); font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="wrap">
+    <header>
+      <div class="badge">Ops · Admin · Loopback only</div>
+      <h1>🩺 SYSTEM HEALTH DESK</h1>
+      <p>Live-ish metrics for this PC + toolbox server. Privileged data via loopback API — no free-form shell.</p>
+    </header>
+
+    <div class="toolbar">
+      <button class="primary" type="button" id="btnRefresh">Refresh now</button>
+      <span class="muted" id="statusLine">Loading…</span>
+    </div>
+
+    <div class="grid grid-4" id="kpiRow">
+      <div class="stat"><div class="val" id="kCpu">—</div><div class="lbl">CPU</div></div>
+      <div class="stat"><div class="val" id="kMem">—</div><div class="lbl">Memory</div></div>
+      <div class="stat"><div class="val" id="kDisk">—</div><div class="lbl">System disk free</div></div>
+      <div class="stat"><div class="val" id="kUp">—</div><div class="lbl">Uptime</div></div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:14px">
+      <div class="panel">
+        <h2>Host</h2>
+        <p class="muted" id="hostBlock">—</p>
+      </div>
+      <div class="panel">
+        <h2>Toolbox server</h2>
+        <p class="muted" id="tbBlock">—</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Disks</h2>
+      <div class="grid grid-2">
+        <div class="stat"><div class="val" id="dSys">—</div><div class="lbl" id="dSysL">System drive</div></div>
+        <div class="stat"><div class="val" id="dFafo">—</div><div class="lbl" id="dFafoL">FAFO / toolbox data</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Xero proxy (presence only)</h2>
+      <p class="muted" id="xeroBlock">—</p>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="panel">
+        <h2>Top CPU</h2>
+        <div class="scroll"><table><thead><tr><th>Name</th><th>PID</th><th>CPU</th><th>Mem</th></tr></thead><tbody id="tbCpu"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <h2>Top memory</h2>
+        <div class="scroll"><table><thead><tr><th>Name</th><th>PID</th><th>CPU</th><th>Mem</th></tr></thead><tbody id="tbMem"></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="err-box" id="errBox"></div>
+    <p class="footer">System Health Desk · Metrics only · No secrets/cmdlines · FAFO Power Toolbox</p>
+  </div>
+  <script>
+    (function () {
+      const apiBase = (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+      const $ = (id) => document.getElementById(id);
+
+      function pctClass(n) {
+        if (n == null || isNaN(n)) return '';
+        if (n >= 90) return 'err';
+        if (n >= 75) return 'warn';
+        return '';
+      }
+
+      function rowsHtml(list) {
+        if (!list || !list.length) return '<tr><td colspan="4" class="muted">No process data</td></tr>';
+        return list.map((p) =>
+          '<tr><td>' + esc(p.name) + '</td><td>' + (p.pid || '—') + '</td><td>' +
+          (p.cpuPercent != null ? Number(p.cpuPercent).toFixed(1) + '%' : '—') + '</td><td>' +
+          esc(p.memoryHuman || (p.memoryPercent != null ? Number(p.memoryPercent).toFixed(1) + '%' : '—')) +
+          '</td></tr>'
+        ).join('');
+      }
+
+      function esc(s) {
+        return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      async function load(force) {
+        $('btnRefresh').disabled = true;
+        $('statusLine').textContent = 'Refreshing…';
+        try {
+          const r = await fetch(apiBase + '/sys/health' + (force ? '?force=1' : ''), { headers: { Accept: 'application/json' } });
+          const d = await r.json();
+          if (!d || d.ok === false && !d.host) {
+            throw new Error((d && d.error) || ('HTTP ' + r.status));
+          }
+          render(d);
+          $('statusLine').textContent = 'Updated ' + (d.generatedAt || '') + ' · cache ~' + (d.cacheTtlSec || 10) + 's';
+          $('errBox').textContent = (d.errors && d.errors.length) ? ('Partial: ' + d.errors.join('; ')) : '';
+        } catch (e) {
+          $('statusLine').textContent = 'Failed — is toolbox server running on loopback?';
+          $('errBox').textContent = e.message || String(e);
+        }
+        $('btnRefresh').disabled = false;
+      }
+
+      function render(d) {
+        const cpu = d.cpu && d.cpu.percent;
+        const mem = d.memory && d.memory.percent;
+        $('kCpu').textContent = cpu != null ? Math.round(cpu) + '%' : '—';
+        $('kCpu').className = 'val ' + pctClass(cpu);
+        $('kMem').textContent = mem != null ? Math.round(mem) + '%' : '—';
+        $('kMem').className = 'val ' + pctClass(mem);
+        const free = d.diskSystem && d.diskSystem.freeHuman;
+        $('kDisk').textContent = free || '—';
+        $('kUp').textContent = (d.uptime && d.uptime.human) || '—';
+
+        const h = d.host || {};
+        $('hostBlock').innerHTML =
+          '<strong style="color:var(--text)">' + esc(h.hostname) + '</strong><br>' +
+          esc(h.platform || h.os) + '<br>Python ' + esc(h.python || '—');
+
+        const tb = d.toolbox || {};
+        const up = tb.serverUp || tb.portListening;
+        $('tbBlock').innerHTML =
+          '<span class="pill ' + (up ? 'ok' : 'err') + '">' + (up ? 'UP' : 'DOWN') + '</span> ' +
+          esc(tb.endpoint || '') + '<br>' +
+          'Port listening: <strong>' + (tb.portListening ? 'yes' : 'no') + '</strong> · ' +
+          'bind ' + esc(tb.bindHost) + ':' + esc(tb.bindPort);
+
+        const ds = d.diskSystem || {};
+        const df = d.diskFafoData || {};
+        $('dSys').textContent = ds.freeHuman || '—';
+        $('dSys').className = 'val ' + pctClass(ds.percent);
+        $('dSysL').textContent = 'System ' + (ds.path || '') + ' free (' + (ds.percent != null ? Math.round(ds.percent) + '% used' : '—') + ')';
+        $('dFafo').textContent = df.freeHuman || '—';
+        $('dFafoL').textContent = 'Data volume free · ' + esc((d.paths && d.paths.fafoLocal) || '');
+
+        const x = d.xeroPresence || {};
+        $('xeroBlock').innerHTML =
+          '<span class="pill ' + (x.connected ? 'ok' : 'info') + '">' + (x.connected ? 'authorized' : 'not authorized') + '</span> ' +
+          'secret ' + (x.hasClientSecret ? 'yes' : 'no') +
+          ' · refresh ' + (x.hasRefreshToken ? 'yes' : 'no') +
+          ' · access flag ' + (x.hasAccessToken ? 'yes' : 'no') +
+          (x.tenantId ? ' · tenant set' : '') +
+          (x.lastError ? '<br><span class="pill warn">lastError</span> ' + esc(String(x.lastError).slice(0, 120)) : '') +
+          '<br><span class="muted">' + esc(x.bindHint || 'presence only') + '</span>';
+
+        const procs = d.processes || {};
+        $('tbCpu').innerHTML = rowsHtml(procs.topCpu);
+        $('tbMem').innerHTML = rowsHtml(procs.topMemory);
+      }
+
+      $('btnRefresh').onclick = () => load(true);
+      load(false);
+      setInterval(() => load(false), 15000);
+    })();
+  </script>
+</body>
+</html>

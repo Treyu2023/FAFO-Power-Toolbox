@@ -146,7 +146,9 @@ foreach ($log in $logs) {{
 }}
 $all | Sort-Object time -Descending | Select-Object -First {max_events} | ConvertTo-Json -Compress -Depth 4
 """
-    out, err, code = _run_ps(script, timeout=50)
+    # Tighter timeout for lite samples; deep samples still get headroom
+    ps_timeout = 25 if max_events <= 200 else (40 if max_events <= 450 else 55)
+    out, err, code = _run_ps(script, timeout=ps_timeout)
     if not out.strip():
         return []
     try:
@@ -447,7 +449,8 @@ def get_themes_only(hours: int = 24) -> dict[str, Any]:
 def hub_events_preview(hours: int = 24) -> dict[str, Any]:
     """Compact block for /api/health/dashboard."""
     try:
-        s = get_summary(hours=hours, max_events=350)
+        # Keep hub light — full Event Viewer can pull a larger sample on demand
+        s = get_summary(hours=hours, max_events=200)
     except Exception as e:
         return {
             "windowHours": hours,
