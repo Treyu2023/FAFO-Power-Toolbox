@@ -188,7 +188,7 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
     <label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto-refresh every 15s</label>
     <a class="btn ghost" href="PC Reports and Log Viewer/index.html" style="text-decoration:none">Report Library</a>
     <a class="btn ghost" href="Event Viewer.html" style="text-decoration:none">Event Viewer</a>
-    <a class="btn ghost" href="Event Deep Dive.html?run=1" style="text-decoration:none">Event Deep Dive</a>
+    <a class="btn ghost" href="Event Deep Dive.html" style="text-decoration:none" title="Opens without auto-scan — click Run there">Event Deep Dive</a>
     <a class="btn ghost" href="Hardware Board Map.html" style="text-decoration:none">Board Map</a>
     <a class="btn ghost" href="LAN Task Manager.html#processes" style="text-decoration:none">Task Manager</a>
   </div>
@@ -227,7 +227,7 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
         <div class="pb links-row">
           <a class="link" href="LAN Task Manager.html#processes">⚙️ Task Manager</a>
           <a class="link" href="Event Viewer.html">📜 Event Viewer</a>
-          <a class="link" href="Event Deep Dive.html?run=1">🔎 Event Deep Dive</a>
+          <a class="link" href="Event Deep Dive.html">🔎 Event Deep Dive</a>
           <a class="link" href="Hardware Board Map.html">🔌 Hardware Board Map</a>
           <a class="link" href="LAN Task Manager.html#dashboard">📡 LAN Dashboard</a>
           <a class="link" href="PC Reports and Log Viewer/index.html">📋 PC Reports</a>
@@ -527,9 +527,20 @@ function setupAuto() {
   if (timer) clearInterval(timer);
   timer = null;
   if (document.getElementById('autoRefresh').checked) {
-    timer = setInterval(load, 15000);
+    // Pause when tab is hidden so background hub does not keep hammering the PC
+    timer = setInterval(() => {
+      if (document.hidden) return;
+      load();
+    }, 15000);
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  // When user returns to the tab, refresh once if auto is on
+  if (!document.hidden && document.getElementById('autoRefresh')?.checked) {
+    load().catch(() => {});
+  }
+});
 
 async function snoozeAlert(id, hours) {
   if (!id || busy) return;

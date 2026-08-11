@@ -344,7 +344,16 @@ def toolbox_static(file_path: str):
         media = "text/css; charset=utf-8"
     elif lower == ".json":
         media = "application/json; charset=utf-8"
-    return FileResponse(target, media_type=media)
+    # HTML/JS/CSS: never let the browser keep a stale mojibake copy of the launcher
+    headers = {}
+    if lower in {".html", ".js", ".css"}:
+        headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Content-Type-Options": "nosniff",
+        }
+    return FileResponse(target, media_type=media, headers=headers)
 
 
 @app.get("/commander")
@@ -719,428 +728,13 @@ def api_setup_open_pack_folder(body: SetupOpenPathBody):
     return {"ok": True, "path": str(p)}
 
 
-@app.get("/investor")
-def investor_redirect():
-    """Private investor portal (owner + Sumran only) — same-origin as API."""
-    from fastapi.responses import RedirectResponse
 
-    return RedirectResponse(
-        url="/toolbox/Investor%20Portal.html",
-        status_code=307,
-    )
-
-
-@app.get("/sumran")
-def sumran_redirect():
-    """Alias for investor portal."""
-    from fastapi.responses import RedirectResponse
-
-    return RedirectResponse(url="/investor", status_code=307)
-
-
-# --- Private Investor Portal (owner + Sumran only) ---
-import investor_ops as investor
-from fastapi import File, Form, Header, UploadFile
-
-
-def _investor_token(
-    authorization: str | None = None,
-    x_investor_token: str | None = None,
-) -> str | None:
-    if x_investor_token:
-        return x_investor_token.strip()
-    if authorization:
-        return authorization.strip()
-    return None
-
-
-class InvestorSetupBody(BaseModel):
-    owner_password: str
-    sumran_password: str
-    owner_display: str | None = "Owner"
-    sumran_display: str | None = "Muhammad Sumran Nasir"
-    force: bool = False
-
-
-class InvestorLoginBody(BaseModel):
-    username: str
-    password: str
-
-
-class InvestorPasswordBody(BaseModel):
-    user_id: str
-    new_password: str
-
-
-class InvestorSheetBody(BaseModel):
-    title: str | None = None
-    columns: list[dict] | None = None
-    rows: list[dict] | None = None
-
-
-class InvestorReceiptMetaBody(BaseModel):
-    note: str | None = None
-    row_id: str | None = None
-
-
-@app.get("/api/investor/status")
-def api_investor_status():
-    return investor.status()
-
-
-@app.post("/api/investor/setup")
-def api_investor_setup(
-    body: InvestorSetupBody,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    """First-time create both seats, or force reset when owner is logged in."""
-    try:
-        if body.force:
-            user = investor.require_user(_investor_token(authorization, x_investor_token))
-            if user["userId"] != "owner":
-                raise HTTPException(403, "Only owner can force-reset accounts")
-        return investor.setup_accounts(
-            body.owner_password,
-            body.sumran_password,
-            owner_display=body.owner_display or "Owner",
-            sumran_display=body.sumran_display or "Muhammad Sumran Nasir",
-            force=bool(body.force),
-        )
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/login")
-def api_investor_login(body: InvestorLoginBody):
-    try:
-        return investor.login(body.username, body.password)
-    except ValueError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/logout")
-def api_investor_logout(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    return investor.logout(_investor_token(authorization, x_investor_token))
-
-
-@app.get("/api/investor/me")
-def api_investor_me(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return {
-            "ok": True,
-            "user": {
-                "id": user["userId"],
-                "displayName": user["displayName"],
-                "role": user["role"],
-            },
-            "dataDir": str(investor.root_dir()),
-        }
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/password")
-def api_investor_password(
-    body: InvestorPasswordBody,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.change_password(body.user_id, body.new_password, actor=user["userId"])
-    except PermissionError as e:
-        raise HTTPException(403, str(e)) from e
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
-
-
-@app.get("/api/investor/sheet")
-def api_investor_sheet_get(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.get_sheet(user)
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.put("/api/investor/sheet")
-def api_investor_sheet_put(
-    body: InvestorSheetBody,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.save_sheet(
-            user,
-            {
-                "title": body.title,
-                "columns": body.columns,
-                "rows": body.rows,
-            },
-        )
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
-
-
-@app.get("/api/investor/sheet.csv")
-def api_investor_sheet_csv(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        csv_text = investor.export_sheet_csv()
-        from fastapi.responses import Response
-
-        return Response(
-            content=csv_text,
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": 'attachment; filename="fafo-investor-ledger.csv"'},
-        )
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.get("/api/investor/receipts")
-def api_investor_receipts_list(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.list_receipts(user)
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/receipts")
-async def api_investor_receipts_upload(
-    file: UploadFile = File(...),
-    note: str = Form(""),
-    row_id: str = Form(""),
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        data = await file.read()
-        return investor.save_receipt(
-            user,
-            filename=file.filename or "receipt.bin",
-            data=data,
-            content_type=file.content_type,
-            note=note,
-            row_id=row_id or None,
-        )
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
-
-
-@app.get("/api/investor/receipts/{receipt_id}/file")
-def api_investor_receipt_file(
-    receipt_id: str,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-    token: str | None = Query(default=None),
-):
-    """Download/view receipt. Token via header or ?token= for <img src> / mobile."""
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token) or token)
-        path, item = investor.get_receipt_file(receipt_id)
-        return FileResponse(
-            path,
-            media_type=item.get("contentType") or "application/octet-stream",
-            filename=item.get("originalName") or path.name,
-        )
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e)) from e
-
-
-@app.patch("/api/investor/receipts/{receipt_id}")
-def api_investor_receipt_patch(
-    receipt_id: str,
-    body: InvestorReceiptMetaBody,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.update_receipt_meta(
-            user, receipt_id, note=body.note, row_id=body.row_id
-        )
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e)) from e
-
-
-@app.delete("/api/investor/receipts/{receipt_id}")
-def api_investor_receipt_delete(
-    receipt_id: str,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.delete_receipt(user, receipt_id)
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e)) from e
-
-
-class InvestorSyncConfigBody(BaseModel):
-    enabled: bool | None = None
-    site: str | None = None
-    remoteUrl: str | None = None
-    publicUrl: str | None = None
-    privateUrl: str | None = None
-    remoteToken: str | None = None
-    privateToken: str | None = None
-    publicToken: str | None = None
-    pullOnOpen: bool | None = None
-    autoPushAfterSave: bool | None = None
-    includeReceiptFiles: bool | None = None
-    pushPublicInventory: bool | None = None
-    pushPrivateLedger: bool | None = None
-    intervalHours: float | None = None
-
-
-@app.get("/api/investor/sync")
-def api_investor_sync_get(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return {"ok": True, "sync": investor.get_sync_config(include_secret=False)}
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.put("/api/investor/sync")
-def api_investor_sync_put(
-    body: InvestorSyncConfigBody,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        user = investor.require_user(_investor_token(authorization, x_investor_token))
-        patch = body.model_dump(exclude_unset=True)
-        # map camelCase already matches
-        return {
-            "ok": True,
-            "sync": investor.save_sync_config(patch, actor=user["userId"]),
-            "message": "Sync settings saved",
-        }
-    except PermissionError as e:
-        raise HTTPException(403, str(e)) from e
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
-
-
-@app.post("/api/investor/sync/pull")
-def api_investor_sync_pull(
-    force: bool = True,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.pull_from_web(force=force)
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/sync/push")
-def api_investor_sync_push(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.push_to_web(force=True)
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/sync/on-open")
-def api_investor_sync_on_open(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    """Auto pull when portal opens (respects 8h / pullOnOpen settings)."""
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.sync_on_open()
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.get("/api/investor/bundle")
-def api_investor_bundle_export(
-    include_files: bool = False,
-    public_only: bool = False,
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.build_bundle(include_files=include_files, public_only=public_only)
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.get("/api/investor/public-inventory")
-def api_investor_public_inventory(
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    """Preview what FAFO Petro public pages receive — costs always stripped."""
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return {
-            "ok": True,
-            "bundle": investor.build_bundle(public_only=True),
-            "message": "Public inventory preview (our cost columns removed)",
-        }
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-
-
-@app.post("/api/investor/bundle/import")
-def api_investor_bundle_import(
-    body: dict = Body(...),
-    authorization: str | None = Header(default=None),
-    x_investor_token: str | None = Header(default=None),
-):
-    try:
-        investor.require_user(_investor_token(authorization, x_investor_token))
-        return investor.apply_bundle(body, source="import")
-    except PermissionError as e:
-        raise HTTPException(401, str(e)) from e
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
+# --- Optional private extensions (local-only modules; gitignored) ---
+try:
+    from _private_investor_routes import register as _register_investor
+    _register_investor(app)
+except ImportError:
+    pass  # public clone: Investor Portal not shipped
 
 
 # --- Commander (VAPS) site backup console ---
@@ -3438,6 +3032,78 @@ def api_suggest_pairs_post(body: SuggestPairsRequest):
         "tail_len": body.tail_len,
     }
 
+
+class PairCandidatesRequest(BaseModel):
+    media_id: str
+    limit: int = 10
+    min_ratio: float = 0.35
+    exclude_ids: list[str] = []
+    unpaired_only: bool = True
+    tail_len: int = 5
+    after_dir_id: str | None = None
+    before_dir_id: str | None = None
+
+
+@app.get("/api/pairs/anchors")
+def api_pair_anchors(
+    limit: int = 200,
+    kind: str | None = None,
+    dir_id: str | None = None,
+    prefer_sources: bool = True,
+):
+    """Unpaired files for guided match queue (sources first)."""
+    return {
+        "anchors": ops.list_unpaired_anchors(
+            kind=kind if kind in ("video", "image") else None,
+            limit=limit,
+            prefer_sources=prefer_sources,
+            dir_id=dir_id,
+        )
+    }
+
+
+@app.get("/api/pairs/candidates")
+def api_pair_candidates_get(
+    mid: str = Query(..., description="Anchor media id"),
+    limit: int = 10,
+    min_ratio: float = 0.35,
+    exclude: str = "",
+    unpaired_only: bool = True,
+    tail_len: int = 5,
+    after_dir_id: str | None = None,
+):
+    """Top N match candidates for one media (guided elimination)."""
+    exclude_ids = [x.strip() for x in (exclude or "").split(",") if x.strip()]
+    try:
+        return ops.candidates_for_media(
+            mid,
+            limit=limit,
+            min_ratio=min_ratio,
+            exclude_ids=exclude_ids,
+            unpaired_only=unpaired_only,
+            tail_len=tail_len,
+            after_dir_id=after_dir_id,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/pairs/candidates")
+def api_pair_candidates_post(body: PairCandidatesRequest):
+    try:
+        return ops.candidates_for_media(
+            body.media_id,
+            limit=body.limit,
+            min_ratio=body.min_ratio,
+            exclude_ids=body.exclude_ids or [],
+            unpaired_only=body.unpaired_only,
+            tail_len=body.tail_len,
+            after_dir_id=body.after_dir_id,
+            before_dir_id=body.before_dir_id,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
 @app.get("/api/pairs/{pid}")
 def api_get_pair(pid: str):
     p = ops.get_pair(pid) or ops.get_pair_by_code(pid)
@@ -4107,6 +3773,73 @@ def api_tools_launch(body: ToolsLaunchBody):
             return {"ok": True, "launched": "ghost-elevated", "via": "Clear-GhostDevices.ps1"}
         raise HTTPException(404, "Ghost cleaner scripts missing")
 
+    if tid in (
+        "transfer-monitor",
+        "transfermonitor",
+        "download-monitor",
+        "downloadmonitor",
+        "transfers",
+    ):
+        folder = ROOT / "System Tools" / "TransferMonitor"
+        if action in ("folder", "open-folder"):
+            target = folder
+            if not target.is_dir():
+                raise HTTPException(404, "TransferMonitor folder missing")
+            subprocess.Popen(["explorer.exe", str(target)], shell=False)
+            return {"ok": True, "launched": "folder", "path": str(target)}
+
+        if action in ("ui", "html", "page"):
+            html = folder / "Transfer Monitor.html"
+            if not html.is_file():
+                raise HTTPException(404, "Transfer Monitor.html missing")
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "", str(html)],
+                cwd=str(folder),
+                shell=False,
+            )
+            return {"ok": True, "launched": "ui", "path": str(html)}
+
+        # Default: tray app, no console (prefer VBS hidden launch)
+        bat = folder / "Launch-TransferMonitor.bat"
+        vbs = folder / "Launch-TransferMonitor.vbs"
+        ps1 = folder / "TransferMonitor.ps1"
+        creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if vbs.is_file():
+            subprocess.Popen(
+                ["wscript.exe", "//B", str(vbs)],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "transfer-monitor", "via": "Launch-TransferMonitor.vbs"}
+        if bat.is_file():
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat)],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "transfer-monitor", "via": "Launch-TransferMonitor.bat"}
+        if ps1.is_file():
+            ps = os.path.expandvars(r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
+            subprocess.Popen(
+                [
+                    ps,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-File",
+                    str(ps1),
+                ],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "transfer-monitor", "via": "TransferMonitor.ps1"}
+        raise HTTPException(404, "Transfer Monitor scripts missing")
+
     raise HTTPException(400, f"Unknown or blocked tool launch id: {tid}")
 @app.get("/api/launch/watchdog/status")
 def api_watchdog_status():
@@ -4274,8 +4007,18 @@ def api_security_config(body: SecConfig):
 
 @app.post("/api/security/update")
 def api_security_update():
+    """Pull public threat feeds (no API key required). Optional abuse.ch key adds extras."""
     try:
         return sec.update_threat_intel()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/security/ensure-db")
+def api_security_ensure_db():
+    """If the hash DB is empty, download open feeds automatically."""
+    try:
+        return sec.ensure_threat_db_populated()
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -4681,6 +4424,37 @@ def api_pc_diag_latest():
     if not report:
         return {"ok": False, "report": None, "message": "No report yet — run a scan from the Diagnostics HUD."}
     return {"ok": True, "report": report}
+
+
+@app.get("/api/pc-diagnostics/ignored-devices")
+def api_pc_diag_ignored_get():
+    return {"ok": True, "ignored": pc_diag.load_ignored_devices()}
+
+
+@app.post("/api/pc-diagnostics/ignored-devices")
+def api_pc_diag_ignored_add(body: dict | None = None):
+    body = body or {}
+    entry = {
+        "id": str(body.get("id") or "").strip(),
+        "name": str(body.get("name") or "").strip(),
+        "class": str(body.get("class") or body.get("class_") or "").strip(),
+        "kind": str(body.get("kind") or "").strip(),
+        "reason": str(body.get("reason") or "user").strip() or "user",
+    }
+    if not entry["id"] and not entry["name"]:
+        raise HTTPException(400, "Provide device id and/or name to mute")
+    rows = pc_diag.ignore_device(entry)
+    report = pc_diag.load_latest()
+    return {"ok": True, "ignored": rows, "report": report}
+
+
+@app.delete("/api/pc-diagnostics/ignored-devices")
+def api_pc_diag_ignored_delete(id: str = "", name: str = ""):
+    if not id and not name:
+        raise HTTPException(400, "Provide id or name query param")
+    rows = pc_diag.unignore_device(device_id=id, name=name)
+    report = pc_diag.load_latest()
+    return {"ok": True, "ignored": rows, "report": report}
 
 
 @app.post("/api/pc-diagnostics/run")
@@ -5287,107 +5061,54 @@ def api_git_open_gh_desktop(body: GitPathAction):
         raise HTTPException(500, str(e))
 
 
-# --- Xero token proxy (loopback; secrets via FAFO DPAPI — never return tokens to browser) ---
-import xero_ops as xero
+
+# --- Optional Xero proxy (local-only module; gitignored) ---
+try:
+    from _private_xero_routes import register as _register_xero
+    _register_xero(app)
+except ImportError:
+    pass  # public clone: Xero integration not shipped
 
 
-class XeroConfigBody(BaseModel):
-    clientId: str = ""
-    redirectUri: str = ""
+# --- Admin ops: system health + secrets presence (never return secret values) ---
+import sys_ops as sysops
 
 
-class XeroSecretBody(BaseModel):
-    clientSecret: str = ""
-
-
-class XeroTokenBody(BaseModel):
-    code: str
-    redirectUri: str = ""
-    clientId: str = ""
-
-
-class XeroTenantBody(BaseModel):
-    tenantId: str
-
-
-@app.get("/api/xero/status")
-def api_xero_status():
-    return xero.status()
-
-
-@app.post("/api/xero/config")
-def api_xero_config(body: XeroConfigBody):
-    return xero.save_public_config(body.clientId, body.redirectUri)
-
-
-@app.post("/api/xero/secrets")
-def api_xero_secrets(body: XeroSecretBody):
-    """Store client secret via DPAPI. Response is presence-only."""
-    if not (body.clientSecret or "").strip():
-        raise HTTPException(400, "clientSecret required")
-    return xero.store_client_secret(body.clientSecret)
-
-
-@app.post("/api/xero/token")
-def api_xero_token(body: XeroTokenBody):
+@app.get("/api/sys/health")
+def api_sys_health(force: int = Query(0)):
+    """
+    System Health Desk metrics. Loopback metrics + toolbox/Xero presence only.
+    Never includes tokens, secrets, or process command lines.
+    """
     try:
-        return xero.exchange_code(body.code, body.redirectUri, body.clientId)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+        return sysops.get_sys_health(force=bool(force))
     except Exception as e:
-        raise HTTPException(502, str(e))
+        # Degrade rather than 500 crash — UI still loads
+        return {
+            "ok": False,
+            "error": str(e)[:200],
+            "generatedAt": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            "securityNote": "No secrets/tokens returned.",
+        }
 
 
-@app.post("/api/xero/refresh")
-def api_xero_refresh():
+@app.get("/api/secrets/presence")
+def api_secrets_presence(force: int = Query(0)):
+    """
+    Secrets Presence Console — names + has/age flags only.
+    Never decrypts DPAPI or returns secret/token material.
+    """
     try:
-        return xero.refresh_access()
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+        return sysops.get_secrets_presence(force=bool(force))
     except Exception as e:
-        raise HTTPException(502, str(e))
-
-
-@app.delete("/api/xero/session")
-def api_xero_session(purgeSecrets: int = Query(0)):
-    return xero.clear_session(purge_secrets=bool(purgeSecrets))
-
-
-@app.get("/api/xero/tenants")
-def api_xero_tenants():
-    try:
-        tenants = xero.list_tenants()
-        return {"ok": True, "tenants": tenants}
-    except Exception as e:
-        raise HTTPException(502, str(e))
-
-
-@app.post("/api/xero/tenant")
-def api_xero_tenant(body: XeroTenantBody):
-    try:
-        return xero.select_tenant(body.tenantId)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-@app.get("/api/xero/accounts")
-def api_xero_accounts():
-    try:
-        return xero.get_accounts()
-    except Exception as e:
-        raise HTTPException(502, str(e))
-
-
-@app.get("/api/xero/transactions")
-def api_xero_transactions(
-    from_date: str | None = Query(None, alias="from"),
-    to_date: str | None = Query(None, alias="to"),
-    page: int = Query(1),
-):
-    try:
-        return xero.get_transactions(from_date=from_date, to_date=to_date, page=page)
-    except Exception as e:
-        raise HTTPException(502, str(e))
+        return {
+            "ok": False,
+            "error": str(e)[:200],
+            "secrets": [],
+            "flags": {},
+            "banner": "Values never shown in this UI — presence flags only.",
+            "securityNote": "Never returns secret material, tokens, or DPAPI bytes.",
+        }
 
 
 def main():

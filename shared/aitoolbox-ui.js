@@ -62,19 +62,39 @@
         root.querySelectorAll('[data-tip]').forEach(el => {
             if (el._tipBound) return;
             el._tipBound = true;
-            const title = el.dataset.tipTitle || '';
-            const text = el.dataset.tip || el.getAttribute('data-tip');
 
             el.addEventListener('mouseenter', e => {
                 clearTimeout(tooltipTimer);
+                // Slightly snappy so users can skim cards before clicking
                 tooltipTimer = setTimeout(() => {
-                    tooltipEl.innerHTML = (title ? `<strong>${title}</strong>` : '') + text;
+                    const title = el.dataset.tipTitle || el.getAttribute('data-tip-title') || '';
+                    const text = el.dataset.tip || el.getAttribute('data-tip') || '';
+                    if (!title && !text) return;
+                    // Escape HTML so tool names/descriptions cannot inject markup
+                    const esc = (s) => String(s || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                    // Allow simple newlines in tip text as <br>
+                    const body = esc(text).replace(/\n/g, '<br>');
+                    tooltipEl.innerHTML = (title ? `<strong>${esc(title)}</strong>` : '') + body;
                     tooltipEl.classList.add('visible');
                     positionTooltip(e.target);
-                }, 280);
+                }, 160);
             });
-            el.addEventListener('mousemove', () => positionTooltip(el));
+            el.addEventListener('mousemove', () => {
+                if (tooltipEl && tooltipEl.classList.contains('visible')) positionTooltip(el);
+            });
             el.addEventListener('mouseleave', () => {
+                clearTimeout(tooltipTimer);
+                tooltipEl.classList.remove('visible');
+            });
+            // Keyboard focus also shows tip (accessibility)
+            el.addEventListener('focus', () => {
+                el.dispatchEvent(new Event('mouseenter'));
+            });
+            el.addEventListener('blur', () => {
                 clearTimeout(tooltipTimer);
                 tooltipEl.classList.remove('visible');
             });
@@ -82,12 +102,14 @@
     }
 
     function positionTooltip(target) {
+        if (!tooltipEl || !target) return;
         const r = target.getBoundingClientRect();
-        const tw = tooltipEl.offsetWidth;
-        const th = tooltipEl.offsetHeight;
+        const tw = tooltipEl.offsetWidth || 320;
+        const th = tooltipEl.offsetHeight || 80;
         let left = r.left + r.width / 2 - tw / 2;
         let top = r.bottom + 10;
         if (top + th > window.innerHeight - 8) top = r.top - th - 10;
+        if (top < 8) top = 8;
         left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
         tooltipEl.style.left = left + 'px';
         tooltipEl.style.top = top + 'px';

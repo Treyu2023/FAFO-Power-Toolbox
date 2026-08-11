@@ -55,7 +55,7 @@ $knownTools = @(
     'ip-profile-switcher', 'pc-reports-log-viewer', 'log-viewer',
     'media-library', 'file-organizer', 'vsr-pipeline',
     'video-compare', 'image-compare', 'video-wall', 'image-cropper',
-    'loan-calc', 'ghost-device-cleaner', 'lan-task-manager', 'malware-defender',
+    'loan-calc', 'ghost-device-cleaner', 'transfer-monitor', 'lan-task-manager', 'malware-defender',
     'health-dashboard', 'pc-diagnostics-hud', 'startup-manager', 'disk-analyzer', 'hosts-blocker',
     'media-converter', 'duplicate-finder', 'git-manager', 'bloodmoon-survivor',
     'all'
@@ -73,6 +73,7 @@ $defaultAliases = @{
     'image-cropper'        = @('image-cropper', 'image-converter-cropper')
     'loan-calc'            = @('loan-calc', 'loan-calculator', 'amortization')
     'ghost-device-cleaner'  = @('ghost-device-cleaner', 'ghost-device', 'ghost-devices')
+    'transfer-monitor'     = @('transfer-monitor', 'download-monitor', 'transfermonitor')
     'lan-task-manager'     = @('lan-task-manager', 'lan-manager', 'task-manager')
     'malware-defender'     = @('malware-defender', 'malware')
     'health-dashboard'     = @('health-dashboard', 'system-health')

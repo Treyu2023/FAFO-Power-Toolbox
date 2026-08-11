@@ -123,13 +123,18 @@ h1{font-size:1.5rem;margin-bottom:4px}
 
   <div class="toolbar">
     <button class="btn" id="btnRun">Run deep dive</button>
-    <select class="sel" id="hours">
-      <option value="24">Last 24 hours</option>
-      <option value="72" selected>Last 3 days</option>
-      <option value="168">Last 7 days</option>
+    <select class="sel" id="hours" title="Wider windows cost more CPU/time">
+      <option value="24" selected>Last 24 hours (default)</option>
+      <option value="72">Last 3 days</option>
+      <option value="168">Last 7 days (heavier)</option>
     </select>
-    <label style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px">
-      <input type="checkbox" id="includeNoise" checked> Include noise themes
+    <select class="sel" id="sampleSize" title="Event sample size">
+      <option value="250" selected>Lite (faster)</option>
+      <option value="450">Normal</option>
+      <option value="700">Deep (slower)</option>
+    </select>
+    <label style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px" title="Noise themes are usually safe to ignore">
+      <input type="checkbox" id="includeNoise"> Include noise themes
     </label>
     <a class="btn ghost" href="Event Viewer.html">Themes / Timeline</a>
     <a class="btn ghost" href="Hardware Board Map.html">Board Map / playbooks</a>
@@ -138,7 +143,7 @@ h1{font-size:1.5rem;margin-bottom:4px}
 
   <div id="hero" class="callout" style="display:none"></div>
   <div class="stats" id="stats"></div>
-  <div id="list">Click <strong>Run deep dive</strong> to analyze this PC’s event log.</div>
+  <div id="list">Click <strong>Run deep dive</strong> when ready — does not auto-scan on open (avoids bogging the PC). Lite sample + 24h is enough for most checks.</div>
   <p class="methodology" id="method"></p>
 </div>
 <script src="../shared/aitoolbox-config.js"></script>
@@ -269,36 +274,54 @@ function render(data) {
   });
 }
 
+let runGen = 0;
+
 async function run() {
   const btn = document.getElementById('btnRun');
+  const gen = ++runGen;
   btn.disabled = true;
-  document.getElementById('list').innerHTML = '<p style="color:var(--muted)">Sampling event logs and scoring issues… (can take 15–40s)</p>';
+  const hours = document.getElementById('hours').value;
+  const max = Number(document.getElementById('sampleSize')?.value || 250);
+  const maxEvents = Number.isFinite(max) ? Math.max(100, Math.min(max, 900)) : 250;
+  document.getElementById('list').innerHTML =
+    `<p style="color:var(--muted)">Sampling event logs and scoring issues… last ${hours}h · up to ${maxEvents} events` +
+    ` (usually 5–20s on lite; longer windows take more)</p>`;
   try {
     await UI().apiFetch('/health');
+    if (gen !== runGen) return;
     setPill(true, 'Connected');
   } catch {
+    if (gen !== runGen) return;
     setPill(false, 'Server offline');
     document.getElementById('list').innerHTML = '<p style="color:var(--danger)">Server offline — start toolbox server first.</p>';
     btn.disabled = false;
     return;
   }
   try {
-    const hours = document.getElementById('hours').value;
     const includeNoise = document.getElementById('includeNoise').checked;
     const data = await UI().apiFetch(
-      `/events/deep-dive?hours=${hours}&max_events=600&include_noise=${includeNoise}`
+      `/events/deep-dive?hours=${hours}&max_events=${maxEvents}&include_noise=${includeNoise}`
     );
+    if (gen !== runGen) return;
     render(data);
   } catch (e) {
+    if (gen !== runGen) return;
     document.getElementById('list').innerHTML = `<p style="color:var(--danger)">${esc(e.message || e)}</p>`;
   }
-  btn.disabled = false;
+  if (gen === runGen) btn.disabled = false;
 }
 
 document.getElementById('btnRun').onclick = run;
 UI()?.mountServerBar?.({ onOnline: () => {} });
-// Auto-run if ?run=1
-if (new URLSearchParams(location.search).get('run') === '1') run();
+// Auto-run only when explicitly requested (?run=1). Prefer manual Run for lighter UX.
+const params = new URLSearchParams(location.search);
+if (params.get('hours') && ['24', '72', '168'].includes(params.get('hours'))) {
+  document.getElementById('hours').value = params.get('hours');
+}
+if (params.get('sample') && ['250', '450', '700'].includes(params.get('sample'))) {
+  document.getElementById('sampleSize').value = params.get('sample');
+}
+if (params.get('run') === '1') run();
 else {
   UI().apiFetch('/health').then(() => setPill(true, 'Connected')).catch(() => setPill(false, 'Offline'));
 }

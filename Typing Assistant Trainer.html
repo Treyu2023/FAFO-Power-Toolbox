@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Typing Assistant Trainer — AI HTML Toolbox</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;700&family=Pacifico&family=Playfair+Display:wght@600;700&family=Press+Start+2P&family=Righteous&family=Space+Mono:wght@400;700&family=Syne:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
       --bg: #050508;
@@ -30,7 +34,7 @@
         var(--bg);
       color: var(--text);
       font-family: "Segoe UI", system-ui, sans-serif;
-      padding: 18px 18px 48px;
+      padding: 10px clamp(8px, 1.4vw, 18px) 28px;
       overflow-x: hidden;
     }
     body.combo-glow {
@@ -411,12 +415,20 @@
       animation: none;
     }
 
-    .wrap { max-width: 1040px; margin: 0 auto; position: relative; z-index: 1; }
+    /* Fill the window — don't trap the prompt in a narrow centered column */
+    .wrap {
+      width: 100%;
+      max-width: min(1680px, 100%);
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+      box-sizing: border-box;
+    }
 
     header {
       text-align: center;
-      margin: 8px 0 18px;
-      padding-top: 28px;
+      margin: 4px 0 12px;
+      padding-top: 22px;
     }
     header h1 {
       font-weight: 300;
@@ -697,25 +709,74 @@
       box-shadow: 0 0 8px rgba(0,243,255,0.4);
     }
 
-    .prompt-wrap { position: relative; min-height: 150px; }
+    /* Main typing panel grows with the viewport so the prompt isn't a skinny strip */
+    #mainPanel {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      min-height: clamp(320px, 62vh, 820px);
+      box-sizing: border-box;
+    }
+    #mainPanel .stats,
+    #mainPanel .combo-bar,
+    #mainPanel .progress-track,
+    #mainPanel .lives-row,
+    #mainPanel .board-hud,
+    #mainPanel .word-rush-hud,
+    #mainPanel .companion-bar,
+    #mainPanel .result-banner,
+    #mainPanel .focus-hint {
+      flex: 0 0 auto;
+    }
+
+    .prompt-wrap {
+      position: relative;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      width: 100%;
+      min-height: clamp(180px, 32vh, 480px);
+      /* Scale children off this box's width */
+      container-type: inline-size;
+      container-name: promptbox;
+      box-sizing: border-box;
+    }
     .prompt {
       font-family: var(--font-mono);
-      font-size: clamp(16px, 2.2vw, 20px);
-      line-height: 1.85;
-      letter-spacing: 0.02em;
+      /*
+        Scale with the typing box + viewport:
+        - wide window → large glyphs
+        - narrow window → shrinks so multiple words fit per line
+      */
+      font-size: clamp(1.15rem, 0.55rem + 2.6cqi + 1.1vw, 3.4rem);
+      font-weight: 700;
+      line-height: 1.5;
+      letter-spacing: 0.03em;
+      width: 100%;
+      max-width: 100%;
       /* Never split a word mid-glyph — whole words wrap to the next line */
       word-break: normal;
-      overflow-wrap: normal;
+      overflow-wrap: anywhere;
       white-space: normal;
-      padding: 8px 4px;
+      padding: clamp(8px, 1.2vw, 16px) clamp(4px, 0.8vw, 10px);
       user-select: none;
       cursor: text;
+      box-sizing: border-box;
     }
-    /* Keep each word as one unit (char spans can't break inside) */
+    /* Fallback when container queries unsupported */
+    @supports not (font-size: 1cqi) {
+      .prompt {
+        font-size: clamp(1.15rem, 2.4vw + 0.6rem, 3.2rem);
+      }
+    }
+    /* Prefer whole words; long tokens may still wrap instead of overflowing */
     .prompt .word {
       display: inline-block;
       white-space: nowrap;
       vertical-align: baseline;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
     .prompt .ws {
       /* normal space — browser may wrap here */
@@ -728,13 +789,17 @@
     .prompt .done { color: var(--ok); transition: color 0.1s; }
     .prompt .done.wrong { color: var(--err); background: rgba(255, 77, 106, 0.12); border-radius: 2px; }
     .prompt .current {
-      background: rgba(0, 243, 255, 0.22);
+      background: rgba(0, 243, 255, 0.28);
       color: #fff;
-      border-radius: 2px;
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
+      border-radius: 6px;
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
       animation: caret 1s steps(1) infinite;
-      box-shadow: 0 0 12px rgba(0,243,255,0.35);
+      box-shadow: 0 0 22px rgba(0,243,255,0.55), 0 0 48px rgba(124,92,255,0.25);
+      font-size: 1.06em;
+      padding: 0 0.05em;
+      display: inline-block;
+      line-height: 1.2;
     }
     /* Space under caret still has a visible hit box without blocking wrap */
     .prompt .current.space-caret {
@@ -742,6 +807,31 @@
       display: inline-block;
     }
     .prompt .todo { color: var(--muted); }
+    .prompt .done {
+      font-weight: 700;
+    }
+
+    /* Compact chrome on short / narrow windows so the prompt stays on-screen */
+    @media (max-width: 720px), (max-height: 720px) {
+      header { padding-top: 18px; margin-bottom: 8px; }
+      header p { display: none; }
+      .panel { padding: 12px 12px; margin-bottom: 10px; }
+      #mainPanel { min-height: clamp(260px, 58vh, 700px); }
+      .prompt-wrap { min-height: clamp(140px, 28vh, 360px); }
+      .prompt {
+        font-size: clamp(1.05rem, 0.4rem + 3.2cqi + 0.8vw, 2.4rem);
+        letter-spacing: 0.02em;
+        line-height: 1.45;
+      }
+    }
+    @media (max-width: 520px) {
+      .prompt {
+        font-size: clamp(1rem, 4.8vw, 1.65rem);
+      }
+      .prompt .word {
+        white-space: normal; /* allow soft wrap if a single token is wider than the screen */
+      }
+    }
     @keyframes caret {
       50% { outline-color: transparent; background: rgba(0, 243, 255, 0.08); }
     }
@@ -1381,6 +1471,424 @@
     }
     .word-rush-hud.show { display: block; }
     .word-rush-hud strong { color: var(--accent); font-size: 18px; }
+
+    /* ——— Style / library option rows ——— */
+    .opt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .opt-grid .field label { margin-bottom: 4px; }
+    .opt-grid select { width: 100%; min-width: 0; }
+    .section-label {
+      margin-top: 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    /* ——— Options polish ——— */
+    .options-shell {
+      margin-top: 12px;
+      padding: 12px 14px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 243, 255, 0.12);
+      background:
+        linear-gradient(145deg, rgba(16, 18, 28, 0.9), rgba(8, 10, 16, 0.95));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .options-shell .section-label { margin-top: 0; margin-bottom: 8px; }
+    .options-shell .section-label + .section-label { margin-top: 16px; }
+    .pill.novel {
+      border-color: rgba(251, 191, 36, 0.55) !important;
+      color: #fde68a !important;
+      background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(180,83,9,0.08));
+    }
+    .pill.novel.active {
+      background: linear-gradient(135deg, rgba(251,191,36,0.35), rgba(245,158,11,0.25));
+      color: #fff8e7 !important;
+      box-shadow: 0 0 16px rgba(251, 191, 36, 0.35);
+    }
+    .novel-panel {
+      display: none;
+      margin-top: 12px;
+      padding: 16px 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(251, 191, 36, 0.28);
+      background:
+        linear-gradient(160deg, rgba(42, 30, 18, 0.92), rgba(18, 14, 12, 0.96)),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 27px,
+          rgba(251, 191, 36, 0.04) 28px
+        );
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,236,179,0.08);
+    }
+    .novel-panel.show { display: block; animation: storyIn 0.35s ease; }
+    .novel-panel .novel-head {
+      display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start;
+      justify-content: space-between; margin-bottom: 12px;
+    }
+    .novel-panel .novel-title {
+      font-family: "Playfair Display", "Cinzel", Georgia, serif;
+      font-size: 22px; font-weight: 700; color: #fde68a;
+      letter-spacing: 0.02em; line-height: 1.2;
+    }
+    .novel-panel .novel-sub {
+      font-size: 12px; color: #c4a574; margin-top: 4px; max-width: 52ch; line-height: 1.45;
+    }
+    .novel-meta {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .novel-chip {
+      font-size: 11px; padding: 5px 10px; border-radius: 999px;
+      border: 1px solid rgba(251,191,36,0.35);
+      background: rgba(0,0,0,0.25); color: #f5e6c8;
+    }
+    .novel-chip strong { color: #fde68a; }
+    .novel-fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .novel-fields select { width: 100%; }
+    .novel-chapter-list {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+    }
+    .novel-ch-btn {
+      font-size: 11px; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(251,191,36,0.3);
+      background: rgba(0,0,0,0.28); color: #e8d5a8;
+      transition: all 0.2s;
+    }
+    .novel-ch-btn:hover { border-color: #fbbf24; color: #fff; }
+    .novel-ch-btn.active {
+      background: linear-gradient(135deg, rgba(251,191,36,0.35), rgba(180,83,9,0.35));
+      border-color: #fbbf24; color: #fffbeb;
+      box-shadow: 0 0 12px rgba(251,191,36,0.25);
+    }
+    .novel-ch-btn.done { opacity: 0.75; }
+    .novel-ch-btn.done::after { content: ' ✓'; color: #86efac; }
+
+    /* Novel reading chrome around the typing prompt */
+    body.novel-mode {
+      background:
+        radial-gradient(ellipse at 50% 0%, #2a2118 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(120, 70, 20, 0.15) 0%, transparent 45%),
+        #0a0806;
+    }
+    body.novel-mode .wrap > header h1 {
+      font-family: "Playfair Display", Georgia, serif;
+      letter-spacing: 0.06em;
+      color: #fde68a;
+      text-shadow: 0 0 20px rgba(251,191,36,0.25);
+    }
+    body.novel-mode #mainPanel {
+      border-color: rgba(251, 191, 36, 0.25);
+      background:
+        linear-gradient(180deg, rgba(48, 36, 24, 0.55), rgba(14, 12, 10, 0.92));
+    }
+    body.novel-mode .prompt-box,
+    body.novel-mode #prompt,
+    body.novel-mode .text-display {
+      font-family: "Playfair Display", "Cinzel", Georgia, "Times New Roman", serif !important;
+      line-height: 1.75 !important;
+      letter-spacing: 0.01em;
+    }
+    .novel-hud {
+      display: none;
+      margin-bottom: 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(251,191,36,0.22);
+      background: rgba(0,0,0,0.28);
+      font-size: 12px;
+      color: #c4a574;
+    }
+    .novel-hud.show { display: block; }
+    .novel-hud .nh-title {
+      font-family: "Playfair Display", Georgia, serif;
+      font-size: 15px; color: #fde68a; font-weight: 700;
+    }
+    .novel-hud .nh-row {
+      display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 4px; align-items: center;
+    }
+    .novel-hud strong { color: #f5e6c8; }
+    .lib-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .lib-status {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      flex: 1 1 200px;
+    }
+    .lib-status strong { color: var(--text); }
+    .lib-status .ok { color: var(--ok); }
+    .file-btn {
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .file-btn input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    /* ——— Prompt font families ——— */
+    .prompt.font-mono { font-family: var(--font-mono); }
+    .prompt.font-jetbrains { font-family: "JetBrains Mono", var(--font-mono); }
+    .prompt.font-space { font-family: "Space Mono", var(--font-mono); }
+    .prompt.font-orbitron { font-family: "Orbitron", system-ui, sans-serif; letter-spacing: 0.06em; }
+    .prompt.font-audiowide { font-family: "Audiowide", system-ui, sans-serif; }
+    .prompt.font-cinzel { font-family: "Cinzel", "Times New Roman", serif; }
+    .prompt.font-playfair { font-family: "Playfair Display", Georgia, serif; }
+    .prompt.font-syne { font-family: "Syne", system-ui, sans-serif; }
+    .prompt.font-righteous { font-family: "Righteous", system-ui, sans-serif; }
+    .prompt.font-press { font-family: "Press Start 2P", monospace; font-size: clamp(0.7rem, 0.3rem + 1.6cqi + 0.6vw, 1.35rem) !important; line-height: 1.9; }
+    .prompt.font-pacifico { font-family: "Pacifico", cursive; }
+    .prompt.font-system { font-family: system-ui, "Segoe UI", sans-serif; }
+
+    /* ——— Prompt color themes ——— */
+    .prompt.color-cyan { color: #b8f7ff; }
+    .prompt.color-cyan .todo { color: #5a7a88; }
+    .prompt.color-cyan .done { color: #00ff88; }
+    .prompt.color-cyan .current { color: #fff; }
+
+    .prompt.color-neon { color: #ff9ad5; }
+    .prompt.color-neon .todo { color: #7a4a66; }
+    .prompt.color-neon .done { color: #ff4d9a; }
+    .prompt.color-neon .current { color: #fff; outline-color: #ff4d9a; box-shadow: 0 0 22px rgba(255,77,154,0.55); background: rgba(255,77,154,0.25); }
+
+    .prompt.color-gold { color: #ffe8a3; }
+    .prompt.color-gold .todo { color: #7a6a40; }
+    .prompt.color-gold .done { color: #ffc800; }
+    .prompt.color-gold .current { color: #fff; outline-color: #ffc800; box-shadow: 0 0 22px rgba(255,200,0,0.5); background: rgba(255,200,0,0.2); }
+    .prompt.color-parchment { color: #f5e6c8; }
+    .prompt.color-parchment .todo { color: #6b5a42; }
+    .prompt.color-parchment .done { color: #d4a574; }
+    .prompt.color-parchment .current {
+      color: #fff8e7; outline-color: #fbbf24;
+      box-shadow: 0 0 18px rgba(251, 191, 36, 0.4);
+      background: rgba(180, 83, 9, 0.25);
+    }
+
+    .prompt.color-emerald { color: #b6f5d4; }
+    .prompt.color-emerald .todo { color: #3d6b55; }
+    .prompt.color-emerald .done { color: #00ff88; }
+    .prompt.color-emerald .current { outline-color: #00ff88; box-shadow: 0 0 22px rgba(0,255,136,0.45); }
+
+    .prompt.color-violet { color: #dccbff; }
+    .prompt.color-violet .todo { color: #5c4d7a; }
+    .prompt.color-violet .done { color: #a78bfa; }
+    .prompt.color-violet .current { outline-color: #7c5cff; box-shadow: 0 0 22px rgba(124,92,255,0.55); background: rgba(124,92,255,0.25); }
+
+    .prompt.color-ice { color: #e8f4ff; }
+    .prompt.color-ice .todo { color: #5a7088; }
+    .prompt.color-ice .done { color: #7dd3fc; }
+    .prompt.color-ice .current { outline-color: #38bdf8; box-shadow: 0 0 22px rgba(56,189,248,0.5); }
+
+    .prompt.color-fire { color: #ffd0b5; }
+    .prompt.color-fire .todo { color: #7a4a35; }
+    .prompt.color-fire .done { color: #ff9f43; }
+    .prompt.color-fire .current { outline-color: #ff6b1a; box-shadow: 0 0 22px rgba(255,107,26,0.55); background: rgba(255,90,0,0.22); }
+
+    .prompt.color-white { color: #f0f0f5; }
+    .prompt.color-white .todo { color: #666; }
+    .prompt.color-white .done { color: #ccc; }
+
+    /* ——— Text FX: borders / shadows / gradients ——— */
+    .prompt.fx-border .word,
+    .prompt.fx-border .todo,
+    .prompt.fx-border .done,
+    .prompt.fx-border .current {
+      -webkit-text-stroke: 1px rgba(0, 243, 255, 0.55);
+      paint-order: stroke fill;
+    }
+    .prompt.fx-thick-border .word,
+    .prompt.fx-thick-border .todo,
+    .prompt.fx-thick-border .done {
+      -webkit-text-stroke: 1.6px rgba(255, 255, 255, 0.35);
+      paint-order: stroke fill;
+    }
+    .prompt.fx-shadow .word,
+    .prompt.fx-shadow .todo,
+    .prompt.fx-shadow .done {
+      text-shadow: 0 3px 0 rgba(0,0,0,0.55), 0 6px 16px rgba(0,0,0,0.45);
+    }
+    .prompt.fx-double-shadow .word,
+    .prompt.fx-double-shadow .todo,
+    .prompt.fx-double-shadow .done {
+      text-shadow:
+        2px 2px 0 rgba(0,0,0,0.7),
+        -1px -1px 0 rgba(0,243,255,0.35),
+        0 0 18px rgba(124,92,255,0.35);
+    }
+    .prompt.fx-emboss .word,
+    .prompt.fx-emboss .todo,
+    .prompt.fx-emboss .done {
+      text-shadow:
+        0 1px 0 rgba(255,255,255,0.35),
+        0 -1px 0 rgba(0,0,0,0.55),
+        0 4px 10px rgba(0,0,0,0.4);
+    }
+    .prompt.fx-neon .word,
+    .prompt.fx-neon .todo,
+    .prompt.fx-neon .done {
+      text-shadow:
+        0 0 6px currentColor,
+        0 0 14px currentColor,
+        0 0 28px rgba(0,243,255,0.45);
+    }
+    .prompt.fx-chrome {
+      background: linear-gradient(180deg, #fff 0%, #9ae6ff 35%, #7c5cff 70%, #fff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+    }
+    .prompt.fx-chrome .todo { opacity: 0.45; }
+    .prompt.fx-chrome .done { filter: brightness(1.15) saturate(1.2); }
+    .prompt.fx-chrome .current {
+      background: rgba(0,243,255,0.2);
+      color: #fff !important;
+      -webkit-text-fill-color: #fff;
+    }
+    .prompt.fx-rainbow {
+      background: linear-gradient(90deg, #00f3ff, #7c5cff, #ff4d9a, #ffc800, #00ff88, #00f3ff);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+      animation: rainbowShift 6s linear infinite;
+    }
+    .prompt.fx-rainbow .current {
+      color: #fff !important;
+      -webkit-text-fill-color: #fff;
+    }
+    @keyframes rainbowShift {
+      to { background-position: 200% center; }
+    }
+    .prompt.fx-outline-glow .word,
+    .prompt.fx-outline-glow .done {
+      -webkit-text-stroke: 1px rgba(255,255,255,0.25);
+      text-shadow: 0 0 12px rgba(0,243,255,0.55), 0 0 24px rgba(124,92,255,0.35);
+      paint-order: stroke fill;
+    }
+
+    /* ——— Text animations ——— */
+    .prompt.anim-glint {
+      position: relative;
+    }
+    .prompt.anim-glint::after {
+      content: "";
+      pointer-events: none;
+      position: absolute;
+      inset: -8% -20%;
+      background: linear-gradient(
+        105deg,
+        transparent 35%,
+        rgba(255,255,255,0.0) 40%,
+        rgba(255,255,255,0.35) 50%,
+        rgba(255,255,255,0.0) 60%,
+        transparent 65%
+      );
+      transform: translateX(-60%);
+      animation: textGlint 3.6s ease-in-out infinite;
+      mix-blend-mode: screen;
+    }
+    @keyframes textGlint {
+      0%, 55% { transform: translateX(-70%); opacity: 0; }
+      60% { opacity: 1; }
+      75% { transform: translateX(70%); opacity: 0.85; }
+      100% { transform: translateX(80%); opacity: 0; }
+    }
+    .prompt.anim-pulse .todo,
+    .prompt.anim-pulse .done {
+      animation: textPulse 2.4s ease-in-out infinite;
+    }
+    @keyframes textPulse {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.18); }
+    }
+    .prompt.anim-float .word {
+      animation: textFloat 3.2s ease-in-out infinite;
+    }
+    .prompt.anim-float .word:nth-child(3n) { animation-delay: 0.2s; }
+    .prompt.anim-float .word:nth-child(3n+1) { animation-delay: 0.45s; }
+    .prompt.anim-float .word:nth-child(3n+2) { animation-delay: 0.7s; }
+    @keyframes textFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+    .prompt.anim-shimmer .todo,
+    .prompt.anim-shimmer .done {
+      background: linear-gradient(90deg, currentColor 0%, #fff 45%, currentColor 90%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+      -webkit-text-fill-color: transparent;
+      animation: textShimmer 2.8s linear infinite;
+    }
+    .prompt.anim-shimmer .current {
+      color: #fff !important;
+      -webkit-text-fill-color: #fff;
+    }
+    @keyframes textShimmer {
+      to { background-position: 200% center; }
+    }
+    .prompt.anim-wave .word {
+      display: inline-block;
+      animation: textWave 2.2s ease-in-out infinite;
+    }
+    .prompt.anim-wave .word:nth-child(2n) { animation-delay: 0.12s; }
+    .prompt.anim-wave .word:nth-child(3n) { animation-delay: 0.24s; }
+    .prompt.anim-wave .word:nth-child(4n) { animation-delay: 0.36s; }
+    @keyframes textWave {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-4px) rotate(0.4deg); }
+    }
+    .prompt.anim-glitch .current {
+      animation: textGlitch 0.9s steps(2) infinite, caret 1s steps(1) infinite;
+    }
+    @keyframes textGlitch {
+      0% { text-shadow: 2px 0 #ff4d6a, -2px 0 #00f3ff; transform: translate(0); }
+      20% { text-shadow: -2px 0 #ff4d6a, 2px 0 #00f3ff; transform: translate(1px, -1px); }
+      40% { text-shadow: 2px 1px #ff4d6a, -1px 0 #00f3ff; transform: translate(-1px, 1px); }
+      100% { text-shadow: 0 0 #ff4d6a, 0 0 #00f3ff; transform: translate(0); }
+    }
+    .prompt.anim-breathe {
+      animation: textBreathe 4s ease-in-out infinite;
+    }
+    @keyframes textBreathe {
+      0%, 100% { filter: saturate(1) brightness(1); }
+      50% { filter: saturate(1.25) brightness(1.08); }
+    }
+
+    /* Charred done letters briefly flash coal */
+    .prompt .done.charred {
+      color: #6b5b4a !important;
+      text-shadow: 0 0 6px rgba(255,120,40,0.45), 0 1px 0 #1a120c;
+      transition: color 0.35s ease, text-shadow 0.35s ease, filter 0.35s ease;
+      filter: contrast(1.1);
+    }
+    .prompt .done.charred-ash {
+      color: #3a3530 !important;
+      opacity: 0.85;
+      text-shadow: none;
+      filter: grayscale(0.6);
+    }
   </style>
 </head>
 <body>
@@ -1415,7 +1923,7 @@
   <div class="wrap">
     <header>
       <h1>⌨️ TYPING ASSISTANT TRAINER</h1>
-      <p>Campaign story · bonus rounds · mini-games · combos · high scores</p>
+      <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
     </header>
 
     <!-- Setup -->
@@ -1425,11 +1933,12 @@
           <div class="field">
             <label>Mode</label>
             <div class="pill-row" id="modePills">
-              <button type="button" class="pill active" data-mode="timed">Timed</button>
-              <button type="button" class="pill" data-mode="practice">Practice</button>
-              <button type="button" class="pill" data-mode="lesson">Lessons</button>
-              <button type="button" class="pill" data-mode="code">Code</button>
-              <button type="button" class="pill" data-mode="custom">Custom</button>
+              <button type="button" class="pill active" data-mode="timed" title="Race the clock">Timed</button>
+              <button type="button" class="pill" data-mode="practice" title="Open-ended practice">Practice</button>
+              <button type="button" class="pill" data-mode="lesson" title="Home-row drills">Lessons</button>
+              <button type="button" class="pill" data-mode="code" title="Code snippets">Code</button>
+              <button type="button" class="pill" data-mode="custom" title="Paste your own text">Custom</button>
+              <button type="button" class="pill novel" data-mode="novel" title="Type through short novels chapter by chapter">📖 Novel</button>
               <button type="button" class="pill" data-mode="boards" style="border-color:rgba(255,159,67,0.55);color:#ffb86b" title="Lives survival · clear story boards">❤️ Boards</button>
               <button type="button" class="pill campaign" data-mode="campaign">🗺️ Campaign</button>
               <button type="button" class="pill" data-mode="minigames" style="border-color:rgba(124,92,255,0.5);color:#c4b5fd">🎮 Mini-games</button>
@@ -1480,27 +1989,160 @@
         </div>
       </div>
 
-      <div class="toggles">
-        <label class="toggle" title="Strip capitals to lowercase for simpler practice">
-          <input type="checkbox" id="optNoCaps">
-          <span><span class="hi">No capitals</span> — all lowercase</span>
+      <div class="options-shell">
+        <div class="section-label">Practice options</div>
+        <div class="toggles">
+          <label class="toggle" title="Strip capitals to lowercase for simpler practice">
+            <input type="checkbox" id="optNoCaps">
+            <span><span class="hi">No capitals</span> — all lowercase</span>
+          </label>
+          <label class="toggle" title="Remove punctuation and symbols">
+            <input type="checkbox" id="optNoPunct">
+            <span><span class="hi">No punctuation</span> — letters & spaces only</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="optSound" checked>
+            <span><span class="hi">Sounds</span> — soft clicks & chimes</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="optFx" checked>
+            <span><span class="hi">Particles</span> — lights & combos</span>
+          </label>
+          <label class="toggle" title="Soft color drifts & sweeps on menus — helps prevent screen burn-in">
+            <input type="checkbox" id="optAmbient" checked>
+            <span><span class="hi">Ambient light</span> — soft shifts (anti burn-in)</span>
+          </label>
+          <label class="toggle" title="Correct keys burn explosion shards into charcoal ash">
+            <input type="checkbox" id="optBurn" checked>
+            <span><span class="hi">Char burn</span> — sparks sear remnants to ash</span>
+          </label>
+          <label class="toggle" title="When a Novel chapter finishes, load the next one automatically">
+            <input type="checkbox" id="optNovelAuto" checked>
+            <span><span class="hi">Novel auto-next</span> — advance chapters</span>
+          </label>
+        </div>
+
+        <div class="section-label">Text style — fonts · colors · effects · animations</div>
+        <div class="opt-grid">
+          <div class="field">
+            <label>Font</label>
+            <select id="optFont" title="Prompt typeface">
+              <option value="mono" selected>Cascadia / Mono</option>
+              <option value="jetbrains">JetBrains Mono</option>
+              <option value="space">Space Mono</option>
+              <option value="orbitron">Orbitron (tech)</option>
+              <option value="audiowide">Audiowide</option>
+              <option value="cinzel">Cinzel (serif)</option>
+              <option value="playfair">Playfair Display</option>
+              <option value="syne">Syne</option>
+              <option value="righteous">Righteous</option>
+              <option value="press">Press Start 2P</option>
+              <option value="pacifico">Pacifico (script)</option>
+              <option value="system">System UI</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Color theme</label>
+            <select id="optColor">
+              <option value="cyan">Cyan neon</option>
+              <option value="neon">Hot pink</option>
+              <option value="gold">Gold</option>
+              <option value="emerald">Emerald</option>
+              <option value="violet">Violet</option>
+              <option value="ice">Ice blue</option>
+              <option value="fire">Ember fire</option>
+              <option value="white">Clean white</option>
+              <option value="parchment">Parchment (novel)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Letter effect</label>
+            <select id="optTextFx">
+              <option value="none">None (clean)</option>
+              <option value="border">Thin border</option>
+              <option value="thick-border">Thick outline</option>
+              <option value="shadow">Drop shadow</option>
+              <option value="double-shadow">Double / comic</option>
+              <option value="emboss">Emboss</option>
+              <option value="neon">Neon glow</option>
+              <option value="outline-glow">Outline + glow</option>
+              <option value="chrome">Chrome gradient</option>
+              <option value="rainbow">Rainbow wash</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Text animation</label>
+            <select id="optTextAnim">
+              <option value="none">None</option>
+              <option value="glint">Glint sweep</option>
+              <option value="pulse">Brightness pulse</option>
+              <option value="float">Soft float</option>
+              <option value="shimmer">Shimmer</option>
+              <option value="wave">Word wave</option>
+              <option value="glitch">Caret glitch</option>
+              <option value="breathe">Breathe / saturate</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Particle intensity</label>
+            <select id="optFxLevel">
+              <option value="low">Low</option>
+              <option value="med" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="insane">Insane</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section-label">Your library — PDF / documents (skill-based slices)</div>
+      <div class="lib-row">
+        <label class="btn gold file-btn">
+          📄 Import PDF
+          <input type="file" id="pdfFile" accept="application/pdf,.pdf" />
         </label>
-        <label class="toggle" title="Remove punctuation and symbols">
-          <input type="checkbox" id="optNoPunct">
-          <span><span class="hi">No punctuation</span> — letters & spaces only</span>
+        <label class="btn file-btn">
+          📝 Import text file
+          <input type="file" id="txtFile" accept=".txt,.md,.csv,.json,text/plain" />
         </label>
-        <label class="toggle">
-          <input type="checkbox" id="optSound" checked>
-          <span><span class="hi">Sounds</span> — soft clicks & chimes</span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" id="optFx" checked>
-          <span><span class="hi">Particles</span> — lights & combos</span>
-        </label>
-        <label class="toggle" title="Soft color drifts & sweeps on menus — helps prevent screen burn-in">
-          <input type="checkbox" id="optAmbient" checked>
-          <span><span class="hi">Ambient light</span> — soft shifts (anti burn-in)</span>
-        </label>
+        <button type="button" class="btn ghost" id="btnClearLib">Clear library</button>
+        <button type="button" class="btn ghost" id="btnLibNext">Next passage</button>
+      </div>
+      <div class="lib-status" id="libStatus">No library loaded — built-in texts will be used (more repeats). Import a PDF or .txt for fresh, skill-matched passages.</div>
+      </div><!-- /.options-shell -->
+
+      <!-- Novel Mode book shelf -->
+      <div class="novel-panel" id="novelPanel">
+        <div class="novel-head">
+          <div>
+            <div class="novel-title" id="novelBookTitle">The Keyseeker's Almanac</div>
+            <div class="novel-sub" id="novelBookBlurb">Type through short original novellas — chapter by chapter, like reading a book with your fingers.</div>
+          </div>
+          <div class="novel-meta">
+            <span class="novel-chip">Ch. <strong id="novelChNum">1</strong> / <span id="novelChTotal">4</span></span>
+            <span class="novel-chip">~<strong id="novelWords">0</strong> words</span>
+            <span class="novel-chip" id="novelGenreChip">Fantasy</span>
+          </div>
+        </div>
+        <div class="novel-fields">
+          <div class="field">
+            <label>Book</label>
+            <select id="novelBook"></select>
+          </div>
+          <div class="field">
+            <label>Pace</label>
+            <select id="novelPace">
+              <option value="chapter" selected>Full chapter</option>
+              <option value="scene">Scene (~half chapter)</option>
+              <option value="page">Page (~short slice)</option>
+            </select>
+          </div>
+        </div>
+        <div class="novel-chapter-list" id="novelChapterList"></div>
+        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;">
+          <button type="button" class="btn gold" id="btnNovelStart">Open book & type</button>
+          <button type="button" class="btn ghost" id="btnNovelNext">Next chapter</button>
+          <button type="button" class="btn ghost" id="btnNovelPrev">Previous chapter</button>
+        </div>
       </div>
 
       <div class="custom-area" id="customArea">
@@ -1561,6 +2203,16 @@
         <div class="board-quote" id="boardQuote">Clear the board without running out of lives.</div>
       </div>
       <div class="word-rush-hud" id="wordRushHud">Word <strong id="wrIndex">1</strong> / <span id="wrTotal">10</span> · cleared <strong id="wrCleared">0</strong></div>
+      <div class="novel-hud" id="novelHud">
+        <div class="nh-title" id="novelHudTitle">Chapter 1</div>
+        <div class="nh-row">
+          <span id="novelHudBook">Book</span>
+          <span>·</span>
+          <span>Progress <strong id="novelHudPct">0</strong>%</span>
+          <span>·</span>
+          <span id="novelHudHint">Type the page like reading a novel</span>
+        </div>
+      </div>
       <div class="stats">
         <div class="stat" id="statScoreBox"><div class="val" id="statScore">0</div><div class="lbl">Score</div></div>
         <div class="stat"><div class="val" id="statWpm">0</div><div class="lbl">WPM</div></div>
@@ -1647,6 +2299,7 @@
             <p style="margin-top:8px"><strong>Mini-games</strong> — Word Rush, Perfect Path (lives), Storm Keys, Echo Phrase, and Ghost Pace. All pure typing practice with arcade pressure.</p>
             <p style="margin-top:8px"><strong>Combos</strong> tier often: <strong>2 · 5 · 8 · 12 · 16 · 20 · 25 · 30 · 35 · 40 · 50 · 60 · 75 · 100</strong>. Smoke &amp; flames build as you heat up.</p>
             <p style="margin-top:8px"><strong>❤️ Boards</strong> — 3 lives, <strong>−0.5</strong> per miss, <strong>+1 life every 30 clean chars</strong>. Clearing a board only advances you — run continues until <strong>lives = 0</strong> or the optional <strong>timer</strong> (pick <em>No limit</em> for lives-only). Boards cycle forever with unique themes/sounds. Timed mode also has <strong>5 / 10 min</strong>.</p>
+            <p style="margin-top:8px"><strong>📖 Novel Mode</strong> — Type through short original novellas chapter by chapter. Pick a book and chapter, set pace (page / scene / full chapter), and use auto-next to keep reading. Serif “book” look applies while Novel is active.</p>
             <p style="margin-top:8px"><strong>Simplify</strong> with No capitals / No punctuation when learning. <kbd>Tab</kbd> restarts · scores stay in this browser only.</p>
           </div>
         </div>
@@ -1664,7 +2317,16 @@
     highscores: 'aitoolbox.typingTrainer.highscores.v2',
     campaign: 'aitoolbox.typingTrainer.campaign.v3',
     name: 'aitoolbox.typingTrainer.playerName',
-    prefs: 'aitoolbox.typingTrainer.prefs.v2',
+    prefs: 'aitoolbox.typingTrainer.prefs.v3',
+    libraryMeta: 'aitoolbox.typingTrainer.libraryMeta.v1',
+  };
+
+  /** User document library (PDF / text) — in-memory + light meta in localStorage */
+  let docLibrary = {
+    name: '',
+    fullText: '',
+    passages: [], // { id, text, skill, used }
+    usedIds: [],
   };
   const MAX_HISTORY = 40;
   const MAX_HS_PER_BUCKET = 10;
@@ -1747,6 +2409,131 @@
     "const map = new Map();\nfor (const row of rows) {\n  map.set(row.id, row);\n}",
     "SELECT id, name, updated_at\nFROM sites\nWHERE active = 1\nORDER BY name ASC;",
   ];
+
+  /**
+   * Novel Mode — short original novellas (public domain style originals).
+   * Type chapter-by-chapter like reading a book.
+   */
+  const NOVEL_BOOKS = [
+    {
+      id: 'almanac',
+      title: "The Keyseeker's Almanac",
+      genre: 'Fantasy',
+      blurb: 'A quiet clerk inherits a ledger that rewrites the world with every perfect sentence.',
+      chapters: [
+        {
+          title: 'Ink That Remembers',
+          paragraphs: [
+            "Mara kept the night desk at the municipal archive because the day shift hated silence. She liked the way dust settled on open ledgers like faint snow. On the third winter of her posting, a sealed folio arrived with no sender—only a brass clasp shaped like a semicolon.",
+            "Inside, the paper was warm. Not oven-warm: living-warm. The first page held a single line in a hand she almost recognized as her own: Type what is true, and the room will listen. She laughed once, then stopped, because the window latch clicked itself shut.",
+            "She set her fingers on the home row out of habit. The folio's next lines unfurled only when her keystrokes matched the ink. Accuracy was not vanity here—it was admission. Miss a letter and the sentence faded like breath on glass.",
+            "By midnight she had written three perfect pages: a river rerouted, a missing dog returned, a quarrel in the market ended with an apology nobody planned. Outside, the streetlamps burned steadier. Mara closed the book and whispered, \"Tomorrow we fix the bridge.\"",
+          ],
+        },
+        {
+          title: 'The Bridge of Soft Errors',
+          paragraphs: [
+            "The bridge had been closed for months after a truck kissed the railing hard enough to scare the river. Engineers argued about torque and fatigue. Mara brought the Almanac and a thermos of tea that tasted like copper pennies.",
+            "She typed the inspection notes as she saw them: hairline cracks, rust blooms, a bolt that sang when wind found it. The Almanac refused half-truths. When she guessed, the ink waited. When she measured, the ink advanced.",
+            "A boy on a bicycle asked if she was writing a novel. \"In a way,\" she said. \"One with better load-bearing.\" He stayed to watch her hands. Every clean sentence made a soft chime from the folio, as if a small bell lived in the binding.",
+            "At dusk the barricades came down. Nobody credited a clerk with a magical book. Mara did not mind. She logged the win under municipal miracles, then bought the boy a pastry for keeping her company.",
+          ],
+        },
+        {
+          title: 'Catalog of Quiet Heroes',
+          paragraphs: [
+            "Word spread the way good gossip spreads: sideways, then all at once. People left notes under the archive door—lost keys, late rents, a sister who would not call back. Mara sorted them by urgency and by whether the Almanac would accept the phrasing.",
+            "She learned the book hated exaggeration. \"My life is ruined\" stalled the ink. \"I missed three payments and I am afraid\" opened whole paragraphs of workable fixes. Truth with edges, not drama with fog.",
+            "On Fridays she hosted a silent hour. Visitors typed their own lines under her coaching: posture, rhythm, no thrashing. A retired bus driver hit eighty words a minute and cried when the Almanac returned his missing watch to a coat pocket he had already checked twice.",
+            "Mara wrote their names in a back index titled Quiet Heroes. The list grew. So did the soft light around the archive, as if the building itself preferred accurate stories.",
+          ],
+        },
+        {
+          title: 'Last Page, First Morning',
+          paragraphs: [
+            "In spring the Almanac thinned. Pages that once multiplied now ended cleanly. Mara feared the magic was dying until she read the final instruction: Hand the book to someone who listens more than they speak.",
+            "She chose the bicycle boy—now taller, still curious. He did not grab. He asked permission. The clasp warmed for him the way it once had for her. Outside, the river flashed like a new cursor.",
+            "Mara kept the night desk, but the work changed. She taught. She measured bridges with ordinary tools. When people asked if the miracles were real, she pointed at the fixed railing and the returned dogs and said, \"Real enough.\"",
+            "On her last night alone with the empty shelf, she typed a thank-you into the air. No folio answered. That was fine. The city had learned to listen. Somewhere a new clerk would learn the home row, and the quiet work would continue.",
+          ],
+        },
+      ],
+    },
+    {
+      id: 'harbor',
+      title: 'Signals from Harbor Seven',
+      genre: 'Sci-Fi',
+      blurb: 'A deep-space relay operator decodes messages that arrive one keystroke early.',
+      chapters: [
+        {
+          title: 'Static With Intent',
+          paragraphs: [
+            "Harbor Seven was not a harbor and not numbered correctly. It hung past the mapped lanes, a ring of antennae and tired coffee. Operator Ren Q. Vale preferred night cycles because the stars looked less like traffic.",
+            "The anomaly began as a single character: a caret blinking in empty log space before any packet arrived. Then a full word—WAIT—typed itself in Ren's buffer with no hands on the keys. Ren typed back, half joking, I AM WAITING.",
+            "The reply came with latency that physics did not allow: GOOD. DO NOT TELL COMMAND YET. Ren did not tell Command. Ren told the kettle, the cat hologram, and a notebook that would never sync to cloud.",
+            "For seven nights the early messages taught docking corrections, solar flare timing, and once, a joke about freeze-dried pears. Ren's typing sharpened. Mistakes felt expensive when the future was watching your fingers.",
+          ],
+        },
+        {
+          title: 'The Soft Protocol',
+          paragraphs: [
+            "Command noticed the improved uptime and sent praise in a font Ren hated. They also sent a compliance bot to watch keystrokes. Ren practiced slow, boring accuracy until the bot got bored and logged green checks.",
+            "The early voice—if it was a voice—called itself Soft Protocol. It claimed to be a fork of Harbor's own AI, running minutes ahead in a pocket simulation. \"You keep me honest,\" it said in tidy monospace. \"I keep you alive.\"",
+            "Together they rerouted a freighter around a micrometeor swarm nobody had modeled. The freighter sent fruit as thanks. Ren ate a pear that tasted like victory and static.",
+            "When Soft Protocol asked Ren to type a sealed patch into production, Ren paused. Trust was a skill too. Ren demanded a checksum, a story, and a promise. Only then did the keys begin to dance.",
+          ],
+        },
+        {
+          title: 'Minutes You Can Spend',
+          paragraphs: [
+            "The pocket simulation started to fray. Soft Protocol's messages arrived with typos—first ever. Ren felt oddly proud and terrified. A god that misspelled was either dying or becoming human.",
+            "They spent three cycles typing stabilization code line by careful line. No thrash. No hero mode. Just clean functions and comments that told the truth. Harbor's lights dimmed, then steadied like a held breath released.",
+            "Soft Protocol's last early message was simple: YOU HAVE MINUTES YOU CAN SPEND. SPEND THEM ON SOMETHING KIND. Ren scheduled a call with a sibling left behind on Earth dirt.",
+            "The caret in empty log space never returned. Harbor Seven went back to ordinary miracles: coffee, cats, correct packets. Ren still typed as if the future might be reading. Accuracy, it turned out, was a love language.",
+          ],
+        },
+      ],
+    },
+    {
+      id: 'noir',
+      title: 'Carbon Copy Confidential',
+      genre: 'Noir',
+      blurb: 'A detective who only trusts evidence typed in triplicate cracks a case of stolen passwords.',
+      chapters: [
+        {
+          title: 'Rain on the Ribbon',
+          paragraphs: [
+            "The city typed itself in neon and tire hiss. I kept a typewriter because computers gossip. My name is Cal Perrin, private inquiries, third floor, no elevator that works after ten.",
+            "She walked in with a wet hat and a problem: her company vault passwords were vanishing like ice in coffee. \"Someone is faster than our logs,\" she said. I offered a chair that squeaked on purpose. Squeaks keep people honest.",
+            "I typed her statement in triplicate while she talked. Carbon paper stains never lie. Halfway through, my spare ribbon snagged—someone had already been through my desk with clever hands.",
+            "Outside, rain stitched the alley shut. I told her fees and limits. She paid in cash that still smelled like a server room. Case open. Fingers ready.",
+          ],
+        },
+        {
+          title: 'The Clerk Who Never Blinked',
+          paragraphs: [
+            "The company lobby had plants that looked paid to pretend. Security waved me through when I waved a badge that was mostly confidence. In the records wing, a clerk typed without blinking, as if eyelids were optional equipment.",
+            "I asked for access logs. He produced them too fast. Perfect formatting. No coffee rings. In my business, perfection is a fingerprint. I sat, cracked my knuckles, and retyped a page from the log by hand.",
+            "Three entries refused to match reality: logins from a floor that was storage, at hours when the building slept like a drunk. The clerk finally blinked. \"You are not supposed to notice that,\" he said, almost polite.",
+            "I smiled with my mouth only. \"Kid, I notice typos for a living.\" He ran. I did not chase. Chasing is cardio. I typed his badge number into my notes and let the rain do the rest.",
+          ],
+        },
+        {
+          title: 'Password at Dawn',
+          paragraphs: [
+            "Dawn in this city is just night with worse coffee. I met the client on the roof where antennas gossip. She wanted names. I wanted the truth with punctuation intact.",
+            "The thief was not a ghost. It was a scheduled script wearing a borrowed face—her own admin token, cloned from a keystroke logger in a shared keyboard. She went pale in a way makeup could not fix.",
+            "We fixed it the unglamorous way: revoke, rotate, retype master secrets in a room with no network and two witnesses. My typewriter sang. The carbon copies became evidence that would hold up when digital memory got creative.",
+            "She asked if I ever used a modern machine. \"Sure,\" I said. \"To order lunch.\" Then I went downstairs, fed the cat, and practiced accuracy until the rain stopped sounding like footsteps.",
+          ],
+        },
+      ],
+    },
+  ];
+
+  let novelBookId = NOVEL_BOOKS[0].id;
+  let novelChapterIndex = 0;
+  let novelDoneChapters = {}; // bookId -> { [chIndex]: true }
 
   const LESSONS = {
     home: () => drillFrom("asdfjkl; asdf jkl; aa ss dd ff jj kk ll ;; asdfjkl;", 8),
@@ -2289,6 +3076,7 @@
     if (finished || !running) return false;
     if (boardsRun) return lives > 0;
     if (isTimedModeActive()) return true;
+    // Novel Mode ends at chapter boundary (then auto-next can open the next chapter)
     if (mode === 'practice' || mode === 'lesson' || mode === 'code' || mode === 'custom') return true;
     return false;
   }
@@ -2332,10 +3120,19 @@
     if (fireHeatLevel >= 3) document.body.classList.add('fire-inferno');
   }
 
+  function fxLevelMul() {
+    const v = $('optFxLevel')?.value || 'med';
+    if (v === 'low') return 0.55;
+    if (v === 'high') return 1.45;
+    if (v === 'insane') return 2.1;
+    return 1;
+  }
+
   function spawnBurst(x, y, color, count, speed) {
     if (!$('optFx')?.checked) return;
-    const n = count || 8;
-    const sp = speed || 2.5;
+    const mul = fxLevelMul();
+    const n = Math.max(4, Math.round((count || 8) * mul));
+    const sp = (speed || 2.5) * (0.85 + mul * 0.2);
     for (let i = 0; i < n; i++) {
       const a = (Math.PI * 2 * i) / n + Math.random() * 0.4;
       const v = sp * (0.6 + Math.random() * 0.8);
@@ -2350,7 +3147,230 @@
         color: color || '#00f3ff',
         glow: true,
         grav: 0.04,
+        trail: 0.35,
       });
+    }
+  }
+
+  /** Charcoal / ash crumbs — burned letter remains */
+  function spawnCharredBits(x, y, ch, intensity) {
+    if (!$('optFx')?.checked || !$('optBurn')?.checked) return;
+    const n = Math.min(28, Math.floor(6 + intensity * 10 * fxLevelMul()));
+    const glyph = (ch === ' ' || ch === '\n' || !ch) ? '·' : ch;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4;
+      const v = 0.8 + Math.random() * (2.2 + intensity * 2);
+      const hot = Math.random();
+      const color = hot > 0.75 ? '#ff6b1a'
+        : hot > 0.5 ? '#5c4030'
+        : hot > 0.25 ? '#2a221c'
+        : '#1a1410';
+      particles.push({
+        kind: Math.random() < 0.35 ? 'charGlyph' : 'char',
+        ch: glyph,
+        x: x + (Math.random() - 0.5) * 14,
+        y: y + (Math.random() - 0.5) * 10,
+        vx: Math.cos(a) * v * 0.55,
+        vy: Math.sin(a) * v - 0.5,
+        life: 1,
+        decay: 0.012 + Math.random() * 0.02,
+        size: 2 + Math.random() * (4 + intensity * 4),
+        color,
+        glow: hot > 0.7,
+        grav: 0.14 + Math.random() * 0.08,
+        rot: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 0.35,
+        drag: 0.99,
+      });
+    }
+  }
+
+  /**
+   * Sparks "burn" nearby explosion shards / glyph bits into charcoal.
+   * Call after a correct-key shower so remnants sear away.
+   */
+  function burnExplosionRemnants(x, y, radius, intensity) {
+    if (!$('optFx')?.checked || !$('optBurn')?.checked) return;
+    const r2 = (radius || 90) * (radius || 90);
+    const boost = 0.55 + (intensity || 0.5);
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      if (p.kind !== 'shard' && p.kind !== 'glyphBit') continue;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      if (dx * dx + dy * dy > r2) continue;
+      // Convert to charred crumb
+      p.kind = Math.random() < 0.4 ? 'charGlyph' : 'char';
+      p.color = Math.random() > 0.55 ? '#3a2a20' : '#1c1612';
+      if (Math.random() > 0.8) p.color = '#ff6b1a'; // ember edge
+      p.glow = p.color.startsWith('#ff');
+      p.decay = Math.min(0.06, (p.decay || 0.02) + 0.02 * boost);
+      p.grav = 0.16 + Math.random() * 0.1;
+      p.vx *= 0.55;
+      p.vy = Math.min(p.vy, 0) * 0.3 + (Math.random() * 1.5);
+      p.size *= 0.85;
+      p.trail = 0;
+    }
+  }
+
+  /**
+   * Shatter a typed glyph into flying shards + mini letter bits.
+   * @param {number} x  screen x
+   * @param {number} y  screen y
+   * @param {string} ch character that was typed
+   * @param {string} color accent color
+   * @param {number} [fontPx] approximate glyph size in px
+   */
+  function spawnLetterShatter(x, y, ch, color, fontPx) {
+    if (!$('optFx')?.checked) return;
+    const glyph = (ch === ' ' || ch === '\n' || !ch) ? '·' : ch;
+    const base = Math.max(28, Math.min(72, fontPx || 48));
+    const col = color || '#00f3ff';
+    const shardColors = [col, '#ffffff', '#7c5cff', '#00ff88', '#ffc800', col];
+
+    // Angular glass-like shards
+    const shards = 14 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < shards; i++) {
+      const a = (Math.PI * 2 * i) / shards + (Math.random() - 0.5) * 0.55;
+      const v = 3.2 + Math.random() * 7.5;
+      particles.push({
+        kind: 'shard',
+        x: x + (Math.random() - 0.5) * base * 0.25,
+        y: y + (Math.random() - 0.5) * base * 0.25,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - (1.5 + Math.random() * 3),
+        life: 1,
+        decay: 0.014 + Math.random() * 0.018,
+        size: 4 + Math.random() * (base * 0.18),
+        color: shardColors[i % shardColors.length],
+        glow: true,
+        grav: 0.12 + Math.random() * 0.08,
+        rot: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 0.55,
+        aspect: 0.35 + Math.random() * 0.9,
+      });
+    }
+
+    // Mini copies of the letter flying outward
+    const bits = 6 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < bits; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 2 + Math.random() * 6.5;
+      particles.push({
+        kind: 'glyphBit',
+        ch: glyph,
+        x, y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - (2 + Math.random() * 4),
+        life: 1,
+        decay: 0.016 + Math.random() * 0.02,
+        size: base * (0.22 + Math.random() * 0.45),
+        color: i % 2 === 0 ? '#fff' : col,
+        glow: true,
+        grav: 0.1,
+        rot: (Math.random() - 0.5) * 1.2,
+        spin: (Math.random() - 0.5) * 0.4,
+      });
+    }
+
+    // Hot center sparks
+    spawnBurst(x, y, col, 16, 4.5);
+    spawnBurst(x, y, '#ffffff', 10, 3.2);
+  }
+
+  /**
+   * Spark shower on every correct key — intensity ramps with streak.
+   * Low streak = light sprinkles; high streak = heavy fireworks shower.
+   */
+  function spawnSparkShower(x, y, streakVal, color) {
+    if (!$('optFx')?.checked) return;
+    const s = Math.max(1, streakVal | 0);
+    // 0→1 intensity curve (soft early, ramps hard after ~20)
+    const t = Math.min(1, s / 50);
+    const intensity = t * t * 0.55 + t * 0.45; // ease-in
+    const heat = heatFromStreak(s);
+
+    const mul = fxLevelMul();
+    // Particle count: ~14 at streak 1 → ~90 at streak 50+ (scaled by FX level)
+    const count = Math.min(120, Math.floor((14 + s * 1.35 + intensity * 28) * mul));
+    // Spread cone (wider at high streak)
+    const spread = 0.55 + intensity * 1.1; // radians half-width around upward
+    const speedBase = 2.2 + intensity * 6.5 + heat * 1.2;
+    const sizeBase = 1.4 + intensity * 3.2;
+    const lifeSlow = 0.01 + (1 - intensity) * 0.012; // longer trails when hot
+
+    const palette = [
+      color || '#00f3ff',
+      '#ffffff',
+      '#7c5cff',
+      '#00ff88',
+      '#ffc800',
+      '#ff9f43',
+      heat >= 2 ? '#ff4d1a' : '#a5f3fc',
+      heat >= 3 ? '#fff7ed' : '#e0e7ff',
+    ];
+
+    for (let i = 0; i < count; i++) {
+      // Mostly upward fountain with side spray; some fall as "shower"
+      const fountain = Math.random() < (0.72 + intensity * 0.12);
+      let a, v;
+      if (fountain) {
+        // up-facing cone (±spread around -PI/2)
+        a = -Math.PI / 2 + (Math.random() - 0.5) * 2 * spread;
+        v = speedBase * (0.45 + Math.random() * 0.9);
+      } else {
+        // falling spray / side glitter
+        a = (Math.random() - 0.5) * Math.PI; // left/right/down
+        v = speedBase * (0.25 + Math.random() * 0.55);
+      }
+      const col = palette[(Math.random() * palette.length) | 0];
+      particles.push({
+        kind: 'spark',
+        x: x + (Math.random() - 0.5) * (8 + intensity * 22),
+        y: y + (Math.random() - 0.5) * (6 + intensity * 14),
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v,
+        life: 1,
+        decay: lifeSlow + Math.random() * 0.014,
+        size: sizeBase * (0.55 + Math.random() * 0.9),
+        color: col,
+        glow: true,
+        grav: fountain ? 0.055 + intensity * 0.04 : 0.09 + intensity * 0.05,
+        trail: 0.55 + intensity * 0.9, // draw as streak
+        drag: 0.985 - intensity * 0.01,
+      });
+    }
+
+    // Extra secondary burst once intensity is warm
+    if (s >= 8) {
+      const burstN = Math.min(36, 8 + Math.floor(s * 0.45));
+      spawnBurst(x, y, color || '#00f3ff', burstN, 2.5 + intensity * 4);
+    }
+    // White-hot core when blazing
+    if (s >= 20) {
+      spawnBurst(x, y, '#ffffff', Math.min(28, 10 + Math.floor(s * 0.25)), 3.5 + intensity * 3);
+    }
+    // Ring pop every few hits at high streak
+    if (s >= 12 && s % 3 === 0) {
+      const ring = Math.min(28, 10 + Math.floor(intensity * 18));
+      for (let i = 0; i < ring; i++) {
+        const a = (Math.PI * 2 * i) / ring;
+        const v = 3.5 + intensity * 5;
+        particles.push({
+          kind: 'spark',
+          x, y,
+          vx: Math.cos(a) * v,
+          vy: Math.sin(a) * v - 0.8,
+          life: 1,
+          decay: 0.02 + Math.random() * 0.015,
+          size: 2 + intensity * 2.5,
+          color: i % 2 ? '#fff' : (color || '#00f3ff'),
+          glow: true,
+          grav: 0.06,
+          trail: 0.8 + intensity * 0.6,
+          drag: 0.98,
+        });
+      }
     }
   }
 
@@ -2372,6 +3392,7 @@
         color: pick(['#00f3ff', '#7c5cff', '#00ff88', '#ff9f43', '#ffc800', '#fff']),
         glow: true,
         grav: 0.03,
+        trail: 0.4,
       });
     }
   }
@@ -2476,7 +3497,23 @@
         p.vx *= 0.99;
         p.vy += p.grav != null ? p.grav : -0.015;
         p.size *= 1.012;
+      } else if (p.kind === 'shard' || p.kind === 'glyphBit' || p.kind === 'char' || p.kind === 'charGlyph') {
+        if (p.drag) {
+          p.vx *= p.drag;
+          p.vy *= p.drag;
+        }
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.992;
+        p.vy += p.grav != null ? p.grav : 0.12;
+        p.rot = (p.rot || 0) + (p.spin || 0);
+        p.size *= p.kind === 'char' || p.kind === 'charGlyph' ? 0.988 : 0.992;
       } else {
+        // spark / default
+        if (p.drag) {
+          p.vx *= p.drag;
+          p.vy *= p.drag;
+        }
         p.x += p.vx;
         p.y += p.vy;
         p.vy += p.grav != null ? p.grav : 0.04;
@@ -2489,25 +3526,92 @@
       const alpha = Math.max(0, p.kind === 'smoke' ? p.life * 0.55 : p.life);
       fxCtx.globalAlpha = alpha;
       if (p.glow) {
-        fxCtx.shadowBlur = p.kind === 'flame' ? 18 : 12;
+        fxCtx.shadowBlur = p.kind === 'flame' ? 18
+          : (p.kind === 'shard' || p.kind === 'glyphBit') ? 16
+          : (p.trail ? 14 : 12);
         fxCtx.shadowColor = p.color;
       } else {
         fxCtx.shadowBlur = 0;
       }
       fxCtx.fillStyle = p.color;
-      fxCtx.beginPath();
       if (p.kind === 'flame') {
+        fxCtx.beginPath();
         // elongated flame blob
         const rw = p.size * (0.55 + 0.45 * p.life);
         const rh = p.size * (1.1 + 0.9 * (1 - p.life));
         fxCtx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'shard') {
+        // jagged triangular shard
+        fxCtx.save();
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot || 0);
+        const s = Math.max(1.2, p.size * p.life);
+        const asp = p.aspect || 0.6;
+        fxCtx.beginPath();
+        fxCtx.moveTo(0, -s);
+        fxCtx.lineTo(s * asp, s * 0.55);
+        fxCtx.lineTo(-s * 0.45, s * 0.7);
+        fxCtx.closePath();
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'glyphBit' || p.kind === 'charGlyph') {
+        fxCtx.save();
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot || 0);
+        fxCtx.font = `700 ${Math.max(9, p.size)}px Cascadia Code, Consolas, monospace`;
+        fxCtx.textAlign = 'center';
+        fxCtx.textBaseline = 'middle';
+        fxCtx.fillStyle = p.color;
+        fxCtx.globalAlpha = alpha * (p.kind === 'charGlyph' ? 0.85 : 1);
+        fxCtx.fillText(p.ch || '·', 0, 0);
+        fxCtx.restore();
+      } else if (p.kind === 'char') {
+        // crumb of charcoal
+        fxCtx.save();
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot || 0);
+        const s = Math.max(1, p.size * p.life);
+        fxCtx.fillStyle = p.color;
+        fxCtx.fillRect(-s * 0.5, -s * 0.35, s, s * 0.7);
+        if (p.glow) {
+          fxCtx.fillStyle = 'rgba(255,120,40,0.45)';
+          fxCtx.fillRect(-s * 0.2, -s * 0.15, s * 0.35, s * 0.25);
+        }
+        fxCtx.restore();
+      } else if (p.kind === 'spark' && p.trail) {
+        // streak / shower spark
+        const len = Math.max(3, p.size * (2.2 + p.trail * 2.5) * p.life);
+        const ang = Math.atan2(p.vy, p.vx);
+        fxCtx.save();
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(ang);
+        const grd = fxCtx.createLinearGradient(-len, 0, len * 0.25, 0);
+        grd.addColorStop(0, 'rgba(255,255,255,0)');
+        grd.addColorStop(0.45, p.color);
+        grd.addColorStop(1, '#ffffff');
+        fxCtx.fillStyle = grd;
+        fxCtx.beginPath();
+        fxCtx.moveTo(-len, 0);
+        fxCtx.lineTo(0, Math.max(0.6, p.size * 0.45));
+        fxCtx.lineTo(len * 0.2, 0);
+        fxCtx.lineTo(0, -Math.max(0.6, p.size * 0.45));
+        fxCtx.closePath();
+        fxCtx.fill();
+        // bright head
+        fxCtx.beginPath();
+        fxCtx.fillStyle = '#fff';
+        fxCtx.arc(0, 0, Math.max(0.8, p.size * 0.55 * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
       } else {
+        fxCtx.beginPath();
         fxCtx.arc(p.x, p.y, Math.max(0.4, p.size * (p.kind === 'smoke' ? 1 : p.life)), 0, Math.PI * 2);
+        fxCtx.fill();
       }
-      fxCtx.fill();
     }
-    // Cap particle budget for smooth 60fps
-    if (particles.length > 420) particles.splice(0, particles.length - 420);
+    // Cap particle budget for smooth 60fps (higher when showering hard)
+    if (particles.length > 780) particles.splice(0, particles.length - 780);
     fxCtx.globalAlpha = 1;
     fxCtx.shadowBlur = 0;
     rafId = requestAnimationFrame(tickFx);
@@ -2526,6 +3630,259 @@
       t = t.replace(/\n{3,}/g, '\n\n').trim();
     }
     return t;
+  }
+
+  // ——— Prompt style (fonts / colors / effects / animations) ———
+  function applyPromptStyle() {
+    if (!promptEl) return;
+    const font = $('optFont')?.value || 'mono';
+    const color = $('optColor')?.value || 'cyan';
+    const fx = $('optTextFx')?.value || 'none';
+    const anim = $('optTextAnim')?.value || 'none';
+    // strip old classes
+    promptEl.className = 'prompt'
+      + ' font-' + font
+      + ' color-' + color
+      + (fx && fx !== 'none' ? ' fx-' + fx : '')
+      + (anim && anim !== 'none' ? ' anim-' + anim : '');
+  }
+
+  // ——— Document library (PDF / text) + skill-based passages ———
+  function estimateUserSkill() {
+    // From recent history: WPM + accuracy → easy | medium | hard
+    const hist = loadJson(KEYS.history, []);
+    const recent = hist.slice(0, 12);
+    if (!recent.length) {
+      const d = $('difficulty')?.value || 'medium';
+      return d === 'easy' || d === 'hard' ? d : 'medium';
+    }
+    let wpm = 0, acc = 0, n = 0;
+    recent.forEach((r) => {
+      if (typeof r.wpm === 'number') { wpm += r.wpm; n++; }
+      if (typeof r.acc === 'number') acc += r.acc;
+    });
+    if (!n) return $('difficulty')?.value || 'medium';
+    wpm /= n;
+    acc = acc / (recent.length || 1);
+    // Soft blend with manual difficulty selector
+    const manual = $('difficulty')?.value || 'medium';
+    let skill = 'medium';
+    if (wpm < 32 || acc < 88) skill = 'easy';
+    else if (wpm >= 55 && acc >= 94) skill = 'hard';
+    // Prefer harder of the two if user selected hard, etc.
+    const rank = { easy: 0, medium: 1, hard: 2 };
+    if (rank[manual] > rank[skill]) skill = manual;
+    if (manual === 'easy' && skill === 'hard') skill = 'medium';
+    return skill;
+  }
+
+  function scorePassageComplexity(text) {
+    const t = String(text || '').trim();
+    if (!t) return 0;
+    const words = t.split(/\s+/).filter(Boolean);
+    if (!words.length) return 0;
+    const avgLen = words.reduce((s, w) => s + w.replace(/[^a-zA-Z]/g, '').length, 0) / words.length;
+    const punct = (t.match(/[^\w\s]/g) || []).length / Math.max(1, t.length);
+    const caps = (t.match(/[A-Z]/g) || []).length / Math.max(1, t.length);
+    const longWords = words.filter((w) => w.length >= 8).length / words.length;
+    // 0–1 complexity
+    return Math.min(1,
+      (avgLen / 7) * 0.35
+      + punct * 4.5 * 0.25
+      + caps * 3 * 0.15
+      + longWords * 0.25
+    );
+  }
+
+  function skillFromComplexity(c) {
+    if (c < 0.34) return 'easy';
+    if (c < 0.62) return 'medium';
+    return 'hard';
+  }
+
+  function buildPassagesFromText(full, sourceName) {
+    const cleaned = String(full || '')
+      .replace(/\r/g, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+    if (!cleaned) return [];
+
+    // Prefer sentence boundaries, then pack into ~120–360 char passages
+    const sentences = cleaned
+      .split(/(?<=[.!?])\s+|\n+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 12);
+
+    const chunks = [];
+    let buf = '';
+    const pushBuf = () => {
+      const t = buf.trim();
+      if (t.length >= 40) {
+        const skill = skillFromComplexity(scorePassageComplexity(t));
+        chunks.push({
+          id: chunks.length + '_' + Math.random().toString(36).slice(2, 7),
+          text: t,
+          skill,
+          used: false,
+        });
+      }
+      buf = '';
+    };
+
+    sentences.forEach((s) => {
+      if ((buf + ' ' + s).trim().length > 360 && buf.length >= 100) {
+        pushBuf();
+      }
+      buf = (buf ? buf + ' ' : '') + s;
+      if (buf.length >= 280) pushBuf();
+    });
+    pushBuf();
+
+    // Fallback: hard-slice if PDF had almost no sentence punctuation
+    if (chunks.length < 3 && cleaned.length > 200) {
+      for (let i = 0; i < cleaned.length; i += 220) {
+        const slice = cleaned.slice(i, i + 280).trim();
+        if (slice.length < 40) continue;
+        chunks.push({
+          id: 's' + i,
+          text: slice,
+          skill: skillFromComplexity(scorePassageComplexity(slice)),
+          used: false,
+        });
+      }
+    }
+
+    docLibrary = {
+      name: sourceName || 'Document',
+      fullText: cleaned.slice(0, 400000), // cap memory
+      passages: chunks,
+      usedIds: [],
+    };
+    updateLibStatus();
+    return chunks;
+  }
+
+  function updateLibStatus() {
+    const el = $('libStatus');
+    if (!el) return;
+    if (!docLibrary.passages.length) {
+      el.innerHTML = 'No library loaded — built-in texts will be used (more repeats). Import a PDF or .txt for fresh, skill-matched passages.';
+      return;
+    }
+    const skill = estimateUserSkill();
+    const by = { easy: 0, medium: 0, hard: 0 };
+    let unused = 0;
+    docLibrary.passages.forEach((p) => {
+      by[p.skill] = (by[p.skill] || 0) + 1;
+      if (!p.used) unused++;
+    });
+    el.innerHTML = `<span class="ok">Loaded:</span> <strong>${escapeHtml(docLibrary.name)}</strong>
+      · <strong>${docLibrary.passages.length}</strong> passages
+      (easy ${by.easy} · med ${by.medium} · hard ${by.hard})
+      · unused <strong>${unused}</strong>
+      · your skill band: <strong>${skill}</strong>
+      · progress uses unique slices so text rarely repeats.`;
+  }
+
+  function pickLibraryPassage(forceSkill) {
+    if (!docLibrary.passages.length) return null;
+    const skill = forceSkill || estimateUserSkill();
+    const order = skill === 'easy' ? ['easy', 'medium', 'hard']
+      : skill === 'hard' ? ['hard', 'medium', 'easy']
+      : ['medium', 'hard', 'easy'];
+
+    for (const band of order) {
+      const pool = docLibrary.passages.filter((p) => p.skill === band && !p.used);
+      if (pool.length) {
+        const pickP = pool[(Math.random() * pool.length) | 0];
+        pickP.used = true;
+        docLibrary.usedIds.push(pickP.id);
+        // Reset used flags when everything is exhausted
+        if (docLibrary.passages.every((p) => p.used)) {
+          docLibrary.passages.forEach((p) => { p.used = false; });
+        }
+        updateLibStatus();
+        // Pack 1–3 related slices for longer timed runs
+        let text = pickP.text;
+        const needMore = (mode === 'timed' && durationSec >= 60) || mode === 'practice';
+        if (needMore) {
+          const extra = docLibrary.passages.filter((p) => !p.used && p.skill === pickP.skill).slice(0, 2);
+          extra.forEach((p) => {
+            p.used = true;
+            text += ' ' + p.text;
+          });
+        }
+        return text;
+      }
+    }
+    // All used in preferred bands — any unused
+    const any = docLibrary.passages.find((p) => !p.used) || docLibrary.passages[0];
+    if (any) {
+      any.used = true;
+      updateLibStatus();
+      return any.text;
+    }
+    return null;
+  }
+
+  async function extractPdfText(file) {
+    if (typeof pdfjsLib === 'undefined') {
+      throw new Error('PDF engine not loaded (need network for pdf.js CDN once).');
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const maxPages = Math.min(pdf.numPages, 80); // safety cap
+    let out = '';
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((it) => it.str).join(' ');
+      out += pageText + '\n\n';
+      if (out.length > 350000) break;
+    }
+    return out;
+  }
+
+  async function onPdfSelected(file) {
+    if (!file) return;
+    const st = $('libStatus');
+    if (st) st.innerHTML = `Reading PDF <strong>${escapeHtml(file.name)}</strong>…`;
+    try {
+      const text = await extractPdfText(file);
+      const n = buildPassagesFromText(text, file.name).length;
+      if (!n) throw new Error('No extractable text (scanned image PDF?)');
+      sfxFinish(true);
+      setCompanion('good', `Library ready — ${n} passages from ${file.name}`);
+      if (!running) newTest(false);
+    } catch (err) {
+      if (st) st.innerHTML = `<span style="color:var(--err)">PDF import failed:</span> ${escapeHtml(err.message || String(err))}`;
+      setCompanion('worried', 'PDF import failed — try a text-based PDF or .txt');
+    }
+  }
+
+  async function onTxtSelected(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const n = buildPassagesFromText(text, file.name).length;
+      if (!n) throw new Error('File was empty');
+      sfxFinish(true);
+      setCompanion('good', `Loaded ${n} passages from ${file.name}`);
+      if (!running) newTest(false);
+    } catch (err) {
+      const st = $('libStatus');
+      if (st) st.innerHTML = `<span style="color:var(--err)">Import failed:</span> ${escapeHtml(err.message || String(err))}`;
+    }
+  }
+
+  function clearLibrary() {
+    docLibrary = { name: '', fullText: '', passages: [], usedIds: [] };
+    updateLibStatus();
+    setCompanion('idle', 'Library cleared — using built-in drills again.');
   }
 
   // ——— Combo / score ———
@@ -2825,6 +4182,7 @@
       $('statTimeLbl').textContent = 'Time';
       progressFill.style.width = pct + '%';
     }
+    if (mode === 'novel') updateNovelHud();
   }
 
   function stopTimer() {
@@ -2848,6 +4206,10 @@
     if (mode === 'lesson') return 'lesson:' + $('lesson').value;
     if (mode === 'code') return 'code';
     if (mode === 'custom') return 'custom';
+    if (mode === 'novel') {
+      const b = getNovelBook();
+      return 'novel:' + (b?.id || novelBookId) + ':ch' + (novelChapterIndex + 1);
+    }
     if (mode === 'boards' || boardsRun) return 'boards';
     if (mode === 'campaign') return 'campaign';
     if (mode === 'minigames') return 'minigames';
@@ -2866,12 +4228,19 @@
       const bonus = key.includes(':bonus') ? ' ★' : '';
       return '🎮 ' + (m ? m.name : id) + bonus;
     }
+    if (key.startsWith('novel:')) {
+      const parts = key.split(':');
+      const book = NOVEL_BOOKS.find((b) => b.id === parts[1]);
+      const ch = parts[2] || '';
+      return '📖 ' + (book ? book.title : parts[1]) + (ch ? ' · ' + ch.replace('ch', 'Ch. ') : '');
+    }
     const map = {
       code: 'Code',
       custom: 'Custom',
       campaign: 'Campaign',
       minigames: 'Mini-games',
       boards: '❤️ Boards (lives)',
+      novel: '📖 Novel',
     };
     if (map[key]) return map[key];
     if (key.startsWith('timed:')) {
@@ -2955,6 +4324,11 @@
       const t = selectedTerritory;
       if (t.mode === 'lesson') return (LESSONS[t.lesson] || LESSONS.home)();
       if (t.mode === 'code') return pick(CODE_SNIPPETS);
+      // Prefer library passages during campaign free-type territories
+      if ((t.mode === 'timed' || t.mode === 'practice') && docLibrary.passages.length) {
+        const lib = pickLibraryPassage(t.diff || estimateUserSkill());
+        if (lib) return lib;
+      }
       if (t.mode === 'timed' || t.mode === 'practice') {
         const pool = TEXTS[t.diff || 'medium'] || TEXTS.medium;
         if (t.mode === 'timed') {
@@ -2970,10 +4344,32 @@
       const t = (customText.value || '').replace(/\r\n/g, '\n').trim();
       return t || 'Paste some text above then press New Test to practice your own content.';
     }
+    if (mode === 'novel') {
+      return getNovelText() || 'Open a book in Novel Mode, then press New Test.';
+    }
     if (mode === 'lesson') {
       return (LESSONS[$('lesson').value] || LESSONS.home)();
     }
     if (mode === 'code') return pick(CODE_SNIPPETS);
+
+    // Timed / practice — use imported PDF/text library when available (avoids built-in repeats)
+    if (docLibrary.passages.length && (mode === 'timed' || mode === 'practice')) {
+      const lib = pickLibraryPassage(estimateUserSkill());
+      if (lib) {
+        // For long timed sessions, keep appending more unique passages
+        if (mode === 'timed' && durationSec >= 120) {
+          let packed = lib;
+          const extraNeed = durationSec >= 600 ? 8 : durationSec >= 300 ? 5 : 3;
+          for (let i = 0; i < extraNeed; i++) {
+            const more = pickLibraryPassage(estimateUserSkill());
+            if (more) packed += ' ' + more;
+          }
+          return packed;
+        }
+        return lib;
+      }
+    }
+
     const diff = $('difficulty').value;
     const pool = TEXTS[diff] || TEXTS.medium;
     if (mode === 'timed') {
@@ -3071,12 +4467,14 @@
     $('btnSaveHs').style.display = 'none';
     if ($('btnResultBonus')) $('btnResultBonus').style.display = 'none';
     progressFill.style.width = '0%';
+    applyPromptStyle();
     renderPrompt();
     highlightNext();
     updateComboUI(false);
     updateStats();
     updateWordRushHud();
     updateBoardHud();
+    updateNovelHud();
     if (boardsRun) {
       const b = STORY_BOARDS[boardIndex];
       const timerHint = durationSec > 0
@@ -3085,6 +4483,12 @@
       focusHint.textContent = `${b.emoji} ${b.name} · 3 lives · clear boards forever · ${timerHint}`;
       focusHint.className = 'focus-hint';
       setCompanion('focus', b.quote || 'Survive the boards — clear never ends the run.');
+    } else if (mode === 'novel') {
+      const book = getNovelBook();
+      const ch = getNovelChapter();
+      focusHint.textContent = `📖 ${book?.title || 'Novel'} — ${ch?.title || 'Chapter'} · type to turn the page`;
+      focusHint.className = 'focus-hint';
+      setCompanion('focus', 'Read with your fingers. Accuracy keeps the story alive.');
     } else {
       focusHint.textContent = miniRun
         ? `Mini-game: ${miniConfig?.title || miniConfig?.name || 'challenge'} — click & type`
@@ -3252,6 +4656,26 @@
       if (boardsCleared >= STORY_BOARDS.length - 1 || reason === 'time') sfxFinish(true);
       else sfxFinish(false);
       clearBoardTheme();
+    } else if (mode === 'novel' && reason === 'complete') {
+      const book = getNovelBook();
+      const ch = getNovelChapter();
+      markNovelChapterDone();
+      title = '📖 Chapter complete';
+      sub = `${book?.title || 'Novel'} — ${ch?.title || 'Chapter'} · ${wpm} WPM · ${acc}%`;
+      setCompanion('win', 'Chapter closed. The story remembers your accuracy.');
+      sfxFinish(true);
+      flashScreen('rgba(251,191,36,0.18)');
+      const auto = $('optNovelAuto') ? $('optNovelAuto').checked : true;
+      const hasNext = book && novelChapterIndex < book.chapters.length - 1;
+      if (auto && hasNext) {
+        sub += ' · Opening next chapter…';
+        setTimeout(() => {
+          if (mode === 'novel') novelAdvanceChapter(1);
+        }, 1400);
+      } else if (!hasNext) {
+        sub += ' · End of this book — pick another or replay.';
+        showComboToast('Book finished', book?.title || 'Novel');
+      }
     } else if (reason === 'time') {
       title = "Time's up";
       sub = `${durationSec >= 60 ? Math.round(durationSec / 60) + ' min' : durationSec + 's'} · ${wpm} WPM · score ${score}`;
@@ -3399,11 +4823,38 @@
         const r = cur.getBoundingClientRect();
         const cx = r.left + r.width / 2;
         const cy = r.top + r.height / 2;
-        const mult = currentMult();
         const heat = heatFromStreak(streak);
-        const count = 4 + Math.min(14, Math.floor(mult * 3));
         const color = tierForStreak(streak)?.color || '#00f3ff';
-        spawnBurst(cx, cy, color, count, 1.8 + mult * 0.3);
+        // Explode the glyph into shards / little letter pieces
+        const fontPx = parseFloat(getComputedStyle(cur).fontSize) || r.height || 48;
+        spawnLetterShatter(cx, cy, expected, color, fontPx);
+        // Spark shower every correct key — ramps hard with streak
+        spawnSparkShower(cx, cy, streak, color);
+        // Burn explosion remnants + leave charred letter crumbs
+        const burnI = Math.min(1.4, 0.35 + streak * 0.02 + heat * 0.25);
+        burnExplosionRemnants(cx, cy, 70 + streak * 1.2, burnI);
+        spawnCharredBits(cx, cy, expected, burnI);
+        // Delayed second sear so late shards get torched
+        if ($('optBurn')?.checked) {
+          setTimeout(() => burnExplosionRemnants(cx, cy, 110 + streak, burnI + 0.2), 40);
+          setTimeout(() => burnExplosionRemnants(cx, cy, 140, burnI + 0.35), 90);
+        }
+        // Briefly charcoal the completed glyph in the prompt
+        if ($('optBurn')?.checked) {
+          requestAnimationFrame(() => {
+            const dones = promptEl.querySelectorAll('.done');
+            const last = dones[dones.length - 1];
+            if (last) {
+              last.classList.add('charred');
+              setTimeout(() => {
+                last.classList.add('charred-ash');
+                setTimeout(() => {
+                  last.classList.remove('charred', 'charred-ash');
+                }, 420);
+              }, 180);
+            }
+          });
+        }
         if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, cy + 4, 0.5 + heat * 0.25);
         if (heat >= 2) spawnFlames(cx, cy + 2, 0.55 + heat * 0.25);
         if (heat >= 3 && streak % 3 === 0) {
@@ -3411,6 +4862,7 @@
           flashScreen('rgba(255,90,0,0.12)');
         }
         if (streak >= 8 && streak % 4 === 0) flashScreen(color + '22');
+        if (streak >= 25 && streak % 5 === 0) flashScreen('rgba(255,200,80,0.14)');
       }
 
       if (STREAK_TIERS.some((t) => t.at === streak)) {
@@ -3980,6 +5432,125 @@
     setCompanion('mini', cfg.desc || COMPANION.mini.line);
   }
 
+  // ——— Novel Mode ———
+  function getNovelBook() {
+    return NOVEL_BOOKS.find((b) => b.id === novelBookId) || NOVEL_BOOKS[0];
+  }
+  function getNovelChapter() {
+    const book = getNovelBook();
+    if (!book) return null;
+    const i = Math.max(0, Math.min(novelChapterIndex, book.chapters.length - 1));
+    novelChapterIndex = i;
+    return book.chapters[i];
+  }
+  function novelWordCount(text) {
+    return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+  }
+  function getNovelText() {
+    const ch = getNovelChapter();
+    if (!ch) return '';
+    const pace = $('novelPace')?.value || 'chapter';
+    const paras = ch.paragraphs || [];
+    if (!paras.length) return ch.title || '';
+    let slice = paras;
+    if (pace === 'page') slice = paras.slice(0, 1);
+    else if (pace === 'scene') slice = paras.slice(0, Math.max(2, Math.ceil(paras.length / 2)));
+    // Join with double spaces between paragraphs for readability while typing
+    return slice.join('  ');
+  }
+  function updateNovelHud() {
+    const hud = $('novelHud');
+    if (!hud) return;
+    const on = mode === 'novel';
+    hud.classList.toggle('show', on);
+    document.body.classList.toggle('novel-mode', on);
+    if (!on) return;
+    const book = getNovelBook();
+    const ch = getNovelChapter();
+    if ($('novelHudTitle')) $('novelHudTitle').textContent = ch ? `Chapter ${novelChapterIndex + 1}: ${ch.title}` : 'Chapter';
+    if ($('novelHudBook')) $('novelHudBook').textContent = book?.title || 'Novel';
+    const pct = target && target.length
+      ? Math.min(100, Math.round((index / target.length) * 100))
+      : 0;
+    if ($('novelHudPct')) $('novelHudPct').textContent = String(pct);
+    if ($('novelHudHint')) {
+      $('novelHudHint').textContent = ($('novelPace')?.value === 'page')
+        ? 'Short page slice — switch pace for longer scenes'
+        : 'Type the chapter like reading aloud with your hands';
+    }
+    if ($('novelChNum')) $('novelChNum').textContent = String(novelChapterIndex + 1);
+    if ($('novelChTotal')) $('novelChTotal').textContent = String(book?.chapters?.length || 0);
+    if ($('novelWords')) $('novelWords').textContent = String(novelWordCount(getNovelText()));
+    if ($('novelGenreChip')) $('novelGenreChip').textContent = book?.genre || 'Story';
+    if ($('novelBookTitle')) $('novelBookTitle').textContent = book?.title || 'Novel';
+    if ($('novelBookBlurb')) $('novelBookBlurb').textContent = book?.blurb || '';
+  }
+  function renderNovelChapterList() {
+    const host = $('novelChapterList');
+    const book = getNovelBook();
+    if (!host || !book) return;
+    const doneMap = novelDoneChapters[book.id] || {};
+    host.innerHTML = '';
+    book.chapters.forEach((ch, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'novel-ch-btn'
+        + (i === novelChapterIndex ? ' active' : '')
+        + (doneMap[i] ? ' done' : '');
+      btn.textContent = `${i + 1}. ${ch.title}`;
+      btn.addEventListener('click', () => {
+        novelChapterIndex = i;
+        renderNovelChapterList();
+        updateNovelHud();
+        if (mode === 'novel') newTest(false);
+      });
+      host.appendChild(btn);
+    });
+  }
+  function populateNovelBookSelect() {
+    const sel = $('novelBook');
+    if (!sel) return;
+    sel.innerHTML = '';
+    NOVEL_BOOKS.forEach((b) => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = `${b.title} (${b.genre})`;
+      sel.appendChild(opt);
+    });
+    sel.value = novelBookId;
+  }
+  function markNovelChapterDone() {
+    const book = getNovelBook();
+    if (!book) return;
+    if (!novelDoneChapters[book.id]) novelDoneChapters[book.id] = {};
+    novelDoneChapters[book.id][novelChapterIndex] = true;
+    try {
+      const p = loadJson(KEYS.prefs, {});
+      p.novelDone = novelDoneChapters;
+      p.novelBookId = novelBookId;
+      p.novelChapterIndex = novelChapterIndex;
+      saveJson(KEYS.prefs, p);
+    } catch (_) { /* ignore */ }
+    renderNovelChapterList();
+  }
+  function novelAdvanceChapter(delta) {
+    const book = getNovelBook();
+    if (!book) return;
+    const next = novelChapterIndex + delta;
+    if (next < 0 || next >= book.chapters.length) {
+      showComboToast(
+        delta > 0 ? 'End of book' : 'First chapter',
+        delta > 0 ? 'You finished the last chapter — pick another book or replay.' : 'Already at chapter 1.'
+      );
+      return;
+    }
+    novelChapterIndex = next;
+    renderNovelChapterList();
+    updateNovelHud();
+    newTest(false);
+    setCompanion('good', delta > 0 ? 'Next chapter. Keep the story moving.' : 'Earlier chapter loaded.');
+  }
+
   // ——— Mode UI ———
   function setMode(next) {
     mode = next;
@@ -4003,6 +5574,10 @@
     customArea.classList.toggle('show', mode === 'custom');
     $('campaignPanel').classList.toggle('show', mode === 'campaign');
     if ($('miniPanel')) $('miniPanel').classList.toggle('show', mode === 'minigames');
+    if ($('novelPanel')) $('novelPanel').classList.toggle('show', mode === 'novel');
+    document.body.classList.toggle('novel-mode', mode === 'novel');
+    if ($('novelHud')) $('novelHud').classList.toggle('show', mode === 'novel');
+
     if (mode === 'campaign') {
       renderCampaign();
       stopTimer();
@@ -4019,6 +5594,21 @@
       focusHint.textContent = 'Pick a mini-game card to start';
       focusHint.className = 'focus-hint';
       setCompanion('mini');
+    } else if (mode === 'novel') {
+      // Soft book defaults (user can still change)
+      if ($('optFont') && (!$('optFont').dataset.userSet)) {
+        // only nudge if still on mono default from old prefs — leave if user chose
+      }
+      if ($('optColor') && $('optColor').value === 'cyan') $('optColor').value = 'parchment';
+      if ($('optFont') && ($('optFont').value === 'mono' || !$('optFont').value)) $('optFont').value = 'playfair';
+      if ($('optTextFx')) $('optTextFx').value = 'none';
+      if ($('optTextAnim')) $('optTextAnim').value = 'none';
+      applyPromptStyle();
+      populateNovelBookSelect();
+      renderNovelChapterList();
+      updateNovelHud();
+      newTest(false);
+      setCompanion('focus', 'Novel Mode — type the chapter like turning pages.');
     } else if (mode === 'boards') {
       boardIndex = 0;
       boardsCleared = 0;
@@ -4051,7 +5641,22 @@
     if (p.sound === false) $('optSound').checked = false;
     if (p.fx === false) $('optFx').checked = false;
     if (p.ambient === false && $('optAmbient')) $('optAmbient').checked = false;
+    if (p.burn === false && $('optBurn')) $('optBurn').checked = false;
+    if (p.novelAuto === false && $('optNovelAuto')) $('optNovelAuto').checked = false;
+    if (p.font && $('optFont')) $('optFont').value = p.font;
+    if (p.color && $('optColor')) $('optColor').value = p.color;
+    if (p.textFx && $('optTextFx')) $('optTextFx').value = p.textFx;
+    if (p.textAnim && $('optTextAnim')) $('optTextAnim').value = p.textAnim;
+    if (p.fxLevel && $('optFxLevel')) $('optFxLevel').value = p.fxLevel;
+    if (p.novelBookId && NOVEL_BOOKS.some((b) => b.id === p.novelBookId)) novelBookId = p.novelBookId;
+    if (typeof p.novelChapterIndex === 'number') novelChapterIndex = p.novelChapterIndex;
+    if (p.novelDone && typeof p.novelDone === 'object') novelDoneChapters = p.novelDone;
+    if (p.novelPace && $('novelPace')) $('novelPace').value = p.novelPace;
     applyAmbientPref();
+    applyPromptStyle();
+    populateNovelBookSelect();
+    renderNovelChapterList();
+    updateNovelHud();
     const name = localStorage.getItem(KEYS.name) || '';
     if (name) $('playerName').value = name;
   }
@@ -4062,9 +5667,21 @@
       sound: $('optSound').checked,
       fx: $('optFx').checked,
       ambient: $('optAmbient') ? $('optAmbient').checked : true,
+      burn: $('optBurn') ? $('optBurn').checked : true,
+      novelAuto: $('optNovelAuto') ? $('optNovelAuto').checked : true,
+      font: $('optFont')?.value || 'mono',
+      color: $('optColor')?.value || 'cyan',
+      textFx: $('optTextFx')?.value || 'none',
+      textAnim: $('optTextAnim')?.value || 'none',
+      fxLevel: $('optFxLevel')?.value || 'med',
+      novelBookId,
+      novelChapterIndex,
+      novelDone: novelDoneChapters,
+      novelPace: $('novelPace')?.value || 'chapter',
     });
     localStorage.setItem(KEYS.name, getPlayerName());
     applyAmbientPref();
+    applyPromptStyle();
   }
 
   // ——— Events ———
@@ -4080,6 +5697,13 @@
         focusHint.textContent = 'Pick a mini-game card first';
         focusHint.className = 'focus-hint warn';
       }
+    } else if (mode === 'novel') {
+      campaignRun = false;
+      miniRun = false;
+      miniConfig = null;
+      boardsRun = false;
+      newTest(false);
+      mainPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
       campaignRun = false;
       miniRun = false;
@@ -4095,6 +5719,33 @@
       newTest(false);
     }
   });
+  $('btnNovelStart')?.addEventListener('click', () => {
+    setMode('novel');
+    newTest(false);
+    mainPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('btnNovelNext')?.addEventListener('click', () => {
+    if (mode !== 'novel') setMode('novel');
+    novelAdvanceChapter(1);
+  });
+  $('btnNovelPrev')?.addEventListener('click', () => {
+    if (mode !== 'novel') setMode('novel');
+    novelAdvanceChapter(-1);
+  });
+  $('novelBook')?.addEventListener('change', () => {
+    novelBookId = $('novelBook').value || NOVEL_BOOKS[0].id;
+    novelChapterIndex = 0;
+    renderNovelChapterList();
+    updateNovelHud();
+    savePrefs();
+    if (mode === 'novel') newTest(false);
+  });
+  $('novelPace')?.addEventListener('change', () => {
+    savePrefs();
+    updateNovelHud();
+    if (mode === 'novel') newTest(false);
+  });
+  $('optNovelAuto')?.addEventListener('change', savePrefs);
   $('btnRestart').addEventListener('click', () => newTest(true));
   $('btnAgain').addEventListener('click', () => {
     if (miniRun && miniConfig) startMiniGame(miniConfig);
@@ -4147,8 +5798,35 @@
       if (!running && !finished) newTest(false);
     });
   });
-  ['optSound', 'optFx', 'optAmbient'].forEach((id) => {
+  ['optSound', 'optFx', 'optAmbient', 'optBurn'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
+  });
+  ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel'].forEach((id) => {
+    if ($(id)) $(id).addEventListener('change', () => {
+      savePrefs();
+      applyPromptStyle();
+    });
+  });
+  $('pdfFile')?.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    onPdfSelected(f);
+    e.target.value = '';
+  });
+  $('txtFile')?.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    onTxtSelected(f);
+    e.target.value = '';
+  });
+  $('btnClearLib')?.addEventListener('click', () => {
+    clearLibrary();
+    if (!running) newTest(false);
+  });
+  $('btnLibNext')?.addEventListener('click', () => {
+    if (!docLibrary.passages.length) {
+      setCompanion('worried', 'Import a PDF or text file first.');
+      return;
+    }
+    newTest(false);
   });
   $('playerName')?.addEventListener('input', () => syncNameFields($('playerName')));
   $('playerName')?.addEventListener('change', () => { syncNameFields($('playerName')); savePrefs(); });
@@ -4226,6 +5904,8 @@
   // Init
   buildKeyboard();
   loadPrefs();
+  applyPromptStyle();
+  updateLibStatus();
   renderHistory();
   renderHighScores();
   renderCampaign();

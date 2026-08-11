@@ -117,7 +117,14 @@
         .btn.sm { padding: 5px 10px; font-size: 11px; }
         .btn:disabled { opacity: .45; cursor: not-allowed; }
 
-        .data-table-wrap { overflow: auto; max-height: 520px; }
+        .data-table-wrap { overflow: auto; max-height: 520px; position: relative; }
+        .list-freeze-pill {
+            display: none; position: sticky; top: 0; z-index: 5;
+            padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+            text-align: center; color: #fcd34d; background: rgba(20,16,8,0.92);
+            border-bottom: 1px solid rgba(251,191,36,0.35);
+        }
+        .data-table-wrap.is-frozen .list-freeze-pill { display: block; }
         table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
         table.data-table th {
             position: sticky; top: 0; background: #0f172a; z-index: 2;
@@ -286,7 +293,8 @@
                             <button class="btn" id="btnRefreshProcs">Refresh</button>
                         </div>
                     </div>
-                    <div class="data-table-wrap">
+                    <div class="data-table-wrap" id="procTableWrap">
+                        <div class="list-freeze-pill">⏸ Live refresh paused while scrolling</div>
                         <table class="data-table" id="procTable">
                             <thead><tr>
                                 <th>PID</th><th>Name</th><th>CPU %</th><th>Memory</th><th>Threads</th><th>Net</th><th>User</th><th>Status</th><th></th>
@@ -317,7 +325,8 @@
                             <button class="btn" id="btnRefreshConn">Refresh</button>
                         </div>
                     </div>
-                    <div class="data-table-wrap">
+                    <div class="data-table-wrap" id="connTableWrap">
+                        <div class="list-freeze-pill">⏸ Live refresh paused while scrolling</div>
                         <table class="data-table" id="connTable">
                             <thead><tr>
                                 <th>Process</th><th>PID</th><th>Status</th><th>Local</th><th>Remote</th><th>Host</th><th>Type</th>
@@ -637,10 +646,54 @@
                 </tr>`).join('');
         }
 
+        let listScrollFrozen = false;
+        let listScrollResumeTimer = null;
+        let loadProcsPending = false;
+        let loadConnPending = false;
+
+        function setListScrollFrozen(on) {
+            listScrollFrozen = !!on;
+            ['procTableWrap', 'connTableWrap'].forEach((id) => {
+                const el = $(id);
+                if (el) el.classList.toggle('is-frozen', listScrollFrozen);
+            });
+            if (!listScrollFrozen) {
+                if (loadProcsPending) {
+                    loadProcsPending = false;
+                    loadProcesses().catch(() => {});
+                }
+                if (loadConnPending) {
+                    loadConnPending = false;
+                    loadConnections().catch(() => {});
+                }
+            }
+        }
+
+        function wireListScrollFreeze(wrapId) {
+            const wrap = $(wrapId);
+            if (!wrap || wrap.dataset.freezeWired) return;
+            wrap.dataset.freezeWired = '1';
+            wrap.addEventListener('scroll', () => {
+                setListScrollFrozen(true);
+                clearTimeout(listScrollResumeTimer);
+                listScrollResumeTimer = setTimeout(() => setListScrollFrozen(false), 450);
+            }, { passive: true });
+        }
+
         async function loadProcesses() {
+            if (listScrollFrozen) {
+                loadProcsPending = true;
+                return;
+            }
             const search = $('procSearch').value.trim();
             const sort = $('procSort').value;
             const data = await api(`/network/processes?sort_by=${sort}&search=${encodeURIComponent(search)}&limit=300`);
+            if (listScrollFrozen) {
+                loadProcsPending = true;
+                return;
+            }
+            const wrap = $('procTableWrap');
+            const prevScroll = wrap ? wrap.scrollTop : 0;
             const tb = $('procTable').querySelector('tbody');
             tb.innerHTML = data.processes.map(p => `
                 <tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
@@ -659,6 +712,8 @@
                 openProcessDetail(+b.dataset.pid);
             }));
             tb.querySelectorAll('tr[data-pid]').forEach(tr => tr.addEventListener('click', () => openProcessDetail(+tr.dataset.pid)));
+            if (wrap) wrap.scrollTop = prevScroll;
+            wireListScrollFreeze('procTableWrap');
         }
 
         async function openProcessDetail(pid) {
@@ -696,9 +751,19 @@
         }
 
         async function loadConnections() {
+            if (listScrollFrozen) {
+                loadConnPending = true;
+                return;
+            }
             const search = $('connSearch').value.trim();
             const kind = $('connKind').value;
             const data = await api(`/network/connections?kind=${kind}&search=${encodeURIComponent(search)}&limit=500`);
+            if (listScrollFrozen) {
+                loadConnPending = true;
+                return;
+            }
+            const wrap = $('connTableWrap');
+            const prevScroll = wrap ? wrap.scrollTop : 0;
             const tb = $('connTable').querySelector('tbody');
             tb.innerHTML = data.connections.map(c => `
                 <tr>
@@ -710,6 +775,8 @@
                     <td>${esc(c.remote_host || '—')}</td>
                     <td>${esc(c.type)}</td>
                 </tr>`).join('') || '<tr><td colspan="7" class="empty">No connections (try running as admin for full list)</td></tr>';
+            if (wrap) wrap.scrollTop = prevScroll;
+            wireListScrollFreeze('connTableWrap');
 
             const listen = await api('/network/listening');
             $('listenTable').querySelector('tbody').innerHTML = listen.ports.map(p => `
@@ -933,10 +1000,36 @@
 
         function startPolling() {
             clearInterval(pollTimer);
-            pollTimer = setInterval(() => {
+            pollTimer = null;
+            // Pause when tab is hidden; 2.5s only for live dashboard; slower for other views
+            function intervalForView() {
+                if (document.hidden) return 0;
+                const v = document.querySelector('.nav-btn.active')?.dataset.view;
+                if (v === 'dashboard') return 4000; // was 2.5s — slightly gentler
+                if (v === 'processes' || v === 'procs') return 5000;
+                return 15000;
+            }
+            function tick() {
+                if (document.hidden) return;
                 const v = document.querySelector('.nav-btn.active')?.dataset.view;
                 if (v === 'dashboard') loadDashboard().catch(() => {});
-            }, 2500);
+            }
+            function arm() {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                const ms = intervalForView();
+                if (!ms) return;
+                pollTimer = setInterval(tick, ms);
+            }
+            document.addEventListener('visibilitychange', () => {
+                arm();
+                if (!document.hidden) tick();
+            });
+            // Re-arm when user switches sidebar views
+            document.querySelectorAll('.nav-btn').forEach((b) => {
+                b.addEventListener('click', () => setTimeout(arm, 40));
+            });
+            arm();
         }
 
         async function init() {
@@ -994,7 +1087,9 @@
         if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
       };
       pill.onclick = () => btn.click();
-      refresh(); setInterval(refresh, 8000);
+      refresh();
+      // Pause server-pill refresh when tab is hidden
+      setInterval(() => { if (!document.hidden) refresh(); }, 12000);
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);

@@ -35,9 +35,9 @@ Full rules: root `AGENTS.md`.
 | `server/` | FastAPI-style loopback backend ops |
 | `Scripts/` | PowerShell modules, session, pre-push |
 | `Verifone Tools/` | Commander / field / site tooling |
-| `System Tools/` | Health, diagnostics, security, disk, etc. |
+| `System Tools/` | Health, diagnostics, security, disk, **Admin: System Health Desk + Secrets Presence Console** |
 | `Movie File Manager/` | Media library, VSR pipeline |
-| `Business Tax Preparedness/` | **TaxForge** suite (tax readiness + Xero) |
+| `private/` | Owner-only notes (`README.md` tracked; apps gitignored) |
 | `Accounting Tools and calculators/` | Loan calc, converters |
 | Games / science HTML | e.g. Empire Seed 3D, Typing Trainer, Bloodmoon |
 | `docs/` | Guides, this map, multi-agent protocol, handoffs |
@@ -46,19 +46,10 @@ Full rules: root `AGENTS.md`.
 
 ## Recent product work (this collaboration wave)
 
-### TaxForge (`Business Tax Preparedness/`)
+### Owner-private finance modules (not in public git)
 
-Local-first **business tax preparedness** suite, Xero-oriented:
-
-- `TaxForge Hub.html` — suite home  
-- `LedgerLink Console.html` — Xero bridge / CSV / demo  
-- `Compliance Pulse.html` — readiness score  
-- `Write-Off Workshop.html` — expense coding  
-- `Year-End War Room.html` — close-out  
-- `taxforge-shared.css` / `taxforge-shared.js`  
-- Expert comms: `TAXFORGE-EXPERT-BRIEF.md`, `TAXFORGE-EMAIL-TO-EXPERTS.txt`, `TaxForge Expert Share Pack.html`  
-
-Launcher: category **Tax**, section **TaxForge & Books**.
+TaxForge, Investor Portal, and Xero proxy modules live **only on the owner machine**
+(gitignored). See `private/README.md`. Do not re-add them to the public tree.
 
 ### Other HTML tools (same wave)
 

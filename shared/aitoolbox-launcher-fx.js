@@ -1,7 +1,7 @@
 /**
  * AI HTML Toolbox — Launcher polish
- * Muted video marquee (from intro folders), idle anti-burn-in motion,
- * mouse trail + hover sounds, random tool-select animations.
+ * Multi-layer depth marquee (scroll-slowed parallax), tessellation lighting
+ * on tiles/panels, idle anti-burn-in motion, mouse trail + soft sounds.
  */
 (function (global) {
     'use strict';
@@ -17,7 +17,12 @@
     let prefs = loadPrefs();
     let audioCtx = null;
     let root = null;
-    let marqueeTrack = null;
+    let marqueeTracks = { far: null, mid: null, near: null };
+    let marqueeStage = null;
+    let marqueeOffsets = { far: 0, mid: 0, near: 0 };
+    let marqueeLastTs = 0;
+    let marqueePaused = false;
+    let scrollProgress = 0;
     let canvas = null;
     let ctx = null;
     let rafId = 0;
@@ -48,7 +53,14 @@
         const style = document.createElement('style');
         style.id = 'aitoolbox-launcher-fx-css';
         style.textContent = `
-/* ── Launcher ambient FX ── */
+/* ── Launcher ambient FX (depth marquee + tessellation) ── */
+:root {
+  --lx-scroll: 0;
+  --lx-lx: 28%;
+  --lx-ly: 18%;
+  --lx-lz: 0.5;
+  --lx-tess: 1;
+}
 #lxRoot {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   overflow: hidden; opacity: 1; transition: opacity 0.5s;
@@ -58,119 +70,185 @@ body.lx-active { position: relative; }
 body.lx-active > :not(#lxRoot):not(.cine-root):not(#cineSettingsPop) {
   position: relative; z-index: 1;
 }
-/* Keep sticky nav above ambient but content readable */
 body.lx-active .section-nav { z-index: 40; }
 
 #lxCanvas {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  opacity: 0.55; mix-blend-mode: screen;
+  opacity: 0.5; mix-blend-mode: screen;
 }
 
 .lx-wash {
-  position: absolute; inset: -10%;
+  position: absolute; inset: -12%;
   background:
-    radial-gradient(ellipse at 20% 30%, rgba(0,243,255,0.12), transparent 50%),
-    radial-gradient(ellipse at 80% 70%, rgba(124,92,255,0.14), transparent 48%),
-    radial-gradient(ellipse at 50% 100%, rgba(0,255,136,0.07), transparent 42%);
-  animation: lxWash 42s ease-in-out infinite alternate;
+    radial-gradient(ellipse at var(--lx-lx) var(--lx-ly), rgba(0,243,255,0.16), transparent 52%),
+    radial-gradient(ellipse at calc(100% - var(--lx-lx)) calc(100% - var(--lx-ly)), rgba(124,92,255,0.16), transparent 48%),
+    radial-gradient(ellipse at 50% 100%, rgba(0,255,136,0.08), transparent 42%);
+  animation: lxWash 48s ease-in-out infinite alternate;
   filter: blur(2px);
+  transition: background 0.2s linear;
 }
 @keyframes lxWash {
-  0%   { transform: translate(0,0) scale(1); filter: hue-rotate(0deg) blur(2px); opacity: 0.7; }
-  50%  { transform: translate(-3%, 2%) scale(1.06); filter: hue-rotate(28deg) blur(3px); opacity: 1; }
-  100% { transform: translate(2%, -2%) scale(0.98); filter: hue-rotate(-22deg) blur(2px); opacity: 0.8; }
+  0%   { transform: translate(0,0) scale(1); filter: hue-rotate(0deg) blur(2px); opacity: 0.75; }
+  50%  { transform: translate(-2%, 2%) scale(1.05); filter: hue-rotate(22deg) blur(3px); opacity: 1; }
+  100% { transform: translate(2%, -1%) scale(0.98); filter: hue-rotate(-18deg) blur(2px); opacity: 0.82; }
+}
+
+/* Triangular / tessellation lattice behind content */
+.lx-tess-field {
+  position: absolute; inset: 0;
+  opacity: 0.35;
+  background-image:
+    repeating-linear-gradient(60deg, transparent 0 22px, rgba(0,243,255,0.035) 22px 23px),
+    repeating-linear-gradient(-60deg, transparent 0 22px, rgba(124,92,255,0.03) 22px 23px),
+    repeating-linear-gradient(0deg, transparent 0 38px, rgba(255,255,255,0.015) 38px 39px);
+  background-size: 100% 100%, 100% 100%, 100% 100%;
+  background-position:
+    calc(var(--lx-lx) * 0.15) calc(var(--lx-ly) * 0.1),
+    calc(var(--lx-lx) * -0.1) calc(var(--lx-ly) * 0.2),
+    0 calc(var(--lx-scroll) * 40px);
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 10%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 10%, transparent 78%);
+  mix-blend-mode: screen;
 }
 
 .lx-grid {
   position: absolute; inset: 0;
   background-image:
-    linear-gradient(rgba(0,243,255,0.04) 1px, transparent 1px),
+    linear-gradient(rgba(0,243,255,0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(124,92,255,0.04) 1px, transparent 1px);
-  background-size: 48px 48px;
-  animation: lxGrid 60s linear infinite;
-  opacity: 0.45;
-  mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
-  -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
+  background-size: 56px 56px;
+  animation: lxGrid 72s linear infinite;
+  opacity: 0.4;
+  mask-image: radial-gradient(ellipse at center, #000 15%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 15%, transparent 78%);
 }
 @keyframes lxGrid {
   0% { background-position: 0 0, 0 0; }
-  100% { background-position: 48px 48px, 48px 48px; }
+  100% { background-position: 56px 56px, 56px 56px; }
 }
 
 .lx-scan {
-  position: absolute; left: 0; right: 0; height: 18%;
-  background: linear-gradient(180deg, transparent, rgba(0,243,255,0.06), transparent);
-  animation: lxScan 14s ease-in-out infinite;
-  opacity: 0.7;
+  position: absolute; left: 0; right: 0; height: 16%;
+  background: linear-gradient(180deg, transparent, rgba(0,243,255,0.05), transparent);
+  animation: lxScan 16s ease-in-out infinite;
+  opacity: 0.65;
 }
 @keyframes lxScan {
   0% { top: -20%; }
   100% { top: 110%; }
 }
 
-/* Video marquee */
-.lx-marquee {
+/* ── Multi-layer depth marquee (large cinema ribbon) ── */
+.lx-marquee-stage {
   position: absolute; left: 0; right: 0; bottom: 0;
-  height: min(22vh, 200px);
+  height: min(44vh, 420px);
+  perspective: 1100px;
+  perspective-origin: 50% 100%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  /* lifts slightly as you scroll — depth cue */
+  transform: translate3d(0, calc(var(--lx-scroll) * 36px), 0);
+  transition: transform 0.08s linear;
+}
+.lx-marquee {
+  position: absolute; left: -4%; right: -4%;
   overflow: hidden;
-  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent),
-              linear-gradient(180deg, transparent, #000 25%, #000 100%);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent),
-                      linear-gradient(180deg, transparent, #000 25%, #000 100%);
+  mask-image:
+    linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(180deg, transparent, #000 18%, #000 100%);
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(180deg, transparent, #000 18%, #000 100%);
   mask-composite: intersect;
   -webkit-mask-composite: source-in;
-  opacity: 0.42;
-  filter: saturate(1.15) brightness(0.85);
+  will-change: transform, opacity, filter;
 }
 .lx-marquee-track {
-  display: flex; gap: 14px; height: 100%;
+  display: flex; gap: 18px; height: 100%;
   width: max-content;
-  animation: lxMarquee 48s linear infinite;
   will-change: transform;
+  /* position driven by JS for scroll-linked speed */
 }
-.lx-marquee:hover .lx-marquee-track { animation-play-state: paused; }
-@keyframes lxMarquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+/* Far = smaller, softer, slower (set in JS) */
+.lx-m-far {
+  height: 58%; bottom: 30%;
+  opacity: 0.26;
+  filter: blur(2.8px) saturate(0.85) brightness(0.75);
+  transform: scale(0.9) translateZ(-120px);
 }
+.lx-m-mid {
+  height: 74%; bottom: 12%;
+  opacity: 0.4;
+  filter: blur(1.1px) saturate(1.05) brightness(0.88);
+  transform: scale(0.96) translateZ(-40px);
+}
+.lx-m-near {
+  height: 100%; bottom: 0;
+  opacity: 0.58;
+  filter: saturate(1.2) brightness(0.95) contrast(1.05);
+  transform: scale(1) translateZ(0);
+  /* near layer accepts hover pause via pointer-events on stage region */
+}
+.lx-marquee-stage:hover .lx-m-near { opacity: 0.72; }
 .lx-tile {
   flex: 0 0 auto;
   height: 100%;
-  width: min(32vw, 280px);
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
-  border: 1px solid rgba(0,243,255,0.18);
-  box-shadow: 0 0 24px rgba(0,0,0,0.4);
+  border: 1px solid rgba(0,243,255,0.22);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 0 0 1px rgba(0,0,0,0.35);
   position: relative;
-  background: #0a0a12;
+  background:
+    linear-gradient(145deg, rgba(20,24,36,0.9), rgba(6,8,14,0.95));
 }
+.lx-m-far .lx-tile { width: min(26vw, 220px); border-radius: 10px; }
+.lx-m-mid .lx-tile { width: min(34vw, 300px); border-radius: 14px; }
+.lx-m-near .lx-tile { width: min(42vw, 400px); border-radius: 18px; }
 .lx-tile video {
   width: 100%; height: 100%;
   object-fit: cover;
   display: block;
   pointer-events: none;
 }
+.lx-tile::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    repeating-linear-gradient(60deg, transparent 0 14px, rgba(0,243,255,0.04) 14px 15px),
+    repeating-linear-gradient(-60deg, transparent 0 14px, rgba(124,92,255,0.035) 14px 15px),
+    radial-gradient(ellipse 90% 70% at var(--lx-lx) var(--lx-ly), rgba(0,243,255,0.18), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,0.06), transparent 28%, transparent 55%, rgba(5,5,8,0.65));
+  mix-blend-mode: soft-light;
+}
 .lx-tile::after {
   content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 40%, rgba(5,5,8,0.55));
-  pointer-events: none;
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.35);
+  background: linear-gradient(125deg, rgba(255,255,255,0.1) 0%, transparent 32%, transparent 68%, rgba(0,243,255,0.08) 100%);
 }
 .lx-empty-hint {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
   font-size: 10px; color: rgba(136,136,160,0.55); letter-spacing: 0.08em;
-  white-space: nowrap; pointer-events: none;
+  white-space: nowrap; pointer-events: none; z-index: 3;
 }
 
-/* Cursor glow follows mouse (CSS vars set by JS) */
+/* Soft floor fade so content stays readable over large marquee */
+.lx-marquee-stage::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 40%;
+  background: linear-gradient(180deg, rgba(5,5,8,0.55), transparent);
+  pointer-events: none; z-index: 4;
+}
+
+/* Cursor glow */
 .lx-cursor {
-  position: absolute; width: 280px; height: 280px;
-  margin: -140px 0 0 -140px;
+  position: absolute; width: 320px; height: 320px;
+  margin: -160px 0 0 -160px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0,243,255,0.16), rgba(124,92,255,0.08) 40%, transparent 70%);
-  left: calc(var(--lx-mx, 50%) * 1);
-  top: calc(var(--lx-my, 40%) * 1);
-  transform: translate(var(--lx-mx, 50vw), var(--lx-my, 40vh));
+  background: radial-gradient(circle, rgba(0,243,255,0.18), rgba(124,92,255,0.1) 40%, transparent 70%);
   left: 0; top: 0;
   opacity: 0.85;
   transition: opacity 0.3s;
@@ -178,32 +256,100 @@ body.lx-active .section-nav { z-index: 40; }
   will-change: transform;
 }
 
-/* Tool card polish */
+/* ── Tessellated materials on homepage tiles & blocks ── */
 body.lx-active .tool-card,
-body.lx-active .hub-card {
-  transition: transform 0.22s cubic-bezier(.2,.8,.2,1), box-shadow 0.22s, border-color 0.22s, filter 0.22s;
+body.lx-active .hub-card,
+body.lx-active .section-header,
+body.lx-active .get-started,
+body.lx-active .get-started-step {
+  --tess-a: rgba(0,243,255, calc(0.1 * var(--lx-tess, 1)));
+  --tess-b: rgba(124,92,255, calc(0.09 * var(--lx-tess, 1)));
+  background-color: #0a0c14;
+  background-image:
+    radial-gradient(ellipse 130% 90% at var(--lx-lx) var(--lx-ly),
+      rgba(0,243,255, calc(0.16 * var(--lx-tess, 1))), transparent 58%),
+    radial-gradient(ellipse 100% 80% at calc(100% - var(--lx-lx)) calc(100% - var(--lx-ly)),
+      rgba(124,92,255, calc(0.14 * var(--lx-tess, 1))), transparent 55%),
+    repeating-linear-gradient(60deg,
+      transparent 0 11px, rgba(0,243,255,0.035) 11px 12px),
+    repeating-linear-gradient(-60deg,
+      transparent 0 11px, rgba(124,92,255,0.028) 11px 12px),
+    repeating-linear-gradient(0deg,
+      transparent 0 19px, rgba(255,255,255,0.012) 19px 20px),
+    linear-gradient(155deg, rgba(28,32,48,0.96) 0%, rgba(12,14,22,0.98) 48%, rgba(8,9,14,0.99) 100%);
+  background-blend-mode: soft-light, soft-light, normal, normal, normal, normal;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    inset 0 -1px 0 rgba(0,0,0,0.45),
+    0 10px 28px rgba(0,0,0,0.35);
+  border-color: rgba(0,243,255,0.28);
+  transition:
+    transform 0.22s cubic-bezier(.2,.8,.2,1),
+    box-shadow 0.22s, border-color 0.22s, filter 0.22s,
+    background-position 0.15s linear;
+  background-position:
+    0 0, 0 0,
+    calc(var(--lx-lx) * 0.2) calc(var(--lx-ly) * 0.15),
+    calc(var(--lx-lx) * -0.15) calc(var(--lx-ly) * 0.2),
+    0 calc(var(--lx-scroll) * 24px),
+    0 0;
+}
+body.lx-active .tool-card.featured {
+  background-image:
+    radial-gradient(ellipse 120% 90% at var(--lx-lx) var(--lx-ly),
+      rgba(255,200,80,0.14), transparent 55%),
+    radial-gradient(ellipse 100% 80% at calc(100% - var(--lx-lx)) calc(100% - var(--lx-ly)),
+      rgba(0,243,255,0.1), transparent 50%),
+    repeating-linear-gradient(60deg, transparent 0 11px, rgba(255,200,80,0.04) 11px 12px),
+    repeating-linear-gradient(-60deg, transparent 0 11px, rgba(0,243,255,0.03) 11px 12px),
+    linear-gradient(155deg, rgba(36,30,18,0.97), rgba(12,12,18,0.99));
+  border-color: rgba(255,200,0,0.45);
 }
 body.lx-active .tool-card:hover,
 body.lx-active .hub-card:hover {
-  transform: translateY(-5px) scale(1.02);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 0 22px rgba(0,243,255,0.22);
-  border-color: rgba(0,243,255,0.55);
+  transform: translateY(-6px) scale(1.025);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.1),
+    0 16px 40px rgba(0,0,0,0.5),
+    0 0 28px rgba(0,243,255,0.22);
+  border-color: rgba(0,243,255,0.6);
+  filter: brightness(1.06) saturate(1.08);
 }
-body.lx-active .tool-card.lx-pop {
-  animation: lxPop 0.55s cubic-bezier(.2,1.2,.3,1) both;
+body.lx-active .tool-card .icon-wrap,
+body.lx-active .hub-card .hub-emoji {
+  box-shadow:
+    inset 0 0 20px rgba(0,243,255,0.08),
+    0 4px 14px rgba(0,0,0,0.4);
+  border-color: rgba(0,243,255,0.35);
+  background:
+    radial-gradient(circle at var(--lx-lx) var(--lx-ly), rgba(0,243,255,0.12), transparent 60%),
+    #05060a;
 }
-body.lx-active .tool-card.lx-spin {
-  animation: lxSpin 0.65s cubic-bezier(.2,.8,.2,1) both;
+body.lx-active .section-header,
+body.lx-active .get-started {
+  backdrop-filter: blur(10px);
 }
-body.lx-active .tool-card.lx-flash {
-  animation: lxFlash 0.5s ease both;
+body.lx-active .get-started-step {
+  border-radius: 12px;
+  border: 1px solid rgba(0,243,255,0.18);
+  padding: 12px;
 }
-body.lx-active .tool-card.lx-glitch {
-  animation: lxGlitch 0.45s steps(2) both;
+body.lx-active .sec-btn {
+  background:
+    radial-gradient(ellipse at var(--lx-lx) var(--lx-ly), rgba(0,243,255,0.12), transparent 70%),
+    rgba(5,5,10,0.65);
+  border-color: rgba(0,243,255,0.32);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
 }
-body.lx-active .tool-card.lx-rise {
-  animation: lxRise 0.55s cubic-bezier(.2,.9,.2,1) both;
+body.lx-active .sec-btn.active {
+  box-shadow: 0 0 16px rgba(0,243,255,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
 }
+
+body.lx-active .tool-card.lx-pop { animation: lxPop 0.55s cubic-bezier(.2,1.2,.3,1) both; }
+body.lx-active .tool-card.lx-spin { animation: lxSpin 0.65s cubic-bezier(.2,.8,.2,1) both; }
+body.lx-active .tool-card.lx-flash { animation: lxFlash 0.5s ease both; }
+body.lx-active .tool-card.lx-glitch { animation: lxGlitch 0.45s steps(2) both; }
+body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.2,1) both; }
 @keyframes lxPop {
   0% { transform: scale(1); filter: brightness(1); }
   40% { transform: scale(1.08) rotate(-1deg); filter: brightness(1.25); box-shadow: 0 0 40px rgba(0,243,255,0.5); }
@@ -215,7 +361,7 @@ body.lx-active .tool-card.lx-rise {
   100% { transform: scale(1) rotate(0); }
 }
 @keyframes lxFlash {
-  0%, 100% { filter: brightness(1); box-shadow: none; }
+  0%, 100% { filter: brightness(1); }
   30% { filter: brightness(1.5) saturate(1.4); box-shadow: 0 0 48px rgba(124,92,255,0.55); }
   60% { filter: brightness(1.15); }
 }
@@ -232,7 +378,6 @@ body.lx-active .tool-card.lx-rise {
   100% { transform: translateY(0) scale(1); }
 }
 
-/* Fullscreen select burst */
 .lx-burst {
   position: fixed; inset: 0; z-index: 50; pointer-events: none;
   opacity: 0;
@@ -245,7 +390,6 @@ body.lx-active .tool-card.lx-rise {
   100% { opacity: 0; }
 }
 
-/* Toggle chip */
 #lxToggle {
   position: fixed; bottom: 14px; right: 14px; z-index: 60;
   pointer-events: auto;
@@ -260,9 +404,14 @@ body.lx-active .tool-card.lx-rise {
 #lxToggle.on { color: #00ff88; border-color: rgba(0,255,136,0.45); }
 
 @media (prefers-reduced-motion: reduce) {
-  .lx-wash, .lx-grid, .lx-scan, .lx-marquee-track { animation: none !important; }
-  #lxCanvas { opacity: 0.2; }
-  body.lx-active .tool-card:hover { transform: none; }
+  .lx-wash, .lx-grid, .lx-scan { animation: none !important; }
+  #lxCanvas { opacity: 0.15; }
+  body.lx-active .tool-card:hover, body.lx-active .hub-card:hover { transform: none; }
+  .lx-marquee-stage { height: min(22vh, 180px); }
+}
+@media (max-width: 700px) {
+  .lx-marquee-stage { height: min(32vh, 260px); }
+  .lx-m-far { display: none; }
 }
 `;
         document.head.appendChild(style);
@@ -346,15 +495,24 @@ body.lx-active .tool-card.lx-rise {
         root.setAttribute('aria-hidden', 'true');
         root.innerHTML = `
           <div class="lx-wash"></div>
+          <div class="lx-tess-field"></div>
           <div class="lx-grid"></div>
           <div class="lx-scan"></div>
           <canvas id="lxCanvas"></canvas>
           <div class="lx-cursor" id="lxCursor"></div>
-          <div class="lx-marquee" id="lxMarquee">
-            <div class="lx-marquee-track" id="lxMarqueeTrack"></div>
-          </div>
-          <div class="lx-empty-hint" id="lxEmptyHint" style="display:none">
-            🎬 Intros → pick BG folders for the video marquee
+          <div class="lx-marquee-stage" id="lxMarqueeStage">
+            <div class="lx-marquee lx-m-far" id="lxMarqueeFar">
+              <div class="lx-marquee-track" data-layer="far"></div>
+            </div>
+            <div class="lx-marquee lx-m-mid" id="lxMarqueeMid">
+              <div class="lx-marquee-track" data-layer="mid"></div>
+            </div>
+            <div class="lx-marquee lx-m-near" id="lxMarqueeNear">
+              <div class="lx-marquee-track" data-layer="near"></div>
+            </div>
+            <div class="lx-empty-hint" id="lxEmptyHint" style="display:none">
+              🎬 Intros → pick BG folders for the depth marquee
+            </div>
           </div>
           <div class="lx-burst" id="lxBurst"></div>
         `;
@@ -364,7 +522,7 @@ body.lx-active .tool-card.lx-rise {
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.id = 'lxToggle';
-        toggle.title = 'Toggle ambient FX / marquee / soft sounds (anti burn-in)';
+        toggle.title = 'Toggle ambient FX / depth marquee / soft sounds (anti burn-in)';
         toggle.textContent = '✦ FX';
         toggle.classList.toggle('on', prefs.enabled);
         toggle.addEventListener('click', () => {
@@ -376,7 +534,6 @@ body.lx-active .tool-card.lx-rise {
                 }
             } catch (_) { /* ignore */ }
         });
-        // Right-click cycles sounds
         toggle.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             savePrefs({ sounds: !prefs.sounds });
@@ -390,7 +547,14 @@ body.lx-active .tool-card.lx-rise {
 
         canvas = document.getElementById('lxCanvas');
         ctx = canvas.getContext('2d');
-        marqueeTrack = document.getElementById('lxMarqueeTrack');
+        marqueeStage = document.getElementById('lxMarqueeStage');
+        marqueeTracks.far = root.querySelector('.lx-marquee-track[data-layer="far"]');
+        marqueeTracks.mid = root.querySelector('.lx-marquee-track[data-layer="mid"]');
+        marqueeTracks.near = root.querySelector('.lx-marquee-track[data-layer="near"]');
+        // Hover near layer pauses scroll-linked drift slightly
+        marqueeStage?.addEventListener('pointerenter', () => { marqueePaused = true; });
+        marqueeStage?.addEventListener('pointerleave', () => { marqueePaused = false; });
+        // Stage is pointer-events none; allow pause when hovering bottom of viewport via body
         resizeCanvas();
         seedTracers();
     }
@@ -398,8 +562,63 @@ body.lx-active .tool-card.lx-rise {
     function applyEnabled() {
         document.body.classList.toggle('lx-off', !prefs.enabled);
         document.getElementById('lxToggle')?.classList.toggle('on', prefs.enabled);
-        const mq = document.getElementById('lxMarquee');
-        if (mq) mq.style.display = prefs.marquee && prefs.enabled ? '' : 'none';
+        if (marqueeStage) {
+            marqueeStage.style.display = prefs.marquee && prefs.enabled ? '' : 'none';
+        }
+    }
+
+    function updateScrollLighting() {
+        const maxScroll = Math.max(1, (document.documentElement.scrollHeight || 1) - window.innerHeight);
+        const p = Math.min(1, Math.max(0, window.scrollY / maxScroll));
+        scrollProgress = p;
+        // Light source drifts as you scroll — tessellation “faces” catch light
+        const lx = 22 + p * 48 + Math.sin(p * Math.PI * 2) * 8;
+        const ly = 14 + p * 42 + Math.cos(p * Math.PI) * 10;
+        const rootEl = document.documentElement;
+        rootEl.style.setProperty('--lx-scroll', p.toFixed(4));
+        rootEl.style.setProperty('--lx-lx', lx.toFixed(1) + '%');
+        rootEl.style.setProperty('--lx-ly', ly.toFixed(1) + '%');
+        rootEl.style.setProperty('--lx-lz', (0.35 + p * 0.55).toFixed(3));
+        rootEl.style.setProperty('--lx-tess', (1 - p * 0.15).toFixed(3));
+    }
+
+    function stepMarquee(now) {
+        if (!prefs.enabled || !prefs.marquee || reducedMotion) return;
+        if (!marqueeLastTs) marqueeLastTs = now;
+        let dt = now - marqueeLastTs;
+        marqueeLastTs = now;
+        if (dt > 64) dt = 64;
+        if (marqueePaused) dt *= 0.15;
+
+        // Depth: as you scroll down, ribbon slows (recedes) and softens
+        const p = scrollProgress;
+        const intensity = prefs.intensity || 1;
+        // px/ms at top → slower at bottom
+        const nearSpeed = (0.042 - p * 0.028) * intensity;
+        const midSpeed = nearSpeed * 0.58;
+        const farSpeed = nearSpeed * 0.32;
+
+        marqueeOffsets.near += nearSpeed * dt;
+        marqueeOffsets.mid += midSpeed * dt;
+        marqueeOffsets.far += farSpeed * dt;
+
+        for (const layer of ['far', 'mid', 'near']) {
+            const track = marqueeTracks[layer];
+            if (!track) continue;
+            const half = track.scrollWidth / 2;
+            if (half > 8) {
+                while (marqueeOffsets[layer] >= half) marqueeOffsets[layer] -= half;
+            }
+            track.style.transform = `translate3d(${-marqueeOffsets[layer]}px, 0, 0)`;
+        }
+
+        // Layer opacity / blur shift with scroll (extra depth)
+        const far = document.getElementById('lxMarqueeFar');
+        const mid = document.getElementById('lxMarqueeMid');
+        const near = document.getElementById('lxMarqueeNear');
+        if (far) far.style.opacity = String(0.22 + p * 0.12);
+        if (mid) mid.style.opacity = String(0.36 + p * 0.08);
+        if (near) near.style.opacity = String(0.62 - p * 0.18);
     }
 
     function resizeCanvas() {
@@ -430,6 +649,7 @@ body.lx-active .tool-card.lx-rise {
 
     function tick(now) {
         rafId = requestAnimationFrame(tick);
+        stepMarquee(now);
         if (!prefs.enabled || !ctx || !canvas) return;
         const w = window.innerWidth;
         const h = window.innerHeight;
@@ -530,13 +750,26 @@ body.lx-active .tool-card.lx-rise {
         }
     }
 
+    function fillTrack(track, factory, count, dup) {
+        if (!track) return;
+        track.innerHTML = '';
+        const n = Math.max(count, 4);
+        for (let i = 0; i < n; i++) track.appendChild(factory(i));
+        if (dup) {
+            const clone = track.cloneNode(true);
+            while (clone.firstChild) track.appendChild(clone.firstChild);
+        }
+    }
+
     async function loadMarquee() {
-        if (!marqueeTrack || !prefs.marquee) return;
-        marqueeTrack.innerHTML = '';
+        if (!prefs.marquee) return;
+        if (!marqueeTracks.near) return;
+
         clipUrls.forEach((u) => {
             try { URL.revokeObjectURL(u); } catch (_) { /* ignore */ }
         });
         clipUrls = [];
+        marqueeOffsets = { far: 0, mid: 0, near: 0 };
 
         let clips = [];
         try {
@@ -548,29 +781,25 @@ body.lx-active .tool-card.lx-rise {
         }
 
         const hint = document.getElementById('lxEmptyHint');
-        if (!clips.length) {
-            if (hint) hint.style.display = '';
-            // Synth tiles so marquee still moves
-            for (let i = 0; i < 6; i++) {
-                const tile = document.createElement('div');
-                tile.className = 'lx-tile';
-                tile.style.background = [
-                    'linear-gradient(135deg,#0a1a22,#1a0a28)',
-                    'linear-gradient(135deg,#120a20,#0a1820)',
-                    'linear-gradient(135deg,#0a2018,#1a1028)'
-                ][i % 3];
-                marqueeTrack.appendChild(tile);
-            }
-            // Duplicate for seamless loop
-            marqueeTrack.innerHTML += marqueeTrack.innerHTML;
-            return;
-        }
-        if (hint) hint.style.display = 'none';
+        const synthBg = [
+            'linear-gradient(135deg,#0a1a22,#1a0a28)',
+            'linear-gradient(135deg,#120a20,#0a1820)',
+            'linear-gradient(135deg,#0a2018,#1a1028)',
+            'linear-gradient(135deg,#181028,#0a1420)',
+            'linear-gradient(135deg,#0c1824,#20102a)'
+        ];
 
-        // Build tiles (double set for seamless marquee)
-        const makeTile = (clip) => {
+        const makeSynth = (i) => {
             const tile = document.createElement('div');
             tile.className = 'lx-tile';
+            tile.style.background = synthBg[i % synthBg.length];
+            return tile;
+        };
+
+        const makeVideoTile = (clip) => {
+            const tile = document.createElement('div');
+            tile.className = 'lx-tile';
+            if (!clip) return makeSynth(0);
             const v = document.createElement('video');
             v.muted = true;
             v.defaultMuted = true;
@@ -581,21 +810,29 @@ body.lx-active .tool-card.lx-rise {
             v.preload = 'metadata';
             v.src = clip.url;
             if (clip.revoke) clipUrls.push(clip.revoke);
-            v.addEventListener('loadeddata', () => {
-                v.play().catch(() => {});
-            });
+            v.addEventListener('loadeddata', () => { v.play().catch(() => {}); });
             tile.appendChild(v);
             tile.title = clip.label || '';
             return tile;
         };
 
-        for (const c of clips) marqueeTrack.appendChild(makeTile(c));
-        // duplicate for loop
-        for (const c of clips) marqueeTrack.appendChild(makeTile(c));
+        if (!clips.length) {
+            if (hint) hint.style.display = '';
+            fillTrack(marqueeTracks.far, makeSynth, 6, true);
+            fillTrack(marqueeTracks.mid, makeSynth, 6, true);
+            fillTrack(marqueeTracks.near, makeSynth, 6, true);
+            return;
+        }
+        if (hint) hint.style.display = 'none';
 
-        // Ensure playback after user gesture / visibility
+        // Far: fewer/lighter (still videos when available)
+        const farClips = clips.length > 2 ? clips.filter((_, i) => i % 2 === 0) : clips;
+        fillTrack(marqueeTracks.far, (i) => makeVideoTile(farClips[i % farClips.length]), Math.max(farClips.length, 4), true);
+        fillTrack(marqueeTracks.mid, (i) => makeVideoTile(clips[i % clips.length]), Math.max(clips.length, 4), true);
+        fillTrack(marqueeTracks.near, (i) => makeVideoTile(clips[i % clips.length]), Math.max(clips.length, 5), true);
+
         const playAll = () => {
-            marqueeTrack.querySelectorAll('video').forEach((v) => {
+            root?.querySelectorAll('.lx-marquee-track video').forEach((v) => {
                 v.muted = true;
                 v.play().catch(() => {});
             });
@@ -650,16 +887,43 @@ body.lx-active .tool-card.lx-rise {
             if (cursor) {
                 cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
             }
-            // trail sparks occasionally
-            if (prefs.enabled && Math.random() < 0.12) {
+            // Light follows mouse a bit on top of scroll-driven lamp
+            if (prefs.enabled) {
+                const mx = 15 + mouse.x * 70;
+                const my = 10 + mouse.y * 55;
+                // blend mouse into scroll lamp (gentle)
+                const p = scrollProgress;
+                const lx = mx * 0.35 + (22 + p * 48) * 0.65;
+                const ly = my * 0.35 + (14 + p * 42) * 0.65;
+                document.documentElement.style.setProperty('--lx-lx', lx.toFixed(1) + '%');
+                document.documentElement.style.setProperty('--lx-ly', ly.toFixed(1) + '%');
+            }
+            // Pause near marquee when pointer is in bottom cinema band
+            marqueePaused = prefs.enabled && mouse.y > 0.72;
+            if (prefs.enabled && Math.random() < 0.1) {
                 spawnSparks(e.clientX, e.clientY, 2, 190);
             }
         }, { passive: true });
 
-        window.addEventListener('pointerleave', () => { mouse.active = false; });
-        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('pointerleave', () => {
+            mouse.active = false;
+            marqueePaused = false;
+        });
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            updateScrollLighting();
+        });
 
-        // Hover sounds + magnetic tilt on cards
+        let scrollRaf = 0;
+        window.addEventListener('scroll', () => {
+            if (scrollRaf) return;
+            scrollRaf = requestAnimationFrame(() => {
+                scrollRaf = 0;
+                updateScrollLighting();
+            });
+        }, { passive: true });
+        updateScrollLighting();
+
         document.addEventListener('pointerover', (e) => {
             const card = e.target.closest?.('.tool-card, .hub-card, .sec-btn, .ui-btn, .btn');
             if (!card || !prefs.enabled) return;
@@ -674,7 +938,6 @@ body.lx-active .tool-card.lx-rise {
             }
         }, true);
 
-        // Click anywhere soft tick
         document.addEventListener('pointerdown', (e) => {
             if (!prefs.enabled) return;
             if (e.target.closest?.('#lxToggle')) return;

@@ -1952,6 +1952,160 @@ def _suggest_pairs_cross_dirs(
     return suggestions[:limit]
 
 
+def candidates_for_media(
+    media_id: str,
+    *,
+    limit: int = 10,
+    min_ratio: float = 0.35,
+    exclude_ids: list[str] | None = None,
+    unpaired_only: bool = True,
+    tail_len: int = 5,
+    after_dir_id: str | None = None,
+    before_dir_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Guided match: rank unpaired peers against ONE anchor file.
+    Returns ordered candidates for process-of-elimination (try N, then next anchor).
+    """
+    anchor = get_media(media_id)
+    if not anchor:
+        raise FileNotFoundError("Media not found")
+
+    exclude = set(exclude_ids or [])
+    exclude.add(media_id)
+
+    clauses = ["type IN ('video', 'image')"]
+    params: list[Any] = []
+    if unpaired_only:
+        clauses.append("pair_id IS NULL")
+    if anchor.get("type") in ("video", "image"):
+        clauses.append("type=?")
+        params.append(anchor["type"])
+    where = " AND ".join(clauses)
+    with connect() as conn:
+        rows = conn.execute(f"SELECT * FROM media WHERE {where}", params).fetchall()
+    peers = [row_to_media(r) for r in rows if r["id"] not in exclude]
+
+    # Optional: constrain candidates to a folder (VSR output folder)
+    dir_filter = after_dir_id or before_dir_id
+    if dir_filter:
+        peers = [m for m in peers if m.get("dir_id") == dir_filter]
+
+    scored: list[dict[str, Any]] = []
+    methods = ("stem", "tail", "digit_id", "folder", "fuzzy")
+    for peer in peers:
+        best_conf = 0.0
+        best_reason = "fuzzy"
+        best_before, best_after = anchor, peer
+        for method in methods:
+            before, after, conf, reason = _pair_confidence(
+                anchor, peer, method=method, tail_len=tail_len
+            )
+            if conf > best_conf:
+                best_conf, best_reason = conf, reason
+                best_before, best_after = before, after
+        if best_conf < min_ratio:
+            continue
+        # Anchor role: keep user's anchor as fixed side when possible
+        anchor_is_before = best_before["id"] == media_id
+        candidate = best_after if anchor_is_before else best_before
+        scored.append({
+            "candidate_id": candidate["id"],
+            "candidate_name": candidate["name"],
+            "candidate_dir_id": candidate.get("dir_id"),
+            "anchor_id": media_id,
+            "anchor_name": anchor["name"],
+            "anchor_role": "before" if anchor_is_before else "after",
+            "before_id": best_before["id"],
+            "after_id": best_after["id"],
+            "before_name": best_before["name"],
+            "after_name": best_after["name"],
+            "confidence": round(float(best_conf), 3),
+            "reason": best_reason,
+            "type": candidate.get("type") or anchor.get("type") or "video",
+        })
+
+    scored.sort(key=lambda x: (-x["confidence"], x["candidate_name"]))
+    top = scored[: max(1, min(50, int(limit or 10)))]
+
+    # Prefer unpaired plain files as next anchors (sources first)
+    with connect() as conn:
+        if unpaired_only:
+            anchor_rows = conn.execute(
+                "SELECT * FROM media WHERE pair_id IS NULL AND type IN ('video','image') ORDER BY name LIMIT 500"
+            ).fetchall()
+        else:
+            anchor_rows = conn.execute(
+                "SELECT * FROM media WHERE type IN ('video','image') ORDER BY name LIMIT 500"
+            ).fetchall()
+    anchors_queue = []
+    for r in anchor_rows:
+        m = row_to_media(r)
+        if m["id"] in exclude and m["id"] != media_id:
+            continue
+        anchors_queue.append({
+            "id": m["id"],
+            "name": m["name"],
+            "type": m.get("type"),
+            "is_upscaled_name": _is_upscaled_name(m["name"]),
+        })
+    # Sources (non-upscale names) first for guided workflow
+    anchors_queue.sort(key=lambda a: (1 if a["is_upscaled_name"] else 0, a["name"].lower()))
+
+    return {
+        "anchor": {
+            "id": anchor["id"],
+            "name": anchor["name"],
+            "type": anchor.get("type"),
+            "dir_id": anchor.get("dir_id"),
+            "is_upscaled_name": _is_upscaled_name(anchor["name"]),
+        },
+        "candidates": top,
+        "candidate_count": len(top),
+        "scanned_peers": len(peers),
+        "anchors_remaining_hint": len(anchors_queue),
+        "max_tries_recommended": min(10, max(3, len(top))),
+    }
+
+
+def list_unpaired_anchors(
+    *,
+    kind: str | None = None,
+    limit: int = 200,
+    prefer_sources: bool = True,
+    dir_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Queue of unpaired files for guided match (sources first by default)."""
+    clauses = ["pair_id IS NULL", "type IN ('video', 'image')"]
+    params: list[Any] = []
+    if kind in ("video", "image"):
+        clauses.append("type=?")
+        params.append(kind)
+    if dir_id:
+        clauses.append("dir_id=?")
+        params.append(dir_id)
+    where = " AND ".join(clauses)
+    with connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM media WHERE {where} ORDER BY name LIMIT ?",
+            (*params, max(1, min(2000, int(limit or 200)))),
+        ).fetchall()
+    out = []
+    for r in rows:
+        m = row_to_media(r)
+        out.append({
+            "id": m["id"],
+            "name": m["name"],
+            "type": m.get("type"),
+            "dir_id": m.get("dir_id"),
+            "size": m.get("size") or 0,
+            "is_upscaled_name": _is_upscaled_name(m["name"]),
+        })
+    if prefer_sources:
+        out.sort(key=lambda a: (1 if a["is_upscaled_name"] else 0, a["name"].lower()))
+    return out
+
+
 def auto_pair_upscaled(
     *,
     min_confidence: float = 0.7,

@@ -20,7 +20,6 @@
     const DEFAULT_PREFS = {
         skipOnLaunch: false,   // daily-driver: skip intros
         muteVideo: true,
-        scaleMode: 'fit',      // 'fit' | 'center1x'
         lastPlayedAt: 0
     };
 
@@ -41,9 +40,7 @@
 
     function loadPrefs() {
         try {
-            const raw = { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') };
-            if (raw.scaleMode !== 'fit' && raw.scaleMode !== 'center1x') raw.scaleMode = 'fit';
-            return raw;
+            return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') };
         } catch (_) {
             return { ...DEFAULT_PREFS };
         }
@@ -51,93 +48,8 @@
 
     function savePrefs(patch) {
         prefs = { ...prefs, ...patch };
-        if (prefs.scaleMode !== 'fit' && prefs.scaleMode !== 'center1x') prefs.scaleMode = 'fit';
         try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch (_) { /* ignore */ }
         return prefs;
-    }
-
-    /**
-     * Apply video layout for the active scale mode.
-     * @param {HTMLVideoElement} video
-     * @param {string} [mode]
-     */
-    function applyVideoScale(video, mode) {
-        if (!video) return;
-        const m = mode || prefs.scaleMode || 'fit';
-        video.classList.remove('mode-fit', 'mode-center1x');
-        video.dataset.scaleMode = m;
-
-        // Clear any previous layout hooks
-        if (video._cineOnMeta) {
-            try { video.removeEventListener('loadedmetadata', video._cineOnMeta); } catch (_) { /* ignore */ }
-            video._cineOnMeta = null;
-        }
-
-        // Common absolute positioning inside full-screen stage
-        video.style.position = 'absolute';
-        video.style.right = 'auto';
-        video.style.bottom = 'auto';
-        video.style.margin = '0';
-        video.style.inset = 'auto';
-        video.style.maxWidth = 'none';
-        video.style.maxHeight = 'none';
-        video.style.transformOrigin = 'center center';
-
-        if (m === 'center1x') {
-            video.classList.add('mode-center1x');
-
-            /**
-             * True optical center: display box size in CSS px, then
-             * left = (viewportW - displayW) / 2, top = (viewportH - displayH) / 2.
-             * Avoids translate(-50%,-50%)+scale() drift (wrong box before metadata,
-             * and % translate is relative to the element, not the window).
-             */
-            const layout = () => {
-                const stage = video.parentElement;
-                const vw = (stage && stage.clientWidth) || window.innerWidth || document.documentElement.clientWidth;
-                const vh = (stage && stage.clientHeight) || window.innerHeight || document.documentElement.clientHeight;
-                const w = video.videoWidth || 0;
-                const h = video.videoHeight || 0;
-                if (!w || !h || !vw || !vh) return;
-
-                // 1:1 natural pixels; if any edge would go off-screen → 50% zoom
-                const overflow = w > vw || h > vh;
-                const scale = overflow ? 0.5 : 1;
-                const dispW = w * scale;
-                const dispH = h * scale;
-
-                video.style.width = dispW + 'px';
-                video.style.height = dispH + 'px';
-                video.style.left = Math.round((vw - dispW) / 2) + 'px';
-                video.style.top = Math.round((vh - dispH) / 2) + 'px';
-                video.style.transform = 'none';
-                video.style.objectFit = 'fill'; // we already chose the box size
-                video.dataset.scaleApplied = String(scale);
-                video.dataset.centerBox = dispW + 'x' + dispH + '@' + vw + 'x' + vh;
-            };
-
-            video._cineLayout = layout;
-            video._cineOnMeta = layout;
-            if (video.readyState >= 1) {
-                layout();
-                // Second pass after layout/paint (intrinsic size sometimes settles late)
-                requestAnimationFrame(() => requestAnimationFrame(layout));
-            } else {
-                video.addEventListener('loadedmetadata', layout);
-            }
-            return;
-        }
-
-        // fit — maintain AR, fit fully in viewport (letterbox as needed)
-        video.classList.add('mode-fit');
-        video.style.left = '0';
-        video.style.top = '0';
-        video.style.width = '100%';
-        video.style.height = '100%';
-        video.style.transform = 'none';
-        video.style.objectFit = 'contain';
-        video.dataset.scaleApplied = 'fit';
-        video._cineLayout = null;
     }
 
     function openIdb() {
@@ -180,11 +92,17 @@
         }
     }
 
-    async function ensureDirPermission(handle) {
+    function slotCacheKey(slotKey) {
+        return slotKey + ':playback';
+    }
+
+    async function ensureDirPermission(handle, { prompt = true } = {}) {
         if (!handle || !handle.queryPermission) return false;
         try {
             let p = await handle.queryPermission({ mode: 'read' });
             if (p === 'granted') return true;
+            if (!prompt) return false;
+            // requestPermission ONLY works inside a user gesture (click)
             p = await handle.requestPermission({ mode: 'read' });
             return p === 'granted';
         } catch (_) {
@@ -192,82 +110,284 @@
         }
     }
 
-    const VIDEO_NAME_RE = /\.(mp4|webm|mov|mkv|avi|m4v|mpg|mpeg|wmv)$/i;
-    /** @type {Record<string, string>} last file key played per slot (avoid immediate repeats) */
-    const lastPlayedBySlot = Object.create(null);
+    /** Persist a small playable blob so intros work after Chrome drops folder permission. */
+    async function cachePlaybackBlob(slotKey, blob, meta) {
+        if (!blob || !slotKey) return false;
+        meta = meta || {};
+        try {
+            await idbPut(slotCacheKey(slotKey), {
+                kind: 'playback',
+                blob,
+                name: meta.name || 'cached',
+                type: blob.type || meta.type || 'video/webm',
+                scaleLabel: meta.scaleLabel || '',
+                from: meta.from || 'unknown',
+                folderName: meta.folderName || '',
+                savedAt: Date.now()
+            });
+            return true;
+        } catch (e) {
+            console.warn('[Cine] could not cache playback blob', e);
+            return false;
+        }
+    }
 
-    async function pickDirectory(slotKey) {
+    async function readCachedPlayback(slotKey) {
+        try {
+            const c = await idbGet(slotCacheKey(slotKey));
+            if (c && c.blob && c.blob.size > 500) return c;
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
+    async function listVideosInDir(handle) {
+        const vids = [];
+        for await (const entry of handle.values()) {
+            if (entry.kind === 'file' && /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(entry.name)) {
+                vids.push(entry);
+            }
+        }
+        return vids;
+    }
+
+    /**
+     * After folder pick/re-grant: warm a proxy into IDB so next launch
+     * does not require permission until the user wants a new random clip.
+     */
+    async function warmFolderPlaybackCache(slotKey, handle, folderName, onStatus) {
+        try {
+            const vids = await listVideosInDir(handle);
+            if (!vids.length) return { ok: false, reason: 'no-videos' };
+            const pick = vids[Math.floor(Math.random() * vids.length)];
+            const file = await pick.getFile();
+            if (onStatus) onStatus(`Caching “${pick.name}” for next launches…`);
+            const ready = await ensureLightProxy(file, {
+                cacheKey: proxyCacheKey('dir', (folderName || 'dir') + '/' + pick.name, file.size, file.lastModified || 0),
+                onStatus
+            });
+            await cachePlaybackBlob(slotKey, ready.blob, {
+                name: pick.name,
+                scaleLabel: ready.scaleLabel,
+                from: 'dir',
+                folderName: folderName || handle.name || ''
+            });
+            return { ok: true, name: pick.name, count: vids.length };
+        } catch (e) {
+            console.warn('[Cine] warm folder cache failed', e);
+            return { ok: false, reason: String(e && e.message || e) };
+        }
+    }
+
+    async function pickDirectory(slotKey, onStatus) {
         if (!window.showDirectoryPicker) {
-            alert('Folder pick needs Chrome/Edge. Use “Pick video file” instead.');
+            alert('Folder pick needs Chrome/Edge. Use “Pick video file” instead — file picks stick without re-permission.');
             return null;
         }
         try {
             const handle = await window.showDirectoryPicker({ id: 'cine-' + slotKey, mode: 'read' });
-            // Replace any prior single-file blob for this slot; clear last-played so next load is free to pick any
-            delete lastPlayedBySlot[slotKey];
+            // Fresh picker grant is valid now — store handle + warm a playable cache
             await idbPut(slotKey, {
                 kind: 'dir',
                 handle,
                 name: handle.name,
                 savedAt: Date.now(),
-                lastPlayed: null,
+                note: 'Folder handle needs a one-click re-grant after Chrome restarts; cached clip plays until then.'
             });
+            if (onStatus) onStatus('Folder linked — caching a clip for durable playback…');
+            const warm = await warmFolderPlaybackCache(slotKey, handle, handle.name, onStatus);
+            if (onStatus) {
+                onStatus(
+                    warm.ok
+                        ? `Folder “${handle.name}” · ${warm.count} video(s) · cached “${warm.name}”`
+                        : `Folder “${handle.name}” linked (cache: ${warm.reason || 'failed'})`
+                );
+            }
             return handle;
         } catch (e) {
             if (e && e.name === 'AbortError') return null;
             console.warn('[Cine] directory pick failed', e);
+            alert('Could not open folder picker: ' + (e.message || e));
             return null;
         }
     }
 
+    async function persistFileSlot(slotKey, file, onStatus) {
+        if (!file) return null;
+        let storeBlob = file;
+        let optimized = false;
+        let optLabel = '';
+        try {
+            if (onStatus) onStatus('Optimizing video for smooth playback…');
+            const ready = await ensureLightProxy(file, {
+                cacheKey: proxyCacheKey('file', file.name, file.size, file.lastModified || 0),
+                onStatus
+            });
+            if (ready && ready.blob) {
+                storeBlob = ready.blob;
+                optimized = !!ready.scaled;
+                optLabel = ready.scaleLabel || '';
+            }
+        } catch (e) {
+            console.warn('[Cine] optimize on pick failed — storing original', e);
+        }
+        const record = {
+            kind: 'file',
+            name: file.name,
+            type: storeBlob.type || file.type || 'video/webm',
+            blob: storeBlob,
+            optimized,
+            scaleLabel: optLabel,
+            originalSize: file.size,
+            savedAt: Date.now()
+        };
+        try {
+            await idbPut(slotKey, record);
+            // Same blob in playback cache so resolve path is consistent
+            await cachePlaybackBlob(slotKey, storeBlob, {
+                name: file.name,
+                scaleLabel: optLabel,
+                from: 'file'
+            });
+        } catch (e) {
+            console.warn('[Cine] could not persist video file', e);
+            alert(
+                'Could not save intro video in browser storage (quota or private mode).\n' +
+                'Try a shorter/smaller clip, or free site data for this page.\n\n' +
+                (e && e.message ? e.message : e)
+            );
+            return null;
+        }
+        if (onStatus) {
+            onStatus(
+                optimized
+                    ? `Saved “${file.name}” (${optLabel}) — persists without re-permission`
+                    : `Saved “${file.name}” — persists without re-permission`
+            );
+        }
+        return storeBlob;
+    }
+
     async function pickVideoFile(slotKey, onStatus) {
+        // Prefer File System Access API (clearer errors, same user gesture)
+        if (window.showOpenFilePicker) {
+            try {
+                const [fh] = await window.showOpenFilePicker({
+                    id: 'cine-file-' + slotKey,
+                    multiple: false,
+                    types: [{
+                        description: 'Video',
+                        accept: {
+                            'video/*': ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v']
+                        }
+                    }],
+                    excludeAcceptAllOption: false
+                });
+                if (!fh) return null;
+                // Keep optional handle for future re-read; always store blob for durability
+                let file;
+                try {
+                    if (fh.queryPermission) {
+                        let p = await fh.queryPermission({ mode: 'read' });
+                        if (p !== 'granted' && fh.requestPermission) {
+                            p = await fh.requestPermission({ mode: 'read' });
+                        }
+                    }
+                    file = await fh.getFile();
+                } catch (e) {
+                    console.warn('[Cine] file handle getFile failed', e);
+                    alert('Could not read that file. Try another video or use a smaller proxy.');
+                    return null;
+                }
+                return await persistFileSlot(slotKey, file, onStatus);
+            } catch (e) {
+                if (e && e.name === 'AbortError') return null;
+                console.warn('[Cine] showOpenFilePicker failed — falling back to input', e);
+            }
+        }
+
         return new Promise((resolve) => {
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'video/*,.mp4,.webm,.mov,.mkv,.avi';
+            input.accept = 'video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v';
             input.style.display = 'none';
             document.body.appendChild(input);
             input.onchange = async () => {
                 const file = input.files && input.files[0];
                 input.remove();
                 if (!file) { resolve(null); return; }
-                // Downscale heavy 4K masters once on pick, then persist the light proxy
-                let storeBlob = file;
-                let optimized = false;
-                let optLabel = '';
-                try {
-                    if (onStatus) onStatus('Optimizing video for smooth playback…');
-                    const ready = await ensureLightProxy(file, {
-                        cacheKey: proxyCacheKey('file', file.name, file.size, file.lastModified || 0),
-                        onStatus
-                    });
-                    if (ready && ready.blob) {
-                        storeBlob = ready.blob;
-                        optimized = !!ready.scaled;
-                        optLabel = ready.scaleLabel || '';
-                    }
-                } catch (e) {
-                    console.warn('[Cine] optimize on pick failed — storing original', e);
-                }
-                try {
-                    delete lastPlayedBySlot[slotKey];
-                    await idbPut(slotKey, {
-                        kind: 'file',
-                        name: file.name,
-                        type: storeBlob.type || file.type || 'video/webm',
-                        blob: storeBlob,
-                        optimized,
-                        scaleLabel: optLabel,
-                        originalSize: file.size,
-                        savedAt: Date.now()
-                    });
-                } catch (e) {
-                    console.warn('[Cine] could not persist video file', e);
-                }
-                resolve(storeBlob);
+                resolve(await persistFileSlot(slotKey, file, onStatus));
             };
+            input.oncancel = () => { input.remove(); resolve(null); };
             input.click();
         });
+    }
+
+    async function regrantSlot(slotKey, onStatus) {
+        const saved = await idbGet(slotKey);
+        if (!saved || saved.kind !== 'dir' || !saved.handle) {
+            if (onStatus) onStatus('No folder linked — pick a folder first');
+            return false;
+        }
+        const ok = await ensureDirPermission(saved.handle, { prompt: true });
+        if (!ok) {
+            if (onStatus) onStatus('Permission denied — pick the folder again');
+            return false;
+        }
+        const warm = await warmFolderPlaybackCache(slotKey, saved.handle, saved.name, onStatus);
+        if (onStatus) {
+            onStatus(
+                warm.ok
+                    ? `Re-granted “${saved.name}” · refreshed cache “${warm.name}”`
+                    : `Re-granted “${saved.name}” (cache refresh failed)`
+            );
+        }
+        return true;
+    }
+
+    async function describeSlot(slotKey) {
+        const saved = await idbGet(slotKey);
+        const cache = await readCachedPlayback(slotKey);
+        if (!saved && !cache) {
+            return { text: 'Empty — pick folder or video', ok: false, kind: 'empty' };
+        }
+        if (saved && saved.kind === 'file' && saved.blob) {
+            const tag = saved.scaleLabel ? ` · ${saved.scaleLabel}` : '';
+            return {
+                text: `Video “${saved.name || 'clip'}”${tag} · sticky (no re-permission)`,
+                ok: true,
+                kind: 'file'
+            };
+        }
+        if (saved && saved.kind === 'dir' && saved.handle) {
+            const perm = await ensureDirPermission(saved.handle, { prompt: false });
+            if (perm) {
+                return {
+                    text: `Folder “${saved.name || '…'}” · access OK` + (cache ? ` · cache “${cache.name}”` : ''),
+                    ok: true,
+                    kind: 'dir'
+                };
+            }
+            if (cache && cache.blob) {
+                return {
+                    text: `Folder “${saved.name || '…'}” · permission expired · playing cached “${cache.name}” (click Re-grant to refresh)`,
+                    ok: true,
+                    kind: 'dir-cached'
+                };
+            }
+            return {
+                text: `Folder “${saved.name || '…'}” · permission needed — Re-grant or pick a video file`,
+                ok: false,
+                kind: 'dir-need'
+            };
+        }
+        if (cache && cache.blob) {
+            return {
+                text: `Cached “${cache.name}” · sticky`,
+                ok: true,
+                kind: 'cache'
+            };
+        }
+        return { text: 'Not set', ok: false, kind: 'empty' };
     }
 
     function proxyCacheKey(kind, name, size, mtime) {
@@ -515,19 +635,34 @@
         }
     }
 
+    async function urlFromBlob(blob, label, source, scaled) {
+        const url = URL.createObjectURL(blob);
+        return { url, label, source, revoke: url, scaled: !!scaled };
+    }
+
+    async function resolveFromCache(slotKey, reasonLabel) {
+        const cache = await readCachedPlayback(slotKey);
+        if (!cache || !cache.blob) return null;
+        const tag = cache.scaleLabel ? ` · ${cache.scaleLabel}` : '';
+        const why = reasonLabel ? ` · ${reasonLabel}` : '';
+        return urlFromBlob(
+            cache.blob,
+            `Cached “${cache.name || 'clip'}”${tag}${why}`,
+            'cache',
+            !!cache.scaleLabel
+        );
+    }
+
     async function resolveVideoUrl(slotKey, onStatus) {
         const saved = await idbGet(slotKey);
-        if (!saved) return { url: null, label: 'No media folder — synthetic neon BG', source: null };
 
-        // Explicit single file always wins until user picks a folder again
-        if (saved.kind === 'file' && saved.blob) {
+        // 1) Sticky file blob — never needs re-permission
+        if (saved && saved.kind === 'file' && saved.blob) {
             try {
-                // Re-optimize legacy 4K blobs that were saved before proxy support
                 const ready = await ensureLightProxy(saved.blob, {
                     cacheKey: proxyCacheKey('slot', slotKey, saved.blob.size, saved.savedAt || 0),
                     onStatus
                 });
-                // Upgrade stored entry if we just scaled a heavy original
                 if (ready.scaled && !ready.fromCache && !saved.optimized) {
                     try {
                         await idbPut(slotKey, {
@@ -541,30 +676,35 @@
                         });
                     } catch (_) { /* ignore upgrade fail */ }
                 }
-                const url = URL.createObjectURL(ready.blob);
+                await cachePlaybackBlob(slotKey, ready.blob, {
+                    name: saved.name,
+                    scaleLabel: ready.scaleLabel,
+                    from: 'file'
+                });
                 const tag = ready.scaled ? ` · ${ready.scaleLabel || playTarget().label}` : '';
-                return {
-                    url,
-                    label: (saved.name || 'Saved video') + tag,
-                    source: 'file',
-                    revoke: url,
-                    scaled: ready.scaled
-                };
-            } catch (_) { /* fall through */ }
+                return urlFromBlob(ready.blob, (saved.name || 'Saved video') + tag, 'file', ready.scaled);
+            } catch (_) { /* fall through to cache */ }
         }
 
-        if (saved.kind === 'dir' && saved.handle) {
-            const ok = await ensureDirPermission(saved.handle);
-            if (!ok) return { url: null, label: 'Folder permission needed — re-pick folder', source: 'dir' };
+        // 2) Folder handle — may need re-grant after browser restart
+        if (saved && saved.kind === 'dir' && saved.handle) {
+            // Do not auto-prompt here (not always a user gesture). Use cache if locked out.
+            const ok = await ensureDirPermission(saved.handle, { prompt: false });
+            if (!ok) {
+                const cached = await resolveFromCache(slotKey, 'folder permission expired — click Re-grant in Intros');
+                if (cached) return cached;
+                return {
+                    url: null,
+                    label: `Folder “${saved.name || '…'}” — permission needed (Intros → Re-grant, or pick a video file)`,
+                    source: 'dir'
+                };
+            }
             try {
-                const vids = await collectVideosFromDir(saved.handle, 5);
+                const vids = await listVideosInDir(saved.handle);
                 if (!vids.length) {
-                    return {
-                        url: null,
-                        label: `Folder “${saved.name || '…'}” — no videos (checked subfolders too)`,
-                        source: 'dir',
-                        count: 0,
-                    };
+                    const cached = await resolveFromCache(slotKey, 'folder empty');
+                    if (cached) return cached;
+                    return { url: null, label: `Folder “${saved.name || '…'}” has no videos`, source: 'dir' };
                 }
                 const pick = vids[Math.floor(Math.random() * vids.length)];
                 const file = await pick.getFile();
@@ -572,21 +712,35 @@
                     cacheKey: proxyCacheKey('dir', (saved.name || 'dir') + '/' + pick.name, file.size, file.lastModified || 0),
                     onStatus
                 });
-                const url = URL.createObjectURL(ready.blob);
+                // Refresh durable cache so next cold start still works without permission
+                await cachePlaybackBlob(slotKey, ready.blob, {
+                    name: pick.name,
+                    scaleLabel: ready.scaleLabel,
+                    from: 'dir',
+                    folderName: saved.name || ''
+                });
                 const tag = ready.scaled ? ` · ${ready.scaleLabel || playTarget().label}` : '';
-                return {
-                    url,
-                    label: `${saved.name || 'Folder'} · ${pick.name}${tag}`,
-                    source: 'dir',
-                    revoke: url,
-                    scaled: ready.scaled
-                };
+                return urlFromBlob(
+                    ready.blob,
+                    `${saved.name || 'Folder'} · ${pick.name}${tag}`,
+                    'dir',
+                    ready.scaled
+                );
             } catch (e) {
                 console.warn('[Cine] folder read failed', e);
-                return { url: null, label: 'Could not read folder videos — re-pick folder', source: 'dir' };
+                const cached = await resolveFromCache(slotKey, 'folder read failed');
+                if (cached) return cached;
+                return { url: null, label: 'Could not read folder videos — re-pick or use a file', source: 'dir' };
             }
         }
 
+        // 3) Orphan cache (handle lost but blob remains)
+        const orphan = await resolveFromCache(slotKey, '');
+        if (orphan) return orphan;
+
+        if (!saved) {
+            return { url: null, label: 'No media — synthetic neon BG (pick folder or video in Intros)', source: null };
+        }
         return { url: null, label: 'Pick a folder or video for this screen', source: null };
     }
 
@@ -620,26 +774,8 @@ body.cine-active { overflow: hidden; }
 
 .cine-bg-video, .cine-bg-synth {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; z-index: 0;
+  object-fit: cover; z-index: 0;
   filter: brightness(0.45) saturate(1.15) contrast(1.05);
-  background: #000;
-}
-/* 1:1 mode: JS sets exact left/top/width/height in px so window center = video center */
-.cine-bg-video.mode-center1x {
-  inset: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  object-fit: fill !important;
-  transform: none !important;
-}
-.cine-bg-video.mode-fit {
-  inset: 0;
-  left: 0; top: 0;
-  width: 100%; height: 100%;
-  object-fit: contain;
-  transform: none;
 }
 /* Prefer compositor path; proxies are already ≤720p so paint stays cheap */
 .cine-bg-video {
@@ -1109,7 +1245,7 @@ body.cine-active { overflow: hidden; }
             stage.appendChild(synth);
 
             const video = document.createElement('video');
-            video.className = 'cine-bg-video mode-fit';
+            video.className = 'cine-bg-video';
             video.muted = prefs.muteVideo !== false;
             video.loop = true;
             video.playsInline = true;
@@ -1120,7 +1256,6 @@ body.cine-active { overflow: hidden; }
             // Keep decode cost low even if a full-res file slips through
             try { video.setAttribute('width', String(playTarget().maxW)); } catch (_) { /* ignore */ }
             video.style.display = 'none';
-            applyVideoScale(video, prefs.scaleMode);
             stage.appendChild(video);
 
             stage.appendChild(el('div', 'cine-vignette'));
@@ -1139,14 +1274,10 @@ body.cine-active { overflow: hidden; }
         const screenLabel = el('div', 'cine-screen-label', screens[0].label);
         const progress = el('div', 'cine-progress', '<i></i>');
         const hud = el('div', 'cine-hud');
-        const scaleLabel = (prefs.scaleMode === 'center1x')
-            ? '1:1 center (50% if off-screen)'
-            : 'Fit AR (full frame)';
         hud.innerHTML = `
           <div class="left">
-            <button type="button" data-act="folder" title="Pick a folder of videos for this screen (random each play)">📁 Folder</button>
-            <button type="button" data-act="file" title="Pick one video file for this screen">🎬 Video</button>
-            <button type="button" data-act="scale" title="Toggle: Fit (keep aspect) ↔ 1:1 center (50% if too big)">${scaleLabel}</button>
+            <button type="button" data-act="folder">📁 BG folder</button>
+            <button type="button" data-act="file">🎬 BG video</button>
             <button type="button" data-act="mute">${prefs.muteVideo !== false ? '🔇 Muted' : '🔊 Sound'}</button>
             <span class="cine-media-label" data-media-label>…</span>
           </div>
@@ -1211,18 +1342,11 @@ body.cine-active { overflow: hidden; }
             }
             if (mediaLabel) mediaLabel.textContent = info.label || '';
             if (info.url) {
-                // Force a fresh load so the browser does not reuse the previous frame/source
-                try {
-                    stageObj.video.pause();
-                    stageObj.video.removeAttribute('src');
-                    stageObj.video.load();
-                } catch (_) { /* ignore */ }
                 stageObj.video.src = info.url;
                 stageObj.video.style.display = 'block';
                 // Fade synth under the light proxy once frames are rolling
                 stageObj.synth.style.opacity = '0.15';
                 currentRevoke = info.revoke || null;
-                applyVideoScale(stageObj.video, prefs.scaleMode);
                 try {
                     stageObj.video.muted = prefs.muteVideo !== false;
                     await stageObj.video.play();
@@ -1242,36 +1366,10 @@ body.cine-active { overflow: hidden; }
                         stageObj.video.style.display = 'none';
                     }
                 }
-                // Re-apply after metadata + a frame later (1:1 needs real videoWidth/Height)
-                const relayout = () => applyVideoScale(stageObj.video, prefs.scaleMode);
-                if (stageObj.video.readyState >= 1) {
-                    relayout();
-                    requestAnimationFrame(() => requestAnimationFrame(relayout));
-                } else {
-                    stageObj.video.addEventListener('loadedmetadata', () => {
-                        relayout();
-                        requestAnimationFrame(() => requestAnimationFrame(relayout));
-                    }, { once: true });
-                }
             } else {
                 stageObj.synth.style.opacity = '1';
                 stageObj.video.style.display = 'none';
             }
-        }
-
-        function refreshScaleButtons() {
-            const btn = hud.querySelector('[data-act="scale"]');
-            if (!btn) return;
-            btn.textContent = (prefs.scaleMode === 'center1x')
-                ? '1:1 center (50% if off-screen)'
-                : 'Fit AR (full frame)';
-        }
-
-        function onResizeLayout() {
-            const v = stages[idx] && stages[idx].video;
-            if (!v || v.style.display === 'none') return;
-            // Full re-apply so 1:1 recenters to the stage box after resize
-            applyVideoScale(v, prefs.scaleMode);
         }
 
         function tickProgress() {
@@ -1367,22 +1465,14 @@ body.cine-active { overflow: hidden; }
                 savePrefs({ muteVideo: next });
                 btn.textContent = next ? '🔇 Muted' : '🔊 Sound';
                 stages[idx].video.muted = next;
-            } else if (act === 'scale') {
-                // Toggle Fit AR ↔ 1:1 center (50% if off-screen)
-                const next = (prefs.scaleMode === 'center1x') ? 'fit' : 'center1x';
-                savePrefs({ scaleMode: next });
-                refreshScaleButtons();
-                stages.forEach((s) => {
-                    if (s.video && s.video.style.display !== 'none') {
-                        applyVideoScale(s.video, next);
-                    }
-                });
             } else if (act === 'folder') {
-                const h = await pickDirectory(slot);
+                const h = await pickDirectory(slot, (msg) => {
+                    if (mediaLabel) mediaLabel.textContent = msg;
+                });
                 if (h) await loadBg(stages[idx]);
             } else if (act === 'file') {
                 const f = await pickVideoFile(slot, (msg) => {
-                    if (mediaLabel && !settled) mediaLabel.textContent = msg;
+                    if (mediaLabel) mediaLabel.textContent = msg;
                 });
                 if (f) await loadBg(stages[idx]);
             }
@@ -1390,18 +1480,15 @@ body.cine-active { overflow: hidden; }
 
         function cleanup() {
             document.removeEventListener('keydown', onKey, true);
-            window.removeEventListener('resize', onResizeLayout);
             root.removeEventListener('click', onClickRoot);
             hud.removeEventListener('click', onHudClick);
             hud.removeEventListener('change', onHudClick);
         }
 
         document.addEventListener('keydown', onKey, true);
-        window.addEventListener('resize', onResizeLayout);
         root.addEventListener('click', onClickRoot);
         hud.addEventListener('click', onHudClick);
         hud.addEventListener('change', onHudClick);
-        refreshScaleButtons();
 
         await showScreen(0);
         return donePromise;
@@ -1502,17 +1589,35 @@ body.cine-active { overflow: hidden; }
         const existing = document.getElementById('cineSettingsPop');
         if (existing) { existing.remove(); return; }
 
+        const slots = [
+            { key: 'bg-neon', title: '1 · Neon Ninja' },
+            { key: 'bg-producer', title: '2 · Producer' },
+            { key: 'bg-main', title: '3 · FAFO / Main' }
+        ];
+
         const pop = el('div', '');
         pop.id = 'cineSettingsPop';
         pop.style.cssText = [
-            'position:fixed', 'z-index:100000', 'right:16px', 'top:60px',
-            'width:min(400px,94vw)', 'max-height:min(90vh,720px)', 'overflow:auto', 'padding:16px',
+            'position:fixed', 'z-index:100000', 'right:16px', 'top:48px',
+            'width:min(420px,94vw)', 'max-height:min(88vh,720px)', 'overflow:auto',
+            'padding:16px',
             'background:#0c0c12', 'border:1px solid rgba(0,243,255,0.35)',
             'border-radius:12px', 'box-shadow:0 12px 40px rgba(0,0,0,0.55)',
             'font-size:12px', 'color:#e8e8ec'
         ].join(';');
-        const fitChecked = prefs.scaleMode !== 'center1x' ? 'checked' : '';
-        const oneChecked = prefs.scaleMode === 'center1x' ? 'checked' : '';
+
+        const slotRows = slots.map((s) => `
+          <div data-slot-row="${s.key}" style="border:1px solid rgba(0,243,255,0.15);border-radius:8px;padding:10px;margin-bottom:8px;background:rgba(0,0,0,0.25);">
+            <div style="font-weight:600;color:#00f3ff;margin-bottom:4px;">${s.title}</div>
+            <div data-status="${s.key}" style="color:#9aa;font-size:11px;line-height:1.35;margin-bottom:8px;">…</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+              <button type="button" data-folder="${s.key}" class="cine-set-btn">📁 Folder</button>
+              <button type="button" data-file="${s.key}" class="cine-set-btn">🎬 Video file</button>
+              <button type="button" data-regrant="${s.key}" class="cine-set-btn" style="grid-column:1/-1;">🔑 Re-grant folder access</button>
+            </div>
+          </div>
+        `).join('');
+
         pop.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <strong style="color:#00f3ff;letter-spacing:.08em;">INTRO CINEMATICS</strong>
@@ -1526,70 +1631,83 @@ body.cine-active { overflow: hidden; }
             <input type="checkbox" data-mute ${prefs.muteVideo !== false ? 'checked' : ''}>
             Mute background videos
           </label>
-
-          <div style="margin-bottom:14px;padding:10px;border:1px solid rgba(0,243,255,0.2);border-radius:8px;background:rgba(0,0,0,0.35);">
-            <div style="color:#00f3ff;font-size:10px;letter-spacing:.12em;margin-bottom:8px;text-transform:uppercase;">Video scale</div>
-            <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;cursor:pointer;line-height:1.35;">
-              <input type="radio" name="cineScale" data-scale="fit" ${fitChecked} style="margin-top:3px;">
-              <span><strong>Fit (keep aspect)</strong><br>
-              <span style="color:#888">Scale to fit the screen (full frame visible — letterbox if needed)</span></span>
-            </label>
-            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;line-height:1.35;">
-              <input type="radio" name="cineScale" data-scale="center1x" ${oneChecked} style="margin-top:3px;">
-              <span><strong>1:1 center</strong><br>
-              <span style="color:#888">Natural pixels, centered. If it goes off-screen → <strong>50%</strong> zoom</span></span>
-            </label>
-          </div>
-
-          <p style="color:#888;margin-bottom:10px;line-height:1.4;">
-            Each of the 3 screens can use its own video folder (random pick) or a single file. Chrome/Edge recommended for folders.
+          <p style="color:#888;margin-bottom:10px;line-height:1.45;font-size:11px;">
+            <strong style="color:#c8d0dc;">Video file</strong> sticks forever (blob saved in this browser).<br>
+            <strong style="color:#c8d0dc;">Folder</strong> can lose Chrome permission after restart —
+            we cache a clip so intros still play; use <strong>Re-grant</strong> to refresh random picks.
             <br><br>
-            <strong style="color:#c8d0dc;">4K / heavy clips auto-scale to ${playTarget().label}</strong> (short ~8s loop, cached) so intros stay smooth on any machine.
+            4K / heavy clips auto-scale to <strong style="color:#c8d0dc;">${playTarget().label}</strong> (~8s loop).
           </p>
-          <div style="display:grid;gap:10px;margin-bottom:12px;">
-            ${['bg-neon|Neon Ninja','bg-producer|Producer','bg-main|Main / FAFO'].map((row) => {
-                const [slot, title] = row.split('|');
-                return `
-              <div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;">
-                <div style="font-size:11px;color:#00f3ff;margin-bottom:6px;">${title}</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                  <button type="button" data-folder="${slot}" style="width:100%">📁 Folder</button>
-                  <button type="button" data-file="${slot}" style="width:100%">🎬 Video</button>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>
-          <button type="button" data-replay class="ui-btn primary" style="width:100%">▶ Replay intro now</button>
+          <div data-slot-list>${slotRows}</div>
+          <p data-global-status style="color:#6a8;font-size:11px;min-height:1.2em;margin:6px 0 10px;"></p>
+          <button type="button" data-replay class="cine-set-btn" style="width:100%;border-color:#00f3ff;color:#00f3ff;font-weight:600;">▶ Replay intro now</button>
         `;
-        // Style buttons if ui-btn missing
-        pop.querySelectorAll('button[data-folder],button[data-file],button[data-replay]').forEach(b => {
-            if (!b.classList.contains('ui-btn')) {
-                b.style.cssText += ';background:transparent;border:1px solid #00f3ff;color:#00f3ff;padding:8px;border-radius:6px;cursor:pointer;font-size:11px;';
-            }
-        });
+
+        const btnCss = 'background:transparent;border:1px solid rgba(0,243,255,0.4);color:#b8f7ff;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:11px;';
+        pop.querySelectorAll('.cine-set-btn').forEach((b) => { b.style.cssText = btnCss; });
         document.body.appendChild(pop);
+
+        const statusEl = (key) => pop.querySelector(`[data-status="${key}"]`);
+        const globalSt = pop.querySelector('[data-global-status]');
+        const setGlobal = (msg) => { if (globalSt) globalSt.textContent = msg || ''; };
+
+        async function refreshStatuses() {
+            for (const s of slots) {
+                const elSt = statusEl(s.key);
+                if (!elSt) continue;
+                try {
+                    const d = await describeSlot(s.key);
+                    elSt.textContent = d.text;
+                    elSt.style.color = d.ok ? '#7dcea0' : '#e8a87c';
+                } catch (_) {
+                    elSt.textContent = 'Status unavailable';
+                    elSt.style.color = '#888';
+                }
+            }
+        }
+        refreshStatuses();
 
         pop.querySelector('[data-x]').onclick = () => pop.remove();
         pop.querySelector('[data-skip]').onchange = (e) => savePrefs({ skipOnLaunch: e.target.checked });
         pop.querySelector('[data-mute]').onchange = (e) => savePrefs({ muteVideo: e.target.checked });
-        pop.querySelectorAll('input[data-scale]').forEach((inp) => {
-            inp.onchange = () => {
-                if (!inp.checked) return;
-                savePrefs({ scaleMode: inp.getAttribute('data-scale') });
+
+        pop.querySelectorAll('[data-folder]').forEach((btn) => {
+            btn.onclick = async () => {
+                const key = btn.getAttribute('data-folder');
+                btn.disabled = true;
+                setGlobal('Opening folder picker…');
+                try {
+                    await pickDirectory(key, setGlobal);
+                } finally {
+                    btn.disabled = false;
+                    await refreshStatuses();
+                }
             };
         });
-        pop.querySelectorAll('[data-folder]').forEach(btn => {
+        pop.querySelectorAll('[data-file]').forEach((btn) => {
             btn.onclick = async () => {
-                const slot = btn.getAttribute('data-folder');
-                const h = await pickDirectory(slot);
-                if (h) btn.textContent = '✓ Folder set';
+                const key = btn.getAttribute('data-file');
+                btn.disabled = true;
+                setGlobal('Pick a video file…');
+                try {
+                    await pickVideoFile(key, setGlobal);
+                } finally {
+                    btn.disabled = false;
+                    await refreshStatuses();
+                }
             };
         });
-        pop.querySelectorAll('[data-file]').forEach(btn => {
+        pop.querySelectorAll('[data-regrant]').forEach((btn) => {
             btn.onclick = async () => {
-                const slot = btn.getAttribute('data-file');
-                const f = await pickVideoFile(slot);
-                if (f) btn.textContent = '✓ Video set';
+                const key = btn.getAttribute('data-regrant');
+                btn.disabled = true;
+                setGlobal('Requesting folder permission…');
+                try {
+                    await regrantSlot(key, setGlobal);
+                } finally {
+                    btn.disabled = false;
+                    await refreshStatuses();
+                }
             };
         });
         pop.querySelector('[data-replay]').onclick = async () => {
@@ -1635,6 +1753,10 @@ body.cine-active { overflow: hidden; }
     global.AIToolboxCinematic = {
         play,
         openSettings,
+        describeSlot,
+        regrantSlot,
+        pickDirectory,
+        pickVideoFile,
         getPrefs: () => loadPrefs(),
         setPrefs: savePrefs,
         playTarget,

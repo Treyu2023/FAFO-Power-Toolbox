@@ -1251,6 +1251,40 @@
             return global.AIToolbox.deletePair(id);
         },
 
+        /**
+         * Guided match: top candidates for one media id (process-of-elimination).
+         * @param {string} mediaId
+         * @param {{ limit?: number, minRatio?: number, excludeIds?: string[], afterDirId?: string }} [opts]
+         */
+        async pairCandidates(mediaId, opts = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            const exclude = opts.excludeIds || opts.exclude_ids || [];
+            return api('/pairs/candidates', {
+                method: 'POST',
+                body: JSON.stringify({
+                    media_id: mediaId,
+                    limit: opts.limit ?? 10,
+                    min_ratio: opts.minRatio ?? opts.min_ratio ?? 0.35,
+                    exclude_ids: exclude,
+                    unpaired_only: opts.unpairedOnly !== false,
+                    tail_len: opts.tailLen ?? opts.tail_len ?? 5,
+                    after_dir_id: opts.afterDirId || opts.after_dir_id || null,
+                    before_dir_id: opts.beforeDirId || opts.before_dir_id || null,
+                }),
+            });
+        },
+
+        /** Unpaired queue for guided match (sources first). */
+        async pairAnchors(opts = {}) {
+            if (!(await checkServer())) return { anchors: [] };
+            const p = new URLSearchParams();
+            if (opts.limit) p.set('limit', opts.limit);
+            if (opts.kind) p.set('kind', opts.kind);
+            if (opts.dirId || opts.dir_id) p.set('dir_id', opts.dirId || opts.dir_id);
+            if (opts.preferSources === false) p.set('prefer_sources', 'false');
+            return api(`/pairs/anchors?${p}`);
+        },
+
         async suggestPairs(limit = 30, opts = {}) {
             if (!(await checkServer())) return [];
             const beforeDirId = opts.beforeDirId || opts.before_dir_id || null;

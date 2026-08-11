@@ -32,6 +32,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 <h1 style="font-size:22px;margin-bottom:4px">Hosts & DNS Blocker</h1>
 <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Block ads, trackers, and malware domains using open Steven Black hosts feeds. Updates your Windows hosts file.</p>
 <div id="adminWarn" style="display:none;padding:12px;border-radius:10px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fcd34d;font-size:13px;margin-bottom:16px">⚠ Run the toolbox server as Administrator to modify the hosts file.</div>
+<div id="elevStrip" style="display:none;padding:12px 14px;border-radius:10px;margin-bottom:16px;font-size:13px;line-height:1.45"></div>
 <div class="pb" style="padding:0 0 16px" id="statusBar"></div>
 <div class="panel"><div class="ph">Blocklist feeds (open source)</div><div class="pb" id="feeds"></div></div>
 <div class="panel"><div class="ph">Actions</div><div class="pb">
@@ -55,6 +56,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
 let feedId = 'ads';
+let canWriteHosts = false;
 
 function setMsg(t, warn) {
   const el = document.getElementById('actionMsg');
@@ -66,13 +68,50 @@ async function api(p, o = {}) {
   return UI().apiFetch(p, o);
 }
 
+function setElevationUI(st) {
+  const elev = !!(st && (st.is_elevated || st.can_write_hosts));
+  canWriteHosts = elev;
+  const strip = document.getElementById('elevStrip');
+  const warn = document.getElementById('adminWarn');
+  if (elev) {
+    strip.style.display = 'block';
+    strip.style.background = 'rgba(74,222,128,.1)';
+    strip.style.border = '1px solid rgba(74,222,128,.35)';
+    strip.style.color = '#86efac';
+    strip.innerHTML = '✅ <strong>Elevated</strong> — this toolbox server can write the Windows hosts file.';
+    warn.style.display = 'none';
+  } else {
+    strip.style.display = 'block';
+    strip.style.background = 'rgba(251,191,36,.1)';
+    strip.style.border = '1px solid rgba(251,191,36,.35)';
+    strip.style.color = '#fcd34d';
+    strip.innerHTML = '⚠ <strong>Not elevated</strong> — Enable / Disable / Add will fail until you restart the toolbox server <strong>as Administrator</strong>. You can still read status and preview hosts.';
+    warn.style.display = 'block';
+  }
+  ['btnEnable', 'btnDisable', 'btnAdd'].forEach((id) => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.title = elev ? '' : 'Requires elevated toolbox server';
+  });
+}
+
+function guardWrite(actionLabel) {
+  if (canWriteHosts) return true;
+  setMsg(actionLabel + ' needs an elevated server — restart S1 as Administrator first.', true);
+  UI()?.toast?.('Elevate the toolbox server first', 'warn');
+  document.getElementById('adminWarn').style.display = 'block';
+  return false;
+}
+
 async function load() {
   try {
     const st = await api('/hosts/status');
+    setElevationUI(st);
     document.getElementById('statusBar').innerHTML =
       `<span class="stat">${st.blocklist_enabled ? '🟢 Blocklist ON' : '⚪ Blocklist OFF'}</span>`
       + `<span class="stat">${(st.blocklist_count || 0).toLocaleString()} blocked domains</span>`
-      + `<span class="stat">${st.custom_count || 0} custom</span>`;
+      + `<span class="stat">${st.custom_count || 0} custom</span>`
+      + `<span class="stat">${st.is_elevated || st.can_write_hosts ? '🔑 Elevated' : '🔓 Not elevated'}</span>`;
     const feeds = st.feeds || [];
     if (feeds.length && !feeds.some(f => f.id === feedId)) feedId = feeds[0].id;
     document.getElementById('feeds').innerHTML = feeds.map(f =>
@@ -92,6 +131,7 @@ async function load() {
     document.getElementById('statusBar').innerHTML = '';
     document.getElementById('feeds').innerHTML = `<div style="color:#fbbf24">${esc(e.message || e)}</div>`;
     document.getElementById('hostsPreview').textContent = e.message || String(e);
+    setElevationUI({ is_elevated: false });
   }
 }
 
@@ -103,6 +143,7 @@ function busy(on) {
 }
 
 document.getElementById('btnEnable').onclick = async () => {
+  if (!guardWrite('Enable blocklist')) return;
   busy(true);
   try {
     const r = await api('/hosts/apply', { method: 'POST', body: JSON.stringify({ feed_id: feedId, enabled: true }) });
@@ -118,6 +159,7 @@ document.getElementById('btnEnable').onclick = async () => {
 };
 
 document.getElementById('btnDisable').onclick = async () => {
+  if (!guardWrite('Disable blocklist')) return;
   busy(true);
   try {
     await api('/hosts/apply', { method: 'POST', body: JSON.stringify({ feed_id: feedId, enabled: false }) });
@@ -131,6 +173,7 @@ document.getElementById('btnDisable').onclick = async () => {
 };
 
 document.getElementById('btnAdd').onclick = async () => {
+  if (!guardWrite('Add host')) return;
   const host = document.getElementById('customHost').value.trim().replace(/^https?:\/\//i, '').split('/')[0];
   if (!host) return;
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host) && host !== 'localhost') {

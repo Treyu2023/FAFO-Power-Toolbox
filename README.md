@@ -58,8 +58,8 @@ Backend: **`http://127.0.0.87:18765`** (toolbox + Verifone). FAFO Local Tab tags
    - Hover toolbar buttons for tips · **❓ Q&A** · **🎓 Get Started**  
 2. **VSR Pipeline** — point at upscale/interp folders, preview matches, apply renames  
 3. **Video / Image Comparator** — open saved pairs for side-by-side review  
-4. **Business Tax (TaxForge)** — mileage, quarterly tracker, write-offs, year-end checklist (localStorage; export backups) — see `Business Tax Preparedness/README.md`  
 
+Owner-only finance/investor/Xero modules (if present on your machine) are **not** part of the public repo — see `private/README.md`.
 
 **Pairs survive folder moves** when `UP-####` tags are on the files: **Rescan** or **Relink Pairs from Tags**.  
 **Do not ZIP the library for playback** — re-encode (HEVC/AV1) or cold-store on USB instead (see `MEDIA_LIBRARY_AND_PAIRS.md`).

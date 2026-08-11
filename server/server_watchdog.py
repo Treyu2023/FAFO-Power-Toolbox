@@ -4,6 +4,8 @@ FAFO Server Watchdog — independent monitor for S1 + S2.
 Runs as a single-instance process (Scheduled Task or manual). Every poll it:
   • Health-checks S1 (127.0.0.87:18765/api/health) and S2 (127.0.0.1:8765/api/health)
   • Auto-starts / recovers configured companions via launch_ops
+  • Enforces ONE process tree each for: this watchdog, tray, S1, S2
+    (venv parent+child re-exec is one tree — never split)
   • Detects crash loops, duplicate processes, listen-without-health
   • Writes status JSON + HTML report under %LOCALAPPDATA%\\FAFO\\Devices\\<PC>\\
   • Raises Windows toast / balloon when attention is required
@@ -137,46 +139,235 @@ def _count_cmd_matches(needle: str) -> list[int]:
     return pids
 
 
-def _trim_duplicate_trays() -> int:
-    """Keep the newest tray_launcher; kill older duplicates."""
+def _tree_roots(pids: list[int]) -> list[int]:
+    """Return PIDs whose parent is not also in the set (one entry per process tree).
+
+    venv pythonw often re-execs to system pythonw, so one tray/S2 shows as 2 PIDs.
+    Counting roots avoids false DUP_* and deadly parent/child trims.
+    """
+    if not pids:
+        return []
+    pid_set = set(pids)
+    roots: list[int] = []
+    try:
+        import psutil  # type: ignore
+
+        for pid in pids:
+            try:
+                ppid = int(psutil.Process(pid).ppid())
+            except Exception:
+                ppid = -1
+            if ppid not in pid_set:
+                roots.append(pid)
+    except Exception:
+        return list(pids)
+    return roots
+
+
+def _pids_in_trees(root_pids: list[int], candidate_pids: list[int]) -> set[int]:
+    """Expand root_pids to include any candidates in the same parent/child trees."""
+    if not root_pids or not candidate_pids:
+        return set(root_pids or [])
     try:
         import psutil  # type: ignore
     except ImportError:
-        return 0
-    trays: list[Any] = []
-    for p in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+        return set(root_pids)
+
+    cand = set(int(p) for p in candidate_pids)
+    protected: set[int] = set(int(r) for r in root_pids) & cand
+    # ancestors within candidate set
+    for rid in list(protected):
+        try:
+            cur = psutil.Process(rid)
+            for _ in range(8):
+                ppid = cur.ppid()
+                if not ppid or ppid <= 4:
+                    break
+                if ppid in cand:
+                    protected.add(ppid)
+                try:
+                    cur = psutil.Process(ppid)
+                except Exception:
+                    break
+        except Exception:
+            continue
+    # descendants within candidate set
+    ppid_of: dict[int, int] = {}
+    for pid in cand:
+        try:
+            ppid_of[pid] = int(psutil.Process(pid).ppid())
+        except Exception:
+            ppid_of[pid] = 0
+    changed = True
+    while changed:
+        changed = False
+        for pid, ppid in ppid_of.items():
+            if pid in protected:
+                continue
+            if ppid in protected:
+                protected.add(pid)
+                changed = True
+    return protected
+
+
+def _iter_python_cmd_matches(needles: list[str] | tuple[str, ...]) -> list[Any]:
+    """Return psutil Process objects for python/pythonw whose cmdline contains all needles."""
+    try:
+        import psutil  # type: ignore
+    except ImportError:
+        return []
+    needles_l = [n.lower() for n in needles]
+    found: list[Any] = []
+    for p in psutil.process_iter(["pid", "name", "cmdline", "create_time", "ppid"]):
         try:
             name = (p.info.get("name") or "").lower()
             if name not in ("python.exe", "pythonw.exe"):
                 continue
             cmd = " ".join(str(x) for x in (p.info.get("cmdline") or [])).lower()
-            if "tray_launcher.py" in cmd:
-                trays.append(p)
+            if all(n in cmd for n in needles_l):
+                found.append(p)
         except Exception:
             continue
-    if len(trays) <= 1:
-        return 0
-    trays.sort(key=lambda p: p.info.get("create_time") or 0, reverse=True)
-    killed = 0
-    for old in trays[1:]:
+    return found
+
+
+def _kill_proc(p: Any, reason: str) -> bool:
+    try:
+        pid = int(p.pid)
+        p.terminate()
         try:
-            old.terminate()
-            try:
-                old.wait(timeout=2)
-            except Exception:
-                old.kill()
+            p.wait(timeout=2)
+        except Exception:
+            p.kill()
+        log(f"killed {reason} PID {pid}", "WARN")
+        return True
+    except Exception as e:
+        try:
+            pid = int(p.pid)
+        except Exception:
+            pid = -1
+        log(f"could not kill {reason} PID {pid}: {e}", "WARN")
+        return False
+
+
+def _trim_extra_trees(
+    label: str,
+    procs: list[Any],
+    *,
+    keep_root: int | None = None,
+    prefer_newest: bool = True,
+) -> int:
+    """Keep one process tree; kill all other independent trees. Returns kill count.
+
+    Parent+child re-exec (venv → system python) is one tree and is never split.
+    """
+    if len(procs) <= 1:
+        return 0
+    by_pid: dict[int, Any] = {}
+    for p in procs:
+        try:
+            by_pid[int(p.pid)] = p
+        except Exception:
+            continue
+    all_pids = list(by_pid.keys())
+    roots = _tree_roots(all_pids)
+    if len(roots) <= 1:
+        return 0
+
+    if keep_root is not None and keep_root in all_pids:
+        # Map keep pid to its tree root
+        keep = keep_root
+        # If keep_root is a child, its root is the tree root containing it
+        for r in roots:
+            if keep_root in _pids_in_trees([r], all_pids):
+                keep = r
+                break
+    else:
+        roots_sorted = sorted(
+            roots,
+            key=lambda pid: (by_pid[pid].info.get("create_time") or 0) if pid in by_pid else 0,
+            reverse=prefer_newest,
+        )
+        keep = roots_sorted[0]
+
+    protected = _pids_in_trees([keep], all_pids)
+    killed = 0
+    for pid, p in by_pid.items():
+        if pid in protected:
+            continue
+        if _kill_proc(
+            p,
+            f"duplicate {label} (kept root={keep}, protected={sorted(protected)})",
+        ):
             killed += 1
-            log(f"killed duplicate tray PID {old.pid}", "WARN")
-        except Exception as e:
-            log(f"could not kill tray PID {old.pid}: {e}", "WARN")
     return killed
 
 
-def _trim_duplicate_s2() -> int:
-    """If multiple explorer-meta server.py processes, keep the one holding port 8765.
+def _self_watchdog_tree_pids() -> set[int]:
+    """PIDs in this process's server_watchdog tree (self + ancestors/descendants matching)."""
+    me = os.getpid()
+    procs = _iter_python_cmd_matches(["server_watchdog.py"])
+    all_pids = []
+    for p in procs:
+        try:
+            all_pids.append(int(p.pid))
+        except Exception:
+            continue
+    if me not in all_pids:
+        all_pids.append(me)
+    return _pids_in_trees([me], all_pids) or {me}
 
-    Only acts when the port is confirmed listening and at least one holder PID is known.
-    Never kills all S2 processes — that would take the service down.
+
+def _trim_duplicate_watchdogs() -> int:
+    """Leave only this watchdog's process tree; kill any other independent instances."""
+    procs = _iter_python_cmd_matches(["server_watchdog.py"])
+    if len(procs) <= 1:
+        return 0
+    return _trim_extra_trees("watchdog", procs, keep_root=os.getpid(), prefer_newest=True)
+
+
+def _trim_duplicate_trays() -> int:
+    """Keep one tray_launcher tree; kill only independent extra trees.
+
+    Critical: venv pythonw re-execs to system pythonw — both show tray_launcher.py.
+    Killing the parent of that pair drops the tray (NO_TRAY thrash loop).
+    """
+    trays = _iter_python_cmd_matches(["tray_launcher.py"])
+    return _trim_extra_trees("tray", trays, prefer_newest=True)
+
+
+def _trim_duplicate_s1() -> int:
+    """If multiple aitoolbox_server trees, keep the one that owns S1 port (or newest)."""
+    try:
+        import psutil  # type: ignore
+    except ImportError:
+        return 0
+    procs = _iter_python_cmd_matches(["aitoolbox_server.py"])
+    if len(procs) <= 1:
+        return 0
+    holders: set[int] = set()
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.status != psutil.CONN_LISTEN:
+                continue
+            if (
+                conn.laddr
+                and int(conn.laddr.port) == launch_ops.TOOLBOX_PORT
+                and conn.pid
+            ):
+                holders.add(int(conn.pid))
+    except Exception:
+        holders = set()
+    keep = next(iter(holders), None)
+    return _trim_extra_trees("S1", procs, keep_root=keep, prefer_newest=True)
+
+
+def _trim_duplicate_s2() -> int:
+    """If multiple explorer-meta server.py processes, keep the tree that owns port 8765.
+
+    Critical: the LISTEN PID is often a *child* of the launcher process. Killing the
+    parent takes S2 down. Protect holders AND all their ancestors/descendants.
+    Only kill processes in completely separate trees.
     """
     try:
         import psutil  # type: ignore
@@ -195,8 +386,10 @@ def _trim_duplicate_s2() -> int:
         return 0
     if not holders:
         return 0  # can't identify owner — do not risk killing live S2
+
     procs: list[Any] = []
-    for p in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+    by_pid: dict[int, Any] = {}
+    for p in psutil.process_iter(["pid", "name", "cmdline", "ppid", "create_time"]):
         try:
             name = (p.info.get("name") or "").lower()
             if name not in ("python.exe", "pythonw.exe"):
@@ -204,15 +397,53 @@ def _trim_duplicate_s2() -> int:
             cmd = " ".join(str(x) for x in (p.info.get("cmdline") or [])).lower()
             if "explorer-meta" in cmd and "server.py" in cmd:
                 procs.append(p)
+                by_pid[int(p.info["pid"])] = p
         except Exception:
             continue
     if len(procs) <= 1:
         return 0
+
+    # Protected = holder + walk parents + walk children within S2 set
+    protected: set[int] = set(holders)
+    # ancestors
+    for hid in list(holders):
+        try:
+            cur = psutil.Process(hid)
+            for _ in range(8):
+                ppid = cur.ppid()
+                if not ppid or ppid <= 4:
+                    break
+                if ppid in by_pid:
+                    protected.add(ppid)
+                try:
+                    cur = psutil.Process(ppid)
+                except Exception:
+                    break
+        except Exception:
+            continue
+    # descendants (any S2 whose parent chain hits protected)
+    changed = True
+    while changed:
+        changed = False
+        for pid, p in by_pid.items():
+            if pid in protected:
+                continue
+            try:
+                ppid = int(p.info.get("ppid") or 0)
+            except Exception:
+                try:
+                    ppid = int(psutil.Process(pid).ppid())
+                except Exception:
+                    ppid = 0
+            if ppid in protected:
+                protected.add(pid)
+                changed = True
+
     killed = 0
     for p in procs:
-        if p.pid in holders:
+        pid = int(p.pid)
+        if pid in protected:
             continue
-        # Never kill if it would leave zero holders
         try:
             p.terminate()
             try:
@@ -220,14 +451,25 @@ def _trim_duplicate_s2() -> int:
             except Exception:
                 p.kill()
             killed += 1
-            log(f"killed orphan S2 PID {p.pid} (holder={sorted(holders)})", "WARN")
+            log(
+                f"killed orphan S2 PID {pid} (protected tree={sorted(protected)}, "
+                f"holders={sorted(holders)})",
+                "WARN",
+            )
         except Exception as e:
-            log(f"could not kill S2 PID {p.pid}: {e}", "WARN")
+            log(f"could not kill S2 PID {pid}: {e}", "WARN")
+
     # Verify S2 still up; if not, start it immediately
+    time.sleep(0.4)
     if not launch_ops._port_open(launch_ops.META_HOST, launch_ops.META_PORT):
         log("S2 port dropped after orphan trim — restarting S2", "ERROR")
         try:
             launch_ops.start_fafo_meta_server()
+            # brief wait for bind
+            for _ in range(12):
+                time.sleep(0.5)
+                if launch_ops._port_open(launch_ops.META_HOST, launch_ops.META_PORT):
+                    break
         except Exception as e:
             log(f"S2 restart after trim failed: {e}", "ERROR")
     return killed
@@ -332,12 +574,16 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
         )
 
     trays = _count_cmd_matches("tray_launcher.py")
-    if len(trays) > 1:
+    tray_roots = _tree_roots(trays)
+    if len(tray_roots) > 1:
         issues.append(
             {
                 "code": "DUP_TRAY",
                 "severity": "warning",
-                "message": f"Multiple tray watchdogs running (PIDs {trays}) — can block clean heals",
+                "message": (
+                    f"Multiple tray trees running (roots={tray_roots}, pids={trays}) "
+                    f"— auto-trim keeps one"
+                ),
             }
         )
     if len(trays) == 0:
@@ -349,30 +595,78 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    meta_procs = _count_cmd_matches("explorer-meta") + _count_cmd_matches(
-        "server.py"
-    )
-    # rough: count server.py under explorer-meta only
-    meta_only = _count_cmd_matches("explorer-meta" + os.sep + "server.py".replace("\\", ""))
-    if not meta_only:
-        meta_only = [p for p in _count_cmd_matches("server.py") if True]
-        # filter via cmdline containing explorer-meta
-        try:
-            import psutil  # type: ignore
+    wd_pids = _count_cmd_matches("server_watchdog.py")
+    wd_roots = _tree_roots(wd_pids)
+    if len(wd_roots) > 1:
+        issues.append(
+            {
+                "code": "DUP_WATCHDOG",
+                "severity": "warning",
+                "message": (
+                    f"Multiple watchdog trees (roots={wd_roots}, pids={wd_pids}) "
+                    f"— auto-trim keeps this instance"
+                ),
+            }
+        )
 
-            meta_only = []
-            for p in psutil.process_iter(["pid", "cmdline"]):
+    # S2 process list: uvicorn/spawn often shows parent+child (2 PIDs) for ONE server.
+    # Only warn when there are multiple independent process trees (true duplicates).
+    meta_only: list[int] = []
+    try:
+        import psutil  # type: ignore
+
+        for p in psutil.process_iter(["pid", "ppid", "cmdline"]):
+            try:
                 cmd = " ".join(str(x) for x in (p.info.get("cmdline") or [])).lower()
                 if "explorer-meta" in cmd and "server.py" in cmd:
                     meta_only.append(int(p.info["pid"]))
-        except Exception:
-            meta_only = []
-    if len(meta_only) > 1:
+            except Exception:
+                continue
+    except Exception:
+        meta_only = _count_cmd_matches("explorer-meta")
+
+    meta_roots = _tree_roots(meta_only)
+
+    # Multiple LISTEN holders on 8765 is a real port fight
+    s2_holders: list[int] = []
+    try:
+        import psutil  # type: ignore
+
+        for conn in psutil.net_connections(kind="inet"):
+            try:
+                if conn.status != psutil.CONN_LISTEN:
+                    continue
+                if conn.laddr and int(conn.laddr.port) == launch_ops.META_PORT and conn.pid:
+                    s2_holders.append(int(conn.pid))
+            except Exception:
+                continue
+        s2_holders = sorted(set(s2_holders))
+    except Exception:
+        s2_holders = []
+
+    if len(s2_holders) > 1 or len(meta_roots) > 1:
         issues.append(
             {
                 "code": "DUP_S2",
                 "severity": "warning",
-                "message": f"Multiple S2 server.py processes (PIDs {meta_only}) — port fights possible",
+                "message": (
+                    f"Multiple S2 instances (trees={meta_roots}, listen={s2_holders or meta_only}) "
+                    f"— auto-trim keeps the listener tree"
+                ),
+            }
+        )
+
+    s1_pids = _count_cmd_matches("aitoolbox_server.py")
+    s1_roots = _tree_roots(s1_pids)
+    if len(s1_roots) > 1:
+        issues.append(
+            {
+                "code": "DUP_S1",
+                "severity": "warning",
+                "message": (
+                    f"Multiple S1 instances (trees={s1_roots}, pids={s1_pids}) "
+                    f"— auto-trim keeps the listener tree"
+                ),
             }
         )
 
@@ -390,7 +684,14 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
         "tb_listening": bool(tb.get("listening")),
         "meta_listening": bool(meta.get("listening")),
         "tray_pids": trays,
+        "tray_roots": tray_roots,
+        "watchdog_pids": wd_pids,
+        "watchdog_roots": wd_roots,
+        "s1_pids": s1_pids,
+        "s1_roots": s1_roots,
         "s2_pids": meta_only,
+        "s2_roots": meta_roots,
+        "s2_holders": s2_holders,
         "issues": issues,
         "attention": attention,
         "starting": bool(starting),
@@ -518,22 +819,46 @@ def save_report(payload: dict[str, Any]) -> None:
         pass
 
 
+def enforce_single_instances(*, include_watchdog: bool = True) -> list[str]:
+    """Every poll: leave only one process tree for tray, S1, S2 (and optionally watchdog).
+
+    Parent+child re-exec pairs count as one tree and are never split.
+    Safe to call every cycle — no-ops when already single-instance.
+
+    include_watchdog=False for --once so a one-shot check never kills the
+    long-running monitor.
+    """
+    actions: list[str] = []
+    if include_watchdog:
+        n_wd = _trim_duplicate_watchdogs()
+        if n_wd:
+            actions.append(f"trimmed_{n_wd}_dup_watchdogs")
+    n_tray = _trim_duplicate_trays()
+    if n_tray:
+        actions.append(f"trimmed_{n_tray}_dup_trays")
+    n_s1 = _trim_duplicate_s1()
+    if n_s1:
+        actions.append(f"trimmed_{n_s1}_dup_s1")
+    n_s2 = _trim_duplicate_s2()
+    if n_s2:
+        actions.append(f"trimmed_{n_s2}_orphan_s2")
+    return actions
+
+
 def heal_if_needed(session: dict[str, Any]) -> list[str]:
     """Return list of heal actions taken."""
     actions: list[str] = []
     now = time.time()
+
+    # Always first: collapse multi-instance races to one tree each.
+    actions.extend(
+        enforce_single_instances(
+            include_watchdog=bool(session.get("primary_loop", False))
+        )
+    )
+
     st = launch_ops.companion_status()
     snap = _server_state(st)
-
-    # Housekeeping: duplicate trays / orphan S2 fight heals
-    if len(snap["tray_pids"]) > 1:
-        n = _trim_duplicate_trays()
-        if n:
-            actions.append(f"trimmed_{n}_dup_trays")
-    if len(snap.get("s2_pids") or []) > 1:
-        n2 = _trim_duplicate_s2()
-        if n2:
-            actions.append(f"trimmed_{n2}_orphan_s2")
 
     need = False
     if snap["want_tb"] and not snap["tb_up"]:
@@ -797,20 +1122,35 @@ def uninstall_task() -> dict[str, Any]:
 def run_loop() -> int:
     handle = _acquire_mutex()
     if handle is None:
-        # Another instance is alive — run a single status/heal attempt that
-        # no-ops heavy work if the main loop is healthy, but still write status.
-        log("another watchdog is already running — exiting (--once style)", "INFO")
-        # Light touch: if servers down, still try heal once (race-safe enough)
-        session = {"healsSession": 0, "fail_times": [], "last_heal": 0.0}
-        try:
-            payload = cycle(session)
-            if payload.get("attentionRequired"):
-                return 2
-        except Exception as e:
-            log(f"secondary cycle failed: {e}", "ERROR")
+        # Mutex says another instance holds the lock. If that process is real,
+        # exit quietly (no competing heal). If only our re-exec parent holds it
+        # we still exit; the holder keeps the loop.
+        other = [
+            p
+            for p in _count_cmd_matches("server_watchdog.py")
+            if p not in _self_watchdog_tree_pids()
+        ]
+        if other:
+            log(
+                f"another watchdog already running (pids={other}) — leaving one instance, exiting",
+                "INFO",
+            )
+        else:
+            log(
+                "watchdog mutex already held (same tree or race) — exiting duplicate start",
+                "INFO",
+            )
         return 0
 
     atexit.register(lambda: _release_mutex(handle))
+    # Claim sole instance immediately (kills other independent trees only)
+    try:
+        n = _trim_duplicate_watchdogs()
+        if n:
+            log(f"startup: removed {n} extra watchdog process(es)", "WARN")
+    except Exception as e:
+        log(f"startup watchdog trim failed: {e}", "WARN")
+
     log(f"watchdog started · toolbox={TOOLBOX_ROOT}")
     session: dict[str, Any] = {
         "healsSession": 0,
@@ -818,8 +1158,9 @@ def run_loop() -> int:
         "last_heal": 0.0,
         "toast_key": None,
         "toast_crash": False,
+        "primary_loop": True,  # may trim other watchdog trees
     }
-    # Immediate first cycle
+    # Immediate first cycle (includes enforce_single_instances for S1/S2/tray)
     try:
         cycle(session)
     except Exception as e:

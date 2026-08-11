@@ -571,15 +571,25 @@ details.tech pre{
           </div>
           <div class="row" style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button type="button" class="btn sm" id="btnAll">All</button>
-            <button type="button" class="btn sm" id="btnMin">Quick</button>
+            <button type="button" class="btn sm primary" id="btnMin" title="Recommended first-run pack (skips slow event log)">Quick pack</button>
+            <button type="button" class="btn sm" id="btnFull" title="Everything including event log + startup + security (slower)">Full pack</button>
             <button type="button" class="btn sm ghost" id="btnNone">Clear</button>
           </div>
+          <div id="quickPackBanner" class="hint" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.08);color:var(--text)">
+            <strong style="color:var(--cyan)">Recommended quick pack</strong>
+            <span id="quickPackText"> — identity, CPU/RAM/GPU, storage, network, power + analysis. No event log (faster). Adjust modules any time, then Run.</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button type="button" class="btn sm primary" id="btnRunQuick">▶ Run quick pack</button>
+              <button type="button" class="btn sm" id="btnRunFullFromBanner" title="All modules + event log (slower)">▶ Run full pack</button>
+              <button type="button" class="btn sm ghost" id="btnDismissQuick">Got it</button>
+            </div>
+          </div>
           <div class="btn-stack">
-            <button type="button" class="btn primary" id="btnRun"><span class="ico">▶</span> Run full diagnostics</button>
+            <button type="button" class="btn primary" id="btnRun"><span class="ico">▶</span> Run diagnostics</button>
             <button type="button" class="btn ghost" id="btnLoad">Load last report</button>
           </div>
           <p class="hint" id="runHint">
-            Full scan builds a navigable map of your PC — plain-English IDs, compatibility notes, and fix suggestions. Event log is slower but catches surprise restarts.
+            First visit defaults to the <strong>quick pack</strong> (no event log). Use <strong>Full pack</strong> when hunting surprise restarts (includes event log).
           </p>
         </div>
       </div>
@@ -600,8 +610,8 @@ details.tech pre{
       <!-- Empty state -->
       <div id="emptyState" class="empty">
         <strong>No scan loaded yet</strong>
-        Select modules on the left, ensure the server is online, then run diagnostics.<br>
-        You’ll get a score, component map, and professional remediation tips.
+        A <strong>recommended quick pack</strong> is pre-selected on first visit — hit <em>Run quick pack</em> or <em>Run diagnostics</em>.<br>
+        You’ll get a score, component map, and plain-English fix tips without waiting on the full event log.
       </div>
 
       <!-- Results (hidden until report) -->
@@ -799,14 +809,32 @@ details.tech pre{
   }
 
   function quickScan() {
+    // Recommended first-run pack: hardware + analysis, skip slow event_log / startup noise
     const keep = new Set([
       'identity', 'cpu', 'memory', 'gpu', 'storage', 'network', 'power',
-      'compatibility', 'bottlenecks', 'friendly_summaries',
+      'problem_devices', 'compatibility', 'bottlenecks', 'friendly_summaries',
     ]);
     document.querySelectorAll('[data-opt]').forEach((el) => {
       el.checked = keep.has(el.getAttribute('data-opt'));
     });
+    // Quicker window if user later enables event log
+    if ($('eventDays')) $('eventDays').value = 3;
     updateOptCount();
+  }
+
+  function fullScan() {
+    // One-click full pack: every module + event log window for stability hunting
+    setAll(true);
+    if ($('eventDays')) $('eventDays').value = 7;
+    updateOptCount();
+    $('runHint').textContent =
+      'Full pack selected — includes event log, startup, and security (slower, more thorough).';
+  }
+
+  function showQuickPackBanner(show) {
+    const el = $('quickPackBanner');
+    if (!el) return;
+    el.style.display = show ? 'block' : 'none';
   }
 
   function setScoreRing(score, severity) {
@@ -1235,6 +1263,7 @@ details.tech pre{
   $('btnReloadLatest').onclick = loadLatest;
   $('btnAll').onclick = () => setAll(true);
   $('btnMin').onclick = quickScan;
+  $('btnFull').onclick = fullScan;
   $('btnNone').onclick = () => setAll(false);
   $('btnHudView').onclick = () => setView('hud');
   $('btnSimpleView').onclick = () => setView('simple');
@@ -1333,21 +1362,56 @@ details.tech pre{
 
   (async function boot() {
     await refreshPill();
-    setInterval(refreshPill, 8000);
+    setInterval(() => { if (!document.hidden) refreshPill(); }, 12000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshPill().catch(() => {});
+    });
+    const LS_QUICK = 'fafo.diagnostics.quickPackSeen';
     try {
       const on = window.AIToolboxAPI && (await AIToolboxAPI.isOnline(true, 1500));
       if (on) {
         const schema = await api('/pc-diagnostics/options');
         renderOptions(schema);
         const latest = await api('/pc-diagnostics/latest');
-        if (latest.ok && latest.report) renderReport(latest.report);
+        if (latest.ok && latest.report) {
+          renderReport(latest.report);
+          showQuickPackBanner(false);
+        } else {
+          // First visit / no report: pre-select recommended quick pack
+          quickScan();
+          const seen = (() => { try { return localStorage.getItem(LS_QUICK) === '1'; } catch { return false; } })();
+          showQuickPackBanner(!seen);
+        }
       } else {
         renderOptions(OFFLINE_SCHEMA);
+        quickScan();
+        showQuickPackBanner(true);
       }
     } catch (e) {
       renderOptions(OFFLINE_SCHEMA);
+      quickScan();
+      showQuickPackBanner(true);
       toast('Options fallback: ' + (e.message || e));
     }
+    $('btnRunQuick')?.addEventListener('click', () => {
+      quickScan();
+      try { localStorage.setItem(LS_QUICK, '1'); } catch (_) {}
+      showQuickPackBanner(false);
+      runScan();
+    });
+    $('btnRunFullFromBanner')?.addEventListener('click', () => {
+      fullScan();
+      try { localStorage.setItem(LS_QUICK, '1'); } catch (_) {}
+      showQuickPackBanner(false);
+      runScan();
+    });
+    $('btnDismissQuick')?.addEventListener('click', () => {
+      try { localStorage.setItem(LS_QUICK, '1'); } catch (_) {}
+      showQuickPackBanner(false);
+    });
+    $('btnMin')?.addEventListener('click', () => {
+      showQuickPackBanner(true);
+    });
   })();
 })();
 </script>

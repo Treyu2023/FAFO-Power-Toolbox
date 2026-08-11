@@ -13,6 +13,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -368,6 +369,46 @@ def get_intel_status() -> dict[str, Any]:
     ).fetchall()
     total = conn.execute("SELECT COUNT(*) FROM threat_hashes").fetchone()[0]
     conn.close()
+    elevated = False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            elevated = bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+        except Exception:
+            elevated = False
+    needs = []
+    if not elevated:
+        needs.append(
+            {
+                "id": "elevation",
+                "level": "info",
+                "title": "Server not elevated",
+                "detail": (
+                    "Scans of user folders and process lists work without admin. "
+                    "Quarantine/delete under protected paths (Program Files, System32) may fail — "
+                    "restart the toolbox server as Administrator for full remediations."
+                ),
+            }
+        )
+    if not _get_abuse_ch_auth_key():
+        needs.append(
+            {
+                "id": "abuse_ch",
+                "level": "info",
+                "title": "Optional abuse.ch key",
+                "detail": "Live MalwareBazaar recent hashes need a free Auth-Key (saved via FAFO Secrets / this page).",
+            }
+        )
+    if total <= 0:
+        needs.append(
+            {
+                "id": "threat_db",
+                "level": "warn",
+                "title": "Threat DB empty",
+                "detail": "Run Update DB or a Full/Quick scan once to pull open hash feeds.",
+            }
+        )
     return {
         "last_update": _get_meta("last_update"),
         "total_hashes": total,
@@ -375,6 +416,15 @@ def get_intel_status() -> dict[str, Any]:
         "feeds": [f["name"] for f in HASH_FEEDS],
         "has_abuse_ch_key": bool(_get_abuse_ch_auth_key()),
         "quarantine_dir": str(QUARANTINE_DIR),
+        "is_elevated": elevated,
+        "capabilities": {
+            "scan_user_space": True,
+            "scan_processes": True,
+            "quarantine_user_files": True,
+            "quarantine_protected_paths": elevated,
+            "hosts_style_system_writes": elevated,
+        },
+        "needs": needs,
     }
 
 
@@ -886,6 +936,39 @@ def _delete_registry(path: str) -> bool:
         return False
 
 
+def _is_process_elevated() -> bool:
+    if not IS_WINDOWS:
+        return False
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+    except Exception:
+        return False
+
+
+def is_protected_path(path: str) -> bool:
+    """True for OS / Program Files paths that usually need elevation to remediate."""
+    if not path:
+        return False
+    p = str(path).replace("/", "\\").lower().strip()
+    # Normalize drive-relative
+    prefixes = (
+        r"c:\windows",
+        r"c:\program files",
+        r"c:\program files (x86)",
+        r"c:\programdata",
+        r"\windows\system32",
+        r"\windows\syswow64",
+        r"\program files",
+        r"\program files (x86)",
+        r"\programdata",
+    )
+    if any(p.startswith(pref) for pref in prefixes):
+        return True
+    # Also match without drive letter
+    bare = p[2:] if len(p) > 2 and p[1] == ":" else p
+    return any(bare.startswith(pref.lstrip("c:")) for pref in prefixes if pref.startswith(r"c:"))
+
+
 def quarantine_item(path: str, threat_type: str = "", threat_name: str = "") -> dict[str, Any]:
     src = Path(path)
     if not src.exists():
@@ -922,8 +1005,10 @@ def remove_item(
     threat_type: str = "",
     threat_name: str = "",
     permanent: bool = False,
+    *,
+    allow_protected: bool = False,
 ) -> dict[str, Any]:
-    results: dict[str, Any] = {"ok": True, "actions": []}
+    results: dict[str, Any] = {"ok": True, "actions": [], "protected_path": is_protected_path(path)}
 
     if action in ("kill_process", "kill_and_quarantine") and pid:
         ok = _kill_pid(pid)
@@ -951,6 +1036,26 @@ def remove_item(
         results["error"] = "Path no longer exists"
         return results
 
+    # Gate file remediations under protected OS/program paths
+    if results["protected_path"]:
+        elevated = _is_process_elevated()
+        if not elevated:
+            results["ok"] = False
+            results["error"] = (
+                "Protected path — restart the toolbox server as Administrator, "
+                "then enable Protected-path remediation."
+            )
+            results["needs_elevation"] = True
+            return results
+        if not allow_protected:
+            results["ok"] = False
+            results["error"] = (
+                "Protected path — enable Protected-path remediation mode in Malware Defender "
+                "to quarantine/delete under Program Files / Windows."
+            )
+            results["needs_protected_mode"] = True
+            return results
+
     if permanent:
         if target.is_file():
             target.unlink()
@@ -967,6 +1072,8 @@ def remove_item(
 def remove_findings(
     items: list[dict[str, Any]],
     permanent: bool = False,
+    *,
+    allow_protected: bool = False,
 ) -> dict[str, Any]:
     results = []
     for item in items:
@@ -978,13 +1085,25 @@ def remove_findings(
                 threat_type=item.get("threat_type", ""),
                 threat_name=item.get("threat_name", ""),
                 permanent=permanent,
+                allow_protected=allow_protected,
             )
             results.append({"item": item, **r})
         except Exception as e:
             results.append({"item": item, "ok": False, "error": str(e)})
 
     ok_count = sum(1 for r in results if r.get("ok"))
-    return {"ok": ok_count == len(results), "processed": len(results), "succeeded": ok_count, "results": results}
+    skipped_protected = sum(
+        1 for r in results if r.get("needs_protected_mode") or r.get("needs_elevation")
+    )
+    return {
+        "ok": ok_count == len(results),
+        "processed": len(results),
+        "succeeded": ok_count,
+        "skipped_protected": skipped_protected,
+        "elevated": _is_process_elevated(),
+        "allow_protected": allow_protected,
+        "results": results,
+    }
 
 
 def list_quarantine() -> list[dict[str, Any]]:

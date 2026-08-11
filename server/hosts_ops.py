@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import platform
 import re
+import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -153,13 +154,33 @@ def remove_custom_block(host: str) -> dict[str, Any]:
     return {"ok": True, "removed": host}
 
 
+def _is_process_elevated() -> bool:
+    """True when the toolbox server process is running elevated (can write hosts)."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+    except Exception:
+        return False
+
+
 def get_status() -> dict[str, Any]:
     data = read_hosts()
     enabled = MARKER_START in (data.get("raw") or "")
+    elevated = _is_process_elevated()
     return {
         "hosts_path": str(HOSTS_PATH),
         "blocklist_enabled": enabled,
         "blocklist_count": data.get("blocklist_count", 0),
         "custom_count": len(data.get("custom_lines", [])),
         "feeds": BLOCKLIST_FEEDS,
+        "is_elevated": elevated,
+        "can_write_hosts": elevated,
+        "elevation_hint": (
+            None
+            if elevated
+            else "Restart the toolbox server as Administrator to enable / disable blocklists or add custom hosts entries."
+        ),
     }
