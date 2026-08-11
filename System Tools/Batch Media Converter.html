@@ -30,11 +30,23 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 </style>
 </head>
 <body>
-<nav class="nav"><a href="../Toolbox Launcher.html">← Toolbox</a><span style="color:var(--accent)">BATCH MEDIA CONVERTER</span></nav>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <a href="../Movie File Manager/Media Hub.html" style="color:var(--accent);text-decoration:none;font-size:12px;font-weight:600">🗂️ Media Hub</a>
+    <a href="../Movie File Manager/VSR Pipeline Manager.html" style="color:var(--accent);text-decoration:none;font-size:12px;font-weight:600">⚡ VSR</a>
+    <a href="../Video Tools/GEMPlayHTML.html" style="color:var(--muted);text-decoration:none;font-size:12px;font-weight:600">📺 Video Wall</a>
+    <span style="color:var(--accent);font-weight:700;letter-spacing:.04em">BATCH MEDIA CONVERTER</span>
+  </div>
+</nav>
 <div class="wrap">
 <h1 style="font-size:22px">Batch Media Converter</h1>
-<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">FFmpeg-powered batch convert — video, audio, and short GIF exports. Requires toolbox server + <code>ffmpeg</code> on PATH. Prefer a dedicated output folder so sources stay untouched.</p>
-<div class="panel"><div class="ph">Source folder</div><div class="pb toolbar">
+<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">FFmpeg-powered batch convert — video, audio, and short GIF exports. Requires toolbox server + <code>ffmpeg</code> on PATH. Prefer a dedicated output folder so sources stay untouched.
+  <span style="display:inline-block;margin-left:8px;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px"><kbd style="font:11px Consolas;color:var(--accent)">Enter</kbd> scan · <kbd style="font:11px Consolas;color:var(--accent)">C</kbd> convert · <kbd style="font:11px Consolas;color:var(--accent)">E</kbd> copy log</span>
+</p>
+<div class="panel"><div class="ph">Source folder
+  <span id="serverBadge" style="font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,200,0,.4);color:#ffc800">Server …</span>
+</div><div class="pb toolbar">
 <input class="inp" id="folder" placeholder="C:\path\to\media" style="flex:1;min-width:240px">
 <button class="btn ghost" id="btnPick" type="button">Browse…</button>
 <select class="sel" id="preset"></select>
@@ -42,7 +54,16 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 <button class="btn" id="btnScan">Scan folder</button>
 <button class="btn" id="btnConvert" disabled>Convert selected</button>
 <button class="btn ghost" id="btnStop" type="button" disabled>Stop</button>
-</div></div>
+<button class="btn ghost" id="btnCopyLog" type="button" title="Copy session log / report">📋 Report</button>
+</div>
+<div class="pb" style="padding-top:0">
+  <div id="etaLine" style="font-size:11px;color:var(--muted);min-height:16px"></div>
+  <div id="emptyConvert" style="display:none;text-align:center;padding:18px;color:var(--muted);font-size:12px;line-height:1.5">
+    <strong style="color:var(--text)">No files yet</strong> — pick a folder then Scan, or jump to Media Hub / VSR.<br>
+    <button class="btn" type="button" id="btnEmptyScan" style="margin-top:10px">Scan folder</button>
+  </div>
+</div>
+</div>
 <div class="panel"><div class="ph">Media files <span id="fileCount" style="color:var(--muted)"></span>
 <input class="inp" id="filter" placeholder="Filter…" style="min-width:140px;max-width:200px">
 </div>
@@ -57,6 +78,7 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
@@ -68,19 +90,62 @@ function apiBase() {
 let files = [];
 let sel = new Set();
 let es = null;
+let convertStartedAt = 0;
+const LS_BCONV = 'fafo_batch_convert_settings_v1';
+const sessionLog = [];
 
-function log(msg) { document.getElementById('log').textContent = msg || ''; }
+function log(msg) {
+  document.getElementById('log').textContent = msg || '';
+  if (msg) sessionLog.push('[' + new Date().toISOString().slice(11, 19) + '] ' + msg);
+}
+
+function saveBconvSettings() {
+  try {
+    localStorage.setItem(LS_BCONV, JSON.stringify({
+      folder: document.getElementById('folder').value,
+      outDir: document.getElementById('outDir').value,
+      preset: document.getElementById('preset').value,
+    }));
+  } catch (_) {}
+}
+function restoreBconvSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_BCONV) || 'null');
+    if (!raw) return;
+    if (raw.folder) document.getElementById('folder').value = raw.folder;
+    if (raw.outDir) document.getElementById('outDir').value = raw.outDir;
+    if (raw.preset) document.getElementById('preset').dataset.prefer = raw.preset;
+  } catch (_) {}
+}
+
+async function pingServerBadge() {
+  const b = document.getElementById('serverBadge');
+  if (!b) return;
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
+    b.textContent = on ? '● Online' : '○ Offline';
+    b.style.color = on ? 'var(--ok)' : '#f87171';
+    b.style.borderColor = on ? 'rgba(74,222,128,.45)' : 'rgba(248,113,113,.45)';
+  } catch (_) {
+    b.textContent = '○ Offline';
+  }
+}
 
 async function init() {
+  restoreBconvSettings();
+  pingServerBadge();
   try {
     const p = await UI().apiFetch('/convert/presets');
     document.getElementById('preset').innerHTML = (p.presets || [])
       .map(x => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join('')
       || '<option value="">No presets</option>';
+    const prefer = document.getElementById('preset').dataset.prefer;
+    if (prefer) document.getElementById('preset').value = prefer;
   } catch (e) {
     document.getElementById('preset').innerHTML = '<option value="">Server offline</option>';
     log(e.message || String(e));
   }
+  document.getElementById('emptyConvert').style.display = files.length ? 'none' : 'block';
 }
 
 function filteredIndexes() {
@@ -96,6 +161,7 @@ function render() {
   document.getElementById('fileCount').textContent = files.length
     ? `(${sel.size} selected · ${idxs.length}/${files.length} shown)`
     : '';
+  document.getElementById('emptyConvert').style.display = files.length ? 'none' : 'block';
   document.getElementById('fileBody').innerHTML = idxs.map(i => {
     const f = files[i];
     return `<tr>
@@ -129,6 +195,7 @@ document.getElementById('filter').oninput = render;
 document.getElementById('btnScan').onclick = async () => {
   const folder = document.getElementById('folder').value.trim();
   if (!folder) { log('Enter a folder path'); return; }
+  saveBconvSettings();
   log('Scanning…');
   try {
     const d = await UI().apiFetch('/convert/scan?folder=' + encodeURIComponent(folder));
@@ -142,6 +209,10 @@ document.getElementById('btnScan').onclick = async () => {
     UI()?.toast?.(e.message || String(e), 'warn');
   }
 };
+document.getElementById('btnEmptyScan')?.addEventListener('click', () => document.getElementById('btnScan').click());
+['folder', 'outDir', 'preset'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', saveBconvSettings);
+});
 
 function stopConvert() {
   if (es) { try { es.close(); } catch {} es = null; }
@@ -158,13 +229,17 @@ document.getElementById('btnConvert').onclick = () => {
   const preset = document.getElementById('preset').value;
   if (!preset) { log('No preset selected'); return; }
   const outDir = document.getElementById('outDir').value.trim() || null;
+  saveBconvSettings();
   log('Starting…');
+  convertStartedAt = Date.now();
   document.getElementById('btnConvert').disabled = true;
   document.getElementById('btnStop').disabled = false;
   const prog = document.getElementById('progress');
   const bar = document.getElementById('progressBar');
+  const eta = document.getElementById('etaLine');
   prog.style.display = 'block';
   bar.style.width = '0%';
+  if (eta) eta.textContent = 'ETA: calculating…';
 
   let url = apiBase() + '/convert/stream?files=' + encodeURIComponent(chosen.join('|')) + '&preset=' + encodeURIComponent(preset);
   if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
@@ -176,14 +251,24 @@ document.getElementById('btnConvert').onclick = () => {
     if (d.error) { log('Error: ' + d.error); stopConvert(); return; }
     if (d.done) {
       const r = d.result || {};
+      const elapsed = ((Date.now() - convertStartedAt) / 1000).toFixed(1);
       log(`Done: ${r.succeeded || 0}/${r.total || chosen.length} succeeded`
-        + (r.failed ? ` · ${r.failed} failed` : ''));
+        + (r.failed ? ` · ${r.failed} failed` : '') + ` · ${elapsed}s`);
       bar.style.width = '100%';
+      if (eta) eta.textContent = 'Finished in ' + elapsed + 's';
       stopConvert();
       return;
     }
     if (d.current != null && d.total) {
-      bar.style.width = Math.round((d.current / d.total) * 100) + '%';
+      const pct = Math.round((d.current / d.total) * 100);
+      bar.style.width = pct + '%';
+      const elapsedMs = Date.now() - convertStartedAt;
+      if (d.current > 0 && eta) {
+        const per = elapsedMs / d.current;
+        const remain = Math.max(0, Math.round((per * (d.total - d.current)) / 1000));
+        const m = Math.floor(remain / 60), s = remain % 60;
+        eta.textContent = `${d.current}/${d.total} · ${pct}% · ETA ~${m}m ${s}s`;
+      }
     }
     if (d.message) log(d.message);
   };
@@ -192,6 +277,45 @@ document.getElementById('btnConvert').onclick = () => {
     stopConvert();
   };
 };
+
+document.getElementById('btnCopyLog')?.addEventListener('click', async () => {
+  const text = [
+    'FAFO Batch Media Converter — session report',
+    'Time: ' + new Date().toISOString(),
+    'Folder: ' + document.getElementById('folder').value,
+    'Output: ' + (document.getElementById('outDir').value || '(same as source)'),
+    'Preset: ' + document.getElementById('preset').value,
+    'Files: ' + files.length + ' · Selected: ' + sel.size,
+    'Server: ' + (document.getElementById('serverBadge')?.textContent || ''),
+    '',
+    '— Log —',
+    ...sessionLog.slice(-100),
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    UI()?.toast?.('Convert report copied', 'ok');
+  } catch (_) { prompt('Copy report:', text); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+    if (e.key === 'Enter' && e.target.id === 'folder') {
+      e.preventDefault();
+      document.getElementById('btnScan').click();
+    }
+    return;
+  }
+  if (e.key === 'c' || e.key === 'C') {
+    if (!document.getElementById('btnConvert').disabled) {
+      e.preventDefault();
+      document.getElementById('btnConvert').click();
+    }
+  }
+  if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault();
+    document.getElementById('btnCopyLog')?.click();
+  }
+});
 
 document.getElementById('btnPick').onclick = async () => {
   try {

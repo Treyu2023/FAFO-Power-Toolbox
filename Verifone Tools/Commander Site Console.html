@@ -560,6 +560,8 @@
       <button class="btn" id="btnSetRoot" title="Each tech can set their own local backup folders">📁 Watched folders…</button>
       <a class="btn" id="btnLiveHud" href="Commander Status HUD.html" title="Live Commander reachability + credential probe">📡 Status HUD</a>
       <a class="btn" id="btnPhoneAssist" href="Phone Assist Navigator.html" title="Walk CSR / Veeder TLS / SSH menus on the phone">📞 Phone Assist</a>
+      <a class="btn" id="btnPreReload" href="Pre-Reload Punch List.html" title="Create working pre-reload punch list">✅ Pre-Reload</a>
+      <button class="btn" id="btnCopySiteSummary" type="button" title="Copy selected site summary (S)">📋 Copy summary</button>
       <button class="btn" id="btnUserGuide" type="button" title="Feature guide & user manual (file + in-app)">📖 Help</button>
       <button class="btn amber" id="btnPunch" disabled>📋 Prefill punch list</button>
     </div>
@@ -648,6 +650,7 @@
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script src="site-layout-3d.js"></script>
   <script>
     const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
@@ -6537,13 +6540,75 @@
       } catch (_) { toast('Copy failed'); }
     });
 
+    // --- QoL: copy site summary · keyboard · empty-state CTAs ---
+    async function copySelectedSiteSummary() {
+      const s = selectedDetail;
+      if (!s) { toast('Select a site first'); return; }
+      const d = s.dossier || {};
+      const eq = s.equipment || d.equipment || {};
+      const lines = [
+        'Commander Site Console — site summary',
+        '====================================',
+        'Site: ' + (s.display_name || d.displayName || s.site_label || '—'),
+        'Customer: ' + (s.customer || '—'),
+        'Path: ' + (s.relative_path || s.path || '—'),
+        'Export id: ' + (s.id || selectedExportId || '—'),
+        'Software: ' + (d.softwareVersion || '—'),
+        'Group: ' + (selectedGroupKey || '—'),
+        'Host / IP: ' + (eq.ip || d.ip || d.host || '—'),
+        'Phone: ' + (d.phone || eq.phone || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      const text = lines.join('\n');
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        else {
+          const ta = document.createElement('textarea');
+          ta.value = text; document.body.appendChild(ta); ta.select();
+          document.execCommand('copy'); ta.remove();
+        }
+        toast('Site summary copied');
+      } catch (e) {
+        toast('Copy failed: ' + (e.message || e));
+      }
+    }
+    el('btnCopySiteSummary')?.addEventListener('click', copySelectedSiteSummary);
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        el('search')?.focus();
+      } else if (e.key === 's' || e.key === 'S') {
+        copySelectedSiteSummary();
+      } else if (e.key === 'p' || e.key === 'P') {
+        if (selectedDetail?.id) makePunch(selectedDetail.id);
+        else location.href = 'Pre-Reload Punch List.html';
+      }
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'commander-console',
+        helpLines: [
+          '/ — focus site search',
+          'S — copy selected site summary',
+          'P — prefill punch list (or open Pre-Reload)',
+        ],
+      });
+    } catch (_) {}
+
     (async function init() {
       const ok = await refreshStatus();
       if (!ok) {
         el('cards').innerHTML =
           '<div class="empty">Toolbox server offline.<br><br>' +
           'Click <strong>▶ Start Server</strong> in the toolbar (or the status pill), ' +
-          'or use Toolbox Launcher / <code>START SERVER.bat</code>.</div>';
+          'or use Toolbox Launcher / <code>START SERVER.bat</code>.<br><br>' +
+          '<a class="btn" href="Commander Status HUD.html">📡 Status HUD</a> ' +
+          '<a class="btn" href="Phone Assist Navigator.html">📞 Phone Assist</a> ' +
+          '<a class="btn" href="Pre-Reload Punch List.html">✅ Pre-Reload</a></div>';
         if (el('pwdDashSummary')) el('pwdDashSummary').textContent = 'Server offline';
         return;
       }
@@ -6551,7 +6616,8 @@
       try {
         const folders = status.watchFolders || (status.sitesRoot ? [status.sitesRoot] : []);
         if (!folders.length) {
-          el('cards').innerHTML = '<div class="empty">No watched folders yet. Click <strong>Watched folders…</strong> to add your Commander backup path (each tech uses their own).</div>';
+          el('cards').innerHTML = '<div class="empty">No watched folders yet. Click <strong>📁 Watched folders…</strong> to add your Commander backup path.<br><br><button type="button" class="btn primary" id="btnEmptyWatchCta">Add watched folder</button> <a class="btn" href="Commander Status HUD.html">📡 Status HUD</a> <a class="btn" href="Phone Assist Navigator.html">📞 Phone Assist</a></div>';
+          el('btnEmptyWatchCta')?.addEventListener('click', () => el('btnSetRoot')?.click());
           return;
         }
         // Always rescan watched folders on load so new sites appear without a manual Sync

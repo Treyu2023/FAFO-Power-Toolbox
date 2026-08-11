@@ -101,7 +101,11 @@ h1{font-size:1.5rem;margin-bottom:4px}
 <body>
 <nav class="nav">
   <a href="../Toolbox Launcher.html">← Toolbox</a>
-  <a href="System Health Dashboard.html">← Health Hub</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-weight:600;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(0,243,255,.06)">PC Diagnostics →</a>
+    <a href="System Health Dashboard.html" style="color:var(--muted);text-decoration:none;font-weight:600;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Hub</a>
+    <a href="../GhostDeviceCleaner/Clear-GhostDevices.html" style="color:var(--muted);text-decoration:none;font-weight:600;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Ghost Cleaner</a>
+  </div>
   <span class="t">HARDWARE BOARD MAP</span>
   <span id="pill" class="status bad">Offline</span>
 </nav>
@@ -115,7 +119,12 @@ h1{font-size:1.5rem;margin-bottom:4px}
   </div>
 
   <div class="toolbar">
-    <button class="btn" id="btnRefresh">Refresh hardware</button>
+    <button class="btn" id="btnRefresh" title="Refresh (R)">Refresh hardware</button>
+    <button class="btn ghost" id="btnCopyHw" type="button">Copy identity</button>
+    <button class="btn ghost" id="btnExportHw" type="button">↓ JSON</button>
+    <input class="inp" id="portFilter" placeholder="Filter ports… (/)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px;font-size:12px;min-width:160px">
+    <span style="font-size:11px;color:var(--muted)" id="lastUpdated">—</span>
+    <a class="btn ghost" href="PC Diagnostics HUD.html">PC Diagnostics</a>
     <a class="btn ghost" href="System Health Dashboard.html">Health Hub</a>
     <a class="btn ghost" href="Event Viewer.html">Event Viewer</a>
     <a class="btn ghost" href="PC Reports and Log Viewer/index.html">Report Library</a>
@@ -165,6 +174,7 @@ h1{font-size:1.5rem;margin-bottom:4px}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
@@ -180,6 +190,7 @@ function qs(n) { return new URLSearchParams(location.search).get(n); }
 let boardData = null;
 let portsById = {};
 let selectedPort = null;
+let allPorts = [];
 
 function apiBase() {
   return (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
@@ -274,15 +285,31 @@ async function renderSvg(bundle) {
 
 function renderPorts(bundle) {
   const ports = bundle.ports || [];
+  allPorts = ports;
   portsById = {};
   ports.forEach(p => { portsById[p.id] = p; });
+  paintPorts();
+}
+
+function paintPorts() {
   const box = document.getElementById('ports');
-  if (!ports.length) {
+  const q = (document.getElementById('portFilter')?.value || '').trim().toLowerCase();
+  let ports = allPorts || [];
+  if (q) {
+    ports = ports.filter(p =>
+      ((p.label || '') + ' ' + (p.id || '') + ' ' + (p.type || '') + ' ' + (p.group || '') + ' ' + (p.hint || '')).toLowerCase().includes(q)
+    );
+  }
+  if (!allPorts.length) {
     box.innerHTML = '<p class="muted">No port catalog for this board.</p>';
     return;
   }
+  if (!ports.length) {
+    box.innerHTML = '<p class="muted">No ports match filter.</p>';
+    return;
+  }
   box.innerHTML = ports.map(p => `
-    <button type="button" class="port" data-id="${esc(p.id)}">
+    <button type="button" class="port${selectedPort === p.id ? ' active' : ''}" data-id="${esc(p.id)}">
       <div class="name">${esc(p.label || p.id)}</div>
       <div class="meta">${esc([p.type, p.speed, p.group].filter(Boolean).join(' · '))}</div>
     </button>`).join('');
@@ -407,7 +434,10 @@ async function load() {
     setPill(true, 'Connected');
   } catch {
     setPill(false, 'Server offline');
-    document.getElementById('svgHost').innerHTML = '<p class="muted">Start the toolbox server, then refresh.</p>';
+    document.getElementById('svgHost').innerHTML =
+      '<p class="muted"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong>.</p>';
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = '—';
     btn.disabled = false;
     return;
   }
@@ -417,7 +447,7 @@ async function load() {
       UI().apiFetch('/hardware/intel'),
       UI().apiFetch('/hardware/playbooks'),
     ]);
-    boardData = bundle;
+    boardData = { bundle, intel, pbs };
     renderIdentity(bundle, intel);
     await renderSvg(bundle);
     renderPorts(bundle);
@@ -425,6 +455,8 @@ async function load() {
     renderDevices(bundle.identity || {});
     renderVendor(bundle.links || {});
     renderPlaybookList(pbs);
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
     // Deep link assist
     const playbook = qs('playbook');
@@ -443,6 +475,40 @@ async function load() {
 }
 
 document.getElementById('btnRefresh').onclick = load;
+document.getElementById('btnCopyHw').onclick = async () => {
+  if (!boardData?.bundle) { UI()?.toast?.('Refresh first', 'warn'); return; }
+  const id = boardData.bundle.identity || {};
+  const lines = [
+    'Hardware Board Map',
+    'Board: ' + ((id.board && id.board.product) || boardData.bundle.detectedProduct || '—'),
+    'BIOS: ' + ((id.bios && id.bios.version) || '—'),
+    'CPU: ' + ((id.cpu && id.cpu.name) || '—'),
+    'GPU: ' + ((id.gpus && id.gpus[0] && id.gpus[0].name) || '—'),
+    'Computer: ' + (id.computer || '—'),
+    'Pack: ' + (boardData.bundle.matched ? (boardData.bundle.board?.displayName || 'matched') : 'generic'),
+  ];
+  try { await navigator.clipboard.writeText(lines.join('\n')); UI()?.toast?.('Identity copied', 'ok'); }
+  catch { UI()?.toast?.('Clipboard blocked', 'warn'); }
+};
+document.getElementById('btnExportHw').onclick = () => {
+  if (!boardData) { UI()?.toast?.('Refresh first', 'warn'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(boardData, null, 2)], { type: 'application/json' }));
+  a.download = 'hardware-board-' + Date.now() + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+let portFilterTimer = null;
+document.getElementById('portFilter')?.addEventListener('input', () => {
+  clearTimeout(portFilterTimer);
+  portFilterTimer = setTimeout(paintPorts, 200);
+});
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('portFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
+});
 UI()?.mountServerBar?.({ onOnline: load });
 load();
 </script>

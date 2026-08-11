@@ -151,8 +151,13 @@
         <span class="server-pill offline" id="serverStatus" data-tip-title="Backend" data-tip="Green = scan ready. Offline: use ▶ Start Server here, or in Launcher / Media Library, or START SERVER.bat.">Server …</span>
         <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launch the Python backend from this page. Wait for green, then scan.">▶ Start Server</button>
         <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
-        <a class="nav-link" href="../Movie File Manager/Media Hub.html#duplicates">🗂️ Media Library</a>
+        <a class="nav-link" href="../Movie File Manager/Media Hub.html" title="Full Media Hub">🗂️ Media Hub</a>
+        <a class="nav-link" href="../Movie File Manager/Media Hub.html#duplicates">🗂️ Library (dups tab)</a>
+        <a class="nav-link" href="../Movie File Manager/Media Library Manager.html">📚 Media Library</a>
+        <a class="nav-link" href="../Movie File Manager/File Organizer.html">✏️ Organizer</a>
         <span class="nav-link active">🗑️ Duplicates</span>
+        <button class="ui-btn ghost" id="btnDupReport" title="Copy scan report">📋 Report</button>
+        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent)">S</kbd> scan · <kbd style="font:10px Consolas;color:var(--accent)">E</kbd> report</span>
         <button class="ui-btn ghost" id="btnDebug">🐛 Debug</button>
     </nav>
 
@@ -216,8 +221,13 @@
             </div>
             <div class="groups-wrap" id="groupsWrap">
                 <div class="empty" id="emptyState">
-                    Scan a folder to list duplicate groups.<br>
-                    Each group shows files that match — pick a keeper, compare copies, then merge or delete the rest.
+                    <strong style="color:var(--text)">No scan yet</strong><br>
+                    Scan a folder to list duplicate groups — pick a keeper, compare copies, then merge or delete the rest.<br>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">
+                        <button class="ui-btn primary" type="button" id="btnEmptyScan">↻ Scan folder</button>
+                        <button class="ui-btn" type="button" id="btnEmptyPick">📂 Pick folder</button>
+                        <a class="ui-btn ghost" href="../Movie File Manager/Media Hub.html" style="text-decoration:none">Media Hub →</a>
+                    </div>
                 </div>
             </div>
         </section>
@@ -259,6 +269,7 @@
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const API = () => window.AIToolboxAPI;
         const UI = () => window.AIToolboxUI;
@@ -604,16 +615,89 @@
             ]);
         }
 
-        document.getElementById('btnScan').onclick = runScan;
-        document.getElementById('btnRefresh').onclick = runScan;
+        const LS_DUP = 'fafo_duplicate_manager_settings_v1';
+        function saveDupSettings() {
+            try {
+                localStorage.setItem(LS_DUP, JSON.stringify({
+                    folder: document.getElementById('folderPath').value,
+                    types: document.getElementById('fileTypes').value,
+                    match: document.getElementById('matchMode').value,
+                    deep: document.getElementById('deepVideo').checked,
+                }));
+            } catch (_) {}
+        }
+        function restoreDupSettings() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(LS_DUP) || 'null');
+                if (!raw) return;
+                if (raw.folder) document.getElementById('folderPath').value = raw.folder;
+                if (raw.types) document.getElementById('fileTypes').value = raw.types;
+                if (raw.match) document.getElementById('matchMode').value = raw.match;
+                if (typeof raw.deep === 'boolean') document.getElementById('deepVideo').checked = raw.deep;
+            } catch (_) {}
+        }
+        restoreDupSettings();
+        ['folderPath', 'fileTypes', 'matchMode', 'deepVideo'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', saveDupSettings);
+        });
+
+        function scanWithSave() {
+            saveDupSettings();
+            return runScan();
+        }
+
+        document.getElementById('btnScan').onclick = scanWithSave;
+        document.getElementById('btnRefresh').onclick = scanWithSave;
+        document.getElementById('btnEmptyScan')?.addEventListener('click', () => scanWithSave());
+        document.getElementById('btnEmptyPick')?.addEventListener('click', () => document.getElementById('btnPickFolder').click());
         document.getElementById('btnPickFolder').onclick = async () => {
             try {
                 const r = await API().pickFolderOnly();
                 document.getElementById('folderPath').value = r.path || '';
+                saveDupSettings();
             } catch (e) {
                 UI().toast(e.message, 'warn');
             }
         };
+
+        async function copyDupReport() {
+            const groups = scanResult?.groups || [];
+            const lines = [
+                'FAFO Duplicate File Manager — scan report',
+                'Time: ' + new Date().toISOString(),
+                'Folder: ' + (document.getElementById('folderPath').value || ''),
+                'Types: ' + document.getElementById('fileTypes').value,
+                'Match: ' + document.getElementById('matchMode').value,
+                'Deep video: ' + document.getElementById('deepVideo').checked,
+                'Groups: ' + (document.getElementById('statGroups')?.textContent || groups.length),
+                'Scanned: ' + (document.getElementById('statScanned')?.textContent || ''),
+                'Recoverable: ' + (document.getElementById('statWasted')?.textContent || ''),
+                '',
+                '— Groups (up to 60) —',
+                ...groups.slice(0, 60).map((g, i) =>
+                    (i + 1) + '. ' + (g.count || g.items?.length || 0) + ' copies · ' +
+                    (g.items?.[0]?.name || g.name || g.hash || 'group') +
+                    (g.wasted || g.waste_bytes ? ' · waste ~' + (g.wasted || g.waste_bytes) : '')
+                ),
+            ];
+            const text = lines.join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI()?.toast?.('Duplicate report copied', 'ok');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btnDupReport')?.addEventListener('click', copyDupReport);
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+                if (e.key === 'Enter' && e.target.id === 'folderPath') {
+                    e.preventDefault();
+                    scanWithSave();
+                }
+                return;
+            }
+            if (e.key === 's' || e.key === 'S') { e.preventDefault(); scanWithSave(); }
+            if (e.key === 'e' || e.key === 'E') { e.preventDefault(); copyDupReport(); }
+        });
         document.getElementById('btnOpenFolder').onclick = async () => {
             const folder = document.getElementById('folderPath').value.trim();
             if (!folder) return;

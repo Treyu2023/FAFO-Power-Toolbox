@@ -406,12 +406,18 @@
       font-size: 11px; color: var(--muted); line-height: 1.5;
     }
   </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 </head>
 <body>
-  <nav class="top">
+  <nav class="top" style="position:sticky;top:0;z-index:30">
     <a href="../Toolbox Launcher.html">← Toolbox</a>
     <span class="nav-title">Universal Converter</span>
-    <span class="nav-meta">Local · real-time · dual unit · no data leaves this PC*</span>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <a href="Amoritization loan calculator2.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:5px 10px;border-radius:999px" title="Counterpart">💰 Loan Calculator</a>
+      <button type="button" id="btnUcCopy" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid var(--line);padding:5px 10px;border-radius:999px;background:transparent;color:var(--accent)">📋 Copy result</button>
+      <button type="button" id="btnUcReset" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(248,113,113,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#f87171" title="Reset mode">Reset mode</button>
+      <span class="nav-meta">Local · dual unit · sticky prefs</span>
+    </div>
   </nav>
 
   <div class="layout">
@@ -2344,6 +2350,51 @@
       safe('refreshActive', () => refreshActiveMode(null));
     }
 
+    // --- QoL: copy result summary · persist mode already · reset · keyboard ---
+    function copyUcResult() {
+      const title = ($('pageTitle') && $('pageTitle').textContent) || document.title;
+      const mode = (() => { try { return localStorage.getItem('uc-mode') || 'resolution'; } catch { return 'resolution'; } })();
+      const panel = document.querySelector('.mode-panel:not([hidden],.hidden)') || document.querySelector('.mode-panel.active') || document.getElementById('mode-' + mode) || document.querySelector('main');
+      const metrics = Array.from(document.querySelectorAll('.metric .t, .metric .v')).slice(0, 24).map(n => n.textContent.trim()).filter(Boolean);
+      const inputs = Array.from((panel || document).querySelectorAll('input[type="number"], input[type="text"]:not([type=search])'))
+        .slice(0, 12)
+        .map(i => (i.id || i.name || 'field') + '=' + i.value)
+        .join(', ');
+      const lines = [
+        'Universal Converter — result',
+        '===========================',
+        'Mode: ' + title + ' (' + mode + ')',
+        'Inputs: ' + (inputs || '—'),
+        'Metrics: ' + (metrics.join(' · ') || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      const text = lines.join('\n');
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Result summary copied', 'ok');
+        }).catch(() => {});
+      }
+    }
+    document.getElementById('btnUcCopy')?.addEventListener('click', copyUcResult);
+    document.getElementById('btnUcReset')?.addEventListener('click', () => {
+      if (!confirm('Reset current mode fields to defaults?')) return;
+      try { localStorage.removeItem('uc-mode'); } catch {}
+      location.reload();
+    });
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 's' || e.key === 'S') copyUcResult();
+      if (e.key === '/') { e.preventDefault(); $('modeSearch')?.focus(); }
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'universal-converter',
+        helpLines: ['S — copy result summary', '/ — filter modes', 'Mode remembered in localStorage'],
+      });
+    } catch {}
+
     init();
   })();
   </script>
@@ -2396,5 +2447,6 @@
   } catch(_){}
 })();
 </script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 </body>
 </html>

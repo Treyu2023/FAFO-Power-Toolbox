@@ -131,13 +131,22 @@
 
         .chart-container { position: relative; height: 400px; width: 100%; margin-top: 30px; padding: 20px; box-sizing: border-box; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid var(--glass-border); }
     </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 </head>
 <body>
-    <nav style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid rgba(0,229,255,.15);background:rgba(5,5,12,.9);position:sticky;top:0;z-index:20;">
+    <nav style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid rgba(0,229,255,.15);background:rgba(5,5,12,.9);position:sticky;top:0;z-index:20;flex-wrap:wrap;gap:8px;">
         <a href="../Toolbox Launcher.html" style="color:#00e5ff;text-decoration:none;font-weight:600;font-size:13px;">← Toolbox</a>
         <span style="color:#00e5ff;font-size:12px;letter-spacing:1px;opacity:.85">LOAN / AMORTIZATION</span>
-        <span style="font-size:11px;color:#666">Local · no data leaves this PC</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <a href="Universal Converter.html" style="color:#00e5ff;text-decoration:none;font-size:11px;font-weight:700;border:1px solid rgba(0,229,255,.35);padding:5px 10px;border-radius:999px" title="Counterpart">🧮 Universal Converter</a>
+          <button type="button" id="btnLoanCsv" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(0,229,255,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#00e5ff">📋 CSV schedule</button>
+          <button type="button" id="btnLoanSaveA" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(255,215,0,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#ffd700" title="Save scenario A">A snapshot</button>
+          <button type="button" id="btnLoanSaveB" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(255,0,127,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#ff007f" title="Save scenario B">B snapshot</button>
+          <button type="button" id="btnLoanCompare" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,.2);padding:5px 10px;border-radius:999px;background:transparent;color:#ececec">A/B compare</button>
+          <button type="button" id="btnLoanReset" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(248,113,113,.4);padding:5px 10px;border-radius:999px;background:transparent;color:#f87171">Reset</button>
+        </div>
     </nav>
+    <div id="loanCompareOut" style="display:none;max-width:1100px;margin:12px auto 0;padding:12px 16px;border:1px solid rgba(0,229,255,.25);border-radius:12px;background:rgba(0,0,0,.35);font-size:12px;color:#c8d0e0;white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace"></div>
 
     <div class="container">
         <div class="glass-panel calculator-wrapper">
@@ -437,6 +446,158 @@
             });
         }
 
+        // --- QoL: persist · CSV schedule · A/B compare · reset confirm ---
+        const LS_LOAN = 'fafo_loan_calc_inputs';
+        const DEFAULTS = { principal:250000, rate:6.5, years:30, tax:2400, ins:1200, hoa:0, extra:200 };
+        let scenarioA = null, scenarioB = null, lastSchedule = null;
+
+        function readInputs() {
+            return {
+                principal: parseFloat(document.getElementById('num-principal').value) || 0,
+                rate: parseFloat(document.getElementById('num-rate').value) || 0,
+                years: parseFloat(document.getElementById('num-years').value) || 0,
+                tax: parseFloat(document.getElementById('num-tax').value) || 0,
+                ins: parseFloat(document.getElementById('num-ins').value) || 0,
+                hoa: parseFloat(document.getElementById('num-hoa').value) || 0,
+                extra: parseFloat(document.getElementById('num-extra').value) || 0,
+            };
+        }
+        function applyInputs(o) {
+            if (!o) return;
+            const map = [
+                ['num-principal','slide-principal','principal'],
+                ['num-rate','slide-rate','rate'],
+                ['num-years','slide-years','years'],
+                ['num-tax','slide-tax','tax'],
+                ['num-ins','slide-ins','ins'],
+                ['num-hoa','slide-hoa','hoa'],
+                ['num-extra','slide-extra','extra'],
+            ];
+            map.forEach(([n,s,k]) => {
+                if (o[k] == null) return;
+                const num = document.getElementById(n), slide = document.getElementById(s);
+                if (num) num.value = o[k];
+                if (slide) { if (+o[k] > +slide.max) slide.max = o[k]; slide.value = o[k]; }
+            });
+            updateEngine();
+        }
+        function snapshotMetrics() {
+            const i = readInputs();
+            const monthlyEscrow = (i.tax / 12) + (i.ins / 12) + i.hoa;
+            const standard = calcAmort(i.principal, i.rate, i.years, 0);
+            const accelerated = calcAmort(i.principal, i.rate, i.years, i.extra);
+            return {
+                ...i,
+                piti: standard.pmt + monthlyEscrow,
+                pi: standard.pmt,
+                interestStd: standard.totalInterest,
+                interestAcc: accelerated.totalInterest,
+                monthsStd: standard.months,
+                monthsAcc: accelerated.months,
+                interestSaved: Math.max(0, standard.totalInterest - accelerated.totalInterest),
+            };
+        }
+        function buildScheduleCsv() {
+            const i = readInputs();
+            const r = (i.rate / 100) / 12;
+            const n = Math.round(i.years * 12);
+            const pmt = r === 0 ? i.principal / n : i.principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+            let balance = i.principal;
+            const rows = ['month,payment,principal,interest,extra,balance'];
+            let months = 0;
+            const safety = Math.max(n * 3, n + 12);
+            while (balance > 0.01 && months < safety) {
+                const interest = balance * r;
+                let principalPaid = pmt - interest + (i.extra || 0);
+                if (balance < principalPaid) principalPaid = balance;
+                const payment = interest + principalPaid;
+                balance = Math.max(0, balance - principalPaid);
+                months++;
+                rows.push([months, payment.toFixed(2), (principalPaid - (i.extra||0) > 0 ? (principalPaid - (i.extra||0)) : principalPaid).toFixed(2), interest.toFixed(2), (i.extra||0).toFixed(2), balance.toFixed(2)].join(','));
+            }
+            lastSchedule = rows.join('\n');
+            return lastSchedule;
+        }
+        function persistInputs() {
+            try { localStorage.setItem(LS_LOAN, JSON.stringify(readInputs())); } catch (_) {}
+        }
+        const _updateEngine = updateEngine;
+        updateEngine = function () {
+            _updateEngine();
+            persistInputs();
+        };
+
+        document.getElementById('btnLoanCsv')?.addEventListener('click', async () => {
+            const csv = buildScheduleCsv();
+            try {
+                await navigator.clipboard.writeText(csv);
+                if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Amortization CSV copied (' + (csv.split('\n').length - 1) + ' rows)', 'ok');
+                else alert('CSV copied to clipboard');
+            } catch {
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'amortization-schedule.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }
+        });
+        document.getElementById('btnLoanSaveA')?.addEventListener('click', () => {
+            scenarioA = snapshotMetrics();
+            if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Scenario A saved', 'ok');
+        });
+        document.getElementById('btnLoanSaveB')?.addEventListener('click', () => {
+            scenarioB = snapshotMetrics();
+            if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Scenario B saved', 'ok');
+        });
+        document.getElementById('btnLoanCompare')?.addEventListener('click', () => {
+            const box = document.getElementById('loanCompareOut');
+            if (!scenarioA || !scenarioB) {
+                box.style.display = 'block';
+                box.textContent = 'Save both A and B snapshots first, then compare.';
+                return;
+            }
+            const fmt = (n) => '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+            const line = (label, a, b, money) => {
+                const da = money ? fmt(a) : a;
+                const db = money ? fmt(b) : b;
+                const diff = (typeof a === 'number' && typeof b === 'number') ? (b - a) : null;
+                const dstr = diff == null ? '' : (money ? '  Δ ' + fmt(diff) : '  Δ ' + diff);
+                return label.padEnd(18) + 'A ' + String(da).padStart(12) + '  B ' + String(db).padStart(12) + dstr;
+            };
+            box.style.display = 'block';
+            box.textContent = [
+                'Scenario A/B compare',
+                '====================',
+                line('Principal', scenarioA.principal, scenarioB.principal, true),
+                line('Rate %', scenarioA.rate, scenarioB.rate, false),
+                line('Term yrs', scenarioA.years, scenarioB.years, false),
+                line('Extra /mo', scenarioA.extra, scenarioB.extra, true),
+                line('PITI /mo', scenarioA.piti, scenarioB.piti, true),
+                line('Interest (std)', scenarioA.interestStd, scenarioB.interestStd, true),
+                line('Interest saved', scenarioA.interestSaved, scenarioB.interestSaved, true),
+                line('Months (acc)', scenarioA.monthsAcc, scenarioB.monthsAcc, false),
+            ].join('\n');
+        });
+        document.getElementById('btnLoanReset')?.addEventListener('click', () => {
+            if (!confirm('Reset loan inputs to defaults?')) return;
+            applyInputs(DEFAULTS);
+            try { localStorage.removeItem(LS_LOAN); } catch (_) {}
+            scenarioA = scenarioB = null;
+            const box = document.getElementById('loanCompareOut');
+            if (box) { box.style.display = 'none'; box.textContent = ''; }
+        });
+        try {
+            const saved = JSON.parse(localStorage.getItem(LS_LOAN) || 'null');
+            if (saved) applyInputs(saved);
+        } catch (_) {}
+        try {
+            window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+                toolId: 'loan-calc',
+                helpLines: ['CSV schedule copies full amortization', 'A/B snapshots compare two scenarios', 'Reset confirms before clearing'],
+            });
+        } catch (_) {}
+
         // --- Init ---
         VanillaTilt.init(document.querySelectorAll(".metric-card"), { max: 15, speed: 400, glare: true, "max-glare": 0.2 });
         updateEngine();
@@ -481,5 +642,6 @@
 })();
 </script>
 <script data-extra-polish="loan"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 </body>
 </html>

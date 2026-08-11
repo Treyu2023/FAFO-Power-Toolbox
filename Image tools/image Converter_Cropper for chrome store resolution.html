@@ -52,20 +52,54 @@
         ul { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }
         .custom-dims { display: none; gap: 10px; }
         .custom-dims.show { display: flex; flex-wrap: wrap; }
+        .preset-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+        .preset-chips button {
+            font-size: 10px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+            border: 1px solid rgba(0,243,255,.28); background: transparent; color: var(--muted);
+        }
+        .preset-chips button:hover, .preset-chips button.active {
+            color: var(--accent); border-color: var(--accent); background: rgba(0,243,255,.1);
+        }
+        .drop-target {
+            border: 2px dashed rgba(0,243,255,.25); border-radius: 12px; padding: 18px;
+            text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 12px;
+            transition: border-color .15s, background .15s, box-shadow .15s;
+        }
+        .drop-target.dragover {
+            border-color: var(--accent); background: rgba(0,243,255,.06);
+            box-shadow: 0 0 18px rgba(0,243,255,.2);
+        }
+        .kbd-line { font-size: 11px; color: var(--muted); margin-top: 8px; }
+        .kbd-line kbd {
+            font-family: Consolas, monospace; font-size: 10px; color: var(--accent);
+            padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
+        }
     </style>
 </head>
 <body>
     <nav class="nav">
         <a href="../Toolbox Launcher.html">← Toolbox</a>
         <span style="color:var(--accent);font-size:13px;letter-spacing:1px">IMAGE CROPPER / CONVERTER</span>
-        <a href="Image Comparitor With Slider.html" style="font-size:12px">Image Comparator →</a>
+        <div style="display:flex;gap:10px;align-items:center">
+            <a href="Image Comparitor With Slider.html" style="font-size:12px">Image Comparator →</a>
+            <a href="../Video Tools/Video Comparison Slider Tool.html" style="font-size:12px;color:var(--muted)">Video Compare</a>
+        </div>
     </nav>
 
     <div class="wrap">
         <h1>Image Processor</h1>
-        <p class="sub">Convert &amp; crop for Chrome Web Store tiles, extension icons, and custom promo sizes. All processing is local in the browser — nothing is uploaded.</p>
+        <p class="sub">Convert &amp; crop for Chrome Web Store tiles, extension icons, and custom promo sizes. All processing is local in the browser — nothing is uploaded.
+            <span class="kbd-line"><kbd>E</kbd> export · <kbd>1-4</kbd> quick sizes · <kbd>Esc</kbd> clear</span>
+        </p>
 
         <div class="panel">
+            <div class="drop-target" id="dropTarget">Drop an image here, or use the file picker below</div>
+            <div class="preset-chips" id="sizePresets" aria-label="Quick size presets">
+                <button type="button" data-size="small">440×280 promo</button>
+                <button type="button" data-size="icon128">128 icon</button>
+                <button type="button" data-size="screenshot1280">1280×800 shot</button>
+                <button type="button" data-size="og1200">1200×630 social</button>
+            </div>
             <div class="row">
                 <div class="field" style="flex:2">
                     <label for="fileInput">Source image</label>
@@ -112,7 +146,7 @@
                 <li><strong>Contain:</strong> fits the full image; black bars fill the rest (OLED-friendly).</li>
             </ul>
             <div id="previewWrap"><canvas id="preview"></canvas></div>
-            <div class="meta" id="meta">No image loaded</div>
+            <div class="meta" id="meta">No image loaded — drop a file or pick one to begin</div>
         </div>
     </div>
 
@@ -313,19 +347,94 @@
         exportBtn.addEventListener('click', exportImage);
         document.getElementById('btnReset').addEventListener('click', clearImage);
 
-        // Drag & drop
-        document.body.addEventListener('dragover', e => { e.preventDefault(); });
-        document.body.addEventListener('drop', e => {
-            e.preventDefault();
-            const file = e.dataTransfer?.files?.[0];
+        // Drag & drop polish
+        const dropTarget = document.getElementById('dropTarget');
+        function acceptImageFile(file) {
             if (!file || !file.type.startsWith('image/')) return;
             const dt = new DataTransfer();
             dt.items.add(file);
             fileInput.files = dt.files;
             fileInput.dispatchEvent(new Event('change'));
+        }
+        ['dragenter', 'dragover'].forEach(ev => {
+            document.body.addEventListener(ev, e => {
+                e.preventDefault();
+                dropTarget?.classList.add('dragover');
+            });
+        });
+        ['dragleave', 'drop'].forEach(ev => {
+            document.body.addEventListener(ev, e => {
+                if (ev === 'drop') e.preventDefault();
+                dropTarget?.classList.remove('dragover');
+            });
+        });
+        document.body.addEventListener('drop', e => {
+            e.preventDefault();
+            acceptImageFile(e.dataTransfer?.files?.[0]);
+        });
+        dropTarget?.addEventListener('click', () => fileInput.click());
+
+        // Remember last settings
+        const LS_CROP = 'fafo_image_cropper_settings_v1';
+        function saveCropSettings() {
+            try {
+                localStorage.setItem(LS_CROP, JSON.stringify({
+                    size: sizeSelect.value,
+                    mode: modeSelect.value,
+                    format: formatSelect.value,
+                    customW: customW.value,
+                    customH: customH.value,
+                }));
+            } catch (_) {}
+        }
+        function restoreCropSettings() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(LS_CROP) || 'null');
+                if (!raw) return;
+                if (raw.size && SIZES[raw.size]) sizeSelect.value = raw.size;
+                if (raw.mode) modeSelect.value = raw.mode;
+                if (raw.format) formatSelect.value = raw.format;
+                if (raw.customW) customW.value = raw.customW;
+                if (raw.customH) customH.value = raw.customH;
+            } catch (_) {}
+        }
+        sizeSelect.addEventListener('change', saveCropSettings);
+        modeSelect.addEventListener('change', saveCropSettings);
+        formatSelect.addEventListener('change', saveCropSettings);
+        customW.addEventListener('change', saveCropSettings);
+        customH.addEventListener('change', saveCropSettings);
+
+        document.getElementById('sizePresets')?.addEventListener('click', e => {
+            const btn = e.target.closest('[data-size]');
+            if (!btn) return;
+            sizeSelect.value = btn.dataset.size;
+            document.querySelectorAll('#sizePresets button').forEach(b => b.classList.toggle('active', b === btn));
+            syncCustomUi();
+            drawPreview();
+            saveCropSettings();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.key !== 'Escape') return;
+            if ((e.key === 'e' || e.key === 'E') && !exportBtn.disabled) {
+                e.preventDefault();
+                exportImage();
+            }
+            if (e.key === 'Escape') { e.preventDefault(); clearImage(); }
+            const sizeKeys = { '1': 'small', '2': 'icon128', '3': 'screenshot1280', '4': 'og1200' };
+            if (sizeKeys[e.key]) {
+                e.preventDefault();
+                sizeSelect.value = sizeKeys[e.key];
+                document.querySelectorAll('#sizePresets button').forEach(b =>
+                    b.classList.toggle('active', b.dataset.size === sizeKeys[e.key]));
+                syncCustomUi();
+                drawPreview();
+                saveCropSettings();
+            }
         });
 
         populateSizes();
+        restoreCropSettings();
         syncCustomUi();
         preview.width = 440;
         preview.height = 280;
@@ -379,5 +488,6 @@
   } catch(_){}
 })();
 </script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 </body>
 </html>

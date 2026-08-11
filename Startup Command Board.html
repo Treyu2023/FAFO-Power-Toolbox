@@ -6,6 +6,7 @@
   <title>FAFO Startup Command Board</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥</text></svg>">
   <script src="shared/aitoolbox-config.js"></script>
+  <script src="shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #070a10; --panel: #0e1520; --line: rgba(56,189,248,.22);
@@ -87,13 +88,16 @@
       overflow: auto; max-height: 160px; margin-top: 10px; color: #94a3b8;
     }
   </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 </head>
 <body>
   <div class="wrap">
-    <div class="nav">
-      <a href="Setup Configurator.html">⚙ Setup packs</a>
+    <div class="nav" style="position:sticky;top:0;z-index:20;background:rgba(7,10,16,.92);padding:8px 0;backdrop-filter:blur(8px)">
+      <a href="Setup Configurator.html" title="Counterpart · build install packs">⚙ Setup packs</a>
       <span class="tab active">🖥 Startup board</span>
+      <a href="System Tools/System Health Desk.html" title="Counterpart · system health">🩺 Health Desk</a>
       <a href="Toolbox Launcher.html">🧰 Launcher</a>
+      <button type="button" id="btnCopyFleet" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--accent);background:transparent;cursor:pointer">📋 Copy fleet</button>
       <span class="pill" id="pollPill">…</span>
     </div>
 
@@ -319,6 +323,39 @@
     el('btnRestartAll').onclick = () => runAction('restart', 'all');
     el('chkWinServers').onchange = () => savePrefsFromUi();
     el('chkWinApp').onchange = () => savePrefsFromUi();
+
+    el('btnCopyFleet')?.addEventListener('click', async () => {
+      const raw = el('rawStatus')?.textContent || '';
+      const lines = [
+        'Startup Command Board — fleet status',
+        '====================================',
+        'Poll: ' + (el('pollPill')?.textContent || '—'),
+        'Time: ' + new Date().toISOString(),
+        '',
+        raw || (lastStatus ? JSON.stringify(lastStatus, null, 2) : '(no status yet)'),
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        toast('Fleet status copied');
+      } catch (_) { toast('Copy failed', true); }
+    });
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'r' || e.key === 'R') refresh();
+      // Pro shell also uses R for report — ok both fire
+      if (e.key === 's' || e.key === 'S') el('btnCopyFleet')?.click();
+    });
+    // Remember last empty-state CTA visit tip
+    try {
+      const seen = localStorage.getItem('fafo_startup_board_seen');
+      if (!seen) localStorage.setItem('fafo_startup_board_seen', '1');
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'startup-command-board',
+        helpLines: ['S — copy fleet status', 'R — refresh', 'Counterparts: Setup packs · Health Desk'],
+      });
+    } catch (_) {}
 
     refresh();
     pollTimer = setInterval(refresh, 4000);

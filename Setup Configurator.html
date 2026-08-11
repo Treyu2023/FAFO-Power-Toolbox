@@ -6,6 +6,7 @@
   <title>FAFO Setup Configurator</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
   <script src="shared/aitoolbox-config.js"></script>
+  <script src="shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #070a10; --panel: #0e1520; --line: rgba(56,189,248,.22);
@@ -70,13 +71,15 @@
     }
     .toast.show { opacity: 1; }
   </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 </head>
 <body>
   <div class="wrap">
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;position:sticky;top:0;z-index:20;background:rgba(7,10,16,.92);padding:8px 0;backdrop-filter:blur(8px)">
       <span style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:rgba(56,189,248,.12)">⚙ Setup packs</span>
-      <a href="Startup Command Board.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid rgba(56,189,248,.22);color:var(--muted);text-decoration:none">🖥 Startup board</a>
+      <a href="Startup Command Board.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);text-decoration:none" title="Counterpart · live server control">🖥 Startup board</a>
       <a href="Toolbox Launcher.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid rgba(56,189,248,.22);color:var(--muted);text-decoration:none">🧰 Launcher</a>
+      <button type="button" id="btnCopySetupSummary" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--accent);background:transparent;cursor:pointer">📋 Copy pack summary</button>
     </div>
     <h1>⚙ FAFO Setup Configurator</h1>
     <p class="sub">
@@ -253,6 +256,68 @@
       }
     };
 
+    const LS_SETUP = 'fafo_setup_config_prefs';
+    function persistSetup() {
+      try {
+        localStorage.setItem(LS_SETUP, JSON.stringify({
+          packName: el('packName').value || '',
+          modules: Array.from(selected),
+        }));
+      } catch (_) {}
+    }
+    function restoreSetup() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_SETUP) || 'null');
+        if (!raw) return false;
+        if (raw.packName) el('packName').value = raw.packName;
+        if (Array.isArray(raw.modules) && raw.modules.length) {
+          selected = new Set(raw.modules);
+          selected.add('core');
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+    el('packName')?.addEventListener('change', persistSetup);
+    el('packName')?.addEventListener('input', persistSetup);
+    const _renderModules = renderModules;
+    renderModules = function () {
+      _renderModules();
+      persistSetup();
+      el('modules')?.querySelectorAll('[data-mod]').forEach(cb => {
+        cb.addEventListener('change', persistSetup);
+      });
+    };
+    el('btnCopySetupSummary')?.addEventListener('click', async () => {
+      const lines = [
+        'FAFO Setup Configurator — pack summary',
+        '=====================================',
+        'Pack name: ' + (el('packName').value || '—'),
+        'Modules (' + selected.size + '): ' + Array.from(selected).join(', '),
+        'Server: ' + (el('serverPill')?.textContent || '—'),
+        'Catalog: ' + (el('catalogPill')?.textContent || '—'),
+        'Hint: ' + (el('outHint')?.textContent || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        toast('Pack summary copied');
+      } catch (_) { toast('Copy failed'); }
+    });
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'b' || e.key === 'B') el('btnBuild')?.click();
+      if (e.key === 's' || e.key === 'S') el('btnCopySetupSummary')?.click();
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'setup-configurator',
+        helpLines: ['B — build pack', 'S — copy pack summary', 'Selections remembered in localStorage'],
+      });
+    } catch (_) {}
+
     async function boot() {
       try {
         const h = await fetch(apiBase() + '/health');
@@ -275,10 +340,11 @@
         el('catalogPill').textContent = (catalog.modules || []).length + ' modules';
         el('catalogPill').className = 'pill ok';
         renderWorkflows();
+        if (restoreSetup()) renderModules();
       } catch (e) {
         el('catalogPill').textContent = 'Catalog missing';
         el('catalogPill').className = 'pill bad';
-        el('modules').innerHTML = '<p class="note">' + (e.message || e) + '</p>';
+        el('modules').innerHTML = '<p class="note">' + (e.message || e) + '</p><p class="note"><a href="Startup Command Board.html">Open Startup board</a> while catalog is unavailable.</p>';
       }
     }
     boot();

@@ -1890,6 +1890,7 @@
       filter: grayscale(0.6);
     }
   </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 </head>
 <body>
   <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
@@ -1924,6 +1925,12 @@
     <header>
       <h1>⌨️ TYPING ASSISTANT TRAINER</h1>
       <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center">
+        <a href="Bloodmoon Survivor.html" style="font-size:11px;font-weight:700;color:#c4b5fd;text-decoration:none;border:1px solid rgba(167,139,250,.4);padding:5px 10px;border-radius:999px" title="Break · Vampire survivors-style">🦇 Bloodmoon</a>
+        <a href="Empire Seed.html" style="font-size:11px;font-weight:700;color:#fbbf24;text-decoration:none;border:1px solid rgba(251,191,36,.4);padding:5px 10px;border-radius:999px" title="Break · 4X empire builder">👑 Empire Seed</a>
+        <button type="button" class="btn ghost" id="btnExportHs" style="font-size:11px">📋 Export high scores</button>
+        <span style="font-size:11px;color:var(--muted)">Tab restart · sound prefs persist · ? for Pro help</span>
+      </div>
     </header>
 
     <!-- Setup -->
@@ -2277,7 +2284,8 @@
         </div>
         <ul class="hs-list" id="hsList"></ul>
         <div class="empty-hist" id="emptyHs">No high scores yet — finish a run and save your name.</div>
-        <div style="margin-top:10px">
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px">
+          <button type="button" class="btn ghost" id="btnExportHs2">Export high scores</button>
           <button type="button" class="btn ghost" id="btnClearHs">Clear high scores</button>
         </div>
       </div>
@@ -5854,6 +5862,44 @@
       renderHighScores();
     }
   });
+  function exportHighScores() {
+    const data = loadJson(KEYS.highscores, {});
+    const hist = loadJson(KEYS.history, []);
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      player: getPlayerName?.() || localStorage.getItem(KEYS.name) || '',
+      highscores: data,
+      recentHistory: hist.slice(0, 20),
+    };
+    const text = JSON.stringify(payload, null, 2);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        try { AIToolboxUI?.toast?.('High scores JSON copied', 'ok'); } catch (_) {}
+      }).catch(() => {
+        const blob = new Blob([text], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'typing-highscores.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    } else {
+      const blob = new Blob([text], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'typing-highscores.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  }
+  $('btnExportHs')?.addEventListener('click', exportHighScores);
+  $('btnExportHs2')?.addEventListener('click', exportHighScores);
+  try {
+    window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+      toolId: 'typing-trainer',
+      helpLines: ['Tab — restart test', 'Export high scores via header button', 'Break links: Bloodmoon · Empire Seed'],
+    });
+  } catch (_) {}
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
@@ -5970,5 +6016,6 @@
   } catch(_){}
 })();
 </script>
+  <script src="shared/aitoolbox-pro.js"></script>
 </body>
 </html>

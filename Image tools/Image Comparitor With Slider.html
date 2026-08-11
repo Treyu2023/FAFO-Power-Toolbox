@@ -34,6 +34,23 @@
             background: rgba(5,5,12,.9); border: 1px solid rgba(0,243,255,.3);
         }
         a.toolbox-back:hover { box-shadow: var(--neon-glow); }
+        .counterpart-bar {
+            display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+            padding: 6px 16px 0 120px; font-size: 11px;
+        }
+        .counterpart-bar a, .counterpart-bar button {
+            color: var(--neon-accent); text-decoration: none; font-weight: 600;
+            padding: 4px 10px; border: 1px solid rgba(0,243,255,.3); border-radius: 6px;
+            background: transparent; cursor: pointer; font-size: 11px;
+        }
+        .counterpart-bar a.muted { color: #aaa; border-color: rgba(255,255,255,.12); }
+        .kbd-hint-line {
+            font-size: 10px; color: #666; margin-top: 6px; text-align: center;
+        }
+        .kbd-hint-line kbd {
+            font-family: Consolas, monospace; font-size: 10px; color: var(--neon-accent);
+            padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
+        }
         .control-panel {
             flex: 0 0 auto;
             padding: 16px 20px;
@@ -388,9 +405,17 @@
             transition: opacity 0.3s;
         }
     </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 </head>
 <body>
 <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+<div class="counterpart-bar">
+  <a href="../Video Tools/Video Comparison Slider Tool.html">🎬 Video Compare</a>
+  <a href="../Movie File Manager/Compare Hub.html#image">⇄ Compare Hub</a>
+  <a class="muted" href="image Converter_Cropper for chrome store resolution.html">✂️ Cropper</a>
+  <button type="button" id="btn-mirror-ab" title="Reset slider to 50% center split">🪞 Mirror 50%</button>
+  <button type="button" id="btn-copy-img-report" title="Copy pair report">📋 Report</button>
+</div>
 
     <div class="control-panel">
         <h2>Pro AI Image Comparator</h2>
@@ -475,6 +500,9 @@
                 <span>L-Drag:</span> Slider |
                 <span>R-Drag:</span> Pan |
                 <span>Scroll:</span> Zoom
+            </div>
+            <div class="kbd-hint-line">
+                <kbd>W</kbd> Swap · <kbd>M</kbd> Mirror 50% · <kbd>R</kbd> Report · <kbd>F</kbd> Fit · <kbd>1</kbd> 1:1 · <kbd>S</kbd> Snapshot · <kbd>P</kbd> Pairs
             </div>
         </div>
     </div>
@@ -572,6 +600,7 @@
 <script src="../shared/aitoolbox-ui.js"></script>
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const DB_NAME = 'AIImageComparator';
         const DB_VER = 1;
@@ -1017,6 +1046,56 @@
                 const sA = document.getElementById('status-after');
                 const t = sB.innerText; sB.innerText = sA.innerText; sA.innerText = t;
             }
+        });
+
+        function mirrorImageAB() {
+            try {
+                if (typeof setSliderPosition === 'function') setSliderPosition(0.5);
+                else sliderPercent = 0.5;
+            } catch (_) { sliderPercent = 0.5; }
+            const t = document.getElementById('toastMsg');
+            if (t) {
+                t.textContent = 'Slider centered 50%';
+                t.classList.add('show');
+                setTimeout(() => t.classList.remove('show'), 1200);
+            }
+        }
+        document.getElementById('btn-mirror-ab')?.addEventListener('click', mirrorImageAB);
+
+        async function copyImgPairReport() {
+            const left = document.getElementById('status-before')?.innerText || '—';
+            const right = document.getElementById('status-after')?.innerText || '—';
+            const text = [
+                'FAFO Image Comparator — pair report',
+                'Time: ' + new Date().toISOString(),
+                'Before: ' + left,
+                'After: ' + right,
+                'Swapped: ' + !!isSwapped,
+                'Slider %: ' + Math.round((sliderPercent || 0) * 100),
+                'Mode: ' + (document.getElementById('compare-mode')?.value || ''),
+                'Orient: ' + (document.getElementById('split-orient')?.value || ''),
+                'URL: ' + location.href,
+            ].join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                if (typeof showToast === 'function') showToast('Pair report copied');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btn-copy-img-report')?.addEventListener('click', copyImgPairReport);
+
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            if (e.key === 'w' || e.key === 'W') { e.preventDefault(); document.getElementById('btn-swap')?.click(); }
+            if (e.key === 'm' || e.key === 'M') { e.preventDefault(); mirrorImageAB(); }
+            if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyImgPairReport(); }
+            if (e.key === 'f' || e.key === 'F') { e.preventDefault(); document.getElementById('btn-fit')?.click(); }
+            if (e.key === '1') { e.preventDefault(); document.getElementById('btn-100')?.click(); }
+            if (e.key === 's' || e.key === 'S') {
+                if (e.ctrlKey) return;
+                e.preventDefault();
+                document.getElementById('btn-export')?.click();
+            }
+            if (e.key === 'p' || e.key === 'P') { e.preventDefault(); document.getElementById('btn-pairs')?.click(); }
         });
 
         document.getElementById('btn-export').addEventListener('click', () => {

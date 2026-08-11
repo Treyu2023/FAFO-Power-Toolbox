@@ -750,6 +750,10 @@
             <button class="btn" id="btnServerConsole" style="display:none" data-tip-title="Console" data-tip="Visible server window — use when the browser blocks silent Start.">🖥 Console</button>
             <span class="trust-status-bar" id="trustStatusBar" data-tip-title="Trust active" data-tip="Some rename confirmations are skipped. Reset per-type in Settings → Trust.">🔓 Trust active</span>
             <button class="btn" id="btnHome" data-tip="Return to the main toolbox launcher">← Launcher</button>
+            <a class="btn" href="Media Hub.html" data-tip="Library + Duplicates + Organizer shell" style="text-decoration:none;display:inline-flex;align-items:center">🗂️ Hub</a>
+            <a class="btn" href="Compare Hub.html#match" data-tip="Guided match + pair review + sliders" style="text-decoration:none;display:inline-flex;align-items:center">⇄ Compare</a>
+            <button class="btn" id="btnLibReport" data-tip-title="Session report" data-tip="Copy a library session summary (counts, filters, server) to the clipboard.">📋 Report</button>
+            <span class="kbd-hint-chip" id="libKbdHint" title="Primary hotkeys" style="font-size:10px;color:var(--muted);padding:4px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px;white-space:nowrap"><kbd style="font:10px Consolas;color:var(--accent);padding:1px 4px;border:1px solid rgba(0,243,255,.3);border-radius:3px">Space</kbd> play · <kbd style="font:10px Consolas;color:var(--accent);padding:1px 4px;border:1px solid rgba(0,243,255,.3);border-radius:3px">1-3</kbd> presets · <kbd style="font:10px Consolas;color:var(--accent);padding:1px 4px;border:1px solid rgba(0,243,255,.3);border-radius:3px">[ ]</kbd> nav</span>
             <button class="btn" id="btnAddDir" data-tip-title="Watch folder" data-tip="Add a folder to the library index. Files are scanned and searchable — nothing is moved or copied.">+ Folder</button>
             <button class="btn" id="btnNativeDir" data-tip-title="Native Picker" data-tip="Windows folder picker via Python server. Needs green pill — use ▶ Start Server on this page if offline.">📂 Pick</button>
             <button class="btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new/moved/deleted files. Also re-imports Explorer tags and auto-relinks pairs from UP-#### tags on disk.">↻ Rescan</button>
@@ -1507,6 +1511,7 @@
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const PAGE_SIZE = 80;
         const GROUP_FETCH_LIMIT = 1000;
@@ -4247,6 +4252,29 @@
 
         // --- Events ---
         document.getElementById('btnHome').onclick = () => location.href = '../Toolbox Launcher.html';
+        document.getElementById('btnLibReport')?.addEventListener('click', async () => {
+            const server = document.getElementById('serverStatus')?.textContent || 'unknown';
+            const nItems = (typeof allItems !== 'undefined' && Array.isArray(allItems)) ? allItems.length
+                : (typeof items !== 'undefined' && Array.isArray(items)) ? items.length : '?';
+            const nSel = (typeof selected !== 'undefined' && selected?.size != null) ? selected.size : 0;
+            const text = [
+                'FAFO Media Library — session report',
+                'Time: ' + new Date().toISOString(),
+                'Server: ' + server.trim(),
+                'Items (approx): ' + nItems,
+                'Selected: ' + nSel,
+                'URL: ' + location.href,
+                '',
+                'Hotkeys: Space play · 1-3 presets · [ ] prev/next · C capture · Ctrl+D duplicates',
+                'Counterparts: Media Hub · Compare Hub · Guided Match · Pair Review · VSR · Organizer',
+            ].join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI()?.toast?.('Library report copied', 'ok') || toast?.('Library report copied', 'ok');
+            } catch (_) {
+                prompt('Copy report:', text);
+            }
+        });
         document.getElementById('btnAddDir').onclick = addDirectory;
         document.getElementById('btnAddDir2').onclick = addDirectory;
         document.getElementById('btnNativeDir').onclick = async () => {

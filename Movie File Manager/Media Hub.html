@@ -67,22 +67,41 @@
       transition: opacity 0.3s;
     }
     .loading.hide { opacity: 0; }
+    .server-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,200,0,.4);
+      color: #ffc800; background: rgba(255,200,0,.08); white-space: nowrap;
+    }
+    .server-badge.ok { color: var(--ok); border-color: rgba(0,255,136,.45); background: rgba(0,255,136,.1); }
+    .server-badge.bad { color: #ff6b8a; border-color: rgba(255,68,102,.45); background: rgba(255,68,102,.1); cursor: pointer; }
+    .kbd-hint {
+      font-size: 10px; color: var(--muted); padding: 4px 8px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.08); white-space: nowrap;
+    }
+    .kbd-hint kbd {
+      font-family: Consolas, monospace; font-size: 10px; color: var(--accent);
+      padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
+      background: rgba(0,0,0,.35);
+    }
   </style>
 </head>
 <body>
   <header class="hub-bar">
     <h1>🗂️ MEDIA HUB</h1>
+    <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
     <div class="hub-tabs" id="hubTabs" role="tablist">
       <button type="button" class="hub-tab active" data-tab="library" role="tab">Library</button>
       <button type="button" class="hub-tab" data-tab="duplicates" role="tab">Duplicates</button>
       <button type="button" class="hub-tab" data-tab="organizer" role="tab">Organizer</button>
     </div>
     <div class="hub-meta" id="hubMeta">Browse &amp; tag here · pair with <strong>Guided Match</strong> in Compare Hub · dups &amp; rename in tabs.</div>
+    <span class="kbd-hint" title="Keyboard"><kbd>1</kbd> Lib · <kbd>2</kbd> Dups · <kbd>3</kbd> Org · <kbd>R</kbd> report</span>
     <div class="hub-actions">
       <a href="../Toolbox Launcher.html">← Launcher</a>
       <a href="Compare Hub.html#match" title="Guided match + pair review + sliders">🎯 Guided Match</a>
       <a href="Compare Hub.html" title="Pair review + video/image comparators">⇄ Compare Hub</a>
       <a href="VSR Pipeline Manager.html">⚡ VSR</a>
+      <button type="button" id="btnCopyReport" title="Copy hub session summary to clipboard">📋 Report</button>
       <button type="button" id="btnPopout" title="Open this tab full-window">↗ Pop out</button>
     </div>
   </header>
@@ -92,6 +111,7 @@
   </div>
 
   <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     (function () {
       const TABS = {
@@ -115,14 +135,36 @@
       const frame = document.getElementById('hubFrame');
       const loading = document.getElementById('loading');
       const meta = document.getElementById('hubMeta');
+      const LS_TAB = 'fafo_media_hub_last_tab';
       let current = 'library';
 
       function tabFromHash() {
         const h = (location.hash || '').replace(/^#/, '').toLowerCase();
         if (h === 'dupes' || h === 'duplicates' || h === 'duplicate') return 'duplicates';
         if (h === 'organizer' || h === 'org' || h === 'organize') return 'organizer';
-        if (h === 'library' || h === 'lib' || h === '') return 'library';
+        if (h === 'library' || h === 'lib') return 'library';
+        if (h === '' || h === 'media') {
+          try {
+            const last = localStorage.getItem(LS_TAB);
+            if (last && TABS[last]) return last;
+          } catch (_) {}
+          return 'library';
+        }
         return TABS[h] ? h : 'library';
+      }
+
+      async function pingServer() {
+        const badge = document.getElementById('serverBadge');
+        if (!badge) return;
+        try {
+          const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
+          badge.textContent = on ? '● Online' : '○ Offline';
+          badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
+          badge.title = on ? 'Toolbox server online' : 'Server offline — click to open launcher / start server';
+        } catch (_) {
+          badge.textContent = '○ Offline';
+          badge.className = 'server-badge bad';
+        }
       }
 
       async function resolveSrc(tabId) {
@@ -153,6 +195,7 @@
         const t = TABS[id];
         document.title = t.title + ' — Media Hub';
         meta.innerHTML = t.meta;
+        try { localStorage.setItem(LS_TAB, id); } catch (_) {}
         if (pushHash !== false) {
           const hash = id === 'library' ? 'library' : id;
           if (location.hash.replace(/^#/, '') !== hash) {
@@ -165,6 +208,27 @@
         frame.src = await resolveSrc(id);
       }
 
+      async function copyHubReport() {
+        const t = TABS[current] || TABS.library;
+        const lines = [
+          'FAFO Media Hub — session report',
+          'Time: ' + new Date().toISOString(),
+          'Active tab: ' + (t.title || current),
+          'Hash: ' + (location.hash || '#library'),
+          'URL: ' + location.href,
+          'Server: ' + (document.getElementById('serverBadge')?.textContent || 'unknown'),
+          '',
+          'Counterparts: Compare Hub · Guided Match · VSR · Duplicates · Organizer',
+        ];
+        const text = lines.join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          window.AIToolboxUI?.toast?.('Hub report copied', 'ok');
+        } catch (_) {
+          prompt('Copy report:', text);
+        }
+      }
+
       document.getElementById('hubTabs').addEventListener('click', (e) => {
         const btn = e.target.closest('.hub-tab');
         if (!btn) return;
@@ -174,16 +238,27 @@
       document.getElementById('btnPopout').addEventListener('click', async () => {
         window.open(await resolveSrc(current), '_blank');
       });
+      document.getElementById('btnCopyReport').addEventListener('click', copyHubReport);
+      document.getElementById('serverBadge')?.addEventListener('click', () => {
+        if (document.getElementById('serverBadge').classList.contains('bad')) {
+          location.href = '../Toolbox Launcher.html';
+        } else {
+          pingServer();
+        }
+      });
 
       window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
 
       // Boot
       showTab(tabFromHash(), true);
-      // polish: number keys switch tabs
+      pingServer();
+      setInterval(pingServer, 20000);
+      // polish: number keys switch tabs · R = copy report
       document.addEventListener('keydown', function hubTabKeys(e){
         if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
         const map = { '1':'library', '2':'duplicates', '3':'organizer' };
         if (map[e.key]) showTab(map[e.key], true);
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyHubReport(); }
       });
     })();
   </script>

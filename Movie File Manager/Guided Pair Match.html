@@ -201,6 +201,15 @@
       .key-chip .key-label { font-size: 9px; }
       body { padding-bottom: 140px; }
     }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+    .preset-chip {
+      font-size: 10px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(0,243,255,.28); background: transparent; color: var(--muted);
+    }
+    .preset-chip:hover, .preset-chip.active {
+      color: var(--accent); border-color: var(--accent); background: rgba(0,243,255,.1);
+    }
+    .empty-cta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -212,7 +221,8 @@
     <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#match'">Compare Hub</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">Media Hub</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">Pair Review</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'" title="Review accepted pairs">🔎 Pair Review</button>
+    <button class="ui-btn ghost" type="button" id="btnExportSession" title="Copy session report to clipboard">📋 Export</button>
   </div>
 
   <div class="wrap">
@@ -236,6 +246,14 @@
         <input type="checkbox" id="preferSources" checked> Sources first
       </label>
       <span id="statusLine" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      <div class="preset-row" style="width:100%">
+        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Quick presets</span>
+        <button type="button" class="preset-chip" data-preset="strict" title="Fewer tries, higher score">Strict 5 / 60%</button>
+        <button type="button" class="preset-chip" data-preset="balanced" title="Default balance">Balanced 10 / 40%</button>
+        <button type="button" class="preset-chip" data-preset="wide" title="More candidates">Wide 15 / 30%</button>
+        <button type="button" class="preset-chip" data-preset="video" title="Video only">Video only</button>
+        <button type="button" class="preset-chip" data-preset="image" title="Image only">Image only</button>
+      </div>
     </div>
 
     <div class="progress" id="progressBox">
@@ -258,6 +276,11 @@
       Use the <strong>key legend</strong> at the bottom — keys light up when pressed.<br>
       <strong>Z / ⌫</strong> step back (history up to 50) · <strong>double-tap Z</strong> jumps back 5 · <strong>F</strong> forward 1.<br><br>
       Needs the toolbox server and a scanned library.
+      <div class="empty-cta">
+        <button class="ui-btn primary" type="button" id="btnEmptyStart">▶ Start matching</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Open Library</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">Go to Pair Review →</button>
+      </div>
     </div>
 
     <div id="activeUI" style="display:none">
@@ -335,6 +358,7 @@
   <script src="../shared/aitoolbox-version.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -1009,6 +1033,7 @@
 
     // Wire buttons
     document.getElementById('btnStart').onclick = () => startQueue(false);
+    document.getElementById('btnEmptyStart')?.addEventListener('click', () => startQueue(false));
     document.getElementById('btnReset').onclick = () => {
       if (!confirm('Clear session rejections, counters, and history?')) return;
       state.rejected = {};
@@ -1027,6 +1052,55 @@
     document.getElementById('btnPlay').onclick = () => runAction('play');
     document.getElementById('btnUndo').onclick = () => requestBack();
     document.getElementById('btnRedo').onclick = () => redoSteps(1);
+
+    async function exportSessionReport() {
+      const text = [
+        'FAFO Guided Pair Match — session report',
+        'Time: ' + new Date().toISOString(),
+        'Matched: ' + (state.matched || 0),
+        'Skipped: ' + (state.skipped || 0),
+        'Exhausted: ' + (state.exhausted || 0),
+        'Anchor: ' + ((state.anchorIndex || 0) + 1) + ' / ' + (state.anchors?.length || 0),
+        'Try: ' + ((state.tryIndex || 0) + 1) + ' / ' + (document.getElementById('maxTries')?.value || 10),
+        'Min score %: ' + (document.getElementById('minPct')?.value || ''),
+        'Kind filter: ' + (document.getElementById('kindFilter')?.value || 'all'),
+        'Sources first: ' + !!document.getElementById('preferSources')?.checked,
+        '',
+        '— Session log —',
+        (state.log || []).slice(-80).join('\n') || '(empty)',
+      ].join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('Session report copied', 'ok');
+      } catch (_) {
+        prompt('Copy session report:', text);
+      }
+    }
+    document.getElementById('btnExportSession')?.addEventListener('click', exportSessionReport);
+
+    document.querySelectorAll('.preset-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const p = chip.dataset.preset;
+        document.querySelectorAll('.preset-chip').forEach(c => c.classList.toggle('active', c === chip));
+        if (p === 'strict') {
+          document.getElementById('maxTries').value = 5;
+          document.getElementById('minPct').value = 60;
+        } else if (p === 'balanced') {
+          document.getElementById('maxTries').value = 10;
+          document.getElementById('minPct').value = 40;
+          document.getElementById('kindFilter').value = '';
+        } else if (p === 'wide') {
+          document.getElementById('maxTries').value = 15;
+          document.getElementById('minPct').value = 30;
+        } else if (p === 'video') {
+          document.getElementById('kindFilter').value = 'video';
+        } else if (p === 'image') {
+          document.getElementById('kindFilter').value = 'image';
+        }
+        saveSession();
+        toast('Preset: ' + chip.textContent.trim(), 'ok');
+      });
+    });
 
     // Legend chips clickable
     document.getElementById('keyLegend').addEventListener('click', (e) => {

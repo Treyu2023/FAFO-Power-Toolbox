@@ -875,6 +875,16 @@
         .tool-card .badge.offline-ok {
             border-color: rgba(0,255,136,0.35); color: #00ff88;
         }
+        .tool-card .counterpart-hint {
+            display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px;
+        }
+        .tool-card .cp-chip {
+            font-size: 9px; font-weight: 700; letter-spacing: .02em;
+            padding: 2px 7px; border-radius: 999px;
+            border: 1px solid rgba(0,243,255,.22); color: rgba(180,230,255,.85);
+            background: rgba(0,243,255,.06); white-space: nowrap; max-width: 100%;
+            overflow: hidden; text-overflow: ellipsis;
+        }
         .tool-card .badge.local-only {
             border-color: rgba(124,92,255,0.4); color: #a78bfa;
         }
@@ -1063,6 +1073,7 @@
             <strong>S1</strong> <code style="color:var(--accent)">127.0.0.87:18765</code> HTML Toolbox ·
             <strong>S2</strong> <code style="color:var(--accent)">127.0.0.1:8765</code> FAFO Tagger
             · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">Ctrl+K</kbd> command palette
+            · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">?</kbd> keyboard help
             · Settings · Recents · <span id="appVersion" style="opacity:0.65"></span>
         </p>
     </header>
@@ -1287,6 +1298,9 @@
                     <tr><td>Ctrl + ,</td><td>Open this settings drawer</td></tr>
                     <tr><td>Esc</td><td>Close palette / settings (in tools: back to launcher)</td></tr>
                     <tr><td>↑ ↓ Enter</td><td>Navigate palette results</td></tr>
+                    <tr><td>? / Ctrl+/</td><td>In any tool: Pro help (counterparts, focus, report)</td></tr>
+                    <tr><td>F / D / R</td><td>In tools: Focus mode · Density · Copy report</td></tr>
+                    <tr><td>C / L</td><td>In tools: First counterpart · Launcher</td></tr>
                 </table>
             </div>
             <div class="settings-block">
@@ -1377,8 +1391,10 @@
     </div>
 
     <p class="hint-bar">
-        <span>Tip:</span> Pin this launcher to your taskbar. In Chrome: ⋮ → More tools → Create shortcut → Open as window.
-        Icons: personal (this browser) override shared <code style="color:var(--accent)">assets/tool-icons</code> (all users) then emoji.
+        <span>Tip:</span> Press <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">?</kbd> or <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">Ctrl+/</kbd> for keyboard help (also in Settings).
+        Cards show <strong>counterpart pair chips</strong> when related tools exist · Recents merge visits from every Pro-shell tool ·
+        In tools: <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">C</kbd> jumps the pair · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">R</kbd> report · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">F</kbd> focus.
+        Icons: personal override shared <code style="color:var(--accent)">assets/tool-icons</code> then emoji.
         <span id="iconStatus" style="display:block;margin-top:6px;color:var(--muted)"></span>
     </p>
 
@@ -1396,6 +1412,7 @@
     <script src="shared/aitoolbox-ui.js"></script>
     <script src="shared/aitoolbox-cinematic.js"></script>
     <script src="shared/aitoolbox-launcher-fx.js"></script>
+  <script src="shared/aitoolbox-pro.js"></script>
     <!-- Owner-only private tiles. 404 on public clones is fine. -->
     <script src="private/launcher-private.js"></script>
     <script>
@@ -2050,11 +2067,62 @@
         function saveToolVisibility() {
             try { localStorage.setItem(VIS_KEY, JSON.stringify(toolVisibility)); } catch (e) { /* ignore */ }
         }
+        /** Map AIToolboxPro registry ids → launcher TOOLS[].id */
+        const PRO_TO_LAUNCHER = {
+            'launcher': null,
+            'commander-console': 'commander-site-console',
+            'commander-hud': 'commander-status-hud',
+            'phone-assist': 'phone-assist-navigator',
+            'pre-reload': 'pre-reload-punch-list',
+            'typing-trainer': 'typing-assistant-trainer',
+            'bloodmoon': 'bloodmoon-survivor',
+            'empire-seed': 'empire-seed',
+            'loan-calc': 'loan-calc',
+            'universal-converter': 'universal-converter',
+            'git-manager': 'git-manager',
+            'solar-debris': 'solar-debris-tracker',
+            'setup-configurator': 'setup-configurator',
+            'startup-command-board': 'startup-command-board',
+            'sys-health-desk': 'sys-health-desk',
+            'media-hub': 'media-hub',
+            'compare-hub': 'compare-hub',
+            'health-dashboard': 'health-dashboard',
+            'pc-diagnostics': 'pc-diagnostics',
+            'event-viewer': 'event-viewer',
+            'duplicate-finder': 'duplicate-finder',
+        };
+        function mapProRecentId(proId) {
+            if (!proId) return null;
+            if (toolById(proId)) return proId;
+            return PRO_TO_LAUNCHER[proId] || null;
+        }
         function loadRecents() {
             try {
                 const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
                 recentIds = Array.isArray(raw) ? raw.filter(id => typeof id === 'string') : [];
             } catch (e) { recentIds = []; }
+            // Merge recents recorded by AIToolboxPro across tools (if available)
+            try {
+                const proList = (window.AIToolboxPro && typeof AIToolboxPro.loadRecents === 'function')
+                    ? AIToolboxPro.loadRecents()
+                    : [];
+                if (Array.isArray(proList) && proList.length) {
+                    const mapped = proList
+                        .map(x => mapProRecentId(x && (x.id || x)))
+                        .filter(id => id && toolById(id));
+                    // Pro list is newest-first; interleave without losing launcher-local order priority
+                    const merged = [];
+                    const seen = new Set();
+                    // Prefer launcher-local first (user opened from launcher), then pro
+                    recentIds.concat(mapped).forEach(id => {
+                        if (seen.has(id)) return;
+                        seen.add(id);
+                        merged.push(id);
+                    });
+                    recentIds = merged.slice(0, MAX_RECENTS);
+                    saveRecents();
+                }
+            } catch (e) { /* ignore */ }
         }
         function saveRecents() {
             try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentIds.slice(0, MAX_RECENTS))); } catch (e) { /* ignore */ }
@@ -2379,6 +2447,27 @@
             if (tool.needsServer) badges.push('<span class="badge server" title="Full features need ▶ Start Server">Server</span>');
             if (tool.offlineOk) badges.push('<span class="badge offline-ok" title="Works fully offline in the browser">Offline OK</span>');
             if (tool.localOnly) badges.push('<span class="badge local-only" title="Local desktop / GitHub — not Chrome Web Store">Local</span>');
+            // Counterpart hints from AIToolboxPro registry (when loaded)
+            let counterpartHint = '';
+            try {
+                const pro = window.AIToolboxPro;
+                if (pro && pro.BY_ID) {
+                    // reverse-map launcher id → pro id
+                    let proId = tool.id;
+                    const rev = Object.entries(PRO_TO_LAUNCHER).find(([, lid]) => lid === tool.id);
+                    if (rev) proId = rev[0];
+                    const meta = pro.BY_ID[proId] || Object.values(pro.BY_ID).find(m => m && (m.path || '').toLowerCase().includes((tool.file || '').toLowerCase().split('/').pop()?.replace('.html','') || '___'));
+                    const cps = (meta && meta.counterparts) || [];
+                    const labels = cps.map(id => {
+                        const m = pro.BY_ID[id];
+                        return m ? ((m.emoji || '') + ' ' + m.title).trim() : id;
+                    }).filter(Boolean).slice(0, 3);
+                    if (labels.length) {
+                        counterpartHint = `<div class="counterpart-hint" title="Related tools (C jumps first pair inside tool)">${labels.map(l => `<span class="cp-chip">${l}</span>`).join('')}</div>`;
+                        badges.push(`<span class="badge" title="Has ${labels.length} counterpart link(s)" style="border-color:rgba(0,243,255,.35);color:#7ee7ff">Pairs</span>`);
+                    }
+                }
+            } catch (_) {}
             const sec = sectionForTool(tool);
             // Card body shows short desc; full tip is on hover
             const shortDesc = tool.desc || '';
@@ -2386,6 +2475,7 @@
                 <div class="icon-wrap"></div>
                 <h3>${tool.name}</h3>
                 <p>${shortDesc}</p>
+                ${counterpartHint}
                 <div class="badges">${badges.join('')}</div>
                 <div class="cat">${sec ? sec.name + ' · ' : ''}${tool.category}${parentName ? ' · ' + parentName : ''}${source ? ' · ' + source : ''}</div>`;
             const wrap = card.querySelector('.icon-wrap');
@@ -4028,6 +4118,17 @@
             } catch (err) {
                 console.warn('[Launcher] FX skipped', err);
             }
+
+            // Merge cross-tool Pro recents (from aitoolbox-pro.js) into launcher chips
+            try {
+                if (window.AIToolboxPro && AIToolboxPro.loadRecents) {
+                    const pro = AIToolboxPro.loadRecents() || [];
+                    pro.forEach(r => {
+                        if (r && r.id && typeof toolById === 'function' && toolById(r.id)) pushRecent(r.id);
+                    });
+                    if (typeof saveRecents === 'function') saveRecents();
+                }
+            } catch (e) { console.warn('[Launcher] pro recents merge', e); }
 
             // Last themed section is restored via loadSavedSection() already called above
             await renderTools();

@@ -190,8 +190,8 @@
     <div class="nav-links">
       <span id="serverPill" class="pill warn" role="button" tabindex="0" title="Local FAFO toolbox API. Click when offline to start.">Server…</span>
       <button type="button" class="btn primary" id="btnStartServer" title="Launch the Python toolbox backend from this page (same as other tools)">▶ Start Server</button>
-      <a href="Commander Site Console.html">⛽ Site Console</a>
-      <a href="Pre-Reload Punch List.html">✅ Punch List</a>
+      <a href="Commander Site Console.html" title="Counterpart · site dossiers & punch lists">⛽ Site Console</a>
+      <button type="button" class="btn" id="btnCopyHudSummary" title="Copy last probe summary (S)">📋 Copy summary</button>
       <a href="../Toolbox Launcher.html">🧰 Toolbox</a>
     </div>
   </header>
@@ -413,6 +413,7 @@
   <script src="../shared/aitoolbox-config.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     // Prefer sticky host / saved profile — never assume a fixed lab site IP.
     const DEFAULT_SITE_HOST = '';
@@ -1035,6 +1036,11 @@
         el('username').value = username;
         if (password) el('password').value = password;
         saveLoginFields();
+        lastResult = res;
+        try {
+          localStorage.setItem('fafo_hud_do_login', el('doLogin').checked ? '1' : '0');
+          localStorage.setItem('fafo_hud_do_http', el('doHttp').checked ? '1' : '0');
+        } catch (_) {}
         renderAll(res);
         toast(`Health ${res.health.level} (${res.health.score}) · ${res.elapsedMs} ms · ${host}`);
         await loadProfiles();
@@ -1752,6 +1758,47 @@
       URL.revokeObjectURL(a.href);
       toast('CSV exported');
     }
+
+    async function copyHudSummary() {
+      const host = el('host')?.value?.trim() || '—';
+      const r = lastResult;
+      const h = r && r.health || {};
+      const lines = [
+        'Commander Status HUD — probe summary',
+        '====================================',
+        'Host: ' + host,
+        'User: ' + (el('username')?.value || '—'),
+        'Time: ' + new Date().toISOString(),
+        'Health: ' + (h.level != null ? h.level + ' (' + h.score + ')' : '— no probe yet —'),
+        'Elapsed: ' + (r?.elapsedMs != null ? r.elapsedMs + ' ms' : '—'),
+        'Reachable: ' + (r?.ping?.ok != null ? (r.ping.ok ? 'yes' : 'no') : (r?.reachable != null ? String(r.reachable) : '—')),
+        'Login: ' + (r?.login?.ok != null ? (r.login.ok ? 'ok' : 'fail') : '—'),
+        '',
+        r ? JSON.stringify({ health: r.health, ports: r.ports, http: r.http, login: r.login, elapsedMs: r.elapsedMs }, null, 2).slice(0, 2500) : '(Run Probe & gather first)',
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        toast('HUD summary copied');
+      } catch (_) { toast('Copy failed'); }
+    }
+    el('btnCopyHudSummary')?.addEventListener('click', copyHudSummary);
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 's' || e.key === 'S') copyHudSummary();
+      else if (e.key === 'g' || e.key === 'G') el('btnProbe')?.click();
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'commander-hud',
+        helpLines: ['S — copy probe summary', 'G — Probe & gather'],
+      });
+      const dl = localStorage.getItem('fafo_hud_do_login');
+      const dh = localStorage.getItem('fafo_hud_do_http');
+      if (dl != null && el('doLogin')) el('doLogin').checked = dl === '1';
+      if (dh != null && el('doHttp')) el('doHttp').checked = dh === '1';
+    } catch (_) {}
 
     el('btnProbe').addEventListener('click', probe);
     el('btnSaveProfile').addEventListener('click', saveProfile);

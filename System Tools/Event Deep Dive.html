@@ -104,12 +104,25 @@ h1{font-size:1.5rem;margin-bottom:4px}
 }
 .breakdown{font-size:11px;color:var(--muted);margin:8px 0}
 .methodology{font-size:12px;color:var(--muted);line-height:1.45;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
+.nav-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nav-chip{
+  font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
+  color:var(--accent);text-decoration:none;font-weight:600;background:rgba(0,243,255,.06);
+}
+.nav-chip:hover{background:rgba(0,243,255,.14)}
+.nav-chip.primary{border-color:rgba(96,165,250,.5);color:var(--info);background:rgba(96,165,250,.1)}
+.meta-line{font-size:11px;color:var(--muted)}
+.stats{position:sticky;top:48px;z-index:15;background:rgba(5,5,8,.9);padding:8px 0;backdrop-filter:blur(8px)}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin:0 0 12px}
 </style>
 </head>
 <body>
   <a class="toolbox-back" href="../Toolbox Launcher.html" style="position:fixed;top:10px;left:12px;z-index:9999;color:#00f3ff;text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(0,243,255,.3)">← Toolbox</a>
 <nav class="nav">
-  <a href="Event Viewer.html">← Event Viewer</a>
+  <div class="nav-chips">
+    <a class="nav-chip primary" id="chipEventViewer" href="Event Viewer.html" title="Open themes/timeline with matching window">← Event Viewer</a>
+    <a class="nav-chip" href="Hardware Board Map.html">Board Map</a>
+  </div>
   <span class="t">EVENT DEEP DIVE</span>
   <span id="pill" class="status bad">Offline</span>
 </nav>
@@ -122,7 +135,9 @@ h1{font-size:1.5rem;margin-bottom:4px}
   </p>
 
   <div class="toolbar">
-    <button class="btn" id="btnRun">Run deep dive</button>
+    <button class="btn" id="btnRun" title="Run deep dive (R)">Run deep dive</button>
+    <button class="btn ghost" id="btnExport" type="button" title="Export findings JSON">↓ JSON</button>
+    <button class="btn ghost" id="btnCopy" type="button" title="Copy plain-English summary">Copy summary</button>
     <select class="sel" id="hours" title="Wider windows cost more CPU/time">
       <option value="24" selected>Last 24 hours (default)</option>
       <option value="72">Last 3 days</option>
@@ -133,12 +148,21 @@ h1{font-size:1.5rem;margin-bottom:4px}
       <option value="450">Normal</option>
       <option value="700">Deep (slower)</option>
     </select>
+    <input class="inp" id="findFilter" placeholder="Filter findings… (/)" style="min-width:160px">
     <label style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px" title="Noise themes are usually safe to ignore">
       <input type="checkbox" id="includeNoise"> Include noise themes
     </label>
-    <a class="btn ghost" href="Event Viewer.html">Themes / Timeline</a>
+    <a class="btn ghost" id="linkViewer" href="Event Viewer.html">Themes / Timeline</a>
     <a class="btn ghost" href="Hardware Board Map.html">Board Map / playbooks</a>
     <a class="btn ghost" href="System Health Dashboard.html">Health Hub</a>
+    <span class="meta-line" id="lastUpdated">—</span>
+  </div>
+
+  <div class="legend">
+    <span><span class="badge error">Act</span> investigate</span>
+    <span><span class="badge warn">Watch</span> if symptoms</span>
+    <span><span class="badge info">FYI</span> optional</span>
+    <span><span class="badge noise">Noise</span> usually ignore</span>
   </div>
 
   <div id="hero" class="callout" style="display:none"></div>
@@ -151,12 +175,17 @@ h1{font-size:1.5rem;margin-bottom:4px}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 }[c]));
 const LABEL = { ok:'Fine', info:'FYI', warn:'Watch', error:'Act' };
+const PREF_KEY = 'fafo_event_deep_dive_prefs_v1';
+let lastData = null;
+let filterQ = '';
+
 function badge(lv, extra) {
   const c = lv === 'bad' ? 'error' : (lv || 'info');
   return `<span class="badge ${extra || c}">${extra === 'noise' ? 'Noise' : (LABEL[c] || c)}</span>`;
@@ -167,6 +196,41 @@ function setPill(ok, t) {
   el.textContent = t;
 }
 
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+    if (p.hours && document.querySelector(`#hours option[value="${p.hours}"]`)) document.getElementById('hours').value = p.hours;
+    if (p.sample && document.querySelector(`#sampleSize option[value="${p.sample}"]`)) document.getElementById('sampleSize').value = p.sample;
+    if (p.noise) document.getElementById('includeNoise').checked = !!p.noise;
+  } catch (_) {}
+}
+function savePrefs() {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      hours: document.getElementById('hours').value,
+      sample: document.getElementById('sampleSize').value,
+      noise: document.getElementById('includeNoise').checked,
+    }));
+  } catch (_) {}
+}
+function syncViewerLinks() {
+  const hours = document.getElementById('hours').value;
+  const sm = Number(document.getElementById('sampleSize').value || 250);
+  const sample = sm <= 250 ? '150' : (sm <= 450 ? '300' : '500');
+  const href = `Event Viewer.html?hours=${encodeURIComponent(hours)}&sample=${encodeURIComponent(sample)}`;
+  const chip = document.getElementById('chipEventViewer');
+  const link = document.getElementById('linkViewer');
+  if (chip) chip.href = href;
+  if (link) link.href = href;
+}
+function downloadBlob(filename, text, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: mime || 'application/json' }));
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
 function rankClass(rank, tier) {
   if (tier === 'noise') return '';
   if (rank <= 2) return 'top';
@@ -175,6 +239,7 @@ function rankClass(rank, tier) {
 }
 
 function render(data) {
+  lastData = data;
   document.getElementById('hero').style.display = 'block';
   document.getElementById('hero').innerHTML = `
     ${badge(data.actionableCount ? 'warn' : 'ok')}
@@ -196,10 +261,17 @@ function render(data) {
   ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${esc(String(x.v))}</div></div>`).join('');
 
   document.getElementById('method').textContent = data.methodology || '';
+  document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
 
-  const findings = data.findings || [];
+  let findings = data.findings || [];
+  if (filterQ) {
+    const q = filterQ.toLowerCase();
+    findings = findings.filter(f =>
+      ((f.title || '') + ' ' + (f.plainEnglish || '') + ' ' + (f.themeId || '') + ' ' + (f.topFixSummary || '')).toLowerCase().includes(q)
+    );
+  }
   if (!findings.length) {
-    document.getElementById('list').innerHTML = '<div class="callout">No findings in this window.</div>';
+    document.getElementById('list').innerHTML = '<div class="callout">' + (filterQ ? 'No findings match filter.' : 'No findings in this window.') + '</div>';
     return;
   }
 
@@ -280,6 +352,8 @@ async function run() {
   const btn = document.getElementById('btnRun');
   const gen = ++runGen;
   btn.disabled = true;
+  savePrefs();
+  syncViewerLinks();
   const hours = document.getElementById('hours').value;
   const max = Number(document.getElementById('sampleSize')?.value || 250);
   const maxEvents = Number.isFinite(max) ? Math.max(100, Math.min(max, 900)) : 250;
@@ -293,7 +367,8 @@ async function run() {
   } catch {
     if (gen !== runGen) return;
     setPill(false, 'Server offline');
-    document.getElementById('list').innerHTML = '<p style="color:var(--danger)">Server offline — start toolbox server first.</p>';
+    document.getElementById('list').innerHTML =
+      '<div class="callout" style="border-color:var(--danger)"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong>.</div>';
     btn.disabled = false;
     return;
   }
@@ -312,7 +387,49 @@ async function run() {
 }
 
 document.getElementById('btnRun').onclick = run;
+document.getElementById('btnExport').onclick = () => {
+  if (!lastData) { UI()?.toast?.('Run deep dive first', 'warn'); return; }
+  downloadBlob(`event-deep-dive-${Date.now()}.json`, JSON.stringify(lastData, null, 2));
+  UI()?.toast?.('Exported findings JSON', 'ok');
+};
+document.getElementById('btnCopy').onclick = async () => {
+  if (!lastData) { UI()?.toast?.('Run deep dive first', 'warn'); return; }
+  const lines = [
+    lastData.headline || 'Event Deep Dive',
+    lastData.summary || '',
+    `Window: ${lastData.windowHours || '?'}h · Sampled: ${lastData.sampled ?? '?'} · Investigate: ${lastData.actionableCount ?? 0}`,
+    '',
+    ...(lastData.findings || []).slice(0, 12).map(f =>
+      `#${f.rank} [${f.level}] ${f.title} (${f.count} events) — top: ${f.topFixSummary || '—'}`
+    ),
+  ];
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    UI()?.toast?.('Summary copied', 'ok');
+  } catch {
+    UI()?.toast?.('Clipboard blocked', 'warn');
+  }
+};
+let filterTimer = null;
+document.getElementById('findFilter').addEventListener('input', () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    filterQ = document.getElementById('findFilter').value.trim();
+    if (lastData) render(lastData);
+  }, 250);
+});
+['hours', 'sampleSize', 'includeNoise'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => { savePrefs(); syncViewerLinks(); });
+});
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('findFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); run(); }
+});
+
 UI()?.mountServerBar?.({ onOnline: () => {} });
+loadPrefs();
 // Auto-run only when explicitly requested (?run=1). Prefer manual Run for lighter UX.
 const params = new URLSearchParams(location.search);
 if (params.get('hours') && ['24', '72', '168'].includes(params.get('hours'))) {
@@ -321,6 +438,7 @@ if (params.get('hours') && ['24', '72', '168'].includes(params.get('hours'))) {
 if (params.get('sample') && ['250', '450', '700'].includes(params.get('sample'))) {
   document.getElementById('sampleSize').value = params.get('sample');
 }
+syncViewerLinks();
 if (params.get('run') === '1') run();
 else {
   UI().apiFetch('/health').then(() => setPill(true, 'Connected')).catch(() => setPill(false, 'Offline'));
