@@ -1,53 +1,72 @@
-# FAFO / AI HTML Toolbox — Servers map
+# FAFO servers — independent products & lifecycles
 
-Two local servers. Clear names → which program needs which.
+| Code | Product | Endpoint | **Starts when** | **Stops when** |
+|------|---------|----------|-----------------|----------------|
+| **S1** | **HTML Toolbox Server** | `http://127.0.0.87:18765` | You open **AI HTML Toolbox** | Tray → **Sleep S1** (or Stop) |
+| **S2** | **Ultimate Tab / Local Media Tagger** | `http://127.0.0.1:8765` | **Google Chrome** is running | Chrome exits (auto) · or tray **Sleep S2** |
 
-| Code | Name | Endpoint | Powers |
-|------|------|----------|--------|
-| **S1** | **HTML Toolbox Server** | `http://127.0.0.87:18765` | Toolbox Launcher, Media Library, VSR, File Organizer, Verifone Commander tools, System Tools, Git Manager |
-| **S2** | **FAFO Local Media Tagger** | `http://127.0.0.1:8765` | FAFO Local Media Chrome extension (tags, ratings, pairs, Explorer metadata) |
+They share a tray/watchdog only for convenience. They are **not** the same app.
 
-S1 and S2 use different loopback addresses so they never fight each other.
+## Why this split
 
-## Auto-launch & tracking
+- Toolbox tools need **S1** only.
+- Chrome Ultimate Tab needs **S2** only.
+- Running both 24/7 wasted RAM/CPU when you were using neither product.
 
-- **Tray icon** keeps enabled servers alive (auto-restart if they die).
-- **Server Watchdog** (recommended): independent single-instance monitor that health-checks S1+S2 every 15s, auto-heals, detects crash loops / duplicate processes, writes reports, and can toast when attention is required.
-  - **In the app (easiest):** Toolbox Launcher → **🛡 Server Watchdog** card, or banner **🛡 Watchdog**
-    - ▶ Start monitor · 📊 Open status · ⚙ Install auto-start · 📂 Bat files (Explorer selects the .bat)
-  - Manual bats (same actions): `Install-Server-Watchdog.bat` · `Start-Server-Watchdog.bat` · `Open-Server-Watchdog-Status.bat`
-  - Protocol (no Save As): `aitoolbox://watchdog` · `watchdog-status` · `watchdog-install` · `watchdog-folder`
-  - Status page: `%LOCALAPPDATA%\FAFO\Devices\%COMPUTERNAME%\Reports\server-watchdog-status.html`
-  - Log: `...\Logs\server-watchdog.log` · S1/S2 process logs: `S1-toolbox-server.log`, `S2-fafo-meta-server.log`
-  - Critical flag: `...\Reports\ATTENTION-SERVERS.txt` (only present when action needed)
-- **Launcher page** keep-alive while open.
-- **Windows Startup** optional (Launcher → Launch with Windows → Save prefs).
-- **Prefs** (this PC only): `%LOCALAPPDATA%\FAFO\launch-prefs.json`
+## Day-to-day use
 
-## Manual Start / Stop
+| You want… | Do this |
+|-----------|---------|
+| Use HTML Toolbox | Launch **AI HTML Toolbox** (desktop / tray **Open HTML Toolbox**) → **S1 starts** |
+| Done with Toolbox | Tray → **S1 · HTML Toolbox** → **💤 Sleep S1** |
+| Use Ultimate Tab | Open **Google Chrome** → tray/watchdog starts **S2** automatically |
+| Done with Chrome | Close Chrome → **S2 stops** automatically (frees resources) |
+| Force S2 without waiting | Tray → **S2** → Start / wake · or `2-Start-FAFO-Local-Media-Tagger.bat` |
 
-| Action | How |
-|--------|-----|
-| Start both | Launcher **▶ Start All Servers** · Desktop **Start Servers** · `0-Start-ALL-Servers.bat` |
-| Start S1 only | Launcher **▶ Start S1** · `1-Start-HTML-Toolbox-Server.bat` |
-| Start S2 only | Launcher **▶ Start S2** · `2-Start-FAFO-Local-Media-Tagger.bat` |
-| Stop one / both | Launcher **⏹ Stop S1 / S2 / All** · tray **Stop all servers** · `Stop-ALL-Servers.bat` |
+## Tray menu (taskbar)
 
-Checkboxes under each server control **auto-start** with one-click / Windows login.  
-Manual Stop does **not** clear those prefs — it only stops the process.
+- **Open HTML Toolbox (starts S1)**
+- **S1 · HTML Toolbox (with Toolbox)** → Start / Sleep
+- **S2 · Ultimate Tab (with Chrome)** → manual Start / Sleep block
+- **Apply lifecycle now** — align S1/S2 with host apps
+- **Lifecycle auto** — keep the binding on/off
+- **Sleep both & quit tray**
 
-## Paths (canonical)
+## Prefs (this PC)
+
+`%LOCALAPPDATA%\FAFO\launch-prefs.json`
+
+| Key | Meaning |
+|-----|---------|
+| `sessions.toolboxActive` | Toolbox is “open” → auto-heal S1 |
+| `serversSleeping.toolboxServer` | User slept S1 — never auto-start until Wake |
+| `serversSleeping.fafoMetaServer` | User slept S2 — never auto-start with Chrome until Wake |
+| `startWithOneClick.toolboxServer` | Allow S1 lifecycle at all |
+| `startWithOneClick.fafoMetaServer` | Allow S2 lifecycle with Chrome |
+
+## Manual bats
+
+| Bat | Effect |
+|-----|--------|
+| `Launch-AI-HTML-Toolbox.bat` | S1 only + Chrome app window for Toolbox |
+| `1-Start-HTML-Toolbox-Server.bat` | S1 only (manual) |
+| `2-Start-FAFO-Local-Media-Tagger.bat` | S2 only (manual override) |
+| `0-Start-ALL-Servers.bat` / `Start Servers.bat` | Respects lifecycle (S1 needs session / S2 needs Chrome) |
+| `Stop-ALL-Servers.bat` | Sleep both (sticky) |
+
+## Paths
 
 | What | Path |
 |------|------|
-| HTML Toolbox (S1 code) | `C:\_Git\repos\html\HTML Toolbox AI tools\production` |
-| FAFO Tagger (S2 code) | `C:\_Git\repos\html\fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta` |
-| FAFO Chrome extensions | `C:\_Git\repos\html\fafo-chrome-extensions` |
-| Per-PC Backups / Logs / Reports | `%LOCALAPPDATA%\FAFO\Devices\%COMPUTERNAME%\` |
-| Exposed in toolbox folder | `Backups\` · `Logs\` · `Reports\` (junctions → device store) |
+| HTML Toolbox (S1) | `C:\_Git\repos\html\HTML Toolbox AI tools\production` |
+| Ultimate Tab tagger (S2) | `C:\_Git\repos\html\fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta` |
+| Chrome extension load | `C:\_Git\repos\html\fafo-chrome-extensions\FAFO Local Media LOAD THIS` |
 
-## Chrome extension load path
+## Watchdog
 
-`chrome://extensions` → Load unpacked →
+Still optional. It **does not** force both servers always-on. It only:
 
-`C:\_Git\repos\html\fafo-chrome-extensions\FAFO Local Media LOAD THIS`
+1. Keeps **S1** up while toolbox session is active and not sleeping  
+2. Keeps **S2** up while Chrome is running and not sleeping  
+3. Stops **S2** when Chrome exits  
+4. Leaves a tray icon so you can Sleep / Wake / Open Toolbox  

@@ -3678,13 +3678,44 @@ def api_launch_companions_restart(body: LaunchCompanionsBody | None = None):
 
 @app.post("/api/launch/companions/stop")
 def api_launch_companions_stop(body: LaunchCompanionsBody | None = None):
-    """Manually stop S1 HTML Toolbox and/or S2 FAFO Local Media Tagger."""
+    """Stop S1 and/or S2 and mark them sleeping so watchdog/tray will not auto-restart.
+
+    S1 = HTML Toolbox · S2 = Ultimate Tab (independent products).
+    """
     try:
         b = body or LaunchCompanionsBody()
         # Default body None fields mean "stop both" in stop_companions
         return launch_ops.stop_companions(
             toolbox=b.toolbox if body is not None else None,
             fafo_meta=b.fafoMeta if body is not None else None,
+            mark_sleep=True,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/companions/sleep")
+def api_launch_companions_sleep(body: LaunchCompanionsBody | None = None):
+    """Sleep (stop + sticky off) S1 HTML Toolbox and/or S2 Ultimate Tab independently."""
+    try:
+        b = body or LaunchCompanionsBody()
+        return launch_ops.sleep_companions(
+            toolbox=True if body is None else (True if b.toolbox is None else bool(b.toolbox)),
+            fafo_meta=True if body is None else (True if b.fafoMeta is None else bool(b.fafoMeta)),
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/launch/companions/wake")
+def api_launch_companions_wake(body: LaunchCompanionsBody | None = None):
+    """Wake (clear sleep + start) S1 and/or S2 independently."""
+    try:
+        b = body or LaunchCompanionsBody()
+        return launch_ops.wake_companions(
+            toolbox=True if body is None else (True if b.toolbox is None else bool(b.toolbox)),
+            fafo_meta=True if body is None else (True if b.fafoMeta is None else bool(b.fafoMeta)),
+            wait_sec=b.waitSec if body is not None else 12.0,
         )
     except Exception as e:
         raise HTTPException(500, str(e))

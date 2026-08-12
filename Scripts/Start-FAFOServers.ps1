@@ -34,18 +34,31 @@ function Get-LaunchPrefs {
     $path = Join-Path $env:LOCALAPPDATA 'FAFO\launch-prefs.json'
     $defaults = [ordered]@{
         startWithOneClick = [ordered]@{ toolboxServer = $true; fafoMetaServer = $true }
+        serversSleeping   = [ordered]@{ toolboxServer = $false; fafoMetaServer = $false }
+        sessions          = [ordered]@{ toolboxActive = $false }
         fafoMetaRoot      = $null
     }
     if (-not (Test-Path -LiteralPath $path)) { return [pscustomobject]$defaults }
     try {
         $raw = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
         $tb = $true; $meta = $true
+        $sleepTb = $false; $sleepMeta = $false
+        $sessTb = $false
         if ($raw.startWithOneClick) {
             if ($null -ne $raw.startWithOneClick.toolboxServer) { $tb = [bool]$raw.startWithOneClick.toolboxServer }
             if ($null -ne $raw.startWithOneClick.fafoMetaServer) { $meta = [bool]$raw.startWithOneClick.fafoMetaServer }
         }
+        if ($raw.serversSleeping) {
+            if ($null -ne $raw.serversSleeping.toolboxServer) { $sleepTb = [bool]$raw.serversSleeping.toolboxServer }
+            if ($null -ne $raw.serversSleeping.fafoMetaServer) { $sleepMeta = [bool]$raw.serversSleeping.fafoMetaServer }
+        }
+        if ($raw.sessions -and $null -ne $raw.sessions.toolboxActive) {
+            $sessTb = [bool]$raw.sessions.toolboxActive
+        }
         return [pscustomobject]@{
             startWithOneClick = [pscustomobject]@{ toolboxServer = $tb; fafoMetaServer = $meta }
+            serversSleeping   = [pscustomobject]@{ toolboxServer = $sleepTb; fafoMetaServer = $sleepMeta }
+            sessions          = [pscustomobject]@{ toolboxActive = $sessTb }
             fafoMetaRoot      = $(if ($raw.fafoMetaRoot) { [string]$raw.fafoMetaRoot } else { $null })
         }
     } catch {
@@ -124,6 +137,8 @@ function Save-MetaRootHint([string]$Path) {
         version           = 1
         startWithOneClick = @{ toolboxServer = $true; fafoMetaServer = $true }
         windowsStartup    = @{ servers = $false; app = $false }
+        blockAutoStart    = @{ toolboxServer = $false; fafoMetaServer = $false }
+        serversSleeping   = @{ toolboxServer = $false; fafoMetaServer = $false }
         fafoMetaRoot      = $Path
         updatedAt         = (Get-Date).ToString('o')
     }
@@ -132,6 +147,9 @@ function Save-MetaRootHint([string]$Path) {
             $existing = Get-Content -LiteralPath $prefsPath -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($existing.startWithOneClick) { $obj.startWithOneClick = $existing.startWithOneClick }
             if ($existing.windowsStartup) { $obj.windowsStartup = $existing.windowsStartup }
+            if ($existing.blockAutoStart) { $obj.blockAutoStart = $existing.blockAutoStart }
+            if ($existing.serversSleeping) { $obj.serversSleeping = $existing.serversSleeping }
+            if ($existing.sessions) { $obj.sessions = $existing.sessions }
             $obj.fafoMetaRoot = $Path
             if ($existing.version) { $obj.version = $existing.version }
         } catch {}
@@ -358,14 +376,61 @@ function Stop-ListenerOnPort([int]$Port) {
 }
 
 $prefs = Get-LaunchPrefs
-$wantToolbox = (-not $NoToolbox) -and ($Force -or $Restart -or $prefs.startWithOneClick.toolboxServer)
-$wantMeta = (-not $NoFafoMeta) -and ($Force -or $Restart -or $prefs.startWithOneClick.fafoMetaServer)
+# Lifecycle (independent products):
+#   S1 → with HTML Toolbox session (open Toolbox / -Force S1)
+#   S2 → with Google Chrome process
+# Sleep is sticky unless -Force / -Restart
+$sleepTb = $false; $sleepMeta = $false
+if ($prefs.serversSleeping) {
+    $sleepTb = [bool]$prefs.serversSleeping.toolboxServer
+    $sleepMeta = [bool]$prefs.serversSleeping.fafoMetaServer
+}
+$sessionTb = $false
+if ($prefs.sessions) { $sessionTb = [bool]$prefs.sessions.toolboxActive }
+$chromeUp = $false
+try {
+    $chromeUp = [bool](Get-Process -Name 'chrome' -ErrorAction SilentlyContinue | Select-Object -First 1)
+} catch { $chromeUp = $false }
+
+$wantToolbox = (-not $NoToolbox) -and (
+    $Force -or $Restart -or (
+        $prefs.startWithOneClick.toolboxServer -and -not $sleepTb -and $sessionTb
+    )
+)
+$wantMeta = (-not $NoFafoMeta) -and (
+    # -Force without -NoFafoMeta still respects Chrome lifecycle unless Restart
+    (($Force -or $Restart) -and ($Force -or $chromeUp)) -or (
+        -not $Force -and -not $Restart -and
+        $prefs.startWithOneClick.fafoMetaServer -and -not $sleepMeta -and $chromeUp
+    )
+)
+# Explicit -Force with only meta? Keep simple: Force starts S2 only if chrome OR Restart
+if ($Force -and -not $NoFafoMeta -and -not $chromeUp -and -not $Restart) {
+    # Manual "start all" without Chrome: skip S2 (open Chrome to start tagger)
+    if (-not $NoToolbox) {
+        # starting toolbox force — S2 still chrome-bound
+        $wantMeta = $false
+    }
+}
 
 Write-Srv ""
-Write-Srv " FAFO companion servers (hidden / no console windows)" 'Cyan'
-Write-Srv "   S1 = HTML Toolbox Server (media/Verifone/tools)" 'DarkGray'
-Write-Srv "   S2 = FAFO Local Media Tagger (Chrome extension)" 'DarkGray'
+Write-Srv " FAFO servers (lifecycle: S1=Toolbox, S2=Chrome)" 'Cyan'
+Write-Srv "   S1 = HTML Toolbox Server (Toolbox apps only)" 'DarkGray'
+Write-Srv "   S2 = Ultimate Tab / Local Media (Chrome extension — NOT Toolbox)" 'DarkGray'
 Write-Srv " Root: $ToolboxRoot"
+Write-Srv "   Chrome running: $chromeUp · Toolbox session: $sessionTb" 'DarkGray'
+if ($sleepTb -and -not ($Force -or $Restart)) {
+    Write-Srv "   S1 is SLEEPING — skipped (tray: S1 → Start / wake)" 'Yellow'
+}
+if (-not $sessionTb -and -not ($Force -or $Restart) -and -not $NoToolbox) {
+    Write-Srv "   S1 skipped — open HTML Toolbox to start S1" 'DarkGray'
+}
+if ($sleepMeta -and -not ($Force -or $Restart)) {
+    Write-Srv "   S2 is SLEEPING — skipped (tray: S2 → Start / wake)" 'Yellow'
+}
+if (-not $chromeUp -and -not $NoFafoMeta) {
+    Write-Srv "   S2 skipped — start Google Chrome for Ultimate Tab tagger" 'DarkGray'
+}
 
 if ($Restart) {
     Write-Srv " Restart requested — stopping listeners first..." 'Yellow'
@@ -416,13 +481,33 @@ if ($wantToolbox) {
         }
     }
 } else {
-    Write-Srv " [SKIP] S1 HTML Toolbox (disabled in launch prefs)" 'DarkGray'
+    Write-Srv " [SKIP] S1 HTML Toolbox (open Toolbox app, or use -Force / 1-Start-HTML-Toolbox-Server.bat)" 'DarkGray'
 }
 
-# --- S2 FAFO Local Media Tagger ---
+# Mark S1 toolbox session when we intentionally started/confirmed S1
+if ($wantToolbox -and $pyServer) {
+    try {
+        $mark = @'
+import sys
+from pathlib import Path
+root = Path(r"""TOOLBOX_ROOT""")
+sys.path.insert(0, str(root / "server"))
+import launch_ops
+launch_ops.set_toolbox_session(True)
+launch_ops.set_servers_sleeping(toolbox=False)
+print("session=toolboxActive")
+'@
+        $mark = $mark.Replace('TOOLBOX_ROOT', $ToolboxRoot.Replace('\', '\\'))
+        $tmp = Join-Path $env:TEMP 'fafo-mark-toolbox-session.py'
+        Set-Content -LiteralPath $tmp -Value $mark -Encoding UTF8
+        & $pyServer $tmp 2>$null | Out-Null
+    } catch {}
+}
+
+# --- S2 Ultimate Tab / Local Media (Chrome lifecycle) ---
 if ($wantMeta) {
     if (Test-HttpOk $metaHealth) {
-        Write-Srv " [OK] S2 FAFO Local Media Tagger already online @ 127.0.0.1:8765" 'Green'
+        Write-Srv " [OK] S2 Ultimate Tab tagger already online @ 127.0.0.1:8765" 'Green'
         $started += [pscustomobject]@{ id = 'fafo_meta'; ok = $true; already = $true }
     } else {
         $metaRoot = Resolve-FafoMetaRoot -Preferred $prefs.fafoMetaRoot
