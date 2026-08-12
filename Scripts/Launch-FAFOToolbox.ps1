@@ -51,28 +51,39 @@ function Test-HealthEndpoint {
 }
 
 function Start-ToolboxServer {
-    # Multi-server: toolbox (+ Verifone) and optional FAFO Local Tab tagging companion
+    # S1 only — HTML Toolbox lifecycle. S2 (Ultimate Tab) starts with Chrome, not here.
     $multi = Join-Path $PSScriptRoot 'Start-FAFOServers.ps1'
     if (Test-Path -LiteralPath $multi) {
         $p = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
             '-NoProfile', '-ExecutionPolicy', 'Bypass',
             '-File', $multi,
             '-ToolboxRoot', $ToolboxRoot,
+            '-NoFafoMeta',
+            '-Force',
             '-HealthTimeoutSec', ([Math]::Max(8, [int]($HealthTimeoutSec / 2))),
             '-Quiet'
         ) -Wait -PassThru -WindowStyle Hidden
         if ($p.ExitCode -ne 0) {
-            Write-Launch " [i] Multi-server helper exit $($p.ExitCode) — falling back to toolbox-only" 'DarkGray'
+            Write-Launch " [i] S1 start helper exit $($p.ExitCode) — falling back to toolbox-only" 'DarkGray'
         } else {
             return
         }
     }
-    $startBat = Join-Path $ToolboxRoot 'START SERVER.bat'
+    # Mark toolbox session + clear S1 sleep via launch_ops when possible
+    $venvPy = Join-Path $ToolboxRoot '.venv\Scripts\python.exe'
+    $ops = Join-Path $ToolboxRoot 'server\launch_ops.py'
+    if ((Test-Path -LiteralPath $venvPy) -and (Test-Path -LiteralPath $ops)) {
+        Start-Process -FilePath $venvPy -ArgumentList @(
+            '-c',
+            "import sys; sys.path.insert(0, r'$($ToolboxRoot)\server'); import launch_ops; launch_ops.wake_companions(toolbox=True, fafo_meta=False, wait_sec=10)"
+        ) -WorkingDirectory $ToolboxRoot -WindowStyle Hidden -Wait | Out-Null
+        return
+    }
+    $startBat = Join-Path $ToolboxRoot '1-Start-HTML-Toolbox-Server.bat'
     if (Test-Path -LiteralPath $startBat) {
         Start-Process -FilePath $startBat -WorkingDirectory $ToolboxRoot -WindowStyle Minimized
         return
     }
-    $venvPy = Join-Path $ToolboxRoot '.venv\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $venvPy)) {
         throw "Server python not found: $venvPy"
     }
@@ -188,33 +199,38 @@ if (-not $chrome -or -not (Test-Path -LiteralPath $chrome)) {
 }
 Write-Launch " [OK] Chrome: $chrome" 'Green'
 
-# --- Servers (toolbox/Verifone + optional FAFO tagging companion) ---
+# --- S1 only (HTML Toolbox). S2 Ultimate Tab starts when Chrome browser runs. ---
 if (-not $NoServer) {
     $tbUp = Test-HealthEndpoint
-    $metaUp = Test-MetaHealthEndpoint
-    if (-not $tbUp -or -not $metaUp) {
-        Write-Launch " Starting companion servers (toolbox + FAFO tagging if configured)..." 'Yellow'
+    if (-not $tbUp) {
+        Write-Launch " Starting S1 HTML Toolbox server (not S2 — that follows Chrome)..." 'Yellow'
         Start-ToolboxServer
         $deadline = (Get-Date).AddSeconds($HealthTimeoutSec)
         while ((Get-Date) -lt $deadline) {
             Start-Sleep -Milliseconds 800
             $tbUp = Test-HealthEndpoint
-            $metaUp = Test-MetaHealthEndpoint
             if ($tbUp) { break }
         }
         if ($tbUp) {
-            Write-Launch " [OK] Toolbox server online (Verifone + tools)" 'Green'
+            Write-Launch " [OK] S1 HTML Toolbox online (127.0.0.87:18765)" 'Green'
         } else {
-            Write-Launch " [!] Toolbox server did not become healthy in ${HealthTimeoutSec}s - opening UI anyway" 'Yellow'
-        }
-        if ($metaUp -or (Test-MetaHealthEndpoint)) {
-            Write-Launch " [OK] FAFO tagging companion online (127.0.0.1:8765)" 'Green'
-        } else {
-            Write-Launch " [i] FAFO tagging companion offline (optional — set explorer-meta path in Launcher)" 'DarkGray'
+            Write-Launch " [!] S1 did not become healthy in ${HealthTimeoutSec}s - opening UI anyway" 'Yellow'
         }
     } else {
-        Write-Launch " [OK] Toolbox server already online" 'Green'
-        Write-Launch " [OK] FAFO tagging companion already online" 'Green'
+        Write-Launch " [OK] S1 HTML Toolbox already online" 'Green'
+        # Still mark toolbox session so watchdog keeps S1 while you use it
+        $venvPy = Join-Path $ToolboxRoot '.venv\Scripts\python.exe'
+        if (Test-Path -LiteralPath $venvPy) {
+            Start-Process -FilePath $venvPy -ArgumentList @(
+                '-c',
+                "import sys; sys.path.insert(0, r'$($ToolboxRoot)\server'); import launch_ops; launch_ops.set_toolbox_session(True); launch_ops.set_servers_sleeping(toolbox=False)"
+            ) -WorkingDirectory $ToolboxRoot -WindowStyle Hidden | Out-Null
+        }
+    }
+    if (Test-MetaHealthEndpoint) {
+        Write-Launch " [i] S2 Ultimate Tab tagger already up (Chrome lifecycle) @ 127.0.0.1:8765" 'DarkGray'
+    } else {
+        Write-Launch " [i] S2 Ultimate Tab starts with Chrome — not started by Toolbox" 'DarkGray'
     }
 }
 

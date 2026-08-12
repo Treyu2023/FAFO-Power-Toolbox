@@ -525,15 +525,30 @@ def _ps_escape(s: str) -> str:
 def _server_state(st: dict[str, Any]) -> dict[str, Any]:
     prefs = st.get("prefs") or {}
     want = prefs.get("startWithOneClick") or {}
+    sleep = st.get("serversSleeping") or prefs.get("serversSleeping") or {}
     tb = st.get("toolbox") or {}
     meta = st.get("fafoMeta") or {}
-    want_tb = bool(want.get("toolboxServer", True))
-    want_meta = bool(want.get("fafoMetaServer", True))
+    sleep_tb = bool(sleep.get("toolboxServer") or tb.get("sleeping"))
+    sleep_meta = bool(sleep.get("fafoMetaServer") or meta.get("sleeping"))
+    # Auto-heal only if prefs want it AND user has not put it to sleep
+    want_tb = bool(want.get("toolboxServer", True)) and not sleep_tb
+    want_meta = bool(want.get("fafoMetaServer", True)) and not sleep_meta
     tb_up = bool(tb.get("healthy") or tb.get("listening"))
     meta_up = bool(meta.get("healthy") or meta.get("listening"))
     issues: list[dict[str, str]] = []
 
-    if want_tb and not tb.get("listening"):
+    if sleep_tb and not tb_up:
+        issues.append(
+            {
+                "code": "S1_SLEEPING",
+                "severity": "info",
+                "message": (
+                    "S1 HTML Toolbox is sleeping (user stopped it) — "
+                    "wake from tray: S1 · HTML Toolbox → Start / wake S1"
+                ),
+            }
+        )
+    elif want_tb and not tb.get("listening"):
         issues.append(
             {
                 "code": "S1_DOWN",
@@ -551,14 +566,25 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    if want_meta and not meta.get("listening"):
+    if sleep_meta and not meta_up:
+        issues.append(
+            {
+                "code": "S2_SLEEPING",
+                "severity": "info",
+                "message": (
+                    "S2 Ultimate Tab / Local Media is sleeping (user stopped it) — "
+                    "wake from tray: S2 · Ultimate Tab → Start / wake S2"
+                ),
+            }
+        )
+    elif want_meta and not meta.get("listening"):
         root_ok = bool((meta.get("root") or {}).get("ok"))
         issues.append(
             {
                 "code": "S2_DOWN",
                 "severity": "critical" if root_ok else "warning",
                 "message": (
-                    "S2 FAFO Local Media Tagger is not listening on 127.0.0.1:8765"
+                    "S2 Ultimate Tab / Local Media Tagger is not listening on 127.0.0.1:8765"
                     if root_ok
                     else "S2 down and explorer-meta path not resolved — set fafoMetaRoot"
                 ),
@@ -672,11 +698,13 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
 
     critical = [i for i in issues if i["severity"] == "critical"]
     starting = [i for i in issues if i["code"] in ("S1_STARTING", "S2_STARTING")]
-    # "attention" only for hard downs — not for transient starting health blips
+    # "attention" only for hard downs — not for transient starting health blips or sleep
     attention = bool(critical)
     return {
         "want_tb": want_tb,
         "want_meta": want_meta,
+        "sleep_tb": sleep_tb,
+        "sleep_meta": sleep_meta,
         "tb_up": tb_up,
         "meta_up": meta_up,
         "tb_healthy": bool(tb.get("healthy")),
@@ -703,7 +731,30 @@ def _write_status_html(payload: dict[str, Any]) -> None:
     st = payload.get("servers") or {}
     issues = payload.get("issues") or []
     att = payload.get("attentionRequired")
-    color = "#ff4466" if att else "#00ff88"
+    s1_sleep = bool(st.get("s1_sleeping"))
+    s2_sleep = bool(st.get("s2_sleeping"))
+    both_sleep = s1_sleep and s2_sleep and not st.get("s1_up") and not st.get("s2_up")
+    color = "#ff4466" if att else ("#ffcc44" if (s1_sleep or s2_sleep) else "#00ff88")
+    badge = (
+        "ATTENTION REQUIRED"
+        if att
+        else ("SLEEPING (resources freed)" if both_sleep else ("PARTIAL SLEEP" if (s1_sleep or s2_sleep) else "ALL CLEAR"))
+    )
+
+    def _s_label(up: bool, sleeping: bool) -> str:
+        if up:
+            return "UP"
+        if sleeping:
+            return "SLEEP"
+        return "DOWN"
+
+    def _s_cls(up: bool, sleeping: bool) -> str:
+        if up:
+            return "ok"
+        if sleeping:
+            return "sleep"
+        return "bad"
+
     rows = ""
     for i in issues:
         rows += (
@@ -723,18 +774,21 @@ h1{{color:#00f3ff;font-weight:300;letter-spacing:2px}}
 border:1px solid {color};color:{color};font-weight:700}}
 .card{{background:#12121a;border:1px solid #00f3ff33;border-radius:12px;padding:16px;margin:12px 0}}
 table{{width:100%;border-collapse:collapse}} td,th{{padding:8px;border-bottom:1px solid #ffffff12;text-align:left}}
-.ok{{color:#00ff88}} .bad{{color:#ff4466}} .muted{{color:#888}}
+.ok{{color:#00ff88}} .bad{{color:#ff4466}} .sleep{{color:#ffcc44}} .muted{{color:#888}}
 </style></head><body>
 <h1>FAFO Server Watchdog</h1>
-<p class="badge">{"ATTENTION REQUIRED" if att else "ALL CLEAR"}</p>
-<p class="muted">Updated {payload.get("updatedAt")} · poll every {POLL_SEC}s · auto-heal enabled</p>
+<p class="badge">{badge}</p>
+<p class="muted">Updated {payload.get("updatedAt")} · poll every {POLL_SEC}s ·
+auto-heal only for <em>non-sleeping</em> servers · tray Sleep is sticky</p>
 <div class="card">
 <strong>S1 HTML Toolbox</strong>
-<span class="{"ok" if st.get("s1_up") else "bad"}">{"UP" if st.get("s1_up") else "DOWN"}</span>
-· http://127.0.0.87:18765<br>
-<strong>S2 FAFO Tagger</strong>
-<span class="{"ok" if st.get("s2_up") else "bad"}">{"UP" if st.get("s2_up") else "DOWN"}</span>
-· http://127.0.0.1:8765<br>
+<span class="{_s_cls(bool(st.get("s1_up")), s1_sleep)}">{_s_label(bool(st.get("s1_up")), s1_sleep)}</span>
+· http://127.0.0.87:18765
+<span class="muted">(Toolbox apps only)</span><br>
+<strong>S2 Ultimate Tab / Local Media</strong>
+<span class="{_s_cls(bool(st.get("s2_up")), s2_sleep)}">{_s_label(bool(st.get("s2_up")), s2_sleep)}</span>
+· http://127.0.0.1:8765
+<span class="muted">(Chrome Ultimate Tab — not Toolbox)</span><br>
 <strong>Heals (session)</strong> {payload.get("healsSession", 0)}
 · <strong>Failed heals (10m)</strong> {payload.get("failedHealsWindow", 0)}
 </div>
@@ -742,6 +796,7 @@ table{{width:100%;border-collapse:collapse}} td,th{{padding:8px;border-bottom:1p
 <table><tr><th>Severity</th><th>Code</th><th>Message</th></tr>{rows}</table>
 </div>
 <div class="card muted">
+Tray: right-click → S1 / S2 Sleep or Wake independently.<br>
 Log: {_log_path()}<br>
 JSON: {_status_json_path()}<br>
 This page auto-refreshes every 30s.
@@ -767,8 +822,10 @@ def build_report(
         "servers": {
             "s1_up": snap["tb_up"],
             "s1_healthy": snap["tb_healthy"],
+            "s1_sleeping": snap.get("sleep_tb", False),
             "s2_up": snap["meta_up"],
             "s2_healthy": snap["meta_healthy"],
+            "s2_sleeping": snap.get("sleep_meta", False),
             "want_s1": snap["want_tb"],
             "want_s2": snap["want_meta"],
             "tray_pids": snap["tray_pids"],
@@ -846,7 +903,11 @@ def enforce_single_instances(*, include_watchdog: bool = True) -> list[str]:
 
 
 def heal_if_needed(session: dict[str, Any]) -> list[str]:
-    """Return list of heal actions taken."""
+    """Return list of heal actions taken.
+
+    Sleeping servers (user Sleep from tray / Stop) are never auto-started.
+    S1 = HTML Toolbox; S2 = Ultimate Tab — independent products, independent sleep.
+    """
     actions: list[str] = []
     now = time.time()
 
@@ -860,16 +921,42 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
     st = launch_ops.companion_status()
     snap = _server_state(st)
 
+    if snap.get("sleep_tb") and snap.get("sleep_meta"):
+        # Both intentionally off — free resources; keep tray so user can Wake
+        if not session.get("logged_both_sleep"):
+            log("both S1+S2 sleeping — auto-heal suspended (wake from tray)", "INFO")
+            session["logged_both_sleep"] = True
+        if not snap.get("tray_pids"):
+            try:
+                r = launch_ops.start_tray()
+                if r.get("started"):
+                    actions.append("start_tray_while_sleeping")
+                    log("started tray (servers still sleeping — use tray to wake)")
+            except Exception as e:
+                log(f"tray start while sleeping failed: {e}", "WARN")
+        return actions
+    session["logged_both_sleep"] = False
+
+    # Lifecycle: S1 with Toolbox session, S2 with Chrome (independent products)
+    want_s1 = launch_ops.should_auto_run_s1(st.get("prefs") or launch_ops.get_prefs())
+    want_s2 = launch_ops.should_auto_run_s2(st.get("prefs") or launch_ops.get_prefs())
+    # Override snap wants with lifecycle (sleep already folded into should_auto_*)
+    snap["want_tb"] = want_s1
+    snap["want_meta"] = want_s2
+
     need = False
-    if snap["want_tb"] and not snap["tb_up"]:
+    if want_s1 and not snap["tb_up"]:
         need = True
-    if snap["want_meta"] and not snap["meta_up"]:
+    if want_s2 and not snap["meta_up"]:
+        need = True
+    # Chrome gone → stop S2
+    if (not want_s2) and snap["meta_up"] and not snap.get("sleep_meta"):
         need = True
 
     # Listening but health-fail: require consecutive fails before hard restart
     # (avoids "process may be wedged" spam right after a cold start / reload)
     UNHEALTHY_STREAK_NEED = 3
-    if snap["want_tb"] and st["toolbox"].get("listening") and not st["toolbox"].get("healthy"):
+    if want_s1 and st["toolbox"].get("listening") and not st["toolbox"].get("healthy"):
         streak = int(session.get("s1_unhealthy_streak", 0)) + 1
         session["s1_unhealthy_streak"] = streak
         log(f"S1 health soft-fail streak {streak}/{UNHEALTHY_STREAK_NEED}", "WARN")
@@ -878,7 +965,7 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
             if now - session.get("last_heal", 0) >= HEAL_COOLDOWN_SEC:
                 log("S1 health failed repeatedly — hard restart", "WARN")
                 try:
-                    launch_ops.stop_companions(toolbox=True, fafo_meta=False)
+                    launch_ops.stop_companions(toolbox=True, fafo_meta=False, mark_sleep=False)
                     time.sleep(0.5)
                 except Exception as e:
                     log(f"S1 stop failed: {e}", "ERROR")
@@ -886,7 +973,7 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
     else:
         session["s1_unhealthy_streak"] = 0
 
-    if snap["want_meta"] and st["fafoMeta"].get("listening") and not st["fafoMeta"].get("healthy"):
+    if want_s2 and st["fafoMeta"].get("listening") and not st["fafoMeta"].get("healthy"):
         streak2 = int(session.get("s2_unhealthy_streak", 0)) + 1
         session["s2_unhealthy_streak"] = streak2
         log(f"S2 health soft-fail streak {streak2}/{UNHEALTHY_STREAK_NEED}", "WARN")
@@ -895,7 +982,7 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
             if now - session.get("last_heal", 0) >= HEAL_COOLDOWN_SEC:
                 log("S2 health failed repeatedly — hard restart", "WARN")
                 try:
-                    launch_ops.stop_companions(toolbox=False, fafo_meta=True)
+                    launch_ops.stop_companions(toolbox=False, fafo_meta=True, mark_sleep=False)
                     time.sleep(0.4)
                 except Exception as e:
                     log(f"S2 stop failed: {e}", "ERROR")
@@ -919,39 +1006,37 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
         return actions
 
     log(
-        f"heal: S1={'down' if not snap['tb_up'] else 'ok'} "
-        f"S2={'down' if not snap['meta_up'] else 'ok'}",
+        f"lifecycle heal: S1 want={want_s1} up={snap['tb_up']} | "
+        f"S2 want={want_s2} up={snap['meta_up']} chrome={launch_ops.chrome_running()}",
         "WARN",
     )
     try:
-        result = launch_ops.start_companions(wait_sec=18)
+        result = launch_ops.apply_lifecycle(ensure_tray=True)
         session["last_heal"] = time.time()
         session["healsSession"] = int(session.get("healsSession", 0)) + 1
-        actions.append("start_companions")
-        ok = bool(result.get("ok"))
+        actions.append("apply_lifecycle")
+        actions.extend(result.get("actions") or [])
         st2 = result.get("status") or launch_ops.companion_status()
         snap2 = _server_state(st2)
-        if snap2["all_ok"] or (
-            (not snap["want_tb"] or snap2["tb_up"])
-            and (not snap["want_meta"] or snap2["meta_up"])
-        ):
+        ok_s1 = (not want_s1) or snap2["tb_up"]
+        ok_s2 = (not want_s2) or snap2["meta_up"]
+        if ok_s1 and ok_s2:
             log(
-                f"heal success — S1={'UP' if snap2['tb_up'] else 'down'} "
-                f"S2={'UP' if snap2['meta_up'] else 'down'}"
+                f"lifecycle ok — S1={'UP' if snap2['tb_up'] else 'idle'} "
+                f"S2={'UP' if snap2['meta_up'] else 'idle'} "
+                f"actions={result.get('actions')}"
             )
             session["s1_unhealthy_streak"] = 0
             session["s2_unhealthy_streak"] = 0
             session.setdefault("fail_times", [])
-            # clear old fails on success
             session["fail_times"] = [
                 t for t in session.get("fail_times", []) if now - t < FAIL_WINDOW_SEC
             ]
         else:
-            log(f"heal incomplete: {json.dumps(result.get('started'), default=str)[:400]}", "ERROR")
+            log(f"lifecycle incomplete: {result.get('actions')}", "ERROR")
             session.setdefault("fail_times", []).append(now)
             session["fail_times"] = [t for t in session["fail_times"] if now - t < FAIL_WINDOW_SEC]
-            if not ok:
-                actions.append("heal_failed")
+            actions.append("heal_failed")
     except Exception as e:
         session["last_heal"] = time.time()
         session.setdefault("fail_times", []).append(now)

@@ -79,6 +79,9 @@ def startup_folder() -> Path:
 def _default_prefs() -> dict[str, Any]:
     return {
         "version": PREFS_VERSION,
+        # Auto-run policy (NOT "start both with toolbox"):
+        #   toolboxServer  → S1 while toolbox session is active (open Toolbox)
+        #   fafoMetaServer → S2 while Google Chrome is running (Ultimate Tab)
         "startWithOneClick": {
             "toolboxServer": True,
             "fafoMetaServer": True,
@@ -92,6 +95,20 @@ def _default_prefs() -> dict[str, Any]:
         "blockAutoStart": {
             "toolboxServer": False,
             "fafoMetaServer": False,
+        },
+        # Sleep = user put this server down on purpose. Tray + watchdog MUST NOT auto-heal
+        # sleeping servers (frees RAM/CPU until you Wake / Start / open the toolbox).
+        # S1 toolboxServer  = HTML Toolbox apps
+        # S2 fafoMetaServer = Ultimate Tab / FAFO Local Media Chrome extension (separate product)
+        "serversSleeping": {
+            "toolboxServer": False,
+            "fafoMetaServer": False,
+        },
+        # Host-app sessions drive auto-heal (independent products):
+        #   toolboxActive = True after Open Toolbox / wake S1; False after Sleep S1
+        #   S2 has no session flag — bound to chrome.exe presence
+        "sessions": {
+            "toolboxActive": False,
         },
         "fafoMetaRoot": None,
         "updatedAt": None,
@@ -128,6 +145,18 @@ def get_prefs() -> dict[str, Any]:
         prefs["blockAutoStart"].update(
             {k: bool(v) for k, v in raw["blockAutoStart"].items() if k in prefs["blockAutoStart"]}
         )
+    if isinstance(raw.get("serversSleeping"), dict):
+        prefs["serversSleeping"].update(
+            {k: bool(v) for k, v in raw["serversSleeping"].items() if k in prefs["serversSleeping"]}
+        )
+    # Legacy single bool from early sleep experiments
+    if "serversSleeping" in raw and isinstance(raw["serversSleeping"], bool):
+        prefs["serversSleeping"]["toolboxServer"] = bool(raw["serversSleeping"])
+        prefs["serversSleeping"]["fafoMetaServer"] = bool(raw["serversSleeping"])
+    if isinstance(raw.get("sessions"), dict):
+        prefs["sessions"].update(
+            {k: bool(v) for k, v in raw["sessions"].items() if k in prefs["sessions"]}
+        )
     meta = raw.get("fafoMetaRoot") or raw.get("ExplorerMetaRoot")
     if isinstance(meta, str) and meta.strip():
         prefs["fafoMetaRoot"] = meta.strip()
@@ -162,6 +191,14 @@ def save_prefs(updates: dict[str, Any] | None = None) -> dict[str, Any]:
         for k, v in updates["blockAutoStart"].items():
             if k in prefs["blockAutoStart"]:
                 prefs["blockAutoStart"][k] = bool(v)
+    if isinstance(updates.get("serversSleeping"), dict):
+        for k, v in updates["serversSleeping"].items():
+            if k in prefs["serversSleeping"]:
+                prefs["serversSleeping"][k] = bool(v)
+    if isinstance(updates.get("sessions"), dict):
+        for k, v in updates["sessions"].items():
+            if k in prefs["sessions"]:
+                prefs["sessions"][k] = bool(v)
     if "fafoMetaRoot" in updates:
         val = updates["fafoMetaRoot"]
         if val is None or (isinstance(val, str) and not val.strip()):
@@ -177,6 +214,8 @@ def save_prefs(updates: dict[str, Any] | None = None) -> dict[str, Any]:
         "startWithOneClick": prefs["startWithOneClick"],
         "windowsStartup": prefs["windowsStartup"],
         "blockAutoStart": prefs["blockAutoStart"],
+        "serversSleeping": prefs["serversSleeping"],
+        "sessions": prefs["sessions"],
         "fafoMetaRoot": prefs.get("fafoMetaRoot"),
         "updatedAt": prefs["updatedAt"],
     }
@@ -296,6 +335,211 @@ def _http_health_resilient(url: str) -> dict[str, Any]:
     return {"ok": False, "error": err, "retried": True}
 
 
+def servers_sleeping(prefs: dict[str, Any] | None = None) -> dict[str, bool]:
+    """Per-server sleep flags. Sleeping servers must not be auto-healed."""
+    p = prefs or get_prefs()
+    sleep = p.get("serversSleeping") or {}
+    return {
+        "toolboxServer": bool(sleep.get("toolboxServer")),
+        "fafoMetaServer": bool(sleep.get("fafoMetaServer")),
+    }
+
+
+def chrome_running() -> bool:
+    """True if Google Chrome browser process is running (S2 host app)."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import psutil  # type: ignore
+
+        for p in psutil.process_iter(["name"]):
+            try:
+                name = (p.info.get("name") or "").lower()
+                if name in ("chrome.exe", "chrome"):
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
+def get_sessions(prefs: dict[str, Any] | None = None) -> dict[str, bool]:
+    p = prefs or get_prefs()
+    s = p.get("sessions") or {}
+    return {"toolboxActive": bool(s.get("toolboxActive"))}
+
+
+def set_toolbox_session(active: bool) -> dict[str, Any]:
+    """Mark HTML Toolbox session (S1 host). Open Toolbox → True; Sleep S1 → False."""
+    return save_prefs({"sessions": {"toolboxActive": bool(active)}})
+
+
+def should_auto_run_s1(prefs: dict[str, Any] | None = None) -> bool:
+    """S1 runs with Toolbox only — while session is active and not sleeping."""
+    p = prefs or get_prefs()
+    if servers_sleeping(p).get("toolboxServer"):
+        return False
+    if p.get("blockAutoStart", {}).get("toolboxServer"):
+        return False
+    if not p.get("startWithOneClick", {}).get("toolboxServer", True):
+        return False
+    return bool(get_sessions(p).get("toolboxActive"))
+
+
+def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
+    """S2 runs with Chrome only — while chrome.exe is present and not sleeping."""
+    p = prefs or get_prefs()
+    if servers_sleeping(p).get("fafoMetaServer"):
+        return False
+    if p.get("blockAutoStart", {}).get("fafoMetaServer"):
+        return False
+    if not p.get("startWithOneClick", {}).get("fafoMetaServer", True):
+        return False
+    return chrome_running()
+
+
+def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
+    """Align S1/S2 with their host apps (call from tray + watchdog).
+
+    S1 HTML Toolbox  → toolbox session (open Toolbox)
+    S2 Ultimate Tab  → Chrome browser process
+    """
+    prefs = get_prefs()
+    actions: list[str] = []
+    want_s1 = should_auto_run_s1(prefs)
+    want_s2 = should_auto_run_s2(prefs)
+    s1_up = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
+    s2_up = _port_open(META_HOST, META_PORT)
+
+    if want_s1 and not s1_up:
+        r = start_toolbox_server()
+        actions.append(f"start_s1:{r.get('started') or r.get('alreadyRunning') or r.get('error')}")
+    # Do not auto-stop S1 when session ends — user Sleep is explicit
+
+    if want_s2 and not s2_up:
+        r = start_fafo_meta_server()
+        actions.append(f"start_s2:{r.get('started') or r.get('alreadyRunning') or r.get('error')}")
+    elif (not want_s2) and s2_up and not servers_sleeping(prefs).get("fafoMetaServer"):
+        # Chrome closed (or auto disabled) — free resources; do not mark user-sleep
+        killed = stop_companions(toolbox=False, fafo_meta=True, mark_sleep=False)
+        actions.append(f"stop_s2_chrome_gone:killed={killed.get('killed')}")
+
+    tray_info: dict[str, Any] = {}
+    if ensure_tray:
+        tray_info = start_tray()
+        if tray_info.get("started"):
+            actions.append("start_tray")
+
+    return {
+        "ok": True,
+        "actions": actions,
+        "want": {"s1": want_s1, "s2": want_s2},
+        "chromeRunning": chrome_running(),
+        "sessions": get_sessions(),
+        "serversSleeping": servers_sleeping(),
+        "status": companion_status(),
+        "tray": tray_info,
+    }
+
+
+def is_server_sleeping(which: str, prefs: dict[str, Any] | None = None) -> bool:
+    """which: 'toolbox' | 'toolboxServer' | 's1' | 'fafoMeta' | 'fafoMetaServer' | 's2'."""
+    sleep = servers_sleeping(prefs)
+    key = (which or "").strip().lower()
+    if key in ("toolbox", "toolboxserver", "s1", "html", "htmltoolbox"):
+        return sleep["toolboxServer"]
+    if key in ("fafometa", "fafometaserver", "s2", "meta", "ultimatetab", "tagger"):
+        return sleep["fafoMetaServer"]
+    return False
+
+
+def set_servers_sleeping(
+    *,
+    toolbox: bool | None = None,
+    fafo_meta: bool | None = None,
+) -> dict[str, Any]:
+    """Set sleep flags without starting/stopping processes. None = leave unchanged."""
+    cur = servers_sleeping()
+    updates: dict[str, bool] = {}
+    if toolbox is not None:
+        updates["toolboxServer"] = bool(toolbox)
+    else:
+        updates["toolboxServer"] = cur["toolboxServer"]
+    if fafo_meta is not None:
+        updates["fafoMetaServer"] = bool(fafo_meta)
+    else:
+        updates["fafoMetaServer"] = cur["fafoMetaServer"]
+    return save_prefs({"serversSleeping": updates})
+
+
+def sleep_companions(
+    toolbox: bool | None = True,
+    fafo_meta: bool | None = True,
+) -> dict[str, Any]:
+    """Stop selected servers and mark them sleeping so tray/watchdog will not revive them.
+
+    Independent products:
+      S1 toolbox  — HTML Toolbox apps (also ends toolbox session)
+      S2 fafo_meta — Ultimate Tab / Local Media Chrome extension
+    """
+    want_tb = True if toolbox is None else bool(toolbox)
+    want_meta = True if fafo_meta is None else bool(fafo_meta)
+    # Mark sleep FIRST so a concurrent heal does not race a restart
+    set_servers_sleeping(
+        toolbox=True if want_tb else None,
+        fafo_meta=True if want_meta else None,
+    )
+    if want_tb:
+        set_toolbox_session(False)
+    stopped = stop_companions(
+        toolbox=want_tb if want_tb else False,
+        fafo_meta=want_meta if want_meta else False,
+        mark_sleep=False,  # already set above
+    )
+    return {
+        "ok": True,
+        "action": "sleep",
+        "sleeping": servers_sleeping(),
+        "sessions": get_sessions(),
+        "killed": stopped.get("killed", {}),
+        "status": companion_status(),
+    }
+
+
+def wake_companions(
+    toolbox: bool | None = True,
+    fafo_meta: bool | None = True,
+    wait_sec: float = 12.0,
+) -> dict[str, Any]:
+    """Clear sleep flags for selected servers and start them (force past blocks).
+
+    Waking S1 opens a toolbox session (S1 lifecycle).
+    Waking S2 starts tagger even if Chrome is not open yet (manual override).
+    """
+    want_tb = True if toolbox is None else bool(toolbox)
+    want_meta = True if fafo_meta is None else bool(fafo_meta)
+    set_servers_sleeping(
+        toolbox=False if want_tb else None,
+        fafo_meta=False if want_meta else None,
+    )
+    if want_tb:
+        set_toolbox_session(True)
+    started = start_companions(
+        toolbox=want_tb if want_tb else False,
+        fafo_meta=want_meta if want_meta else False,
+        wait_sec=wait_sec,
+        force=True,
+    )
+    return {
+        "ok": bool(started.get("ok")),
+        "action": "wake",
+        "sleeping": servers_sleeping(),
+        "sessions": get_sessions(),
+        **started,
+    }
+
+
 def companion_status() -> dict[str, Any]:
     """Health of toolbox + FAFO meta companions."""
     meta_info = resolve_fafo_meta_root(persist=False)
@@ -315,8 +559,20 @@ def companion_status() -> dict[str, Any]:
     win = windows_startup_status()
     block = prefs.get("blockAutoStart") or {}
     one = prefs.get("startWithOneClick") or {}
+    sleep = servers_sleeping(prefs)
+    sessions = get_sessions(prefs)
+    chrome_up = chrome_running()
     return {
         "prefs": prefs,
+        "serversSleeping": sleep,
+        "sessions": sessions,
+        "chromeRunning": chrome_up,
+        "lifecycle": {
+            "s1": "with_toolbox",
+            "s2": "with_chrome",
+            "s1_should_run": should_auto_run_s1(prefs),
+            "s2_should_run": should_auto_run_s2(prefs),
+        },
         "toolbox": {
             "id": "toolbox",
             "code": "S1",
@@ -329,7 +585,10 @@ def companion_status() -> dict[str, Any]:
             "healthy": bool(toolbox_health.get("ok")),
             "autoStart": bool(one.get("toolboxServer")),
             "blockAutoStart": bool(block.get("toolboxServer")),
-            "role": "Powers HTML Toolbox apps (media, Verifone, system tools, VSR, file tools)",
+            "sleeping": sleep["toolboxServer"],
+            "sessionActive": sessions.get("toolboxActive"),
+            "lifecycle": "with_toolbox",
+            "role": "Powers HTML Toolbox apps only — starts when you open the Toolbox",
             "serves": [
                 "Toolbox Launcher",
                 "Media Library / VSR / File Organizer",
@@ -341,8 +600,8 @@ def companion_status() -> dict[str, Any]:
         "fafoMeta": {
             "id": "fafo_meta",
             "code": "S2",
-            "name": "S2 · FAFO Local Media Tagger",
-            "shortName": "FAFO Tagger",
+            "name": "S2 · Ultimate Tab / Local Media Tagger",
+            "shortName": "Ultimate Tab",
             "host": META_HOST,
             "port": META_PORT,
             "endpoint": f"http://{META_HOST}:{META_PORT}",
@@ -350,9 +609,15 @@ def companion_status() -> dict[str, Any]:
             "healthy": bool(meta_health.get("ok")),
             "autoStart": bool(one.get("fafoMetaServer")),
             "blockAutoStart": bool(block.get("fafoMetaServer")),
-            "role": "Powers FAFO Local Media Chrome extension (tags, ratings, pairs, Explorer sync)",
+            "sleeping": sleep["fafoMetaServer"],
+            "chromeRunning": chrome_up,
+            "lifecycle": "with_chrome",
+            "role": (
+                "Separate product: starts when Google Chrome is running "
+                "(Ultimate Tab extension) — not launched by HTML Toolbox"
+            ),
             "serves": [
-                "FAFO Local Media (Chrome new-tab extension)",
+                "FAFO Ultimate Tab / Local Media (Chrome extension)",
                 "On-play tags / ratings → Explorer metadata",
                 "Pairs & library index companion",
             ],
@@ -365,12 +630,16 @@ def companion_status() -> dict[str, Any]:
                 "name": "HTML Toolbox Server",
                 "port": TOOLBOX_PORT,
                 "endpoint": f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}",
+                "product": "AI HTML Toolbox",
+                "lifecycle": "Opens with Toolbox · Sleep from tray when done",
             },
             {
                 "code": "S2",
-                "name": "FAFO Local Media Tagger",
+                "name": "Ultimate Tab / Local Media Tagger",
                 "port": META_PORT,
                 "endpoint": f"http://{META_HOST}:{META_PORT}",
+                "product": "FAFO Ultimate Tab (Chrome extension)",
+                "lifecycle": "Starts with Chrome · stops when Chrome exits",
             },
         ],
     }
@@ -544,23 +813,70 @@ def start_companions(
     force: bool = False,
 ) -> dict[str, Any]:
     """
-    Start configured companion servers. None = use prefs.
+    Start companion servers.
 
-    blockAutoStart in prefs blocks auto/one-click starts unless force=True
-    (manual override from Startup command board).
+    None = lifecycle auto mode:
+      S1 only if toolbox session active (open Toolbox)
+      S2 only if Chrome is running
+
+    Explicit True = manual start (clears sleep; S1 also opens toolbox session).
+    force=True ignores blockAutoStart and sleep (Wake).
     """
     prefs = get_prefs()
     block = prefs.get("blockAutoStart") or {}
-    want_tb = prefs["startWithOneClick"]["toolboxServer"] if toolbox is None else bool(toolbox)
-    want_meta = prefs["startWithOneClick"]["fafoMetaServer"] if fafo_meta is None else bool(fafo_meta)
+    sleep = servers_sleeping(prefs)
+
+    if toolbox is None:
+        want_tb = should_auto_run_s1(prefs) if not force else (
+            prefs["startWithOneClick"]["toolboxServer"] and not sleep.get("toolboxServer")
+        )
+    else:
+        want_tb = bool(toolbox)
+    if fafo_meta is None:
+        want_meta = should_auto_run_s2(prefs) if not force else (
+            prefs["startWithOneClick"]["fafoMetaServer"]
+            and not sleep.get("fafoMetaServer")
+            and chrome_running()
+        )
+    else:
+        want_meta = bool(fafo_meta)
+
+    # Explicit Start/Wake: clear sleep + open S1 session
+    if force or toolbox is True:
+        if want_tb:
+            if sleep.get("toolboxServer"):
+                set_servers_sleeping(toolbox=False)
+                sleep = servers_sleeping()
+            set_toolbox_session(True)
+    if force or fafo_meta is True:
+        if want_meta and sleep.get("fafoMetaServer"):
+            set_servers_sleeping(fafo_meta=False)
+            sleep = servers_sleeping()
 
     blocked: list[str] = []
+    sleeping_skip: list[str] = []
+    lifecycle_skip: list[str] = []
     if want_tb and block.get("toolboxServer") and not force:
         want_tb = False
         blocked.append("toolboxServer")
     if want_meta and block.get("fafoMetaServer") and not force:
         want_meta = False
         blocked.append("fafoMetaServer")
+    # Sleep wins over auto-heal / one-click unless force (or explicit True already cleared)
+    if want_tb and sleep.get("toolboxServer") and not force and toolbox is not True:
+        want_tb = False
+        sleeping_skip.append("toolboxServer")
+    if want_meta and sleep.get("fafoMetaServer") and not force and fafo_meta is not True:
+        want_meta = False
+        sleeping_skip.append("fafoMetaServer")
+    # Lifecycle: do not start S2 without Chrome unless explicit True/force wake of S2 alone
+    if want_meta and fafo_meta is not True and not force and not chrome_running():
+        want_meta = False
+        lifecycle_skip.append("fafoMetaServer")
+    # Lifecycle: do not start S1 without toolbox session unless explicit
+    if want_tb and toolbox is not True and not force and not get_sessions().get("toolboxActive"):
+        want_tb = False
+        lifecycle_skip.append("toolboxServer")
 
     results: list[dict[str, Any]] = []
     if want_tb:
@@ -575,6 +891,31 @@ def start_companions(
                 "server": b,
                 "skipped": True,
                 "reason": "blockAutoStart — enable from Startup board or pass force=true",
+            }
+        )
+    for s in sleeping_skip:
+        results.append(
+            {
+                "ok": False,
+                "id": "sleeping",
+                "server": s,
+                "skipped": True,
+                "reason": "serversSleeping — Wake from tray or Start with force=true",
+            }
+        )
+    for s in lifecycle_skip:
+        reason = (
+            "S1 runs with Toolbox only (open Toolbox first)"
+            if s == "toolboxServer"
+            else "S2 runs with Chrome only (start Chrome / Ultimate Tab)"
+        )
+        results.append(
+            {
+                "ok": False,
+                "id": "lifecycle",
+                "server": s,
+                "skipped": True,
+                "reason": reason,
             }
         )
 
@@ -593,11 +934,19 @@ def start_companions(
     status = companion_status()
     status["tray"] = {"running": _tray_running(), **{k: v for k, v in tray.items() if k != "id"}}
     return {
-        "ok": all(r.get("ok") for r in results if r.get("id") not in ("tray", "blocked")) if results else True,
+        "ok": all(
+            r.get("ok")
+            for r in results
+            if r.get("id") not in ("tray", "blocked", "sleeping", "lifecycle")
+        )
+        if results
+        else True,
         "started": results,
         "status": status,
         "wanted": {"toolboxServer": want_tb, "fafoMetaServer": want_meta},
         "blocked": blocked,
+        "sleepingSkipped": sleeping_skip,
+        "lifecycleSkipped": lifecycle_skip,
         "force": force,
         "hidden": True,
     }
@@ -637,10 +986,22 @@ def stop_listener_on_port(port: int, host_hint: str | None = None) -> list[int]:
 def stop_companions(
     toolbox: bool | None = None,
     fafo_meta: bool | None = None,
+    *,
+    mark_sleep: bool = True,
 ) -> dict[str, Any]:
-    """Stop one or both servers. None = stop both (manual off). Does not clear prefs."""
+    """Stop one or both servers. None = stop both (manual off).
+
+    By default marks stopped servers as sleeping so tray/watchdog will not
+    immediately auto-restart them (that was the resource-hog bug).
+    Pass mark_sleep=False only for internal restart sequences.
+    """
     want_tb = True if toolbox is None else bool(toolbox)
     want_meta = True if fafo_meta is None else bool(fafo_meta)
+    if mark_sleep and (want_tb or want_meta):
+        set_servers_sleeping(
+            toolbox=True if want_tb else None,
+            fafo_meta=True if want_meta else None,
+        )
     killed: dict[str, list[int]] = {"toolbox": [], "fafo_meta": []}
     # Stop tagger first so S1 can still answer the stop API call
     if want_meta:
@@ -651,6 +1012,7 @@ def stop_companions(
         "ok": True,
         "killed": killed,
         "stopped": {"toolboxServer": want_tb, "fafoMetaServer": want_meta},
+        "serversSleeping": servers_sleeping(),
         "status": companion_status(),
     }
 
@@ -662,13 +1024,21 @@ def restart_companions(
     *,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Stop then start companions (for tray / protocol relaunch)."""
+    """Stop then start companions (for tray / protocol relaunch). Clears sleep on wake."""
     prefs = get_prefs()
     want_tb = prefs["startWithOneClick"]["toolboxServer"] if toolbox is None else bool(toolbox)
     want_meta = prefs["startWithOneClick"]["fafoMetaServer"] if fafo_meta is None else bool(fafo_meta)
-    stopped = stop_companions(toolbox=want_tb, fafo_meta=want_meta)
+    # Don't leave sleep stuck on during intentional restart
+    stopped = stop_companions(toolbox=want_tb, fafo_meta=want_meta, mark_sleep=False)
+    if want_tb or want_meta:
+        set_servers_sleeping(
+            toolbox=False if want_tb else None,
+            fafo_meta=False if want_meta else None,
+        )
     time.sleep(0.6)
-    started = start_companions(toolbox=want_tb, fafo_meta=want_meta, wait_sec=wait_sec, force=force)
+    started = start_companions(
+        toolbox=want_tb, fafo_meta=want_meta, wait_sec=wait_sec, force=True
+    )
     return {
         "ok": started.get("ok", False),
         "killed": stopped.get("killed", {}),
@@ -812,6 +1182,8 @@ def apply_prefs_and_startup(body: dict[str, Any]) -> dict[str, Any]:
         prefs_update["startWithOneClick"] = body["startWithOneClick"]
     if "blockAutoStart" in body and isinstance(body["blockAutoStart"], dict):
         prefs_update["blockAutoStart"] = body["blockAutoStart"]
+    if "serversSleeping" in body and isinstance(body["serversSleeping"], dict):
+        prefs_update["serversSleeping"] = body["serversSleeping"]
     if "fafoMetaRoot" in body:
         prefs_update["fafoMetaRoot"] = body["fafoMetaRoot"]
     if "windowsStartup" in body and isinstance(body["windowsStartup"], dict):
