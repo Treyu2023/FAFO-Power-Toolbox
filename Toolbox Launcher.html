@@ -923,15 +923,49 @@
         .server-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; transition: all 0.3s; }
         .server-dot.on { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
         .server-dot.off { background: #ff4466; box-shadow: 0 0 8px #ff4466; }
-        .server-dot.waiting { background: #ffc800; box-shadow: 0 0 10px #ffc800; animation: ui-pulse-glow 1.2s ease infinite; }
+        .server-dot.waiting { background: #2dd4bf; box-shadow: 0 0 10px #2dd4bf; animation: ui-pulse-glow 1.2s ease infinite; }
+        .server-dot.warn { background: #ff9f1a; box-shadow: 0 0 10px #ff9f1a; }
+        .server-dot.attention {
+            background: #ff4466; box-shadow: 0 0 10px #ff4466;
+            animation: server-attn-flash 0.85s ease infinite;
+        }
+        @keyframes server-attn-flash {
+            0%, 100% { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+            50% { background: #ff4466; box-shadow: 0 0 12px #ff4466; }
+        }
 
         .server-banner { flex-direction: column; align-items: stretch; max-width: 780px; }
         .server-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
         .server-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
         .server-hint { font-size: 11px; color: var(--muted); text-align: center; width: 100%; margin-top: 4px; min-height: 16px; }
-        .server-hint.warn { color: #ffc800; }
+        .server-hint.warn { color: #ff9f1a; }
         .server-hint.ok { color: #00ff88; }
-        #btnStartServer:disabled { opacity: 0.5; cursor: wait; }
+        .server-hint.attention { color: #ff6b81; font-weight: 700; }
+        /* Main Start button status colors */
+        #btnStartServer { transition: background .25s, border-color .25s, color .25s, box-shadow .25s; }
+        #btnStartServer.state-offline {
+            background: rgba(255, 68, 102, 0.18); border-color: #ff4466; color: #ffb3c0;
+        }
+        #btnStartServer.state-starting {
+            background: rgba(45, 212, 191, 0.22); border-color: #2dd4bf; color: #99f6e4;
+            box-shadow: 0 0 14px rgba(45, 212, 191, 0.35);
+        }
+        #btnStartServer.state-online {
+            background: rgba(0, 255, 136, 0.18); border-color: #00ff88; color: #b7ffd9;
+            box-shadow: 0 0 12px rgba(0, 255, 136, 0.3);
+        }
+        #btnStartServer.state-warn {
+            background: rgba(255, 159, 26, 0.2); border-color: #ff9f1a; color: #ffd8a8;
+        }
+        #btnStartServer.state-attention {
+            border-color: #ff4466; color: #fff;
+            animation: server-btn-attn 0.9s ease infinite;
+        }
+        @keyframes server-btn-attn {
+            0%, 100% { background: rgba(0, 255, 136, 0.25); border-color: #00ff88; box-shadow: 0 0 12px #00ff88; }
+            50% { background: rgba(255, 68, 102, 0.28); border-color: #ff4466; box-shadow: 0 0 14px #ff4466; }
+        }
+        #btnStartServer:disabled { opacity: 0.75; cursor: wait; }
 
         input[type="file"] { display: none; }
 
@@ -3631,13 +3665,61 @@
         }
 
         function setServerUi(state, hint, hintClass) {
+            // state: offline | starting | online | warn | attention
             const dot = document.getElementById('serverDot');
             const hintEl = document.getElementById('serverHint');
-            dot.className = 'server-dot ' + (state === 'on' ? 'on' : state === 'wait' ? 'waiting' : 'off');
-            if (hint != null) hintEl.textContent = hint;
-            hintEl.className = 'server-hint' + (hintClass ? ' ' + hintClass : '');
-            document.getElementById('btnStartServer').disabled = serverStarting;
-            document.getElementById('serverActions').style.opacity = state === 'on' ? '0.85' : '1';
+            const btnStart = document.getElementById('btnStartServer');
+            const map = {
+                offline: 'off',
+                starting: 'waiting',
+                online: 'on',
+                warn: 'warn',
+                attention: 'attention',
+                on: 'on',
+                off: 'off',
+                wait: 'waiting',
+            };
+            const dotClass = map[state] || 'off';
+            if (dot) dot.className = 'server-dot ' + dotClass;
+            if (hint != null && hintEl) hintEl.textContent = hint;
+            if (hintEl) {
+                hintEl.className = 'server-hint' + (
+                    hintClass ? ' ' + hintClass
+                        : state === 'online' || state === 'on' ? ' ok'
+                        : state === 'starting' || state === 'wait' || state === 'warn' ? ' warn'
+                        : state === 'attention' ? ' attention'
+                        : ''
+                );
+            }
+            if (btnStart) {
+                btnStart.classList.remove('state-offline', 'state-starting', 'state-online', 'state-warn', 'state-attention');
+                const btnState = (
+                    state === 'on' || state === 'online' ? 'state-online'
+                    : state === 'wait' || state === 'starting' ? 'state-starting'
+                    : state === 'warn' ? 'state-warn'
+                    : state === 'attention' ? 'state-attention'
+                    : 'state-offline'
+                );
+                btnStart.classList.add(btnState);
+                btnStart.disabled = serverStarting && state === 'starting';
+            }
+            const actions = document.getElementById('serverActions');
+            if (actions) actions.style.opacity = (state === 'on' || state === 'online') ? '0.9' : '1';
+        }
+
+        async function fetchWatchdogAttention() {
+            try {
+                if (!AIToolboxAPI.getWatchdogStatus) return null;
+                const w = await AIToolboxAPI.getWatchdogStatus();
+                if (!w) return null;
+                return {
+                    attention: !!(w.attentionRequired || w.attention),
+                    reason: w.attentionReason || '',
+                    issues: w.issues || (w.status && w.status.issues) || [],
+                };
+            } catch {
+                return null;
+            }
         }
 
         async function checkServer(force) {
@@ -3649,17 +3731,37 @@
             const ep = (h.endpoint) || (AIToolboxAPI.getEndpointLabel ? AIToolboxAPI.getEndpointLabel() : '127.0.0.87:18765');
             if (on) {
                 serverStarting = false;
-                setServerUi('on', 'Server connected @ ' + ep + ' — full features unlocked', 'ok');
-                btnStart.textContent = '✓ Server Running';
-                btnStart.disabled = true;
-                document.getElementById('serverText').innerHTML =
-                    `<strong>Power mode active</strong> — ${ep}${h.ffmpeg ? ' · ffmpeg ✓' : ''}${h.version ? ' · v' + h.version : ''}`;
+                const attn = await fetchWatchdogAttention();
+                if (attn && attn.attention) {
+                    setServerUi(
+                        'attention',
+                        'S1 online but attention: ' + (attn.reason || 'see Watchdog status'),
+                        'attention'
+                    );
+                    if (btnStart) {
+                        btnStart.textContent = '⚠ Attention · Server Online';
+                        btnStart.disabled = false;
+                    }
+                    document.getElementById('serverText').innerHTML =
+                        `<strong>Power mode active — attention</strong> — ${ep}` +
+                        (attn.reason ? ` · ${attn.reason}` : '');
+                } else {
+                    setServerUi('online', 'Server connected @ ' + ep + ' — full features unlocked', 'ok');
+                    if (btnStart) {
+                        btnStart.textContent = '✓ Server Running';
+                        btnStart.disabled = true;
+                    }
+                    document.getElementById('serverText').innerHTML =
+                        `<strong>Power mode active</strong> — ${ep}${h.ffmpeg ? ' · ffmpeg ✓' : ''}${h.version ? ' · v' + h.version : ''}`;
+                }
             } else if (!serverStarting) {
-                btnStart.textContent = '▶ Start Server';
-                btnStart.disabled = false;
-                setServerUi('off', 'Will bind ' + ep + ' (unique — not FAFO :8765)', '');
+                if (btnStart) {
+                    btnStart.textContent = '▶ Start All Servers';
+                    btnStart.disabled = false;
+                }
+                setServerUi('offline', 'S1 will bind ' + ep + ' · S2 can start with Start All (Chrome optional)', '');
                 document.getElementById('serverText').innerHTML =
-                    '<strong>Browser-only mode</strong> — click <strong>▶ Start Server</strong> (every major tool has this now)';
+                    '<strong>Browser-only mode</strong> — click <strong>▶ Start All Servers</strong> (S1 + S2; teal while starting, green when ready)';
             }
             return on;
         }
@@ -3667,32 +3769,51 @@
         async function launchServer(mode) {
             if (serverStarting || AIToolboxAPI.isServerLaunching()) return;
             serverStarting = true;
-            setServerUi('wait', 'Starting server… waiting for green dot (up to 90s)', 'warn');
-            document.getElementById('serverText').innerHTML = '<strong>Starting…</strong> — launching Python backend';
-            document.getElementById('btnStartServer').disabled = true;
+            setServerUi('starting', 'Starting S1 + S2… teal = starting (up to 90s)', 'warn');
+            document.getElementById('serverText').innerHTML = '<strong>Starting…</strong> — launching Python backends';
+            const btnStart = document.getElementById('btnStartServer');
+            if (btnStart) {
+                btnStart.textContent = '◌ Starting…';
+                btnStart.disabled = true;
+            }
 
             try {
                 const result = await AIToolboxAPI.startServer({
                     mode: mode || 'tray',
                     waitMs: 90000,
+                    companions: true,
                     onStatus: (msg) => {
                         document.getElementById('serverText').innerHTML = '<strong>' + msg + '</strong>';
                     },
                 });
+                // Ensure S2 even without Chrome (manual force via API)
+                if (result.ok && AIToolboxAPI.startCompanionServers) {
+                    await AIToolboxAPI.startCompanionServers({
+                        toolbox: true,
+                        fafoMeta: true,
+                        waitSec: 10,
+                        force: true,
+                    }).catch(() => null);
+                }
                 serverStarting = false;
-                document.getElementById('btnStartServer').disabled = false;
+                if (btnStart) btnStart.disabled = false;
                 if (result.ok) {
                     await checkServer(true);
-                    AIToolboxUI.toast('Server online — power mode active', 'ok');
+                    await refreshLaunchPrefs().catch(() => {});
+                    AIToolboxUI.toast('Servers online — power mode active', 'ok');
                 } else {
-                    setServerUi('off', 'Browser blocked launch — use 📂 Open Folder → START SERVER.bat (or run SETUP once)', 'warn');
-                    document.getElementById('serverText').innerHTML = '<strong>Not connected</strong> — double-click <code>START SERVER.bat</code> in toolbox folder';
+                    setServerUi('warn', 'Browser blocked launch — use Desktop “Start Servers” or SETUP once', 'warn');
+                    document.getElementById('serverText').innerHTML = '<strong>Not connected</strong> — Desktop <em>Start Servers</em> or START SERVER.bat';
+                    if (btnStart) btnStart.textContent = '▶ Start All Servers';
                     showServerHelpModal();
                 }
             } catch (e) {
                 serverStarting = false;
-                document.getElementById('btnStartServer').disabled = false;
-                setServerUi('off', 'Start failed: ' + (e.message || e), 'warn');
+                if (btnStart) {
+                    btnStart.disabled = false;
+                    btnStart.textContent = '▶ Start All Servers';
+                }
+                setServerUi('warn', 'Start failed: ' + (e.message || e), 'warn');
                 showServerHelpModal();
             }
         }

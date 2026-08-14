@@ -16,12 +16,31 @@
     const PROXY_SECONDS = 8;
     const PROXY_FPS = 24;
     const PROXY_SIZE_SOFT_CAP = 28 * 1024 * 1024; // always proxy blobs bigger than this
+    /** Intro BG audio level when unmuted (0–1). Soft so it never blares. */
+    const INTRO_VOLUME = 0.3;
 
     const DEFAULT_PREFS = {
         skipOnLaunch: false,   // daily-driver: skip intros
-        muteVideo: true,
-        lastPlayedAt: 0
+        muteVideo: false,      // play clip audio softly when present
+        lastPlayedAt: 0,
+        prefsRev: 2            // 2 = soft intro audio on + brighter BG grade
     };
+
+    /** Apply mute + soft volume to an intro video element. */
+    function applyIntroAudio(video) {
+        if (!video) return;
+        const muted = prefs.muteVideo !== false;
+        try {
+            video.volume = INTRO_VOLUME;
+        } catch (_) { /* ignore */ }
+        video.muted = muted;
+        video.defaultMuted = muted;
+        if (muted) {
+            video.setAttribute('muted', '');
+        } else {
+            video.removeAttribute('muted');
+        }
+    }
 
     /** Pick a target size based on the machine so weak PCs stay smooth. */
     function playTarget() {
@@ -35,12 +54,19 @@
         return { maxW: 1280, maxH: 720, bitrate: 2_500_000, label: '720p' };
     }
 
-    /** @type {{ skipOnLaunch: boolean, muteVideo: boolean, lastPlayedAt: number }} */
+    /** @type {{ skipOnLaunch: boolean, muteVideo: boolean, lastPlayedAt: number, prefsRev?: number }} */
     let prefs = loadPrefs();
 
     function loadPrefs() {
         try {
-            return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') };
+            const raw = { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') };
+            // One-shot: older installs defaulted to muteVideo:true — flip sound on once
+            if ((raw.prefsRev || 0) < 2) {
+                raw.muteVideo = false;
+                raw.prefsRev = 2;
+                try { localStorage.setItem(LS_PREFS, JSON.stringify(raw)); } catch (_) { /* ignore */ }
+            }
+            return raw;
         } catch (_) {
             return { ...DEFAULT_PREFS };
         }
@@ -391,7 +417,8 @@
     }
 
     function proxyCacheKey(kind, name, size, mtime) {
-        return 'proxy:' + [kind, name || 'v', size || 0, mtime || 0, playTarget().label].join('|');
+        // v2a: proxies may include a soft audio track (older silent caches ignored)
+        return 'proxy:v2a:' + [kind, name || 'v', size || 0, mtime || 0, playTarget().label].join('|');
     }
 
     function loadVideoMeta(blobOrFile) {
@@ -473,11 +500,34 @@
             const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
             if (!ctx) throw new Error('no 2d context');
 
-            const stream = canvas.captureStream(PROXY_FPS);
-            const rec = new MediaRecorder(stream, {
-                mimeType: mime,
-                videoBitsPerSecond: bitrate
-            });
+            // Video from canvas; audio from source when available so intros keep clip sound
+            const canvasStream = canvas.captureStream(PROXY_FPS);
+            let recStream = canvasStream;
+            try {
+                video.muted = false;
+                video.volume = 0.001; // near-silent during encode (avoid blaring while proxy builds)
+                const cap =
+                    (typeof video.captureStream === 'function' && video.captureStream()) ||
+                    (typeof video.mozCaptureStream === 'function' && video.mozCaptureStream()) ||
+                    null;
+                const aTracks = cap ? cap.getAudioTracks() : [];
+                if (aTracks.length) {
+                    recStream = new MediaStream([
+                        ...canvasStream.getVideoTracks(),
+                        ...aTracks
+                    ]);
+                }
+            } catch (_) {
+                recStream = canvasStream;
+            }
+            const recOpts = { mimeType: mime, videoBitsPerSecond: bitrate };
+            // Soft audio bitrate when muxing sound into the proxy
+            try {
+                if (recStream.getAudioTracks().length) {
+                    recOpts.audioBitsPerSecond = 96_000;
+                }
+            } catch (_) { /* ignore */ }
+            const rec = new MediaRecorder(recStream, recOpts);
             const chunks = [];
             rec.ondataavailable = (e) => {
                 if (e.data && e.data.size) chunks.push(e.data);
@@ -488,9 +538,14 @@
                 Number.isFinite(duration) && duration > 0 ? duration : PROXY_SECONDS
             );
 
-            video.muted = true;
             video.currentTime = 0;
-            try { await video.play(); } catch (_) { /* ignore autoplay quirks */ }
+            try { await video.play(); } catch (_) {
+                // Capture may still work muted if autoplay blocks unmuted play
+                try {
+                    video.muted = true;
+                    await video.play();
+                } catch (__) { /* ignore autoplay quirks */ }
+            }
 
             const outBlob = await new Promise((resolve, reject) => {
                 let finished = false;
@@ -775,15 +830,17 @@ body.cine-active { overflow: hidden; }
 .cine-bg-video, .cine-bg-synth {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; z-index: 0;
-  filter: brightness(0.45) saturate(1.15) contrast(1.05);
 }
 /* Prefer compositor path; proxies are already ≤720p so paint stays cheap */
 .cine-bg-video {
   transform: translateZ(0);
   will-change: transform;
   background: #000;
+  /* Was 0.45 — videos looked crushed. Keep mild grade so titles still read. */
+  filter: brightness(0.88) saturate(1.12) contrast(1.06);
 }
 .cine-bg-synth {
+  filter: brightness(0.75) saturate(1.15) contrast(1.05);
   background:
     radial-gradient(ellipse at 30% 20%, rgba(0,243,255,0.25), transparent 50%),
     radial-gradient(ellipse at 70% 80%, rgba(255,60,120,0.2), transparent 45%),
@@ -805,8 +862,8 @@ body.cine-active { overflow: hidden; }
 .cine-vignette {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background:
-    radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.75) 100%),
-    linear-gradient(180deg, rgba(0,0,0,0.35) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.55) 100%);
+    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.42) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0.18) 0%, transparent 18%, transparent 82%, rgba(0,0,0,0.28) 100%);
 }
 
 .cine-fg {
@@ -1164,18 +1221,17 @@ body.cine-active { overflow: hidden; }
   opacity: 0.75;
 }
 
-/* CRT scanlines */
+/* CRT scanlines — light veil only (multiply + high opacity was crushing BGs) */
 .cine-crt {
   position: absolute; inset: 0; z-index: 4; pointer-events: none;
   background: repeating-linear-gradient(
     0deg,
     transparent,
     transparent 2px,
-    rgba(0,0,0,0.12) 2px,
-    rgba(0,0,0,0.12) 3px
+    rgba(0,0,0,0.06) 2px,
+    rgba(0,0,0,0.06) 3px
   );
-  mix-blend-mode: multiply;
-  opacity: 0.45;
+  opacity: 0.28;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1246,7 +1302,7 @@ body.cine-active { overflow: hidden; }
 
             const video = document.createElement('video');
             video.className = 'cine-bg-video';
-            video.muted = prefs.muteVideo !== false;
+            applyIntroAudio(video);
             video.loop = true;
             video.playsInline = true;
             video.preload = 'auto';
@@ -1278,7 +1334,7 @@ body.cine-active { overflow: hidden; }
           <div class="left">
             <button type="button" data-act="folder">📁 BG folder</button>
             <button type="button" data-act="file">🎬 BG video</button>
-            <button type="button" data-act="mute">${prefs.muteVideo !== false ? '🔇 Muted' : '🔊 Sound'}</button>
+            <button type="button" data-act="mute">${prefs.muteVideo !== false ? '🔇 Muted' : `🔊 ${Math.round(INTRO_VOLUME * 100)}%`}</button>
             <span class="cine-media-label" data-media-label>…</span>
           </div>
           <div class="right">
@@ -1348,18 +1404,29 @@ body.cine-active { overflow: hidden; }
                 stageObj.synth.style.opacity = '0.15';
                 currentRevoke = info.revoke || null;
                 try {
-                    stageObj.video.muted = prefs.muteVideo !== false;
+                    applyIntroAudio(stageObj.video);
                     await stageObj.video.play();
                     if (stages[idx] === stageObj && stageObj._loadToken === loadToken) {
                         stageObj.synth.style.opacity = '0';
                     }
                 } catch (e) {
-                    // Autoplay with sound often blocked — force mute retry
-                    stageObj.video.muted = true;
+                    // Autoplay with sound often blocked — mute then retry, keep soft volume ready
                     try {
+                        stageObj.video.muted = true;
+                        stageObj.video.defaultMuted = true;
+                        stageObj.video.setAttribute('muted', '');
+                        stageObj.video.volume = INTRO_VOLUME;
                         await stageObj.video.play();
                         if (stages[idx] === stageObj && stageObj._loadToken === loadToken) {
                             stageObj.synth.style.opacity = '0';
+                        }
+                        // After muted autoplay, try soft unmute if user prefers sound
+                        // (works when a prior gesture already unlocked media on this page)
+                        if (prefs.muteVideo === false) {
+                            try {
+                                applyIntroAudio(stageObj.video);
+                                await stageObj.video.play();
+                            } catch (_) { /* stay muted until HUD unmute click */ }
                         }
                     } catch (_) {
                         stageObj.synth.style.opacity = '1';
@@ -1463,8 +1530,12 @@ body.cine-active { overflow: hidden; }
             else if (act === 'mute') {
                 const next = !(prefs.muteVideo !== false);
                 savePrefs({ muteVideo: next });
-                btn.textContent = next ? '🔇 Muted' : '🔊 Sound';
-                stages[idx].video.muted = next;
+                btn.textContent = next ? '🔇 Muted' : `🔊 ${Math.round(INTRO_VOLUME * 100)}%`;
+                applyIntroAudio(stages[idx].video);
+                if (!next) {
+                    // Unmute is a user gesture — retry play so audio actually starts
+                    stages[idx].video.play().catch(() => {});
+                }
             } else if (act === 'folder') {
                 const h = await pickDirectory(slot, (msg) => {
                     if (mediaLabel) mediaLabel.textContent = msg;
@@ -1629,14 +1700,19 @@ body.cine-active { overflow: hidden; }
           </label>
           <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;cursor:pointer;">
             <input type="checkbox" data-mute ${prefs.muteVideo !== false ? 'checked' : ''}>
-            Mute background videos
+            Mute background videos (when off, clip audio plays at ~${Math.round(INTRO_VOLUME * 100)}%)
           </label>
           <p style="color:#888;margin-bottom:10px;line-height:1.45;font-size:11px;">
             <strong style="color:#c8d0dc;">Video file</strong> sticks forever (blob saved in this browser).<br>
             <strong style="color:#c8d0dc;">Folder</strong> can lose Chrome permission after restart —
             we cache a clip so intros still play; use <strong>Re-grant</strong> to refresh random picks.
             <br><br>
-            4K / heavy clips auto-scale to <strong style="color:#c8d0dc;">${playTarget().label}</strong> (~8s loop).
+            Launcher <strong style="color:#c8d0dc;">depth marquee</strong> uses these same 3 slots:
+            folders progressive-autoplay through their videos (ended → next); single files loop.
+            After a Chrome restart, <strong>Re-grant</strong> folder access so the full playlist loads
+            (otherwise only the cached clip shows).
+            <br><br>
+            4K / heavy clips auto-scale to <strong style="color:#c8d0dc;">${playTarget().label}</strong> (~8s loop) for intros.
           </p>
           <div data-slot-list>${slotRows}</div>
           <p data-global-status style="color:#6a8;font-size:11px;min-height:1.2em;margin:6px 0 10px;"></p>
@@ -1671,6 +1747,14 @@ body.cine-active { overflow: hidden; }
         pop.querySelector('[data-skip]').onchange = (e) => savePrefs({ skipOnLaunch: e.target.checked });
         pop.querySelector('[data-mute]').onchange = (e) => savePrefs({ muteVideo: e.target.checked });
 
+        const bumpMarquee = () => {
+            try {
+                if (global.AIToolboxLauncherFX?.refreshMarquee) {
+                    global.AIToolboxLauncherFX.refreshMarquee();
+                }
+            } catch (_) { /* ignore */ }
+        };
+
         pop.querySelectorAll('[data-folder]').forEach((btn) => {
             btn.onclick = async () => {
                 const key = btn.getAttribute('data-folder');
@@ -1678,6 +1762,7 @@ body.cine-active { overflow: hidden; }
                 setGlobal('Opening folder picker…');
                 try {
                     await pickDirectory(key, setGlobal);
+                    bumpMarquee();
                 } finally {
                     btn.disabled = false;
                     await refreshStatuses();
@@ -1691,6 +1776,7 @@ body.cine-active { overflow: hidden; }
                 setGlobal('Pick a video file…');
                 try {
                     await pickVideoFile(key, setGlobal);
+                    bumpMarquee();
                 } finally {
                     btn.disabled = false;
                     await refreshStatuses();
@@ -1704,6 +1790,7 @@ body.cine-active { overflow: hidden; }
                 setGlobal('Requesting folder permission…');
                 try {
                     await regrantSlot(key, setGlobal);
+                    bumpMarquee();
                 } finally {
                     btn.disabled = false;
                     await refreshStatuses();
@@ -1727,26 +1814,163 @@ body.cine-active { overflow: hidden; }
         }, 0);
     }
 
+    function shuffleInPlace(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const t = arr[i];
+            arr[i] = arr[j];
+            arr[j] = t;
+        }
+        return arr;
+    }
+
     /**
-     * Collect muted BG clips from the 3 intro slots (folder/file picks).
-     * Used by the launcher marquee — already proxy-scaled when needed.
+     * Collect clips for one intro slot for the launcher marquee.
+     * Folders → progressive playlist of all videos (capped).
+     * Single file / warm cache → one-clip playlist.
+     * Marquee tiles use object URLs from files directly (no full proxy encode)
+     * so a folder full of masters still loads quickly in the ribbon.
      */
-    async function getMarqueeClips(onStatus) {
-        const slots = ['bg-neon', 'bg-producer', 'bg-main'];
+    async function resolveMarqueePlaylist(slotKey, onStatus, limits) {
+        const maxPerFolder = (limits && limits.maxPerFolder) || 16;
+        const saved = await idbGet(slotKey);
         const out = [];
-        for (const slot of slots) {
+
+        // Sticky single file
+        if (saved && saved.kind === 'file' && saved.blob) {
             try {
-                const info = await resolveVideoUrl(slot, onStatus);
+                const info = await resolveVideoUrl(slotKey, onStatus);
                 if (info && info.url) {
                     out.push({
                         url: info.url,
-                        label: info.label || slot,
-                        slot,
-                        revoke: info.revoke || null
+                        label: info.label || saved.name || slotKey,
+                        slot: slotKey,
+                        revoke: info.revoke || null,
+                        name: saved.name || ''
                     });
+                }
+            } catch (_) { /* skip */ }
+            return out;
+        }
+
+        // Folder → full progressive list when permission is live
+        if (saved && saved.kind === 'dir' && saved.handle) {
+            const ok = await ensureDirPermission(saved.handle, { prompt: false });
+            if (ok) {
+                try {
+                    let vids = await listVideosInDir(saved.handle);
+                    if (!vids.length) {
+                        const cached = await resolveFromCache(slotKey, 'folder empty');
+                        if (cached && cached.url) {
+                            out.push({
+                                url: cached.url,
+                                label: cached.label || slotKey,
+                                slot: slotKey,
+                                revoke: cached.revoke || null,
+                                name: cached.label || ''
+                            });
+                        }
+                        return out;
+                    }
+                    shuffleInPlace(vids);
+                    if (vids.length > maxPerFolder) vids = vids.slice(0, maxPerFolder);
+                    if (onStatus) {
+                        onStatus(
+                            `Marquee: “${saved.name || slotKey}” · ${vids.length} clip(s) progressive`
+                        );
+                    }
+                    for (const entry of vids) {
+                        try {
+                            const file = await entry.getFile();
+                            // Prefer already-built light proxy if present; else native File URL
+                            let blob = file;
+                            let scaleLabel = '';
+                            try {
+                                const pKey = proxyCacheKey(
+                                    'dir',
+                                    (saved.name || 'dir') + '/' + entry.name,
+                                    file.size,
+                                    file.lastModified || 0
+                                );
+                                const cachedProxy = await idbGet(pKey);
+                                if (cachedProxy && cachedProxy.blob && cachedProxy.blob.size > 1000) {
+                                    blob = cachedProxy.blob;
+                                    scaleLabel = cachedProxy.scaleLabel || '';
+                                }
+                            } catch (_) { /* use native file */ }
+                            const url = URL.createObjectURL(blob);
+                            const tag = scaleLabel ? ` · ${scaleLabel}` : '';
+                            out.push({
+                                url,
+                                label: `${saved.name || 'Folder'} · ${entry.name}${tag}`,
+                                slot: slotKey,
+                                revoke: url,
+                                name: entry.name
+                            });
+                        } catch (e) {
+                            console.warn('[Cine] marquee skip file', entry && entry.name, e);
+                        }
+                    }
+                    return out;
+                } catch (e) {
+                    console.warn('[Cine] marquee folder list failed', e);
+                }
+            }
+            // Permission expired / read fail → single cached clip if any
+            const cached = await resolveFromCache(
+                slotKey,
+                'folder permission expired — Intros → Re-grant for full progressive list'
+            );
+            if (cached && cached.url) {
+                out.push({
+                    url: cached.url,
+                    label: cached.label || slotKey,
+                    slot: slotKey,
+                    revoke: cached.revoke || null,
+                    name: cached.label || ''
+                });
+            }
+            return out;
+        }
+
+        // Orphan cache only
+        const orphan = await resolveFromCache(slotKey, '');
+        if (orphan && orphan.url) {
+            out.push({
+                url: orphan.url,
+                label: orphan.label || slotKey,
+                slot: slotKey,
+                revoke: orphan.revoke || null,
+                name: orphan.label || ''
+            });
+        }
+        return out;
+    }
+
+    /**
+     * Collect muted BG clips from the 3 intro slots (folder/file picks).
+     * Returns an array of clip objects for the launcher marquee.
+     * Folder slots expand to many clips so tiles can progressive-autoplay.
+     */
+    async function getMarqueeClips(onStatus) {
+        const slots = ['bg-neon', 'bg-producer', 'bg-main'];
+        const MAX_TOTAL = 24;
+        const out = [];
+        for (const slot of slots) {
+            if (out.length >= MAX_TOTAL) break;
+            try {
+                const remaining = MAX_TOTAL - out.length;
+                const pl = await resolveMarqueePlaylist(slot, onStatus, {
+                    maxPerFolder: Math.min(16, remaining)
+                });
+                for (const clip of pl) {
+                    if (out.length >= MAX_TOTAL) break;
+                    out.push(clip);
                 }
             } catch (_) { /* skip slot */ }
         }
+        // Shuffle so layers don't line up as slot1,slot1,slot2…
+        shuffleInPlace(out);
         return out;
     }
 

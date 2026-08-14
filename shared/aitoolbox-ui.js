@@ -581,8 +581,18 @@
                 }
                 .tb-pill.on{border-color:rgba(0,255,136,.45);color:#d8ffe8}
                 .tb-pill.on .tb-dot{background:#00ff88;box-shadow:0 0 8px #00ff88}
-                .tb-pill.wait{border-color:rgba(255,200,0,.4);color:#ffe9a8}
-                .tb-pill.wait .tb-dot{background:#ffc800;box-shadow:0 0 8px #ffc800;animation:ui-pulse-glow 1.2s ease infinite}
+                .tb-pill.wait{border-color:rgba(45,212,191,.5);color:#99f6e4}
+                .tb-pill.wait .tb-dot{background:#2dd4bf;box-shadow:0 0 8px #2dd4bf;animation:ui-pulse-glow 1.2s ease infinite}
+                .tb-pill.warn{border-color:rgba(255,159,26,.55);color:#ffd8a8}
+                .tb-pill.warn .tb-dot{background:#ff9f1a;box-shadow:0 0 8px #ff9f1a}
+                .tb-pill.attention{border-color:rgba(255,68,102,.55);color:#ffd0d8}
+                .tb-pill.attention .tb-dot{
+                    animation:tb-attn-flash .85s ease infinite;
+                }
+                @keyframes tb-attn-flash{
+                    0%,100%{background:#00ff88;box-shadow:0 0 8px #00ff88}
+                    50%{background:#ff4466;box-shadow:0 0 10px #ff4466}
+                }
                 .tb-pill.off{border-color:rgba(255,68,102,.35)}
                 .tb-bar-actions{display:flex;gap:6px;align-items:center}
                 .tb-btn{
@@ -590,6 +600,9 @@
                     background:rgba(0,243,255,.1);color:#00f3ff;cursor:pointer;font:600 11px system-ui,sans-serif;
                 }
                 .tb-btn.primary{background:rgba(0,243,255,.18);border-color:#00f3ff}
+                .tb-btn.primary.state-online{background:rgba(0,255,136,.2);border-color:#00ff88;color:#b7ffd9}
+                .tb-btn.primary.state-starting{background:rgba(45,212,191,.22);border-color:#2dd4bf;color:#99f6e4}
+                .tb-btn.primary.state-warn{background:rgba(255,159,26,.2);border-color:#ff9f1a;color:#ffd8a8}
                 .tb-btn.ghost{background:transparent;border-color:rgba(255,255,255,.18);color:#888}
                 .tb-btn:hover{box-shadow:0 0 12px rgba(0,243,255,.3)}
                 .tb-btn:disabled{opacity:.5;cursor:wait}
@@ -630,10 +643,25 @@
 
     function _setPill(el, state, detail) {
         if (!el) return;
-        el.classList.remove('on', 'off', 'wait');
-        el.classList.add(state === 'on' ? 'on' : state === 'wait' ? 'wait' : 'off');
+        el.classList.remove('on', 'off', 'wait', 'warn', 'attention');
+        const cls = (
+            state === 'on' ? 'on'
+            : state === 'wait' ? 'wait'
+            : state === 'warn' ? 'warn'
+            : state === 'attention' ? 'attention'
+            : 'off'
+        );
+        el.classList.add(cls);
         const em = el.querySelector('em');
-        if (em) em.textContent = detail || (state === 'on' ? 'online' : state === 'wait' ? '…' : 'offline');
+        if (em) {
+            em.textContent = detail || (
+                state === 'on' ? 'online'
+                : state === 'wait' ? '…'
+                : state === 'warn' ? 'warn'
+                : state === 'attention' ? 'attn'
+                : 'offline'
+            );
+        }
     }
 
     function _wireCompanionBar(opts = {}) {
@@ -714,7 +742,17 @@
             if (startBtn) {
                 startBtn.style.display = (s1 && s2) ? 'none' : '';
                 startBtn.disabled = false;
-                startBtn.textContent = startBtn.dataset.label || '▶ Start';
+                startBtn.classList.remove('state-online', 'state-starting', 'state-warn', 'state-offline');
+                if (s1 && s2) {
+                    startBtn.classList.add('state-online');
+                    startBtn.textContent = '✓ Online';
+                } else if (s1 || s2) {
+                    startBtn.classList.add('state-warn');
+                    startBtn.textContent = startBtn.dataset.label || '▶ Start missing';
+                } else {
+                    startBtn.classList.add('state-offline');
+                    startBtn.textContent = startBtn.dataset.label || '▶ Start';
+                }
             }
             if (hintEl && !starting) {
                 const parts = [];
