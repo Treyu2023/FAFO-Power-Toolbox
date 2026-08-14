@@ -270,11 +270,15 @@
     async function startCompanionServers(opts = {}) {
         try {
             if (!(await checkServer(true, 1500))) return null;
+            // force defaults true: user-driven Start/Wake — S2 starts even without Chrome
             const body = {
                 toolbox: opts.toolbox !== false,
                 fafoMeta: opts.fafoMeta !== false,
                 waitSec: opts.waitSec != null ? opts.waitSec : 8,
+                force: opts.force !== false,
             };
+            if (opts.toolbox === false) body.toolbox = false;
+            if (opts.fafoMeta === false) body.fafoMeta = false;
             return await api('/launch/companions/start', {
                 method: 'POST',
                 body: JSON.stringify(body),

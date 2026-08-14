@@ -112,9 +112,9 @@ start "FAFO Pack Reports" cmd /c "cd /d "%cd%" && powershell -NoProfile -Executi
 exit /b 0
 
 :do_restart
-REM Full restart of companions (hidden) — stops listeners then starts again
+REM User clicked Relaunch — force S1+S2 regardless of Chrome/session
 if exist "%cd%\Scripts\Start-FAFOServers.ps1" (
-  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Restart -Quiet
+  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Force -Restart -Quiet
   exit /b 0
 )
 goto do_start
@@ -130,9 +130,9 @@ if exist "%cd%\server\start_tray.bat" (
 exit /b 0
 
 :do_start
-REM Multi-server hidden + tray — no install-folder navigation required
+REM User clicked Start (protocol / UI) — force S1+S2 NOW (Chrome optional for S2)
 if exist "%cd%\Scripts\Start-FAFOServers.ps1" (
-  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Quiet
+  start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Force -Quiet
   exit /b 0
 )
 if exist "%cd%\Start Servers.bat" (

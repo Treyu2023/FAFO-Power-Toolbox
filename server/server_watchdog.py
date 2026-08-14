@@ -523,16 +523,21 @@ def _ps_escape(s: str) -> str:
 
 
 def _server_state(st: dict[str, Any]) -> dict[str, Any]:
+    """Build issues list. Critical attention only when a host-bound server *should* be up."""
     prefs = st.get("prefs") or {}
-    want = prefs.get("startWithOneClick") or {}
     sleep = st.get("serversSleeping") or prefs.get("serversSleeping") or {}
     tb = st.get("toolbox") or {}
     meta = st.get("fafoMeta") or {}
     sleep_tb = bool(sleep.get("toolboxServer") or tb.get("sleeping"))
     sleep_meta = bool(sleep.get("fafoMetaServer") or meta.get("sleeping"))
-    # Auto-heal only if prefs want it AND user has not put it to sleep
-    want_tb = bool(want.get("toolboxServer", True)) and not sleep_tb
-    want_meta = bool(want.get("fafoMetaServer", True)) and not sleep_meta
+    # Prefer lifecycle helpers (session / Chrome / manual hold) over bare one-click flags
+    try:
+        want_tb = bool(launch_ops.should_auto_run_s1(prefs))
+        want_meta = bool(launch_ops.should_auto_run_s2(prefs))
+    except Exception:
+        want = prefs.get("startWithOneClick") or {}
+        want_tb = bool(want.get("toolboxServer", True)) and not sleep_tb
+        want_meta = bool(want.get("fafoMetaServer", True)) and not sleep_meta
     tb_up = bool(tb.get("healthy") or tb.get("listening"))
     meta_up = bool(meta.get("healthy") or meta.get("listening"))
     issues: list[dict[str, str]] = []
@@ -563,6 +568,14 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
                 "code": "S1_STARTING",
                 "severity": "warning",
                 "message": "S1 is listening but health not ready yet (starting or overloaded)",
+            }
+        )
+    elif (not want_tb) and (not sleep_tb) and (not tb_up):
+        issues.append(
+            {
+                "code": "S1_IDLE",
+                "severity": "info",
+                "message": "S1 idle — open HTML Toolbox or Start All to run the server",
             }
         )
 
@@ -596,6 +609,14 @@ def _server_state(st: dict[str, Any]) -> dict[str, Any]:
                 "code": "S2_STARTING",
                 "severity": "warning",
                 "message": "S2 is listening but health not ready yet (starting or overloaded)",
+            }
+        )
+    elif (not want_meta) and (not sleep_meta) and (not meta_up):
+        issues.append(
+            {
+                "code": "S2_IDLE",
+                "severity": "info",
+                "message": "S2 idle — opens with Chrome, or Start S2 / Start All anytime",
             }
         )
 

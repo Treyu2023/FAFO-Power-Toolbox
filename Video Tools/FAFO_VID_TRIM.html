@@ -1,0 +1,2099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAFO VID ŦRIM — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<style>
+:root {
+  --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.22);
+  --accent: #00f3ff; --accent2: #7c5cff; --ok: #4ade80; --text: #e2e8f0; --muted: #64748b;
+  --warn: #fbbf24; --danger: #f87171;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: radial-gradient(ellipse at 40% -10%, #0a1a28, var(--bg) 55%);
+  color: var(--text); min-height: 100vh;
+}
+.nav {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 18px; border-bottom: 1px solid var(--border);
+  background: rgba(5,5,8,.94); position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
+}
+.nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
+.nav .title { color: var(--accent); font-size: 13px; letter-spacing: .08em; font-weight: 700; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 22px 18px 48px; }
+h1 { font-size: 22px; color: var(--accent); margin-bottom: 6px; }
+.sub { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.tab {
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 12px;
+}
+.tab.active { color: #041018; background: var(--accent); border-color: var(--accent); }
+.panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px 18px; margin-bottom: 14px;
+}
+label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .06em; display: block; margin-bottom: 6px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+.field { flex: 1 1 140px; min-width: 120px; }
+input[type="file"], input[type="number"], input[type="text"], select, textarea {
+  width: 100%; background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 12px; border-radius: 8px; font-size: 13px;
+}
+textarea { min-height: 64px; font-family: Consolas, monospace; font-size: 11px; resize: vertical; }
+.btn {
+  background: rgba(0,243,255,.12); border: 1px solid var(--accent); color: var(--accent);
+  padding: 9px 16px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 12px;
+}
+.btn:hover { background: var(--accent); color: #000; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.ghost { border-color: rgba(255,255,255,.18); color: var(--muted); background: transparent; }
+.btn.ok { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.1); }
+.drop {
+  border: 2px dashed rgba(0,243,255,.28); border-radius: 12px; padding: 22px;
+  text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 12px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.drop.dragover { border-color: var(--accent); background: rgba(0,243,255,.06); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chips button {
+  font-size: 10px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(0,243,255,.28); background: transparent; color: var(--muted);
+}
+.chips button:hover, .chips button.active {
+  color: var(--accent); border-color: var(--accent); background: rgba(0,243,255,.1);
+}
+.meta { font-size: 11px; color: var(--muted); font-family: Consolas, monospace; margin-top: 8px; line-height: 1.45; }
+.preview-wrap {
+  margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; background: #000;
+  min-height: 140px; max-height: 70vh; overflow: auto; display: flex; justify-content: center; align-items: center;
+  position: relative;
+}
+#imgPreview, #vidPreview { display: block; max-width: 100%; max-height: 65vh; }
+.crop-overlay {
+  position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
+  pointer-events: none; display: none;
+}
+.progress {
+  height: 6px; background: rgba(255,255,255,.06); border-radius: 4px; overflow: hidden;
+  margin-top: 10px; display: none;
+}
+.progress > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .15s; }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
+.hint code, .kbd { font-family: Consolas, monospace; font-size: 11px; color: var(--accent);
+  padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3); }
+.hidden { display: none !important; }
+.status-pill {
+  font-size: 10px; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(255,200,0,.4); color: #ffc800;
+}
+.status-pill.ok { border-color: rgba(74,222,128,.45); color: var(--ok); }
+.status-pill.bad { border-color: rgba(248,113,113,.45); color: var(--danger); }
+ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.out-list {
+  margin-top: 8px; max-height: 140px; overflow: auto; font-size: 11px; font-family: Consolas, monospace;
+  border: 1px solid var(--border); border-radius: 8px; background: rgba(0,0,0,.3); padding: 6px 8px;
+  color: var(--muted);
+}
+.out-list .row-f { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+.out-list .row-f:last-child { border-bottom: none; }
+.out-list strong { color: var(--text); font-weight: 600; }
+.chips.recent-dirs button { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-panel { margin-top: 14px; }
+.queue-head {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.queue-head h2 {
+  font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0;
+}
+.queue-list {
+  max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(0,0,0,.28); font-size: 12px;
+}
+.queue-item {
+  display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px; align-items: center;
+  padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.queue-item:last-child { border-bottom: none; }
+.queue-item .q-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-item .q-path { color: var(--muted); font-size: 10px; font-family: Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-item .q-st { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.queue-item .q-st.queued { color: var(--muted); }
+.queue-item .q-st.running { color: var(--warn); }
+.queue-item .q-st.done { color: var(--ok); }
+.queue-item .q-st.error { color: var(--danger); }
+.queue-item .q-st.skipped { color: #94a3b8; }
+.queue-item button.q-x {
+  background: transparent; border: 1px solid rgba(255,255,255,.12); color: var(--muted);
+  border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 12px;
+}
+.queue-item button.q-x:hover { color: var(--danger); border-color: var(--danger); }
+.queue-item.is-running { background: rgba(251,191,36,.06); }
+.queue-item.is-done { opacity: .72; }
+.queue-meta { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: Consolas, monospace; line-height: 1.4; }
+.chk-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 8px 0 10px; font-size: 12px; color: var(--muted); }
+.chk-row label { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-weight: 600; cursor: pointer; color: var(--text); font-size: 12px; }
+.chk-row input { accent-color: var(--accent); width: auto; }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <span class="title">🥷 FAFO VID ŦRIM</span>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="status-pill" id="serverPill">Server …</span>
+    <a href="GEMPlayHTML.html" style="font-size:12px;color:var(--muted)">Video Wall</a>
+    <a href="Video Comparison Slider Tool.html" style="font-size:12px;color:var(--muted)">Compare</a>
+    <a href="../Image tools/image Converter_Cropper for chrome store resolution.html" style="font-size:12px;color:var(--muted)">Store Cropper</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <h1>FAFO VID ŦRIM</h1>
+  <p class="sub">
+    Video max-side cap (default <strong style="color:var(--text)">3840</strong>) keeps aspect ratio — no stretch.
+    Pick an <strong style="color:var(--text)">output folder</strong> + format (<strong style="color:var(--text)">MP4</strong> preferred via S1+ffmpeg).
+    Image shop: cover / contain / stretch / manual crop, presets, PNG · JPEG · WebP · ICO.
+    <span class="hint" style="display:inline;margin:0"><kbd class="kbd">1</kbd>/<kbd class="kbd">2</kbd> tabs · <kbd class="kbd">E</kbd> export · <kbd class="kbd">Esc</kbd> clear</span>
+  </p>
+
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab active" data-tab="video" id="tabVideo">🎬 Video max-side</button>
+    <button type="button" class="tab" data-tab="image" id="tabImage">🖼️ Image shop</button>
+  </div>
+
+  <!-- ═══ VIDEO ═══ -->
+  <section id="panelVideo">
+    <div class="panel">
+      <div class="drop" id="vidDrop">Drop video(s) here — multi-file drops go to the batch queue · click to pick</div>
+      <input type="file" id="vidFile" accept="video/*,.mp4,.webm,.mov,.mkv,.m4v,.avi" class="hidden" multiple>
+      <input type="file" id="vidFileQueue" accept="video/*,.mp4,.webm,.mov,.mkv,.m4v,.avi" class="hidden" multiple>
+
+      <div class="row">
+        <div class="field" style="flex:2 1 280px">
+          <label for="srcPath">Source path (S1 · real disk path for MP4 encode)</label>
+          <input type="text" id="srcPath" placeholder="C:\Videos\clip.mp4 — optional; enables S1 ffmpeg → MP4">
+        </div>
+        <button type="button" class="btn ghost" id="btnPickSrc" title="Browse for source file path (needs S1)">Browse src…</button>
+      </div>
+
+      <div class="row">
+        <div class="field" style="flex:2 1 280px">
+          <label for="outDir">Output directory</label>
+          <input type="text" id="outDir" placeholder="C:\Videos\out — required for S1 write / listed below">
+        </div>
+        <button type="button" class="btn ghost" id="btnPickOut" title="Browse output folder (S1)">Browse out…</button>
+        <button type="button" class="btn ghost" id="btnListOut" title="List files in output folder">List folder</button>
+        <button type="button" class="btn ghost" id="btnOpenOut" title="Open folder in Explorer">Open</button>
+      </div>
+      <div class="chips recent-dirs" id="recentOutDirs" title="Recent output folders"></div>
+      <div class="out-list" id="outList" style="display:none"></div>
+
+      <div class="row">
+        <div class="field" style="flex:0 1 140px">
+          <label for="maxSide">Max side (px)</label>
+          <input type="number" id="maxSide" min="256" max="7680" step="2" value="3840">
+        </div>
+        <div class="field" style="flex:0 1 130px">
+          <label for="outFmt">Output format</label>
+          <select id="outFmt">
+            <option value="mp4" selected>MP4 (H.264 · recommended)</option>
+            <option value="webm">WebM (VP9)</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 1 160px">
+          <label for="vidQuality">Encode quality</label>
+          <select id="vidQuality" title="Detail preservation — never upscales">
+            <option value="archive">Archive (slow · max detail)</option>
+            <option value="high" selected>High (recommended)</option>
+            <option value="balanced">Balanced</option>
+            <option value="small">Smaller file</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 1 120px">
+          <label for="vidCrf">CRF override</label>
+          <select id="vidCrf" title="Optional — leave Auto to use quality tier">
+            <option value="" selected>Auto (from quality)</option>
+            <option value="15">15 archive</option>
+            <option value="17">17 high</option>
+            <option value="18">18</option>
+            <option value="20">20 balanced</option>
+            <option value="23">23</option>
+            <option value="28">28 small</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 1 120px">
+          <label for="vidFps">Cap FPS</label>
+          <select id="vidFps">
+            <option value="0">Source</option>
+            <option value="24">24</option>
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </div>
+        <button type="button" class="btn" id="btnVidExport" disabled>⬇ Export one</button>
+        <button type="button" class="btn ok" id="btnQAdd" title="Add current path / loaded file to the live queue">＋ Queue</button>
+        <button type="button" class="btn ghost" id="btnVidFfmpeg" disabled>📋 Copy ffmpeg</button>
+        <button type="button" class="btn ghost" id="btnVidClear" title="Clear preview + source fields">Clear preview</button>
+      </div>
+      <div class="chips" id="vidPresets">
+        <button type="button" data-side="1920">1080p max</button>
+        <button type="button" data-side="2560">1440p max</button>
+        <button type="button" data-side="3840" class="active">4K max (3840)</button>
+        <button type="button" data-side="4096">DCI-ish 4096</button>
+      </div>
+      <div class="meta" id="vidMeta">No video loaded</div>
+      <div class="progress" id="vidProgress"><i id="vidBar"></i></div>
+      <div class="preview-wrap"><video id="vidPreview" muted playsinline controls></video></div>
+      <ul class="notes">
+        <li><strong>Never upscales</strong> — only shrinks when longer side &gt; max. Already fits → stream-copy (no re-encode) when possible.</li>
+        <li><strong>High quality</strong> uses lanczos downscale + slow x264 (not a soft “TV dump”). Archive = max detail, slower.</li>
+        <li><strong>MP4</strong> needs S1 + ffmpeg + real paths. <strong>Live queue</strong> accepts more jobs while running.</li>
+      </ul>
+      <label for="ffmpegCmd" style="margin-top:12px">ffmpeg one-liner</label>
+      <textarea id="ffmpegCmd" readonly placeholder="Load a video + set output folder to generate a command…"></textarea>
+
+      <!-- Live batch queue -->
+      <div class="queue-panel" id="batchPanel">
+        <div class="queue-head">
+          <h2>Batch queue</h2>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <button type="button" class="btn ghost" id="btnQAddFiles">＋ Add files…</button>
+            <button type="button" class="btn ghost" id="btnQAddPaths" title="Paste multiple full paths">＋ Paste paths</button>
+            <button type="button" class="btn" id="btnQStart">▶ Run queue</button>
+            <button type="button" class="btn ghost" id="btnQStop" disabled>⏹ Stop after current</button>
+            <button type="button" class="btn ghost" id="btnQClearDone">Clear done</button>
+            <button type="button" class="btn ghost" id="btnQClearAll">Clear queue</button>
+          </div>
+        </div>
+        <div class="chk-row">
+          <label><input type="checkbox" id="chkClearAfter" checked> Clear preview after each success</label>
+          <label><input type="checkbox" id="chkRemoveDone" checked> Remove done/skipped from queue</label>
+          <label><input type="checkbox" id="chkSkipExisting" checked> Skip if output already exists</label>
+          <label><input type="checkbox" id="chkPreflight" checked> On start: dedupe · drop completed · refresh</label>
+        </div>
+        <div class="queue-list" id="queueList">
+          <div style="padding:12px;color:var(--muted)">Queue empty — drop multiple videos, use ＋ Queue, or Add files…</div>
+        </div>
+        <div class="queue-meta" id="queueMeta">0 queued · idle</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ IMAGE ═══ -->
+  <section id="panelImage" class="hidden">
+    <div class="panel">
+      <div class="drop" id="imgDrop">Drop an image here, or click to pick</div>
+      <input type="file" id="imgFile" accept="image/*" class="hidden">
+      <div class="chips" id="imgPresets" aria-label="Size presets"></div>
+      <div class="row">
+        <div class="field">
+          <label for="imgPreset">Output size</label>
+          <select id="imgPreset"></select>
+        </div>
+        <div class="field" id="customDims" style="display:none">
+          <label>Custom W × H</label>
+          <div style="display:flex;gap:8px">
+            <input type="number" id="customW" min="8" max="8192" value="1280">
+            <input type="number" id="customH" min="8" max="8192" value="720">
+          </div>
+        </div>
+        <div class="field">
+          <label for="imgMode">Fit (always keeps aspect ratio)</label>
+          <select id="imgMode">
+            <option value="contain" selected>Fit inside — full image · letterbox</option>
+            <option value="cover">Fill frame — crop edges · no stretch</option>
+            <option value="manual">Manual crop — crop box locked to output AR</option>
+            <option value="stretch">Distort (breaks AR) — not recommended</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="imgFormat">Export</label>
+          <select id="imgFormat">
+            <option value="png">PNG</option>
+            <option value="jpeg" selected>JPEG 0.92</option>
+            <option value="webp">WebP 0.90</option>
+            <option value="ico">ICO (16·32·48·256)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="align-items:center">
+        <div class="field" style="flex:1 1 100%">
+          <label>Aspect (custom size &amp; crop lock)</label>
+          <div class="chips" id="aspectChips" title="Locks width/height together · Source = image AR">
+            <button type="button" data-ar="source" class="active">Source</button>
+            <button type="button" data-ar="16:9">16:9</button>
+            <button type="button" data-ar="9:16">9:16</button>
+            <button type="button" data-ar="1:1">1:1</button>
+            <button type="button" data-ar="4:3">4:3</button>
+            <button type="button" data-ar="3:2">3:2</button>
+            <button type="button" data-ar="21:9">21:9</button>
+            <button type="button" data-ar="free">Free</button>
+          </div>
+          <input type="hidden" id="aspectLock" value="source">
+        </div>
+      </div>
+      <div class="row" id="manualRow" style="display:none">
+        <div class="field"><label for="cropX">Crop X %</label><input type="number" id="cropX" min="0" max="100" value="0" step="0.5"></div>
+        <div class="field"><label for="cropY">Crop Y %</label><input type="number" id="cropY" min="0" max="100" value="0" step="0.5"></div>
+        <div class="field"><label for="cropW">Crop size % (AR locked)</label><input type="number" id="cropW" min="1" max="100" value="100" step="0.5"></div>
+        <div class="field"><label for="cropH">Crop H % (auto)</label><input type="number" id="cropH" min="1" max="100" value="100" step="0.5" readonly title="Auto from output aspect"></div>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="btnImgExport" disabled>⬇ Export image</button>
+        <button type="button" class="btn ghost" id="btnImgClear">Clear</button>
+      </div>
+      <div class="meta" id="imgMeta">No image loaded</div>
+      <div class="preview-wrap">
+        <canvas id="imgPreview"></canvas>
+        <div class="crop-overlay" id="cropOverlay"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<a id="dl" class="hidden"></a>
+
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const LS = 'fafo_vid_trim_v1';
+  const dl = document.getElementById('dl');
+
+  /* ── helpers ── */
+  function even(n) { n = Math.round(n); return n % 2 ? n + 1 : n; }
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+  function toast(msg, kind) {
+    try { window.AIToolboxUI?.toast?.(msg, kind || 'ok'); }
+    catch (_) { /* ignore */ }
+  }
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    dl.href = url;
+    dl.download = name;
+    dl.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function saveState(patch) {
+    try {
+      const cur = JSON.parse(localStorage.getItem(LS) || '{}');
+      localStorage.setItem(LS, JSON.stringify({ ...cur, ...patch }));
+    } catch (_) { /* ignore */ }
+  }
+  function loadState() {
+    try { return JSON.parse(localStorage.getItem(LS) || '{}'); }
+    catch (_) { return {}; }
+  }
+
+  /* ── tabs ── */
+  const panelVideo = document.getElementById('panelVideo');
+  const panelImage = document.getElementById('panelImage');
+  function setTab(name) {
+    const isImg = name === 'image';
+    panelVideo.classList.toggle('hidden', isImg);
+    panelImage.classList.toggle('hidden', !isImg);
+    document.getElementById('tabVideo').classList.toggle('active', !isImg);
+    document.getElementById('tabImage').classList.toggle('active', isImg);
+    if (isImg && location.hash !== '#image') history.replaceState(null, '', '#image');
+    if (!isImg && location.hash === '#image') history.replaceState(null, '', location.pathname + location.search);
+    saveState({ tab: isImg ? 'image' : 'video' });
+  }
+  document.getElementById('tabVideo').onclick = () => setTab('video');
+  document.getElementById('tabImage').onclick = () => setTab('image');
+  if (location.hash === '#image' || loadState().tab === 'image') setTab('image');
+
+  /* ── API helpers ── */
+  function apiBase() {
+    try {
+      return window.AIToolboxUI?.getApiBase?.()
+        || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE)
+        || 'http://127.0.0.87:18765/api';
+    } catch (_) {
+      return 'http://127.0.0.87:18765/api';
+    }
+  }
+  async function apiFetch(path, opts) {
+    if (window.AIToolboxUI?.apiFetch) return window.AIToolboxUI.apiFetch(path, opts || {});
+    const r = await fetch(apiBase().replace(/\/$/, '') + path, {
+      method: (opts && opts.method) || 'GET',
+      headers: { 'Content-Type': 'application/json', ...(opts && opts.headers || {}) },
+      body: opts && opts.body != null ? JSON.stringify(opts.body) : undefined,
+    });
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { const j = await r.json(); detail = j.detail || JSON.stringify(j); } catch (_) {}
+      throw new Error(detail || ('HTTP ' + r.status));
+    }
+    return r.json();
+  }
+  function fmtBytes(n) {
+    if (!Number.isFinite(n)) return '—';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  /* ── server pill ── */
+  let serverOnline = false;
+  async function pingServer() {
+    const p = document.getElementById('serverPill');
+    try {
+      const on = await window.AIToolboxAPI?.isOnline?.(false, 1200).catch(() => false);
+      serverOnline = !!on;
+      p.textContent = on ? '● S1 online' : '○ Browser-only';
+      p.className = 'status-pill ' + (on ? 'ok' : '');
+    } catch (_) {
+      serverOnline = false;
+      p.textContent = '○ Browser-only';
+      p.className = 'status-pill';
+    }
+    updateExportLabel();
+  }
+  pingServer();
+
+  /* ══════════════════════════════════════
+     VIDEO — max side scale
+     ══════════════════════════════════════ */
+  const vidFile = document.getElementById('vidFile');
+  const vidDrop = document.getElementById('vidDrop');
+  const vidPreview = document.getElementById('vidPreview');
+  const vidMeta = document.getElementById('vidMeta');
+  const maxSideEl = document.getElementById('maxSide');
+  const outFmtEl = document.getElementById('outFmt');
+  const outDirEl = document.getElementById('outDir');
+  const srcPathEl = document.getElementById('srcPath');
+  const vidProgress = document.getElementById('vidProgress');
+  const vidBar = document.getElementById('vidBar');
+  const btnVidExport = document.getElementById('btnVidExport');
+  const btnVidFfmpeg = document.getElementById('btnVidFfmpeg');
+  const ffmpegCmd = document.getElementById('ffmpegCmd');
+  const outListEl = document.getElementById('outList');
+  const recentOutEl = document.getElementById('recentOutDirs');
+
+  let vidObjectUrl = null;
+  let vidSourceFile = null;
+  let vidW = 0, vidH = 0, vidDur = 0;
+  /** @type {FileSystemDirectoryHandle|null} */
+  let outDirHandle = null;
+
+  function targetDims(srcW, srcH, maxSide) {
+    maxSide = Math.max(256, maxSide | 0);
+    const m = Math.max(srcW, srcH);
+    if (m <= maxSide) return { w: even(srcW), h: even(srcH), scale: 1, already: true };
+    const scale = maxSide / m;
+    return { w: even(srcW * scale), h: even(srcH * scale), scale, already: false };
+  }
+
+  function currentFmt() {
+    return (outFmtEl.value || 'mp4').toLowerCase() === 'webm' ? 'webm' : 'mp4';
+  }
+
+  function currentQuality() {
+    const q = (document.getElementById('vidQuality')?.value || 'high').toLowerCase();
+    return ['archive', 'high', 'balanced', 'small'].includes(q) ? q : 'high';
+  }
+
+  function qualityCrfDefault(q) {
+    return ({ archive: 15, high: 17, balanced: 20, small: 24 })[q] || 17;
+  }
+
+  function qualityPreset(q) {
+    return ({ archive: 'slower', high: 'slow', balanced: 'medium', small: 'fast' })[q] || 'slow';
+  }
+
+  function qualityAudioK(q) {
+    return ({ archive: 320, high: 256, balanced: 192, small: 160 })[q] || 256;
+  }
+
+  function effectiveCrf() {
+    const raw = document.getElementById('vidCrf')?.value;
+    if (raw === '' || raw == null) return qualityCrfDefault(currentQuality());
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : qualityCrfDefault(currentQuality());
+  }
+
+  function updateExportLabel() {
+    const fmt = currentFmt().toUpperCase();
+    const canS1 = serverOnline && (srcPathEl.value || '').trim() && (outDirEl.value || '').trim();
+    btnVidExport.textContent = canS1
+      ? `⬇ Export ${fmt} (S1 · ffmpeg)`
+      : (currentFmt() === 'mp4'
+        ? '⬇ Export (needs S1 path for MP4 · or WebM browser)'
+        : '⬇ Export WebM (browser)');
+  }
+
+  function rememberOutDir(path) {
+    if (!path) return;
+    const st = loadState();
+    const list = Array.isArray(st.recentOut) ? st.recentOut.slice() : [];
+    const next = [path, ...list.filter((p) => p !== path)].slice(0, 8);
+    saveState({ outDir: path, recentOut: next });
+    renderRecentOut(next);
+  }
+
+  function renderRecentOut(list) {
+    const items = list || loadState().recentOut || [];
+    if (!recentOutEl) return;
+    if (!items.length) {
+      recentOutEl.innerHTML = '';
+      return;
+    }
+    recentOutEl.innerHTML = items.map((p) =>
+      `<button type="button" data-out="${escapeAttr(p)}" title="${escapeAttr(p)}">${escapeHtml(shortPath(p))}</button>`
+    ).join('');
+  }
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+  function shortPath(p) {
+    const s = String(p || '');
+    if (s.length <= 28) return s;
+    return '…' + s.slice(-26);
+  }
+
+  function buildOutName(base, t, fmt) {
+    return `${base}_${t.w}x${t.h}.${fmt}`;
+  }
+
+  function refreshVidMeta() {
+    const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+    const fmt = currentFmt();
+    const outDir = (outDirEl.value || '').trim();
+    const srcPath = (srcPathEl.value || '').trim();
+    const name = srcPath
+      || (vidSourceFile && vidSourceFile.name)
+      || 'video.mp4';
+    const base = name.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '') || 'video';
+    const t = vidW
+      ? targetDims(vidW, vidH, maxSide)
+      : { w: '?', h: '?', scale: 1, already: true };
+
+    if (!vidW && !srcPath) {
+      vidMeta.textContent = 'No video loaded — drop a file or set a source path';
+    } else {
+      vidMeta.textContent =
+        (vidW ? `Source ${vidW}×${vidH}` : 'Source (path)') +
+        (vidDur ? ` · ${vidDur.toFixed(1)}s` : '') +
+        ` → ${t.w}×${t.h}` +
+        (t.already === true ? ' · already within cap' : (typeof t.scale === 'number' ? ` · scale ${(t.scale * 100).toFixed(1)}%` : '')) +
+        ` · max ${maxSide} · ${fmt.toUpperCase()}` +
+        (outDir ? ` · out ${shortPath(outDir)}` : ' · out (not set)');
+    }
+
+    const inArg = srcPath || name;
+    const outArg = outDir
+      ? `${outDir.replace(/[\\/]$/, '')}\\${base}_${maxSide}max.${fmt}`.replace(/\\/g, '\\')
+      : `${base}_${maxSide}max.${fmt}`;
+    // Lanczos downscale only — never enlarge; preserve detail on shrink
+    const vf =
+      `scale='min(${maxSide},iw)':'min(${maxSide},ih)':force_original_aspect_ratio=decrease:` +
+      `flags=lanczos+accurate_rnd+full_chroma_int:force_divisible_by=2,setsar=1,format=yuv420p`;
+    const q = currentQuality();
+    const crf = effectiveCrf();
+    const preset = qualityPreset(q);
+    const audioK = qualityAudioK(q);
+    const fps = parseInt(document.getElementById('vidFps').value, 10) || 0;
+    const fpsArg = fps > 0 ? ` -r ${fps}` : '';
+    if (fmt === 'webm') {
+      ffmpegCmd.value =
+        `ffmpeg -y -i "${inArg}" -vf "${vf}"${fpsArg} -c:v libvpx-vp9 -crf ${Math.min(40, crf + 8)} -b:v 0 -row-mt 1 -c:a libopus -b:a ${audioK}k "${outArg}"`;
+    } else {
+      ffmpegCmd.value =
+        `ffmpeg -y -i "${inArg}" -vf "${vf}"${fpsArg} -c:v libx264 -preset ${preset} -crf ${crf} -profile:v high -pix_fmt yuv420p -c:a aac -b:a ${audioK}k -movflags +faststart "${outArg}"`;
+    }
+
+    const ready = !!(vidW || srcPath);
+    btnVidExport.disabled = !ready;
+    btnVidFfmpeg.disabled = !ready;
+    updateExportLabel();
+  }
+
+  function clearVideo() {
+    if (vidObjectUrl) { try { URL.revokeObjectURL(vidObjectUrl); } catch (_) {} }
+    vidObjectUrl = null;
+    vidSourceFile = null;
+    vidW = vidH = vidDur = 0;
+    vidPreview.removeAttribute('src');
+    vidPreview.load();
+    vidFile.value = '';
+    // keep srcPath / outDir
+    btnVidExport.disabled = !(srcPathEl.value || '').trim();
+    btnVidFfmpeg.disabled = btnVidExport.disabled;
+    vidProgress.style.display = 'none';
+    vidBar.style.width = '0%';
+    refreshVidMeta();
+  }
+
+  function loadVideoFile(file) {
+    if (!file) return;
+    if (vidObjectUrl) { try { URL.revokeObjectURL(vidObjectUrl); } catch (_) {} }
+    vidSourceFile = file;
+    vidObjectUrl = URL.createObjectURL(file);
+    vidPreview.src = vidObjectUrl;
+    // If path empty, fill name hint only (not full path — browser sandbox)
+    if (!(srcPathEl.value || '').trim() && file.name) {
+      // leave path for user; show name in meta
+    }
+    vidPreview.onloadedmetadata = () => {
+      vidW = vidPreview.videoWidth || 0;
+      vidH = vidPreview.videoHeight || 0;
+      vidDur = Number.isFinite(vidPreview.duration) ? vidPreview.duration : 0;
+      refreshVidMeta();
+      vidPreview.play().catch(() => {});
+    };
+    vidPreview.onerror = () => {
+      toast('Could not load that video', 'warn');
+      clearVideo();
+    };
+  }
+
+  async function listOutDir() {
+    const folder = (outDirEl.value || '').trim();
+    if (!folder) {
+      toast('Set an output directory first', 'warn');
+      return;
+    }
+    if (!serverOnline) {
+      toast('List folder needs S1 online', 'warn');
+      return;
+    }
+    try {
+      const data = await apiFetch(
+        `/convert/list-dir?folder=${encodeURIComponent(folder)}&limit=30`
+      );
+      const files = data.files || [];
+      outListEl.style.display = '';
+      if (!files.length) {
+        outListEl.innerHTML = `<div>Empty · ${escapeHtml(data.folder || folder)}</div>`;
+        return;
+      }
+      outListEl.innerHTML =
+        `<div style="margin-bottom:4px;color:var(--accent)">📁 ${escapeHtml(data.folder || folder)} · ${data.count} file(s)</div>` +
+        files.map((f) =>
+          `<div class="row-f"><strong title="${escapeAttr(f.path)}">${escapeHtml(f.name)}</strong><span>${fmtBytes(f.size)}</span></div>`
+        ).join('');
+      rememberOutDir(folder);
+    } catch (e) {
+      toast(e.message || 'List failed', 'warn');
+    }
+  }
+
+  async function pickFolderPath(kind) {
+    // Prefer S1 native pickers (full Windows path for ffmpeg)
+    try {
+      const pick =
+        window.AIToolboxAPI?.pickFolderOnly ||
+        window.AIToolboxAPI?.pickDirectoryNative ||
+        window.AIToolboxAPI?.pickFolder;
+      if (pick) {
+        const res = await pick.call(window.AIToolboxAPI);
+        const path = (typeof res === 'string')
+          ? res
+          : (res?.path || res?.folder || res?.dir || '');
+        if (path) {
+          if (kind === 'out') {
+            outDirEl.value = path;
+            rememberOutDir(path);
+            listOutDir().catch(() => {});
+          } else {
+            srcPathEl.value = path;
+            saveState({ srcPath: path });
+          }
+          refreshVidMeta();
+          toast('Folder: ' + path, 'ok');
+          return path;
+        }
+      }
+    } catch (_) { /* fall through */ }
+
+    if (window.showDirectoryPicker) {
+      try {
+        const handle = await window.showDirectoryPicker({ id: 'fafo-vid-trim-' + kind, mode: 'readwrite' });
+        if (kind === 'out') {
+          outDirHandle = handle;
+          // Browser won't give absolute path — keep typed path; show handle name
+          if (!(outDirEl.value || '').trim()) {
+            outDirEl.value = handle.name;
+          }
+          toast(`Folder linked: ${handle.name} (type full path for S1 MP4)`, 'ok');
+          saveState({ outDir: outDirEl.value });
+        }
+        refreshVidMeta();
+        return handle;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return null;
+      }
+    }
+
+    const typed = prompt(
+      kind === 'out' ? 'Output folder full path:' : 'Source file full path:',
+      kind === 'out' ? (outDirEl.value || '') : (srcPathEl.value || '')
+    );
+    if (typed == null) return null;
+    const p = typed.trim();
+    if (!p) return null;
+    if (kind === 'out') {
+      outDirEl.value = p;
+      rememberOutDir(p);
+      if (serverOnline) listOutDir().catch(() => {});
+    } else {
+      srcPathEl.value = p;
+    }
+    refreshVidMeta();
+    return p;
+  }
+
+  async function pickSourceFilePath() {
+    try {
+      if (window.AIToolboxAPI?.pickFile) {
+        const res = await window.AIToolboxAPI.pickFile({ accept: 'video/*' });
+        const path = res?.path || res?.file || res;
+        if (path && typeof path === 'string') {
+          srcPathEl.value = path;
+          saveState({ srcPath: path });
+          refreshVidMeta();
+          return path;
+        }
+      }
+    } catch (_) { /* ignore */ }
+    return pickFolderPath('src'); // prompt fallback
+  }
+
+  vidDrop.addEventListener('click', () => vidFile.click());
+  vidFile.addEventListener('change', () => {
+    const files = Array.from(vidFile.files || []);
+    if (!files.length) return;
+    if (files.length === 1) {
+      loadVideoFile(files[0]);
+      return;
+    }
+    // Multi-select → enqueue all, preview first
+    loadVideoFile(files[0]);
+    const n = enqueueFiles(files);
+    toast(`Queued ${n} file(s)`, 'ok');
+    maybeAutostartQueue();
+  });
+  maxSideEl.addEventListener('input', () => { refreshVidMeta(); saveState({ maxSide: maxSideEl.value }); });
+  outFmtEl.addEventListener('change', () => { refreshVidMeta(); saveState({ outFmt: outFmtEl.value }); });
+  outDirEl.addEventListener('change', () => {
+    rememberOutDir(outDirEl.value.trim());
+    refreshVidMeta();
+  });
+  srcPathEl.addEventListener('change', () => {
+    saveState({ srcPath: srcPathEl.value.trim() });
+    refreshVidMeta();
+  });
+  document.getElementById('vidQuality')?.addEventListener('change', () => {
+    saveState({ quality: currentQuality() });
+    refreshVidMeta();
+  });
+  document.getElementById('vidCrf').addEventListener('change', () => {
+    saveState({ crf: document.getElementById('vidCrf').value });
+    refreshVidMeta();
+  });
+  document.getElementById('vidFps').addEventListener('change', () => {
+    saveState({ fps: document.getElementById('vidFps').value });
+    refreshVidMeta();
+  });
+  document.getElementById('vidPresets').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-side]');
+    if (!b) return;
+    maxSideEl.value = b.dataset.side;
+    document.querySelectorAll('#vidPresets button').forEach((x) => x.classList.toggle('active', x === b));
+    refreshVidMeta();
+    saveState({ maxSide: maxSideEl.value });
+  });
+  recentOutEl?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-out]');
+    if (!b) return;
+    outDirEl.value = b.getAttribute('data-out') || '';
+    rememberOutDir(outDirEl.value);
+    refreshVidMeta();
+    if (serverOnline) listOutDir().catch(() => {});
+  });
+  document.getElementById('btnPickOut').onclick = () => pickFolderPath('out');
+  document.getElementById('btnPickSrc').onclick = () => pickSourceFilePath();
+  document.getElementById('btnListOut').onclick = () => listOutDir();
+  document.getElementById('btnOpenOut').onclick = async () => {
+    const folder = (outDirEl.value || '').trim();
+    if (!folder) { toast('Set output directory first', 'warn'); return; }
+    try {
+      if (window.AIToolboxAPI?.openPath) {
+        await window.AIToolboxAPI.openPath(folder);
+        return;
+      }
+      if (window.AIToolboxAPI?.tryProtocolLaunch) {
+        window.AIToolboxAPI.tryProtocolLaunch('open-path', { path: folder });
+        return;
+      }
+    } catch (_) { /* ignore */ }
+    toast('Copy path and open in Explorer: ' + folder, 'warn');
+  };
+  document.getElementById('btnVidClear').onclick = clearVideo;
+  btnVidFfmpeg.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(ffmpegCmd.value);
+      toast('ffmpeg command copied', 'ok');
+    } catch (_) {
+      ffmpegCmd.select();
+      toast('Select & copy the command', 'warn');
+    }
+  };
+
+  function pickRecorderMime(preferMp4) {
+    const cands = preferMp4
+      ? [
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp8',
+        'video/webm',
+      ]
+      : [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4',
+      ];
+    for (const m of cands) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)) return m;
+    }
+    return '';
+  }
+
+  async function exportViaS1(srcOverride, opts = {}) {
+    const src = (srcOverride || srcPathEl.value || '').trim();
+    const outDir = (outDirEl.value || '').trim();
+    if (!src) throw new Error('Set source path for S1 MP4 encode');
+    if (!outDir) throw new Error('Set output directory');
+    const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+    const fmt = currentFmt();
+    const crfRaw = document.getElementById('vidCrf')?.value;
+    const crf = crfRaw === '' || crfRaw == null ? null : parseInt(crfRaw, 10);
+    const fps = parseInt(document.getElementById('vidFps').value, 10) || 0;
+    const quality = currentQuality();
+    if (!opts.quiet) {
+      toast(`S1 ${quality} · ${fmt.toUpperCase()} (lanczos · no upscale)…`, 'ok');
+    }
+    const res = await apiFetch('/convert/scale-max-side', {
+      method: 'POST',
+      body: {
+        src,
+        max_side: maxSide,
+        output_dir: outDir,
+        fmt,
+        crf: Number.isFinite(crf) ? crf : null,
+        fps: fps > 0 ? fps : null,
+        quality,
+        copy_if_fits: true,
+      },
+    });
+    if (!res.ok) throw new Error(res.error || 'ffmpeg failed');
+    rememberOutDir(outDir);
+    if (!opts.quiet) {
+      await listOutDir().catch(() => {});
+      const how = res.method === 'copy'
+        ? 'stream-copied (already within max · no re-encode)'
+        : (res.scaled ? 'lanczos downscale' : 're-encode (fit, no resize)');
+      toast(`Saved ${fmt.toUpperCase()} · ${how}: ${res.output}`, 'ok');
+    }
+    return res;
+  }
+
+  async function writeBlobToOutDir(blob, fileName) {
+    if (outDirHandle && outDirHandle.getFileHandle) {
+      try {
+        const fh = await outDirHandle.getFileHandle(fileName, { create: true });
+        const w = await fh.createWritable();
+        await w.write(blob);
+        await w.close();
+        return true;
+      } catch (e) {
+        console.warn('[VID TRIM] write to dir handle failed', e);
+      }
+    }
+    downloadBlob(blob, fileName);
+    return false;
+  }
+
+  async function exportBrowser(fileOverride, opts = {}) {
+    const file = fileOverride || vidSourceFile;
+    let objectUrl = vidObjectUrl;
+    let localUrl = false;
+    if (fileOverride) {
+      objectUrl = URL.createObjectURL(fileOverride);
+      localUrl = true;
+    }
+    if (!file || !objectUrl) {
+      throw new Error('Load a video file for browser export (or use S1 + source path)');
+    }
+    const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+    const wantMp4 = currentFmt() === 'mp4';
+    const mime = pickRecorderMime(wantMp4);
+    if (!mime) throw new Error('MediaRecorder not supported — use S1 + ffmpeg');
+
+    if (wantMp4 && !mime.includes('mp4') && !opts.quiet) {
+      toast('Browser cannot encode MP4 here — exporting WebM, or set S1 paths for MP4', 'warn');
+    }
+
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.src = objectUrl;
+    await new Promise((res, rej) => {
+      v.onloadedmetadata = () => res();
+      v.onerror = () => rej(new Error('video load failed'));
+    });
+    const vw = v.videoWidth || 0;
+    const vh = v.videoHeight || 0;
+    if (!vw || !vh) throw new Error('Could not read video size');
+    const t = targetDims(vw, vh, maxSide);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = t.w;
+    canvas.height = t.h;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const fpsCap = parseInt(document.getElementById('vidFps').value, 10) || 0;
+    const fps = fpsCap > 0 ? fpsCap : 30;
+    const canvasStream = canvas.captureStream(fps);
+
+    let mix = canvasStream;
+    try {
+      v.muted = false;
+      v.volume = 0.001;
+      const cap = (v.captureStream && v.captureStream()) || (v.mozCaptureStream && v.mozCaptureStream());
+      const aTracks = cap ? cap.getAudioTracks() : [];
+      if (aTracks.length) {
+        mix = new MediaStream([...canvasStream.getVideoTracks(), ...aTracks]);
+      } else {
+        v.muted = true;
+      }
+    } catch (_) {
+      v.muted = true;
+    }
+
+    // Browser path is a fallback — bias toward higher bitrates (detail over size)
+    const q = currentQuality();
+    const crf = effectiveCrf();
+    const px = Math.max(1, t.w * t.h);
+    // ~bits per pixel * fps-ish budget; archive/high much richer than small
+    const qMul = ({ archive: 1.35, high: 1.15, balanced: 0.9, small: 0.65 })[q] || 1.1;
+    const bits = Math.round(Math.min(28_000_000, Math.max(2_500_000, px * 0.12 * qMul * (28 / Math.max(12, crf)))));
+    const rec = new MediaRecorder(mix, {
+      mimeType: mime,
+      videoBitsPerSecond: bits,
+      audioBitsPerSecond: qualityAudioK(q) * 1000
+    });
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+
+    const done = new Promise((resolve, reject) => {
+      rec.onstop = () => resolve();
+      rec.onerror = () => reject(rec.error || new Error('recorder error'));
+    });
+
+    v.currentTime = 0;
+    try { await v.play(); } catch (_) {
+      v.muted = true;
+      await v.play();
+    }
+    rec.start(250);
+
+    const duration = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+    await new Promise((resolve) => {
+      let last = 0;
+      const draw = () => {
+        try { ctx.drawImage(v, 0, 0, t.w, t.h); } catch (_) { /* frame skip */ }
+        if (duration) {
+          const p = clamp(v.currentTime / duration, 0, 1);
+          if (p - last > 0.01) {
+            vidBar.style.width = Math.round(p * 100) + '%';
+            last = p;
+          }
+        }
+        if (v.ended || v.paused) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(draw);
+      };
+      v.onended = () => resolve();
+      requestAnimationFrame(draw);
+      setTimeout(resolve, Math.min(45 * 60 * 1000, (duration || 120) * 1000 + 5000));
+    });
+
+    try { v.pause(); } catch (_) { /* ignore */ }
+    if (rec.state !== 'inactive') rec.stop();
+    await done;
+
+    const blob = new Blob(chunks, { type: mime.split(';')[0] || 'video/webm' });
+    if (!blob.size) throw new Error('Export produced empty file');
+    const base = (file.name || 'video').replace(/\.[^.]+$/, '');
+    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+    const fileName = buildOutName(base, t, ext);
+    const wrote = await writeBlobToOutDir(blob, fileName);
+    if (!opts.quiet) {
+      toast(
+        wrote
+          ? `Saved ${t.w}×${t.h} ${ext.toUpperCase()} → folder (${(blob.size / 1024 / 1024).toFixed(1)} MB)`
+          : `Downloaded ${t.w}×${t.h} ${ext.toUpperCase()} (${(blob.size / 1024 / 1024).toFixed(1)} MB)`,
+        'ok'
+      );
+    }
+    try { v.removeAttribute('src'); v.load(); } catch (_) { /* ignore */ }
+    if (localUrl) {
+      try { URL.revokeObjectURL(objectUrl); } catch (_) { /* ignore */ }
+    }
+    return { output: fileName, wrote, w: t.w, h: t.h, ext };
+  }
+
+  function afterProcessSuccess() {
+    if (document.getElementById('chkClearAfter')?.checked) {
+      clearVideo();
+      srcPathEl.value = '';
+      saveState({ srcPath: '' });
+    }
+  }
+
+  async function exportScaledVideo() {
+    const src = (srcPathEl.value || '').trim();
+    const outDir = (outDirEl.value || '').trim();
+    const fmt = currentFmt();
+
+    btnVidExport.disabled = true;
+    vidProgress.style.display = 'block';
+    vidBar.style.width = '15%';
+
+    try {
+      // Prefer S1 path encode for real MP4 (and WebM) to disk
+      if (serverOnline && src && outDir) {
+        vidBar.style.width = '40%';
+        await exportViaS1(src);
+        vidBar.style.width = '100%';
+        afterProcessSuccess();
+        return;
+      }
+      if (fmt === 'mp4' && (!serverOnline || !src || !outDir)) {
+        toast('MP4: set S1 online + source path + output folder (or switch format to WebM)', 'warn');
+      }
+      if (!vidSourceFile) {
+        throw new Error('Load a browser video file, or set S1 source path + output dir for MP4');
+      }
+      await exportBrowser();
+      vidBar.style.width = '100%';
+      afterProcessSuccess();
+    } finally {
+      btnVidExport.disabled = false;
+      setTimeout(() => { vidProgress.style.display = 'none'; }, 800);
+      refreshVidMeta();
+    }
+  }
+
+  btnVidExport.onclick = () => {
+    exportScaledVideo().catch((e) => {
+      console.error(e);
+      toast(e.message || 'Video export failed', 'warn');
+      btnVidExport.disabled = false;
+      vidProgress.style.display = 'none';
+      refreshVidMeta();
+    });
+  };
+
+  /* ══════════════════════════════════════
+     LIVE BATCH QUEUE (add while running)
+     ══════════════════════════════════════ */
+  /** @type {{id:string,name:string,srcPath:string,file:File|null,status:string,error:string,output:string}[]} */
+  let jobQueue = [];
+  let queueRunning = false;
+  let queueStopAfter = false;
+  let queueIdSeq = 1;
+  const queueListEl = document.getElementById('queueList');
+  const queueMetaEl = document.getElementById('queueMeta');
+  const btnQStart = document.getElementById('btnQStart');
+  const btnQStop = document.getElementById('btnQStop');
+
+  function qId() { return 'q' + (queueIdSeq++); }
+
+  function basenamePath(p) {
+    return String(p || '').replace(/^.*[\\/]/, '') || 'video';
+  }
+
+  function jobDedupeKey(j) {
+    if (j.srcPath) return 'p:' + String(j.srcPath).trim().toLowerCase();
+    if (j.file) {
+      return 'f:' + j.file.name + '|' + j.file.size + '|' + (j.file.lastModified || 0);
+    }
+    return 'id:' + j.id;
+  }
+
+  function expectedOutNames(job) {
+    const stem = (job.srcPath
+      ? basenamePath(job.srcPath)
+      : (job.file && job.file.name) || job.name || 'video'
+    ).replace(/\.[^.]+$/, '');
+    const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+    const fmt = currentFmt();
+    // Matches server naming: _{side}max or _fit
+    return [
+      `${stem}_${maxSide}max.${fmt}`,
+      `${stem}_fit.${fmt}`,
+      // older browser download naming
+      `${stem}_`,
+    ].map((s) => s.toLowerCase());
+  }
+
+  function enqueueJob(job) {
+    const name = job.name || basenamePath(job.srcPath) || (job.file && job.file.name) || 'video';
+    const srcPath = (job.srcPath || '').trim();
+    const probe = { srcPath, file: job.file || null, id: 'tmp' };
+    const key = jobDedupeKey(probe);
+    const dup = jobQueue.some((j) => {
+      if (j.status !== 'queued' && j.status !== 'running') return false;
+      return jobDedupeKey(j) === key;
+    });
+    if (dup) return null;
+    const item = {
+      id: qId(),
+      name,
+      srcPath,
+      file: job.file || null,
+      status: 'queued',
+      error: '',
+      output: '',
+    };
+    jobQueue.push(item);
+    renderQueue();
+    return item;
+  }
+
+  /**
+   * Before run: drop completed, dedupe, re-check disk outputs, refresh list.
+   */
+  async function preflightQueue() {
+    const stats = { removedDone: 0, removedDupes: 0, markedSkip: 0, requeued: 0 };
+    const before = jobQueue.length;
+
+    // Re-queue failed so they can retry; drop done/skipped
+    jobQueue.forEach((j) => {
+      if (j.status === 'error') {
+        j.status = 'queued';
+        j.error = '';
+        j.output = '';
+        stats.requeued++;
+      }
+    });
+    const keptRunning = jobQueue.filter((j) => j.status === 'running');
+    const active = jobQueue.filter((j) => j.status === 'queued');
+    stats.removedDone = before - keptRunning.length - active.length;
+    jobQueue = [...keptRunning, ...active];
+
+    // Dedupe (keep first queued / running)
+    const seen = new Set();
+    const deduped = [];
+    for (const j of jobQueue) {
+      if (j.status === 'running') {
+        deduped.push(j);
+        seen.add(jobDedupeKey(j));
+        continue;
+      }
+      const k = jobDedupeKey(j);
+      if (seen.has(k)) {
+        stats.removedDupes++;
+        continue;
+      }
+      seen.add(k);
+      deduped.push(j);
+    }
+    jobQueue = deduped;
+
+    // Refresh vs output folder — mark already-finished as skipped then remove
+    const outDir = (outDirEl.value || '').trim();
+    if (
+      document.getElementById('chkSkipExisting')?.checked &&
+      serverOnline &&
+      outDir
+    ) {
+      try {
+        const listing = await apiFetch(
+          `/convert/list-dir?folder=${encodeURIComponent(outDir)}&limit=200`
+        );
+        const names = new Set(
+          (listing.files || []).map((f) => String(f.name || '').toLowerCase())
+        );
+        for (const j of jobQueue) {
+          if (j.status !== 'queued' || !j.srcPath) continue;
+          const cands = expectedOutNames(j);
+          const hitName = cands.find((c) => {
+            if (c.endsWith('_')) {
+              // prefix match for browser-style names
+              return [...names].some((n) => n.startsWith(c));
+            }
+            return names.has(c);
+          });
+          if (hitName) {
+            j.status = 'skipped';
+            j.output = hitName;
+            stats.markedSkip++;
+          }
+        }
+      } catch (e) {
+        console.warn('[queue preflight] list-dir', e);
+      }
+    }
+
+    // Always strip completed after refresh (user asked for clean queue before start)
+    const nBeforeStrip = jobQueue.length;
+    jobQueue = jobQueue.filter((j) => j.status === 'queued' || j.status === 'running');
+    stats.removedDone += nBeforeStrip - jobQueue.length - stats.markedSkip;
+    // counted skips in removedDone-ish — report clearly
+    renderQueue();
+    await pingServer();
+    if (outDir && serverOnline) {
+      await listOutDir().catch(() => {});
+    }
+    refreshVidMeta();
+
+    const ready = jobQueue.filter((j) => j.status === 'queued').length;
+    return { ...stats, ready, total: jobQueue.length };
+  }
+
+  function enqueueFiles(files) {
+    let n = 0;
+    for (const f of files || []) {
+      if (!f || !/\.(mp4|webm|mov|mkv|m4v|avi)$/i.test(f.name) && !(f.type || '').startsWith('video/')) {
+        // still accept if type is video/*
+        if (!(f.type || '').startsWith('video/')) continue;
+      }
+      if (enqueueJob({ name: f.name, file: f })) n++;
+    }
+    return n;
+  }
+
+  function enqueuePaths(text) {
+    const lines = String(text || '').split(/[\r\n|]+/).map((s) => s.trim()).filter(Boolean);
+    let n = 0;
+    for (const p of lines) {
+      if (enqueueJob({ name: basenamePath(p), srcPath: p })) n++;
+    }
+    return n;
+  }
+
+  function renderQueue() {
+    if (!queueListEl) return;
+    if (!jobQueue.length) {
+      queueListEl.innerHTML = '<div style="padding:12px;color:var(--muted)">Queue empty — drop multiple videos, use ＋ Queue, or Add files…</div>';
+    } else {
+      queueListEl.innerHTML = jobQueue.map((j) => {
+        const stClass = j.status || 'queued';
+        const pathHint = j.srcPath || (j.file ? '(browser file · WebM fallback)' : '');
+        return `<div class="queue-item ${j.status === 'running' ? 'is-running' : ''} ${j.status === 'done' ? 'is-done' : ''}" data-qid="${escapeAttr(j.id)}">
+          <button type="button" class="q-x" data-rm="${escapeAttr(j.id)}" title="Remove" ${j.status === 'running' ? 'disabled' : ''}>×</button>
+          <div style="min-width:0">
+            <div class="q-name" title="${escapeAttr(j.name)}">${escapeHtml(j.name)}</div>
+            <div class="q-path" title="${escapeAttr(pathHint)}">${escapeHtml(pathHint)}${j.output ? ' → ' + escapeHtml(j.output) : ''}${j.error ? ' · ' + escapeHtml(j.error) : ''}</div>
+          </div>
+          <span class="q-st ${stClass}">${escapeHtml(j.status)}</span>
+          <span></span>
+        </div>`;
+      }).join('');
+    }
+    const nQ = jobQueue.filter((j) => j.status === 'queued').length;
+    const nR = jobQueue.filter((j) => j.status === 'running').length;
+    const nD = jobQueue.filter((j) => j.status === 'done').length;
+    const nE = jobQueue.filter((j) => j.status === 'error').length;
+    if (queueMetaEl) {
+      queueMetaEl.textContent = queueRunning
+        ? `${nQ} waiting · ${nR} running · ${nD} done · ${nE} error · processing…`
+        : `${nQ} queued · ${nD} done · ${nE} error · idle`;
+    }
+    if (btnQStart) {
+      btnQStart.disabled = queueRunning || nQ === 0;
+      btnQStart.textContent = queueRunning ? '▶ Running…' : '▶ Run queue';
+    }
+    if (btnQStop) btnQStop.disabled = !queueRunning;
+  }
+
+  function maybeAutostartQueue() {
+    // Don't auto-start — user hits Run, unless already running (new items will be picked up)
+    if (queueRunning) renderQueue();
+  }
+
+  async function processOneJob(job) {
+    job.status = 'running';
+    job.error = '';
+    renderQueue();
+    const outDir = (outDirEl.value || '').trim();
+    const fmt = currentFmt();
+
+    // S1 path job
+    if (job.srcPath && serverOnline && outDir) {
+      // optional skip if exists
+      if (document.getElementById('chkSkipExisting')?.checked) {
+        try {
+          const listing = await apiFetch(
+            `/convert/list-dir?folder=${encodeURIComponent(outDir)}&limit=80`
+          );
+          const stem = basenamePath(job.srcPath).replace(/\.[^.]+$/, '');
+          const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+          const want = `${stem}_${maxSide}max.${fmt}`.toLowerCase();
+          const hit = (listing.files || []).find((f) => (f.name || '').toLowerCase() === want);
+          if (hit) {
+            job.status = 'skipped';
+            job.output = hit.path || hit.name;
+            return;
+          }
+        } catch (_) { /* ignore skip probe */ }
+      }
+      const res = await exportViaS1(job.srcPath, { quiet: true });
+      job.output = res.output || '';
+      job.status = 'done';
+      return;
+    }
+
+    // Browser file
+    if (job.file) {
+      if (fmt === 'mp4' && !serverOnline) {
+        // will webm-fallback inside exportBrowser
+      }
+      if (job.srcPath && serverOnline && !outDir) {
+        throw new Error('Set output directory for S1 jobs');
+      }
+      if (!job.srcPath && fmt === 'mp4' && serverOnline) {
+        // path missing — browser webm
+      }
+      const res = await exportBrowser(job.file, { quiet: true });
+      job.output = res.output || '';
+      job.status = 'done';
+      return;
+    }
+
+    // Path but offline
+    if (job.srcPath && !serverOnline) {
+      throw new Error('S1 offline — path jobs need S1+ffmpeg (or add browser files)');
+    }
+    throw new Error('Job has no path or file');
+  }
+
+  async function runQueueLoop() {
+    if (queueRunning) return;
+
+    // Preflight: dedupe, drop completed, refresh disk status
+    if (document.getElementById('chkPreflight')?.checked !== false) {
+      const pf = await preflightQueue();
+      const bits = [];
+      if (pf.removedDupes) bits.push(`${pf.removedDupes} dupes`);
+      if (pf.markedSkip) bits.push(`${pf.markedSkip} already done`);
+      if (pf.removedDone) bits.push(`${pf.removedDone} cleared`);
+      if (pf.requeued) bits.push(`${pf.requeued} errors re-queued`);
+      toast(
+        pf.ready
+          ? `Queue ready · ${pf.ready} job(s)${bits.length ? ' · removed ' + bits.join(', ') : ''}`
+          : `Queue empty after cleanup${bits.length ? ' · ' + bits.join(', ') : ''}`,
+        pf.ready ? 'ok' : 'warn'
+      );
+      if (!pf.ready) {
+        renderQueue();
+        return;
+      }
+    }
+
+    queueRunning = true;
+    queueStopAfter = false;
+    renderQueue();
+    vidProgress.style.display = 'block';
+
+    try {
+      while (true) {
+        if (queueStopAfter) break;
+        const next = jobQueue.find((j) => j.status === 'queued');
+        if (!next) break;
+
+        // Highlight in preview when possible
+        if (next.srcPath) {
+          srcPathEl.value = next.srcPath;
+          saveState({ srcPath: next.srcPath });
+          refreshVidMeta();
+        }
+        if (next.file) {
+          try { loadVideoFile(next.file); } catch (_) { /* ignore */ }
+        }
+
+        try {
+          vidBar.style.width = '20%';
+          await processOneJob(next);
+          vidBar.style.width = '100%';
+          if (document.getElementById('chkClearAfter')?.checked) {
+            clearVideo();
+            if (!jobQueue.some((j) => j.status === 'queued' || j.status === 'running')) {
+              srcPathEl.value = '';
+              saveState({ srcPath: '' });
+            }
+          }
+          if (document.getElementById('chkRemoveDone')?.checked && (next.status === 'done' || next.status === 'skipped')) {
+            jobQueue = jobQueue.filter((j) => j.id !== next.id);
+          }
+        } catch (e) {
+          next.status = 'error';
+          next.error = (e && e.message) ? e.message : String(e);
+          console.warn('[queue]', next.name, e);
+        }
+        renderQueue();
+        // brief yield so UI can accept new queue adds
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      await listOutDir().catch(() => {});
+      const nD = jobQueue.filter((j) => j.status === 'done').length;
+      const nE = jobQueue.filter((j) => j.status === 'error').length;
+      toast(
+        queueStopAfter
+          ? `Queue paused · ${nD} done · ${nE} error`
+          : `Queue finished · ${nD} done · ${nE} error`,
+        nE ? 'warn' : 'ok'
+      );
+    } finally {
+      queueRunning = false;
+      queueStopAfter = false;
+      vidProgress.style.display = 'none';
+      renderQueue();
+      refreshVidMeta();
+    }
+  }
+
+  document.getElementById('btnQAdd')?.addEventListener('click', () => {
+    const src = (srcPathEl.value || '').trim();
+    if (src) {
+      const item = enqueueJob({ name: basenamePath(src), srcPath: src });
+      toast(item ? 'Added to queue' : 'Already in queue', item ? 'ok' : 'warn');
+    } else if (vidSourceFile) {
+      const item = enqueueJob({ name: vidSourceFile.name, file: vidSourceFile });
+      toast(item ? 'Added browser file to queue' : 'Already in queue', item ? 'ok' : 'warn');
+    } else {
+      toast('Load a video or set a source path first', 'warn');
+      return;
+    }
+    // keep running loop picking up new items
+  });
+
+  document.getElementById('btnQAddFiles')?.addEventListener('click', () => {
+    document.getElementById('vidFileQueue')?.click();
+  });
+  document.getElementById('vidFileQueue')?.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    const n = enqueueFiles(files);
+    e.target.value = '';
+    toast(n ? `Queued ${n} file(s)` : 'No new files', n ? 'ok' : 'warn');
+  });
+
+  document.getElementById('btnQAddPaths')?.addEventListener('click', () => {
+    const text = prompt(
+      'Paste full video paths (one per line or | separated):',
+      (srcPathEl.value || '').trim()
+    );
+    if (text == null) return;
+    const n = enqueuePaths(text);
+    toast(n ? `Queued ${n} path(s)` : 'No new paths', n ? 'ok' : 'warn');
+  });
+
+  btnQStart?.addEventListener('click', () => {
+    const outDir = (outDirEl.value || '').trim();
+    const needsPath = jobQueue.some((j) => j.status === 'queued' && j.srcPath);
+    if (needsPath && !outDir) {
+      toast('Set output directory before running path jobs', 'warn');
+      return;
+    }
+    if (needsPath && !serverOnline) {
+      toast('S1 offline — path jobs need S1. Browser files can still run as WebM.', 'warn');
+    }
+    runQueueLoop().catch((e) => {
+      console.error(e);
+      toast(e.message || 'Queue failed', 'warn');
+      queueRunning = false;
+      renderQueue();
+    });
+  });
+
+  btnQStop?.addEventListener('click', () => {
+    queueStopAfter = true;
+    toast('Will stop after the current job', 'ok');
+    renderQueue();
+  });
+
+  document.getElementById('btnQClearDone')?.addEventListener('click', () => {
+    jobQueue = jobQueue.filter((j) => j.status === 'queued' || j.status === 'running');
+    renderQueue();
+  });
+
+  document.getElementById('btnQClearAll')?.addEventListener('click', () => {
+    if (queueRunning) {
+      toast('Stop the queue first (or wait), then clear', 'warn');
+      return;
+    }
+    jobQueue = [];
+    renderQueue();
+  });
+
+  queueListEl?.addEventListener('click', (e) => {
+    const rm = e.target.closest?.('[data-rm]');
+    if (!rm) return;
+    const id = rm.getAttribute('data-rm');
+    const job = jobQueue.find((j) => j.id === id);
+    if (job && job.status === 'running') return;
+    jobQueue = jobQueue.filter((j) => j.id !== id);
+    renderQueue();
+  });
+
+  // restore paths / format
+  {
+    const st = loadState();
+    if (st.outDir) outDirEl.value = st.outDir;
+    if (st.srcPath) srcPathEl.value = st.srcPath;
+    if (st.outFmt) outFmtEl.value = st.outFmt;
+    if (st.maxSide) maxSideEl.value = st.maxSide;
+    if (st.quality && document.getElementById('vidQuality')) {
+      document.getElementById('vidQuality').value = st.quality;
+    }
+    if (st.crf != null && st.crf !== '') document.getElementById('vidCrf').value = st.crf;
+    else if (document.getElementById('vidCrf')) document.getElementById('vidCrf').value = '';
+    if (st.fps != null) document.getElementById('vidFps').value = st.fps;
+    if (st.clearAfter === false) document.getElementById('chkClearAfter').checked = false;
+    if (st.removeDone === false) document.getElementById('chkRemoveDone').checked = false;
+    if (st.skipExisting === false) document.getElementById('chkSkipExisting').checked = false;
+    if (st.preflight === false) document.getElementById('chkPreflight').checked = false;
+    renderRecentOut(st.recentOut);
+    refreshVidMeta();
+    renderQueue();
+  }
+
+  ['chkClearAfter', 'chkRemoveDone', 'chkSkipExisting', 'chkPreflight'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      saveState({
+        clearAfter: !!document.getElementById('chkClearAfter')?.checked,
+        removeDone: !!document.getElementById('chkRemoveDone')?.checked,
+        skipExisting: !!document.getElementById('chkSkipExisting')?.checked,
+        preflight: !!document.getElementById('chkPreflight')?.checked,
+      });
+    });
+  });
+
+  /* ══════════════════════════════════════
+     IMAGE shop
+     ══════════════════════════════════════ */
+  const SIZES = {
+    custom: { w: 1280, h: 720, name: 'custom', group: 'Custom' },
+    og1200: { w: 1200, h: 630, name: 'og_1200x630', group: 'Social' },
+    ig_square: { w: 1080, h: 1080, name: 'ig_square', group: 'Social' },
+    ig_portrait: { w: 1080, h: 1350, name: 'ig_portrait', group: 'Social' },
+    story: { w: 1080, h: 1920, name: 'story_9x16', group: 'Social' },
+    yt_thumb: { w: 1280, h: 720, name: 'yt_thumb', group: 'Social' },
+    twitter: { w: 1600, h: 900, name: 'twitter_16x9', group: 'Social' },
+    banner_728: { w: 728, h: 90, name: 'banner_728x90', group: 'Ads' },
+    banner_300: { w: 300, h: 250, name: 'mpu_300x250', group: 'Ads' },
+    banner_160: { w: 160, h: 600, name: 'skyscraper_160x600', group: 'Ads' },
+    banner_970: { w: 970, h: 250, name: 'billboard_970x250', group: 'Ads' },
+    chrome_small: { w: 440, h: 280, name: 'chrome_small_promo', group: 'Chrome Store' },
+    chrome_marquee: { w: 1400, h: 560, name: 'chrome_marquee', group: 'Chrome Store' },
+    chrome_shot: { w: 1280, h: 800, name: 'chrome_screenshot', group: 'Chrome Store' },
+    icon128: { w: 128, h: 128, name: 'icon_128', group: 'Icons' },
+    icon256: { w: 256, h: 256, name: 'icon_256', group: 'Icons' },
+    icon512: { w: 512, h: 512, name: 'icon_512', group: 'Icons' },
+    hd_1080: { w: 1920, h: 1080, name: 'full_hd', group: 'Video frames' },
+    uhd_4k: { w: 3840, h: 2160, name: 'uhd_4k', group: 'Video frames' },
+  };
+
+  const imgFile = document.getElementById('imgFile');
+  const imgDrop = document.getElementById('imgDrop');
+  const imgPreview = document.getElementById('imgPreview');
+  const imgCtx = imgPreview.getContext('2d');
+  const imgMeta = document.getElementById('imgMeta');
+  const imgPreset = document.getElementById('imgPreset');
+  const imgMode = document.getElementById('imgMode');
+  const imgFormat = document.getElementById('imgFormat');
+  const aspectLock = document.getElementById('aspectLock');
+  const customDims = document.getElementById('customDims');
+  const customW = document.getElementById('customW');
+  const customH = document.getElementById('customH');
+  const manualRow = document.getElementById('manualRow');
+  const btnImgExport = document.getElementById('btnImgExport');
+  const cropOverlay = document.getElementById('cropOverlay');
+
+  let img = new Image();
+  let imgUrl = null;
+
+  function populatePresets() {
+    const groups = {};
+    Object.entries(SIZES).forEach(([id, s]) => {
+      if (!groups[s.group]) groups[s.group] = [];
+      groups[s.group].push({ id, ...s });
+    });
+    imgPreset.innerHTML = Object.entries(groups).map(([g, items]) =>
+      `<optgroup label="${g}">${items.map((s) =>
+        `<option value="${s.id}">${s.id === 'custom' ? 'Custom…' : `${s.w}×${s.h} — ${s.name}`}</option>`
+      ).join('')}</optgroup>`
+    ).join('');
+
+    const chipHost = document.getElementById('imgPresets');
+    const quick = ['og1200', 'ig_square', 'story', 'chrome_small', 'chrome_marquee', 'icon128', 'hd_1080', 'custom'];
+    chipHost.innerHTML = quick.map((id) => {
+      const s = SIZES[id];
+      return `<button type="button" data-size="${id}">${id === 'custom' ? 'Custom' : `${s.w}×${s.h}`}</button>`;
+    }).join('');
+  }
+  populatePresets();
+
+  function currentSize() {
+    const id = imgPreset.value;
+    if (id === 'custom') {
+      return {
+        w: clamp(parseInt(customW.value, 10) || 1280, 8, 8192),
+        h: clamp(parseInt(customH.value, 10) || 720, 8, 8192),
+        name: 'custom'
+      };
+    }
+    const s = SIZES[id] || SIZES.og1200;
+    return { w: s.w, h: s.h, name: s.name };
+  }
+
+  function getAspectRatio() {
+    const lock = (aspectLock.value || 'source').toLowerCase();
+    if (lock === 'free') return null;
+    if (lock === 'source') {
+      if (img.width > 0 && img.height > 0) return img.width / img.height;
+      return 16 / 9;
+    }
+    const parts = lock.split(':').map(Number);
+    if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) return parts[0] / parts[1];
+    return null;
+  }
+
+  /** Keep custom W×H locked to selected aspect (never free-stretch dimensions). */
+  function applyAspectLock(from = 'w') {
+    const ar = getAspectRatio();
+    if (!ar || imgPreset.value !== 'custom') return;
+    if (from === 'h') {
+      const h = clamp(parseInt(customH.value, 10) || 720, 8, 8192);
+      customW.value = String(Math.max(8, Math.round(h * ar)));
+      customH.value = String(h);
+    } else {
+      const w = clamp(parseInt(customW.value, 10) || 1280, 8, 8192);
+      customW.value = String(w);
+      customH.value = String(Math.max(8, Math.round(w / ar)));
+    }
+  }
+
+  /** Manual crop box always matches output aspect (no stretched crop). */
+  function syncManualCropToOutputAr() {
+    if (imgMode.value !== 'manual' || !img.width || !img.height) return;
+    const size = currentSize();
+    const outAr = size.w / size.h;
+    // cropW/H are % of source width/height; enforce (srcW*w%)/(srcH*h%) = outAr
+    let wPct = clamp(parseFloat(document.getElementById('cropW').value) || 100, 1, 100);
+    let hPct = (wPct * img.width) / (outAr * img.height);
+    if (hPct > 100) {
+      hPct = 100;
+      wPct = (hPct * outAr * img.height) / img.width;
+    }
+    wPct = clamp(wPct, 1, 100);
+    hPct = clamp(hPct, 1, 100);
+    document.getElementById('cropW').value = String(Math.round(wPct * 10) / 10);
+    document.getElementById('cropH').value = String(Math.round(hPct * 10) / 10);
+    // keep crop inside image
+    const x = clamp(parseFloat(document.getElementById('cropX').value) || 0, 0, 100 - wPct);
+    const y = clamp(parseFloat(document.getElementById('cropY').value) || 0, 0, 100 - hPct);
+    document.getElementById('cropX').value = String(Math.round(x * 10) / 10);
+    document.getElementById('cropY').value = String(Math.round(y * 10) / 10);
+  }
+
+  function computeDraw(srcW, srcH, dstW, dstH, mode) {
+    // stretch is explicit distort only
+    if (mode === 'stretch') {
+      return { sx: 0, sy: 0, sw: srcW, sh: srcH, dx: 0, dy: 0, dw: dstW, dh: dstH, crop: false };
+    }
+    if (mode === 'manual') {
+      syncManualCropToOutputAr();
+      const x = clamp(parseFloat(document.getElementById('cropX').value) || 0, 0, 99) / 100;
+      const y = clamp(parseFloat(document.getElementById('cropY').value) || 0, 0, 99) / 100;
+      const w = clamp(parseFloat(document.getElementById('cropW').value) || 100, 1, 100 - x * 100) / 100;
+      const h = clamp(parseFloat(document.getElementById('cropH').value) || 100, 1, 100 - y * 100) / 100;
+      return {
+        sx: srcW * x, sy: srcH * y, sw: srcW * w, sh: srcH * h,
+        dx: 0, dy: 0, dw: dstW, dh: dstH, crop: true
+      };
+    }
+    const imgR = srcW / srcH;
+    const dstR = dstW / dstH;
+    // cover = fill frame, crop edges, NEVER stretch (pixels keep AR)
+    if (mode === 'cover') {
+      let sx = 0, sy = 0, sw = srcW, sh = srcH;
+      if (imgR > dstR) {
+        sw = srcH * dstR;
+        sx = (srcW - sw) / 2;
+      } else {
+        sh = srcW / dstR;
+        sy = (srcH - sh) / 2;
+      }
+      return { sx, sy, sw, sh, dx: 0, dy: 0, dw: dstW, dh: dstH, crop: true };
+    }
+    // contain (default) = full image, letterbox, NEVER stretch
+    let dw, dh, dx = 0, dy = 0;
+    if (imgR > dstR) {
+      dw = dstW; dh = dw / imgR; dy = (dstH - dh) / 2;
+    } else {
+      dh = dstH; dw = dh * imgR; dx = (dstW - dw) / 2;
+    }
+    return { sx: 0, sy: 0, sw: srcW, sh: srcH, dx, dy, dw, dh, crop: false };
+  }
+
+  function syncImgUi() {
+    customDims.style.display = imgPreset.value === 'custom' ? '' : 'none';
+    manualRow.style.display = imgMode.value === 'manual' ? '' : 'none';
+    // When picking a named preset, set aspect chip to match preset AR
+    if (imgPreset.value !== 'custom') {
+      const s = SIZES[imgPreset.value];
+      if (s && s.w && s.h) {
+        // leave chip as-is unless free; source/cover/contain still preserve image AR in draw
+      }
+    }
+  }
+
+  function setAspectLock(ar) {
+    aspectLock.value = ar || 'source';
+    document.querySelectorAll('#aspectChips button').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-ar') === aspectLock.value);
+    });
+    if (imgPreset.value === 'custom') applyAspectLock('w');
+    syncManualCropToOutputAr();
+    drawImgPreview();
+    saveState({ aspectLock: aspectLock.value });
+  }
+
+  function drawImgPreview() {
+    if (!img.src || !img.width) return;
+    const size = currentSize();
+    const maxP = 900;
+    const sc = Math.min(1, maxP / Math.max(size.w, size.h));
+    const pw = Math.max(1, Math.round(size.w * sc));
+    const ph = Math.max(1, Math.round(size.h * sc));
+    imgPreview.width = pw;
+    imgPreview.height = ph;
+    imgCtx.fillStyle = '#000';
+    imgCtx.fillRect(0, 0, pw, ph);
+    const d = computeDraw(img.width, img.height, pw, ph, imgMode.value);
+    imgCtx.drawImage(img, d.sx, d.sy, d.sw, d.sh, d.dx, d.dy, d.dw, d.dh);
+
+    if (imgMode.value === 'manual') {
+      cropOverlay.style.display = 'block';
+      const x = clamp(parseFloat(document.getElementById('cropX').value) || 0, 0, 99) / 100;
+      const y = clamp(parseFloat(document.getElementById('cropY').value) || 0, 0, 99) / 100;
+      const w = clamp(parseFloat(document.getElementById('cropW').value) || 100, 1, 100) / 100;
+      const h = clamp(parseFloat(document.getElementById('cropH').value) || 100, 1, 100) / 100;
+      // overlay relative to preview wrap — approximate on canvas box
+      const rect = imgPreview.getBoundingClientRect();
+      const wrap = imgPreview.parentElement.getBoundingClientRect();
+      cropOverlay.style.left = (rect.left - wrap.left + rect.width * x) + 'px';
+      cropOverlay.style.top = (rect.top - wrap.top + rect.height * y) + 'px';
+      cropOverlay.style.width = (rect.width * w) + 'px';
+      cropOverlay.style.height = (rect.height * h) + 'px';
+    } else {
+      cropOverlay.style.display = 'none';
+    }
+
+    imgMeta.textContent =
+      `Source ${img.width}×${img.height} → ${size.w}×${size.h} · ${imgMode.value} · ${imgFormat.value} · preview ${pw}×${ph}`;
+  }
+
+  function clearImage() {
+    if (imgUrl) { try { URL.revokeObjectURL(imgUrl); } catch (_) {} }
+    imgUrl = null;
+    img = new Image();
+    imgFile.value = '';
+    btnImgExport.disabled = true;
+    imgCtx.clearRect(0, 0, imgPreview.width, imgPreview.height);
+    imgPreview.width = 440;
+    imgPreview.height = 280;
+    cropOverlay.style.display = 'none';
+    imgMeta.textContent = 'No image loaded';
+  }
+
+  function loadImageFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    if (imgUrl) URL.revokeObjectURL(imgUrl);
+    imgUrl = URL.createObjectURL(file);
+    img = new Image();
+    img.onload = () => {
+      btnImgExport.disabled = false;
+      if ((aspectLock.value || 'source') === 'source' && imgPreset.value === 'custom') {
+        applyAspectLock('w');
+      }
+      syncManualCropToOutputAr();
+      drawImgPreview();
+    };
+    img.onerror = () => {
+      toast('Could not load image', 'warn');
+      clearImage();
+    };
+    img.src = imgUrl;
+  }
+
+  imgDrop.addEventListener('click', () => imgFile.click());
+  imgFile.addEventListener('change', () => loadImageFile(imgFile.files?.[0]));
+  document.getElementById('btnImgClear').onclick = clearImage;
+
+  imgPreset.addEventListener('change', () => {
+    syncImgUi();
+    if (imgPreset.value !== 'custom') {
+      const s = SIZES[imgPreset.value];
+      if (s) { customW.value = s.w; customH.value = s.h; }
+    } else {
+      applyAspectLock('w');
+    }
+    syncManualCropToOutputAr();
+    drawImgPreview();
+    saveState({ imgPreset: imgPreset.value });
+  });
+  imgMode.addEventListener('change', () => {
+    syncImgUi();
+    syncManualCropToOutputAr();
+    drawImgPreview();
+    saveState({ imgMode: imgMode.value });
+  });
+  imgFormat.addEventListener('change', () => saveState({ imgFormat: imgFormat.value }));
+  document.getElementById('aspectChips')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ar]');
+    if (!b) return;
+    setAspectLock(b.getAttribute('data-ar'));
+  });
+  ['customW', 'customH', 'cropX', 'cropY', 'cropW', 'cropH'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      if (id === 'customW') applyAspectLock('w');
+      else if (id === 'customH') applyAspectLock('h');
+      else if (id === 'cropW' || id === 'cropX' || id === 'cropY') syncManualCropToOutputAr();
+      drawImgPreview();
+    });
+  });
+  document.getElementById('imgPresets').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-size]');
+    if (!b) return;
+    imgPreset.value = b.dataset.size;
+    document.querySelectorAll('#imgPresets button').forEach((x) => x.classList.toggle('active', x === b));
+    imgPreset.dispatchEvent(new Event('change'));
+  });
+
+  /* ICO multi-size writer (simple BMP-in-ICO, no PNG compression) */
+  function canvasToIcoBlob(sourceCanvas) {
+    const sizes = [16, 32, 48, 256];
+    const images = sizes.map((sz) => {
+      const c = document.createElement('canvas');
+      c.width = sz; c.height = sz;
+      const cx = c.getContext('2d');
+      cx.imageSmoothingEnabled = true;
+      cx.imageSmoothingQuality = 'high';
+      cx.drawImage(sourceCanvas, 0, 0, sz, sz);
+      const { data } = cx.getImageData(0, 0, sz, sz);
+      return { sz, data };
+    });
+
+    // ICONDIR + ICONDIRENTRY*n + image data
+    let offset = 6 + 16 * images.length;
+    const entries = [];
+    const blobs = [];
+    for (const im of images) {
+      const sz = im.sz;
+      const xorSize = sz * sz * 4;
+      const headerSize = 40;
+      const imgSize = headerSize + xorSize;
+      // BITMAPINFOHEADER
+      const buf = new ArrayBuffer(imgSize);
+      const view = new DataView(buf);
+      view.setUint32(0, 40, true);
+      view.setInt32(4, sz, true);
+      view.setInt32(8, sz * 2, true); // height * 2 (XOR + AND)
+      view.setUint16(12, 1, true);
+      view.setUint16(14, 32, true);
+      view.setUint32(16, 0, true);
+      view.setUint32(20, xorSize, true);
+      const pixels = new Uint8Array(buf, headerSize);
+      // bottom-up BGRA
+      for (let y = 0; y < sz; y++) {
+        for (let x = 0; x < sz; x++) {
+          const src = ((sz - 1 - y) * sz + x) * 4;
+          const dst = (y * sz + x) * 4;
+          pixels[dst] = im.data[src + 2];
+          pixels[dst + 1] = im.data[src + 1];
+          pixels[dst + 2] = im.data[src];
+          pixels[dst + 3] = im.data[src + 3];
+        }
+      }
+      entries.push({ sz, imgSize, offset, bytes: new Uint8Array(buf) });
+      offset += imgSize;
+    }
+
+    const total = offset;
+    const out = new ArrayBuffer(total);
+    const dv = new DataView(out);
+    const u8 = new Uint8Array(out);
+    dv.setUint16(0, 0, true);
+    dv.setUint16(2, 1, true);
+    dv.setUint16(4, entries.length, true);
+    entries.forEach((en, i) => {
+      const o = 6 + i * 16;
+      dv.setUint8(o, en.sz >= 256 ? 0 : en.sz);
+      dv.setUint8(o + 1, en.sz >= 256 ? 0 : en.sz);
+      dv.setUint8(o + 2, 0);
+      dv.setUint8(o + 3, 0);
+      dv.setUint16(o + 4, 1, true);
+      dv.setUint16(o + 6, 32, true);
+      dv.setUint32(o + 8, en.imgSize, true);
+      dv.setUint32(o + 12, en.offset, true);
+      u8.set(en.bytes, en.offset);
+    });
+    return new Blob([out], { type: 'image/x-icon' });
+  }
+
+  function exportImage() {
+    if (!img.src || !img.width) return;
+    const size = currentSize();
+    const canvas = document.createElement('canvas');
+    canvas.width = size.w;
+    canvas.height = size.h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, size.w, size.h);
+    const d = computeDraw(img.width, img.height, size.w, size.h, imgMode.value);
+    ctx.drawImage(img, d.sx, d.sy, d.sw, d.sh, d.dx, d.dy, d.dw, d.dh);
+
+    const fmt = imgFormat.value;
+    if (fmt === 'ico') {
+      // ICO from square-ish master (use size canvas scaled)
+      const master = document.createElement('canvas');
+      const side = Math.max(size.w, size.h, 256);
+      master.width = side;
+      master.height = side;
+      const mx = master.getContext('2d');
+      mx.fillStyle = '#000';
+      mx.fillRect(0, 0, side, side);
+      const fit = Math.min(side / size.w, side / size.h);
+      const dw = size.w * fit, dh = size.h * fit;
+      mx.drawImage(canvas, (side - dw) / 2, (side - dh) / 2, dw, dh);
+      const blob = canvasToIcoBlob(master);
+      downloadBlob(blob, `fafo_${size.name}.ico`);
+      toast('ICO exported (16·32·48·256)', 'ok');
+      return;
+    }
+
+    const mime = fmt === 'png' ? 'image/png' : fmt === 'webp' ? 'image/webp' : 'image/jpeg';
+    const quality = fmt === 'png' ? undefined : (fmt === 'webp' ? 0.90 : 0.92);
+    const ext = fmt === 'png' ? 'png' : fmt === 'webp' ? 'webp' : 'jpg';
+    canvas.toBlob((blob) => {
+      if (!blob) { toast('Export failed', 'warn'); return; }
+      downloadBlob(blob, `fafo_${size.name}_${imgMode.value}.${ext}`);
+      toast(`Exported ${size.w}×${size.h} ${ext.toUpperCase()}`, 'ok');
+    }, mime, quality);
+  }
+  btnImgExport.onclick = exportImage;
+
+  /* ── drag & drop ── */
+  function wireDrop(el, acceptFiles) {
+    ['dragenter', 'dragover'].forEach((ev) => {
+      el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach((ev) => {
+      el.addEventListener(ev, (e) => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        if (ev === 'drop') acceptFiles(Array.from(e.dataTransfer?.files || []));
+      });
+    });
+  }
+  wireDrop(vidDrop, (files) => {
+    const vids = files.filter(
+      (f) => (f.type || '').startsWith('video/') || /\.(mp4|webm|mov|mkv|m4v|avi)$/i.test(f.name)
+    );
+    if (!vids.length) return;
+    setTab('video');
+    loadVideoFile(vids[0]);
+    if (vids.length > 1) {
+      const n = enqueueFiles(vids);
+      toast(`Queued ${n} video(s)`, 'ok');
+    }
+  });
+  wireDrop(imgDrop, (files) => {
+    const imgF = files.find((f) => (f.type || '').startsWith('image/'));
+    if (imgF) loadImageFile(imgF);
+  });
+  document.body.addEventListener('dragover', (e) => e.preventDefault());
+  document.body.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
+    const vids = files.filter(
+      (f) => (f.type || '').startsWith('video/') || /\.(mp4|webm|mov|mkv|m4v|avi)$/i.test(f.name)
+    );
+    if (vids.length) {
+      setTab('video');
+      loadVideoFile(vids[0]);
+      if (vids.length > 1) {
+        const n = enqueueFiles(vids);
+        toast(`Queued ${n} video(s)`, 'ok');
+      }
+      return;
+    }
+    const imgF = files.find((f) => (f.type || '').startsWith('image/'));
+    if (imgF) {
+      setTab('image');
+      loadImageFile(imgF);
+    }
+  });
+
+  /* ── restore + keys ── */
+  const st = loadState();
+  if (st.maxSide) maxSideEl.value = st.maxSide;
+  if (st.imgPreset && SIZES[st.imgPreset]) imgPreset.value = st.imgPreset;
+  if (st.imgMode) imgMode.value = st.imgMode;
+  if (st.imgFormat) imgFormat.value = st.imgFormat;
+  if (st.aspectLock) {
+    aspectLock.value = st.aspectLock;
+    document.querySelectorAll('#aspectChips button').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-ar') === st.aspectLock);
+    });
+  }
+  syncImgUi();
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.key !== 'Escape') return;
+    if (e.key === '1') { e.preventDefault(); setTab('video'); }
+    if (e.key === '2') { e.preventDefault(); setTab('image'); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!panelImage.classList.contains('hidden')) clearImage();
+      else clearVideo();
+    }
+    if ((e.key === 'e' || e.key === 'E')) {
+      e.preventDefault();
+      if (!panelImage.classList.contains('hidden')) {
+        if (!btnImgExport.disabled) exportImage();
+      } else if (!btnVidExport.disabled) {
+        btnVidExport.click();
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

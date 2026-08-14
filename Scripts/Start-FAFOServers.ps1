@@ -392,44 +392,42 @@ try {
     $chromeUp = [bool](Get-Process -Name 'chrome' -ErrorAction SilentlyContinue | Select-Object -First 1)
 } catch { $chromeUp = $false }
 
+# Simple rules:
+#   AUTO  (no -Force/-Restart): S1 if Toolbox session · S2 if Chrome
+#   MANUAL (-Force or -Restart, or dedicated S1/S2 bats): start that server NOW
+$manualStart = $Force -or $Restart
 $wantToolbox = (-not $NoToolbox) -and (
-    $Force -or $Restart -or (
+    $manualStart -or (
         $prefs.startWithOneClick.toolboxServer -and -not $sleepTb -and $sessionTb
     )
 )
+# Manual always starts S2 if not -NoFafoMeta (Chrome not required)
 $wantMeta = (-not $NoFafoMeta) -and (
-    # -Force without -NoFafoMeta still respects Chrome lifecycle unless Restart
-    (($Force -or $Restart) -and ($Force -or $chromeUp)) -or (
-        -not $Force -and -not $Restart -and
+    $manualStart -or (
         $prefs.startWithOneClick.fafoMetaServer -and -not $sleepMeta -and $chromeUp
     )
 )
-# Explicit -Force with only meta? Keep simple: Force starts S2 only if chrome OR Restart
-if ($Force -and -not $NoFafoMeta -and -not $chromeUp -and -not $Restart) {
-    # Manual "start all" without Chrome: skip S2 (open Chrome to start tagger)
-    if (-not $NoToolbox) {
-        # starting toolbox force — S2 still chrome-bound
-        $wantMeta = $false
-    }
-}
 
 Write-Srv ""
-Write-Srv " FAFO servers (lifecycle: S1=Toolbox, S2=Chrome)" 'Cyan'
+Write-Srv " FAFO servers (S1=Toolbox · S2=Chrome auto / manual anytime)" 'Cyan'
 Write-Srv "   S1 = HTML Toolbox Server (Toolbox apps only)" 'DarkGray'
-Write-Srv "   S2 = Ultimate Tab / Local Media (Chrome extension — NOT Toolbox)" 'DarkGray'
+Write-Srv "   S2 = Ultimate Tab / Local Media (Chrome auto; Start All forces S2)" 'DarkGray'
 Write-Srv " Root: $ToolboxRoot"
-Write-Srv "   Chrome running: $chromeUp · Toolbox session: $sessionTb" 'DarkGray'
-if ($sleepTb -and -not ($Force -or $Restart)) {
+Write-Srv "   Chrome running: $chromeUp · Toolbox session: $sessionTb · Manual: $manualStart" 'DarkGray'
+if ($sleepTb -and -not $manualStart) {
     Write-Srv "   S1 is SLEEPING — skipped (tray: S1 → Start / wake)" 'Yellow'
 }
-if (-not $sessionTb -and -not ($Force -or $Restart) -and -not $NoToolbox) {
+if (-not $sessionTb -and -not $manualStart -and -not $NoToolbox) {
     Write-Srv "   S1 skipped — open HTML Toolbox to start S1" 'DarkGray'
 }
-if ($sleepMeta -and -not ($Force -or $Restart)) {
+if ($sleepMeta -and -not $manualStart) {
     Write-Srv "   S2 is SLEEPING — skipped (tray: S2 → Start / wake)" 'Yellow'
 }
-if (-not $chromeUp -and -not $NoFafoMeta) {
-    Write-Srv "   S2 skipped — start Google Chrome for Ultimate Tab tagger" 'DarkGray'
+if (-not $chromeUp -and -not $NoFafoMeta -and -not $manualStart) {
+    Write-Srv "   S2 skipped — Chrome not running (auto mode). Use Start All / -Force for S2 anytime." 'DarkGray'
+}
+if ($wantMeta -and -not $chromeUp -and $manualStart) {
+    Write-Srv "   S2 manual start (Chrome not required)" 'Yellow'
 }
 
 if ($Restart) {
@@ -484,8 +482,8 @@ if ($wantToolbox) {
     Write-Srv " [SKIP] S1 HTML Toolbox (open Toolbox app, or use -Force / 1-Start-HTML-Toolbox-Server.bat)" 'DarkGray'
 }
 
-# Mark S1 toolbox session when we intentionally started/confirmed S1
-if ($wantToolbox -and $pyServer) {
+# Mark S1 session + clear sleep/hold when we intentionally started servers
+if (($wantToolbox -or $wantMeta) -and $pyServer) {
     try {
         $mark = @'
 import sys
@@ -493,11 +491,20 @@ from pathlib import Path
 root = Path(r"""TOOLBOX_ROOT""")
 sys.path.insert(0, str(root / "server"))
 import launch_ops
-launch_ops.set_toolbox_session(True)
-launch_ops.set_servers_sleeping(toolbox=False)
-print("session=toolboxActive")
+want_tb = WANT_TB
+want_meta = WANT_META
+if want_tb:
+    launch_ops.set_toolbox_session(True)
+    launch_ops.set_servers_sleeping(toolbox=False)
+    launch_ops.set_manual_hold(toolbox=True)
+if want_meta:
+    launch_ops.set_servers_sleeping(fafo_meta=False)
+    launch_ops.set_manual_hold(fafo_meta=True)
+print("session/hold updated")
 '@
         $mark = $mark.Replace('TOOLBOX_ROOT', $ToolboxRoot.Replace('\', '\\'))
+        $mark = $mark.Replace('WANT_TB', $(if ($wantToolbox) { 'True' } else { 'False' }))
+        $mark = $mark.Replace('WANT_META', $(if ($wantMeta) { 'True' } else { 'False' }))
         $tmp = Join-Path $env:TEMP 'fafo-mark-toolbox-session.py'
         Set-Content -LiteralPath $tmp -Value $mark -Encoding UTF8
         & $pyServer $tmp 2>$null | Out-Null

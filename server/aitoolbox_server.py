@@ -4156,6 +4156,17 @@ class ConvertBatch(BaseModel):
     output_dir: str | None = None
 
 
+class ScaleMaxSideBody(BaseModel):
+    src: str
+    max_side: int = 3840
+    output_dir: str | None = None
+    fmt: str = "mp4"
+    crf: int | None = None
+    fps: int | None = None
+    quality: str = "high"  # archive | high | balanced | small
+    copy_if_fits: bool = True  # stream-copy when already ≤ max_side (no quality loss)
+
+
 @app.get("/api/health/dashboard")
 def api_health_dashboard():
     try:
@@ -4781,6 +4792,39 @@ def api_convert_scan(folder: str, recursive: bool = True):
 def api_convert_batch(body: ConvertBatch):
     try:
         return convert.convert_batch(body.files, preset=body.preset, output_dir=body.output_dir)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/convert/list-dir")
+def api_convert_list_dir(folder: str, limit: int = 40):
+    """List files in a folder (output directory browser for VID TRIM)."""
+    try:
+        return convert.list_dir_brief(folder, limit=limit)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/convert/scale-max-side")
+def api_convert_scale_max_side(body: ScaleMaxSideBody):
+    """Scale one video so longest side ≤ max_side (never upscale); write MP4/WebM to output_dir."""
+    try:
+        return convert.scale_max_side(
+            body.src,
+            max_side=body.max_side,
+            output_dir=body.output_dir,
+            fmt=body.fmt,
+            crf=body.crf,
+            fps=body.fps,
+            quality=body.quality or "high",
+            copy_if_fits=body.copy_if_fits is not False,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
     except RuntimeError as e:
         raise HTTPException(503, str(e))
     except Exception as e:

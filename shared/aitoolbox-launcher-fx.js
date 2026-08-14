@@ -511,7 +511,7 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
               <div class="lx-marquee-track" data-layer="near"></div>
             </div>
             <div class="lx-empty-hint" id="lxEmptyHint" style="display:none">
-              🎬 Intros → pick BG folders for the depth marquee
+              🎬 Intros → pick BG folders (progressive autoplay through each folder)
             </div>
           </div>
           <div class="lx-burst" id="lxBurst"></div>
@@ -754,10 +754,11 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         if (!track) return;
         track.innerHTML = '';
         const n = Math.max(count, 4);
+        // Always build via factory (never cloneNode) so video progressive
+        // ended→next listeners exist on both halves of the seamless loop.
         for (let i = 0; i < n; i++) track.appendChild(factory(i));
         if (dup) {
-            const clone = track.cloneNode(true);
-            while (clone.firstChild) track.appendChild(clone.firstChild);
+            for (let i = 0; i < n; i++) track.appendChild(factory(i + n));
         }
     }
 
@@ -779,6 +780,13 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         } catch (e) {
             console.warn('[LauncherFX] marquee clips', e);
         }
+        if (!Array.isArray(clips)) clips = [];
+
+        // Track blob URLs for cleanup (each clip may revoke its own URL)
+        clips.forEach((c) => {
+            if (c && c.revoke) clipUrls.push(c.revoke);
+            else if (c && c.url && c.url.startsWith('blob:')) clipUrls.push(c.url);
+        });
 
         const hint = document.getElementById('lxEmptyHint');
         const synthBg = [
@@ -796,28 +804,63 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
             return tile;
         };
 
-        const makeVideoTile = (clip) => {
+        /**
+         * Progressive playlist tile: play clip N, on ended → next, wrap around.
+         * Single-clip playlists loop that one clip (same as before).
+         * startIdx staggers tiles so the ribbon isn't all the same frame.
+         */
+        const makeVideoTile = (playlist, startIdx) => {
             const tile = document.createElement('div');
             tile.className = 'lx-tile';
-            if (!clip) return makeSynth(0);
+            const list = Array.isArray(playlist)
+                ? playlist.filter((c) => c && c.url)
+                : (playlist && playlist.url ? [playlist] : []);
+            if (!list.length) return makeSynth(0);
+
+            let idx = ((startIdx || 0) % list.length + list.length) % list.length;
             const v = document.createElement('video');
             v.muted = true;
             v.defaultMuted = true;
-            v.loop = true;
             v.playsInline = true;
             v.setAttribute('playsinline', '');
             v.setAttribute('muted', '');
             v.preload = 'metadata';
-            v.src = clip.url;
-            if (clip.revoke) clipUrls.push(clip.revoke);
+            // Progressive when 2+ clips; single clip loops
+            v.loop = list.length === 1;
+
+            const show = (i) => {
+                const clip = list[((i % list.length) + list.length) % list.length];
+                if (!clip || !clip.url) return;
+                try {
+                    v.src = clip.url;
+                    tile.title = clip.label || clip.name || '';
+                    v.play().catch(() => {});
+                } catch (_) { /* ignore */ }
+            };
+
             v.addEventListener('loadeddata', () => { v.play().catch(() => {}); });
+            v.addEventListener('ended', () => {
+                if (list.length < 2) return;
+                idx = (idx + 1) % list.length;
+                show(idx);
+            });
+            // Skip broken sources and keep progressing
+            v.addEventListener('error', () => {
+                if (list.length < 2) return;
+                idx = (idx + 1) % list.length;
+                show(idx);
+            });
+
+            show(idx);
             tile.appendChild(v);
-            tile.title = clip.label || '';
             return tile;
         };
 
         if (!clips.length) {
-            if (hint) hint.style.display = '';
+            if (hint) {
+                hint.style.display = '';
+                hint.textContent = '🎬 Intros → pick BG folders (progressive autoplay through each folder)';
+            }
             fillTrack(marqueeTracks.far, makeSynth, 6, true);
             fillTrack(marqueeTracks.mid, makeSynth, 6, true);
             fillTrack(marqueeTracks.near, makeSynth, 6, true);
@@ -825,11 +868,28 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         }
         if (hint) hint.style.display = 'none';
 
-        // Far: fewer/lighter (still videos when available)
+        // Shared progressive playlist for all tiles (staggered start indices)
+        const playlist = clips;
         const farClips = clips.length > 2 ? clips.filter((_, i) => i % 2 === 0) : clips;
-        fillTrack(marqueeTracks.far, (i) => makeVideoTile(farClips[i % farClips.length]), Math.max(farClips.length, 4), true);
-        fillTrack(marqueeTracks.mid, (i) => makeVideoTile(clips[i % clips.length]), Math.max(clips.length, 4), true);
-        fillTrack(marqueeTracks.near, (i) => makeVideoTile(clips[i % clips.length]), Math.max(clips.length, 5), true);
+
+        fillTrack(
+            marqueeTracks.far,
+            (i) => makeVideoTile(farClips, i),
+            Math.max(farClips.length, 4),
+            true
+        );
+        fillTrack(
+            marqueeTracks.mid,
+            (i) => makeVideoTile(playlist, i + 1),
+            Math.max(playlist.length, 4),
+            true
+        );
+        fillTrack(
+            marqueeTracks.near,
+            (i) => makeVideoTile(playlist, i + 2),
+            Math.max(playlist.length, 5),
+            true
+        );
 
         const playAll = () => {
             root?.querySelectorAll('.lx-marquee-track video').forEach((v) => {
