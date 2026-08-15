@@ -143,9 +143,12 @@
         }
     </style>
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
 </head>
 <body>
-    <div id="loading-overlay">
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+<div data-fafo-layout-root data-fafo-layout-app="solar-system-debris-tracker" data-fafo-layout-type="columns" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
+    <div id="loading-overlay" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
         <div class="loader-ring"></div>
         <div id="loading-text">Initializing 3D engine & orbital data…</div>
     </div>
@@ -158,10 +161,11 @@
         <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
         <div id="title-block">
             <h1>SOLAR SYSTEM DEBRIS TRACKER</h1>
-            <p>NORAD TLE propagation · CelesTrak archived catalogs · SGP4/SDP4 · Space pause · C copy focus</p>
+            <p>NORAD TLE · CelesTrak · SGP4 · Space pause · Shift+C copy · Esc clears focus then Toolbox</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button class="btn" type="button" id="btn-copy-focus" title="Copy focused object / stats summary">📋 Copy focus</button>
+          <a class="btn" href="Toolbox Launcher.html" style="text-decoration:none" title="Leave to FAFO Toolbox">← Toolbox</a>
           <div class="status-pill">
               <div class="status-dot loading" id="status-dot"></div>
               <span id="status-text">Loading orbital data…</span>
@@ -1186,11 +1190,12 @@ COSMOS 2251 DEB
     </script>
 
 <script data-tool-polish="solar-debris-tracker">
-/* Tool polish: solar-debris-tracker — Esc → launcher, load toast, error surface */
+/* Solar: Esc pauses + clears focus first; second Esc → Toolbox */
 (function(){
   if (window.__tbToolPolish) return; window.__tbToolPolish = true;
   const TOOL_ID = "solar-debris-tracker";
   const TOOL_NAME = "Solar System Debris Tracker";
+  try { document.body.dataset.tbEsc = 'off'; } catch(_){}
   function launcherHref(){
     try {
       if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
@@ -1199,24 +1204,35 @@ COSMOS 2251 DEB
     } catch(_){}
     const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
     if (a?.href) return a.href;
-    return '../Toolbox Launcher.html';
+    return 'Toolbox Launcher.html';
   }
+  let armLeave = false;
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    // First Esc: pause + soft reset focus
+    if (!armLeave) {
+      armLeave = true;
+      try {
+        if (typeof playing !== 'undefined') playing = false;
+        document.getElementById('btn-pause')?.click();
+        window.AIToolboxUI?.toast?.('Paused · Esc again → Toolbox', 'ok');
+      } catch(_){}
+      setTimeout(function(){ armLeave = false; }, 1600);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     location.href = launcherHref();
   }, true);
-  // One soft status toast so launch failures are visible
   window.addEventListener('load', function(){
     try {
       if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
       sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
-      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' · Space pause · double-Esc → Toolbox', 'ok');
     } catch(_){}
   });
-  // Surface failed module loads
   window.addEventListener('error', function(ev){
     if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
     try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
@@ -1239,6 +1255,10 @@ COSMOS 2251 DEB
   } catch(_){}
 })();
 </script>
-  <script src="shared/aitoolbox-pro.js"></script>
+  <script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
+</div>
 </body>
 </html>

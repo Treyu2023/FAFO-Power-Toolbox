@@ -107,12 +107,35 @@
      * Using the S1 origin keeps shared scripts + health checks consistent across pages.
      */
     function toolPageUrl(relativePath) {
-        const rel = String(relativePath || '')
+        let rel = String(relativePath || '')
             .replace(/\\/g, '/')
             .replace(/^\.\//, '')
             .replace(/^\//, '');
-        const encoded = rel.split('/').map((seg) => encodeURIComponent(seg)).join('/');
-        return toolboxOrigin() + '/toolbox/' + encoded;
+        // Strip accidental absolute S1 prefixes so we never double-/toolbox/
+        rel = rel.replace(/^https?:\/\/[^/]+\/toolbox\//i, '');
+        rel = rel.replace(/^toolbox\//i, '');
+        // Decode once if a caller already percent-encoded segments
+        try {
+            if (/%[0-9A-Fa-f]{2}/.test(rel)) {
+                rel = decodeURIComponent(rel);
+            }
+        } catch (_) { /* keep raw */ }
+        // Drop leading ../ junk from nested relative paths
+        while (rel.startsWith('../')) rel = rel.slice(3);
+        let hash = '';
+        let query = '';
+        const hashAt = rel.indexOf('#');
+        if (hashAt >= 0) {
+            hash = rel.slice(hashAt);
+            rel = rel.slice(0, hashAt);
+        }
+        const qAt = rel.indexOf('?');
+        if (qAt >= 0) {
+            query = rel.slice(qAt);
+            rel = rel.slice(0, qAt);
+        }
+        const encoded = rel.split('/').filter(Boolean).map((seg) => encodeURIComponent(seg)).join('/');
+        return toolboxOrigin() + '/toolbox/' + encoded + query + hash;
     }
 
     async function waitForServer(maxMs = 90000, intervalMs = 1000) {
@@ -1278,13 +1301,28 @@
             });
         },
 
-        /** Unpaired queue for guided match (sources first). */
+        /** Learned naming schemes from confirmed pairs. */
+        async pairLearnSummary() {
+            if (!(await checkServer())) return { pair_count: 0, after_tokens: [], skip_tokens: [] };
+            return api('/pairs/learn');
+        },
+
+        async pairLearnReset() {
+            if (!(await checkServer())) throw new Error('Start server first');
+            return api('/pairs/learn/reset', { method: 'POST', body: '{}' });
+        },
+
+        /** Unpaired queue for guided match (sources first). Pass beforeDirId to scope anchors. */
         async pairAnchors(opts = {}) {
             if (!(await checkServer())) return { anchors: [] };
             const p = new URLSearchParams();
             if (opts.limit) p.set('limit', opts.limit);
             if (opts.kind) p.set('kind', opts.kind);
             if (opts.dirId || opts.dir_id) p.set('dir_id', opts.dirId || opts.dir_id);
+            const beforeDirId = opts.beforeDirId || opts.before_dir_id || null;
+            const afterDirId = opts.afterDirId || opts.after_dir_id || null;
+            if (beforeDirId) p.set('before_dir_id', beforeDirId);
+            if (afterDirId) p.set('after_dir_id', afterDirId);
             if (opts.preferSources === false) p.set('prefer_sources', 'false');
             return api(`/pairs/anchors?${p}`);
         },
@@ -1450,6 +1488,18 @@
             if (!path) return '';
             return `${apiBase()}/files/serve?path=${encodeURIComponent(path)}`;
         },
+        /**
+         * Still preview URL: images pass through; videos use a first-frame JPEG
+         * generated/cached by S1 (ffmpeg). Used by Duplicate File Manager.
+         * @param {string} path absolute file path
+         * @param {number} [t=0.5] seek seconds for video frames
+         */
+        filePreviewUrl(path, t = 0.5) {
+            if (!path) return '';
+            const sec = Number.isFinite(Number(t)) ? Number(t) : 0.5;
+            return `${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`;
+        },
+
         async getPairPaths(pairId) {
             return api(`/pairs/${encodeURIComponent(pairId)}/paths`);
         },
@@ -1463,6 +1513,10 @@
             return api(`/duplicates/scan?${p}`);
         },
 
+        /**
+         * Stream duplicate scan. onProgress(count, file, event) where event may include
+         * live { groups, scanned, total, wasted_bytes, partial } as matches appear.
+         */
         scanDuplicatesStream(folder, opts = {}, onProgress) {
             const p = new URLSearchParams({
                 folder,
@@ -1473,10 +1527,11 @@
             return new Promise((resolve, reject) => {
                 const es = new EventSource(`${apiBase()}/duplicates/scan/stream?${p}`);
                 es.onmessage = e => {
-                    const d = JSON.parse(e.data);
+                    let d;
+                    try { d = JSON.parse(e.data); } catch { return; }
                     if (d.error) { es.close(); reject(new Error(d.error)); }
                     else if (d.done) { es.close(); resolve(d.result); }
-                    else if (onProgress) onProgress(d.count, d.file);
+                    else if (onProgress) onProgress(d.count, d.file, d);
                 };
                 es.onerror = () => { es.close(); reject(new Error('Duplicate scan stream failed')); };
             });

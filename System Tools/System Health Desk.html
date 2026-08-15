@@ -6,7 +6,10 @@
   <title>System Health Desk — FAFO Ops</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
   <script src="../shared/aitoolbox-config.js"></script>
-  <script src="../shared/aitoolbox-pro.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #050a0c; --panel: rgba(8,22,20,0.94); --accent: #00e8a2; --accent2: #ffd166;
@@ -98,11 +101,12 @@
     label.auto { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
   </style>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 </head>
 <body>
   <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
-  <div class="wrap">
-    <header>
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-health-desk" data-fafo-layout-type="rows">
+    <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
       <div class="badge">Ops · Admin · Loopback only</div>
       <h1>🩺 SYSTEM HEALTH DESK</h1>
       <p>Live-ish metrics for this PC + toolbox server. Privileged data via loopback API — no free-form shell.</p>
@@ -110,15 +114,21 @@
         <a class="nav-chip primary" href="System Health Dashboard.html">← Health Hub</a>
         <a class="nav-chip primary" href="Secrets Presence Console.html">Secrets Presence →</a>
         <a class="nav-chip" href="PC Diagnostics HUD.html">PC Diagnostics</a>
+        <a class="nav-chip" href="PC Reports and Log Viewer/index.html">PC Reports</a>
+        <a class="nav-chip" href="Disk Space Analyzer.html">Disk Analyzer</a>
+        <a class="nav-chip" href="Event Viewer.html">Event Viewer</a>
       </div>
-    </header>
+      <span data-fafo-layout-toolbar></span>
+</header>
 
-    <div class="toolbar">
-      <button class="primary" type="button" id="btnRefresh" title="Refresh (R)">Refresh now</button>
-      <button type="button" id="btnExport">↓ JSON</button>
-      <button type="button" id="btnCopy">Copy summary</button>
-      <label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto
-        <select id="autoInterval" style="background:#04140f;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 6px">
+    <div class="toolbar" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <button class="primary" type="button" id="btnRefresh" data-tip-title="Refresh" data-tip="Reload health signals for this PC." title="Refresh (R)">Refresh now</button>
+      <button type="button" id="btnStartServer" data-tip-title="Start server" data-tip="Start S1 for live collectors." title="Start S1 if offline">▶ Start Server</button>
+      <button type="button" id="btnExport" data-tip-title="Export" data-tip="Export health snapshot.">↓ JSON</button>
+      <button type="button" id="btnCopy" data-tip-title="Copy summary" data-tip="Copy plain-English health summary.">Copy summary</button>
+      <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+      <label class="auto"><input type="checkbox" id="autoRefresh" data-tip-title="Auto-refresh" data-tip="Periodically refresh health signals." checked> Auto
+        <select id="autoInterval" data-tip-title="Interval" data-tip="Seconds between auto-refresh ticks." style="background:#04140f;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 6px">
           <option value="15" selected>15s</option>
           <option value="30">30s</option>
           <option value="60">60s</option>
@@ -145,7 +155,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-fafo-panel="disks" data-fafo-panel-title="Disks" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>Disks</h2>
       <div class="grid grid-2">
         <div class="stat"><div class="val" id="dSys">—</div><div class="lbl" id="dSysL">System drive</div></div>
@@ -153,7 +163,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-fafo-panel="xero-proxy-presence-only" data-fafo-panel-title="Xero proxy (presence only)" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>Xero proxy (presence only)</h2>
       <p class="muted" id="xeroBlock">—</p>
     </div>
@@ -279,6 +289,17 @@
       }
 
       $('btnRefresh').onclick = () => load(true);
+      $('btnStartServer')?.addEventListener('click', async () => {
+        try {
+          $('statusLine').textContent = 'Starting server…';
+          if (window.AIToolboxAPI?.startServer) {
+            await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+            await load(true);
+          } else location.href = '../Toolbox Launcher.html';
+        } catch (e) {
+          $('statusLine').textContent = e.message || 'Start failed';
+        }
+      });
       $('btnExport').onclick = () => {
         if (!lastData) return;
         const a = document.createElement('a');

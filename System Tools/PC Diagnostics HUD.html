@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 /* ============================================================
    PC DIAGNOSTICS HUD — professional mission-control UI
@@ -140,32 +141,37 @@ body{
 .btn.sm{padding:6px 11px;font-size:12px;border-radius:9px}
 .btn .ico{font-size:14px;line-height:1}
 
-/* ---- Shell layout ---- */
+/* ---- Shell layout (modular layout engine resizes/reorders panels) ---- */
 .shell{
-  display:grid;
-  grid-template-columns:var(--sidebar-w) 1fr;
+  display:flex;
+  flex-direction:row;
   gap:0;
   flex:1;
   min-height:0;
+  min-width:0;
 }
 @media(max-width:1100px){
-  .shell{grid-template-columns:1fr}
+  .shell:not(.fafo-layout-root){flex-direction:column}
   .sidebar{position:relative!important;max-height:none;border-right:0;border-bottom:1px solid var(--line)}
 }
 .sidebar{
-  position:sticky;top:57px;align-self:start;
-  max-height:calc(100vh - 57px);overflow:auto;
+  align-self:stretch;
+  overflow:auto;
   border-right:1px solid var(--line);
   background:rgba(6,10,18,.65);
   backdrop-filter:blur(12px);
   padding:16px;
+  min-width:0;
 }
 .sidebar::-webkit-scrollbar{width:6px}
 .sidebar::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 .main{
   padding:22px 24px 56px;
   min-width:0;
+  min-height:0;
+  overflow:auto;
   animation:fadeUp .5s var(--ease) both;
+  flex:1 1 auto;
 }
 @media(max-width:640px){.main{padding:16px 14px 48px}}
 
@@ -423,13 +429,35 @@ body{
 }
 .stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700}
 .stat .v{font-size:16px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;word-break:break-word}
-.device-list{list-style:none;max-height:220px;overflow:auto}
+.device-list{list-style:none;max-height:280px;overflow:auto}
 .device-list li{
   padding:8px 0;border-bottom:1px solid rgba(36,48,73,.45);font-size:13px;line-height:1.4;
-  display:grid;grid-template-columns:110px 1fr;gap:8px;
+  display:grid;grid-template-columns:100px 1fr auto;gap:8px;align-items:start;
 }
 .device-list .kind{color:var(--cyan);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 .device-list .nm{color:var(--muted)}
+.device-list .nm em{color:var(--warn);font-style:normal;font-weight:600}
+.device-list .row-actions{display:flex;flex-direction:column;gap:4px}
+.device-list .btn-mini{
+  border:1px solid var(--line);background:rgba(0,0,0,.35);color:var(--cyan);
+  font:600 10px/1 var(--font);padding:5px 8px;border-radius:8px;cursor:pointer;
+  white-space:nowrap;letter-spacing:.02em;
+}
+.device-list .btn-mini:hover{border-color:var(--cyan);background:var(--cyan-dim)}
+.device-list .btn-mini.warn{color:var(--warn);border-color:rgba(251,191,36,.35)}
+.device-list .btn-mini.danger{color:var(--bad);border-color:rgba(244,63,94,.35)}
+.muted-box{
+  margin-top:10px;padding:10px 12px;border-radius:12px;
+  border:1px dashed rgba(139,155,184,.35);background:rgba(0,0,0,.2);
+  font-size:12px;color:var(--muted);
+}
+.muted-box strong{color:var(--text);font-weight:700}
+.muted-box ul{margin:8px 0 0;padding-left:1.1rem;line-height:1.5}
+.muted-box li{margin:4px 0}
+.dismiss-bar{
+  display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px;
+}
+.sug .sug-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 details.tech{margin-top:12px}
 details.tech summary{
   cursor:pointer;color:var(--violet);font-size:12px;font-weight:600;list-style:none;
@@ -551,16 +579,25 @@ details.tech pre{
     <div class="topbar-right">
       <span id="pill" class="live-pill"><span class="dot"></span> Checking…</span>
       <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
-      <button type="button" class="btn sm ghost" id="btnCopySummaryTop" title="Copy diagnostics summary">Copy</button>
-      <button type="button" class="btn sm ghost" id="btnReloadLatest" title="Load last saved report (L)">↺ Last</button>
-      <button type="button" class="btn sm primary" id="btnRunTop" title="Run scan (R)">▶ Scan</button>
+      <span data-fafo-layout-toolbar></span>
+      <button type="button" class="btn sm ghost" id="btnCopySummaryTop" data-tip-title="Copy summary" data-tip="Copy a plain-English diagnostics summary to the clipboard." title="Copy diagnostics summary">Copy</button>
+      <button type="button" class="btn sm ghost" id="btnReloadLatest" data-tip-title="Reload latest" data-tip="Load the newest diagnostics pack from disk." title="Load last saved report (L)">↺ Last</button>
+      <button type="button" class="btn sm primary" id="btnRunTop" data-tip-title="Run diagnostics" data-tip="Collect a fresh system status pack for this PC (needs S1)." title="Run scan (R)">▶ Scan</button>
     </div>
   </header>
 
-  <div class="shell">
+  <div class="shell"
+       data-fafo-layout-root
+       data-fafo-layout-app="pc-diagnostics-hud"
+       data-fafo-layout-type="columns">
     <!-- SIDEBAR -->
-    <aside class="sidebar">
-      <div class="side-card">
+    <aside class="sidebar"
+           data-fafo-panel="sidebar"
+           data-fafo-panel-title="Controls"
+           data-fafo-panel-min="240"
+           data-fafo-panel-default="320">
+      <div class="side-card" data-fafo-section="scan-modules" data-fafo-section-title="Scan modules"
+           data-fafo-resizable="1" data-fafo-section-min="140" data-fafo-section-default="280">
         <div class="side-card-h">
           <span>Scan modules</span>
           <span id="optCount" style="font-family:var(--mono);color:var(--cyan)">—</span>
@@ -569,27 +606,27 @@ details.tech pre{
           <div id="optList"><div class="empty" style="padding:20px;border:0">Loading modules…</div></div>
           <div class="field-row">
             <label class="field">Event log days
-              <input type="number" id="eventDays" min="1" max="30" value="7">
+              <input type="number" id="eventDays" data-tip-title="Event days" data-tip="How many days of Windows events to include in the pack." min="1" max="30" value="7">
             </label>
           </div>
           <div class="row" style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button type="button" class="btn sm" id="btnAll">All</button>
-            <button type="button" class="btn sm primary" id="btnMin" title="Recommended first-run pack (skips slow event log)">Quick pack</button>
-            <button type="button" class="btn sm" id="btnFull" title="Everything including event log + startup + security (slower)">Full pack</button>
-            <button type="button" class="btn sm ghost" id="btnNone">Clear</button>
+            <button type="button" class="btn sm" id="btnAll" data-tip-title="All sections" data-tip="Enable every diagnostics section for the next run.">All</button>
+            <button type="button" class="btn sm primary" id="btnMin" data-tip-title="Minimal" data-tip="Run only the lightest essential sections." title="Recommended first-run pack (skips slow event log)">Quick pack</button>
+            <button type="button" class="btn sm" id="btnFull" data-tip-title="Full pack" data-tip="Enable the full diagnostics pack (longer run)." title="Everything including event log + startup + security (slower)">Full pack</button>
+            <button type="button" class="btn sm ghost" id="btnNone" data-tip-title="None" data-tip="Clear section selection.">Clear</button>
           </div>
           <div id="quickPackBanner" class="hint" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.08);color:var(--text)">
             <strong style="color:var(--cyan)">Recommended quick pack</strong>
             <span id="quickPackText"> — identity, CPU/RAM/GPU, storage, network, power + analysis. No event log (faster). Adjust modules any time, then Run.</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-              <button type="button" class="btn sm primary" id="btnRunQuick">▶ Run quick pack</button>
-              <button type="button" class="btn sm" id="btnRunFullFromBanner" title="All modules + event log (slower)">▶ Run full pack</button>
-              <button type="button" class="btn sm ghost" id="btnDismissQuick">Got it</button>
+              <button type="button" class="btn sm primary" id="btnRunQuick" data-tip-title="Quick run" data-tip="Fast diagnostics pass with default light sections.">▶ Run quick pack</button>
+              <button type="button" class="btn sm" id="btnRunFullFromBanner" data-tip-title="Full run" data-tip="Start a full diagnostics collection from the banner." title="All modules + event log (slower)">▶ Run full pack</button>
+              <button type="button" class="btn sm ghost" id="btnDismissQuick" data-tip-title="Dismiss" data-tip="Hide the quick-start banner.">Got it</button>
             </div>
           </div>
           <div class="btn-stack">
-            <button type="button" class="btn primary" id="btnRun"><span class="ico">▶</span> Run diagnostics</button>
-            <button type="button" class="btn ghost" id="btnLoad">Load last report</button>
+            <button type="button" class="btn primary" id="btnRun" data-tip-title="Run" data-tip="Run diagnostics with the selected sections and event window."><span class="ico">▶</span> Run diagnostics</button>
+            <button type="button" class="btn ghost" id="btnLoad" data-tip-title="Load pack" data-tip="Load a previously saved diagnostics pack.">Load last report</button>
           </div>
           <p class="hint" id="runHint">
             First visit defaults to the <strong>quick pack</strong> (no event log). Use <strong>Full pack</strong> when hunting surprise restarts (includes event log).
@@ -597,7 +634,28 @@ details.tech pre{
         </div>
       </div>
 
-      <div class="side-card">
+      <div class="side-card" data-fafo-section="muted" data-fafo-section-title="Muted / known OK">
+        <div class="side-card-h">
+          <span>Muted / known OK</span>
+          <span id="muteCount" style="font-family:var(--mono);color:var(--cyan)">0</span>
+        </div>
+        <div class="side-card-b">
+          <p class="hint" style="margin:0 0 8px">
+            Hide power-outage noise and disabled USB devices you already know about.
+            They stop affecting the score until you restore them.
+          </p>
+          <div id="mutedList" class="muted-box" style="margin:0">
+            <span style="color:var(--faint)">Nothing muted yet — use <em>Ignore</em> on a device or dismiss power alerts in the report.</span>
+          </div>
+          <div class="row" style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button type="button" class="btn sm" id="btnDismissPower" data-tip-title="Dismiss power tip" data-tip="Hide the power-plan suggestion banner." title="Hide Kernel-Power 41 / Event 6008 unexpected shutdown alerts">Hide power-outage alerts</button>
+            <button type="button" class="btn sm ghost" id="btnIgnoreAllUsb" data-tip-title="Ignore all USB" data-tip="Mute all USB device alerts for this PC." title="Mute all current USB problem devices">Ignore USB errors</button>
+            <button type="button" class="btn sm ghost" id="btnRefreshMutes" data-tip-title="Refresh mutes" data-tip="Reload ignored/muted device list.">Refresh list</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-card" data-fafo-section="quick-links" data-fafo-section-title="Quick links">
         <div class="side-card-h">Quick links</div>
         <div class="side-card-b" style="display:flex;flex-direction:column;gap:6px">
           <a class="btn sm ghost" style="justify-content:flex-start;text-decoration:none" href="System Health Dashboard.html">🩺 Health Hub</a>
@@ -611,7 +669,10 @@ details.tech pre{
     </aside>
 
     <!-- MAIN -->
-    <main class="main">
+    <main class="main"
+          data-fafo-panel="main"
+          data-fafo-panel-title="Report"
+          data-fafo-flex="1">
       <!-- Empty state -->
       <div id="emptyState" class="empty">
         <strong>No scan loaded yet</strong>
@@ -646,9 +707,9 @@ details.tech pre{
               <div class="hero-meta" id="heroMeta"></div>
             </div>
             <div class="hero-actions">
-              <button type="button" class="btn primary sm" id="btnCopySummary">⧉ Copy brief</button>
-              <button type="button" class="btn sm" id="btnExportJson">↓ JSON</button>
-              <button type="button" class="btn sm ghost" id="btnRescan">↻ Rescan</button>
+              <button type="button" class="btn primary sm" id="btnCopySummary" data-tip-title="Copy summary" data-tip="Copy plain-English summary for chat or tickets.">⧉ Copy brief</button>
+              <button type="button" class="btn sm" id="btnExportJson" data-tip-title="Export JSON" data-tip="Download the full pack as machine-readable JSON.">↓ JSON</button>
+              <button type="button" class="btn sm ghost" id="btnRescan" data-tip-title="Rescan" data-tip="Re-collect live hardware/status signals.">↻ Rescan</button>
             </div>
           </div>
         </section>
@@ -658,9 +719,9 @@ details.tech pre{
         <div class="toolbar">
           <h2>Component map</h2>
           <div class="seg" role="tablist">
-            <button type="button" class="active" id="btnHudView" data-view="hud">Interactive HUD</button>
-            <button type="button" id="btnSimpleView" data-view="simple">Simple report</button>
-            <button type="button" id="btnActionsView" data-view="actions">Action plan</button>
+            <button type="button" class="active" id="btnHudView" data-tip-title="HUD view" data-tip="Show the dense diagnostics HUD layout." data-view="hud">Interactive HUD</button>
+            <button type="button" id="btnSimpleView" data-tip-title="Simple view" data-tip="Show a simplified plain-language view." data-view="simple">Simple report</button>
+            <button type="button" id="btnActionsView" data-tip-title="Actions view" data-tip="Show recommended fix actions." data-view="actions">Action plan</button>
           </div>
         </div>
 
@@ -669,7 +730,7 @@ details.tech pre{
           <div class="detail" id="detailPanel">
             <div class="detail-h">
               <h2 id="detailTitle">Component</h2>
-              <button type="button" class="btn sm ghost" id="btnCloseDetail">Close</button>
+              <button type="button" class="btn sm ghost" id="btnCloseDetail" data-tip-title="Close detail" data-tip="Close the detail drawer.">Close</button>
             </div>
             <div class="detail-b" id="detailBody"></div>
           </div>
@@ -706,6 +767,7 @@ details.tech pre{
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 (function () {
@@ -969,6 +1031,7 @@ details.tech pre{
     renderSuggestions(r.suggestions || []);
     renderSimple(comps, r.suggestions || []);
     renderActionPlan(r.suggestions || [], comps);
+    renderMutedPanel(r);
 
     if (selectedId && comps.some((c) => c.id === selectedId)) selectComponent(selectedId);
     else if (comps[0]) selectComponent(comps[0].id);
@@ -987,7 +1050,10 @@ details.tech pre{
           </h4>
           <p><strong>Why it matters:</strong> ${escapeHtml(s.why || '')}</p>
           <p><strong>What to try:</strong> ${escapeHtml(s.how || '')}</p>
-          ${s.componentId ? `<button type="button" class="chip" data-goto="${escapeAttr(s.componentId)}">Open ${escapeHtml(s.componentName || s.componentId)} →</button>` : ''}
+          <div class="sug-actions">
+            ${s.componentId ? `<button type="button" class="chip" data-goto="${escapeAttr(s.componentId)}">Open ${escapeHtml(s.componentName || s.componentId)} →</button>` : ''}
+            <button type="button" class="chip" data-dismiss-sug="${escapeAttr(s.title || '')}" data-dismiss-cid="${escapeAttr(s.componentId || '')}" title="Hide this tip (you already know / can't fix)">Dismiss tip</button>
+          </div>
         </div>`).join('')
       : '<div class="empty" style="grid-column:1/-1;border-style:solid;border-color:rgba(52,211,153,.25);color:var(--ok)">No urgent actions — system looks solid. Re-scan if something feels off.</div>';
 
@@ -997,6 +1063,177 @@ details.tech pre{
         selectComponent(b.getAttribute('data-goto'));
       });
     });
+    $('suggestions').querySelectorAll('[data-dismiss-sug]').forEach((b) => {
+      b.addEventListener('click', () => dismissSuggestion(b.getAttribute('data-dismiss-sug'), b.getAttribute('data-dismiss-cid')));
+    });
+  }
+
+  function renderMutedPanel(r) {
+    const uf = (r && r.userFilters) || {};
+    const ignored = uf.ignoredDevices || [];
+    const dismissed = uf.dismissedFindings || [];
+    const dSugs = uf.dismissedSuggestions || [];
+    const n = ignored.length + dismissed.length + dSugs.length;
+    const countEl = $('muteCount');
+    if (countEl) countEl.textContent = String(n);
+    const host = $('mutedList');
+    if (!host) return;
+    if (!n) {
+      host.innerHTML = '<span style="color:var(--faint)">Nothing muted yet — use <em>Ignore</em> on a device or dismiss power alerts in the report.</span>';
+      return;
+    }
+    const bits = [];
+    if (dismissed.length) {
+      bits.push('<strong>Dismissed alerts</strong><ul>' + dismissed.map((d) =>
+        `<li>${escapeHtml(d.label || d.key)} <button type="button" class="btn-mini" data-undismiss="${escapeAttr(d.key)}">Restore</button></li>`
+      ).join('') + '</ul>');
+    }
+    if (ignored.length) {
+      bits.push('<strong>Ignored devices</strong><ul>' + ignored.map((d) =>
+        `<li>${escapeHtml(d.name || d.nameContains || d.class || d.kind || d.id || 'device')}
+          <button type="button" class="btn-mini" data-unignore-id="${escapeAttr(d.id || '')}" data-unignore-name="${escapeAttr(d.name || d.nameContains || '')}">Restore</button></li>`
+      ).join('') + '</ul>');
+    }
+    if (dSugs.length) {
+      bits.push('<strong>Dismissed tips</strong><ul>' + dSugs.map((d) =>
+        `<li>${escapeHtml(d.title || d.key)} <button type="button" class="btn-mini" data-unsug-key="${escapeAttr(d.key || '')}" data-unsug-title="${escapeAttr(d.title || '')}">Restore</button></li>`
+      ).join('') + '</ul>');
+    }
+    host.innerHTML = bits.join('');
+    host.querySelectorAll('[data-undismiss]').forEach((b) => {
+      b.addEventListener('click', () => undismissFinding(b.getAttribute('data-undismiss')));
+    });
+    host.querySelectorAll('[data-unignore-id],[data-unignore-name]').forEach((b) => {
+      b.addEventListener('click', () => unignoreDevice(b.getAttribute('data-unignore-id'), b.getAttribute('data-unignore-name')));
+    });
+    host.querySelectorAll('[data-unsug-key],[data-unsug-title]').forEach((b) => {
+      b.addEventListener('click', () => undismissSuggestion(b.getAttribute('data-unsug-key'), b.getAttribute('data-unsug-title')));
+    });
+  }
+
+  async function applyReportResponse(data) {
+    if (data && data.report) {
+      renderReport(data.report);
+      return true;
+    }
+    return false;
+  }
+
+  async function ignoreDevice(dev) {
+    try {
+      const data = await api('/pc-diagnostics/ignored-devices', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: dev.id || '',
+          name: dev.name || '',
+          class: dev.class || '',
+          kind: dev.kind || '',
+          reason: 'user',
+        }),
+      });
+      await applyReportResponse(data);
+      toast('Ignored: ' + (dev.name || 'device') + ' — won’t count as an issue');
+    } catch (e) {
+      toast('Ignore failed: ' + (e.message || e));
+    }
+  }
+
+  async function unignoreDevice(id, name) {
+    try {
+      const q = new URLSearchParams();
+      if (id) q.set('id', id);
+      if (name) q.set('name', name);
+      const data = await api('/pc-diagnostics/ignored-devices?' + q.toString(), { method: 'DELETE' });
+      await applyReportResponse(data);
+      toast('Device restored to diagnostics');
+    } catch (e) {
+      toast('Restore failed: ' + (e.message || e));
+    }
+  }
+
+  async function dismissPowerOutages() {
+    try {
+      const data = await api('/pc-diagnostics/dismiss-finding', {
+        method: 'POST',
+        body: JSON.stringify({
+          key: 'stability:unexpected_shutdown',
+          note: 'Known power outage / intentional power loss',
+        }),
+      });
+      await applyReportResponse(data);
+      toast('Power-outage / unexpected-shutdown alerts hidden');
+    } catch (e) {
+      toast('Dismiss failed: ' + (e.message || e));
+    }
+  }
+
+  async function undismissFinding(key) {
+    try {
+      const data = await api('/pc-diagnostics/dismiss-finding?key=' + encodeURIComponent(key || ''), { method: 'DELETE' });
+      await applyReportResponse(data);
+      toast('Alert restored');
+    } catch (e) {
+      toast('Restore failed: ' + (e.message || e));
+    }
+  }
+
+  async function dismissSuggestion(title, componentId) {
+    try {
+      const data = await api('/pc-diagnostics/dismiss-suggestion', {
+        method: 'POST',
+        body: JSON.stringify({ title: title || '', componentId: componentId || '', note: 'user' }),
+      });
+      await applyReportResponse(data);
+      toast('Tip dismissed');
+    } catch (e) {
+      toast('Dismiss failed: ' + (e.message || e));
+    }
+  }
+
+  async function undismissSuggestion(key, title) {
+    try {
+      const q = new URLSearchParams();
+      if (key) q.set('key', key);
+      if (title) q.set('title', title);
+      const data = await api('/pc-diagnostics/dismiss-suggestion?' + q.toString(), { method: 'DELETE' });
+      await applyReportResponse(data);
+      toast('Tip restored');
+    } catch (e) {
+      toast('Restore failed: ' + (e.message || e));
+    }
+  }
+
+  async function ignoreAllUsbErrors() {
+    const pd = (report && report.components || []).find((c) => c.id === 'problem_devices');
+    const devices = ((pd && pd.details) || {}).devices || [];
+    const usb = devices.filter((d) => {
+      const k = String(d.kind || d.class || '').toLowerCase();
+      const n = String(d.name || '').toLowerCase();
+      return k.includes('usb') || n.includes('usb');
+    });
+    if (!usb.length) {
+      toast('No active USB problem devices to ignore');
+      return;
+    }
+    try {
+      let last = null;
+      for (const d of usb) {
+        last = await api('/pc-diagnostics/ignored-devices', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: d.id || '',
+            name: d.name || '',
+            class: d.class || 'USB',
+            kind: d.kind || 'USB device',
+            reason: 'disabled / known USB noise',
+          }),
+        });
+      }
+      await applyReportResponse(last);
+      toast('Ignored ' + usb.length + ' USB problem device(s)');
+    } catch (e) {
+      toast('USB ignore failed: ' + (e.message || e));
+    }
   }
 
   function renderSimple(comps, sugs) {
@@ -1120,12 +1357,31 @@ details.tech pre{
       listHtml = `<ul class="device-list">${d.adapters.map((a) =>
         `<li><span class="kind">${escapeHtml(a.kind || 'Link')}</span><span class="nm">${escapeHtml(a.name)}${a.speedMbps ? ' · ~' + a.speedMbps + ' Mbps' : ''}${a.ipv4 ? ' · ' + a.ipv4 : ''}</span></li>`
       ).join('')}</ul>`;
-    } else if (c.id === 'problem_devices' && d.devices) {
-      listHtml = d.devices.length
-        ? `<ul class="device-list">${d.devices.slice(0, 25).map((dev) =>
-            `<li><span class="kind">${escapeHtml(dev.kind || 'Device')}</span><span class="nm">${escapeHtml(dev.name)} · <em>${escapeHtml(dev.status)}</em></span></li>`
-          ).join('')}</ul>`
-        : '<p style="color:var(--ok);font-size:13px">No problem devices listed.</p>';
+    } else if (c.id === 'problem_devices' && (d.devices || d.devicesMuted)) {
+      const active = d.devices || [];
+      const muted = d.devicesMuted || [];
+      listHtml = active.length
+        ? `<div class="section-label">Active problem devices</div>
+           <ul class="device-list">${active.slice(0, 30).map((dev, idx) =>
+            `<li>
+              <span class="kind">${escapeHtml(dev.kind || 'Device')}</span>
+              <span class="nm">${escapeHtml(dev.name)} · <em>${escapeHtml(dev.status)}</em></span>
+              <span class="row-actions">
+                <button type="button" class="btn-mini" data-ignore-idx="${idx}" title="Stop flagging this device (disabled USB, etc.)">Ignore</button>
+              </span>
+            </li>`
+          ).join('')}</ul>
+           <div class="dismiss-bar">
+             <button type="button" class="btn sm ghost" id="btnIgnoreUsbInDetail">Ignore all USB in this list</button>
+           </div>`
+        : '<p style="color:var(--ok);font-size:13px">No active problem devices — muted ones stay hidden below.</p>';
+      if (muted.length) {
+        listHtml += `<div class="muted-box"><strong>${muted.length} ignored device(s)</strong>
+          <ul>${muted.slice(0, 20).map((dev) =>
+            `<li>${escapeHtml(dev.kind || 'Device')}: ${escapeHtml(dev.name)}
+              <button type="button" class="btn-mini" data-unignore-id="${escapeAttr(dev.id || '')}" data-unignore-name="${escapeAttr(dev.name || '')}">Restore</button></li>`
+          ).join('')}</ul></div>`;
+      }
     } else if (c.id === 'compatibility' && d.notes) {
       listHtml = d.notes.map((n) =>
         `<div class="sug" style="margin-bottom:10px"><h4>${escapeHtml(n.title)}</h4><p>${escapeHtml(n.message)}</p>${n.suggestion ? `<p><strong>Tip:</strong> ${escapeHtml(n.suggestion)}</p>` : ''}</div>`
@@ -1142,12 +1398,23 @@ details.tech pre{
         ['Uptime', d.uptimeHours != null ? d.uptimeHours + ' h' : '—'],
       ]);
     } else if (c.id === 'event_log' && d) {
+      const k41 = d.kernelPower41Raw != null ? d.kernelPower41Raw : d.kernelPower41;
+      const u6 = d.unexpected6008Raw != null ? d.unexpected6008Raw : d.unexpected6008;
       stats = statPair([
         ['Window', (d.days || '—') + ' days'],
         ['System events', d.systemCount],
-        ['Kernel-Power 41', d.kernelPower41],
-        ['Unexpected 6008', d.unexpected6008],
+        ['Kernel-Power 41', k41],
+        ['Unexpected 6008', u6],
       ]);
+      const powerHidden = !!d.powerSignalsDismissed;
+      listHtml = `
+        <div class="dismiss-bar">
+          ${powerHidden
+            ? `<button type="button" class="btn sm" id="btnRestorePower" data-tip-title="Restore power plan" data-tip="Restore the previous Windows power plan.">Restore power-outage alerts</button>
+               <span class="hint" style="margin:0;align-self:center">Hidden — you marked these as known (power loss, etc.).</span>`
+            : `<button type="button" class="btn sm primary" id="btnHidePower" data-tip-title="Hide power tip" data-tip="Hide power-plan suggestions for a while.">Hide power-outage alerts</button>
+               <span class="hint" style="margin:0;align-self:center">For known outages / intentional power-offs — stops Kernel-Power 41 &amp; 6008 from red-flagging the score.</span>`}
+        </div>`;
     } else if (c.id === 'startup' && d) {
       stats = statPair([
         ['Startup items', d.startupCount],
@@ -1205,6 +1472,30 @@ details.tech pre{
     $('detailBody').querySelectorAll('[data-goto]').forEach((b) => {
       b.addEventListener('click', () => selectComponent(b.getAttribute('data-goto')));
     });
+
+    // Problem-device ignore actions
+    if (c.id === 'problem_devices') {
+      const devices = (c.details && c.details.devices) || [];
+      $('detailBody').querySelectorAll('[data-ignore-idx]').forEach((b) => {
+        b.addEventListener('click', () => {
+          const idx = parseInt(b.getAttribute('data-ignore-idx'), 10);
+          const dev = devices[idx];
+          if (dev) ignoreDevice(dev);
+        });
+      });
+      $('detailBody').querySelectorAll('[data-unignore-id],[data-unignore-name]').forEach((b) => {
+        b.addEventListener('click', () => unignoreDevice(b.getAttribute('data-unignore-id'), b.getAttribute('data-unignore-name')));
+      });
+      const usbBtn = $('btnIgnoreUsbInDetail');
+      if (usbBtn) usbBtn.addEventListener('click', () => ignoreAllUsbErrors());
+    }
+    if (c.id === 'event_log') {
+      const hide = $('btnHidePower');
+      const restore = $('btnRestorePower');
+      if (hide) hide.addEventListener('click', () => dismissPowerOutages());
+      if (restore) restore.addEventListener('click', () => undismissFinding('stability:unexpected_shutdown'));
+    }
+
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -1276,6 +1567,18 @@ details.tech pre{
   $('btnHudView').onclick = () => setView('hud');
   $('btnSimpleView').onclick = () => setView('simple');
   $('btnActionsView').onclick = () => setView('actions');
+  $('btnDismissPower')?.addEventListener('click', () => dismissPowerOutages());
+  $('btnIgnoreAllUsb')?.addEventListener('click', () => ignoreAllUsbErrors());
+  $('btnRefreshMutes')?.addEventListener('click', async () => {
+    try {
+      if (report) renderMutedPanel(report);
+      const data = await api('/pc-diagnostics/latest');
+      if (data.ok && data.report) renderReport(data.report);
+      toast('Muted list refreshed');
+    } catch (e) {
+      toast('Refresh failed: ' + (e.message || e));
+    }
+  });
   $('btnCloseDetail').onclick = () => {
     $('detailPanel').classList.remove('open');
     selectedId = null;

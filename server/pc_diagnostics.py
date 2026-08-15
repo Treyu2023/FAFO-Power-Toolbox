@@ -76,6 +76,511 @@ def _pc_reports_dir() -> Path:
     return d
 
 
+def _prefs_path() -> Path:
+    d = _device_store() / "Prefs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "pc-diagnostics.json"
+
+
+# Stable finding keys users can dismiss (power loss, known noise, etc.)
+KNOWN_FINDING_KEYS = {
+    "stability:unexpected_shutdown": {
+        "label": "Unexpected shutdowns / power loss (Kernel-Power 41 & Event 6008)",
+        "areas": ("Stability",),
+        "match_message": re.compile(r"unexpected\s+shutdown|kernel.?power|41=|6008", re.I),
+        "suggestion_titles": re.compile(r"unexpected\s+restart", re.I),
+        "component_ids": ("event_log",),
+    },
+    "devices:errors": {
+        "label": "Generic problem-device warning (prefer ignoring specific USB/devices)",
+        "areas": ("Devices",),
+        "match_message": re.compile(r"device\(s\) with errors", re.I),
+        "suggestion_titles": re.compile(r"hardware needs attention", re.I),
+        "component_ids": ("problem_devices",),
+    },
+}
+
+
+def _empty_prefs() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "ignoredDevices": [],
+        "dismissedFindings": [],
+        "dismissedSuggestions": [],
+        "updatedAt": None,
+    }
+
+
+def load_prefs() -> dict[str, Any]:
+    path = _prefs_path()
+    base = _empty_prefs()
+    if not path.is_file():
+        return base
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return base
+        base["ignoredDevices"] = list(data.get("ignoredDevices") or [])
+        base["dismissedFindings"] = list(data.get("dismissedFindings") or [])
+        base["dismissedSuggestions"] = list(data.get("dismissedSuggestions") or [])
+        base["updatedAt"] = data.get("updatedAt")
+        return base
+    except (OSError, json.JSONDecodeError):
+        return base
+
+
+def save_prefs(prefs: dict[str, Any]) -> dict[str, Any]:
+    path = _prefs_path()
+    out = {
+        "version": 1,
+        "ignoredDevices": list(prefs.get("ignoredDevices") or []),
+        "dismissedFindings": list(prefs.get("dismissedFindings") or []),
+        "dismissedSuggestions": list(prefs.get("dismissedSuggestions") or []),
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    return out
+
+
+def load_ignored_devices() -> list[dict[str, Any]]:
+    return list(load_prefs().get("ignoredDevices") or [])
+
+
+def _norm(s: str | None) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def _device_matches_ignore(device: dict[str, Any], entry: dict[str, Any]) -> bool:
+    """Match by PnP InstanceId, exact name, or class+name for USB patterns."""
+    did = _norm(str(device.get("id") or ""))
+    dname = _norm(str(device.get("name") or ""))
+    dclass = _norm(str(device.get("class") or ""))
+    dkind = _norm(str(device.get("kind") or ""))
+
+    eid = _norm(str(entry.get("id") or ""))
+    ename = _norm(str(entry.get("name") or ""))
+    eclass = _norm(str(entry.get("class") or entry.get("class_") or ""))
+    ekind = _norm(str(entry.get("kind") or ""))
+    pattern = _norm(str(entry.get("nameContains") or entry.get("pattern") or ""))
+
+    if eid and did and (eid == did or eid in did or did in eid):
+        return True
+    if ename and dname and ename == dname:
+        return True
+    if pattern and pattern in dname:
+        return True
+    # Ignore whole USB class (user: "don't watch certain USB devices")
+    if eclass == "usb" and (dclass == "usb" or "usb" in dkind):
+        if not ename and not eid and not pattern:
+            return True
+        if ename and ename in dname:
+            return True
+    if ekind == "usb device" and "usb" in dkind and not ename and not eid:
+        return True
+    return False
+
+
+def ignore_device(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    prefs = load_prefs()
+    rows = list(prefs.get("ignoredDevices") or [])
+    clean = {
+        "id": str(entry.get("id") or "").strip(),
+        "name": str(entry.get("name") or "").strip(),
+        "class": str(entry.get("class") or entry.get("class_") or "").strip(),
+        "kind": str(entry.get("kind") or "").strip(),
+        "nameContains": str(entry.get("nameContains") or entry.get("pattern") or "").strip(),
+        "reason": str(entry.get("reason") or "user").strip() or "user",
+        "mutedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    if not any(clean.get(k) for k in ("id", "name", "nameContains", "class", "kind")):
+        raise ValueError("Provide device id, name, nameContains, class, or kind to ignore")
+
+    def same(a: dict, b: dict) -> bool:
+        keys = ("id", "name", "class", "kind", "nameContains")
+        return all(_norm(str(a.get(k) or "")) == _norm(str(b.get(k) or "")) for k in keys)
+
+    rows = [r for r in rows if not same(r, clean)]
+    rows.append(clean)
+    prefs["ignoredDevices"] = rows
+    save_prefs(prefs)
+    return rows
+
+
+def unignore_device(device_id: str = "", name: str = "") -> list[dict[str, Any]]:
+    prefs = load_prefs()
+    rows = list(prefs.get("ignoredDevices") or [])
+    nid, nname = _norm(device_id), _norm(name)
+    kept = []
+    for r in rows:
+        rid, rname = _norm(str(r.get("id") or "")), _norm(str(r.get("name") or ""))
+        if nid and rid and (nid == rid or nid in rid or rid in nid):
+            continue
+        if nname and rname and nname == rname:
+            continue
+        if nname and _norm(str(r.get("nameContains") or "")) == nname:
+            continue
+        kept.append(r)
+    prefs["ignoredDevices"] = kept
+    save_prefs(prefs)
+    return kept
+
+
+def load_dismissed_findings() -> list[dict[str, Any]]:
+    return list(load_prefs().get("dismissedFindings") or [])
+
+
+def dismiss_finding(key: str, *, note: str = "", label: str = "") -> list[dict[str, Any]]:
+    key = (key or "").strip()
+    if not key:
+        raise ValueError("finding key required")
+    prefs = load_prefs()
+    rows = [r for r in (prefs.get("dismissedFindings") or []) if r.get("key") != key]
+    meta = KNOWN_FINDING_KEYS.get(key) or {}
+    rows.append(
+        {
+            "key": key,
+            "label": label or meta.get("label") or key,
+            "note": (note or "").strip() or "user",
+            "dismissedAt": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    prefs["dismissedFindings"] = rows
+    save_prefs(prefs)
+    return rows
+
+
+def undismiss_finding(key: str) -> list[dict[str, Any]]:
+    key = (key or "").strip()
+    prefs = load_prefs()
+    prefs["dismissedFindings"] = [
+        r for r in (prefs.get("dismissedFindings") or []) if r.get("key") != key
+    ]
+    save_prefs(prefs)
+    return list(prefs["dismissedFindings"])
+
+
+def dismiss_suggestion(title: str = "", component_id: str = "", note: str = "") -> list[dict[str, Any]]:
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("suggestion title required")
+    key = f"suggestion:{_norm(component_id)}:{_norm(title)}"
+    prefs = load_prefs()
+    rows = [r for r in (prefs.get("dismissedSuggestions") or []) if r.get("key") != key]
+    rows.append(
+        {
+            "key": key,
+            "title": title,
+            "componentId": component_id or "",
+            "note": (note or "").strip() or "user",
+            "dismissedAt": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    prefs["dismissedSuggestions"] = rows
+    save_prefs(prefs)
+    return rows
+
+
+def undismiss_suggestion(key: str = "", title: str = "") -> list[dict[str, Any]]:
+    prefs = load_prefs()
+    key_n, title_n = _norm(key), _norm(title)
+    kept = []
+    for r in prefs.get("dismissedSuggestions") or []:
+        if key_n and _norm(str(r.get("key") or "")) == key_n:
+            continue
+        if title_n and _norm(str(r.get("title") or "")) == title_n:
+            continue
+        kept.append(r)
+    prefs["dismissedSuggestions"] = kept
+    save_prefs(prefs)
+    return kept
+
+
+def _dismissed_keys(prefs: dict[str, Any] | None = None) -> set[str]:
+    prefs = prefs or load_prefs()
+    return {str(r.get("key") or "") for r in (prefs.get("dismissedFindings") or []) if r.get("key")}
+
+
+def _suggestion_dismissed(s: dict[str, Any], prefs: dict[str, Any]) -> bool:
+    title = _norm(str(s.get("title") or ""))
+    cid = _norm(str(s.get("componentId") or ""))
+    for r in prefs.get("dismissedSuggestions") or []:
+        if _norm(str(r.get("title") or "")) == title:
+            rc = _norm(str(r.get("componentId") or ""))
+            if not rc or rc == cid:
+                return True
+    # Also map known finding dismissals onto their suggestions
+    dkeys = _dismissed_keys(prefs)
+    for fkey, meta in KNOWN_FINDING_KEYS.items():
+        if fkey not in dkeys:
+            continue
+        rx = meta.get("suggestion_titles")
+        if rx and rx.search(str(s.get("title") or "")):
+            return True
+        cids = meta.get("component_ids") or ()
+        if cid in cids and rx and rx.search(str(s.get("title") or "")):
+            return True
+    return False
+
+
+def _finding_dismissed(f: dict[str, Any], prefs: dict[str, Any]) -> bool:
+    dkeys = _dismissed_keys(prefs)
+    msg = str(f.get("message") or "")
+    area = str(f.get("area") or "")
+    for fkey, meta in KNOWN_FINDING_KEYS.items():
+        if fkey not in dkeys:
+            continue
+        areas = meta.get("areas") or ()
+        if areas and area not in areas:
+            # still allow message match
+            pass
+        rx = meta.get("match_message")
+        if rx and rx.search(msg):
+            return True
+        if areas and area in areas and rx and rx.search(msg):
+            return True
+    return False
+
+
+def apply_user_filters(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Apply ignored devices + dismissed findings to a report (non-destructive copy)."""
+    if not report or not isinstance(report, dict):
+        return report
+    import copy
+
+    report = copy.deepcopy(report)
+    prefs = load_prefs()
+    ignored = list(prefs.get("ignoredDevices") or [])
+    dkeys = _dismissed_keys(prefs)
+
+    # --- problem devices ---
+    muted_devices: list[dict] = []
+    active_devices: list[dict] = []
+    for c in report.get("components") or []:
+        if c.get("id") != "problem_devices":
+            continue
+        details = c.get("details") if isinstance(c.get("details"), dict) else {}
+        devices = list(details.get("devices") or [])
+        for d in devices:
+            if any(_device_matches_ignore(d, e) for e in ignored):
+                muted_devices.append({**d, "muted": True})
+            else:
+                active_devices.append(d)
+        details["devices"] = active_devices
+        details["devicesMuted"] = muted_devices
+        details["count"] = len(active_devices)
+        details["mutedCount"] = len(muted_devices)
+        c["details"] = details
+
+        serious = [
+            d
+            for d in active_devices
+            if re.search(r"Error|Degraded|Failed", str(d.get("status") or ""), re.I)
+        ]
+        suggestions = []
+        if serious:
+            c["status"] = "warn"
+            c["simple"] = (
+                f"Windows listed {len(active_devices)} device(s) that are not fully OK "
+                f"({len(serious)} with errors"
+                + (f"; {len(muted_devices)} muted by you" if muted_devices else "")
+                + ")."
+            )
+            suggestions.append(
+                {
+                    "priority": "medium",
+                    "title": "Some hardware needs attention",
+                    "why": (
+                        f"{len(serious)} devices report Error/Degraded "
+                        f"(examples: {', '.join(s.get('name') or '?' for s in serious[:3])})."
+                    ),
+                    "how": (
+                        "Open Device Manager for yellow marks, or mute known-disabled USB/devices "
+                        "in this HUD so they stop counting."
+                    ),
+                    "componentId": "problem_devices",
+                    "componentName": c.get("name") or "Problem devices",
+                }
+            )
+        elif active_devices:
+            c["status"] = "info"
+            c["simple"] = (
+                f"{len(active_devices)} non-OK present devices (may be benign)"
+                + (f"; {len(muted_devices)} muted" if muted_devices else "")
+                + "."
+            )
+        else:
+            c["status"] = "ok"
+            if muted_devices:
+                c["simple"] = (
+                    f"No active problem devices — {len(muted_devices)} muted/ignored "
+                    f"(disabled USB, etc.)."
+                )
+            else:
+                c["simple"] = "No problem devices found — hardware looks clean from Windows’ point of view."
+        c["summary"] = c["simple"]
+        c["suggestions"] = suggestions
+
+    # --- event log / power outage dismissal ---
+    if "stability:unexpected_shutdown" in dkeys:
+        for c in report.get("components") or []:
+            if c.get("id") != "event_log":
+                continue
+            details = c.get("details") if isinstance(c.get("details"), dict) else {}
+            k41 = int(details.get("kernelPower41") or 0)
+            u6 = int(details.get("unexpected6008") or 0)
+            days = details.get("days") or "?"
+            details["powerSignalsDismissed"] = True
+            details["kernelPower41Raw"] = k41
+            details["unexpected6008Raw"] = u6
+            c["details"] = details
+            # Downgrade severity — user knows about power outages
+            c["status"] = "info" if (k41 or u6) else (c.get("status") or "ok")
+            if k41 or u6:
+                c["simple"] = (
+                    f"Power-loss / unexpected-restart signals are hidden "
+                    f"(had 41={k41}, 6008={u6} in {days}d — dismissed by you)."
+                )
+            c["summary"] = c["simple"]
+            # Strip the high-priority restart suggestion from this component
+            c["suggestions"] = [
+                s
+                for s in (c.get("suggestions") or [])
+                if not re.search(r"unexpected\s+restart", str(s.get("title") or ""), re.I)
+            ]
+
+    # --- findings ---
+    findings = []
+    for f in report.get("findings") or []:
+        if _finding_dismissed(f, prefs):
+            findings.append(
+                {
+                    **f,
+                    "severity": "info",
+                    "dismissed": True,
+                    "message": f"{f.get('message')} (dismissed)",
+                }
+            )
+        elif f.get("area") == "Devices" and re.search(r"device\(s\) with errors", str(f.get("message") or ""), re.I):
+            # Rebuild device finding from filtered component
+            pd = next((c for c in (report.get("components") or []) if c.get("id") == "problem_devices"), None)
+            if pd and (pd.get("status") == "ok"):
+                findings.append(
+                    {
+                        "severity": "ok",
+                        "area": "Devices",
+                        "message": "No active problem devices"
+                        + (
+                            f" ({(pd.get('details') or {}).get('mutedCount', 0)} muted)"
+                            if (pd.get("details") or {}).get("mutedCount")
+                            else ""
+                        ),
+                    }
+                )
+            elif pd and pd.get("status") == "warn":
+                serious_n = len(
+                    [
+                        d
+                        for d in ((pd.get("details") or {}).get("devices") or [])
+                        if re.search(r"Error|Degraded|Failed", str(d.get("status") or ""), re.I)
+                    ]
+                )
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "area": "Devices",
+                        "message": f"{serious_n} device(s) with errors",
+                    }
+                )
+            else:
+                findings.append(f)
+        else:
+            findings.append(f)
+    report["findings"] = findings
+
+    # --- suggestions (component + top-level) ---
+    new_sugs = []
+    for s in report.get("suggestions") or []:
+        if _suggestion_dismissed(s, prefs):
+            continue
+        # Drop device attention if no serious active devices
+        if re.search(r"hardware needs attention", str(s.get("title") or ""), re.I):
+            pd = next((c for c in (report.get("components") or []) if c.get("id") == "problem_devices"), None)
+            if not pd or pd.get("status") in ("ok", "info"):
+                continue
+        if re.search(r"unexpected\s+restart", str(s.get("title") or ""), re.I):
+            if "stability:unexpected_shutdown" in dkeys:
+                continue
+        new_sugs.append(s)
+    # Rebuild from components to stay consistent
+    rebuilt: list[dict] = []
+    for c in report.get("components") or []:
+        for s in c.get("suggestions") or []:
+            item = {**s, "componentId": c.get("id"), "componentName": c.get("name")}
+            if not _suggestion_dismissed(item, prefs):
+                rebuilt.append(item)
+    # Keep non-component suggestions that survived (compat etc.) if not already present
+    titles = {_norm(str(x.get("title") or "")) for x in rebuilt}
+    for s in new_sugs:
+        t = _norm(str(s.get("title") or ""))
+        if t and t not in titles:
+            rebuilt.append(s)
+            titles.add(t)
+    report["suggestions"] = rebuilt
+
+    # --- overall score from active findings ---
+    active_findings = [f for f in findings if not f.get("dismissed")]
+    bad = sum(1 for f in active_findings if f.get("severity") == "bad")
+    warn = sum(1 for f in active_findings if f.get("severity") == "warn")
+    if bad:
+        overall_sev, overall_label = "bad", "Attention needed"
+        score = max(25, 70 - bad * 15 - warn * 5)
+    elif warn:
+        overall_sev, overall_label = "warn", "Mostly OK - review warnings"
+        score = max(55, 88 - warn * 6)
+    else:
+        overall_sev, overall_label = "ok", "Healthy"
+        score = 95
+    report["overall"] = {
+        **(report.get("overall") or {}),
+        "severity": overall_sev,
+        "label": overall_label,
+        "score": score,
+        "bad": bad,
+        "warn": warn,
+        "ok": sum(1 for f in active_findings if f.get("severity") == "ok"),
+    }
+    if isinstance(report.get("summary"), dict):
+        report["summary"]["headline"] = overall_label
+        friendly = report["summary"].get("friendly") or ""
+        # Prefix overall label if present
+        if friendly and not friendly.startswith(overall_label):
+            report["summary"]["friendly"] = f"{overall_label}. " + re.sub(
+                r"^(Attention needed|Mostly OK - review warnings|Healthy)\.\s*",
+                "",
+                friendly,
+            )
+
+    report["userFilters"] = {
+        "ignoredDevices": ignored,
+        "dismissedFindings": list(prefs.get("dismissedFindings") or []),
+        "dismissedSuggestions": list(prefs.get("dismissedSuggestions") or []),
+        "knownFindingKeys": [
+            {"key": k, "label": v.get("label") or k} for k, v in KNOWN_FINDING_KEYS.items()
+        ],
+    }
+    # nav statuses
+    report["nav"] = [
+        {
+            "id": c.get("id"),
+            "name": c.get("name"),
+            "category": c.get("category"),
+            "status": c.get("status"),
+        }
+        for c in (report.get("components") or [])
+    ]
+    return report
+
+
 def _read_version() -> str:
     try:
         return VERSION_FILE.read_text(encoding="utf-8").strip() or "0.00.00"
@@ -1303,7 +1808,9 @@ def run_diagnostics(
             "deviceRoot": str(_device_store()),
         }
 
-    return report
+    # Return filtered view (ignored USB / dismissed power events) without
+    # losing the unfiltered snapshot on disk for re-apply after mute changes.
+    return apply_user_filters(report) or report
 
 
 def _render_simple_html(report: dict) -> str:
@@ -1356,11 +1863,14 @@ def _esc(s: Any) -> str:
     )
 
 
-def load_latest() -> dict[str, Any] | None:
+def load_latest(*, apply_filters: bool = True) -> dict[str, Any] | None:
     path = _pc_reports_dir() / "hud_report_latest.json"
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        report = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    if apply_filters:
+        return apply_user_filters(report)
+    return report

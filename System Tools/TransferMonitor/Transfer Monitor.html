@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Transfer Monitor — AI HTML Toolbox</title>
   <link rel="stylesheet" href="../../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../../shared/aitoolbox-layout.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -136,6 +137,7 @@
   </style>
 </head>
 <body>
+<div data-fafo-layout-root data-fafo-layout-app="system-tools-transfer-monitor" data-fafo-layout-type="rows" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
   <nav class="toolbox-nav">
     <a class="ui-btn ghost" href="../../Toolbox Launcher.html">← Toolbox Launcher</a>
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
@@ -144,8 +146,9 @@
     </div>
     <span class="t">TRANSFER MONITOR</span>
     <span class="pill" id="pill">S1…</span>
-  </nav>
-  <div class="card">
+    <span data-fafo-layout-toolbar></span>
+</nav>
+  <div class="card" data-fafo-panel="main" data-fafo-panel-title="Transfer Monitor" data-fafo-panel-min="60" data-fafo-panel-default="140">
     <div class="badge">System · Network · Pin-on-top</div>
     <h1>📡 Transfer Monitor</h1>
     <p>
@@ -169,13 +172,19 @@
     <div class="status" id="status">Ready — click Launch to open the pin-on-top monitor.</div>
     <div id="offlineBox" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fcd34d;font-size:13px;line-height:1.5">
       <strong>Server offline</strong> — launch still works via protocol / .bat, but S1 improves reliability.
-      Use <strong>▶ Start Server</strong> above or <code>START SERVER.bat</code> (bind <code>127.0.0.87:18765</code>).
+      Use <strong>▶ Start Server</strong> or <code>START SERVER.bat</code> (bind <code>127.0.0.87:18765</code>).
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px">
+        <button type="button" class="secondary" id="btnOfflineStart" data-tip-title="Start server" data-tip="Start S1 when the offline banner shows.">▶ Start Server</button>
+        <button type="button" class="secondary" id="btnOfflineRetry" data-tip-title="Retry" data-tip="Retry connecting to the transfer monitor backend.">↻ Recheck</button>
+        <a class="secondary" href="../../Toolbox Launcher.html" style="text-decoration:none;display:inline-flex;align-items:center;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.15)">← Toolbox</a>
+        <a class="secondary" href="../PC Diagnostics HUD.html" style="text-decoration:none;display:inline-flex;align-items:center;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.15)">PC Diagnostics</a>
+      </div>
     </div>
 
     <div class="actions">
-      <button type="button" class="launch" id="btnRun" title="Launch (Enter / L)">▶ Launch Transfer Monitor</button>
-      <button type="button" class="secondary" id="btnFolder">📂 Open Folder</button>
-      <button type="button" class="secondary" id="btnCopyTip" title="Copy launch tip">📋 Copy tip</button>
+      <button type="button" class="launch" id="btnRun" data-tip-title="Run monitor" data-tip="Start watching transfers and partial downloads." title="Launch (Enter / L)">▶ Launch Transfer Monitor</button>
+      <button type="button" class="secondary" id="btnFolder" data-tip-title="Watch folder" data-tip="Pick a folder to watch for partial downloads.">📂 Open Folder</button>
+      <button type="button" class="secondary" id="btnCopyTip" data-tip-title="Copy tip" data-tip="Copy a status tip for the current transfer." title="Copy launch tip">📋 Copy tip</button>
     </div>
     <p style="font-size:11px;color:#64748b;margin-top:10px">Last S1 check: <span id="lastPing">—</span> · Shortcuts: <strong>L</strong> launch · <strong>R</strong> recheck server</p>
 
@@ -190,6 +199,7 @@
   <script src="../../shared/aitoolbox-version.js"></script>
   <script src="../../shared/aitoolbox-api.js"></script>
   <script src="../../shared/aitoolbox-ui.js"></script>
+<script src="../../shared/aitoolbox-layout.js"></script>
   <script src="../../shared/aitoolbox-pro.js"></script>
   <script>
     (function () {
@@ -307,6 +317,17 @@
         setTimeout(() => launch('run'), 200);
       }
 
+      document.getElementById('btnOfflineRetry')?.addEventListener('click', () => pingServer());
+      document.getElementById('btnOfflineStart')?.addEventListener('click', async () => {
+        try {
+          if (window.AIToolboxAPI?.startServer) {
+            await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+            pingServer();
+          } else location.href = '../../Toolbox Launcher.html';
+        } catch (e) {
+          try { window.AIToolboxUI?.toast?.(e.message || 'Start failed', 'warn'); } catch (_) {}
+        }
+      });
       pingServer();
       window.AIToolboxUI?.mountServerBar?.({ onOnline: () => { setPill(true, 'S1 online'); const b = document.getElementById('offlineBox'); if (b) b.style.display = 'none'; } });
     })();
@@ -347,6 +368,7 @@
   });
 })();
 </script>
+</div>
 </body>
 </html>
 

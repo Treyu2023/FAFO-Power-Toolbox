@@ -139,13 +139,15 @@
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 900px; margin: 0 auto; }
     @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
   </style>
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 </head>
-<body>
+<body data-tb-esc="off">
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
   <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
-  <div class="wrap">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="tech-quest-tech-quest" data-fafo-layout-type="columns">
 
     <!-- TITLE -->
-    <div id="screen-title" class="screen active">
+    <div id="screen-title" class="screen active" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
       <div class="hero-title">
         <h1>TECH QUEST</h1>
         <div class="sub">Warhammer of MASTER RESET · ANY Key Chronicles</div>
@@ -160,9 +162,11 @@
         <button type="button" class="btn gold" id="btnTreasure">🏆 Hidden Treasure Room</button>
         <button type="button" class="btn" id="btnHow">How to play</button>
         <button type="button" class="btn" id="btnLore">Hammer Lore</button>
+        <a class="btn small" href="../Toolbox Launcher.html" style="text-decoration:none;text-align:center">← Toolbox</a>
+        <a class="btn small" href="../Progress Map/Progress Map.html" style="text-decoration:none;text-align:center">◈ Progress Map</a>
       </div>
       <div class="toggle-row"><label><input type="checkbox" id="sfxOn" /> In-game SFX (off by default)</label></div>
-      <p class="note">Adventure lives here — Progress Map stays professional. Treasure Room opens anytime from this menu.</p>
+      <p class="note">Adventure lives here — Progress Map stays professional. Treasure Room opens anytime from this menu. Esc = back one screen · title Esc = Toolbox.</p>
     </div>
 
     <!-- CLASS SELECT -->
@@ -344,10 +348,31 @@
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
     const el = $('screen-' + name);
     if (el) el.classList.add('active');
+    try { window.__tqScreen = name; } catch (_) {}
   }
 
   document.querySelectorAll('[data-go]').forEach((b) => {
     b.addEventListener('click', () => show(b.getAttribute('data-go')));
+  });
+
+  // Esc: pop one screen (battle/story → title), title → Toolbox. Never dead-end.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const active = document.querySelector('.screen.active')?.id?.replace('screen-', '') || 'title';
+    const backMap = {
+      class: 'title', how: 'title', lore: 'title', treasure: 'title',
+      story: 'title', shop: 'story', roster: 'story', battle: 'story', result: 'story',
+    };
+    if (active === 'title' || active === 'battle') {
+      // In battle Esc does not abandon mid-fight accidentally — go result/story only via UI
+      if (active === 'battle') return;
+      location.href = '../Toolbox Launcher.html';
+      return;
+    }
+    const dest = backMap[active] || 'title';
+    show(dest);
+    e.preventDefault();
   });
 
   const saved = E.loadSave();
@@ -925,5 +950,8 @@
   refreshContinue();
 })();
   </script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Library Manager</title>
     <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
             --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
@@ -83,43 +84,24 @@
         }
 
         .main {
-            flex: 1; display: grid;
-            grid-template-columns:
-                var(--sidebar-w, 240px)
-                minmax(0, 1fr)
-                var(--tags-w, 300px)
-                var(--detail-w, 360px);
-            min-height: 0; overflow: hidden;
-            transition: grid-template-columns 0.05s linear;
+            flex: 1; display: flex;
+            min-height: 0; overflow: hidden; min-width: 0;
         }
-        body.tags-collapsed .main {
-            grid-template-columns:
-                var(--sidebar-w, 240px)
-                minmax(0, 1fr)
-                var(--detail-w, 360px);
-        }
-        body.tags-collapsed .tags-panel { display: none; }
-        body.detail-collapsed .main {
-            grid-template-columns:
-                var(--sidebar-w, 240px)
-                minmax(0, 1fr)
-                var(--tags-w, 300px);
-        }
-        body.detail-collapsed.tags-collapsed .main {
-            grid-template-columns: var(--sidebar-w, 240px) minmax(0, 1fr);
-        }
-        body.detail-collapsed .detail-panel { display: none; }
+        /* Legacy grid collapse still hides panels; layout engine rebuilds splits via refresh() */
+        body.tags-collapsed .tags-panel { display: none !important; }
+        body.detail-collapsed .detail-panel { display: none !important; }
 
         .sidebar {
             background: var(--panel); border-right: 1px solid rgba(255,255,255,0.06);
-            display: flex; flex-direction: column; overflow: auto;
-            min-width: 160px; max-width: 42vw; position: relative; height: 100%;
+            display: flex; flex-direction: column; overflow: hidden;
+            min-width: 160px; position: relative; height: 100%;
         }
-        .sidebar-resize-handle {
-            position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize;
-            z-index: 6; background: transparent; transition: background .15s;
+        /* Legacy drag handles disabled — modular layout handles resize */
+        .sidebar-resize-handle,
+        .tags-resize-handle,
+        .panel-resize-handle {
+            display: none !important;
         }
-        .sidebar-resize-handle:hover, .sidebar-resize-handle.dragging { background: rgba(0,243,255,0.3); }
         .sidebar-section { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .sidebar-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
         .dir-list { flex: 1; overflow-y: auto; padding: 8px; }
@@ -750,7 +732,7 @@
             <button class="btn" id="btnServerConsole" style="display:none" data-tip-title="Console" data-tip="Visible server window — use when the browser blocks silent Start.">🖥 Console</button>
             <span class="trust-status-bar" id="trustStatusBar" data-tip-title="Trust active" data-tip="Some rename confirmations are skipped. Reset per-type in Settings → Trust.">🔓 Trust active</span>
             <button class="btn" id="btnHome" data-tip="Return to the main toolbox launcher">← Launcher</button>
-            <a class="btn" href="Media Hub.html" data-tip="Library + Duplicates + Organizer shell" style="text-decoration:none;display:inline-flex;align-items:center">🗂️ Hub</a>
+            <a class="btn" href="Media Hub.html#library" data-tip="Library + Duplicates + Organizer shell" style="text-decoration:none;display:inline-flex;align-items:center">🗂️ Hub</a>
             <a class="btn" href="Compare Hub.html#match" data-tip="Guided match + pair review + sliders" style="text-decoration:none;display:inline-flex;align-items:center">⇄ Compare</a>
             <button class="btn" id="btnLibReport" data-tip-title="Session report" data-tip="Copy a library session summary (counts, filters, server) to the clipboard.">📋 Report</button>
             <span class="kbd-hint-chip" id="libKbdHint" title="Primary hotkeys" style="font-size:10px;color:var(--muted);padding:4px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px;white-space:nowrap"><kbd style="font:10px Consolas;color:var(--accent);padding:1px 4px;border:1px solid rgba(0,243,255,.3);border-radius:3px">Space</kbd> play · <kbd style="font:10px Consolas;color:var(--accent);padding:1px 4px;border:1px solid rgba(0,243,255,.3);border-radius:3px">1-3</kbd> presets · <kbd style="font:10px Consolas;color:var(--accent);padding:1px 4px;border:1px solid rgba(0,243,255,.3);border-radius:3px">[ ]</kbd> nav</span>
@@ -765,11 +747,11 @@
                 <button type="button" class="btn purple" id="btnPairsMenu" data-tip-title="More pairing" data-tip="Two-folder pairs, auto-link, health, relink, pair map, and Compare Hub.">Pairs ▾</button>
                 <div class="menu-pop" id="menuPairs" role="menu">
                     <div class="menu-hint">Advanced pairing &amp; review — primary Pair + Pair Studio stay on the bar.</div>
-                    <button type="button" id="btnTwoDirPairs">📁 Two-folder pairs</button>
-                    <button type="button" id="btnAutoPair">⚡ Auto-link upscale pairs</button>
-                    <button type="button" id="btnRelinkPairs">🔗 Relink pairs from tags</button>
-                    <button type="button" id="btnPairHealth">🩺 Pair health</button>
-                    <button type="button" id="btnPairMap">🗺️ Pair map export/import</button>
+                    <button type="button" id="btnTwoDirPairs" data-tip-title="Two-folder pairs" data-tip="Match files between a Before folder and an After folder.">📁 Two-folder pairs</button>
+                    <button type="button" id="btnAutoPair" data-tip-title="Auto-link" data-tip="Automatically link files that look like source ↔ upscale.">⚡ Auto-link upscale pairs</button>
+                    <button type="button" id="btnRelinkPairs" data-tip-title="Relink" data-tip="Reconnect pairs using UP-#### tags after files moved.">🔗 Relink pairs from tags</button>
+                    <button type="button" id="btnPairHealth" data-tip-title="Pair health" data-tip="Find broken pairs and leftover unmatched files.">🩺 Pair health</button>
+                    <button type="button" id="btnPairMap" data-tip-title="Pair map" data-tip="Export or import a pair map JSON for backup/transfer.">🗺️ Pair map export/import</button>
                     <div class="menu-sep"></div>
                     <a href="Compare Hub.html#pairs">⇄ Compare Hub (pair review + sliders)</a>
                     <a href="Compare Hub.html#match">🎯 Guided Pair Match (10-try elimination)</a>
@@ -780,12 +762,13 @@
                 <div class="menu-pop" id="menuTools" role="menu">
                     <div class="menu-hint">Less-used actions live here so the top bar stays short.</div>
                     <a href="Media Hub.html#duplicates" id="linkDupHub">🗑️ Duplicates (Media Hub)</a>
-                    <button type="button" id="btnOrganizer">✏️ File Organizer</button>
+                    <button type="button" id="btnOrganizer" data-tip="Open File Organizer for batch tags/ranks/renames.">✏️ File Organizer</button>
                     <a href="VSR Pipeline Manager.html">⚡ VSR Pipeline</a>
-                    <button type="button" id="btnVerifyTags">✔ Verify tags on disk</button>
+                    <button type="button" id="btnVerifyTags" data-tip="Check that catalog tags still match file metadata on disk.">✔ Verify tags on disk</button>
                     <div class="menu-sep"></div>
-                    <button type="button" id="btnTutorial">🎓 Get Started tour</button>
-                    <button type="button" id="btnFaq">❓ Q&amp;A</button>
+                    <button type="button" id="btnTutorial" data-tip="Interactive tour of the Media Library.">🎓 Get Started tour</button>
+                    <button type="button" id="btnFaq" data-tip="Common questions about pairing, tags, and servers.">❓ Q&amp;A</button>
+                    <span data-fafo-layout-toolbar></span>
                     <button type="button" id="btnDebug">🐛 Debug</button>
                     <button type="button" id="btnSettings">⚙ Settings</button>
                 </div>
@@ -824,23 +807,33 @@
 
     <div id="workflowBar"></div>
 
-    <div class="main" id="mainLayout">
-        <aside class="sidebar" id="sidebarPanel">
+    <div class="main" id="mainLayout"
+         data-fafo-layout-root
+         data-fafo-layout-app="media-library-manager"
+         data-fafo-layout-type="columns">
+        <aside class="sidebar" id="sidebarPanel"
+               data-fafo-panel="sidebar"
+               data-fafo-panel-title="Folders"
+               data-fafo-panel-min="180"
+               data-fafo-panel-default="240">
             <div class="sidebar-resize-handle" id="sidebarResizeHandle" title="Drag to resize folders panel"></div>
-            <div class="sidebar-section">
+            <div class="sidebar-section" data-fafo-section="watched" data-fafo-section-title="Watched Folders">
                 <h3>Watched Folders</h3>
                 <button class="btn" id="btnAddDir2" style="width:100%;margin-bottom:6px;">+ Add Folder</button>
                 <input class="path-input" id="pathInput" placeholder="Or paste path: D:\Videos">
                 <button class="btn" id="btnPathAdd" style="width:100%;margin-top:6px;font-size:10px;">Add Path</button>
                 <div class="suggest-panel" id="suggestPanel" style="display:none;"></div>
             </div>
-            <div class="dir-list" id="dirList"></div>
-            <div class="sidebar-section" id="folderBrowseSection" style="display:none;">
+            <div class="dir-list" id="dirList" data-fafo-section="dir-list" data-fafo-section-title="Directory list"
+                 data-fafo-resizable="1" data-fafo-section-min="80" data-fafo-section-default="160"></div>
+            <div class="sidebar-section" id="folderBrowseSection" style="display:none;"
+                 data-fafo-section="folder-index" data-fafo-section-title="Folder index">
                 <h3>📂 Folder index</h3>
                 <div class="folder-breadcrumb" id="folderBreadcrumb"></div>
                 <div class="folder-index" id="folderIndex"></div>
             </div>
-            <div class="sidebar-section">
+            <div class="sidebar-section" data-fafo-section="filter-tags" data-fafo-section-title="Filter by Tag"
+                 data-fafo-resizable="1" data-fafo-section-min="80" data-fafo-section-default="140">
                 <h3>Filter by Tag</h3>
                 <p style="font-size:10px;color:var(--muted);margin:0 0 6px;line-height:1.35;">Click tags to filter. Then use <strong>Smart list from tags</strong> or <strong>+ Playlist</strong> on the selection.</p>
                 <div class="tag-cloud" id="tagCloud"></div>
@@ -850,7 +843,7 @@
                     <button type="button" class="btn orange" id="btnPlaylistFromTags" style="font-size:9px;padding:4px 8px;" data-tip="Create a playlist from all files matching active tags (up to 500)">Playlist from tags</button>
                 </div>
             </div>
-            <div class="sidebar-section" id="pairsSectionSidebar">
+            <div class="sidebar-section" id="pairsSectionSidebar" data-fafo-section="pairs" data-fafo-section-title="Pairs">
                 <h3>🔗 Pairs</h3>
                 <p style="font-size:10px;color:var(--muted);margin:0 0 6px;">Click a pair to <strong>select both files</strong>. Double-click to open comparator.</p>
                 <div class="playlist-list" id="pairsList" style="max-height:200px;"></div>
@@ -860,7 +853,7 @@
                     <button class="btn" id="btnFilterUnpaired" style="font-size:9px;">Show unpaired</button>
                 </div>
             </div>
-            <div class="sidebar-section" id="playlistSection">
+            <div class="sidebar-section" id="playlistSection" data-fafo-section="playlists" data-fafo-section-title="Playlists">
                 <h3>📋 Playlists</h3>
                 <p style="font-size:10px;color:var(--muted);margin:0 0 6px;">Click a name to open it. Use batch bar <strong>+ Playlist</strong> to add selected files.</p>
                 <div class="playlist-list" id="playlistList"></div>
@@ -873,7 +866,10 @@
             </div>
         </aside>
 
-        <section class="center" id="centerPanel">
+        <section class="center" id="centerColumn"
+                 data-fafo-panel="center"
+                 data-fafo-panel-title="Library"
+                 data-fafo-flex="1">
             <div class="path-hint" id="pathHint"></div>
             <div class="filter-bar" id="filterBar">
                 <input type="search" id="searchInput" placeholder="Search name, path, tags, notes…" data-tip-title="Search" data-tip="Searches filenames, paths, tags, and notes across all watched folders. Fast even with 7k+ files when server is online.">
@@ -911,9 +907,9 @@
                     <option value="date">Group: Date</option>
                 </select>
                 <div class="view-toggle" data-tip-title="View" data-tip="List, thumbnail grid (Windows-style), or grouped batches for tag/folder matching">
-                    <button class="btn active" id="btnViewList" type="button">☰ List</button>
-                    <button class="btn" id="btnViewGrid" type="button">▦ Grid</button>
-                    <button class="btn" id="btnViewGroup" type="button">⊞ Group</button>
+                    <button class="btn active" id="btnViewList" type="button" data-tip-title="List" data-tip="Show files as a dense list/table.">☰ List</button>
+                    <button class="btn" id="btnViewGrid" type="button" data-tip-title="Grid" data-tip="Show thumbnail tiles for visual browsing.">▦ Grid</button>
+                    <button class="btn" id="btnViewGroup" type="button" data-tip-title="Group" data-tip="Group related files (pairs, folders).">⊞ Group</button>
                 </div>
                 <span style="font-size:10px;color:var(--muted);display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;"
                       title="Green border = paired · Red = unpaired · ★★★☆☆ = rating · T#3 = tag count">
@@ -957,7 +953,12 @@
             </div>
         </section>
 
-        <aside class="tags-panel" id="tagsPanel" data-tip-title="Tag library" data-tip="Full-height tag list. Click a chip to toggle on the selected file. Drag left edge to widen. Use Tags S–XL and column density to see more at once.">
+        <aside class="tags-panel" id="tagsPanel"
+               data-fafo-panel="tags"
+               data-fafo-panel-title="Tag library"
+               data-fafo-panel-min="180"
+               data-fafo-panel-default="300"
+               data-tip-title="Tag library" data-tip="Full-height tag list. Click a chip to toggle on the selected file. Drag panel header to reorder · edge to resize. Use Tags S–XL and column density to see more at once.">
             <div class="tags-resize-handle" id="tagsResizeHandle" title="Drag to resize tag library"></div>
             <div class="tags-panel-head">
                 <h3>🏷 Tag library</h3>
@@ -992,9 +993,16 @@
             </div>
         </aside>
 
-        <aside class="detail-panel" id="detailPanel" data-tip-title="Details" data-tip="Preview stays pinned while you scroll. Drag handles to resize. Edit filename (Enter to save), tags, notes.">
+        <aside class="detail-panel" id="detailPanel"
+               data-fafo-panel="detail"
+               data-fafo-panel-title="Detail"
+               data-fafo-panel-min="260"
+               data-fafo-panel-default="360"
+               data-tip-title="Details" data-tip="Preview stays pinned while you scroll. Drag panel header to reorder · edge to resize. Edit filename (Enter to save), tags, notes.">
             <div class="panel-resize-handle" id="panelResizeHandle" title="Drag to resize panel"></div>
-            <div class="preview-sticky">
+            <div class="preview-sticky" data-fafo-section="preview" data-fafo-section-title="Preview"
+                 data-fafo-resizable="1" data-fafo-section-min="120" data-fafo-section-default="280">
+                <h3 style="display:none">Preview</h3>
                 <div class="preview-area" id="previewArea">
                     <span style="color:#555;font-size:12px;">Select a file — preview stays visible while scrolling</span>
                 </div>
@@ -1511,6 +1519,8 @@
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const PAGE_SIZE = 80;
@@ -1889,6 +1899,7 @@
             if (btn) btn.classList.toggle('active', !collapsed);
             const fab = document.getElementById('btnShowTagsFab');
             if (fab) fab.style.display = collapsed ? '' : 'none';
+            try { window.AIToolboxLayout?.get?.('media-library-manager')?.refresh?.(); } catch (_) {}
         }
 
         function setDetailCollapsed(collapsed) {
@@ -1898,6 +1909,7 @@
             if (btn) btn.classList.toggle('active', !collapsed);
             const fab = document.getElementById('btnShowDetailFab');
             if (fab) fab.style.display = collapsed ? '' : 'none';
+            try { window.AIToolboxLayout?.get?.('media-library-manager')?.refresh?.(); } catch (_) {}
         }
 
         function loadPanelSizes() {
@@ -2074,6 +2086,14 @@
                 await refreshDirs();
                 await applyFilters();
                 showToast(`Deleted ${n} file(s) — ${fmtBytes(r.bytes_freed || 0)} freed`, 'ok');
+                try {
+                    window.FAFOOpsStats?.record({
+                        tool: 'media-library-manager',
+                        action: 'delete',
+                        filesRemoved: n,
+                        bytesFreed: r.bytes_freed || 0,
+                    });
+                } catch (_) { /* stats optional */ }
             } catch (e) {
                 showToast('Delete failed: ' + e.message, 'warn');
             }
@@ -2778,12 +2798,23 @@
             });
             if (!confirm.confirmed) return;
             try {
-                await API().mergeDuplicateGroup({
+                const result = await API().mergeDuplicateGroup({
                     keepPath: dupKeeperPath,
                     groupPaths: group.items.map(i => i.path),
                     toTrash: true,
                 });
+                const deleted = result?.deleted || Math.max(0, (group.count || 1) - 1);
+                const freed = result?.bytes_freed || 0;
                 showToast('Duplicates merged', 'ok');
+                try {
+                    window.FAFOOpsStats?.record({
+                        tool: 'media-library-manager',
+                        action: 'merge',
+                        filesRemoved: deleted,
+                        bytesFreed: freed,
+                        groupsMerged: deleted > 0 ? 1 : 0,
+                    });
+                } catch (_) { /* stats optional */ }
                 await scanDuplicates();
                 await applyFilters();
             } catch (e) { showToast(e.message, 'warn'); }
@@ -2799,13 +2830,23 @@
             });
             if (!confirm.confirmed) return;
             try {
-                await API().deleteDuplicateFiles({
+                const result = await API().deleteDuplicateFiles({
                     keepPath: dupKeeperPath,
                     deletePaths: paths,
                     toTrash: true,
                 });
+                const deleted = result?.deleted != null ? result.deleted : paths.length;
+                const freed = result?.bytes_freed || 0;
                 dupDeletePaths.clear();
                 showToast(`Deleted ${paths.length} duplicate(s)`, 'ok');
+                try {
+                    window.FAFOOpsStats?.record({
+                        tool: 'media-library-manager',
+                        action: 'delete-dups',
+                        filesRemoved: deleted,
+                        bytesFreed: freed,
+                    });
+                } catch (_) { /* stats optional */ }
                 await scanDuplicates();
                 await applyFilters();
             } catch (e) { showToast(e.message, 'warn'); }
@@ -2903,7 +2944,8 @@
             });
             // Organizer was previously an inline navigation button
             document.getElementById('btnOrganizer')?.addEventListener('click', () => {
-                location.href = 'Media Hub.html#organizer';
+                if (window.AIToolboxUI?.navigateToolbox) AIToolboxUI.navigateToolbox('Media Hub.html#organizer');
+                else location.href = 'Media Hub.html#organizer';
             });
         }
 
@@ -2919,7 +2961,22 @@
 
             els.mediaList.innerHTML = '';
             if (!filtered.length) {
-                els.mediaList.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No files indexed yet.<br><br>Start <strong>START SERVER.bat</strong> then add folders.<br>Paste a path or use Native Picker.</div>';
+                els.mediaList.innerHTML =
+                    '<div class="empty-state" style="grid-column:1/-1;">No files indexed yet.<br><br>' +
+                    'Use <strong>▶ Start Server</strong> if the pill is red, then add folders (paste path or Native Picker).<br>' +
+                    '<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' +
+                    '<button type="button" class="btn primary" id="btnEmptyStartSrv">▶ Start Server</button>' +
+                    '<button type="button" class="btn" id="btnEmptyAddFolder">📂 Add folder</button>' +
+                    '<a class="btn" href="Media Hub.html#library" style="text-decoration:none">🗂️ Media Hub</a>' +
+                    '<a class="btn" href="Compare Hub.html#match" style="text-decoration:none">⇄ Compare Hub</a>' +
+                    '<a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Launcher</a>' +
+                    '</div></div>';
+                document.getElementById('btnEmptyStartSrv')?.addEventListener('click', () => {
+                    document.getElementById('btnStartServer')?.click() || document.getElementById('btnStartServerBanner')?.click();
+                });
+                document.getElementById('btnEmptyAddFolder')?.addEventListener('click', () => {
+                    document.getElementById('btnNativeDir')?.click() || document.getElementById('btnAddDir')?.click();
+                });
             }
 
             const selOrder = [...selected];
@@ -4251,7 +4308,10 @@
         refreshMlAllTags();
 
         // --- Events ---
-        document.getElementById('btnHome').onclick = () => location.href = '../Toolbox Launcher.html';
+        document.getElementById('btnHome').onclick = () => {
+            if (window.AIToolboxUI?.navigateToolbox) AIToolboxUI.navigateToolbox('../Toolbox Launcher.html');
+            else location.href = '../Toolbox Launcher.html';
+        };
         document.getElementById('btnLibReport')?.addEventListener('click', async () => {
             const server = document.getElementById('serverStatus')?.textContent || 'unknown';
             const nItems = (typeof allItems !== 'undefined' && Array.isArray(allItems)) ? allItems.length
@@ -5011,7 +5071,8 @@
   document.addEventListener('keydown', function(e){
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && !/INPUT|TEXTAREA/.test(e.target?.tagName||'')) {
       e.preventDefault();
-      location.href = 'Media Hub.html#duplicates';
+      if (window.AIToolboxUI?.navigateToolbox) AIToolboxUI.navigateToolbox('Media Hub.html#duplicates');
+      else location.href = 'Media Hub.html#duplicates';
     }
   });
 })();

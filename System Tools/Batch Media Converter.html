@@ -4,6 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Batch Media Converter — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{--bg:#050508;--panel:#0c0f16;--border:rgba(251,146,60,.2);--accent:#fb923c;--ok:#4ade80;--text:#e2e8f0;--muted:#64748b}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -38,33 +39,47 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
     <a href="../Video Tools/GEMPlayHTML.html" style="color:var(--muted);text-decoration:none;font-size:12px;font-weight:600">📺 Video Wall</a>
     <span style="color:var(--accent);font-weight:700;letter-spacing:.04em">BATCH MEDIA CONVERTER</span>
   </div>
+  <span data-fafo-layout-toolbar></span>
 </nav>
-<div class="wrap">
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-tools-batch-media-converter" data-fafo-layout-type="rows">
 <h1 style="font-size:22px">Batch Media Converter</h1>
 <p style="color:var(--muted);font-size:13px;margin:8px 0 16px">FFmpeg-powered batch convert — video, audio, and short GIF exports. Requires toolbox server + <code>ffmpeg</code> on PATH. Prefer a dedicated output folder so sources stay untouched.
   <span style="display:inline-block;margin-left:8px;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px"><kbd style="font:11px Consolas;color:var(--accent)">Enter</kbd> scan · <kbd style="font:11px Consolas;color:var(--accent)">C</kbd> convert · <kbd style="font:11px Consolas;color:var(--accent)">E</kbd> copy log</span>
 </p>
-<div class="panel"><div class="ph">Source folder
+<div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Source folder
   <span id="serverBadge" style="font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,200,0,.4);color:#ffc800">Server …</span>
 </div><div class="pb toolbar">
 <input class="inp" id="folder" placeholder="C:\path\to\media" style="flex:1;min-width:240px">
-<button class="btn ghost" id="btnPick" type="button">Browse…</button>
-<select class="sel" id="preset"></select>
-<input class="inp" id="outDir" placeholder="Output folder (optional, same as source)" style="flex:1;min-width:200px">
-<button class="btn" id="btnScan">Scan folder</button>
-<button class="btn" id="btnConvert" disabled>Convert selected</button>
-<button class="btn ghost" id="btnStop" type="button" disabled>Stop</button>
-<button class="btn ghost" id="btnCopyLog" type="button" title="Copy session log / report">📋 Report</button>
+<button class="btn ghost" id="btnPick" type="button" data-tip-title="Browse" data-tip="Pick a source folder of media files.">Browse…</button>
+<select class="sel" id="preset" data-tip-title="Preset" data-tip-basic="Output style: quality vs file size." data-tip-pro="FFmpeg preset from /convert/presets." data-tip-efficient="Start with a smaller/faster preset to test."></select>
+<input class="inp" id="outDir" placeholder="Output folder (optional, same as source)" style="flex:1;min-width:200px"
+  data-tip-title="Output folder" data-tip="Where new files are written. Use a separate folder so originals stay safe.">
+<button class="btn" id="btnScan" data-tip-title="Scan" data-tip="List convertible files in the source folder.">Scan folder</button>
+<button class="btn" id="btnConvert" disabled
+  data-tip-title="Convert"
+  data-tip-basic="Convert the checked files with the selected preset."
+  data-tip-pro="FFmpeg batch stream via S1 — needs ffmpeg on PATH."
+  data-tip-efficient="Convert a couple of files first to check quality and disk use."
+  data-tip-perf="On a strong PC you can convert larger batches; watch disk free space.">Convert selected</button>
+<button class="btn ghost" id="btnStop" type="button" disabled data-tip-title="Stop" data-tip="Cancel the running conversion job.">Stop</button>
+<button class="btn ghost" id="btnCopyLog" type="button" data-tip-title="Report" data-tip="Copy the session log to the clipboard.">📋 Report</button>
 </div>
 <div class="pb" style="padding-top:0">
   <div id="etaLine" style="font-size:11px;color:var(--muted);min-height:16px"></div>
   <div id="emptyConvert" style="display:none;text-align:center;padding:18px;color:var(--muted);font-size:12px;line-height:1.5">
     <strong style="color:var(--text)">No files yet</strong> — pick a folder then Scan, or jump to Media Hub / VSR.<br>
-    <button class="btn" type="button" id="btnEmptyScan" style="margin-top:10px">Scan folder</button>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+      <button class="btn" type="button" id="btnEmptyScan">Scan folder</button>
+      <button class="btn ghost" type="button" id="btnEmptyStartSrv">▶ Start Server</button>
+      <a class="btn ghost" href="../Movie File Manager/Media Hub.html" style="text-decoration:none">🗂️ Media Hub</a>
+      <a class="btn ghost" href="../Movie File Manager/VSR Pipeline Manager.html" style="text-decoration:none">⚡ VSR</a>
+      <a class="btn ghost" href="../Video Tools/FAFO_VID_TRIM.html" style="text-decoration:none">🎬 VID ŦRIM</a>
+      <a class="btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+    </div>
   </div>
 </div>
 </div>
-<div class="panel"><div class="ph">Media files <span id="fileCount" style="color:var(--muted)"></span>
+<div class="panel" data-fafo-panel="block-1" data-fafo-flex="1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Media files <span id="fileCount" style="color:var(--muted)"></span>
 <input class="inp" id="filter" placeholder="Filter…" style="min-width:140px;max-width:200px">
 </div>
 <div class="tw"><table><thead><tr><th><input type="checkbox" id="chkAll" title="Select all"></th><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody id="fileBody"></tbody></table></div>
@@ -78,6 +93,8 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
@@ -210,6 +227,14 @@ document.getElementById('btnScan').onclick = async () => {
   }
 };
 document.getElementById('btnEmptyScan')?.addEventListener('click', () => document.getElementById('btnScan').click());
+document.getElementById('btnEmptyStartSrv')?.addEventListener('click', async () => {
+  try {
+    if (window.AIToolboxAPI?.startServer) {
+      await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+      UI()?.toast?.('Server ready', 'ok');
+    } else location.href = '../Toolbox Launcher.html';
+  } catch (e) { UI()?.toast?.(e.message || 'Start failed', 'warn'); }
+});
 ['folder', 'outDir', 'preset'].forEach(id => {
   document.getElementById(id)?.addEventListener('change', saveBconvSettings);
 });
@@ -256,6 +281,17 @@ document.getElementById('btnConvert').onclick = () => {
         + (r.failed ? ` · ${r.failed} failed` : '') + ` · ${elapsed}s`);
       bar.style.width = '100%';
       if (eta) eta.textContent = 'Finished in ' + elapsed + 's';
+      try {
+        const n = Math.max(0, Number(r.succeeded) || 0);
+        if (n) {
+          window.FAFOOpsStats?.record({
+            tool: 'batch-media-converter',
+            action: 'convert',
+            metrics: { conversions: n },
+            extra: { failed: r.failed || 0, total: r.total || chosen.length },
+          });
+        }
+      } catch (_) { /* stats optional */ }
       stopConvert();
       return;
     }

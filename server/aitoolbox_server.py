@@ -311,22 +311,57 @@ def health():
     }
 
 
+def _resolve_toolbox_file(file_path: str) -> Path:
+    """Map /toolbox/... URL path → real file under ROOT.
+
+    Handles:
+    - normal spaces
+    - percent-encoding (%20) and accidental double-encoding (%2520)
+    - backslashes
+    - leading ./ or toolbox/ prefixes from bad clients
+    """
+    from urllib.parse import unquote
+
+    raw = str(file_path or "").replace("\\", "/").lstrip("/")
+    raw = raw.split("#", 1)[0].split("?", 1)[0]
+    # Decode once or twice (browsers / proxies sometimes re-encode)
+    for _ in range(2):
+        if "%" not in raw:
+            break
+        decoded = unquote(raw)
+        if decoded == raw:
+            break
+        raw = decoded
+    # %23 / %3F become # / ? only after unquote — strip again so
+    # /toolbox/Media Hub.html%23duplicates cannot 404 as a filename.
+    raw = raw.split("#", 1)[0].split("?", 1)[0]
+    while raw.startswith("./"):
+        raw = raw[2:]
+    if raw.lower().startswith("toolbox/"):
+        raw = raw[8:]
+    rel = Path(raw)
+    if ".." in rel.parts or rel.is_absolute():
+        raise HTTPException(400, "Invalid path")
+    root = ROOT.resolve()
+    target = (root / rel).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as e:
+        raise HTTPException(403, "Path outside toolbox") from e
+    return target
+
+
 # Serve toolbox HTML/tools from the same origin as the API so browsers do not
 # block fetch() (file:// → 127.x private network / CORS edge cases).
 @app.get("/toolbox/{file_path:path}")
 def toolbox_static(file_path: str):
     """Read-only static files under the toolbox root (HTML tools + shared JS)."""
-    # Normalize and block path traversal
-    rel = Path(file_path.replace("\\", "/"))
-    if ".." in rel.parts or rel.is_absolute():
-        raise HTTPException(400, "Invalid path")
-    target = (ROOT / rel).resolve()
-    try:
-        target.relative_to(ROOT.resolve())
-    except ValueError as e:
-        raise HTTPException(403, "Path outside toolbox") from e
+    target = _resolve_toolbox_file(file_path)
     if not target.is_file():
-        raise HTTPException(404, f"Not found: {file_path}")
+        raise HTTPException(
+            404,
+            f"Not found: {file_path} (root={ROOT})",
+        )
     # Skip sensitive trees
     blocked = {".git", ".venv", "node_modules", "__pycache__"}
     if any(part in blocked for part in target.relative_to(ROOT.resolve()).parts):
@@ -354,6 +389,31 @@ def toolbox_static(file_path: str):
             "X-Content-Type-Options": "nosniff",
         }
     return FileResponse(target, media_type=media, headers=headers)
+
+
+@app.get("/")
+def root_redirect():
+    """Open the launcher when someone hits the S1 origin directly."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/toolbox/Toolbox%20Launcher.html", status_code=307)
+
+
+@app.get("/toolbox")
+@app.get("/toolbox/")
+def toolbox_index_redirect():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/toolbox/Toolbox%20Launcher.html", status_code=307)
+
+
+@app.get("/Toolbox Launcher.html")
+@app.get("/Toolbox%20Launcher.html")
+def launcher_shortcut():
+    """Legacy / bare paths some shortcuts still use without /toolbox/ prefix."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/toolbox/Toolbox%20Launcher.html", status_code=307)
 
 
 @app.get("/commander")
@@ -3044,20 +3104,46 @@ class PairCandidatesRequest(BaseModel):
     before_dir_id: str | None = None
 
 
+@app.get("/api/pairs/learn")
+def api_pair_learn_summary():
+    """Naming schemes learned from confirmed pairs (guided match memory)."""
+    try:
+        from pair_learn import summary
+        return summary()
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
+
+
+@app.post("/api/pairs/learn/reset")
+def api_pair_learn_reset():
+    try:
+        from pair_learn import reset_model
+        return reset_model()
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
+
+
 @app.get("/api/pairs/anchors")
 def api_pair_anchors(
     limit: int = 200,
     kind: str | None = None,
     dir_id: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
     prefer_sources: bool = True,
 ):
-    """Unpaired files for guided match queue (sources first)."""
+    """Unpaired files for guided match queue (sources first).
+
+    Pass before_dir_id to queue only files from the Before/source folder.
+    """
     return {
         "anchors": ops.list_unpaired_anchors(
             kind=kind if kind in ("video", "image") else None,
             limit=limit,
             prefer_sources=prefer_sources,
             dir_id=dir_id,
+            before_dir_id=before_dir_id,
+            after_dir_id=after_dir_id,
         )
     }
 
@@ -3071,6 +3157,7 @@ def api_pair_candidates_get(
     unpaired_only: bool = True,
     tail_len: int = 5,
     after_dir_id: str | None = None,
+    before_dir_id: str | None = None,
 ):
     """Top N match candidates for one media (guided elimination)."""
     exclude_ids = [x.strip() for x in (exclude or "").split(",") if x.strip()]
@@ -3083,6 +3170,7 @@ def api_pair_candidates_get(
             unpaired_only=unpaired_only,
             tail_len=tail_len,
             after_dir_id=after_dir_id,
+            before_dir_id=before_dir_id,
         )
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
@@ -3317,12 +3405,32 @@ def api_dup_scan_stream(
     match_mode: str = "quick",
     file_types: str = "all",
 ):
+    """SSE scan stream. Emits path progress and live `groups` as duplicates appear."""
     progress: list[str] = []
 
     def run():
         try:
-            def on_progress(count, file_path):
-                progress.append(json.dumps({"count": count, "file": file_path}))
+            def on_progress(count, file_path, **kw):
+                payload = {
+                    "count": count,
+                    "file": file_path,
+                }
+                for k in (
+                    "total", "scanned", "phase", "message", "partial",
+                    "wasted_bytes", "duplicate_groups", "provisional_count",
+                    "hash_total", "walk_total", "skipped_unique", "quick_groups",
+                ):
+                    if kw.get(k) is not None:
+                        payload[k] = kw[k]
+                if kw.get("groups") is not None:
+                    payload["groups"] = kw["groups"]
+                    payload["duplicate_groups"] = kw.get(
+                        "duplicate_groups", len(kw["groups"])
+                    )
+                    if "wasted_bytes" not in payload:
+                        payload["wasted_bytes"] = kw.get("wasted_bytes") or 0
+                    payload["partial"] = True
+                progress.append(json.dumps(payload))
 
             result = dup.scan_folder_duplicates(
                 folder,
@@ -3347,7 +3455,7 @@ def api_dup_scan_stream(
                 item = json.loads(progress[sent - 1])
                 if "done" in item or "error" in item:
                     return
-            time.sleep(0.15)
+            time.sleep(0.08)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -3386,6 +3494,27 @@ def api_files_serve(path: str = Query(...)):
         raise HTTPException(404, "File not found")
     mime, _ = mimetypes.guess_type(str(p))
     return FileResponse(p, media_type=mime or "application/octet-stream", filename=p.name)
+
+
+@app.get("/api/files/preview")
+def api_files_preview(path: str = Query(...), t: float = Query(0.5, ge=0, le=36000)):
+    """Still preview for duplicate browser: image as-is, video = first frame (ffmpeg)."""
+    try:
+        img_path, media_type = dup.file_preview_image(path, timestamp=float(t or 0.5))
+        return FileResponse(
+            img_path,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "private, max-age=3600",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(415, str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(500, str(e)) from e
 
 
 @app.get("/api/files/info")
@@ -4163,8 +4292,10 @@ class ScaleMaxSideBody(BaseModel):
     fmt: str = "mp4"
     crf: int | None = None
     fps: int | None = None
-    quality: str = "high"  # archive | high | balanced | small
+    quality: str = "high"  # match | archive | high | balanced | small
     copy_if_fits: bool = True  # stream-copy when already ≤ max_side (no quality loss)
+    bitrate_mode: str = "retain"  # retain source Mbps | proportional to pixel area
+    video_bitrate: int | None = None  # optional explicit bits/s target
 
 
 @app.get("/api/health/dashboard")
@@ -4468,6 +4599,19 @@ def api_pc_diag_latest():
     return {"ok": True, "report": report}
 
 
+@app.get("/api/pc-diagnostics/prefs")
+def api_pc_diag_prefs():
+    prefs = pc_diag.load_prefs()
+    return {
+        "ok": True,
+        "prefs": prefs,
+        "knownFindingKeys": [
+            {"key": k, "label": v.get("label") or k}
+            for k, v in pc_diag.KNOWN_FINDING_KEYS.items()
+        ],
+    }
+
+
 @app.get("/api/pc-diagnostics/ignored-devices")
 def api_pc_diag_ignored_get():
     return {"ok": True, "ignored": pc_diag.load_ignored_devices()}
@@ -4481,13 +4625,17 @@ def api_pc_diag_ignored_add(body: dict | None = None):
         "name": str(body.get("name") or "").strip(),
         "class": str(body.get("class") or body.get("class_") or "").strip(),
         "kind": str(body.get("kind") or "").strip(),
+        "nameContains": str(body.get("nameContains") or body.get("pattern") or "").strip(),
         "reason": str(body.get("reason") or "user").strip() or "user",
     }
-    if not entry["id"] and not entry["name"]:
-        raise HTTPException(400, "Provide device id and/or name to mute")
-    rows = pc_diag.ignore_device(entry)
+    if not any(entry.get(k) for k in ("id", "name", "nameContains", "class", "kind")):
+        raise HTTPException(400, "Provide device id, name, nameContains, class, or kind to mute")
+    try:
+        rows = pc_diag.ignore_device(entry)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     report = pc_diag.load_latest()
-    return {"ok": True, "ignored": rows, "report": report}
+    return {"ok": True, "ignored": rows, "report": report, "prefs": pc_diag.load_prefs()}
 
 
 @app.delete("/api/pc-diagnostics/ignored-devices")
@@ -4496,7 +4644,84 @@ def api_pc_diag_ignored_delete(id: str = "", name: str = ""):
         raise HTTPException(400, "Provide id or name query param")
     rows = pc_diag.unignore_device(device_id=id, name=name)
     report = pc_diag.load_latest()
-    return {"ok": True, "ignored": rows, "report": report}
+    return {"ok": True, "ignored": rows, "report": report, "prefs": pc_diag.load_prefs()}
+
+
+@app.get("/api/pc-diagnostics/dismissed-findings")
+def api_pc_diag_dismissed_get():
+    return {
+        "ok": True,
+        "dismissed": pc_diag.load_dismissed_findings(),
+        "knownFindingKeys": [
+            {"key": k, "label": v.get("label") or k}
+            for k, v in pc_diag.KNOWN_FINDING_KEYS.items()
+        ],
+    }
+
+
+@app.post("/api/pc-diagnostics/dismiss-finding")
+def api_pc_diag_dismiss_finding(body: dict | None = None):
+    """Dismiss a known finding (e.g. power-outage Kernel-Power 41 / Event 6008)."""
+    body = body or {}
+    key = str(body.get("key") or "").strip()
+    if not key:
+        # Convenience aliases
+        alias = str(body.get("alias") or body.get("type") or "").strip().lower()
+        if alias in ("power", "power_outage", "outage", "shutdown", "kernel_power", "41", "6008"):
+            key = "stability:unexpected_shutdown"
+        elif alias in ("devices", "device_errors"):
+            key = "devices:errors"
+    if not key:
+        raise HTTPException(
+            400,
+            "Provide key (e.g. stability:unexpected_shutdown) or alias=power_outage",
+        )
+    try:
+        rows = pc_diag.dismiss_finding(
+            key,
+            note=str(body.get("note") or body.get("reason") or ""),
+            label=str(body.get("label") or ""),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    report = pc_diag.load_latest()
+    return {"ok": True, "dismissed": rows, "report": report, "prefs": pc_diag.load_prefs()}
+
+
+@app.delete("/api/pc-diagnostics/dismiss-finding")
+def api_pc_diag_undismiss_finding(key: str = ""):
+    if not key:
+        raise HTTPException(400, "Provide key query param")
+    rows = pc_diag.undismiss_finding(key)
+    report = pc_diag.load_latest()
+    return {"ok": True, "dismissed": rows, "report": report, "prefs": pc_diag.load_prefs()}
+
+
+@app.post("/api/pc-diagnostics/dismiss-suggestion")
+def api_pc_diag_dismiss_suggestion(body: dict | None = None):
+    body = body or {}
+    title = str(body.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "Provide suggestion title")
+    try:
+        rows = pc_diag.dismiss_suggestion(
+            title=title,
+            component_id=str(body.get("componentId") or body.get("component_id") or ""),
+            note=str(body.get("note") or body.get("reason") or ""),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    report = pc_diag.load_latest()
+    return {"ok": True, "dismissedSuggestions": rows, "report": report, "prefs": pc_diag.load_prefs()}
+
+
+@app.delete("/api/pc-diagnostics/dismiss-suggestion")
+def api_pc_diag_undismiss_suggestion(key: str = "", title: str = ""):
+    if not key and not title:
+        raise HTTPException(400, "Provide key or title")
+    rows = pc_diag.undismiss_suggestion(key=key, title=title)
+    report = pc_diag.load_latest()
+    return {"ok": True, "dismissedSuggestions": rows, "report": report, "prefs": pc_diag.load_prefs()}
 
 
 @app.post("/api/pc-diagnostics/run")
@@ -4822,6 +5047,8 @@ def api_convert_scale_max_side(body: ScaleMaxSideBody):
             fps=body.fps,
             quality=body.quality or "high",
             copy_if_fits=body.copy_if_fits is not False,
+            bitrate_mode=body.bitrate_mode or "retain",
+            video_bitrate=body.video_bitrate,
         )
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
@@ -5186,15 +5413,54 @@ def api_secrets_presence(force: int = Query(0)):
         }
 
 
+def _safe_stdio() -> None:
+    """Make print() safe on Windows (cp1252 consoles / redirected log files).
+
+    Watchdog/tray launch S1 with stdout/stderr appended to S1-toolbox-server.log.
+    Without UTF-8 reconfigure, a single Unicode character in a banner print
+    (e.g. U+2192 RIGHTWARDS ARROW) raises UnicodeEncodeError and the process
+    dies before uvicorn binds - crash-loop + unstable S1.
+    """
+    import sys
+
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is None:
+            continue
+        try:
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+                continue
+        except Exception:
+            pass
+        try:
+            buf = getattr(stream, "buffer", None)
+            if buf is not None:
+                import io
+
+                wrapped = io.TextIOWrapper(
+                    buf,
+                    encoding="utf-8",
+                    errors="replace",
+                    line_buffering=True,
+                    write_through=True,
+                )
+                setattr(sys, stream_name, wrapped)
+        except Exception:
+            pass
+
+
 def main():
+    _safe_stdio()
     host, port = load_bind()
     # Re-bind module globals if env changed after import
     global BIND_HOST, BIND_PORT
     BIND_HOST, BIND_PORT = host, port
-    print(f"\n  AI Toolbox Server → http://{host}:{port}")
-    print(f"  (dedicated bind — not 127.0.0.1:8765 / FAFO companion)")
-    print(f"  FFmpeg: {'yes' if ops.find_ffmpeg() else 'install ffmpeg for pro thumbnails'}")
-    print("  Press Ctrl+C to stop\n")
+    # ASCII-only banners so even a broken stdio encoding cannot kill bind.
+    print(f"\n  AI Toolbox Server -> http://{host}:{port}", flush=True)
+    print(f"  (dedicated bind - not 127.0.0.1:8765 / FAFO companion)", flush=True)
+    print(f"  FFmpeg: {'yes' if ops.find_ffmpeg() else 'install ffmpeg for pro thumbnails'}", flush=True)
+    print("  Press Ctrl+C to stop\n", flush=True)
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 

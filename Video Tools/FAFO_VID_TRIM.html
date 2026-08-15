@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FAFO VID ŦRIM — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root {
   --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.22);
@@ -12,30 +13,131 @@
   --warn: #fbbf24; --danger: #f87171;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: radial-gradient(ellipse at 40% -10%, #0a1a28, var(--bg) 55%);
-  color: var(--text); min-height: 100vh;
+  color: var(--text);
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .nav {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 10px 18px; border-bottom: 1px solid var(--border);
-  background: rgba(5,5,8,.94); position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
+  background: rgba(5,5,8,.94); z-index: 20; flex-wrap: wrap; flex-shrink: 0;
 }
 .nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
 .nav .title { color: var(--accent); font-size: 13px; letter-spacing: .08em; font-weight: 700; }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 22px 18px 48px; }
-h1 { font-size: 22px; color: var(--accent); margin-bottom: 6px; }
-.sub { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
-.tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+/* Full-height app shell — layout root fills remaining viewport */
+.vt-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 12px 16px 10px;
+}
+.vt-head { flex-shrink: 0; margin-bottom: 8px; }
+h1 { font-size: 20px; color: var(--accent); margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 12px; line-height: 1.45; margin-bottom: 8px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 0; flex-wrap: wrap; }
 .tab {
   border: 1px solid var(--border); background: transparent; color: var(--muted);
   padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 12px;
 }
 .tab.active { color: #041018; background: var(--accent); border-color: var(--accent); }
+/* Layout root owns the rest of the window */
+.vt-layout.fafo-layout-root,
+.vt-layout {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  width: 100%;
+}
+.vt-layout.fafo-layout-rows {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+/* Flex main panels fill the shell (never a fixed 120px strip) */
+.vt-layout > .fafo-layout-panel[data-fafo-flex="1"],
+.vt-layout > [data-fafo-panel][data-fafo-flex="1"] {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+.vt-layout .fafo-panel-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Resizable controls block; stage fills leftover height */
+.vt-layout [data-fafo-section="vid-controls"],
+.vt-layout [data-fafo-section="img-controls"] {
+  flex: 0 0 auto;
+  min-height: 120px;
+  overflow: hidden;
+}
+.vt-layout [data-fafo-section="vid-stage"],
+.vt-layout [data-fafo-section="img-stage"] {
+  flex: 1 1 auto !important;
+  min-height: 180px !important;
+  height: auto !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.vt-layout [data-fafo-section="vid-stage"] > .fafo-section-body,
+.vt-layout [data-fafo-section="img-stage"] > .fafo-section-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px !important;
+}
+.vt-layout [data-fafo-section="vid-stage"] > .fafo-section-body > .panel-pad,
+.vt-layout [data-fafo-section="img-stage"] > .fafo-section-body > .panel-pad {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.vt-layout [data-fafo-section="vid-controls"] > .fafo-section-body,
+.vt-layout [data-fafo-section="img-controls"] > .fafo-section-body {
+  padding: 10px 12px !important;
+  overflow: auto;
+  min-height: 0;
+}
 .panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-  padding: 16px 18px; margin-bottom: 14px;
+  padding: 14px 16px; margin-bottom: 0;
+  min-height: 0;
+}
+.vt-section-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 0 0 6px;
+  overflow: hidden;
+}
+.vt-section-panel .fafo-section-body,
+.vt-section-panel > .panel-pad { padding: 12px 14px; }
+.vt-section-panel .fafo-section-chrome {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  background: rgba(0,0,0,.28);
 }
 label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
   letter-spacing: .06em; display: block; margin-bottom: 6px; }
@@ -70,11 +172,29 @@ textarea { min-height: 64px; font-family: Consolas, monospace; font-size: 11px; 
 }
 .meta { font-size: 11px; color: var(--muted); font-family: Consolas, monospace; margin-top: 8px; line-height: 1.45; }
 .preview-wrap {
-  margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; background: #000;
-  min-height: 140px; max-height: 70vh; overflow: auto; display: flex; justify-content: center; align-items: center;
+  margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: #000;
+  min-height: 180px; flex: 1 1 auto; max-height: none; overflow: auto;
+  display: flex; justify-content: center; align-items: center;
   position: relative;
 }
-#imgPreview, #vidPreview { display: block; max-width: 100%; max-height: 65vh; }
+#imgPreview, #vidPreview { display: block; max-width: 100%; max-height: min(58vh, 720px); }
+.vt-stage-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 12px;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: stretch;
+}
+@media (max-width: 960px) {
+  .vt-stage-grid { grid-template-columns: 1fr; }
+}
+.vt-stage-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.queue-panel { margin-top: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .crop-overlay {
   position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
   pointer-events: none; display: none;
@@ -103,38 +223,46 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 .out-list .row-f:last-child { border-bottom: none; }
 .out-list strong { color: var(--text); font-weight: 600; }
 .chips.recent-dirs button { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queue-panel { margin-top: 14px; }
 .queue-head {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 10px; flex-shrink: 0;
 }
 .queue-head h2 {
   font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0;
 }
 .queue-list {
-  max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 10px;
+  flex: 1 1 auto; min-height: 140px; max-height: none; overflow: auto; border: 1px solid var(--border); border-radius: 10px;
   background: rgba(0,0,0,.28); font-size: 12px;
 }
 .queue-item {
-  display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px; align-items: center;
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
   padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.05);
 }
 .queue-item:last-child { border-bottom: none; }
+.queue-item .q-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .queue-item .q-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-item .q-path { color: var(--muted); font-size: 10px; font-family: Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queue-item .q-st { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.queue-item .q-side { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: flex-end; }
+.queue-item .q-st { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); }
 .queue-item .q-st.queued { color: var(--muted); }
-.queue-item .q-st.running { color: var(--warn); }
-.queue-item .q-st.done { color: var(--ok); }
-.queue-item .q-st.error { color: var(--danger); }
+.queue-item .q-st.running { color: var(--warn); border-color: rgba(251,191,36,.4); }
+.queue-item .q-st.done { color: var(--ok); border-color: rgba(74,222,128,.35); }
+.queue-item .q-st.error { color: var(--danger); border-color: rgba(248,113,113,.4); }
 .queue-item .q-st.skipped { color: #94a3b8; }
-.queue-item button.q-x {
-  background: transparent; border: 1px solid rgba(255,255,255,.12); color: var(--muted);
-  border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 12px;
+.queue-item .q-st.paused { color: #fbbf24; border-color: rgba(251,191,36,.35); }
+.queue-item button.q-act {
+  background: transparent; border: 1px solid rgba(0,243,255,.22); color: var(--accent);
+  border-radius: 6px; min-width: 26px; height: 26px; padding: 0 6px; cursor: pointer; font-size: 11px; font-weight: 700;
 }
-.queue-item button.q-x:hover { color: var(--danger); border-color: var(--danger); }
+.queue-item button.q-act:hover { background: rgba(0,243,255,.1); }
+.queue-item button.q-act:disabled { opacity: .35; cursor: not-allowed; }
+.queue-item button.q-act.danger { border-color: rgba(248,113,113,.35); color: var(--danger); }
+.queue-item button.q-act.danger:hover { background: rgba(248,113,113,.1); }
 .queue-item.is-running { background: rgba(251,191,36,.06); }
-.queue-item.is-done { opacity: .72; }
+.queue-item.is-done { opacity: .88; }
+.queue-item.is-error { background: rgba(248,113,113,.06); }
+.queue-item.is-selected { outline: 1px solid rgba(0,243,255,.45); background: rgba(0,243,255,.05); }
+.queue-item .q-chk { accent-color: var(--accent); width: auto; margin-right: 4px; }
 .queue-meta { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: Consolas, monospace; line-height: 1.4; }
 .chk-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 8px 0 10px; font-size: 12px; color: var(--muted); }
 .chk-row label { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-weight: 600; cursor: pointer; color: var(--text); font-size: 12px; }
@@ -149,27 +277,33 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     <span class="status-pill" id="serverPill">Server …</span>
     <a href="GEMPlayHTML.html" style="font-size:12px;color:var(--muted)">Video Wall</a>
     <a href="Video Comparison Slider Tool.html" style="font-size:12px;color:var(--muted)">Compare</a>
+    <a href="../Movie File Manager/Media Hub.html" style="font-size:12px;color:var(--muted)">Media Hub</a>
+    <a href="../System Tools/Batch Media Converter.html" style="font-size:12px;color:var(--muted)">Batch Convert</a>
     <a href="../Image tools/image Converter_Cropper for chrome store resolution.html" style="font-size:12px;color:var(--muted)">Store Cropper</a>
   </div>
+  <span data-fafo-layout-toolbar></span>
 </nav>
 
-<div class="wrap">
-  <h1>FAFO VID ŦRIM</h1>
-  <p class="sub">
-    Video max-side cap (default <strong style="color:var(--text)">3840</strong>) keeps aspect ratio — no stretch.
-    Pick an <strong style="color:var(--text)">output folder</strong> + format (<strong style="color:var(--text)">MP4</strong> preferred via S1+ffmpeg).
-    Image shop: cover / contain / stretch / manual crop, presets, PNG · JPEG · WebP · ICO.
-    <span class="hint" style="display:inline;margin:0"><kbd class="kbd">1</kbd>/<kbd class="kbd">2</kbd> tabs · <kbd class="kbd">E</kbd> export · <kbd class="kbd">Esc</kbd> clear</span>
-  </p>
+<div class="vt-shell">
+  <header class="vt-head">
+    <h1>FAFO VID ŦRIM</h1>
+    <p class="sub">
+      Video max-side cap (default <strong style="color:var(--text)">3840</strong>) keeps aspect ratio — no stretch.
+      Pick an <strong style="color:var(--text)">output folder</strong> + format (<strong style="color:var(--text)">MP4</strong> preferred via S1+ffmpeg).
+      Image shop: cover / contain / stretch / manual crop, presets, PNG · JPEG · WebP · ICO.
+      <span class="hint" style="display:inline;margin:0"><kbd class="kbd">1</kbd>/<kbd class="kbd">2</kbd> tabs · <kbd class="kbd">E</kbd> export · <kbd class="kbd">Esc</kbd> clear · drag section edges to resize</span>
+    </p>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="video" id="tabVideo" data-tip="Video max-side resize + batch queue (never upscales).">🎬 Video max-side</button>
+      <button type="button" class="tab" data-tab="image" id="tabImage" data-tip="Image resize, crop, and export (PNG/JPEG/WebP/ICO).">🖼️ Image shop</button>
+    </div>
+  </header>
 
-  <div class="tabs" role="tablist">
-    <button type="button" class="tab active" data-tab="video" id="tabVideo">🎬 Video max-side</button>
-    <button type="button" class="tab" data-tab="image" id="tabImage">🖼️ Image shop</button>
-  </div>
-
+  <div class="vt-layout" data-fafo-layout-root data-fafo-layout-app="fafo-vid-trim-v2" data-fafo-layout-type="rows">
   <!-- ═══ VIDEO ═══ -->
-  <section id="panelVideo">
-    <div class="panel">
+  <section id="panelVideo" data-fafo-panel="video" data-fafo-panel-title="Video max-side" data-fafo-flex="1" data-fafo-panel-min="280">
+    <div class="vt-section-panel" data-fafo-section="vid-controls" data-fafo-section-title="Source &amp; encode" data-fafo-resizable="1" data-fafo-section-min="140" data-fafo-section-default="360">
+      <div class="panel-pad">
       <div class="drop" id="vidDrop">Drop video(s) here — multi-file drops go to the batch queue · click to pick</div>
       <input type="file" id="vidFile" accept="video/*,.mp4,.webm,.mov,.mkv,.m4v,.avi" class="hidden" multiple>
       <input type="file" id="vidFileQueue" accept="video/*,.mp4,.webm,.mov,.mkv,.m4v,.avi" class="hidden" multiple>
@@ -177,19 +311,19 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       <div class="row">
         <div class="field" style="flex:2 1 280px">
           <label for="srcPath">Source path (S1 · real disk path for MP4 encode)</label>
-          <input type="text" id="srcPath" placeholder="C:\Videos\clip.mp4 — optional; enables S1 ffmpeg → MP4">
+          <input type="text" id="srcPath" placeholder="C:\Videos\clip.mp4 — optional; enables S1 ffmpeg → MP4" data-tip-title="Source path" data-tip="Real disk path for S1/ffmpeg MP4 encode. Browser-only picks work for preview; path enables server write.">
         </div>
-        <button type="button" class="btn ghost" id="btnPickSrc" title="Browse for source file path (needs S1)">Browse src…</button>
+        <button type="button" class="btn ghost" id="btnPickSrc" title="Browse for source file path (needs S1)" data-tip="Browse for a source file path (needs S1 green).">Browse src…</button>
       </div>
 
       <div class="row">
         <div class="field" style="flex:2 1 280px">
           <label for="outDir">Output directory</label>
-          <input type="text" id="outDir" placeholder="C:\Videos\out — required for S1 write / listed below">
+          <input type="text" id="outDir" placeholder="C:\Videos\out — required for S1 write / listed below" data-tip-title="Output directory" data-tip="Where S1 writes exports. Required for queue/MP4. Keep separate from sources.">
         </div>
-        <button type="button" class="btn ghost" id="btnPickOut" title="Browse output folder (S1)">Browse out…</button>
-        <button type="button" class="btn ghost" id="btnListOut" title="List files in output folder">List folder</button>
-        <button type="button" class="btn ghost" id="btnOpenOut" title="Open folder in Explorer">Open</button>
+        <button type="button" class="btn ghost" id="btnPickOut" title="Browse output folder (S1)" data-tip="Pick the output folder via S1 native picker.">Browse out…</button>
+        <button type="button" class="btn ghost" id="btnListOut" title="List files in output folder" data-tip="List files already in the output folder.">List folder</button>
+        <button type="button" class="btn ghost" id="btnOpenOut" title="Open folder in Explorer" data-tip="Open the output folder in Windows Explorer.">Open</button>
       </div>
       <div class="chips recent-dirs" id="recentOutDirs" title="Recent output folders"></div>
       <div class="out-list" id="outList" style="display:none"></div>
@@ -197,28 +331,37 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       <div class="row">
         <div class="field" style="flex:0 1 140px">
           <label for="maxSide">Max side (px)</label>
-          <input type="number" id="maxSide" min="256" max="7680" step="2" value="3840">
+          <input type="number" id="maxSide" min="256" max="7680" step="2" value="3840" data-tip-title="Max side" data-tip="Longest edge cap in pixels. Never upscales — only shrinks when larger.">
         </div>
         <div class="field" style="flex:0 1 130px">
           <label for="outFmt">Output format</label>
-          <select id="outFmt">
+          <select id="outFmt" data-tip-title="Output format" data-tip="MP4 needs S1+ffmpeg. WebM can work more in-browser.">
             <option value="mp4" selected>MP4 (H.264 · recommended)</option>
             <option value="webm">WebM (VP9)</option>
           </select>
         </div>
-        <div class="field" style="flex:0 1 160px">
+        <div class="field" style="flex:0 1 200px">
           <label for="vidQuality">Encode quality</label>
-          <select id="vidQuality" title="Detail preservation — never upscales">
-            <option value="archive">Archive (slow · max detail)</option>
-            <option value="high" selected>High (recommended)</option>
+          <select id="vidQuality" title="Match = constrained CRF with source maxrate floor. Archive/High = pure quality CRF (recommended if colors looked blocky)." data-tip-title="Encode quality" data-tip="Match uses a quality floor (CRF) plus a maxrate ceiling from the source — not pure ABR (that caused splotchy HD). Archive/High pure CRF for clean color. Small = smaller files.">
+            <option value="match" selected>Match source (CRF floor + maxrate)</option>
+            <option value="archive">Archive (best detail · larger)</option>
+            <option value="high">High quality (recommended clean HD)</option>
             <option value="balanced">Balanced</option>
             <option value="small">Smaller file</option>
           </select>
         </div>
+        <div class="field" style="flex:0 1 150px">
+          <label for="bitrateMode">Bitrate when matching</label>
+          <select id="bitrateMode" title="Retain = same Mbps as source (more bits/pixel after crop). Proportional = scale Mbps with resolution." data-tip-title="Bitrate mode" data-tip="Retain = same Mbps as source. Proportional = scale Mbps with resolution.">
+            <option value="retain" selected>Retain source Mbps</option>
+            <option value="proportional">Scale with resolution</option>
+          </select>
+        </div>
         <div class="field" style="flex:0 1 120px">
           <label for="vidCrf">CRF override</label>
-          <select id="vidCrf" title="Optional — leave Auto to use quality tier">
+          <select id="vidCrf" title="Used for CRF tiers only — ignored when Match source bitrate" data-tip-title="CRF override" data-tip="Lower CRF = more quality/larger file. Ignored when Match source bitrate.">
             <option value="" selected>Auto (from quality)</option>
+            <option value="12">12 near-lossless</option>
             <option value="15">15 archive</option>
             <option value="17">17 high</option>
             <option value="18">18</option>
@@ -229,17 +372,17 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
         </div>
         <div class="field" style="flex:0 1 120px">
           <label for="vidFps">Cap FPS</label>
-          <select id="vidFps">
-            <option value="0">Source</option>
+          <select id="vidFps" title="Leave Source unless you need a hard cap — forcing 30 from 60 halves motion data" data-tip-title="Cap FPS" data-tip="Leave Source unless you need a hard cap — forcing 30 from 60 halves motion data.">
+            <option value="0" selected>Source</option>
             <option value="24">24</option>
-            <option value="30" selected>30</option>
+            <option value="30">30</option>
             <option value="60">60</option>
           </select>
         </div>
-        <button type="button" class="btn" id="btnVidExport" disabled>⬇ Export one</button>
-        <button type="button" class="btn ok" id="btnQAdd" title="Add current path / loaded file to the live queue">＋ Queue</button>
-        <button type="button" class="btn ghost" id="btnVidFfmpeg" disabled>📋 Copy ffmpeg</button>
-        <button type="button" class="btn ghost" id="btnVidClear" title="Clear preview + source fields">Clear preview</button>
+        <button type="button" class="btn" id="btnVidExport" disabled data-tip-title="Export one" data-tip="Encode/export the current video with these settings.">⬇ Export one</button>
+        <button type="button" class="btn ok" id="btnQAdd" title="Add current path / loaded file to the live queue" data-tip-title="Add to queue" data-tip="Add the current path/file to the live batch queue.">＋ Queue</button>
+        <button type="button" class="btn ghost" id="btnVidFfmpeg" disabled data-tip="Copy the generated ffmpeg one-liner to the clipboard.">📋 Copy ffmpeg</button>
+        <button type="button" class="btn ghost" id="btnVidClear" title="Clear preview + source fields" data-tip="Clear preview and source fields.">Clear preview</button>
       </div>
       <div class="chips" id="vidPresets">
         <button type="button" data-side="1920">1080p max</button>
@@ -249,45 +392,69 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       </div>
       <div class="meta" id="vidMeta">No video loaded</div>
       <div class="progress" id="vidProgress"><i id="vidBar"></i></div>
-      <div class="preview-wrap"><video id="vidPreview" muted playsinline controls></video></div>
       <ul class="notes">
         <li><strong>Never upscales</strong> — only shrinks when longer side &gt; max. Already fits → stream-copy (no re-encode) when possible.</li>
-        <li><strong>High quality</strong> uses lanczos downscale + slow x264 (not a soft “TV dump”). Archive = max detail, slower.</li>
-        <li><strong>MP4</strong> needs S1 + ffmpeg + real paths. <strong>Live queue</strong> accepts more jobs while running.</li>
+        <li><strong>Clean HD color:</strong> S1 uses <strong>constrained CRF</strong> (quality floor) + resolution bitrate floors — not pure ABR. If you saw splotchy/blocky “16-bit” HD, re-export with <strong>High</strong> or <strong>Archive</strong> (or Match after this fix).</li>
+        <li><strong>FPS</strong> defaults to <strong>Source</strong> — don’t force 30 if the clip is 60fps.</li>
+        <li><strong>MP4</strong> needs S1 + ffmpeg + real paths. Browser export is a last resort (much worse quality).</li>
       </ul>
       <label for="ffmpegCmd" style="margin-top:12px">ffmpeg one-liner</label>
       <textarea id="ffmpegCmd" readonly placeholder="Load a video + set output folder to generate a command…"></textarea>
+      </div>
+    </div>
 
-      <!-- Live batch queue -->
-      <div class="queue-panel" id="batchPanel">
-        <div class="queue-head">
-          <h2>Batch queue</h2>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
-            <button type="button" class="btn ghost" id="btnQAddFiles">＋ Add files…</button>
-            <button type="button" class="btn ghost" id="btnQAddPaths" title="Paste multiple full paths">＋ Paste paths</button>
-            <button type="button" class="btn" id="btnQStart">▶ Run queue</button>
-            <button type="button" class="btn ghost" id="btnQStop" disabled>⏹ Stop after current</button>
-            <button type="button" class="btn ghost" id="btnQClearDone">Clear done</button>
-            <button type="button" class="btn ghost" id="btnQClearAll">Clear queue</button>
+    <div class="vt-section-panel" data-fafo-section="vid-stage" data-fafo-section-title="Preview &amp; queue">
+      <div class="panel-pad vt-stage-grid">
+        <div class="vt-stage-col">
+          <div class="preview-wrap"><video id="vidPreview" muted playsinline controls></video></div>
+        </div>
+        <div class="vt-stage-col">
+          <!-- Live batch queue -->
+          <div class="queue-panel" id="batchPanel">
+            <div class="queue-head">
+              <h2>Batch queue</h2>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <button type="button" class="btn ghost" id="btnQAddFiles" data-tip="Pick multiple video files into the queue.">＋ Add files…</button>
+                <button type="button" class="btn ghost" id="btnQAddPaths" title="Paste multiple full paths" data-tip="Paste multiple full disk paths into the queue.">＋ Paste paths</button>
+                <button type="button" class="btn" id="btnQStart" data-tip-title="Run / resume" data-tip="Process queued items with current encode settings. Resume after pause.">▶ Run / resume</button>
+                <button type="button" class="btn ghost" id="btnQStop" disabled data-tip-title="Pause after current" data-tip="Finish the job already encoding, then stop. Remaining items stay queued for resume.">⏸ Pause after current</button>
+                <button type="button" class="btn ghost" id="btnQRequeueFail" data-tip-title="Requeue failed" data-tip="Put all error items back to queued so you can fix settings and retry.">↺ Requeue failed</button>
+                <button type="button" class="btn ghost" id="btnQRequeueSel" data-tip-title="Requeue selected" data-tip="Put checked done/error/skipped items back to queued (retry with current settings).">↺ Requeue selected</button>
+                <button type="button" class="btn ghost" id="btnQRunSel" data-tip-title="Run selected only" data-tip="Queue only the checked items (others stay queued but are skipped this run).">▶ Run selected</button>
+                <button type="button" class="btn ghost" id="btnQClearDone" data-tip="Remove finished/skipped items from the queue list.">Clear done</button>
+                <button type="button" class="btn ghost" id="btnQClearAll" data-tip-title="Clear queue" data-tip="Remove every item from the queue (not while a job is mid-encode).">Clear queue</button>
+              </div>
+            </div>
+            <div class="chk-row">
+              <label><input type="checkbox" id="chkClearAfter" checked> Clear preview after each success</label>
+              <label><input type="checkbox" id="chkRemoveDone"> Remove done/skipped from queue</label>
+              <label><input type="checkbox" id="chkSkipExisting" checked> Skip if output already exists</label>
+              <label><input type="checkbox" id="chkPreflight" checked> On start: dedupe · drop completed · refresh</label>
+              <label title="If the first job fails (bad quality settings, path, etc.), pause the queue instead of burning the whole batch.">
+                <input type="checkbox" id="chkStopOnError" checked> Stop on first error
+              </label>
+              <label title="After each successful job, pause so you can check output before continuing the batch.">
+                <input type="checkbox" id="chkPauseEach"> Pause after each job
+              </label>
+            </div>
+            <div class="chk-row" style="margin-top:0">
+              <label><input type="checkbox" id="chkSelectAllQ"> Select all</label>
+              <span style="font-size:11px;color:var(--muted)">Per row: ↺ requeue · ▶ run one · × remove · checkboxes for multi-select</span>
+            </div>
+            <div class="queue-list" id="queueList">
+              <div style="padding:12px;color:var(--muted)">Queue empty — drop multiple videos, use ＋ Queue, or Add files…</div>
+            </div>
+            <div class="queue-meta" id="queueMeta">0 queued · idle</div>
           </div>
         </div>
-        <div class="chk-row">
-          <label><input type="checkbox" id="chkClearAfter" checked> Clear preview after each success</label>
-          <label><input type="checkbox" id="chkRemoveDone" checked> Remove done/skipped from queue</label>
-          <label><input type="checkbox" id="chkSkipExisting" checked> Skip if output already exists</label>
-          <label><input type="checkbox" id="chkPreflight" checked> On start: dedupe · drop completed · refresh</label>
-        </div>
-        <div class="queue-list" id="queueList">
-          <div style="padding:12px;color:var(--muted)">Queue empty — drop multiple videos, use ＋ Queue, or Add files…</div>
-        </div>
-        <div class="queue-meta" id="queueMeta">0 queued · idle</div>
       </div>
     </div>
   </section>
 
   <!-- ═══ IMAGE ═══ -->
-  <section id="panelImage" class="hidden">
-    <div class="panel">
+  <section id="panelImage" class="hidden" data-fafo-panel="image" data-fafo-panel-title="Image shop" data-fafo-flex="1" data-fafo-panel-min="280">
+    <div class="vt-section-panel" data-fafo-section="img-controls" data-fafo-section-title="Image options" data-fafo-resizable="1" data-fafo-section-min="140" data-fafo-section-default="300">
+      <div class="panel-pad">
       <div class="drop" id="imgDrop">Drop an image here, or click to pick</div>
       <input type="file" id="imgFile" accept="image/*" class="hidden">
       <div class="chips" id="imgPresets" aria-label="Size presets"></div>
@@ -345,17 +512,23 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
         <div class="field"><label for="cropH">Crop H % (auto)</label><input type="number" id="cropH" min="1" max="100" value="100" step="0.5" readonly title="Auto from output aspect"></div>
       </div>
       <div class="row">
-        <button type="button" class="btn" id="btnImgExport" disabled>⬇ Export image</button>
-        <button type="button" class="btn ghost" id="btnImgClear">Clear</button>
+        <button type="button" class="btn" id="btnImgExport" disabled data-tip-title="Export image" data-tip="Write the resized/cropped image with the chosen format.">⬇ Export image</button>
+        <button type="button" class="btn ghost" id="btnImgClear" data-tip="Clear the image preview and crop settings.">Clear</button>
       </div>
       <div class="meta" id="imgMeta">No image loaded</div>
-      <div class="preview-wrap">
-        <canvas id="imgPreview"></canvas>
-        <div class="crop-overlay" id="cropOverlay"></div>
+      </div>
+    </div>
+    <div class="vt-section-panel" data-fafo-section="img-stage" data-fafo-section-title="Image preview">
+      <div class="panel-pad" style="flex:1;min-height:0;display:flex;flex-direction:column">
+        <div class="preview-wrap">
+          <canvas id="imgPreview"></canvas>
+          <div class="crop-overlay" id="cropOverlay"></div>
+        </div>
       </div>
     </div>
   </section>
-</div>
+  </div><!-- /.vt-layout -->
+</div><!-- /.vt-shell -->
 
 <a id="dl" class="hidden"></a>
 
@@ -363,6 +536,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 <script src="../shared/aitoolbox-version.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
 <script>
 (function () {
   'use strict';
@@ -395,9 +569,23 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     catch (_) { return {}; }
   }
 
-  /* ── tabs ── */
+  /* ── tabs + layout refresh ── */
   const panelVideo = document.getElementById('panelVideo');
   const panelImage = document.getElementById('panelImage');
+  const LAYOUT_APP = 'fafo-vid-trim-v2';
+  // Drop the broken fixed-height layout from v1 (120px strip bug)
+  try { localStorage.removeItem('fafo_layout_v1_fafo-vid-trim'); } catch (_) { /* ignore */ }
+
+  function refreshLayout() {
+    try {
+      const api = window.AIToolboxLayout?.get?.(LAYOUT_APP);
+      if (api?.refresh) api.refresh();
+      else if (window.AIToolboxLayout?.init) {
+        window.AIToolboxLayout.init({ appId: LAYOUT_APP, root: document.querySelector('[data-fafo-layout-root]') });
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   function setTab(name) {
     const isImg = name === 'image';
     panelVideo.classList.toggle('hidden', isImg);
@@ -407,10 +595,17 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     if (isImg && location.hash !== '#image') history.replaceState(null, '', '#image');
     if (!isImg && location.hash === '#image') history.replaceState(null, '', location.pathname + location.search);
     saveState({ tab: isImg ? 'image' : 'video' });
+    // Let display:none settle, then re-apply flex fill so the active panel uses full height
+    requestAnimationFrame(() => refreshLayout());
   }
   document.getElementById('tabVideo').onclick = () => setTab('video');
   document.getElementById('tabImage').onclick = () => setTab('image');
   if (location.hash === '#image' || loadState().tab === 'image') setTab('image');
+  // Ensure full-height flex after modular layout auto-init
+  window.addEventListener('load', () => {
+    refreshLayout();
+    setTimeout(refreshLayout, 50);
+  });
 
   /* ── API helpers ── */
   function apiBase() {
@@ -499,20 +694,26 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   }
 
   function currentQuality() {
-    const q = (document.getElementById('vidQuality')?.value || 'high').toLowerCase();
-    return ['archive', 'high', 'balanced', 'small'].includes(q) ? q : 'high';
+    const q = (document.getElementById('vidQuality')?.value || 'match').toLowerCase();
+    return ['match', 'archive', 'high', 'balanced', 'small'].includes(q) ? q : 'match';
+  }
+
+  function currentBitrateMode() {
+    const m = (document.getElementById('bitrateMode')?.value || 'retain').toLowerCase();
+    return m === 'proportional' ? 'proportional' : 'retain';
   }
 
   function qualityCrfDefault(q) {
-    return ({ archive: 15, high: 17, balanced: 20, small: 24 })[q] || 17;
+    // Lower = better. Match uses constrained-CRF (quality floor + maxrate).
+    return ({ match: 15, archive: 14, high: 16, balanced: 18, small: 22 })[q] || 16;
   }
 
   function qualityPreset(q) {
-    return ({ archive: 'slower', high: 'slow', balanced: 'medium', small: 'fast' })[q] || 'slow';
+    return ({ match: 'slow', archive: 'slower', high: 'slow', balanced: 'medium', small: 'fast' })[q] || 'slow';
   }
 
   function qualityAudioK(q) {
-    return ({ archive: 320, high: 256, balanced: 192, small: 160 })[q] || 256;
+    return ({ match: 320, archive: 320, high: 256, balanced: 224, small: 160 })[q] || 256;
   }
 
   function effectiveCrf() {
@@ -520,6 +721,16 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     if (raw === '' || raw == null) return qualityCrfDefault(currentQuality());
     const n = parseInt(raw, 10);
     return Number.isFinite(n) ? n : qualityCrfDefault(currentQuality());
+  }
+
+  function syncBitrateModeUi() {
+    const bm = document.getElementById('bitrateMode');
+    if (!bm) return;
+    const match = currentQuality() === 'match';
+    bm.disabled = !match;
+    bm.title = match
+      ? 'Retain = same Mbps as source (more bits/pixel after crop). Proportional = scale Mbps with resolution.'
+      : 'Only applies when Encode quality is Match source bitrate';
   }
 
   function updateExportLabel() {
@@ -597,23 +808,31 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     const outArg = outDir
       ? `${outDir.replace(/[\\/]$/, '')}\\${base}_${maxSide}max.${fmt}`.replace(/\\/g, '\\')
       : `${base}_${maxSide}max.${fmt}`;
-    // Lanczos downscale only — never enlarge; preserve detail on shrink
+    // Lanczos + full chroma — never enlarge. S1 uses constrained-CRF (not pure ABR).
     const vf =
       `scale='min(${maxSide},iw)':'min(${maxSide},ih)':force_original_aspect_ratio=decrease:` +
-      `flags=lanczos+accurate_rnd+full_chroma_int:force_divisible_by=2,setsar=1,format=yuv420p`;
+      `flags=lanczos+accurate_rnd+full_chroma_int+full_chroma_inp:force_divisible_by=2,setsar=1,format=yuv420p`;
     const q = currentQuality();
     const crf = effectiveCrf();
     const preset = qualityPreset(q);
     const audioK = qualityAudioK(q);
     const fps = parseInt(document.getElementById('vidFps').value, 10) || 0;
     const fpsArg = fps > 0 ? ` -r ${fps}` : '';
+    const match = q === 'match';
+    // Placeholder ceiling — S1 probes source Mbps + resolution floor
+    const brHint = 'MAXRATE_FROM_SOURCE';
+    const x264psy = 'aq-mode=3:aq-strength=0.9:psy-rd=1.0,0.15:deblock=-1,-1';
     if (fmt === 'webm') {
-      ffmpegCmd.value =
-        `ffmpeg -y -i "${inArg}" -vf "${vf}"${fpsArg} -c:v libvpx-vp9 -crf ${Math.min(40, crf + 8)} -b:v 0 -row-mt 1 -c:a libopus -b:a ${audioK}k "${outArg}"`;
+      ffmpegCmd.value = match
+        ? `ffmpeg -y -i "${inArg}" -vf "${vf}" -sws_flags lanczos+accurate_rnd+full_chroma_int+full_chroma_inp${fpsArg} -c:v libvpx-vp9 -crf ${Math.min(30, crf + 8)} -b:v ${brHint} -maxrate 1.5*${brHint} -minrate 0 -row-mt 1 -c:a libopus -b:a ${audioK}k "${outArg}"`
+        : `ffmpeg -y -i "${inArg}" -vf "${vf}" -sws_flags lanczos+accurate_rnd+full_chroma_int+full_chroma_inp${fpsArg} -c:v libvpx-vp9 -crf ${Math.min(35, crf + 8)} -b:v 0 -row-mt 1 -c:a libopus -b:a ${audioK}k "${outArg}"`;
     } else {
-      ffmpegCmd.value =
-        `ffmpeg -y -i "${inArg}" -vf "${vf}"${fpsArg} -c:v libx264 -preset ${preset} -crf ${crf} -profile:v high -pix_fmt yuv420p -c:a aac -b:a ${audioK}k -movflags +faststart "${outArg}"`;
+      // Constrained CRF = quality floor (crf) + maxrate ceiling — avoids splotchy ABR starvation
+      ffmpegCmd.value = match
+        ? `ffmpeg -y -i "${inArg}" -vf "${vf}" -sws_flags lanczos+accurate_rnd+full_chroma_int+full_chroma_inp${fpsArg} -c:v libx264 -preset ${preset} -crf ${crf} -maxrate ${brHint} -bufsize 2.5*${brHint} -profile:v high -pix_fmt yuv420p -x264-params ${x264psy} -colorspace bt709 -color_trc bt709 -color_primaries bt709 -color_range tv -c:a aac -b:a ${audioK}k -movflags +faststart "${outArg}"  # S1 fills MAXRATE from ffprobe + HD floors`
+        : `ffmpeg -y -i "${inArg}" -vf "${vf}" -sws_flags lanczos+accurate_rnd+full_chroma_int+full_chroma_inp${fpsArg} -c:v libx264 -preset ${preset} -crf ${crf} -profile:v high -pix_fmt yuv420p -x264-params ${x264psy} -colorspace bt709 -color_trc bt709 -color_primaries bt709 -color_range tv -c:a aac -b:a ${audioK}k -movflags +faststart "${outArg}"`;
     }
+    syncBitrateModeUi();
 
     const ready = !!(vidW || srcPath);
     btnVidExport.disabled = !ready;
@@ -798,6 +1017,11 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   });
   document.getElementById('vidQuality')?.addEventListener('change', () => {
     saveState({ quality: currentQuality() });
+    syncBitrateModeUi();
+    refreshVidMeta();
+  });
+  document.getElementById('bitrateMode')?.addEventListener('change', () => {
+    saveState({ bitrateMode: currentBitrateMode() });
     refreshVidMeta();
   });
   document.getElementById('vidCrf').addEventListener('change', () => {
@@ -888,8 +1112,10 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     const crf = crfRaw === '' || crfRaw == null ? null : parseInt(crfRaw, 10);
     const fps = parseInt(document.getElementById('vidFps').value, 10) || 0;
     const quality = currentQuality();
+    const bitrateMode = currentBitrateMode();
     if (!opts.quiet) {
-      toast(`S1 ${quality} · ${fmt.toUpperCase()} (lanczos · no upscale)…`, 'ok');
+      const qLabel = quality === 'match' ? `match bitrate (${bitrateMode})` : quality;
+      toast(`S1 ${qLabel} · ${fmt.toUpperCase()} (lanczos · no upscale)…`, 'ok');
     }
     const res = await apiFetch('/convert/scale-max-side', {
       method: 'POST',
@@ -898,9 +1124,10 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
         max_side: maxSide,
         output_dir: outDir,
         fmt,
-        crf: Number.isFinite(crf) ? crf : null,
+        crf: quality === 'match' ? null : (Number.isFinite(crf) ? crf : null),
         fps: fps > 0 ? fps : null,
         quality,
+        bitrate_mode: bitrateMode,
         copy_if_fits: true,
       },
     });
@@ -908,9 +1135,11 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     rememberOutDir(outDir);
     if (!opts.quiet) {
       await listOutDir().catch(() => {});
-      const how = res.method === 'copy'
+      let how = res.method === 'copy'
         ? 'stream-copied (already within max · no re-encode)'
-        : (res.scaled ? 'lanczos downscale' : 're-encode (fit, no resize)');
+        : (String(res.method || '').startsWith('match')
+          ? `constrained CRF${res.crf != null ? ` ${res.crf}` : ''}${res.target_v_bitrate ? ` · max ~${(res.target_v_bitrate / 1e6).toFixed(1)} Mbps` : ''}`
+          : (res.scaled ? 'lanczos downscale · quality CRF' : 're-encode (fit, no resize)'));
       toast(`Saved ${fmt.toUpperCase()} · ${how}: ${res.output}`, 'ok');
     }
     return res;
@@ -989,13 +1218,13 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       v.muted = true;
     }
 
-    // Browser path is a fallback — bias toward higher bitrates (detail over size)
+    // Browser MediaRecorder is a last resort (still worse than S1 ffmpeg) — push bitrates hard
     const q = currentQuality();
     const crf = effectiveCrf();
     const px = Math.max(1, t.w * t.h);
-    // ~bits per pixel * fps-ish budget; archive/high much richer than small
-    const qMul = ({ archive: 1.35, high: 1.15, balanced: 0.9, small: 0.65 })[q] || 1.1;
-    const bits = Math.round(Math.min(28_000_000, Math.max(2_500_000, px * 0.12 * qMul * (28 / Math.max(12, crf)))));
+    const qMul = ({ match: 1.5, archive: 1.45, high: 1.25, balanced: 1.0, small: 0.75 })[q] || 1.15;
+    // Floor 8 Mbps so 1080p/4K never collapse into splotchy blocks in the browser path
+    const bits = Math.round(Math.min(60_000_000, Math.max(8_000_000, px * 0.22 * qMul * (28 / Math.max(12, crf)))));
     const rec = new MediaRecorder(mix, {
       mimeType: mime,
       videoBitsPerSecond: bits,
@@ -1118,18 +1347,42 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 
   /* ══════════════════════════════════════
      LIVE BATCH QUEUE (add while running)
+     pause / resume / requeue / stop-on-error
      ══════════════════════════════════════ */
-  /** @type {{id:string,name:string,srcPath:string,file:File|null,status:string,error:string,output:string}[]} */
+  /** @type {{id:string,name:string,srcPath:string,file:File|null,status:string,error:string,output:string,selected?:boolean}[]} */
   let jobQueue = [];
   let queueRunning = false;
   let queueStopAfter = false;
   let queueIdSeq = 1;
+  /** When set, only these job ids are eligible this run (Run selected). */
+  let queueRunOnlyIds = null;
   const queueListEl = document.getElementById('queueList');
   const queueMetaEl = document.getElementById('queueMeta');
   const btnQStart = document.getElementById('btnQStart');
   const btnQStop = document.getElementById('btnQStop');
 
   function qId() { return 'q' + (queueIdSeq++); }
+
+  function requeueJob(job, opts) {
+    if (!job || job.status === 'running') return false;
+    job.status = 'queued';
+    job.error = '';
+    if (!opts || !opts.keepOutput) job.output = '';
+    return true;
+  }
+
+  function requeueJobs(predicate) {
+    let n = 0;
+    jobQueue.forEach((j) => {
+      if (predicate(j) && requeueJob(j)) n++;
+    });
+    renderQueue();
+    return n;
+  }
+
+  function selectedJobs() {
+    return jobQueue.filter((j) => j.selected);
+  }
 
   function basenamePath(p) {
     return String(p || '').replace(/^.*[\\/]/, '') || 'video';
@@ -1303,14 +1556,26 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       queueListEl.innerHTML = jobQueue.map((j) => {
         const stClass = j.status || 'queued';
         const pathHint = j.srcPath || (j.file ? '(browser file · WebM fallback)' : '');
-        return `<div class="queue-item ${j.status === 'running' ? 'is-running' : ''} ${j.status === 'done' ? 'is-done' : ''}" data-qid="${escapeAttr(j.id)}">
-          <button type="button" class="q-x" data-rm="${escapeAttr(j.id)}" title="Remove" ${j.status === 'running' ? 'disabled' : ''}>×</button>
-          <div style="min-width:0">
-            <div class="q-name" title="${escapeAttr(j.name)}">${escapeHtml(j.name)}</div>
+        const busy = j.status === 'running';
+        const canRequeue = !busy && j.status !== 'queued';
+        const canRunOne = !queueRunning && (j.status === 'queued' || j.status === 'error' || j.status === 'done' || j.status === 'skipped' || j.status === 'paused');
+        return `<div class="queue-item ${busy ? 'is-running' : ''} ${j.status === 'done' ? 'is-done' : ''} ${j.status === 'error' ? 'is-error' : ''} ${j.selected ? 'is-selected' : ''}" data-qid="${escapeAttr(j.id)}">
+          <div class="q-main">
+            <div class="q-name" title="${escapeAttr(j.name)}">
+              <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" class="q-chk" data-sel="${escapeAttr(j.id)}" ${j.selected ? 'checked' : ''} ${busy ? 'disabled' : ''}>
+                ${escapeHtml(j.name)}
+              </label>
+            </div>
             <div class="q-path" title="${escapeAttr(pathHint)}">${escapeHtml(pathHint)}${j.output ? ' → ' + escapeHtml(j.output) : ''}${j.error ? ' · ' + escapeHtml(j.error) : ''}</div>
           </div>
-          <span class="q-st ${stClass}">${escapeHtml(j.status)}</span>
-          <span></span>
+          <div class="q-side">
+            <span class="q-st ${stClass}">${escapeHtml(j.status)}</span>
+            <button type="button" class="q-act" data-requeue="${escapeAttr(j.id)}" title="Requeue this item" ${canRequeue ? '' : 'disabled'}>↺</button>
+            <button type="button" class="q-act" data-runone="${escapeAttr(j.id)}" title="Run only this item now (current settings)" ${canRunOne ? '' : 'disabled'}>▶</button>
+            <button type="button" class="q-act" data-top="${escapeAttr(j.id)}" title="Move to front of queue" ${busy || j.status !== 'queued' ? 'disabled' : ''}>⇈</button>
+            <button type="button" class="q-act danger" data-rm="${escapeAttr(j.id)}" title="Remove" ${busy ? 'disabled' : ''}>×</button>
+          </div>
         </div>`;
       }).join('');
     }
@@ -1318,16 +1583,26 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     const nR = jobQueue.filter((j) => j.status === 'running').length;
     const nD = jobQueue.filter((j) => j.status === 'done').length;
     const nE = jobQueue.filter((j) => j.status === 'error').length;
+    const nS = jobQueue.filter((j) => j.status === 'skipped' || j.status === 'paused').length;
     if (queueMetaEl) {
       queueMetaEl.textContent = queueRunning
-        ? `${nQ} waiting · ${nR} running · ${nD} done · ${nE} error · processing…`
-        : `${nQ} queued · ${nD} done · ${nE} error · idle`;
+        ? `${nQ} waiting · ${nR} running · ${nD} done · ${nE} error · ${queueStopAfter ? 'pausing after current…' : 'processing…'}`
+        : `${nQ} queued · ${nD} done · ${nE} error · ${nS} skipped/paused · idle (resume anytime)`;
     }
     if (btnQStart) {
       btnQStart.disabled = queueRunning || nQ === 0;
-      btnQStart.textContent = queueRunning ? '▶ Running…' : '▶ Run queue';
+      btnQStart.textContent = queueRunning ? '▶ Running…' : (nQ ? '▶ Run / resume' : '▶ Run / resume');
     }
-    if (btnQStop) btnQStop.disabled = !queueRunning;
+    if (btnQStop) {
+      btnQStop.disabled = !queueRunning;
+      btnQStop.textContent = queueStopAfter ? '⏸ Pausing…' : '⏸ Pause after current';
+    }
+    const selAll = document.getElementById('chkSelectAllQ');
+    if (selAll) {
+      const selectable = jobQueue.filter((j) => j.status !== 'running');
+      selAll.checked = selectable.length > 0 && selectable.every((j) => j.selected);
+      selAll.indeterminate = selectable.some((j) => j.selected) && !selAll.checked;
+    }
   }
 
   function maybeAutostartQueue() {
@@ -1391,11 +1666,19 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     throw new Error('Job has no path or file');
   }
 
-  async function runQueueLoop() {
-    if (queueRunning) return;
+  function nextQueuedJob() {
+    if (queueRunOnlyIds && queueRunOnlyIds.size) {
+      return jobQueue.find((j) => j.status === 'queued' && queueRunOnlyIds.has(j.id));
+    }
+    return jobQueue.find((j) => j.status === 'queued');
+  }
 
-    // Preflight: dedupe, drop completed, refresh disk status
-    if (document.getElementById('chkPreflight')?.checked !== false) {
+  async function runQueueLoop(opts) {
+    if (queueRunning) return;
+    opts = opts || {};
+
+    // Preflight only on full batch start (not single-item re-run unless requested)
+    if (opts.preflight !== false && document.getElementById('chkPreflight')?.checked !== false && !opts.single) {
       const pf = await preflightQueue();
       const bits = [];
       if (pf.removedDupes) bits.push(`${pf.removedDupes} dupes`);
@@ -1409,9 +1692,17 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
         pf.ready ? 'ok' : 'warn'
       );
       if (!pf.ready) {
+        queueRunOnlyIds = null;
         renderQueue();
         return;
       }
+    }
+
+    if (!nextQueuedJob()) {
+      toast('Nothing queued to run — requeue failed/done items or add files', 'warn');
+      queueRunOnlyIds = null;
+      renderQueue();
+      return;
     }
 
     queueRunning = true;
@@ -1422,7 +1713,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     try {
       while (true) {
         if (queueStopAfter) break;
-        const next = jobQueue.find((j) => j.status === 'queued');
+        const next = nextQueuedJob();
         if (!next) break;
 
         // Highlight in preview when possible
@@ -1435,6 +1726,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
           try { loadVideoFile(next.file); } catch (_) { /* ignore */ }
         }
 
+        let failed = false;
         try {
           vidBar.style.width = '20%';
           await processOneJob(next);
@@ -1449,31 +1741,57 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
           if (document.getElementById('chkRemoveDone')?.checked && (next.status === 'done' || next.status === 'skipped')) {
             jobQueue = jobQueue.filter((j) => j.id !== next.id);
           }
+          // Step-through: pause after each success so you can inspect before the batch continues
+          if (document.getElementById('chkPauseEach')?.checked && next.status === 'done') {
+            queueStopAfter = true;
+            toast('Paused after job — check output, then Run / resume', 'ok');
+          }
         } catch (e) {
+          failed = true;
           next.status = 'error';
           next.error = (e && e.message) ? e.message : String(e);
           console.warn('[queue]', next.name, e);
+          // Default safety: don't burn the whole batch with bad settings
+          if (document.getElementById('chkStopOnError')?.checked !== false) {
+            queueStopAfter = true;
+            toast('Stopped on error — fix settings, requeue, then resume', 'warn');
+          }
         }
         renderQueue();
-        // brief yield so UI can accept new queue adds
+        // brief yield so UI can accept new queue adds / clicks
         await new Promise((r) => setTimeout(r, 40));
+        if (failed && document.getElementById('chkStopOnError')?.checked !== false) break;
+        if (queueStopAfter) break;
       }
       await listOutDir().catch(() => {});
       const nD = jobQueue.filter((j) => j.status === 'done').length;
       const nE = jobQueue.filter((j) => j.status === 'error').length;
+      const nQ = jobQueue.filter((j) => j.status === 'queued').length;
       toast(
         queueStopAfter
-          ? `Queue paused · ${nD} done · ${nE} error`
+          ? `Queue paused · ${nD} done · ${nE} error · ${nQ} still queued — press Run / resume`
           : `Queue finished · ${nD} done · ${nE} error`,
         nE ? 'warn' : 'ok'
       );
     } finally {
       queueRunning = false;
       queueStopAfter = false;
+      queueRunOnlyIds = null;
       vidProgress.style.display = 'none';
       renderQueue();
       refreshVidMeta();
     }
+  }
+
+  async function runOneJobById(id) {
+    const job = jobQueue.find((j) => j.id === id);
+    if (!job || queueRunning) return;
+    // Put this job first as queued; others stay as-is
+    requeueJob(job);
+    // Move to front
+    jobQueue = [job, ...jobQueue.filter((j) => j.id !== id)];
+    queueRunOnlyIds = new Set([id]);
+    await runQueueLoop({ preflight: false, single: true });
   }
 
   document.getElementById('btnQAdd')?.addEventListener('click', () => {
@@ -1511,7 +1829,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     toast(n ? `Queued ${n} path(s)` : 'No new paths', n ? 'ok' : 'warn');
   });
 
-  btnQStart?.addEventListener('click', () => {
+  function startQueueFromUi(extra) {
     const outDir = (outDirEl.value || '').trim();
     const needsPath = jobQueue.some((j) => j.status === 'queued' && j.srcPath);
     if (needsPath && !outDir) {
@@ -1521,42 +1839,140 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     if (needsPath && !serverOnline) {
       toast('S1 offline — path jobs need S1. Browser files can still run as WebM.', 'warn');
     }
-    runQueueLoop().catch((e) => {
+    runQueueLoop(extra || {}).catch((e) => {
       console.error(e);
       toast(e.message || 'Queue failed', 'warn');
       queueRunning = false;
+      queueRunOnlyIds = null;
       renderQueue();
     });
+  }
+
+  btnQStart?.addEventListener('click', () => {
+    queueRunOnlyIds = null;
+    startQueueFromUi();
   });
 
   btnQStop?.addEventListener('click', () => {
+    if (!queueRunning) return;
     queueStopAfter = true;
-    toast('Will stop after the current job', 'ok');
+    toast('Pausing after the current job — remaining stay queued', 'ok');
     renderQueue();
   });
 
+  document.getElementById('btnQRequeueFail')?.addEventListener('click', () => {
+    const n = requeueJobs((j) => j.status === 'error' || j.status === 'paused');
+    toast(n ? `Requeued ${n} failed/paused job(s)` : 'No failed items to requeue', n ? 'ok' : 'warn');
+  });
+
+  document.getElementById('btnQRequeueSel')?.addEventListener('click', () => {
+    const n = requeueJobs((j) => j.selected && j.status !== 'running' && j.status !== 'queued');
+    toast(n ? `Requeued ${n} selected job(s)` : 'Select done/error/skipped rows first', n ? 'ok' : 'warn');
+  });
+
+  document.getElementById('btnQRunSel')?.addEventListener('click', () => {
+    if (queueRunning) {
+      toast('Pause the queue first', 'warn');
+      return;
+    }
+    const sel = selectedJobs().filter((j) => j.status !== 'running');
+    if (!sel.length) {
+      toast('Check one or more rows to run', 'warn');
+      return;
+    }
+    sel.forEach((j) => requeueJob(j));
+    queueRunOnlyIds = new Set(sel.map((j) => j.id));
+    startQueueFromUi({ preflight: false });
+  });
+
   document.getElementById('btnQClearDone')?.addEventListener('click', () => {
-    jobQueue = jobQueue.filter((j) => j.status === 'queued' || j.status === 'running');
+    jobQueue = jobQueue.filter((j) => j.status === 'queued' || j.status === 'running' || j.status === 'error');
     renderQueue();
   });
 
   document.getElementById('btnQClearAll')?.addEventListener('click', () => {
     if (queueRunning) {
-      toast('Stop the queue first (or wait), then clear', 'warn');
+      toast('Pause after current, wait for idle, then clear', 'warn');
       return;
     }
     jobQueue = [];
+    queueRunOnlyIds = null;
+    renderQueue();
+  });
+
+  document.getElementById('chkSelectAllQ')?.addEventListener('change', (e) => {
+    const on = !!e.target.checked;
+    jobQueue.forEach((j) => {
+      if (j.status !== 'running') j.selected = on;
+    });
     renderQueue();
   });
 
   queueListEl?.addEventListener('click', (e) => {
-    const rm = e.target.closest?.('[data-rm]');
-    if (!rm) return;
-    const id = rm.getAttribute('data-rm');
+    const t = e.target;
+    if (!t || !t.closest) return;
+
+    const sel = t.closest?.('[data-sel]');
+    if (sel && t.matches?.('input[type=checkbox], [data-sel]')) {
+      const id = sel.getAttribute('data-sel') || t.getAttribute('data-sel');
+      const job = jobQueue.find((j) => j.id === id);
+      if (job && job.status !== 'running') {
+        job.selected = !!(t.checked != null ? t.checked : !job.selected);
+        renderQueue();
+      }
+      return;
+    }
+
+    const requeue = t.closest?.('[data-requeue]');
+    if (requeue) {
+      const id = requeue.getAttribute('data-requeue');
+      const job = jobQueue.find((j) => j.id === id);
+      if (job && requeueJob(job)) {
+        toast('Requeued — fix settings if needed, then Run / resume', 'ok');
+        renderQueue();
+      }
+      return;
+    }
+
+    const runone = t.closest?.('[data-runone]');
+    if (runone) {
+      const id = runone.getAttribute('data-runone');
+      runOneJobById(id).catch((err) => {
+        toast(err.message || 'Run one failed', 'warn');
+      });
+      return;
+    }
+
+    const top = t.closest?.('[data-top]');
+    if (top) {
+      const id = top.getAttribute('data-top');
+      const job = jobQueue.find((j) => j.id === id);
+      if (job && job.status === 'queued') {
+        jobQueue = [job, ...jobQueue.filter((j) => j.id !== id)];
+        renderQueue();
+      }
+      return;
+    }
+
+    const rm = t.closest?.('[data-rm]');
+    if (rm) {
+      const id = rm.getAttribute('data-rm');
+      const job = jobQueue.find((j) => j.id === id);
+      if (job && job.status === 'running') return;
+      jobQueue = jobQueue.filter((j) => j.id !== id);
+      renderQueue();
+    }
+  });
+
+  queueListEl?.addEventListener('change', (e) => {
+    const t = e.target;
+    if (!t || !t.matches?.('input.q-chk[data-sel]')) return;
+    const id = t.getAttribute('data-sel');
     const job = jobQueue.find((j) => j.id === id);
-    if (job && job.status === 'running') return;
-    jobQueue = jobQueue.filter((j) => j.id !== id);
-    renderQueue();
+    if (job) {
+      job.selected = !!t.checked;
+      renderQueue();
+    }
   });
 
   // restore paths / format
@@ -1567,16 +1983,22 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     if (st.outFmt) outFmtEl.value = st.outFmt;
     if (st.maxSide) maxSideEl.value = st.maxSide;
     if (st.quality && document.getElementById('vidQuality')) {
+      // migrate old default "high" once if user never picked match (optional keep high if intentional)
       document.getElementById('vidQuality').value = st.quality;
+    }
+    if (st.bitrateMode && document.getElementById('bitrateMode')) {
+      document.getElementById('bitrateMode').value = st.bitrateMode === 'proportional' ? 'proportional' : 'retain';
     }
     if (st.crf != null && st.crf !== '') document.getElementById('vidCrf').value = st.crf;
     else if (document.getElementById('vidCrf')) document.getElementById('vidCrf').value = '';
-    if (st.fps != null) document.getElementById('vidFps').value = st.fps;
+    // Prefer Source FPS unless user explicitly saved a cap (old default was 30 — only restore if set)
+    if (st.fps != null && st.fps !== '') document.getElementById('vidFps').value = st.fps;
     if (st.clearAfter === false) document.getElementById('chkClearAfter').checked = false;
     if (st.removeDone === false) document.getElementById('chkRemoveDone').checked = false;
     if (st.skipExisting === false) document.getElementById('chkSkipExisting').checked = false;
     if (st.preflight === false) document.getElementById('chkPreflight').checked = false;
     renderRecentOut(st.recentOut);
+    syncBitrateModeUi();
     refreshVidMeta();
     renderQueue();
   }
