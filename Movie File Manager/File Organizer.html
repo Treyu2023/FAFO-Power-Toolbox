@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>File Organizer — Rename & Tag</title>
     <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
             --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
@@ -48,11 +49,10 @@
         #btnStartServer:disabled { opacity: 0.55; cursor: wait; }
 
         .main {
-            flex: 1; display: grid;
-            grid-template-columns: minmax(220px, 280px) 1fr minmax(280px, 340px);
-            min-height: 0;
+            flex: 1; display: flex;
+            min-height: 0; min-width: 0;
         }
-        .sidebar { background: var(--panel); border-right: 1px solid rgba(255,255,255,0.06); overflow-y: auto; }
+        .sidebar { background: var(--panel); border-right: 1px solid rgba(255,255,255,0.06); overflow: hidden; min-width: 0; }
         .sidebar-section { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .sidebar-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
         .hint-box { font-size: 10px; color: var(--muted); line-height: 1.45; margin-bottom: 8px; }
@@ -197,31 +197,42 @@
         <span class="server-pill offline" id="serverStatus" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = full power. Offline = click this pill or ▶ Start Server to launch the Python backend from this page (same as Media Library / Launcher).">Server …</span>
         <button class="btn" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from File Organizer. Waits for green. If blocked: Launcher → Console / Open Folder → START SERVER.bat, or SETUP (run once).bat.">▶ Start Server</button>
         <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
-        <a class="nav-link" href="Media Hub.html" title="Library + Duplicates + Organizer">🗂️ Media Hub</a>
+        <a class="nav-link" href="Media Hub.html#organizer" title="Library + Duplicates + Organizer">🗂️ Media Hub</a>
         <a class="nav-link" href="Media Library Manager.html">🗂️ Media Library</a>
         <span class="nav-link active">✏️ File Organizer</span>
         <a class="nav-link" href="Media Hub.html#duplicates" title="Duplicate cleanup">🗑️ Duplicates</a>
+        <a class="nav-link" href="Compare Hub.html#match" title="Guided match + pair review">⇄ Compare Hub</a>
         <a class="nav-link" href="VSR Pipeline Manager.html">⚡ VSR Pipeline</a>
-        <button class="btn" id="btnRescan">↻ Rescan</button>
-        <button class="btn" id="btnOrgReport" title="Copy organizer session report">📋 Report</button>
+        <button class="btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new or changed files.">↻ Rescan</button>
+        <button class="btn" id="btnOrgReport" data-tip-title="Report" data-tip="Copy an organizer session summary to the clipboard.">📋 Report</button>
         <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent3)">/</kbd> focus search · <kbd style="font:10px Consolas;color:var(--accent3)">R</kbd> rescan · <kbd style="font:10px Consolas;color:var(--accent3)">E</kbd> report</span>
-        <button class="ui-btn ghost" id="btnDebug">🐛 Debug</button>
+        <span data-fafo-layout-toolbar></span>
+        <button class="ui-btn ghost" id="btnDebug" data-tip-title="Debug" data-tip="Toggle technical debug logging.">🐛 Debug</button>
     </nav>
 
-    <div class="main">
-        <aside class="sidebar">
-            <div class="sidebar-section">
+    <div class="main"
+         data-fafo-layout-root
+         data-fafo-layout-app="file-organizer"
+         data-fafo-layout-type="columns">
+        <aside class="sidebar"
+               data-fafo-panel="sidebar"
+               data-fafo-panel-title="Folders &amp; filters"
+               data-fafo-panel-min="200"
+               data-fafo-panel-default="280">
+            <div class="sidebar-section" data-fafo-section="combined" data-fafo-section-title="Combined Folders">
                 <h3>🔗 Combined Folders</h3>
                 <p class="hint-box">Folders with the <strong>same name</strong> under different watched locations are merged here — browse all copies as one master tree.</p>
                 <div id="virtualFolderList"></div>
             </div>
-            <div class="sidebar-section" id="vfBrowseSection" style="display:none;">
+            <div class="sidebar-section" id="vfBrowseSection" style="display:none;"
+                 data-fafo-section="subfolders" data-fafo-section-title="Subfolders">
                 <h3>Subfolders</h3>
                 <div class="breadcrumb" id="vfBreadcrumb"></div>
                 <div id="vfSubfolders"></div>
                 <div id="vfSources" style="font-size:10px;color:var(--muted);margin-top:8px;"></div>
             </div>
-            <div class="sidebar-section">
+            <div class="sidebar-section" data-fafo-section="organize-by" data-fafo-section-title="Organize by"
+                 data-fafo-resizable="1" data-fafo-section-min="100" data-fafo-section-default="180">
                 <h3>Organize by</h3>
                 <div class="filter-chip" data-cat="">All categories</div>
                 <div id="categoryFilters"></div>
@@ -235,7 +246,10 @@
             </div>
         </aside>
 
-        <section class="center">
+        <section class="center"
+                 data-fafo-panel="center"
+                 data-fafo-panel-title="Files"
+                 data-fafo-flex="1">
             <div class="toolbar">
                 <input type="search" id="searchInput" placeholder="Search name, path, tags, category…">
                 <select id="filterType">
@@ -250,7 +264,7 @@
                     <option value="category">Sort: Category</option>
                     <option value="mtime">Sort: Date</option>
                 </select>
-                <button class="btn" id="btnSelectPage">Select Page</button>
+                <button class="btn" id="btnSelectPage" data-tip="Select every item on the current page.">Select Page</button>
             </div>
             <div class="batch-bar" id="batchBar">
                 <strong><span id="selCount">0</span> selected</strong>
@@ -264,11 +278,11 @@
                     <option>To Review</option><option>Approved</option><option>Best</option>
                     <option>WIP</option><option>Favorite</option><option>Reject</option>
                 </select>
-                <button class="btn orange" id="btnBatchMeta">Apply Meta</button>
-                <button class="btn" id="btnBatchTag">+ Tags</button>
-                <button class="btn purple" id="btnBatchRename">Batch Rename</button>
-                <button class="btn" id="btnCopyPaths">Copy Paths</button>
-                <button class="btn" id="btnClearSel">Clear</button>
+                <button class="btn orange" id="btnBatchMeta" data-tip-title="Apply meta" data-tip="Write category/status/rank to the selected items.">Apply Meta</button>
+                <button class="btn" id="btnBatchTag" data-tip-title="Tags" data-tip="Add tags to all selected items.">+ Tags</button>
+                <button class="btn purple" id="btnBatchRename" data-tip-title="Batch rename" data-tip="Rename selected files using a pattern (opens dialog).">Batch Rename</button>
+                <button class="btn" id="btnCopyPaths" data-tip-title="Copy paths" data-tip="Copy full disk paths of the selection to the clipboard.">Copy Paths</button>
+                <button class="btn" id="btnClearSel" data-tip="Clear the current selection.">Clear</button>
             </div>
             <div class="file-table-wrap">
                 <table class="file-table">
@@ -304,14 +318,23 @@
             </div>
         </section>
 
-        <aside class="detail-panel">
-            <div class="preview-box" id="previewBox">
+        <aside class="detail-panel"
+               data-fafo-panel="detail"
+               data-fafo-panel-title="Preview &amp; meta"
+               data-fafo-panel-min="260"
+               data-fafo-panel-default="340">
+            <div class="preview-box" id="previewBox" data-fafo-section="preview" data-fafo-section-title="Preview"
+                 data-fafo-resizable="1" data-fafo-section-min="120" data-fafo-section-default="200">
+                <h3 style="display:none">Preview</h3>
                 <span style="color:#555;font-size:12px;text-align:center;padding:20px;">Select a file to preview</span>
             </div>
-            <div class="capture-bar" id="captureBar" style="display:none;">
-                <button type="button" class="capture-btn" id="btnCapture" disabled>📷 Capture Frame → Thumbnail</button>
+            <div class="capture-bar" id="captureBar" style="display:none;" data-fafo-section="capture" data-fafo-section-title="Capture">
+                <h3 style="display:none">Capture</h3>
+                <button type="button" class="capture-btn" id="btnCapture" disabled
+                        data-tip-title="Capture frame" data-tip="Grab the current video frame as this item’s thumbnail.">📷 Capture Frame → Thumbnail</button>
             </div>
-            <div class="detail-form" id="detailForm" style="display:none;">
+            <div class="detail-form" id="detailForm" style="display:none;" data-fafo-section="meta" data-fafo-section-title="Metadata">
+                <h3 style="display:none">Metadata</h3>
                 <div class="field">
                     <label>Filename (Enter to rename on disk)</label>
                     <input type="text" id="detailName">
@@ -355,7 +378,8 @@
                     <label>Notes</label>
                     <textarea id="detailNotes"></textarea>
                 </div>
-                <button class="btn orange" id="btnSave" style="width:100%;">Save Metadata</button>
+                <button class="btn orange" id="btnSave" style="width:100%;"
+                        data-tip-title="Save metadata" data-tip="Save tags, notes, rating, and fields for the selected item.">Save Metadata</button>
             </div>
         </aside>
     </div>
@@ -367,7 +391,8 @@
             <input type="text" id="renamePattern" class="inline-input" value="{orig}_tagged" style="padding:10px;">
             <div class="modal-actions">
                 <button class="btn" id="btnRenameCancel">Cancel</button>
-                <button class="btn orange" id="btnRenameApply">Rename</button>
+                <button class="btn orange" id="btnRenameApply"
+                        data-tip-title="Apply rename" data-tip="Rename the selected files using the pattern above.">Rename</button>
             </div>
         </div>
     </div>
@@ -379,7 +404,7 @@
             <div class="tag-lib-cloud" id="batchTagLibrary" style="margin-top:10px;max-height:120px;overflow:auto;"></div>
             <div class="modal-actions">
                 <button class="btn" id="btnTagCancel">Cancel</button>
-                <button class="btn orange" id="btnTagApply">Apply</button>
+                <button class="btn orange" id="btnTagApply" data-tip="Apply the chosen tags to the selection.">Apply</button>
             </div>
         </div>
     </div>
@@ -390,6 +415,8 @@
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const PAGE_SIZE = 100;
@@ -1052,8 +1079,18 @@
         document.getElementById('btnRenameApply').onclick = async () => {
             const pattern = document.getElementById('renamePattern').value.trim();
             if (!pattern) return;
+            const n = selected.size;
             await API().batchRename([...selected], pattern);
             document.getElementById('renameModal').classList.remove('active');
+            try {
+                if (n) {
+                    window.FAFOOpsStats?.record({
+                        tool: 'file-organizer',
+                        action: 'batch-rename',
+                        metrics: { renamesApplied: n, filesOrganized: n },
+                    });
+                }
+            } catch (_) { /* stats optional */ }
             selected.clear();
             await loadItems();
         };
@@ -1069,6 +1106,13 @@
             const dirs = await API().listDirectories();
             for (const d of dirs) await API().scanDirectory(d.id);
             UI().toast('Rescan complete', 'ok');
+            try {
+                window.FAFOOpsStats?.record({
+                    tool: 'file-organizer',
+                    action: 'rescan',
+                    metrics: { scansCompleted: 1 },
+                });
+            } catch (_) { /* stats optional */ }
             await refreshVirtualFolders();
             await loadItems();
         }

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Git Repository Manager — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{
   --bg:#050508;--panel:#0c0f16;--panel2:#111827;--border:rgba(167,139,250,.22);
@@ -18,10 +19,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 .nav .title{color:var(--accent);letter-spacing:1.5px;font-size:13px;font-weight:700}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border)}
 .pill.ok{color:var(--ok)}.pill.bad{color:var(--danger)}.pill.warn{color:var(--warn)}
-.layout{display:grid;grid-template-columns:260px 1fr 320px;flex:1;min-height:0}
-@media(max-width:1100px){.layout{grid-template-columns:220px 1fr}.detail{display:none}}
-@media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{position:fixed;left:-280px;transition:.25s;z-index:15;height:100%}.sidebar.open{left:0}}
-.sidebar{background:var(--panel);border-right:1px solid var(--border);padding:16px 12px;overflow-y:auto}
+.layout{display:flex;flex:1;min-height:0;min-width:0}
+@media(max-width:1100px){.detail{display:none}}
+@media(max-width:760px){.sidebar{position:fixed;left:-280px;transition:.25s;z-index:15;height:100%}.sidebar.open{left:0}}
+.sidebar{background:var(--panel);border-right:1px solid var(--border);padding:16px 12px;overflow:hidden;min-width:0}
 .sidebar h3{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:14px 8px 8px}
 .group-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;cursor:pointer;font-size:13px;border:1px solid transparent;margin-bottom:4px;transition:.15s}
 .group-item:hover,.group-item.active{background:rgba(167,139,250,.1);border-color:var(--border)}
@@ -84,22 +85,38 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 <nav class="nav">
   <a href="../Toolbox Launcher.html">← Toolbox</a>
   <span class="title">GIT REPOSITORY MANAGER</span>
+  <span data-fafo-layout-toolbar></span>
   <span>
     <span id="gitPill" class="pill bad">Checking…</span>
     <span id="ghPill" class="pill bad">GitHub Desktop</span>
   </span>
 </nav>
 
-<div class="layout">
-  <aside class="sidebar" id="sidebar">
-    <h3>Collections</h3>
-    <div id="groupList"></div>
-    <h3>Saved URLs</h3>
-    <div id="savedUrls" class="url-list"></div>
-    <button class="btn sm ghost" style="width:100%;margin-top:8px" id="btnAddUrl">+ Save URL</button>
+<div class="layout"
+     data-fafo-layout-root
+     data-fafo-layout-app="git-repository-manager"
+     data-fafo-layout-type="columns">
+  <aside class="sidebar" id="sidebar"
+         data-fafo-panel="sidebar"
+         data-fafo-panel-title="Collections"
+         data-fafo-panel-min="180"
+         data-fafo-panel-default="260">
+    <div data-fafo-section="collections" data-fafo-section-title="Collections">
+      <h3>Collections</h3>
+      <div id="groupList"></div>
+    </div>
+    <div data-fafo-section="saved-urls" data-fafo-section-title="Saved URLs"
+         data-fafo-resizable="1" data-fafo-section-min="80" data-fafo-section-default="160">
+      <h3>Saved URLs</h3>
+      <div id="savedUrls" class="url-list"></div>
+      <button class="btn sm ghost" style="width:100%;margin-top:8px" id="btnAddUrl">+ Save URL</button>
+    </div>
   </aside>
 
-  <section class="main">
+  <section class="main"
+           data-fafo-panel="center"
+           data-fafo-panel-title="Repositories"
+           data-fafo-flex="1">
     <div class="toolbar">
       <input class="search" id="search" placeholder="Search repositories…" type="search">
       <div class="status-filters" id="statusFilters" title="Multi-select status filter">
@@ -115,12 +132,22 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
       <button class="btn ghost sm" id="btnRefresh">Refresh</button>
     </div>
     <div class="repo-grid" id="repoGrid">
-      <div class="empty"><div class="icon">📂</div><p>Scan your PC or clone a repository to get started.</p></div>
+      <div class="empty"><div class="icon">📂</div><p>Scan your PC or clone a repository to get started.</p>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn" type="button" id="emptyBootScan">Scan PC</button>
+          <button class="btn ghost" type="button" id="emptyBootClone">Clone URL</button>
+          <a class="btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+        </div>
+      </div>
     </div>
     <div class="log-bar" id="logBar">Ready</div>
   </section>
 
-  <aside class="detail" id="detailPanel">
+  <aside class="detail" id="detailPanel"
+         data-fafo-panel="detail"
+         data-fafo-panel-title="Repo detail"
+         data-fafo-panel-min="240"
+         data-fafo-panel-default="320">
     <p style="color:var(--muted);font-size:13px;padding-top:40px;text-align:center">Select a repository to view details and run actions.</p>
   </aside>
 </div>
@@ -174,6 +201,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(elli
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
@@ -432,6 +460,9 @@ document.getElementById('btnScan').onclick=()=>{
     if(d.message)log(d.message);
   };
 };
+
+document.getElementById('emptyBootScan')?.addEventListener('click',()=>document.getElementById('btnScan')?.click());
+document.getElementById('emptyBootClone')?.addEventListener('click',()=>document.getElementById('btnClone')?.click());
 
 document.getElementById('btnRefresh').onclick=loadRepos;
 document.getElementById('btnClone').onclick=()=>openModal('modalClone');

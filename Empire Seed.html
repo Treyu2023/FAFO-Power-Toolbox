@@ -245,10 +245,13 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
 }
 </style>
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
 </head>
-<body>
+<body data-tb-esc="off" data-tb-chrome="off">
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+<div data-fafo-layout-root data-fafo-layout-app="empire-seed" data-fafo-layout-type="columns" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
 <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120"></div>
 <div id="esQoLBar" style="position:fixed;top:10px;right:12px;z-index:9999;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:min(520px,90vw);justify-content:flex-end">
   <a href="Typing Assistant Trainer.html" style="font:600 11px system-ui;color:#c4b5fd;text-decoration:none;padding:5px 9px;border-radius:8px;background:rgba(5,5,12,.92);border:1px solid rgba(167,139,250,.4)" title="Counterpart · Typing Trainer">⌨️ Typing</a>
   <a href="Bloodmoon Survivor.html" style="font:600 11px system-ui;color:#f87171;text-decoration:none;padding:5px 9px;border-radius:8px;background:rgba(5,5,12,.92);border:1px solid rgba(248,113,113,.4)" title="Break · Bloodmoon">🦇 Bloodmoon</a>
@@ -312,6 +315,7 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
     </div>
     <div class="btns">
       <button class="btn primary" id="btnStart" type="button">Found Your Empire</button>
+      <a class="btn" href="Toolbox Launcher.html" style="text-decoration:none;text-align:center">← Toolbox</a>
     </div>
   </div>
 </div>
@@ -320,7 +324,22 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
   <div class="modal">
     <h2 id="endTitle">Victory</h2>
     <p id="endBody"></p>
-    <div class="btns"><button class="btn primary" id="btnRestart" type="button">New Game</button></div>
+    <div class="btns">
+      <button class="btn primary" id="btnRestart" type="button">New Game</button>
+      <a class="btn" href="Toolbox Launcher.html" style="text-decoration:none;text-align:center">← Toolbox</a>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="menuOverlay">
+  <div class="modal">
+    <h2>Menu</h2>
+    <p>Esc resumes. Leave to menu ends the current empire (not saved).</p>
+    <div class="btns">
+      <button class="btn primary" id="btnMenuResume" type="button">Resume</button>
+      <button class="btn" id="btnMenuToStart" type="button">Quit to start</button>
+      <a class="btn" href="Toolbox Launcher.html" style="text-decoration:none;text-align:center">← Toolbox</a>
+    </div>
   </div>
 </div>
 
@@ -329,6 +348,7 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
     <h2>How to play</h2>
     <p><b style="color:var(--text)">3D camera:</b> right/middle-drag orbit · WASD pan · scroll zoom · Q/E yaw.</p>
     <p><b style="color:var(--text)">Gameplay:</b> explore · settle (F) · fight by moving onto enemies · queue production in cities · research Transcendence or dominate the map.</p>
+    <p><b style="color:var(--text)">Esc:</b> open pause menu (Toolbox exit is there).</p>
     <div class="btns"><button class="btn primary" id="btnHelpClose" type="button">Got it</button></div>
   </div>
 </div>
@@ -2135,15 +2155,46 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
     $('endOverlay').classList.add('hidden');
     $('startOverlay').classList.remove('hidden');
   });
-  $('btnMenu').addEventListener('click', () => {
+  function openGameMenu() {
+    if (!G || G.over) {
+      $('startOverlay').classList.remove('hidden');
+      return;
+    }
+    $('menuOverlay').classList.remove('hidden');
+  }
+  function closeGameMenu() {
+    $('menuOverlay').classList.add('hidden');
+  }
+  $('btnMenu').addEventListener('click', openGameMenu);
+  $('btnMenuResume')?.addEventListener('click', closeGameMenu);
+  $('btnMenuToStart')?.addEventListener('click', () => {
     if (confirm('Return to menu? Progress will be lost.')) {
       G = null;
       clearMap3D();
+      closeGameMenu();
       $('startOverlay').classList.remove('hidden');
     }
   });
   $('btnHelp').addEventListener('click', () => $('helpOverlay').classList.remove('hidden'));
   $('btnHelpClose').addEventListener('click', () => $('helpOverlay').classList.add('hidden'));
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('startOverlay').classList.contains('hidden')) return; // on start: keep page
+    if (!$('helpOverlay').classList.contains('hidden')) {
+      $('helpOverlay').classList.add('hidden');
+      e.preventDefault();
+      return;
+    }
+    if (!$('menuOverlay').classList.contains('hidden')) {
+      closeGameMenu();
+      e.preventDefault();
+      return;
+    }
+    if (G && !G.over) {
+      openGameMenu();
+      e.preventDefault();
+    }
+  });
   $('btnEndTurn').addEventListener('click', endTurn);
   $('btnWait').addEventListener('click', () => {
     if (selectedUnit && selectedUnit.owner === 0) {
@@ -2176,37 +2227,19 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
 </script>
 
 <script data-tool-polish="empire-seed">
-/* Tool polish: empire-seed — Esc → launcher, load toast, error surface */
+/* Tool polish: empire-seed — Esc opens pause menu (Toolbox there). No Esc→launcher hijack. */
 (function(){
   if (window.__tbToolPolish) return; window.__tbToolPolish = true;
   const TOOL_ID = "empire-seed";
   const TOOL_NAME = "Empire Seed 3D";
-  function launcherHref(){
-    try {
-      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
-      if (location.hostname === '127.0.0.87' || location.port === '18765')
-        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
-    } catch(_){}
-    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
-    if (a?.href) return a.href;
-    return '../Toolbox Launcher.html';
-  }
-  document.addEventListener('keydown', function(e){
-    if (e.key !== 'Escape') return;
-    const t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
-    location.href = launcherHref();
-  }, true);
-  // One soft status toast so launch failures are visible
+  try { document.body.dataset.tbEsc = 'off'; document.body.dataset.tbChrome = 'off'; } catch(_){}
   window.addEventListener('load', function(){
     try {
       if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
       sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
-      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' · Esc = menu · Toolbox on menus', 'ok');
     } catch(_){}
   });
-  // Surface failed module loads
   window.addEventListener('error', function(ev){
     if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
     try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
@@ -2218,7 +2251,7 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
   try {
     if (!sessionStorage.getItem('empire_tip') && window.AIToolboxUI?.toast) {
       sessionStorage.setItem('empire_tip','1');
-      AIToolboxUI.toast('Empire Seed 3D · Esc returns to launcher', 'ok');
+      AIToolboxUI.toast('Empire Seed 3D · Esc opens menu · Toolbox on menus', 'ok');
     }
   } catch(_){}
 
@@ -2275,6 +2308,10 @@ a.toolbox-back:hover { background: rgba(0,240,255,.15); box-shadow: var(--glow);
   } catch (_) {}
 })();
 </script>
-  <script src="shared/aitoolbox-pro.js"></script>
+  <script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
+</div>
 </body>
 </html>

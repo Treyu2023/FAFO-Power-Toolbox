@@ -6,6 +6,7 @@
   <title>Media Hub — Library · Duplicates · Organizer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>">
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
       --bg: #050508; --panel: #0c0c12; --accent: #00f3ff; --accent2: #7c5cff;
@@ -66,7 +67,17 @@
       background: radial-gradient(ellipse at 50% 30%, #141428, #050508 70%);
       transition: opacity 0.3s;
     }
-    .loading.hide { opacity: 0; }
+    .loading.hide { opacity: 0; pointer-events: none; }
+    .loading.fail { opacity: 1; pointer-events: auto; flex-direction: column; gap: 12px; text-align: center; padding: 24px; }
+    .loading.fail .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .loading.fail button, .loading.fail a {
+      font-size: 12px; font-weight: 700; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(0,243,255,.4); background: rgba(0,243,255,.12); color: var(--accent);
+      text-decoration: none;
+    }
+    .loading.fail button.ghost, .loading.fail a.ghost {
+      border-color: rgba(255,255,255,.2); background: transparent; color: var(--muted);
+    }
     .server-badge {
       font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
       padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,200,0,.4);
@@ -74,6 +85,9 @@
     }
     .server-badge.ok { color: var(--ok); border-color: rgba(0,255,136,.45); background: rgba(0,255,136,.1); }
     .server-badge.bad { color: #ff6b8a; border-color: rgba(255,68,102,.45); background: rgba(255,68,102,.1); cursor: pointer; }
+    .hub-actions #btnStartServer {
+      border-color: rgba(0,255,136,.4); color: var(--ok);
+    }
     .kbd-hint {
       font-size: 10px; color: var(--muted); padding: 4px 8px; border-radius: 6px;
       border: 1px solid rgba(255,255,255,.08); white-space: nowrap;
@@ -90,27 +104,41 @@
     <h1>🗂️ MEDIA HUB</h1>
     <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
     <div class="hub-tabs" id="hubTabs" role="tablist">
-      <button type="button" class="hub-tab active" data-tab="library" role="tab">Library</button>
-      <button type="button" class="hub-tab" data-tab="duplicates" role="tab">Duplicates</button>
-      <button type="button" class="hub-tab" data-tab="organizer" role="tab">Organizer</button>
+      <button type="button" class="hub-tab active" data-tab="library" role="tab"
+              data-tip-title="Library" data-tip="Browse, preview, tag, and search your media catalog.">Library</button>
+      <button type="button" class="hub-tab" data-tab="duplicates" role="tab"
+              data-tip-title="Duplicates" data-tip="Find and clean duplicate files (full Duplicate Manager).">Duplicates</button>
+      <button type="button" class="hub-tab" data-tab="organizer" role="tab"
+              data-tip-title="Organizer" data-tip="Batch tag, rank, and rename catalog items.">Organizer</button>
     </div>
     <div class="hub-meta" id="hubMeta">Browse &amp; tag here · pair with <strong>Guided Match</strong> in Compare Hub · dups &amp; rename in tabs.</div>
     <span class="kbd-hint" title="Keyboard"><kbd>1</kbd> Lib · <kbd>2</kbd> Dups · <kbd>3</kbd> Org · <kbd>R</kbd> report</span>
     <div class="hub-actions">
-      <a href="../Toolbox Launcher.html">← Launcher</a>
-      <a href="Compare Hub.html#match" title="Guided match + pair review + sliders">🎯 Guided Match</a>
-      <a href="Compare Hub.html" title="Pair review + video/image comparators">⇄ Compare Hub</a>
-      <a href="VSR Pipeline Manager.html">⚡ VSR</a>
-      <button type="button" id="btnCopyReport" title="Copy hub session summary to clipboard">📋 Report</button>
-      <button type="button" id="btnPopout" title="Open this tab full-window">↗ Pop out</button>
+      <span data-fafo-layout-toolbar></span>
+      <a href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Launcher</a>
+      <button type="button" id="btnStartServer" data-legacy-server-chrome
+              data-tip-title="Start Server" data-tip="Start the toolbox backend if offline (use top S1/S2 bar when shown).">▶ Start Server</button>
+      <a href="Compare Hub.html#match" data-tip-title="Guided Match" data-tip="Process-of-elimination pairing with big previews and learning.">🎯 Guided Match</a>
+      <a href="Compare Hub.html" data-tip-title="Compare Hub" data-tip="Pair review + video/image comparators in one place.">⇄ Compare Hub</a>
+      <a href="VSR Pipeline Manager.html" data-tip-title="VSR" data-tip="Match and rename upscale / interpolation stages.">⚡ VSR</a>
+      <button type="button" id="btnCopyReport" data-tip-title="Report" data-tip="Copy a short hub status summary to the clipboard.">📋 Report</button>
+      <button type="button" id="btnPopout" data-tip-title="Pop out" data-tip="Open this workspace in its own full window.">↗ Pop out</button>
     </div>
   </header>
-  <div class="frame-wrap">
+  <!-- Hub itself is a thin shell; Library / Duplicates / Organizer each save their own modular layouts -->
+  <div class="frame-wrap"
+       data-fafo-layout-root
+       data-fafo-layout-app="media-hub"
+       data-fafo-layout-type="rows">
+    <div data-fafo-panel="workspace" data-fafo-panel-title="Workspace" data-fafo-flex="1" style="display:flex;flex-direction:column;min-height:0;position:relative;flex:1">
     <div class="loading" id="loading">Loading workspace…</div>
-    <iframe id="hubFrame" title="Media workspace" allow="autoplay; fullscreen"></iframe>
+    <iframe id="hubFrame" title="Media workspace" allow="autoplay; fullscreen" style="flex:1;border:0;width:100%;min-height:0"></iframe>
+    </div>
   </div>
 
   <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     (function () {
@@ -137,20 +165,43 @@
       const meta = document.getElementById('hubMeta');
       const LS_TAB = 'fafo_media_hub_last_tab';
       let current = 'library';
+      let loadTimer = null;
+      let loadGen = 0;
 
-      function tabFromHash() {
-        const h = (location.hash || '').replace(/^#/, '').toLowerCase();
+      function normalizeTab(raw) {
+        let h = String(raw || '').replace(/^#/, '').toLowerCase();
+        h = h.split('?')[0].split('/')[0].trim();
         if (h === 'dupes' || h === 'duplicates' || h === 'duplicate') return 'duplicates';
         if (h === 'organizer' || h === 'org' || h === 'organize') return 'organizer';
         if (h === 'library' || h === 'lib') return 'library';
-        if (h === '' || h === 'media') {
+        if (TABS[h]) return h;
+        return '';
+      }
+
+      function tabFromHash() {
+        let h = (location.hash || '').replace(/^#/, '');
+        if (!h) {
+          try {
+            const m = /#([^#]*)$/.exec(location.href || '');
+            if (m) h = decodeURIComponent(m[1]);
+          } catch (_) {}
+        }
+        const tab = normalizeTab(h);
+        if (tab) return tab;
+        if (!h || h === 'media') {
           try {
             const last = localStorage.getItem(LS_TAB);
             if (last && TABS[last]) return last;
           } catch (_) {}
-          return 'library';
         }
-        return TABS[h] ? h : 'library';
+        return 'library';
+      }
+
+      function launcherHref() {
+        try {
+          if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+        } catch (_) {}
+        return '../Toolbox Launcher.html';
       }
 
       async function pingServer() {
@@ -158,12 +209,33 @@
         if (!badge) return;
         try {
           const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
-          badge.textContent = on ? '● Online' : '○ Offline';
+          badge.textContent = on ? '● Online' : '○ Offline — click ▶ Start';
           badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
-          badge.title = on ? 'Toolbox server online' : 'Server offline — click to open launcher / start server';
+          badge.title = on ? 'Toolbox server online' : 'Server offline — click to start from this page';
         } catch (_) {
           badge.textContent = '○ Offline';
           badge.className = 'server-badge bad';
+        }
+      }
+
+      async function startServerFromHub() {
+        const btn = document.getElementById('btnStartServer');
+        if (btn) btn.disabled = true;
+        try {
+          window.AIToolboxUI?.toast?.('Starting toolbox server…', 'ok');
+          if (window.AIToolboxAPI?.startServer) {
+            await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+          } else {
+            location.href = launcherHref();
+            return;
+          }
+          await pingServer();
+          window.AIToolboxUI?.toast?.('Server ready — reloading workspace', 'ok');
+          showTab(current, false);
+        } catch (e) {
+          window.AIToolboxUI?.toast?.(e.message || 'Start failed — open Launcher', 'warn');
+        } finally {
+          if (btn) btn.disabled = false;
         }
       }
 
@@ -186,6 +258,23 @@
         return src;
       }
 
+      function showLoadFail(title, src) {
+        loading.classList.remove('hide');
+        loading.classList.add('fail');
+        loading.innerHTML =
+          '<div><strong style="color:#fff">' + title + ' didn’t load</strong></div>' +
+          '<div style="max-width:420px;color:var(--muted);font-size:12px;line-height:1.45">' +
+          'The workspace tab timed out or failed. Retry, open it full-window, or return to the Launcher.</div>' +
+          '<div class="actions">' +
+          '<button type="button" id="hubRetry">↻ Retry</button>' +
+          '<a href="' + String(src).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">↗ Open full window</a>' +
+          '<a class="ghost" href="' + launcherHref() + '">← Launcher</a>' +
+          '<button type="button" class="ghost" id="hubStartFromFail">▶ Start Server</button>' +
+          '</div>';
+        document.getElementById('hubRetry')?.addEventListener('click', () => showTab(current, false));
+        document.getElementById('hubStartFromFail')?.addEventListener('click', startServerFromHub);
+      }
+
       async function showTab(id, pushHash) {
         if (!TABS[id]) id = 'library';
         current = id;
@@ -202,10 +291,43 @@
             history.replaceState(null, '', '#' + hash);
           }
         }
-        loading.classList.remove('hide');
+        const gen = ++loadGen;
+        if (loadTimer) clearTimeout(loadTimer);
+        loading.classList.remove('hide', 'fail');
         loading.textContent = 'Loading ' + t.title + '…';
-        frame.onload = () => loading.classList.add('hide');
-        frame.src = await resolveSrc(id);
+        const src = await resolveSrc(id);
+        frame.onload = () => {
+          if (gen !== loadGen) return;
+          if (loadTimer) clearTimeout(loadTimer);
+          loading.classList.add('hide');
+          loading.classList.remove('fail');
+        };
+        frame.onerror = () => {
+          if (gen !== loadGen) return;
+          if (loadTimer) clearTimeout(loadTimer);
+          showLoadFail(t.title, src);
+        };
+        // iframe onerror is unreliable cross-origin; use timeout as safety net
+        loadTimer = setTimeout(() => {
+          if (gen !== loadGen) return;
+          if (loading.classList.contains('hide')) return;
+          try {
+            const doc = frame.contentDocument;
+            if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+              loading.classList.add('hide');
+              return;
+            }
+          } catch (_) {
+            // Cross-origin: onload is the only honest signal. Do not lie "failed"
+            // just because we cannot read contentDocument.
+            if (frame.getAttribute('src')) {
+              loading.classList.add('hide');
+              return;
+            }
+          }
+          showLoadFail(t.title, src);
+        }, 25000);
+        frame.src = src;
       }
 
       async function copyHubReport() {
@@ -239,17 +361,21 @@
         window.open(await resolveSrc(current), '_blank');
       });
       document.getElementById('btnCopyReport').addEventListener('click', copyHubReport);
+      document.getElementById('btnStartServer')?.addEventListener('click', startServerFromHub);
       document.getElementById('serverBadge')?.addEventListener('click', () => {
         if (document.getElementById('serverBadge').classList.contains('bad')) {
-          location.href = '../Toolbox Launcher.html';
+          startServerFromHub();
         } else {
           pingServer();
         }
       });
 
       window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) showTab(tabFromHash(), false);
+      });
 
-      // Boot
+      // Boot — honor #duplicates / #library / #organizer from launcher tiles
       showTab(tabFromHash(), true);
       pingServer();
       setInterval(pingServer, 20000);
@@ -260,11 +386,32 @@
         if (map[e.key]) showTab(map[e.key], true);
         if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyHubReport(); }
       });
+      // Child tools (iframe) post fafo-escape when Esc has nothing left to close
+      window.addEventListener('message', function (ev) {
+        const data = ev?.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'fafo-hub-tab') {
+          const tab = normalizeTab(data.tab);
+          if (!tab) return;
+          if (data.search && String(data.search).startsWith('?')) {
+            try { history.replaceState(null, '', data.search + '#' + tab); } catch (_) {}
+          }
+          showTab(tab, true);
+          return;
+        }
+        if (data.type === 'fafo-escape') {
+          try {
+            location.href = (window.AIToolboxUI?.launcherHref?.() || data.href || '../Toolbox Launcher.html');
+          } catch (_) {
+            location.href = '../Toolbox Launcher.html';
+          }
+        }
+      });
     })();
   </script>
 
 <script data-tool-polish="media-hub">
-/* Tool polish: media-hub — Esc → launcher, load toast, error surface */
+/* Tool polish: media-hub — Esc → launcher (shared UI owns layered Esc), load toast */
 (function(){
   if (window.__tbToolPolish) return; window.__tbToolPolish = true;
   const TOOL_ID = "media-hub";
@@ -279,8 +426,10 @@
     if (a?.href) return a.href;
     return '../Toolbox Launcher.html';
   }
+  // Esc handled by AIToolboxUI.bindEscToLauncher (layered). Fallback if UI kit missing:
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
+    if (window.AIToolboxUI?.bindEscToLauncher) return; // shared handler already active
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;

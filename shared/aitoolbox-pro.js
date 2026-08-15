@@ -167,7 +167,7 @@
     'disk space analyzer': {
       id: 'disk-analyzer', title: 'Disk Space Analyzer', emoji: '💾',
       path: 'System Tools/Disk Space Analyzer.html',
-      counterparts: ['startup-manager', 'duplicate-finder', 'media-hub'],
+      counterparts: ['startup-manager', 'duplicate-finder', 'fafo-ops-stats', 'media-hub'],
     },
     'secrets presence': {
       id: 'secrets-presence', title: 'Secrets Presence', emoji: '🔐',
@@ -190,7 +190,7 @@
       counterparts: ['startup-manager', 'ghost-device'],
     },
     'clear-ghostdevices': {
-      id: 'ghost-device', title: 'Ghost Device Cleaner', emoji: '👻',
+      id: 'ghost-device', title: 'Ghost Buster', emoji: '👻',
       path: 'GhostDeviceCleaner/Clear-GhostDevices.html',
       counterparts: ['hardware-board', 'reg-qol', 'pc-diagnostics'],
     },
@@ -199,10 +199,20 @@
       path: 'Developer Tools/Git Repository Manager.html',
       counterparts: ['launcher'],
     },
+    'fafo ops stats': {
+      id: 'fafo-ops-stats', title: 'FAFO Ops Stats', emoji: '📊',
+      path: 'System Tools/FAFO Ops Stats.html',
+      counterparts: ['duplicate-finder', 'disk-analyzer', 'media-hub'],
+    },
+    'ops stats': {
+      id: 'fafo-ops-stats', title: 'FAFO Ops Stats', emoji: '📊',
+      path: 'System Tools/FAFO Ops Stats.html',
+      counterparts: ['duplicate-finder', 'disk-analyzer', 'media-hub'],
+    },
     'duplicate file manager': {
       id: 'duplicate-finder', title: 'Duplicate File Manager', emoji: '🗑️',
       path: 'File Tools/Duplicate File Manager.html',
-      counterparts: ['media-hub', 'disk-analyzer', 'file-organizer'],
+      counterparts: ['media-hub', 'disk-analyzer', 'fafo-ops-stats', 'file-organizer'],
     },
     'commander site console': {
       id: 'commander-console', title: 'Commander Site Console', emoji: '🛰️',
@@ -321,7 +331,14 @@
     if (location.protocol === 'http:' || location.protocol === 'https:') {
       try {
         const origin = global.AITOOLBOX_CONFIG?.ORIGIN || 'http://127.0.0.87:18765';
-        return origin.replace(/\/$/, '') + '/toolbox/' + toolMeta.path.split('/').map(encodeURIComponent).join('/');
+        const rawPath = String(toolMeta.path || '');
+        const hashAt = rawPath.indexOf('#');
+        const hash = hashAt >= 0 ? rawPath.slice(hashAt) : '';
+        const noHash = hashAt >= 0 ? rawPath.slice(0, hashAt) : rawPath;
+        const qAt = noHash.indexOf('?');
+        const query = qAt >= 0 ? noHash.slice(qAt) : '';
+        const filePath = qAt >= 0 ? noHash.slice(0, qAt) : noHash;
+        return origin.replace(/\/$/, '') + '/toolbox/' + filePath.split('/').filter(Boolean).map(encodeURIComponent).join('/') + query + hash;
       } catch { /* ignore */ }
     }
     const up = depth >= 2 ? '../' : (depth === 1 ? '' : '../');
@@ -632,6 +649,10 @@ body.atx-dense{--ui-ease:linear}
     bindKeys(tool);
     try {
       if (global.AIToolboxUI?.initTooltips) global.AIToolboxUI.initTooltips(document.getElementById('atx-pro-bar'));
+    } catch { /* ignore */ }
+    // Modular layout (resize / reorder / persist) — opt-in via data-fafo-layout-root
+    try {
+      if (global.AIToolboxLayout?.autoInit) global.AIToolboxLayout.autoInit();
     } catch { /* ignore */ }
   }
 

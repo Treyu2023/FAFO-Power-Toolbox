@@ -1,2 +1,31 @@
-/* Auto-generated — shared tool icons. Do not edit by hand. */
-window.AITOOLBOX_ICON_MANIFEST = {"version": 1, "updatedAt": "2026-08-04T06:29:42.401401+00:00", "note": "Shared tool icons for all users. Personal overrides live in browser IndexedDB.", "app": "app.ico", "icons": {"all": "all.ico", "image-compare": "image-compare.ico", "video-compare": "video-compare.ico", "universal-converter": "universal-converter.png", "image-cropper": "image-cropper.gif", "commander-status-hud": "commander-status-hud.gif", "commander-site-console": "commander-site-console.gif", "ip-profile-switcher": "ip-profile-switcher.jpg", "progress-map-mythos": "progress-map-mythos.png", "media-library": "media-library.ico", "file-organizer": "file-organizer.png", "pc-reports-log-viewer": "pc-reports-log-viewer.png", "log-viewer": "log-viewer.ico", "fafo-task-manager-pro": "fafo-task-manager-pro.ico", "duplicate-finder": "duplicate-finder.ico", "git-manager": "git-manager.ico", "health-dashboard": "health-dashboard.ico", "tech-quest": "tech-quest.ico", "pair-review-queue": "pair-review-queue.ico", "pc-diagnostics-hud": "pc-diagnostics-hud.ico", "reg-qol-tweaks": "reg-qol-tweaks.ico", "video-wall": "video-wall.ico"}};
+/* Auto-generated - shared tool icons. Do not edit by hand. */
+window.AITOOLBOX_ICON_MANIFEST = {
+    "version":  1,
+    "updatedAt":  "2026-08-14T11:03:07.7320792Z",
+    "note":  "Shared tool icons for all users. Personal overrides live in browser IndexedDB.",
+    "app":  "app.ico",
+    "icons":  {
+                  "all":  "all.ico",
+                  "commander-site-console":  "commander-site-console.gif",
+                  "commander-status-hud":  "commander-status-hud.gif",
+                  "duplicate-finder":  "duplicate-finder.ico",
+                  "fafo-task-manager-pro":  "fafo-task-manager-pro.ico",
+                  "file-organizer":  "file-organizer.png",
+                  "git-manager":  "git-manager.ico",
+                  "health-dashboard":  "health-dashboard.ico",
+                  "image-compare":  "image-compare.ico",
+                  "image-cropper":  "image-cropper.gif",
+                  "ip-profile-switcher":  "ip-profile-switcher.jpg",
+                  "log-viewer":  "log-viewer.ico",
+                  "media-library":  "media-library.ico",
+                  "pair-review-queue":  "pair-review-queue.ico",
+                  "pc-diagnostics-hud":  "pc-diagnostics-hud.ico",
+                  "pc-reports-log-viewer":  "pc-reports-log-viewer.png",
+                  "progress-map-mythos":  "progress-map-mythos.png",
+                  "reg-qol-tweaks":  "reg-qol-tweaks.ico",
+                  "tech-quest":  "tech-quest.ico",
+                  "universal-converter":  "universal-converter.png",
+                  "video-compare":  "video-compare.ico",
+                  "video-wall":  "video-wall.ico"
+              }
+};

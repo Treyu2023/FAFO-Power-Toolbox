@@ -6,7 +6,10 @@
   <title>FAFO Setup Configurator</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
   <script src="shared/aitoolbox-config.js"></script>
-  <script src="shared/aitoolbox-pro.js"></script>
+  <script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #070a10; --panel: #0e1520; --line: rgba(56,189,248,.22);
@@ -72,14 +75,16 @@
     .toast.show { opacity: 1; }
   </style>
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
 </head>
 <body>
-  <div class="wrap">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="setup-configurator" data-fafo-layout-type="rows">
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;position:sticky;top:0;z-index:20;background:rgba(7,10,16,.92);padding:8px 0;backdrop-filter:blur(8px)">
       <span style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:rgba(56,189,248,.12)">⚙ Setup packs</span>
       <a href="Startup Command Board.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);text-decoration:none" title="Counterpart · live server control">🖥 Startup board</a>
       <a href="Toolbox Launcher.html" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid rgba(56,189,248,.22);color:var(--muted);text-decoration:none">🧰 Launcher</a>
       <button type="button" id="btnCopySetupSummary" style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--accent);background:transparent;cursor:pointer">📋 Copy pack summary</button>
+      <span data-fafo-layout-toolbar></span>
     </div>
     <h1>⚙ FAFO Setup Configurator</h1>
     <p class="sub">
@@ -88,25 +93,25 @@
       After install, use the <strong>Startup board</strong> to monitor and block/force servers.
     </p>
 
-    <div class="card">
+    <div class="card" data-fafo-panel="status" data-fafo-panel-title="Status" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>Status</h2>
       <span class="pill" id="serverPill">Server…</span>
       <span class="pill" id="catalogPill">Catalog…</span>
       <p class="note">Catalog lives at <code>setup/install-catalog.json</code> · full list in <code>docs/Install-Catalog.md</code></p>
     </div>
 
-    <div class="card">
+    <div class="card" data-fafo-panel="1-quick-workflow" data-fafo-panel-title="1 · Quick workflow" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>1 · Quick workflow</h2>
       <div class="workflows" id="workflows"></div>
       <p class="note">Field techs: choose <strong>Field tech</strong> or <strong>Everything</strong>.</p>
     </div>
 
-    <div class="card">
+    <div class="card" data-fafo-panel="2-modules" data-fafo-panel-title="2 · Modules" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>2 · Modules</h2>
       <div id="modules"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-fafo-panel="3-pack-name-build" data-fafo-flex="1" data-fafo-panel-title="3 · Pack name & build" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>3 · Pack name &amp; build</h2>
       <label class="note" for="packName" style="display:block;margin-bottom:4px">Pack folder name</label>
       <input type="text" id="packName" value="Field-Tech" maxlength="64">
@@ -344,7 +349,26 @@
       } catch (e) {
         el('catalogPill').textContent = 'Catalog missing';
         el('catalogPill').className = 'pill bad';
-        el('modules').innerHTML = '<p class="note">' + (e.message || e) + '</p><p class="note"><a href="Startup Command Board.html">Open Startup board</a> while catalog is unavailable.</p>';
+        el('modules').innerHTML =
+          '<p class="note">' + (e.message || e) + '</p>' +
+          '<p class="note">Catalog needs the toolbox server or a local <code>setup/install-catalog.json</code>.</p>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:center">' +
+          '<button type="button" class="btn primary" id="btnEmptyStartSrv">▶ Start Server</button>' +
+          '<button type="button" class="btn" id="btnEmptyRetryCatalog">↻ Retry catalog</button>' +
+          '<a class="btn" href="Startup Command Board.html">🖥 Startup board</a>' +
+          '<a class="btn" href="Toolbox Launcher.html">🧰 Launcher</a>' +
+          '</div>';
+        document.getElementById('btnEmptyRetryCatalog')?.addEventListener('click', () => boot());
+        document.getElementById('btnEmptyStartSrv')?.addEventListener('click', async () => {
+          try {
+            if (window.AIToolboxAPI?.startServer) {
+              await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+              boot();
+            } else location.href = 'Toolbox Launcher.html';
+          } catch (err) {
+            window.AIToolboxUI?.toast?.(err.message || 'Start failed', 'warn');
+          }
+        });
       }
     }
     boot();

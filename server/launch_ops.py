@@ -757,11 +757,17 @@ def _popen_hidden(
         except OSError:
             stdout = subprocess.DEVNULL
             stderr = subprocess.DEVNULL
+    # Force UTF-8 stdio in children. Windows default (cp1252) + redirected log
+    # files made S1 crash on Unicode banner prints (UnicodeEncodeError).
+    child_env = os.environ.copy()
+    child_env.setdefault("PYTHONIOENCODING", "utf-8")
+    child_env.setdefault("PYTHONUTF8", "1")
     kwargs: dict[str, Any] = {
         "cwd": str(cwd),
         "stdin": subprocess.DEVNULL,
         "stdout": stdout,
         "stderr": stderr,
+        "env": child_env,
     }
     if IS_WINDOWS:
         # CREATE_NO_WINDOW alone is enough; DETACHED can drop child reliability on some builds

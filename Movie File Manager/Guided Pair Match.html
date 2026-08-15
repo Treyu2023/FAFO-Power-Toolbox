@@ -5,76 +5,314 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guided Pair Match — AI HTML Toolbox</title>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
       --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.2);
       --accent: #00f3ff; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24;
       --danger: #f87171; --text: #e2e8f0; --muted: #64748b;
+      --legend-h: 78px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: radial-gradient(ellipse at 40% -10%, #0f1a2e, var(--bg) 55%);
       color: var(--text); min-height: 100vh;
-      padding-bottom: 110px; /* room for sticky legend */
+      padding-bottom: var(--legend-h);
+      overflow-x: hidden;
     }
     .top {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-      padding: 10px 16px; border-bottom: 1px solid var(--border);
-      background: rgba(5,5,8,.95); position: sticky; top: 0; z-index: 30;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      padding: 8px 14px; border-bottom: 1px solid var(--border);
+      background: rgba(5,5,8,.96); position: sticky; top: 0; z-index: 30;
     }
-    .top h1 { font-size: 15px; color: var(--accent); letter-spacing: .04em; font-weight: 700; }
-    .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; }
+    .top h1 { font-size: 14px; color: var(--accent); letter-spacing: .04em; font-weight: 700; }
+    /* Full desktop width — not phone-width cards */
+    .wrap {
+      max-width: none; width: 100%; margin: 0;
+      padding: 10px 14px 16px;
+    }
     .controls {
       display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 12px 14px; margin-bottom: 14px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 12px; margin-bottom: 8px;
     }
+    body.is-matching .controls { padding: 6px 10px; margin-bottom: 4px; }
     .controls label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
     .controls input[type="number"], .controls select {
       background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
       padding: 6px 8px; border-radius: 6px; width: 70px;
     }
     .progress {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 12px 14px; margin-bottom: 14px; font-size: 12px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 12px; margin-bottom: 8px; font-size: 12px;
     }
-    .progress .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); }
+    .progress .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--muted); }
     .progress strong { color: var(--text); }
-    .bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; display: flex; }
+    .bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; display: flex; }
     .bar span { display: block; height: 100%; transition: width .2s; }
     .bar .done { background: var(--ok); }
     .bar .try { background: rgba(0,243,255,.35); }
-    .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-    @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+    .queue-strip {
+      display: flex; flex-wrap: wrap; gap: 4px; max-height: 40px; overflow: auto; margin-top: 6px;
+    }
+    .qdot {
+      width: 20px; height: 20px; border-radius: 5px; font-size: 9px;
+      border: 1px solid var(--border); color: var(--muted);
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.25);
+    }
+    .qdot.cur { border-color: var(--accent); color: var(--accent); }
+    .qdot.yes { background: rgba(74,222,128,.25); color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .qdot.no { background: rgba(248,113,113,.15); color: var(--danger); }
+    .qdot.skip { background: rgba(251,191,36,.12); color: var(--warn); }
+
+    /* ── Scalable app chrome ── */
+    .controls.compact-when-active { transition: max-height .2s ease; }
+    body.is-matching .controls .folder-row,
+    body.is-matching .controls .preset-row,
+    body.is-matching #learnPanel { display: none !important; }
+    body.is-matching .progress { display: none; }
+    body.is-matching .log { display: none; }
+    body.is-matching .wrap { padding-top: 6px; }
+    details.setup-fold {
+      width: 100%; margin-top: 4px; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px; padding: 4px 8px; background: rgba(0,0,0,.2);
+    }
+    details.setup-fold > summary {
+      cursor: pointer; font-size: 11px; color: var(--muted); font-weight: 700;
+      list-style: none; user-select: none;
+    }
+    details.setup-fold > summary::-webkit-details-marker { display: none; }
+    details.setup-fold[open] > summary { color: var(--accent); margin-bottom: 6px; }
+
+    /* ── View mode bar ── */
+    .view-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      margin-bottom: 6px; padding: 5px 10px;
+      background: rgba(0,0,0,.28); border: 1px solid var(--border); border-radius: 10px;
+      flex-shrink: 0;
+    }
+    .view-bar .vb-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
+    .view-tab {
+      font-size: 11px; font-weight: 700; padding: 5px 11px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,.12); background: transparent; color: var(--muted);
+    }
+    .view-tab:hover { color: var(--accent); border-color: rgba(0,243,255,.35); }
+    .view-tab.on { color: #041018; background: var(--accent); border-color: var(--accent); }
+    .view-hint { font-size: 11px; color: var(--muted); margin-left: auto; }
+    .view-hint kbd {
+      font: 700 10px Consolas, monospace; color: var(--accent);
+      border: 1px solid rgba(0,243,255,.3); padding: 1px 5px; border-radius: 3px;
+    }
+    #activeUI {
+      display: none; flex-direction: column;
+      min-height: 0;
+      /* Fill remaining viewport under chrome + legend */
+      height: calc(100vh - var(--legend-h) - 120px);
+      max-height: calc(100vh - var(--legend-h) - 80px);
+    }
+    body.is-matching #activeUI { height: calc(100vh - var(--legend-h) - 72px); }
+    #activeUI.show { display: flex; }
+
+    /* ── Compare main: flex-grow stage ── */
+    .compare-main {
+      flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; gap: 8px;
+    }
+
+    /* ── Desktop dual stage ── */
+    .stage {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
     .pane {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-      overflow: hidden; min-height: 280px; display: flex; flex-direction: column;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; display: flex; flex-direction: column; min-height: 0;
     }
     .pane-h {
-      padding: 10px 12px; border-bottom: 1px solid var(--border);
-      font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
-      display: flex; justify-content: space-between; gap: 8px;
+      padding: 6px 10px; border-bottom: 1px solid var(--border);
+      font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+      display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-shrink: 0;
     }
-    .pane-h .name { color: var(--text); text-transform: none; font-weight: 600; font-size: 12px;
-      max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pane-h .role-tag {
+      font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .pane-h .role-tag.before { color: var(--accent); border-color: rgba(0,243,255,.35); }
+    .pane-h .role-tag.after { color: var(--accent2); border-color: rgba(167,139,250,.4); }
+    .pane-h .name {
+      color: var(--text); text-transform: none; font-weight: 600; font-size: 12px;
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
+    }
+    .media-stage {
+      position: relative; flex: 1; min-height: 0; background: #000;
+      display: flex; flex-direction: column;
+    }
     .media-box {
-      flex: 1; background: #000; min-height: 220px; max-height: 42vh;
+      flex: 1; min-height: 0; height: 100%;
       display: flex; align-items: center; justify-content: center;
+      position: relative; cursor: crosshair; overflow: hidden;
+      user-select: none; touch-action: none;
     }
-    .media-box video, .media-box img { max-width: 100%; max-height: 42vh; object-fit: contain; width: 100%; height: 100%; }
-    .media-box .empty { color: var(--muted); font-size: 12px; padding: 20px; text-align: center; }
-    .info {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-      padding: 14px 16px; margin-bottom: 12px;
+    .media-box video, .media-box img {
+      max-width: 100%; max-height: 100%; width: auto; height: auto;
+      object-fit: contain; pointer-events: none;
+      background: #000;
     }
-    .info h2 { font-size: 15px; margin-bottom: 8px; }
-    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; font-size: 12px; }
-    .meta .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .media-box .empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
+    .media-box .focus-ring {
+      position: absolute; width: 40px; height: 40px; border: 2px solid var(--accent);
+      border-radius: 50%; pointer-events: none; transform: translate(-50%,-50%);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 12px rgba(0,243,255,.45);
+      opacity: 0; z-index: 4;
+    }
+    .media-box .focus-ring.on { opacity: .85; }
+    .res-badge {
+      position: absolute; left: 8px; top: 8px; z-index: 3;
+      font: 700 11px Consolas, monospace; padding: 3px 7px; border-radius: 6px;
+      background: rgba(0,0,0,.72); border: 1px solid rgba(0,243,255,.3); color: var(--accent);
+      pointer-events: none;
+    }
+
+    /* PiP loupes — compact canvas row */
+    .pip-row {
+      display: none; grid-template-columns: 1fr 1fr; gap: 10px; flex-shrink: 0;
+    }
+    .pip-row.on { display: grid; }
+    body.mode-overlay .pip-row { display: none !important; }
+    .pip-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .pip-card .pip-h {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    }
+    .pip-card .pip-h strong { color: var(--text); text-transform: none; font-size: 11px; }
+    .pip-canvas-wrap {
+      position: relative; width: 100%; height: 140px;
+      border-radius: 8px; border: 1px solid rgba(0,243,255,.25);
+      background: #000; overflow: hidden; cursor: grab; touch-action: none;
+    }
+    .pip-canvas-wrap:active { cursor: grabbing; }
+    .pip-canvas-wrap canvas {
+      display: block; width: 100%; height: 100%;
+    }
+    .pip-canvas-wrap .pip-cross {
+      position: absolute; inset: 0; pointer-events: none;
+      background:
+        linear-gradient(rgba(0,243,255,.4), rgba(0,243,255,.4)) center/100% 1px no-repeat,
+        linear-gradient(rgba(0,243,255,.4), rgba(0,243,255,.4)) center/1px 100% no-repeat;
+      opacity: .5;
+    }
+    .pip-zoom-lbl {
+      position: absolute; right: 6px; bottom: 6px; font: 700 10px Consolas, monospace;
+      color: var(--accent); background: rgba(0,0,0,.65); padding: 2px 6px; border-radius: 4px;
+      pointer-events: none;
+    }
+
+    /* ── Overlay sweeper — clip-path aligned stack ── */
+    .overlay-stage {
+      display: none; flex: 1 1 auto; min-height: 0;
+      background: #000; border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; position: relative;
+    }
+    body.mode-overlay .overlay-stage { display: block; }
+    body.mode-overlay .stage { display: none; }
+    body.mode-side .overlay-stage { display: none; }
+    .ov-stack {
+      position: absolute; inset: 0;
+    }
+    .ov-stack .ov-media {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: contain; pointer-events: none; background: #000;
+    }
+    .ov-stack .ov-top-media {
+      /* clip-path set by JS: inset(0 right% 0 0) */
+      z-index: 2;
+    }
+    .ov-handle {
+      position: absolute; top: 0; bottom: 0; width: 32px; margin-left: -16px;
+      cursor: ew-resize; z-index: 5; touch-action: none; left: 50%;
+    }
+    .ov-handle::before {
+      content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+      background: var(--accent); transform: translateX(-50%);
+      box-shadow: 0 0 12px rgba(0,243,255,.6);
+    }
+    .ov-handle::after {
+      content: '◀ ▶'; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+      font-size: 10px; font-weight: 800; color: #041018; background: var(--accent);
+      padding: 6px 8px; border-radius: 999px; letter-spacing: -1px;
+      box-shadow: 0 0 16px rgba(0,243,255,.5);
+      white-space: nowrap;
+    }
+    .ov-labels {
+      position: absolute; left: 12px; right: 12px; top: 10px; z-index: 4;
+      display: flex; justify-content: space-between; pointer-events: none;
+    }
+    .ov-labels span {
+      font: 700 11px system-ui; padding: 4px 10px; border-radius: 6px;
+      background: rgba(0,0,0,.7); border: 1px solid var(--border);
+    }
+    .ov-labels .L { color: var(--accent); }
+    .ov-labels .R { color: var(--accent2); }
+    .ov-tools {
+      position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+      z-index: 6; display: flex; gap: 8px; align-items: center;
+      background: rgba(5,8,14,.9); border: 1px solid var(--border); border-radius: 999px;
+      padding: 6px 12px; flex-wrap: wrap; justify-content: center;
+    }
+    .ov-tools label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .ov-tools input[type="range"] { width: 120px; accent-color: var(--accent); }
+    .meta-pair.collapsed { display: none; }
+    .pair-title-row { flex-shrink: 0; margin-bottom: 4px; }
+    .actions { flex-shrink: 0; margin-bottom: 4px; }
+
+    /* ── Uniform side-by-side meta table ── */
+    .meta-pair {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 0; margin-bottom: 10px; overflow: auto;
+    }
+    .meta-pair table {
+      width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed;
+    }
+    .meta-pair th, .meta-pair td {
+      padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.06);
+      vertical-align: top; word-break: break-word;
+    }
+    .meta-pair th {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+      color: var(--muted); font-weight: 700; background: rgba(0,0,0,.25);
+      position: sticky; top: 0;
+    }
+    .meta-pair th.col-a { color: var(--accent); width: 42%; }
+    .meta-pair th.col-b { color: var(--accent2); width: 42%; }
+    .meta-pair th.col-k { width: 16%; }
+    .meta-pair td.k {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); font-weight: 700; white-space: nowrap;
+    }
+    .meta-pair td.a, .meta-pair td.b {
+      font-family: Consolas, ui-monospace, monospace; font-size: 12px; color: var(--text);
+    }
+    .meta-pair tr.diff td.a, .meta-pair tr.diff td.b { background: rgba(251,191,36,.06); }
+    .meta-pair tr.match-row td.a, .meta-pair tr.match-row td.b { background: rgba(74,222,128,.05); }
+    .meta-pair .name-cell { font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 600; }
     .score { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; border: 1px solid var(--border); }
     .score.high { color: var(--ok); border-color: rgba(74,222,128,.4); }
     .score.mid { color: var(--warn); border-color: rgba(251,191,36,.4); }
     .score.low { color: var(--danger); border-color: rgba(248,113,113,.4); }
+
+    .pair-title-row {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      margin-bottom: 8px; padding: 0 2px;
+    }
+    .pair-title-row h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 200px; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
     .ui-btn.match { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.12); }
     .ui-btn.match:hover { background: var(--ok); color: #04120a; }
@@ -86,79 +324,64 @@
     }
     .ui-btn.undo-main:hover:not(:disabled) { background: var(--warn); color: #1a1200; }
     .ui-btn.undo-main:disabled { opacity: .4; cursor: not-allowed; }
-    .queue-strip {
-      display: flex; flex-wrap: wrap; gap: 4px; max-height: 56px; overflow: auto; margin-top: 8px;
-    }
-    .qdot {
-      width: 22px; height: 22px; border-radius: 6px; font-size: 9px;
-      border: 1px solid var(--border); color: var(--muted);
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.25);
-    }
-    .qdot.cur { border-color: var(--accent); color: var(--accent); }
-    .qdot.yes { background: rgba(74,222,128,.25); color: var(--ok); border-color: rgba(74,222,128,.4); }
-    .qdot.no { background: rgba(248,113,113,.15); color: var(--danger); }
-    .qdot.skip { background: rgba(251,191,36,.12); color: var(--warn); }
     .empty-state {
       text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
     }
     .log {
-      margin-top: 14px; font-size: 11px; color: var(--muted); font-family: Consolas, monospace;
-      max-height: 120px; overflow: auto; background: rgba(0,0,0,.25); border-radius: 8px; padding: 10px;
+      margin-top: 8px; font-size: 11px; color: var(--muted); font-family: Consolas, monospace;
+      max-height: 90px; overflow: auto; background: rgba(0,0,0,.25); border-radius: 8px; padding: 8px 10px;
     }
-    .undo-hint {
-      font-size: 11px; color: var(--muted); margin-left: 4px;
-    }
+    .undo-hint { font-size: 11px; color: var(--muted); margin-left: 4px; }
     .undo-hint.has { color: var(--warn); }
 
-    /* ── Sticky on-screen key legend ── */
+    /* ── Sticky key legend (compact for desktop) ── */
     .key-legend {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-      background: linear-gradient(180deg, rgba(8,10,18,.92), rgba(5,5,8,.98));
+      background: linear-gradient(180deg, rgba(8,10,18,.94), rgba(5,5,8,.98));
       border-top: 1px solid rgba(0,243,255,.28);
-      box-shadow: 0 -8px 32px rgba(0,0,0,.55);
-      padding: 10px 14px 12px;
+      box-shadow: 0 -6px 24px rgba(0,0,0,.5);
+      padding: 6px 12px 8px;
       backdrop-filter: blur(10px);
     }
     .key-legend-inner {
-      max-width: 1280px; margin: 0 auto;
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; justify-content: center;
+      max-width: none; margin: 0 auto;
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; justify-content: center;
     }
     .key-legend-title {
-      width: 100%; text-align: center; font-size: 10px; text-transform: uppercase;
-      letter-spacing: .12em; color: var(--muted); margin-bottom: 2px;
+      width: 100%; text-align: center; font-size: 9px; text-transform: uppercase;
+      letter-spacing: .12em; color: var(--muted); margin-bottom: 0;
     }
     .key-chip {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 4px; min-width: 72px; padding: 8px 10px 7px;
-      border-radius: 10px;
+      gap: 2px; min-width: 64px; padding: 5px 8px;
+      border-radius: 8px;
       border: 1px solid rgba(255,255,255,.12);
       background: rgba(0,0,0,.35);
-      transition: transform .08s ease, border-color .08s, box-shadow .08s, background .08s, color .08s;
+      transition: transform .08s ease, border-color .08s, box-shadow .08s, background .08s;
       cursor: default; user-select: none;
     }
     .key-chip .key-glyph {
       font-family: Consolas, 'Segoe UI', monospace;
-      font-size: 13px; font-weight: 800; letter-spacing: .04em;
+      font-size: 12px; font-weight: 800; letter-spacing: .04em;
       color: var(--accent);
-      min-height: 22px; display: flex; align-items: center; gap: 4px;
+      min-height: 18px; display: flex; align-items: center; gap: 3px;
     }
     .key-chip .key-glyph kbd {
-      display: inline-block; padding: 2px 7px; border-radius: 5px;
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
       border: 1px solid rgba(0,243,255,.35);
       background: rgba(0,243,255,.08);
-      font-size: 12px; font-weight: 800; color: var(--accent);
-      box-shadow: 0 2px 0 rgba(0,0,0,.4);
+      font-size: 11px; font-weight: 800; color: var(--accent);
+      box-shadow: 0 1px 0 rgba(0,0,0,.4);
     }
     .key-chip .key-label {
-      font-size: 10px; color: var(--muted); text-align: center; line-height: 1.25; max-width: 90px;
+      font-size: 9px; color: var(--muted); text-align: center; line-height: 1.2; max-width: 88px;
     }
     .key-chip.pressed,
     .key-chip.flash {
       transform: translateY(1px) scale(1.04);
       border-color: var(--accent);
       background: rgba(0,243,255,.18);
-      box-shadow: 0 0 18px rgba(0,243,255,.35), inset 0 0 12px rgba(0,243,255,.12);
+      box-shadow: 0 0 14px rgba(0,243,255,.3);
     }
     .key-chip.pressed .key-glyph kbd,
     .key-chip.flash .key-glyph kbd {
@@ -170,7 +393,7 @@
     .key-chip[data-action="match"].pressed,
     .key-chip[data-action="match"].flash {
       border-color: var(--ok); background: rgba(74,222,128,.2);
-      box-shadow: 0 0 18px rgba(74,222,128,.35);
+      box-shadow: 0 0 14px rgba(74,222,128,.3);
     }
     .key-chip[data-action="match"].pressed .key-glyph kbd,
     .key-chip[data-action="match"].flash .key-glyph kbd {
@@ -179,7 +402,7 @@
     .key-chip[data-action="reject"].pressed,
     .key-chip[data-action="reject"].flash {
       border-color: var(--danger); background: rgba(248,113,113,.18);
-      box-shadow: 0 0 18px rgba(248,113,113,.3);
+      box-shadow: 0 0 14px rgba(248,113,113,.28);
     }
     .key-chip[data-action="reject"].pressed .key-glyph kbd,
     .key-chip[data-action="reject"].flash .key-glyph kbd {
@@ -188,7 +411,7 @@
     .key-chip[data-action="undo"].pressed,
     .key-chip[data-action="undo"].flash {
       border-color: var(--warn); background: rgba(251,191,36,.18);
-      box-shadow: 0 0 18px rgba(251,191,36,.3);
+      box-shadow: 0 0 14px rgba(251,191,36,.28);
     }
     .key-chip[data-action="undo"].pressed .key-glyph kbd,
     .key-chip[data-action="undo"].flash .key-glyph kbd {
@@ -196,39 +419,66 @@
     }
     .key-chip.clickable { cursor: pointer; }
     .key-chip.clickable:hover { border-color: rgba(0,243,255,.4); }
-    @media (max-width: 700px) {
-      .key-chip { min-width: 58px; padding: 6px 6px; }
-      .key-chip .key-label { font-size: 9px; }
-      body { padding-bottom: 140px; }
-    }
-    .preset-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
     .preset-chip {
-      font-size: 10px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+      font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 999px; cursor: pointer;
       border: 1px solid rgba(0,243,255,.28); background: transparent; color: var(--muted);
     }
     .preset-chip:hover, .preset-chip.active {
       color: var(--accent); border-color: var(--accent); background: rgba(0,243,255,.1);
     }
     .empty-cta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+
+    @media (max-width: 1100px) {
+      .pip-canvas-wrap { height: 110px; }
+      #activeUI { height: calc(100vh - var(--legend-h) - 100px); }
+    }
+    @media (max-width: 820px) {
+      .stage { grid-template-columns: 1fr; }
+      .pip-row.on { grid-template-columns: 1fr; }
+      .view-hint { display: none; }
+      #activeUI { height: auto; max-height: none; }
+      .media-box { min-height: 220px; }
+    }
   </style>
 </head>
 <body>
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
   <div class="top">
     <h1>🎯 Guided Pair Match</h1>
-    <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
-    <button class="ui-btn primary" type="button" id="btnStartServer">▶ Start Server</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#match'">Compare Hub</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">Media Hub</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'" title="Review accepted pairs">🔎 Pair Review</button>
-    <button class="ui-btn ghost" type="button" id="btnExportSession" title="Copy session report to clipboard">📋 Export</button>
+    <span id="serverPill" class="status-pill warn" data-legacy-server-chrome style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
+    <button class="ui-btn primary" type="button" id="btnStartServer" data-legacy-server-chrome
+            data-tip-title="Start Server" data-tip-basic="Turn on the toolbox backend so matching can run."
+            data-tip-pro="Start S1 (and companions). Prefer the shared S1/S2 bar at the top when present.">▶ Start Server</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'"
+            data-tip-title="Launcher" data-tip="Back to the main Toolbox menu.">← Launcher</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'"
+            data-tip-title="Media Hub" data-tip="Open the media tools hub (library, pairs, VSR).">Media Hub</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#match'"
+            data-tip-title="Compare Hub" data-tip="Jump to compare tools (slider, pairs, review).">Compare Hub</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'"
+            data-tip-title="Library" data-tip="Browse and tag your scanned media catalog.">Library</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'"
+            data-tip-title="VSR Pipeline" data-tip-basic="Rename / match upscale pipeline stages."
+            data-tip-pro="Stage I/II rename + teach matcher. Pair stage 1↔3; stage 2 is usually intermediate junk.">⚡ VSR</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'"
+            data-tip-title="Pair Review" data-tip="Keyboard accept/reject queue for proposed pairs before rename.">🔎 Pair Review</button>
+    <button class="ui-btn ghost" type="button" id="btnExportSession"
+            data-tip-title="Export session" data-tip="Copy a text report of this match session to the clipboard.">📋 Export</button>
   </div>
 
-  <div class="wrap">
-    <div class="controls">
-      <button class="ui-btn primary" type="button" id="btnStart">▶ Start / Resume queue</button>
-      <button class="ui-btn ghost" type="button" id="btnReset" title="Clear session rejections & stats">Reset session</button>
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-guided-pair-match" data-fafo-layout-type="columns">
+    <div class="controls" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+      <button class="ui-btn primary" type="button" id="btnStart"
+              data-tip-title="Start / Resume"
+              data-tip-basic="Load unpaired files and show match candidates one by one."
+              data-tip-mid="Build the anchor queue (Before folder if set) and rank After candidates."
+              data-tip-pro="pairAnchors → candidates_for_media with folder scope, size rules, and learned naming."
+              data-tip-efficient="Use Before/After folders so the scan stays small."
+              data-tip-perf="With a strong PC you can raise Max tries and lower Min score % for wider search.">▶ Start / Resume queue</button>
+      <button class="ui-btn ghost" type="button" id="btnReset"
+              data-tip-title="Reset session"
+              data-tip="Clear rejections, counters, and history for this browser session (does not delete pairs on disk).">Reset session</button>
       <label>Max tries per file
         <input type="number" id="maxTries" min="3" max="30" value="10">
       </label>
@@ -245,7 +495,49 @@
       <label title="Prefer non-upscale names as anchors (originals first)">
         <input type="checkbox" id="preferSources" checked> Sources first
       </label>
+      <label title="After must be larger than before — same size is treated as a duplicate, not a pair" style="margin-left:4px">
+        <input type="checkbox" id="requireLarger" checked> After larger only
+      </label>
       <span id="statusLine" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      <div class="folder-row" style="width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <div class="folder-pick" style="background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);font-weight:700;margin-bottom:6px">Before · source folder</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <select id="beforeDir" style="flex:1;min-width:140px;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px">
+              <option value="">Any catalog folder</option>
+            </select>
+            <button type="button" class="ui-btn ghost" id="btnPickBefore" title="Pick a folder and scan it into the library" style="padding:6px 10px;font-size:11px">📂 Pick</button>
+          </div>
+          <div id="beforeDirPath" style="font-size:10px;color:var(--muted);margin-top:4px;word-break:break-all">Anchors come from here when set</div>
+        </div>
+        <div class="folder-pick" style="background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent2);font-weight:700;margin-bottom:6px">After · output / upscale folder</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <select id="afterDir" style="flex:1;min-width:140px;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px">
+              <option value="">Any catalog folder</option>
+            </select>
+            <button type="button" class="ui-btn ghost" id="btnPickAfter" title="Pick a folder and scan it into the library" style="padding:6px 10px;font-size:11px">📂 Pick</button>
+          </div>
+          <div id="afterDirPath" style="font-size:10px;color:var(--muted);margin-top:4px;word-break:break-all">Candidates looked up here when set</div>
+        </div>
+      </div>
+      <div style="width:100%;font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">
+        Tip: set both folders for VSR-style pairing. Matching only looks in After for each Before file.
+        <strong style="color:var(--warn)">Same size = duplicate, not a pair</strong> — after must be larger.
+        Stage-2 intermediates (huge leftovers) are skipped; matching learns from locked pairs.
+      </div>
+      <div id="learnPanel" style="width:100%;margin-top:8px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-radius:10px;padding:8px 12px;font-size:11px;line-height:1.45">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:4px">
+          <strong style="color:var(--accent2)">🧠 Pair memory</strong>
+          <span id="learnStats" style="color:var(--muted)">Learning from locked pairs…</span>
+          <button type="button" class="ui-btn ghost" id="btnRefreshLearn" style="padding:3px 8px;font-size:10px;margin-left:auto">↻ Refresh</button>
+          <button type="button" class="ui-btn ghost" id="btnResetLearn" style="padding:3px 8px;font-size:10px" title="Clear learned patterns">Clear memory</button>
+        </div>
+        <div id="learnDetail" style="color:var(--muted)">
+          After a few matches it learns tokens like <code>upscaled</code> / <code>60fps</code> on finals,
+          skips stage-2 junk, and prefers source ↔ final (1 ↔ 3).
+        </div>
+      </div>
       <div class="preset-row" style="width:100%">
         <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Quick presets</span>
         <button type="button" class="preset-chip" data-preset="strict" title="Fewer tries, higher score">Strict 5 / 60%</button>
@@ -278,40 +570,154 @@
       Needs the toolbox server and a scanned library.
       <div class="empty-cta">
         <button class="ui-btn primary" type="button" id="btnEmptyStart">▶ Start matching</button>
-        <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Open Library</button>
+        <button class="ui-btn ghost" type="button" id="btnEmptyStartServer">▶ Start Server</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">📚 Open Library</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">⚡ VSR</button>
         <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">Go to Pair Review →</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
       </div>
     </div>
 
-    <div id="activeUI" style="display:none">
-      <div class="stage">
-        <div class="pane">
-          <div class="pane-h"><span>Anchor (locked)</span><span class="name" id="anchorName">—</span></div>
-          <div class="media-box" id="anchorMedia"><div class="empty">—</div></div>
+    <div id="activeUI">
+      <div class="view-bar">
+        <span class="vb-label">View</span>
+        <button type="button" class="view-tab on" data-view="side" id="tabSide">⧉ Side by side</button>
+        <button type="button" class="view-tab" data-view="overlay" id="tabOverlay">⧉ Overlay sweep</button>
+        <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:8px" title="Synced canvas loupe under both tiles">
+          <input type="checkbox" id="optPip" checked> PiP zoom
+        </label>
+        <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px" title="Show/hide metadata table">
+          <input type="checkbox" id="optMeta" checked> Meta
+        </label>
+        <span class="view-hint">
+          Click = focus · drag = pan · wheel = zoom ·
+          <kbd>O</kbd> overlay · <kbd>[</kbd><kbd>]</kbd> zoom
+        </span>
+      </div>
+
+      <div class="compare-main">
+        <!-- Dual tiles -->
+        <div class="stage" id="stageSide">
+          <div class="pane">
+            <div class="pane-h">
+              <span class="role-tag before" id="anchorRoleTag">Anchor</span>
+              <span class="name" id="anchorName">—</span>
+            </div>
+            <div class="media-stage">
+              <div class="media-box" id="anchorMedia" data-side="anchor" title="Click to set PiP focus · wheel to zoom">
+                <div class="empty">—</div>
+              </div>
+            </div>
+          </div>
+          <div class="pane">
+            <div class="pane-h">
+              <span class="role-tag after" id="candRoleTag">Candidate</span>
+              <span class="name" id="candName">—</span>
+            </div>
+            <div class="media-stage">
+              <div class="media-box" id="candMedia" data-side="cand" title="Click to set PiP focus · wheel to zoom">
+                <div class="empty">—</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="pane">
-          <div class="pane-h"><span>Candidate</span><span class="name" id="candName">—</span></div>
-          <div class="media-box" id="candMedia"><div class="empty">—</div></div>
+
+        <!-- Canvas PiP (drawn from loaded media — works with local API files) -->
+        <div class="pip-row on" id="pipRow">
+          <div class="pip-card">
+            <div class="pip-h"><span>PiP · Anchor</span><strong id="pipZoomLblA">×2.5</strong></div>
+            <div class="pip-canvas-wrap" id="pipAnchor" title="Drag to pan · wheel to zoom">
+              <canvas id="pipCanvasA" width="480" height="270"></canvas>
+              <div class="pip-cross"></div>
+              <span class="pip-zoom-lbl" id="pipZoomA">×2.5</span>
+            </div>
+          </div>
+          <div class="pip-card">
+            <div class="pip-h"><span>PiP · Candidate</span><strong id="pipZoomLblB">same crop</strong></div>
+            <div class="pip-canvas-wrap" id="pipCand" title="Drag to pan · wheel to zoom">
+              <canvas id="pipCanvasB" width="480" height="270"></canvas>
+              <div class="pip-cross"></div>
+              <span class="pip-zoom-lbl" id="pipZoomB">×2.5</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overlay: stacked media + clip-path (aligned) -->
+        <div class="overlay-stage" id="stageOverlay">
+          <div class="ov-labels">
+            <span class="L" id="ovLabelL">Before (clip)</span>
+            <span class="R" id="ovLabelR">After (base)</span>
+          </div>
+          <div class="ov-stack" id="ovStack">
+            <!-- filled by JS: base after, top before with clip-path -->
+          </div>
+          <div class="ov-handle" id="ovHandle" title="Drag sweeper"></div>
+          <div class="ov-tools">
+            <label><input type="checkbox" id="optAutoSweep" checked> Auto-sweep</label>
+            <label>Speed <input type="range" id="sweepSpeed" min="1" max="10" value="4"></label>
+            <button type="button" class="ui-btn ghost" id="btnSweepCenter" style="padding:4px 10px;font-size:11px">Center</button>
+          </div>
         </div>
       </div>
 
-      <div class="info">
+      <div class="pair-title-row">
         <h2 id="pairTitle">—</h2>
-        <div class="meta">
-          <div><div class="lbl">Confidence</div><div><span class="score" id="scorePill">—</span></div></div>
-          <div><div class="lbl">Reason</div><div id="reasonVal">—</div></div>
-          <div><div class="lbl">Proposed roles</div><div id="rolesVal">—</div></div>
-          <div><div class="lbl">Type</div><div id="typeVal">—</div></div>
-        </div>
+        <span class="score" id="scorePill">—</span>
+        <span style="font-size:12px;color:var(--muted)" id="reasonVal">—</span>
       </div>
+
+      <!-- Uniform L/R meta for structure + length glance -->
+      <div class="meta-pair">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-k">Field</th>
+              <th class="col-a" id="metaHeadA">Anchor</th>
+              <th class="col-b" id="metaHeadB">Candidate</th>
+            </tr>
+          </thead>
+          <tbody id="metaBody">
+            <tr data-key="name"><td class="k">Name</td><td class="a name-cell" id="mA_name">—</td><td class="b name-cell" id="mC_name">—</td></tr>
+            <tr data-key="path"><td class="k">Location</td><td class="a" id="mA_path" style="font-size:11px;word-break:break-all">—</td><td class="b" id="mC_path" style="font-size:11px;word-break:break-all">—</td></tr>
+            <tr data-key="res"><td class="k">Resolution</td><td class="a" id="mA_res">—</td><td class="b" id="mC_res">—</td></tr>
+            <tr data-key="aspect"><td class="k">Aspect</td><td class="a" id="mA_aspect">—</td><td class="b" id="mC_aspect">—</td></tr>
+            <tr data-key="size"><td class="k">File size</td><td class="a" id="mA_size">—</td><td class="b" id="mC_size">—</td></tr>
+            <tr data-key="duration"><td class="k">Duration / length</td><td class="a" id="mA_dur">—</td><td class="b" id="mC_dur">—</td></tr>
+            <tr data-key="type"><td class="k">Type</td><td class="a" id="mA_type">—</td><td class="b" id="mC_type">—</td></tr>
+            <tr data-key="role"><td class="k">Proposed role</td><td class="a" id="mA_role">—</td><td class="b" id="mC_role">—</td></tr>
+            <tr data-key="stem"><td class="k">Name structure</td><td class="a" id="mA_stem">—</td><td class="b" id="mC_stem">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- legacy hidden hooks for any residual code -->
+      <span id="rolesVal" style="display:none"></span>
+      <span id="typeVal" style="display:none"></span>
 
       <div class="actions">
-        <button class="ui-btn match" type="button" id="btnYes">✓ Match (Y)</button>
-        <button class="ui-btn nomatch" type="button" id="btnNo">✗ Not this (N)</button>
-        <button class="ui-btn ghost" type="button" id="btnSkip">Skip anchor (S)</button>
-        <button class="ui-btn ghost" type="button" id="btnPlay">⏯ Play both</button>
-        <button class="ui-btn undo-main" type="button" id="btnUndo" disabled title="Back 1 · double-tap jumps 5 (history up to 50)">↩ Back (Z)</button>
-        <button class="ui-btn ghost" type="button" id="btnRedo" disabled title="Forward 1 step">↪ Forward (F)</button>
+        <button class="ui-btn match" type="button" id="btnYes"
+                data-tip-title="Match (Y)"
+                data-tip-basic="Yes — these are the same shot (source + upscale). Saves the pair."
+                data-tip-pro="savePair + learn naming tokens. After must be larger than before.">✓ Match (Y)</button>
+        <button class="ui-btn nomatch" type="button" id="btnNo"
+                data-tip-title="Not this (N)"
+                data-tip="No match — try the next candidate for this file.">✗ Not this (N)</button>
+        <button class="ui-btn ghost" type="button" id="btnSkip"
+                data-tip-title="Skip file (S)"
+                data-tip="Skip this whole source file and move to the next unpaired item.">Skip anchor (S)</button>
+        <button class="ui-btn ghost" type="button" id="btnPlay"
+                data-tip-title="Play both"
+                data-tip="Play or pause both previews together (Space).">⏯ Play both</button>
+        <button class="ui-btn ghost" type="button" id="btnViewOverlay"
+                data-tip-title="Overlay sweep (O)"
+                data-tip-basic="Stack both images and wipe a line left/right to compare detail."
+                data-tip-pro="Clip-path sweeper limited to image content width (9:16 letterbox-aware).">⧉ Overlay (O)</button>
+        <button class="ui-btn undo-main" type="button" id="btnUndo" disabled
+                data-tip-title="Back (Z)"
+                data-tip="Undo last decision. Double-tap Z within 0.4s jumps back 5 steps.">↩ Back (Z)</button>
+        <button class="ui-btn ghost" type="button" id="btnRedo" disabled
+                data-tip-title="Forward (F)"
+                data-tip="Redo one step you undid.">↪ Forward (F)</button>
         <span class="undo-hint" id="undoHint">History empty</span>
       </div>
     </div>
@@ -343,6 +749,10 @@
         <div class="key-glyph"><kbd>C</kbd></div>
         <div class="key-label">Compare next</div>
       </div>
+      <div class="key-chip clickable" data-action="overlay" data-keys="o" title="Toggle overlay sweep view">
+        <div class="key-glyph"><kbd>O</kbd></div>
+        <div class="key-label">Overlay sweep</div>
+      </div>
       <div class="key-chip clickable" data-action="undo" data-keys="z,backspace" title="Back 1 · double-tap within 0.4s = back 5 (max 50 history)">
         <div class="key-glyph"><kbd>Z</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>⌫</kbd></div>
         <div class="key-label">Back · 2× = −5</div>
@@ -358,6 +768,8 @@
   <script src="../shared/aitoolbox-version.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/fafo-ops-stats.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     const API = () => window.AIToolboxAPI;
@@ -471,14 +883,30 @@
       hint.classList.add('has');
     }
 
+    function folderOpts() {
+      return {
+        beforeDirId: document.getElementById('beforeDir')?.value || null,
+        afterDirId: document.getElementById('afterDir')?.value || null,
+        requireLarger: document.getElementById('requireLarger')?.checked !== false,
+      };
+    }
+
     function saveSession() {
       try {
+        const fo = folderOpts();
         localStorage.setItem(STORAGE, JSON.stringify({
           rejected: state.rejected,
           matched: state.matched,
           skipped: state.skipped,
           exhausted: state.exhausted,
           anchorIndex: state.anchorIndex,
+          beforeDirId: fo.beforeDirId || '',
+          afterDirId: fo.afterDirId || '',
+          requireLarger: fo.requireLarger,
+          maxTries: document.getElementById('maxTries')?.value,
+          minPct: document.getElementById('minPct')?.value,
+          kindFilter: document.getElementById('kindFilter')?.value,
+          preferSources: document.getElementById('preferSources')?.checked,
         }));
       } catch { /* ignore */ }
     }
@@ -490,7 +918,92 @@
         if (raw.matched) state.matched = raw.matched || 0;
         if (raw.skipped) state.skipped = raw.skipped || 0;
         if (raw.exhausted) state.exhausted = raw.exhausted || 0;
+        state._savedBeforeDir = raw.beforeDirId || '';
+        state._savedAfterDir = raw.afterDirId || '';
+        if (typeof raw.requireLarger === 'boolean' && document.getElementById('requireLarger')) {
+          document.getElementById('requireLarger').checked = raw.requireLarger;
+        }
+        if (raw.maxTries) document.getElementById('maxTries').value = raw.maxTries;
+        if (raw.minPct) document.getElementById('minPct').value = raw.minPct;
+        if (raw.kindFilter != null) document.getElementById('kindFilter').value = raw.kindFilter;
+        if (typeof raw.preferSources === 'boolean') document.getElementById('preferSources').checked = raw.preferSources;
       } catch { /* ignore */ }
+    }
+
+    async function refreshDirSelects() {
+      const beforeSel = document.getElementById('beforeDir');
+      const afterSel = document.getElementById('afterDir');
+      if (!beforeSel || !afterSel) return;
+      const prevB = beforeSel.value || state._savedBeforeDir || '';
+      const prevA = afterSel.value || state._savedAfterDir || '';
+      let dirs = [];
+      try {
+        dirs = await API().listDirectories();
+        if (!Array.isArray(dirs)) dirs = dirs?.directories || dirs?.items || [];
+      } catch (e) {
+        logLine('Dirs: ' + (e.message || e));
+      }
+      const opts = ['<option value="">Any catalog folder</option>'].concat(
+        (dirs || []).map((d) => {
+          const id = d.id || d.dir_id || '';
+          const label = (d.name || d.path || id) + (d.path && d.name ? ' — ' + d.path : '');
+          return `<option value="${esc(id)}" data-path="${esc(d.path || '')}">${esc(label)}</option>`;
+        })
+      );
+      beforeSel.innerHTML = opts.join('');
+      afterSel.innerHTML = opts.join('');
+      if (prevB && [...beforeSel.options].some((o) => o.value === prevB)) beforeSel.value = prevB;
+      if (prevA && [...afterSel.options].some((o) => o.value === prevA)) afterSel.value = prevA;
+      updateFolderPathLabels();
+    }
+
+    function updateFolderPathLabels() {
+      const b = document.getElementById('beforeDir');
+      const a = document.getElementById('afterDir');
+      const bp = document.getElementById('beforeDirPath');
+      const ap = document.getElementById('afterDirPath');
+      if (bp) {
+        const opt = b?.selectedOptions?.[0];
+        bp.textContent = opt?.dataset?.path || (b?.value ? 'Selected catalog folder' : 'Anchors from whole library when unset');
+      }
+      if (ap) {
+        const opt = a?.selectedOptions?.[0];
+        ap.textContent = opt?.dataset?.path || (a?.value ? 'Selected catalog folder' : 'Candidates from whole library when unset');
+      }
+    }
+
+    async function pickAndRegisterFolder(which) {
+      try {
+        let path = '';
+        try {
+          const r = await API().pickFolderOnly();
+          path = r.path || r.folder || '';
+        } catch (_) {
+          const r2 = await API().pickDirectoryNative();
+          path = r2.path || r2.folder || '';
+        }
+        if (!path) {
+          toast('No folder selected', 'warn');
+          return;
+        }
+        toast('Registering & scanning ' + path, 'ok');
+        const added = await API().addDirectory(path);
+        const dirId = added.id || added.dir_id || added.directory?.id;
+        if (dirId && API().scanDirectory) {
+          await API().scanDirectory(dirId);
+        }
+        await refreshDirSelects();
+        if (dirId) {
+          if (which === 'before') document.getElementById('beforeDir').value = dirId;
+          else document.getElementById('afterDir').value = dirId;
+          updateFolderPathLabels();
+          saveSession();
+        }
+        toast('Folder ready — Start queue to match', 'ok');
+        logLine(`Registered ${which} folder: ${path}`);
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      }
     }
 
     function logLine(msg) {
@@ -533,18 +1046,729 @@
       return state.rejected[anchorId];
     }
 
-    function setMedia(el, mediaId, kind, name) {
+    // ── Desktop compare: canvas PiP + clip-path overlay ──
+    const viewState = {
+      mode: 'side', // side | overlay
+      focusX: 0.5,
+      focusY: 0.5,
+      zoom: 2.5,
+      pipOn: true,
+      metaOn: true,
+      autoSweep: true,
+      sweepPos: 0.5,
+      sweepDir: 1,
+      sweepSpeed: 4,
+      dragging: null, // 'focus' | 'pip' | 'sweep'
+      lastSrcA: '',
+      lastSrcB: '',
+      dimA: null,
+      dimB: null,
+      mediaA: null, // live <img|video> elements
+      mediaB: null,
+      sweepRaf: 0,
+      pipRaf: 0,
+      bound: false,
+    };
+
+    function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+    function getSideMedia(side) {
+      const box = document.getElementById(side === 'anchor' ? 'anchorMedia' : 'candMedia');
+      return box?.querySelector('img,video') || null;
+    }
+
+    function fmtBytes(n) {
+      n = Number(n) || 0;
+      if (n < 1024) return n + ' B';
+      const u = ['KB', 'MB', 'GB', 'TB'];
+      let i = -1; let v = n;
+      do { v /= 1024; i++; } while (v >= 1024 && i < u.length - 1);
+      return (v >= 10 || i === 0 ? v.toFixed(1) : v.toFixed(2)) + ' ' + u[i];
+    }
+
+    function fmtDur(sec) {
+      if (sec == null || !Number.isFinite(sec) || sec < 0) return '—';
+      const s = Math.round(sec);
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      if (m >= 60) {
+        const h = Math.floor(m / 60);
+        return h + ':' + String(m % 60).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+      }
+      return m + ':' + String(r).padStart(2, '0');
+    }
+
+    function aspectOf(w, h) {
+      if (!w || !h) return '—';
+      const g = (a, b) => (b ? g(b, a % b) : a);
+      const d = g(w, h) || 1;
+      const rw = Math.round(w / d); const rh = Math.round(h / d);
+      // simplify huge ratios
+      if (rw > 50 || rh > 50) return (w / h).toFixed(3) + ' · ' + w + '×' + h;
+      return rw + ':' + rh + ' · ' + (w / h).toFixed(3);
+    }
+
+    function nameStructure(name) {
+      const n = String(name || '');
+      const stem = n.replace(/\.[^.]+$/, '');
+      const ext = (n.match(/\.([^.]+)$/) || [])[1] || '';
+      const digits = (stem.match(/\d+/g) || []).join(' · ') || '—';
+      const tokens = stem.split(/[\s_\-.]+/).filter(Boolean).slice(0, 8).join(' · ');
+      return (tokens || stem || '—') + (ext ? '  ·  .' + ext : '') + (digits !== '—' ? '  ·  #' + digits : '');
+    }
+
+    function mediaDims(el) {
+      if (!el) return null;
+      if (el.tagName === 'VIDEO') {
+        const w = el.videoWidth, h = el.videoHeight;
+        if (!w || !h) return null;
+        return { w, h, dur: Number.isFinite(el.duration) ? el.duration : null, kind: 'video' };
+      }
+      const w = el.naturalWidth, h = el.naturalHeight;
+      if (!w || !h) return null;
+      return { w, h, dur: null, kind: 'image' };
+    }
+
+    function contentRect(mediaEl) {
+      if (!mediaEl) return null;
+      const nw = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
+      const nh = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
+      if (!nw || !nh) return null;
+      const br = mediaEl.getBoundingClientRect();
+      const scale = Math.min(br.width / nw, br.height / nh);
+      const dw = nw * scale, dh = nh * scale;
+      return {
+        left: br.left + (br.width - dw) / 2,
+        top: br.top + (br.height - dh) / 2,
+        width: dw, height: dh, nw, nh, scale,
+      };
+    }
+
+    function setMetaCell(id, val, otherVal) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = val == null || val === '' ? '—' : String(val);
+    }
+
+    function markMetaDiffs() {
+      document.querySelectorAll('#metaBody tr[data-key]').forEach((tr) => {
+        const a = tr.querySelector('td.a')?.textContent?.trim() || '';
+        const b = tr.querySelector('td.b')?.textContent?.trim() || '';
+        tr.classList.remove('diff', 'match-row');
+        if (!a || !b || a === '—' || b === '—') return;
+        if (a === b) tr.classList.add('match-row');
+        else tr.classList.add('diff');
+      });
+    }
+
+    function updateResBadges() {
+      [['anchorMedia', viewState.dimA], ['candMedia', viewState.dimB]].forEach(([id, dim]) => {
+        const box = document.getElementById(id);
+        if (!box) return;
+        let badge = box.querySelector('.res-badge');
+        if (!dim) {
+          if (badge) badge.remove();
+          return;
+        }
+        if (!badge) {
+          badge = document.createElement('div');
+          badge.className = 'res-badge';
+          box.appendChild(badge);
+        }
+        badge.textContent = dim.w + '×' + dim.h + (dim.kind === 'video' && dim.dur != null ? ' · ' + fmtDur(dim.dur) : '');
+      });
+    }
+
+    function updateFocusRings() {
+      document.querySelectorAll('.media-box').forEach((box) => {
+        const media = box.querySelector('img,video');
+        let ring = box.querySelector('.focus-ring');
+        if (!media || !viewState.pipOn || viewState.mode !== 'side') {
+          if (ring) ring.classList.remove('on');
+          return;
+        }
+        const r = contentRect(media);
+        if (!r) return;
+        if (!ring) {
+          ring = document.createElement('div');
+          ring.className = 'focus-ring';
+          box.appendChild(ring);
+        }
+        const boxR = box.getBoundingClientRect();
+        ring.style.left = (r.left - boxR.left + viewState.focusX * r.width) + 'px';
+        ring.style.top = (r.top - boxR.top + viewState.focusY * r.height) + 'px';
+        ring.classList.add('on');
+      });
+    }
+
+    /** Draw zoomed crop of mediaEl into canvas, centered on focusX/Y. */
+    function drawPipCanvas(canvas, mediaEl) {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
+      if (!mediaEl) return;
+      const nw = mediaEl.naturalWidth || mediaEl.videoWidth || 0;
+      const nh = mediaEl.naturalHeight || mediaEl.videoHeight || 0;
+      if (!nw || !nh) {
+        ctx.fillStyle = '#445';
+        ctx.font = '14px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for media…', w / 2, h / 2);
+        return;
+      }
+      const z = Math.max(1.1, viewState.zoom || 2.5);
+      // Source window size (smaller = more zoom)
+      let sw = nw / z;
+      let sh = nh / z;
+      // Keep aspect of canvas viewport inside image
+      const canvasAspect = w / h;
+      const cropAspect = sw / sh;
+      if (cropAspect > canvasAspect) sh = sw / canvasAspect;
+      else sw = sh * canvasAspect;
+      sw = Math.min(sw, nw);
+      sh = Math.min(sh, nh);
+      let sx = viewState.focusX * nw - sw / 2;
+      let sy = viewState.focusY * nh - sh / 2;
+      sx = clamp(sx, 0, nw - sw);
+      sy = clamp(sy, 0, nh - sh);
+      try {
+        ctx.drawImage(mediaEl, sx, sy, sw, sh, 0, 0, w, h);
+      } catch (e) {
+        // CORS / not ready
+        ctx.fillStyle = '#664';
+        ctx.font = '12px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('PiP blocked — try server-hosted page', w / 2, h / 2);
+      }
+    }
+
+    function sizePipCanvases() {
+      [['pipCanvasA', 'pipAnchor'], ['pipCanvasB', 'pipCand']].forEach(([cid, wrapId]) => {
+        const canvas = document.getElementById(cid);
+        const wrap = document.getElementById(wrapId);
+        if (!canvas || !wrap) return;
+        const r = wrap.getBoundingClientRect();
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const cssW = Math.max(120, Math.floor(r.width));
+        const cssH = Math.max(80, Math.floor(r.height));
+        const bw = Math.floor(cssW * dpr);
+        const bh = Math.floor(cssH * dpr);
+        if (canvas.width !== bw || canvas.height !== bh) {
+          canvas.width = bw;
+          canvas.height = bh;
+        }
+      });
+    }
+
+    function updatePips() {
+      const pipRow = document.getElementById('pipRow');
+      const show = viewState.pipOn && viewState.mode === 'side';
+      if (pipRow) pipRow.classList.toggle('on', show);
+      const z = viewState.zoom;
+      const zLbl = '×' + z.toFixed(1);
+      ['pipZoomA', 'pipZoomB', 'pipZoomLblA'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = zLbl;
+      });
+      if (!show) {
+        updateFocusRings();
+        return;
+      }
+      sizePipCanvases();
+      const a = viewState.mediaA || getSideMedia('anchor');
+      const b = viewState.mediaB || getSideMedia('cand');
+      drawPipCanvas(document.getElementById('pipCanvasA'), a);
+      drawPipCanvas(document.getElementById('pipCanvasB'), b);
+      updateFocusRings();
+    }
+
+    function schedulePip() {
+      if (viewState.pipRaf) return;
+      viewState.pipRaf = requestAnimationFrame(() => {
+        viewState.pipRaf = 0;
+        updatePips();
+      });
+    }
+
+    /**
+     * Fraction of stage width occupied by the displayed image (object-fit: contain).
+     * 9:16 portrait is letterboxed — sweep only across that band (≈ half the stage),
+     * not the black bars. Pad slightly past the edges ("a little more").
+     */
+    function overlaySweepBounds() {
+      const stage = document.getElementById('stageOverlay');
+      const media =
+        document.getElementById('ovBaseMedia') ||
+        document.getElementById('ovTopMedia') ||
+        viewState.mediaB ||
+        viewState.mediaA;
+      // Fallback: half the stage, centered (matches "half as wide as before")
+      const halfFallback = { left: 0.25, right: 0.75, mid: 0.5, span: 0.5 };
+      if (!stage) return halfFallback;
+      const sr = stage.getBoundingClientRect();
+      if (!sr.width || !sr.height) return halfFallback;
+
+      let nw = 0, nh = 0;
+      if (media) {
+        nw = media.naturalWidth || media.videoWidth || 0;
+        nh = media.naturalHeight || media.videoHeight || 0;
+      }
+      // Prefer live side media dims if overlay media not ready
+      if ((!nw || !nh) && viewState.dimB) { nw = viewState.dimB.w; nh = viewState.dimB.h; }
+      if ((!nw || !nh) && viewState.dimA) { nw = viewState.dimA.w; nh = viewState.dimA.h; }
+
+      let left, right;
+      if (nw > 0 && nh > 0) {
+        const scale = Math.min(sr.width / nw, sr.height / nh);
+        const dw = nw * scale;
+        // Image content band within stage
+        let L = (sr.width - dw) / 2 / sr.width;
+        let R = 1 - L;
+        // Nudge slightly past edges so the line clears the frame a bit
+        const pad = Math.min(0.02, (R - L) * 0.04);
+        L = Math.max(0, L - pad);
+        R = Math.min(1, R + pad);
+        left = L;
+        right = R;
+        // Portrait (taller than wide, e.g. 9:16): content is already ~half stage.
+        // Landscape that nearly fills width: compress sweep to center half of content
+        // so travel is still ~half the old full-stage sweep.
+        const contentSpan = right - left;
+        const aspect = nw / nh;
+        if (aspect >= 1.2 && contentSpan > 0.55) {
+          // 16:9-ish filling the stage — use center half of content width
+          const mid = (left + right) / 2;
+          const half = contentSpan * 0.25; // half of content = quarter each side of mid
+          left = mid - half;
+          right = mid + half;
+        }
+      } else {
+        left = 0.25;
+        right = 0.75;
+      }
+      return {
+        left,
+        right,
+        mid: (left + right) / 2,
+        span: Math.max(0.08, right - left),
+      };
+    }
+
+    /** Map normalized t∈[0,1] along the sweep band → stage fraction. */
+    function sweepTToStageFrac(t) {
+      const b = overlaySweepBounds();
+      return b.left + clamp(t, 0, 1) * b.span;
+    }
+
+    /** Map pointer/stage fraction → normalized t along the sweep band. */
+    function stageFracToSweepT(frac) {
+      const b = overlaySweepBounds();
+      if (b.span < 1e-6) return 0.5;
+      return clamp((frac - b.left) / b.span, 0, 1);
+    }
+
+    function applySweep() {
+      const handle = document.getElementById('ovHandle');
+      const top = document.getElementById('ovTopMedia');
+      // sweepPos is 0..1 along the *image band*, not the full stage
+      const t = clamp(viewState.sweepPos, 0, 1);
+      const stageFrac = sweepTToStageFrac(t);
+      const pct = stageFrac * 100;
+      if (top) {
+        const rightCut = 100 - pct;
+        top.style.clipPath = `inset(0 ${rightCut}% 0 0)`;
+        top.style.webkitClipPath = `inset(0 ${rightCut}% 0 0)`;
+      }
+      if (handle) handle.style.left = pct + '%';
+    }
+
+    function stopSweepLoop() {
+      if (viewState.sweepRaf) {
+        cancelAnimationFrame(viewState.sweepRaf);
+        viewState.sweepRaf = 0;
+      }
+    }
+
+    function startSweepLoop() {
+      stopSweepLoop();
+      if (viewState.mode !== 'overlay' || !viewState.autoSweep) return;
+      let last = performance.now();
+      const tick = (now) => {
+        viewState.sweepRaf = 0;
+        if (viewState.mode !== 'overlay' || !viewState.autoSweep || viewState.dragging === 'sweep') {
+          return;
+        }
+        const dt = Math.min(40, now - last) / 1000;
+        last = now;
+        // Travel only across the image band (edge → edge → back)
+        const spd = (Number(viewState.sweepSpeed) || 4) * 0.12;
+        viewState.sweepPos += viewState.sweepDir * spd * dt;
+        if (viewState.sweepPos >= 1) { viewState.sweepPos = 1; viewState.sweepDir = -1; }
+        if (viewState.sweepPos <= 0) { viewState.sweepPos = 0; viewState.sweepDir = 1; }
+        applySweep();
+        viewState.sweepRaf = requestAnimationFrame(tick);
+      };
+      viewState.sweepRaf = requestAnimationFrame(tick);
+    }
+
+    function setViewMode(mode) {
+      viewState.mode = mode === 'overlay' ? 'overlay' : 'side';
+      document.body.classList.toggle('mode-overlay', viewState.mode === 'overlay');
+      document.body.classList.toggle('mode-side', viewState.mode === 'side');
+      document.getElementById('tabSide')?.classList.toggle('on', viewState.mode === 'side');
+      document.getElementById('tabOverlay')?.classList.toggle('on', viewState.mode === 'overlay');
+      if (viewState.mode === 'overlay') {
+        rebuildOverlayMedia();
+        applySweep();
+        startSweepLoop();
+        // pause side-stage videos to free GPU
+        document.querySelectorAll('#stageSide video').forEach((v) => { try { v.pause(); } catch (_) {} });
+      } else {
+        stopSweepLoop();
+        // clear overlay stack to free media
+        const stack = document.getElementById('ovStack');
+        if (stack) stack.innerHTML = '';
+        schedulePip();
+      }
+    }
+
+    function rebuildOverlayMedia() {
+      const stack = document.getElementById('ovStack');
+      if (!stack) return;
+      const srcA = viewState.lastSrcA;
+      const srcB = viewState.lastSrcB;
+      const a = viewState.mediaA || getSideMedia('anchor');
+      const b = viewState.mediaB || getSideMedia('cand');
+      const isVidA = a && a.tagName === 'VIDEO';
+      const isVidB = b && b.tagName === 'VIDEO';
+      const tag = (src, isVid, id, cls) => {
+        if (!src) return '';
+        if (isVid) {
+          return `<video id="${id}" class="ov-media ${cls}" muted playsinline preload="auto" src="${esc(src)}"></video>`;
+        }
+        return `<img id="${id}" class="ov-media ${cls}" alt="" src="${esc(src)}" draggable="false">`;
+      };
+      // Base = after/candidate; top = before/anchor (swept reveal)
+      stack.innerHTML =
+        tag(srcB || srcA, isVidB || (!srcB && isVidA), 'ovBaseMedia', '') +
+        tag(srcA || srcB, isVidA || (!srcA && isVidB), 'ovTopMedia', 'ov-top-media');
+      const sync = (id, srcEl) => {
+        const el = document.getElementById(id);
+        if (!el || !srcEl || el.tagName !== 'VIDEO' || srcEl.tagName !== 'VIDEO') return;
+        try {
+          el.currentTime = srcEl.currentTime || 0;
+          if (!srcEl.paused) el.play().catch(() => {});
+        } catch (_) {}
+      };
+      // Wait for decode so content bounds (9:16 letterbox) are known
+      const afterReady = () => {
+        sync('ovBaseMedia', b);
+        sync('ovTopMedia', a);
+        applySweep();
+      };
+      requestAnimationFrame(() => {
+        const base = document.getElementById('ovBaseMedia');
+        const top = document.getElementById('ovTopMedia');
+        let pending = 0;
+        const done = () => { pending -= 1; if (pending <= 0) afterReady(); };
+        [base, top].forEach((el) => {
+          if (!el) return;
+          if (el.tagName === 'IMG') {
+            if (el.complete && el.naturalWidth) return;
+            pending += 1;
+            el.onload = done;
+            el.onerror = done;
+          } else if (el.tagName === 'VIDEO') {
+            if (el.videoWidth) return;
+            pending += 1;
+            el.onloadedmetadata = done;
+            el.onerror = done;
+          }
+        });
+        if (pending === 0) afterReady();
+        else {
+          // safety timeout
+          setTimeout(afterReady, 400);
+        }
+      });
+    }
+
+    function onMediaReady(side, mediaEl) {
+      const dim = mediaDims(mediaEl);
+      if (side === 'anchor') {
+        viewState.dimA = dim;
+        viewState.mediaA = mediaEl;
+      } else {
+        viewState.dimB = dim;
+        viewState.mediaB = mediaEl;
+      }
+      updateResBadges();
+      fillMetaDims();
+      schedulePip();
+      if (viewState.mode === 'overlay') rebuildOverlayMedia();
+    }
+
+    function fillMetaDims() {
+      const da = viewState.dimA, db = viewState.dimB;
+      setMetaCell('mA_res', da ? da.w + ' × ' + da.h : '—');
+      setMetaCell('mC_res', db ? db.w + ' × ' + db.h : '—');
+      setMetaCell('mA_aspect', da ? aspectOf(da.w, da.h) : '—');
+      setMetaCell('mC_aspect', db ? aspectOf(db.w, db.h) : '—');
+      setMetaCell('mA_dur', da && da.kind === 'video' ? fmtDur(da.dur) : (da && da.kind === 'image' ? 'still' : '—'));
+      setMetaCell('mC_dur', db && db.kind === 'video' ? fmtDur(db.dur) : (db && db.kind === 'image' ? 'still' : '—'));
+      markMetaDiffs();
+    }
+
+    function setMedia(el, mediaId, kind, name, side) {
       if (!mediaId) {
         el.innerHTML = '<div class="empty">No media</div>';
+        if (side === 'anchor') { viewState.lastSrcA = ''; viewState.dimA = null; viewState.mediaA = null; }
+        if (side === 'cand') { viewState.lastSrcB = ''; viewState.dimB = null; viewState.mediaB = null; }
+        schedulePip();
         return;
       }
       const url = API().mediaFileUrl(mediaId);
-      const isImage = kind === 'image' || /\.(png|jpe?g|webp|gif|bmp)$/i.test(name || '');
+      const isImage = kind === 'image' || /\.(png|jpe?g|webp|gif|bmp|tif{1,2})$/i.test(name || '');
+      if (side === 'anchor') viewState.lastSrcA = url;
+      if (side === 'cand') viewState.lastSrcB = url;
+      // crossOrigin anonymous helps canvas PiP when page is served over http
       el.innerHTML = isImage
-        ? `<img alt="" src="${esc(url)}">`
-        : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
+        ? `<img alt="" src="${esc(url)}" draggable="false" crossorigin="anonymous">`
+        : `<video controls muted playsinline preload="auto" src="${esc(url)}" crossorigin="anonymous"></video>`;
       const m = el.querySelector('img,video');
-      if (m) m.onerror = () => { el.innerHTML = '<div class="empty">Preview failed</div>'; };
+      if (!m) return;
+      m.onerror = () => {
+        // retry without crossorigin (some file:// / auth setups)
+        el.innerHTML = isImage
+          ? `<img alt="" src="${esc(url)}" draggable="false">`
+          : `<video controls muted playsinline preload="auto" src="${esc(url)}"></video>`;
+        const m2 = el.querySelector('img,video');
+        if (!m2) return;
+        m2.onerror = () => { el.innerHTML = '<div class="empty">Preview failed</div>'; };
+        const ready2 = () => onMediaReady(side, m2);
+        if (isImage) {
+          if (m2.complete && m2.naturalWidth) ready2();
+          else m2.onload = ready2;
+        } else {
+          m2.onloadedmetadata = ready2;
+          m2.onloadeddata = ready2;
+        }
+      };
+      const ready = () => onMediaReady(side, m);
+      if (isImage) {
+        if (m.complete && m.naturalWidth) ready();
+        else m.onload = ready;
+      } else {
+        m.onloadedmetadata = ready;
+        m.onloadeddata = ready;
+        // keep pip live while video plays
+        m.addEventListener('timeupdate', () => {
+          if (viewState.pipOn && viewState.mode === 'side') schedulePip();
+        });
+      }
+      schedulePip();
+    }
+
+    function fillUniformMeta(anchor, cand) {
+      const aName = anchor?.name || '—';
+      const cName = cand?.candidate_name || cand?.after_name || '—';
+      const aPath = cand?.anchor_path || anchor?.path || '—';
+      const cPath = cand?.candidate_path || cand?.after_path || '—';
+      const aSize = Number(anchor?.size ?? cand?.anchor_size ?? 0);
+      const cSize = Number(cand?.candidate_size ?? 0);
+      setMetaCell('mA_name', aName);
+      setMetaCell('mC_name', cName);
+      setMetaCell('mA_path', aPath);
+      setMetaCell('mC_path', cPath);
+      setMetaCell('mA_size', aSize ? fmtBytes(aSize) : '—');
+      setMetaCell('mC_size', cSize ? fmtBytes(cSize) : '—');
+      // Highlight size relationship
+      const sizeRow = document.querySelector('#metaBody tr[data-key="size"]');
+      if (sizeRow) {
+        sizeRow.classList.remove('diff', 'match-row');
+        if (aSize && cSize) {
+          if (cSize > aSize) sizeRow.classList.add('match-row'); // after larger — good for pair
+          else sizeRow.classList.add('diff'); // same or smaller — suspicious
+        }
+      }
+      setMetaCell('mA_type', (anchor?.type || cand?.type || '—'));
+      setMetaCell('mC_type', (cand?.type || anchor?.type || '—'));
+      const aRole = cand?.anchor_role === 'after' ? 'After (upscale side)' : 'Before (source)';
+      setMetaCell('mA_role', cand ? aRole : '—');
+      setMetaCell('mC_role', cand ? (cand.anchor_role === 'before' ? 'After (upscale side)' : 'Before (source)') : '—');
+      setMetaCell('mA_stem', nameStructure(aName));
+      setMetaCell('mC_stem', nameStructure(cName));
+      document.getElementById('metaHeadA').textContent = 'Anchor · ' + (aName.length > 28 ? aName.slice(0, 28) + '…' : aName);
+      document.getElementById('metaHeadB').textContent = 'Candidate · ' + (cName.length > 28 ? cName.slice(0, 28) + '…' : cName);
+      document.getElementById('ovLabelL').textContent = 'Anchor · ' + aName;
+      document.getElementById('ovLabelR').textContent = 'Candidate · ' + cName;
+      fillMetaDims();
+      markMetaDiffs();
+      // re-apply size row after markMetaDiffs
+      if (sizeRow && aSize && cSize) {
+        sizeRow.classList.remove('diff', 'match-row');
+        if (cSize > aSize) sizeRow.classList.add('match-row');
+        else sizeRow.classList.add('diff');
+      }
+    }
+
+    function setFocusFromClient(clientX, clientY, mediaEl) {
+      const r = contentRect(mediaEl);
+      if (!r || r.width < 1 || r.height < 1) return;
+      viewState.focusX = clamp((clientX - r.left) / r.width, 0, 1);
+      viewState.focusY = clamp((clientY - r.top) / r.height, 0, 1);
+      schedulePip();
+    }
+
+    function panFocus(dx, dy, mediaEl) {
+      const r = contentRect(mediaEl);
+      if (!r) {
+        viewState.focusX = clamp(viewState.focusX - dx / 400 / viewState.zoom, 0, 1);
+        viewState.focusY = clamp(viewState.focusY - dy / 400 / viewState.zoom, 0, 1);
+      } else {
+        viewState.focusX = clamp(viewState.focusX - dx / r.width, 0, 1);
+        viewState.focusY = clamp(viewState.focusY - dy / r.height, 0, 1);
+      }
+      schedulePip();
+    }
+
+    function bumpZoom(delta) {
+      const next = clamp(viewState.zoom * (delta > 0 ? 1.12 : 1 / 1.12), 1.1, 12);
+      viewState.zoom = Math.round(next * 10) / 10;
+      schedulePip();
+    }
+
+    function bindCompareInteraction() {
+      if (viewState.bound) return;
+      viewState.bound = true;
+
+      const onWheel = (e) => {
+        if (!e.target.closest?.('#anchorMedia, #candMedia, #pipAnchor, #pipCand, #stageOverlay, .pip-canvas-wrap')) return;
+        e.preventDefault();
+        bumpZoom(e.deltaY < 0 ? 1 : -1);
+      };
+      document.addEventListener('wheel', onWheel, { passive: false });
+
+      const mediaDown = (e) => {
+        const box = e.target.closest('.media-box');
+        if (!box || !box.querySelector('img,video')) return;
+        if (e.button !== 0) return;
+        const media = box.querySelector('img,video');
+        setFocusFromClient(e.clientX, e.clientY, media);
+        viewState.dragging = 'focus';
+        viewState._dragMedia = media;
+        viewState._lastX = e.clientX;
+        viewState._lastY = e.clientY;
+        try { box.setPointerCapture?.(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      };
+      document.getElementById('anchorMedia')?.addEventListener('pointerdown', mediaDown);
+      document.getElementById('candMedia')?.addEventListener('pointerdown', mediaDown);
+
+      const pipDown = (e) => {
+        const pip = e.target.closest('.pip-canvas-wrap');
+        if (!pip) return;
+        if (e.button !== 0) return;
+        viewState.dragging = 'pip';
+        viewState._lastX = e.clientX;
+        viewState._lastY = e.clientY;
+        try { pip.setPointerCapture?.(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      };
+      document.getElementById('pipAnchor')?.addEventListener('pointerdown', pipDown);
+      document.getElementById('pipCand')?.addEventListener('pointerdown', pipDown);
+
+      const handle = document.getElementById('ovHandle');
+      const stageOv = document.getElementById('stageOverlay');
+      const beginSweep = (e) => {
+        if (viewState.mode !== 'overlay') return;
+        viewState.dragging = 'sweep';
+        viewState.autoSweep = false;
+        const cb = document.getElementById('optAutoSweep');
+        if (cb) cb.checked = false;
+        stopSweepLoop();
+        const r = stageOv.getBoundingClientRect();
+        const frac = (e.clientX - r.left) / Math.max(1, r.width);
+        viewState.sweepPos = stageFracToSweepT(frac);
+        applySweep();
+        try { (e.currentTarget || handle).setPointerCapture?.(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      };
+      handle?.addEventListener('pointerdown', beginSweep);
+      // also drag anywhere on overlay stage
+      stageOv?.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.ov-tools')) return;
+        beginSweep(e);
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!viewState.dragging) return;
+        if (viewState.dragging === 'focus' && viewState._dragMedia) {
+          const dx = e.clientX - viewState._lastX;
+          const dy = e.clientY - viewState._lastY;
+          viewState._lastX = e.clientX;
+          viewState._lastY = e.clientY;
+          panFocus(dx, dy, viewState._dragMedia);
+        } else if (viewState.dragging === 'pip') {
+          const dx = e.clientX - viewState._lastX;
+          const dy = e.clientY - viewState._lastY;
+          viewState._lastX = e.clientX;
+          viewState._lastY = e.clientY;
+          viewState.focusX = clamp(viewState.focusX - dx / 300, 0, 1);
+          viewState.focusY = clamp(viewState.focusY - dy / 200, 0, 1);
+          schedulePip();
+        } else if (viewState.dragging === 'sweep') {
+          const stage = document.getElementById('stageOverlay');
+          if (!stage) return;
+          const r = stage.getBoundingClientRect();
+          const frac = (e.clientX - r.left) / Math.max(1, r.width);
+          viewState.sweepPos = stageFracToSweepT(frac);
+          applySweep();
+        }
+      });
+      window.addEventListener('pointerup', () => {
+        const was = viewState.dragging;
+        viewState.dragging = null;
+        viewState._dragMedia = null;
+        if (was === 'sweep' && document.getElementById('optAutoSweep')?.checked) {
+          viewState.autoSweep = true;
+          startSweepLoop();
+        }
+      });
+
+      document.getElementById('tabSide')?.addEventListener('click', () => setViewMode('side'));
+      document.getElementById('tabOverlay')?.addEventListener('click', () => setViewMode('overlay'));
+      document.getElementById('btnViewOverlay')?.addEventListener('click', () => {
+        setViewMode(viewState.mode === 'overlay' ? 'side' : 'overlay');
+      });
+      document.getElementById('optPip')?.addEventListener('change', (e) => {
+        viewState.pipOn = !!e.target.checked;
+        schedulePip();
+      });
+      document.getElementById('optMeta')?.addEventListener('change', (e) => {
+        viewState.metaOn = !!e.target.checked;
+        document.querySelector('.meta-pair')?.classList.toggle('collapsed', !viewState.metaOn);
+      });
+      document.getElementById('optAutoSweep')?.addEventListener('change', (e) => {
+        viewState.autoSweep = !!e.target.checked;
+        if (viewState.autoSweep) startSweepLoop();
+        else stopSweepLoop();
+      });
+      document.getElementById('sweepSpeed')?.addEventListener('input', (e) => {
+        viewState.sweepSpeed = Number(e.target.value) || 4;
+      });
+      document.getElementById('btnSweepCenter')?.addEventListener('click', () => {
+        viewState.sweepPos = 0.5;
+        applySweep();
+      });
+      window.addEventListener('resize', () => {
+        if (viewState.mode === 'overlay') applySweep();
+        schedulePip();
+      });
+      setViewMode('side');
     }
 
     function updateProgress() {
@@ -584,15 +1808,32 @@
 
       if (!anchor || !state.anchors.length) {
         empty.style.display = '';
-        active.style.display = 'none';
+        active.classList.remove('show');
+        document.body.classList.remove('is-matching');
         if (!state.anchors.length) {
-          empty.innerHTML = '<strong style="color:var(--text)">No unpaired anchors</strong><br>Scan folders in Media Library, then Start again.<br><span style="opacity:.8">Keys below always work once a queue is running.</span>';
+          empty.innerHTML =
+            '<strong style="color:var(--text)">No unpaired anchors</strong><br>' +
+            'Scan folders in Media Library (or run VSR preview), then Start again.<br>' +
+            '<span style="opacity:.8">Keys below always work once a queue is running.</span>' +
+            '<div class="empty-cta">' +
+            '<button class="ui-btn primary" type="button" id="btnEmptyRetry">↻ Try again</button>' +
+            '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Library Manager.html\'">📚 Library</button>' +
+            '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
+            '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Hub</button>' +
+            '<button class="ui-btn ghost" type="button" onclick="location.href=\'Pair Review Queue.html\'">🔎 Pair Review</button>' +
+            '</div>';
+          document.getElementById('btnEmptyRetry')?.addEventListener('click', () => startQueue(true));
         } else if (state.anchorIndex >= state.anchors.length) {
           empty.innerHTML = `<strong style="color:var(--text)">Queue complete</strong><br>
             Matched ${state.matched} · Skipped ${state.skipped} · Exhausted ${state.exhausted}.<br>
-            <button class="ui-btn primary" type="button" id="btnRestart" style="margin-top:12px">Run again</button>
-            <button class="ui-btn undo-main" type="button" id="btnUndoDone" style="margin-top:12px;margin-left:8px" ${canBack() ? '' : 'disabled'}>↩ Back (Z)</button>
-            <button class="ui-btn ghost" type="button" id="btnRedoDone" style="margin-top:12px;margin-left:8px" ${canForward() ? '' : 'disabled'}>↪ Forward (F)</button>`;
+            <div class="empty-cta">
+            <button class="ui-btn primary" type="button" id="btnRestart">Run again</button>
+            <button class="ui-btn undo-main" type="button" id="btnUndoDone" ${canBack() ? '' : 'disabled'}>↩ Back (Z)</button>
+            <button class="ui-btn ghost" type="button" id="btnRedoDone" ${canForward() ? '' : 'disabled'}>↪ Forward (F)</button>
+            <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">🔎 Review pairs</button>
+            <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'">⇄ Compare Hub</button>
+            <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
+            </div>`;
           document.getElementById('btnRestart')?.addEventListener('click', () => startQueue(true));
           document.getElementById('btnUndoDone')?.addEventListener('click', () => requestBack());
           document.getElementById('btnRedoDone')?.addEventListener('click', () => redoSteps(1));
@@ -601,51 +1842,92 @@
       }
 
       empty.style.display = 'none';
-      active.style.display = '';
+      active.classList.add('show');
+      document.body.classList.add('is-matching');
+
+      // Reset focus softly when pair changes (keep zoom)
+      const pairKey = (anchor?.id || '') + '::' + (cand?.candidate_id || '');
+      if (viewState._pairKey !== pairKey) {
+        viewState._pairKey = pairKey;
+        viewState.focusX = 0.5;
+        viewState.focusY = 0.5;
+        viewState.dimA = null;
+        viewState.dimB = null;
+        viewState.mediaA = null;
+        viewState.mediaB = null;
+      }
 
       document.getElementById('anchorName').textContent = anchor.name || '—';
-      setMedia(document.getElementById('anchorMedia'), anchor.id, anchor.type, anchor.name);
+      document.getElementById('anchorRoleTag').textContent =
+        cand?.anchor_role === 'after' ? 'Anchor · After' : 'Anchor · Before';
+      setMedia(document.getElementById('anchorMedia'), anchor.id, anchor.type, anchor.name, 'anchor');
 
       if (!cand) {
         document.getElementById('candName').textContent = 'No candidates';
+        document.getElementById('candRoleTag').textContent = 'Candidate';
         document.getElementById('candMedia').innerHTML = '<div class="empty">No more candidates — exhausting this anchor</div>';
+        viewState.lastSrcB = '';
+        viewState.dimB = null;
         document.getElementById('pairTitle').textContent = 'No match candidates left for this file';
         document.getElementById('scorePill').textContent = '—';
+        document.getElementById('scorePill').className = 'score';
         document.getElementById('reasonVal').textContent = '—';
-        document.getElementById('rolesVal').textContent = '—';
-        document.getElementById('typeVal').textContent = anchor.type || '—';
+        fillUniformMeta(anchor, null);
+        updatePips();
         return;
       }
 
       document.getElementById('candName').textContent = cand.candidate_name || cand.after_name || '—';
-      setMedia(document.getElementById('candMedia'), cand.candidate_id, cand.type, cand.candidate_name);
+      document.getElementById('candRoleTag').textContent =
+        cand.anchor_role === 'before' ? 'Candidate · After' : 'Candidate · Before';
+      setMedia(document.getElementById('candMedia'), cand.candidate_id, cand.type, cand.candidate_name, 'cand');
 
       document.getElementById('pairTitle').textContent =
         `${cand.before_name || '?'}  →  ${cand.after_name || '?'}`;
       const pill = document.getElementById('scorePill');
       pill.textContent = scoreLabel(cand.confidence);
       pill.className = 'score ' + scoreClass(cand.confidence);
-      document.getElementById('reasonVal').textContent = cand.reason || '—';
+      document.getElementById('reasonVal').textContent = (cand.reason || '—') + ' · roles: before/after proposed';
       document.getElementById('rolesVal').textContent =
         `Before: ${cand.before_name} · After: ${cand.after_name}`;
       document.getElementById('typeVal').textContent = cand.type || anchor.type || '—';
+      fillUniformMeta(anchor, cand);
+      if (viewState.mode === 'overlay') rebuildOverlayMedia();
     }
 
     async function loadCandidatesForAnchor() {
       const anchor = currentAnchor();
       if (!anchor) return;
       const exclude = rejectedFor(anchor.id).slice();
+      const fo = folderOpts();
       const data = await API().pairCandidates(anchor.id, {
         limit: maxTries(),
         minRatio: minRatio(),
         excludeIds: exclude,
+        beforeDirId: fo.beforeDirId || undefined,
+        afterDirId: fo.afterDirId || undefined,
       });
-      state.candidates = data.candidates || [];
+      // Client-side safety: drop same-size / not-larger when option is on
+      let cands = data.candidates || [];
+      if (fo.requireLarger) {
+        cands = cands.filter((c) => {
+          const a = Number(c.anchor_size || anchor.size || 0);
+          const b = Number(c.candidate_size || 0);
+          if (a > 0 && b > 0 && b <= a) return false;
+          return true;
+        });
+      }
+      state.candidates = cands;
       state.tryIndex = 0;
+      const skipBits = [];
+      if (data.skipped_same_size) skipBits.push(data.skipped_same_size + ' same-size');
+      if (data.skipped_not_larger) skipBits.push(data.skipped_not_larger + ' not-larger');
+      if (data.skipped_intermediate) skipBits.push(data.skipped_intermediate + ' stage2/junk');
+      const skipNote = skipBits.length ? ' · skipped ' + skipBits.join(' / ') : '';
       document.getElementById('statusLine').textContent =
-        `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers`;
+        `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers${skipNote}`;
       if (!state.candidates.length) {
-        logLine(`No candidates for ${anchor.name} — skip`);
+        logLine(`No candidates for ${anchor.name} — skip${skipNote}`);
         // Treat as exhaust without stacking undo of auto-advance noise unless user just acted
         state.exhausted++;
         state.anchorIndex++;
@@ -658,7 +1940,7 @@
         }
         return loadCandidatesForAnchor();
       }
-      logLine(`Anchor: ${anchor.name} · ${state.candidates.length} candidates`);
+      logLine(`Anchor: ${anchor.name} · ${state.candidates.length} candidates${skipNote}`);
       render();
     }
 
@@ -690,10 +1972,16 @@
 
         const kind = document.getElementById('kindFilter').value || null;
         const preferSources = document.getElementById('preferSources').checked;
+        const fo = folderOpts();
+        if (fo.beforeDirId && fo.afterDirId && fo.beforeDirId === fo.afterDirId) {
+          toast('Before and After should be different folders for best results', 'warn');
+        }
         const res = await API().pairAnchors({
           limit: 400,
           kind: kind || undefined,
           preferSources,
+          beforeDirId: fo.beforeDirId || undefined,
+          afterDirId: fo.afterDirId || undefined,
         });
         state.anchors = res.anchors || [];
         if (forceReload) {
@@ -708,8 +1996,13 @@
           render();
           return;
         }
-        logLine(`Loaded ${state.anchors.length} unpaired anchors`);
-        toast(`${state.anchors.length} unpaired files in queue`, 'ok');
+        const fo2 = folderOpts();
+        const scope = [
+          fo2.beforeDirId ? 'before-folder' : 'all-before',
+          fo2.afterDirId ? 'after-folder' : 'all-after',
+        ].join(' → ');
+        logLine(`Loaded ${state.anchors.length} unpaired anchors (${scope})`);
+        toast(`${state.anchors.length} unpaired · ${scope}`, 'ok');
         await loadCandidatesForAnchor();
       } catch (e) {
         toast(e.message || String(e), 'warn');
@@ -739,8 +2032,17 @@
       try {
         const pair = await API().savePair(pairPayload);
         state.matched++;
-        logLine(`MATCH ${cand.before_name} ↔ ${cand.after_name} (${scoreLabel(cand.confidence)})`);
-        toast('Pair locked · Z = back · F = forward', 'ok');
+        try {
+          window.FAFOOpsStats?.record({
+            tool: 'guided-pair-match',
+            action: 'match',
+            metrics: { pairMatches: 1, pairsSaved: 1, syncsCompleted: 1 },
+            extra: { before: cand.before_name, after: cand.after_name },
+          });
+        } catch (_) { /* stats optional */ }
+        logLine(`MATCH ${cand.before_name} ↔ ${cand.after_name} (${scoreLabel(cand.confidence)}) · memory updated`);
+        toast('Pair locked · naming memory updated', 'ok');
+        refreshLearnPanel().catch(() => {});
 
         // Advance after match
         state.anchorIndex++;
@@ -792,6 +2094,14 @@
 
       const before = snapshotCore();
       rejectedFor(anchor.id).push(cand.candidate_id);
+      try {
+        window.FAFOOpsStats?.record({
+          tool: 'guided-pair-match',
+          action: 'reject',
+          metrics: { pairRejects: 1 },
+          extra: { candidate: cand.candidate_name, anchor: anchor.name },
+        });
+      } catch (_) { /* stats optional */ }
       logLine(`No: ${cand.candidate_name} vs ${anchor.name}`);
       state.tryIndex++;
       saveSession();
@@ -982,9 +2292,11 @@
     }
 
     function playBoth() {
-      document.querySelectorAll('#activeUI video').forEach(v => {
-        if (v.paused) v.play().catch(() => {});
-        else v.pause();
+      const vids = [...document.querySelectorAll('#activeUI video, #stageOverlay video')];
+      const anyPlaying = vids.some(v => !v.paused && !v.ended);
+      vids.forEach(v => {
+        if (anyPlaying) v.pause();
+        else v.play().catch(() => {});
       });
     }
 
@@ -1027,6 +2339,9 @@
         window.__openCompareAfterMatch = true;
         toast('Will open comparator on next match', 'ok');
       }
+      else if (action === 'overlay') {
+        setViewMode(viewState.mode === 'overlay' ? 'side' : 'overlay');
+      }
       else if (action === 'undo') requestBack();
       else if (action === 'redo') redoSteps(1);
     }
@@ -1034,6 +2349,7 @@
     // Wire buttons
     document.getElementById('btnStart').onclick = () => startQueue(false);
     document.getElementById('btnEmptyStart')?.addEventListener('click', () => startQueue(false));
+    document.getElementById('btnEmptyStartServer')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click());
     document.getElementById('btnReset').onclick = () => {
       if (!confirm('Clear session rejections, counters, and history?')) return;
       state.rejected = {};
@@ -1122,6 +2438,13 @@
         e.preventDefault();
         runAction('compare');
       }
+      else if (key === 'o') {
+        e.preventDefault();
+        setViewMode(viewState.mode === 'overlay' ? 'side' : 'overlay');
+        flashAction('compare');
+      }
+      else if (key === '[') { e.preventDefault(); bumpZoom(-1); }
+      else if (key === ']') { e.preventDefault(); bumpZoom(1); }
       else if (key === 'z' || key === 'backspace') {
         e.preventDefault();
         requestBack(); // single = −1, double within 400ms = −5
@@ -1147,7 +2470,51 @@
       });
     }
 
+    bindCompareInteraction();
     loadSession();
+    document.getElementById('beforeDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
+    document.getElementById('afterDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
+    document.getElementById('requireLarger')?.addEventListener('change', saveSession);
+    document.getElementById('btnPickBefore')?.addEventListener('click', () => pickAndRegisterFolder('before'));
+    document.getElementById('btnPickAfter')?.addEventListener('click', () => pickAndRegisterFolder('after'));
+
+    async function refreshLearnPanel() {
+      const stats = document.getElementById('learnStats');
+      const detail = document.getElementById('learnDetail');
+      if (!stats || !detail) return;
+      try {
+        const s = await API().pairLearnSummary();
+        const n = s.pair_count || 0;
+        stats.textContent = n
+          ? `${n} pair(s) remembered` + (s.size_ratio_median ? ` · typical after/before ×${s.size_ratio_median}` : '')
+          : 'No pairs learned yet — lock a few matches to train';
+        const after = (s.after_tokens || []).slice(0, 8).map((t) => t.token).join(', ') || 'upscaled, NNfps (seed)';
+        const skip = (s.skip_tokens || []).slice(0, 6).map((t) => t.token).join(', ') || 'stage2, intermediate, chunked';
+        const recent = (s.recent || [])[0];
+        detail.innerHTML =
+          `<strong style="color:#c4b5fd">After-only tokens:</strong> ${esc(after)}<br>` +
+          `<strong style="color:#fbbf24">Skip (stage-2 junk):</strong> ${esc(skip)}<br>` +
+          (recent
+            ? `<span style="opacity:.85">Last: ${esc(recent.before || '')} → ${esc(recent.after || '')}</span>`
+            : 'Prefers stage&nbsp;1 source ↔ stage&nbsp;3 final; stage&nbsp;2 leftovers are filtered out.');
+      } catch (e) {
+        stats.textContent = 'Memory unavailable (start server)';
+      }
+    }
+    document.getElementById('btnRefreshLearn')?.addEventListener('click', () => refreshLearnPanel());
+    document.getElementById('btnResetLearn')?.addEventListener('click', async () => {
+      if (!confirm('Clear pair naming memory on this server?')) return;
+      try {
+        await API().pairLearnReset();
+        toast('Pair memory cleared', 'ok');
+        refreshLearnPanel();
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      }
+    });
+
+    refreshDirSelects().catch(() => {});
+    refreshLearnPanel().catch(() => {});
     render();
     if (new URLSearchParams(location.search).get('autoload') === '1') {
       startQueue(false);

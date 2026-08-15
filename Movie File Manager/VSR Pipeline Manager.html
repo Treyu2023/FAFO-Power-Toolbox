@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VSR Pipeline Manager</title>
     <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root { --bg:#050508; --panel:#0c0c12; --accent:#00f3ff; --accent2:#ff6b35; --accent3:#7c5cff; --ok:#00ff88; --text:#e8e8ec; --muted:#777; }
         *{box-sizing:border-box;margin:0;padding:0}
@@ -53,6 +54,7 @@
         <button class="ui-btn primary" id="btnPreview" data-tip="Scans folders, matches files by duration + fingerprint, shows proposed renames before you apply">↻ Refresh Preview</button>
         <button class="ui-btn ghost" id="btnVsrReport" title="Copy VSR preview report" data-tip="Copy match summary to clipboard">📋 Report</button>
         <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent)">1-5</kbd> tabs · <kbd style="font:10px Consolas;color:var(--accent)">P</kbd> preview · <kbd style="font:10px Consolas;color:var(--accent)">E</kbd> report</span>
+        <span data-fafo-layout-toolbar></span>
         <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and API events to debug panel">🐛 Debug</button>
     </div>
     <div id="vsrWorkflowBar"></div>
@@ -65,9 +67,12 @@
         <div class="ui-tab" data-tab="tags">⑤ Tag Rules<span class="tab-glow"></span></div>
     </div>
 
-    <div class="content">
-        <div class="panel active" id="panel-setup">
-            <div class="ui-card animate-in" id="card-folders">
+    <div class="content"
+         data-fafo-layout-root
+         data-fafo-layout-app="vsr-pipeline-manager"
+         data-fafo-layout-type="rows">
+        <div class="panel active" id="panel-setup" data-fafo-panel="setup" data-fafo-panel-title="① Setup" data-fafo-flex="1">
+            <div class="ui-card animate-in" id="card-folders" data-fafo-section="folders" data-fafo-section-title="Workflow Folders">
                 <h2>📁 Workflow Folders <span class="tip-icon" data-tip-title="Folders" data-tip="Point each stage to where VSR saves files. Change these anytime — your pipeline adapts without code edits.">ⓘ</span></h2>
                 <div class="grid2">
                     <div><label>Original Sources</label><input id="f_source" placeholder="D:\Videos\Originals"></div>
@@ -93,13 +98,14 @@
                     <div><label>Duration tolerance</label><input id="dur_tol" value="0.35" data-tip-title="Matching" data-tip="How much duration can differ between source and VSR output (0.35 = 35%). Increase if matches are missed."></div>
                     <div><label>Min confidence</label><input id="min_score" value="0.52" data-tip-title="Confidence" data-tip="Minimum match score (0–1). Lower = more matches but risk wrong pairs. Default 0.52 is a good balance."></div>
                 </div>
-                <button class="ui-btn" id="btnSaveCfg" style="margin-top:14px">Save Config</button>
+                <button class="ui-btn" id="btnSaveCfg" style="margin-top:14px"
+                        data-tip-title="Save config" data-tip="Remember folder paths and naming templates for next time.">Save Config</button>
             </div>
         </div>
 
-        <div class="panel" id="panel-rename">
+        <div class="panel" id="panel-rename" data-fafo-panel="rename" data-fafo-panel-title="② Match & Rename" data-fafo-flex="1">
             <div id="previewStatus" class="status-box warn">Click <strong>Refresh Preview</strong> after setting folders</div>
-            <div class="ui-card" id="card-stage1">
+            <div class="ui-card" id="card-stage1" data-fafo-section="rename-stage1" data-fafo-section-title="Stage I — Upscale">
                 <h2>Stage I — Upscale <span id="trustBadge1" class="trust-badge"></span></h2>
                 <table class="ui-table"><thead><tr><th>Match</th><th>Source</th><th></th><th>Rename Preview</th></tr></thead><tbody id="tbl_s1"></tbody></table>
                 <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
@@ -109,44 +115,52 @@
                     <button class="ui-btn ghost" id="btnResetTrust1" data-tip="Re-enable confirmation dialogs for Stage I">Reset Trust</button>
                 </div>
             </div>
-            <div class="ui-card" id="card-stage2">
+            <div class="ui-card" id="card-stage2" data-fafo-section="rename-stage2" data-fafo-section-title="Stage II — Interpolation">
                 <h2>Stage II — Interpolation <span id="trustBadge2" class="trust-badge"></span></h2>
                 <table class="ui-table"><thead><tr><th>Match</th><th>Original</th><th></th><th>Rename Preview</th></tr></thead><tbody id="tbl_s2"></tbody></table>
                 <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
-                    <button class="ui-btn primary" id="btnApplyS2">Apply Stage II</button>
-                    <button class="ui-btn" id="btnReviewS2" data-tip="Open Pair Review Queue for Stage II matches">🔎 Review queue</button>
-                    <button class="ui-btn ghost" id="btnResetTrust2">Reset Trust</button>
+                    <button class="ui-btn primary" id="btnApplyS2"
+                            data-tip-title="Apply Stage II"
+                            data-tip-basic="Rename Stage II (interpolation) files to proposed names."
+                            data-tip-pro="Bulk vsrApply stage 2 — often includes fps tokens.">Apply Stage II</button>
+                    <button class="ui-btn" id="btnReviewS2" data-tip-title="Review Stage II" data-tip="Open Pair Review Queue for Stage II matches">🔎 Review queue</button>
+                    <button class="ui-btn ghost" id="btnResetTrust2" data-tip="Re-enable confirmation dialogs for Stage II">Reset Trust</button>
                 </div>
             </div>
-            <div class="ui-card"><h2>Unmatched Files</h2><div id="unmatched" class="hint"></div></div>
+            <div class="ui-card" data-fafo-section="rename-unmatched" data-fafo-section-title="Unmatched Files"><h2>Unmatched Files</h2><div id="unmatched" class="hint"></div></div>
         </div>
 
-        <div class="panel" id="panel-teach">
+        <div class="panel" id="panel-teach" data-fafo-panel="teach" data-fafo-panel-title="③ Teach Matcher" data-fafo-flex="1">
             <div class="ui-card" id="card-teach">
                 <h2>🧠 Teach the Matcher <span class="tip-icon" data-tip-title="Learning" data-tip="Feed 3–5 known source→output pairs. The AI learns what junk VSR adds to filenames and strips it on future matches.">ⓘ</span></h2>
                 <p class="hint">When VSR renames files unpredictably, paste a source path and its matching output. Repeat a few times, then Learn.</p>
                 <div class="pair-teach">
                     <input id="teach_src" placeholder="Source file full path">
                     <input id="teach_out" placeholder="VSR output file path">
-                    <button class="ui-btn" id="btnAddTeach">+ Add Pair</button>
+                    <button class="ui-btn" id="btnAddTeach" data-tip="Add this source/output example to the teach list.">+ Add Pair</button>
                 </div>
                 <ul id="teachList" style="margin-top:12px;font-size:11px;color:var(--muted)"></ul>
-                <button class="ui-btn purple" id="btnLearn" style="margin-top:12px">Learn From Pairs</button>
+                <button class="ui-btn purple" id="btnLearn" style="margin-top:12px"
+                        data-tip-title="Learn"
+                        data-tip-basic="Teach the matcher from your examples so future previews are smarter."
+                        data-tip-pro="vsrLearn — strip prefixes/suffixes from known pairs.">Learn From Pairs</button>
                 <div id="learned" class="hint" style="margin-top:10px"></div>
             </div>
         </div>
 
-        <div class="panel" id="panel-dupes">
+        <div class="panel" id="panel-dupes" data-fafo-panel="dupes" data-fafo-panel-title="④ Duplicates" data-fafo-flex="1">
             <div class="ui-card" id="card-dupes">
                 <h2>🔍 Duplicate Detector <span class="tip-icon" data-tip-title="Dupes" data-tip="Finds copies by duration + file hash. Deep mode also compares first video frame for near-identical files with different names.">ⓘ</span></h2>
                 <input id="dup_folder" placeholder="Folder to scan">
                 <label class="chk" style="margin-top:10px"><input type="checkbox" id="dup_deep"> Deep scan (first-frame hash)</label>
-                <button class="ui-btn primary" id="btnDupScan" style="margin-top:12px">Scan Duplicates</button>
+                <button class="ui-btn primary" id="btnDupScan" style="margin-top:12px"
+                        data-tip-title="Scan duplicates"
+                        data-tip="Find duplicate videos in a folder (hash / deep frame).">Scan Duplicates</button>
                 <div id="dupResults" style="margin-top:14px"></div>
             </div>
         </div>
 
-        <div class="panel" id="panel-tags">
+        <div class="panel" id="panel-tags" data-fafo-panel="tags" data-fafo-panel-title="⑤ Tag Rules" data-fafo-flex="1">
             <div class="ui-card" id="card-tags">
                 <h2>🏷️ Tag Re-apply Rules <span class="tip-icon" data-tip-title="Tags survive VSR" data-tip="After VSR overwrites names, rescan + apply rules to restore your tags by matching duration and stem patterns.">ⓘ</span></h2>
                 <label class="chk"><input type="checkbox" id="tags_enabled" checked> Enable auto tag re-application</label>
@@ -159,8 +173,10 @@ _interp.*$</textarea>
                 <label style="margin-top:10px">Auto-add tags on match</label>
                 <input id="tags_auto" value="vsr-pipeline, re-tagged">
                 <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
-                    <button class="ui-btn" id="btnSaveTags">Save Rules</button>
-                    <button class="ui-btn purple" id="btnApplyTags">Apply Rules Now</button>
+                    <button class="ui-btn" id="btnSaveTags" data-tip="Save tag re-apply rules.">Save Rules</button>
+                    <button class="ui-btn purple" id="btnApplyTags"
+                            data-tip-title="Apply tag rules"
+                            data-tip="Re-apply tags after VSR renames (match by duration/stem).">Apply Rules Now</button>
                 </div>
                 <div id="tagResult" class="hint" style="margin-top:10px"></div>
             </div>
@@ -173,6 +189,8 @@ _interp.*$</textarea>
     <script src="../shared/aitoolbox-core.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const API = () => window.AIToolboxAPI;
@@ -426,6 +444,16 @@ _interp.*$</textarea>
                 result.skipped ? `✓ ${r.count} renamed (trusted — no prompt)` : `✓ ${r.count} files renamed`,
                 result.skipped ? 'warn' : 'ok'
             );
+            try {
+                const n = Math.max(0, Number(r.count) || toRename.length || 0);
+                if (n) {
+                    window.FAFOOpsStats?.record({
+                        tool: 'vsr-pipeline-manager',
+                        action: 'apply-stage-' + stage,
+                        metrics: { renamesApplied: n, syncsCompleted: 1 },
+                    });
+                }
+            } catch (_) { /* stats optional */ }
             document.getElementById('btnPreview').click();
             updateTrustBadges();
         }

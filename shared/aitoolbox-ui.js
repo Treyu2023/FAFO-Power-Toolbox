@@ -59,7 +59,8 @@
             document.body.appendChild(tooltipEl);
         }
 
-        root.querySelectorAll('[data-tip]').forEach(el => {
+        // Include multi-level tip attributes + title fallbacks
+        root.querySelectorAll('[data-tip], [data-tip-basic], [data-tip-pro], [data-tip-mid]').forEach(el => {
             if (el._tipBound) return;
             el._tipBound = true;
 
@@ -67,8 +68,16 @@
                 clearTimeout(tooltipTimer);
                 // Slightly snappy so users can skim cards before clicking
                 tooltipTimer = setTimeout(() => {
-                    const title = el.dataset.tipTitle || el.getAttribute('data-tip-title') || '';
-                    const text = el.dataset.tip || el.getAttribute('data-tip') || '';
+                    let title = el.dataset.tipTitle || el.getAttribute('data-tip-title') || '';
+                    let text = el.dataset.tip || el.getAttribute('data-tip') || '';
+                    // Skill-aware resolution (FAFOGuidance)
+                    try {
+                        if (global.FAFOGuidance?.resolveTip) {
+                            const r = global.FAFOGuidance.resolveTip(el);
+                            if (r.title) title = r.title;
+                            if (r.text) text = r.text;
+                        }
+                    } catch (_) { /* ignore */ }
                     if (!title && !text) return;
                     // Escape HTML so tool names/descriptions cannot inject markup
                     const esc = (s) => String(s || '')
@@ -638,6 +647,23 @@
             if (ver) ver.textContent = 'v' + global.AITOOLBOX_VERSION;
         }
 
+        // Mark body so pages can hide legacy duplicate S1/S2 / Start Server chrome
+        try {
+            document.body?.classList.add('tb-has-companion-bar');
+            // Hide common page-local server pills when shared bar is present
+            document.querySelectorAll(
+                '#serverPill, #btnStartServer, #serverStatus, .server-pill.legacy-server, [data-legacy-server-chrome]'
+            ).forEach((el) => {
+                if (el.closest('#tbSharedServerBar')) return;
+                el.classList.add('tb-legacy-server-hidden');
+                el.style.display = 'none';
+            });
+            // Remove accidental second companion bars
+            document.querySelectorAll('#tbSharedServerBar').forEach((el, i) => {
+                if (i > 0) el.remove();
+            });
+        } catch (_) { /* ignore */ }
+
         return _wireCompanionBar(opts);
     }
 
@@ -999,23 +1025,211 @@
         } catch { /* ignore */ }
     }
 
-    /** Esc (when not typing / in a modal) returns to Toolbox Launcher. */
+    /**
+     * Close transient UI before Esc→launcher (compare panes, menus, modals).
+     * Returns true if something was closed (caller should NOT leave the page).
+     */
+    function tryCloseTransientUi() {
+        try {
+            // Explicit close targets (Dup Manager compare, etc.)
+            const cmp = document.getElementById('comparePanel');
+            if (cmp && cmp.classList.contains('open')) {
+                const btn = document.getElementById('btnCloseCompare');
+                if (btn) { btn.click(); return true; }
+                cmp.classList.remove('open', 'active');
+                return true;
+            }
+            // data-esc-close elements that are open/visible
+            const escClose = document.querySelector(
+                '[data-esc-close].open, [data-esc-close].active, [data-esc-close][aria-hidden="false"]'
+            );
+            if (escClose) {
+                const b = escClose.querySelector('[data-close], .close, .btn-close, [aria-label="Close"]');
+                if (b) b.click();
+                else {
+                    escClose.classList.remove('open', 'active');
+                    escClose.setAttribute('aria-hidden', 'true');
+                    if (escClose.style) escClose.style.display = 'none';
+                }
+                return true;
+            }
+            // Open dropdown menus (Media Library Pairs/Tools menus)
+            const menus = document.querySelectorAll(
+                '.menu-wrap.open, .dropdown.open, .menu.open, .nav-menu.open, details[open].menu-details'
+            );
+            if (menus.length) {
+                menus.forEach((m) => {
+                    m.classList.remove('open');
+                    if (m.tagName === 'DETAILS') m.open = false;
+                });
+                return true;
+            }
+            // Visible modal overlays
+            const modal = document.querySelector(
+                '.modal.open, .ui-modal.open, .overlay.open, .overlay.visible, ' +
+                '.modal.show, .ui-modal.show, dialog[open], ' +
+                '[role="dialog"].open, [role="dialog"][aria-hidden="false"]'
+            );
+            if (modal) {
+                const b = modal.querySelector(
+                    '[data-close], .close, .btn-close, .modal-close, [aria-label="Close"], button.close'
+                );
+                if (b) { b.click(); return true; }
+                if (modal.tagName === 'DIALOG' && typeof modal.close === 'function') {
+                    modal.close();
+                    return true;
+                }
+                modal.classList.remove('open', 'show', 'visible', 'active');
+                modal.setAttribute('aria-hidden', 'true');
+                return true;
+            }
+            // Tutorial / walkthrough
+            const tut = document.querySelector('.tutorial-overlay, .cine-root, #tutorialRoot, [data-tutorial-open]');
+            if (tut && (tut.classList.contains('open') || tut.classList.contains('active') || getComputedStyle(tut).display !== 'none')) {
+                try { endTutorial?.(); } catch { /* ignore */ }
+                tut.classList.remove('open', 'active');
+                if (tut.style) tut.style.display = 'none';
+                return true;
+            }
+        } catch { /* ignore */ }
+        return false;
+    }
+
+    /**
+     * Esc closes overlays first; second Esc (or Esc with nothing open) → Toolbox Launcher.
+     * Pages can set body data-tb-esc="off" or cancel the `fafo:escape` event to keep control.
+     * Inside iframes (Media Hub / Compare Hub), Esc posts to parent instead of hijacking frame.
+     */
     function bindEscToLauncher() {
         if (typeof document === 'undefined' || document.documentElement.dataset.tbEsc === '1') return;
         document.documentElement.dataset.tbEsc = '1';
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') return;
             if (document.body?.dataset?.tbEsc === 'off') return;
-            // Don't steal Esc from typing trainer fields, dialogs, or pointer-lock games
+            // Don't steal Esc from typing fields, dialogs, or pointer-lock games
             const t = e.target;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-            if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal, .cine-root')) return;
+            if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal, .cine-root, dialog[open]')) {
+                // still try close helper, but don't navigate
+                if (tryCloseTransientUi()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                return;
+            }
             if (document.pointerLockElement) return;
             // Skip on launcher itself
-            if (/Toolbox Launcher/i.test(document.title) || /Toolbox Launcher\.html/i.test(location.pathname)) return;
+            if (/Toolbox Launcher/i.test(document.title) || /Toolbox Launcher\.html/i.test(location.pathname || '')) return;
+
+            // Layer 1: close open UI (compare panel, menus, modals)
+            if (tryCloseTransientUi()) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Layer 2: page-specific handler can cancel
+            try {
+                const ev = new CustomEvent('fafo:escape', { cancelable: true, bubbles: true });
+                if (!document.dispatchEvent(ev) || ev.defaultPrevented) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            } catch { /* ignore */ }
+
+            // Layer 3: embedded in hub iframe — don't dump user out of the hub shell
+            try {
+                if (window.self !== window.top) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.parent.postMessage({ type: 'fafo-escape', href: launcherHref() }, '*');
+                    return;
+                }
+            } catch { /* cross-origin — fall through to local leave */ }
+
+            // Layer 4: leave tool → launcher
+            e.preventDefault();
+            e.stopPropagation();
             try {
                 location.href = launcherHref();
             } catch { /* ignore */ }
+        }, true);
+    }
+
+    /**
+     * Parse Media Hub / Compare Hub deep-link from an href.
+     * Returns { kind: 'media'|'compare'|'launcher'|null, tab, search, href }.
+     */
+    function parseToolboxDeepLink(href) {
+        const raw = String(href || '');
+        let abs = raw;
+        try { abs = new URL(raw, location.href).href; } catch { /* keep raw */ }
+        const media = /Media(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(abs) || /Media(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(raw);
+        if (media) {
+            return { kind: 'media', tab: decodeURIComponent(media[2] || '').split('?')[0].split('/')[0], search: media[1] || '', href: abs };
+        }
+        const compare = /Compare(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(abs) || /Compare(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(raw);
+        if (compare) {
+            return { kind: 'compare', tab: decodeURIComponent(compare[2] || '').split('?')[0].split('/')[0], search: compare[1] || '', href: abs };
+        }
+        if (/Toolbox(?:%20| )Launcher\.html/i.test(abs) || /Toolbox(?:%20| )Launcher\.html/i.test(raw)) {
+            return { kind: 'launcher', tab: '', search: '', href: abs };
+        }
+        if (/Media(?:%20| )Hub\.html/i.test(abs) || /Media(?:%20| )Hub\.html/i.test(raw)) {
+            return { kind: 'media', tab: '', search: '', href: abs };
+        }
+        if (/Compare(?:%20| )Hub\.html/i.test(abs) || /Compare(?:%20| )Hub\.html/i.test(raw)) {
+            return { kind: 'compare', tab: '', search: '', href: abs };
+        }
+        return null;
+    }
+
+    /**
+     * Navigate to a toolbox page. When this tool is framed by Media/Compare Hub,
+     * switch the parent tab (or break out to top) instead of nesting a hub in the iframe.
+     */
+    function navigateToolbox(href) {
+        const info = parseToolboxDeepLink(href);
+        const fallback = () => { location.href = href; };
+        if (!info) { fallback(); return; }
+        try {
+            if (window.self !== window.top) {
+                if (info.kind === 'media' && info.tab) {
+                    window.parent.postMessage({ type: 'fafo-hub-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                    return;
+                }
+                if (info.kind === 'compare' && info.tab) {
+                    window.parent.postMessage({ type: 'fafo-compare-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                    return;
+                }
+                try { window.top.location.href = info.href; return; } catch { /* cross-origin */ }
+                window.parent.postMessage({ type: 'fafo-escape', href: info.href }, '*');
+                return;
+            }
+        } catch { /* ignore */ }
+        location.href = info.href || href;
+    }
+
+    /** Intercept <a href="Media Hub.html#duplicates"> etc. so iframe children cannot nest a hub. */
+    function bindFramedHubLinks() {
+        if (typeof document === 'undefined' || document.documentElement.dataset.tbHubLinks === '1') return;
+        document.documentElement.dataset.tbHubLinks = '1';
+        document.addEventListener('click', (e) => {
+            if (e.defaultPrevented) return;
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const a = e.target?.closest?.('a[href]');
+            if (!a) return;
+            const href = a.getAttribute('href') || '';
+            if (!href || href.startsWith('javascript:') || href === '#') return;
+            const info = parseToolboxDeepLink(href) || parseToolboxDeepLink(a.href);
+            if (!info) return;
+            try {
+                if (window.self === window.top) return;
+            } catch { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            navigateToolbox(a.href || href);
         }, true);
     }
 
@@ -1029,10 +1243,37 @@
                 if (document.body.dataset.tbChrome === 'off') return;
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
+                bindFramedHubLinks();
+                // Guidance (PC score + skill tooltips) — load once
+                ensureGuidanceScript();
             } catch (e) {
                 console.warn('[AIToolbox] auto chrome', e);
             }
         };
+
+        function ensureGuidanceScript() {
+            if (global.FAFOGuidance) {
+                try { global.FAFOGuidance.installSkillControl?.(); } catch (_) { /* ignore */ }
+                return;
+            }
+            if (document.getElementById('fafoGuidanceScript')) return;
+            let src = 'shared/fafo-guidance.js';
+            try {
+                const scripts = document.getElementsByTagName('script');
+                for (let i = scripts.length - 1; i >= 0; i--) {
+                    const s = scripts[i].src || '';
+                    if (s.includes('aitoolbox-ui.js')) {
+                        src = s.replace(/aitoolbox-ui\.js.*$/i, 'fafo-guidance.js');
+                        break;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+            const el = document.createElement('script');
+            el.id = 'fafoGuidanceScript';
+            el.src = src;
+            el.async = true;
+            document.head.appendChild(el);
+        }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', autoMount, { once: true });
         } else {
@@ -1071,5 +1312,9 @@
         launcherHref,
         ensureToolboxBack,
         installStabilityGuards,
+        tryCloseTransientUi,
+        parseToolboxDeepLink,
+        navigateToolbox,
+        bindFramedHubLinks,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

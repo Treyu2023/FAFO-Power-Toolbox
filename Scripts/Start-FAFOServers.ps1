@@ -300,6 +300,15 @@ function Start-HiddenProcess {
     $psi.WorkingDirectory = $WorkingDirectory
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
+    # Prevent Windows cp1252 UnicodeEncodeError on S1 banner prints when redirected
+    try {
+        if (-not $psi.EnvironmentVariables.ContainsKey('PYTHONIOENCODING')) {
+            $psi.EnvironmentVariables['PYTHONIOENCODING'] = 'utf-8'
+        }
+        if (-not $psi.EnvironmentVariables.ContainsKey('PYTHONUTF8')) {
+            $psi.EnvironmentVariables['PYTHONUTF8'] = '1'
+        }
+    } catch {}
     $p = [System.Diagnostics.Process]::Start($psi)
     if (-not $p) {
         throw "Failed to start process: $FilePath"

@@ -1,7 +1,10 @@
 /**
  * AI HTML Toolbox — 90s production-style launch cinematics
  * Three ~5s screens, Space/Enter/Click to skip, folder-backed video BGs.
- * 4K/heavy sources are auto-downscaled to a light 720p (or 540p) proxy for smooth playback.
+ *
+ * Display: full-quality source plays with CSS object-fit:contain so the whole
+ * frame fits on screen (letterbox) without re-encoding / permanent downscale.
+ * Optional forceProxy re-encodes a light 720p loop for weak machines only.
  */
 (function (global) {
     'use strict';
@@ -12,18 +15,19 @@
     const IDB_VER = 1;
     const STORE = 'handles';
 
-    /** Playback proxies — intros only need a short loop, not full 4K masters */
+    /** Optional playback proxies (only when prefs.forceProxy) */
     const PROXY_SECONDS = 8;
     const PROXY_FPS = 24;
-    const PROXY_SIZE_SOFT_CAP = 28 * 1024 * 1024; // always proxy blobs bigger than this
+    const PROXY_SIZE_SOFT_CAP = 28 * 1024 * 1024;
     /** Intro BG audio level when unmuted (0–1). Soft so it never blares. */
     const INTRO_VOLUME = 0.3;
 
     const DEFAULT_PREFS = {
         skipOnLaunch: false,   // daily-driver: skip intros
         muteVideo: false,      // play clip audio softly when present
+        forceProxy: false,     // false = full quality + fit-to-screen (recommended)
         lastPlayedAt: 0,
-        prefsRev: 2            // 2 = soft intro audio on + brighter BG grade
+        prefsRev: 3            // 3 = native quality + object-fit contain (no auto 720p)
     };
 
     /** Apply mute + soft volume to an intro video element. */
@@ -64,6 +68,11 @@
             if ((raw.prefsRev || 0) < 2) {
                 raw.muteVideo = false;
                 raw.prefsRev = 2;
+            }
+            // Rev 3: stop auto-downscaling intros to 720p; fit full quality on screen instead
+            if ((raw.prefsRev || 0) < 3) {
+                raw.forceProxy = false;
+                raw.prefsRev = 3;
                 try { localStorage.setItem(LS_PREFS, JSON.stringify(raw)); } catch (_) { /* ignore */ }
             }
             return raw;
@@ -243,7 +252,7 @@
         let optimized = false;
         let optLabel = '';
         try {
-            if (onStatus) onStatus('Optimizing video for smooth playback…');
+            if (onStatus) onStatus('Preparing full-quality intro (fit to screen)…');
             const ready = await ensureLightProxy(file, {
                 cacheKey: proxyCacheKey('file', file.name, file.size, file.lastModified || 0),
                 onStatus
@@ -254,7 +263,7 @@
                 optLabel = ready.scaleLabel || '';
             }
         } catch (e) {
-            console.warn('[Cine] optimize on pick failed — storing original', e);
+            console.warn('[Cine] prepare on pick failed — storing original', e);
         }
         const record = {
             kind: 'file',
@@ -417,8 +426,9 @@
     }
 
     function proxyCacheKey(kind, name, size, mtime) {
-        // v2a: proxies may include a soft audio track (older silent caches ignored)
-        return 'proxy:v2a:' + [kind, name || 'v', size || 0, mtime || 0, playTarget().label].join('|');
+        // v3n: native full-quality path (no auto 720p). forceProxy still uses playTarget label.
+        const mode = prefs.forceProxy ? ('proxy:' + playTarget().label) : 'native';
+        return 'proxy:v3n:' + [kind, name || 'v', size || 0, mtime || 0, mode].join('|');
     }
 
     function loadVideoMeta(blobOrFile) {
@@ -614,14 +624,36 @@
     }
 
     /**
-     * Return a lightweight blob for smooth intro playback (cached in IDB).
+     * Prepare intro video for playback.
+     * Default: use the original file at full quality — the stage CSS fits it to the
+     * viewport (object-fit:contain) without re-encoding or permanent downscale.
+     * Optional prefs.forceProxy re-encodes a light 720p/540p loop for weak PCs.
      */
     async function ensureLightProxy(blobOrFile, opts) {
         opts = opts || {};
         const cacheKey = opts.cacheKey || proxyCacheKey('anon', blobOrFile.name || 'clip', blobOrFile.size, blobOrFile.lastModified || 0);
         const t = playTarget();
+        const useProxy = prefs.forceProxy === true || opts.forceProxy === true;
 
-        // Cached proxy for this machine class
+        // Default path: full quality, display-fit only
+        if (!useProxy) {
+            let width = 0;
+            let height = 0;
+            try {
+                const meta = await loadVideoMeta(blobOrFile);
+                width = meta.width;
+                height = meta.height;
+                try { meta.video.removeAttribute('src'); meta.video.load(); } catch (_) { /* ignore */ }
+                try { URL.revokeObjectURL(meta.url); } catch (_) { /* ignore */ }
+            } catch (_) { /* label without meta is fine */ }
+            const label = width && height
+                ? `${width}×${height} native (fit screen)`
+                : 'native (fit screen)';
+            if (opts.onStatus) opts.onStatus(`Full quality ${width || '?'}×${height || '?'} · fit to screen`);
+            return { blob: blobOrFile, scaled: false, scaleLabel: label };
+        }
+
+        // Optional proxy path (weak machines / explicit preference)
         try {
             const cached = await idbGet(cacheKey);
             if (cached && cached.blob && cached.blob.size > 1000) {
@@ -634,7 +666,6 @@
             }
         } catch (_) { /* ignore */ }
 
-        // Already a small optimized store?
         if (blobOrFile._cineOptimized) {
             return { blob: blobOrFile, scaled: true, scaleLabel: blobOrFile._scaleLabel || t.label };
         }
@@ -654,7 +685,7 @@
         }
 
         if (opts.onStatus) {
-            opts.onStatus(`Optimizing ${width || '?'}×${height || '?'} → ${t.label}…`);
+            opts.onStatus(`Optional proxy ${width || '?'}×${height || '?'} → ${t.label}…`);
         }
 
         try {
@@ -684,8 +715,8 @@
                 fromCache: false
             };
         } catch (e) {
-            console.warn('[Cine] downscale failed — using original (may lag)', e);
-            if (opts.onStatus) opts.onStatus('Using original video (optimize failed)');
+            console.warn('[Cine] proxy failed — using original', e);
+            if (opts.onStatus) opts.onStatus('Using original video (proxy failed)');
             return { blob: blobOrFile, scaled: false, scaleLabel: 'original', error: String(e && e.message || e) };
         }
     }
@@ -829,17 +860,23 @@ body.cine-active { overflow: hidden; }
 
 .cine-bg-video, .cine-bg-synth {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; z-index: 0;
+  z-index: 0;
 }
-/* Prefer compositor path; proxies are already ≤720p so paint stays cheap */
+/*
+ * Fit full frame on screen (letterbox/pillarbox) — do NOT cover/crop.
+ * Display-only sizing; video stays full quality (no re-encode).
+ */
 .cine-bg-video {
+  object-fit: contain;
+  object-position: center center;
   transform: translateZ(0);
   will-change: transform;
   background: #000;
-  /* Was 0.45 — videos looked crushed. Keep mild grade so titles still read. */
-  filter: brightness(0.88) saturate(1.12) contrast(1.06);
+  /* Mild grade only — keep detail readable under titles */
+  filter: brightness(0.92) saturate(1.08) contrast(1.04);
 }
 .cine-bg-synth {
+  object-fit: cover;
   filter: brightness(0.75) saturate(1.15) contrast(1.05);
   background:
     radial-gradient(ellipse at 30% 20%, rgba(0,243,255,0.25), transparent 50%),
@@ -1702,17 +1739,20 @@ body.cine-active { overflow: hidden; }
             <input type="checkbox" data-mute ${prefs.muteVideo !== false ? 'checked' : ''}>
             Mute background videos (when off, clip audio plays at ~${Math.round(INTRO_VOLUME * 100)}%)
           </label>
+          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;cursor:pointer;" title="Only enable on weak PCs. Default is full quality.">
+            <input type="checkbox" data-proxy ${prefs.forceProxy ? 'checked' : ''}>
+            Compress intros to ${playTarget().label} proxy (not recommended — loses quality)
+          </label>
           <p style="color:#888;margin-bottom:10px;line-height:1.45;font-size:11px;">
+            <strong style="color:#c8d0dc;">Display:</strong> full-quality video, fitted to the screen
+            (letterboxed — whole frame visible, never cropped or re-encoded).
+            <br><br>
             <strong style="color:#c8d0dc;">Video file</strong> sticks forever (blob saved in this browser).<br>
             <strong style="color:#c8d0dc;">Folder</strong> can lose Chrome permission after restart —
-            we cache a clip so intros still play; use <strong>Re-grant</strong> to refresh random picks.
+            use <strong>Re-grant</strong> to refresh.
             <br><br>
-            Launcher <strong style="color:#c8d0dc;">depth marquee</strong> uses these same 3 slots:
-            folders progressive-autoplay through their videos (ended → next); single files loop.
-            After a Chrome restart, <strong>Re-grant</strong> folder access so the full playlist loads
-            (otherwise only the cached clip shows).
-            <br><br>
-            4K / heavy clips auto-scale to <strong style="color:#c8d0dc;">${playTarget().label}</strong> (~8s loop) for intros.
+            If a clip still looks soft, it was saved as an old 720p proxy — pick the video again
+            to store the original full-quality file.
           </p>
           <div data-slot-list>${slotRows}</div>
           <p data-global-status style="color:#6a8;font-size:11px;min-height:1.2em;margin:6px 0 10px;"></p>
@@ -1746,6 +1786,12 @@ body.cine-active { overflow: hidden; }
         pop.querySelector('[data-x]').onclick = () => pop.remove();
         pop.querySelector('[data-skip]').onchange = (e) => savePrefs({ skipOnLaunch: e.target.checked });
         pop.querySelector('[data-mute]').onchange = (e) => savePrefs({ muteVideo: e.target.checked });
+        pop.querySelector('[data-proxy]')?.addEventListener('change', (e) => {
+            savePrefs({ forceProxy: !!e.target.checked });
+            setGlobal(e.target.checked
+                ? 'Proxy mode on — next pick/replay may re-encode'
+                : 'Full quality · fit to screen (re-pick clips if they were old proxies)');
+        });
 
         const bumpMarquee = () => {
             try {

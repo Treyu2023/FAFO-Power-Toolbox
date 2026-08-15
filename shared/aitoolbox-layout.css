@@ -1,0 +1,357 @@
+/**
+ * FAFO modular layout — resize / reorder / persist
+ * Used with shared/aitoolbox-layout.js
+ */
+.fafo-layout-root {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+}
+.fafo-layout-root.fafo-layout-columns {
+  display: flex !important;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0 !important;
+  grid-template-columns: none !important;
+  /* Prefer filling the window so width-clamp math uses a real shell */
+  min-height: min(100vh, 100dvh);
+  min-height: 100dvh;
+}
+.fafo-layout-root.fafo-layout-rows {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  /* Critical: without this, rows roots collapse to sum(fixed panels) ≈ banner strip */
+  min-height: min(100vh, 100dvh);
+  min-height: 100dvh;
+  height: auto;
+  box-sizing: border-box;
+}
+/* Auto-scaffolded full-page shells */
+.fafo-auto-shell.fafo-layout-root,
+.fafo-layout-root.fafo-auto-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Panels */
+.fafo-layout-panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fafo-layout-panel[data-fafo-flex="1"] {
+  flex: 1 1 auto !important;
+  min-height: 0;
+  /* Flex survivors must be allowed to grow past corrupt fixed heights */
+  height: auto !important;
+  max-height: none !important;
+}
+.fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"] {
+  flex: 1 1 auto !important;
+  min-height: 160px;
+}
+.fafo-layout-panel.is-dragging {
+  opacity: 0.72;
+  outline: 1px dashed rgba(0, 243, 255, 0.55);
+}
+.fafo-layout-panel.is-drop-target {
+  outline: 2px solid rgba(0, 243, 255, 0.65);
+  outline-offset: -2px;
+}
+
+.fafo-panel-chrome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  min-height: 28px;
+  background: rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  user-select: none;
+  cursor: default; /* don't force hand on whole bar — stuck grabbing was hard to click */
+  z-index: 2;
+}
+.fafo-panel-chrome .fafo-grip {
+  color: rgba(0, 243, 255, 0.7);
+  font-size: 12px;
+  letter-spacing: -1px;
+  line-height: 1;
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.fafo-panel-chrome .fafo-grip:active { cursor: grabbing; }
+.fafo-panel-chrome .fafo-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(180, 196, 220, 0.9);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+.fafo-panel-chrome .fafo-panel-title:active { cursor: grabbing; }
+.fafo-panel-chrome .fafo-panel-actions,
+.fafo-section-chrome .fafo-section-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  align-items: center;
+  flex-shrink: 0;
+}
+.fafo-chrome-btn {
+  appearance: none;
+  border: 1px solid rgba(0, 243, 255, 0.28);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(0, 243, 255, 0.9);
+  border-radius: 6px;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fafo-chrome-btn:hover {
+  border-color: rgba(0, 243, 255, 0.7);
+  background: rgba(0, 243, 255, 0.12);
+  color: #00f3ff;
+}
+.fafo-section-chrome .fafo-chrome-btn {
+  width: 20px;
+  height: 18px;
+  font-size: 11px;
+}
+.fafo-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Split handles between panels */
+.fafo-split-handle {
+  flex: 0 0 6px;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+.fafo-layout-rows > .fafo-split-handle {
+  flex-basis: 6px;
+  width: 100%;
+  cursor: row-resize;
+}
+.fafo-split-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 243, 255, 0.08);
+  transition: background 0.15s;
+}
+.fafo-split-handle:hover::after,
+.fafo-split-handle.is-active::after {
+  background: rgba(0, 243, 255, 0.45);
+}
+.fafo-split-handle::before {
+  content: "⋮";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: rgba(0, 243, 255, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.fafo-layout-rows > .fafo-split-handle::before { content: "⋯"; }
+.fafo-split-handle:hover::before,
+.fafo-split-handle.is-active::before { opacity: 1; }
+
+/* Sections inside a panel */
+[data-fafo-section] {
+  position: relative;
+}
+[data-fafo-section].is-section-dragging {
+  opacity: 0.65;
+  outline: 1px dashed rgba(255, 107, 53, 0.6);
+}
+[data-fafo-section].is-section-drop {
+  box-shadow: inset 0 2px 0 0 rgba(0, 243, 255, 0.75);
+}
+.fafo-section-chrome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+  user-select: none;
+}
+.fafo-section-chrome .fafo-grip {
+  color: rgba(255, 107, 53, 0.75);
+  font-size: 11px;
+  flex-shrink: 0;
+  cursor: grab;
+  padding: 2px 4px;
+}
+.fafo-section-chrome .fafo-grip:active { cursor: grabbing; }
+.fafo-section-chrome .fafo-section-title,
+.fafo-section-chrome h3 {
+  cursor: grab;
+}
+.fafo-section-chrome .fafo-section-title:active,
+.fafo-section-chrome h3:active { cursor: grabbing; }
+.fafo-section-chrome h3,
+.fafo-section-chrome .fafo-section-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.fafo-section-resize {
+  height: 6px;
+  cursor: row-resize;
+  touch-action: none;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+}
+.fafo-section-resize::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.fafo-section-resize:hover::after,
+.fafo-section-resize.is-active::after {
+  background: rgba(0, 243, 255, 0.55);
+}
+[data-fafo-section][data-fafo-resizable="1"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 80px;
+  overflow: hidden;
+}
+[data-fafo-section][data-fafo-resizable="1"] .fafo-section-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Floating layout controls */
+.fafo-layout-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fafo-layout-btn {
+  font: 600 10px/1 system-ui, "Segoe UI", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(200, 214, 235, 0.95);
+  cursor: pointer;
+}
+.fafo-layout-btn:hover {
+  border-color: rgba(0, 243, 255, 0.55);
+  color: #00f3ff;
+}
+.fafo-layout-btn.danger:hover {
+  border-color: rgba(255, 68, 102, 0.55);
+  color: #ff6688;
+}
+.fafo-layout-hint {
+  font-size: 10px;
+  color: rgba(140, 154, 176, 0.95);
+  max-width: 220px;
+}
+
+/* Always-available floating layout dock (reset / save never off-screen) */
+.fafo-layout-float-dock {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 99950;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(420px, calc(100vw - 20px));
+  pointer-events: none;
+}
+.fafo-layout-float-host {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 243, 255, 0.28);
+  background: rgba(6, 10, 16, 0.88);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.fafo-layout-float-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(0, 243, 255, 0.85);
+  margin-right: 2px;
+}
+.fafo-layout-float-host .fafo-layout-bar {
+  gap: 5px;
+}
+/* Avoid covering companion S1/S2 bar if both bottom-left */
+body.tb-has-companion-bar .fafo-layout-float-dock {
+  bottom: 52px;
+}
+
+body.fafo-layout-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.fafo-layout-resizing-row {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+body.fafo-layout-dragging {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+body.fafo-layout-resizing iframe,
+body.fafo-layout-resizing-row iframe,
+body.fafo-layout-dragging iframe {
+  pointer-events: none !important;
+}
+/* After a stuck drag, Escape / blur clears body classes — restore default pointer */
+body:not(.fafo-layout-resizing):not(.fafo-layout-resizing-row):not(.fafo-layout-dragging) {
+  cursor: auto;
+}
+
+/* Dense mode friendliness */
+body.atx-dense .fafo-panel-chrome {
+  min-height: 22px;
+  padding: 2px 6px;
+}

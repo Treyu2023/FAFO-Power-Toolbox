@@ -235,19 +235,58 @@ if (-not $NoServer) {
 }
 
 # --- Launch Chrome app window (thin shell) ---
-$pagePath = Join-Path $ToolboxRoot $Page
+# Prefer S1 HTTP origin so tools resolve under /toolbox/... (file:// breaks
+# private-network fetches and relative app paths look "missing").
+# Keep #tab / ?query off the filesystem path and out of percent-encoding
+# (EscapeDataString("#") => %23 was the Duplicates 404).
+$relPage = ($Page -replace '\\', '/').TrimStart('/')
+$pageHash = ''
+$pageQuery = ''
+$hashAt = $relPage.IndexOf('#')
+if ($hashAt -ge 0) {
+    $pageHash = $relPage.Substring($hashAt)
+    $relPage = $relPage.Substring(0, $hashAt)
+}
+$qAt = $relPage.IndexOf('?')
+if ($qAt -ge 0) {
+    $pageQuery = $relPage.Substring($qAt)
+    $relPage = $relPage.Substring(0, $qAt)
+}
+$pagePath = Join-Path $ToolboxRoot ($relPage -replace '/', [IO.Path]::DirectorySeparatorChar)
 if (-not (Test-Path -LiteralPath $pagePath)) {
-    if (Test-Path -LiteralPath $Page) {
-        $pagePath = (Resolve-Path -LiteralPath $Page).Path
+    if (Test-Path -LiteralPath $relPage) {
+        $pagePath = (Resolve-Path -LiteralPath $relPage).Path
     } else {
-        throw "Page not found: $Page"
+        throw "Page not found: $relPage"
     }
 }
 
+$appUrl = $null
+$tbHost = '127.0.0.87'
+$tbPort = 18765
+$bindFile = Join-Path $ToolboxRoot 'shared\aitoolbox-bind.json'
+if (Test-Path -LiteralPath $bindFile) {
+    try {
+        $bind = Get-Content -LiteralPath $bindFile -Raw | ConvertFrom-Json
+        if ($bind.host) { $tbHost = [string]$bind.host }
+        if ($bind.port) { $tbPort = [int]$bind.port }
+    } catch {}
+}
+if (Test-HealthEndpoint) {
+    $encoded = ($relPage -split '/' | Where-Object { $_ } | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
+    $appUrl = "http://${tbHost}:${tbPort}/toolbox/$encoded$pageQuery$pageHash"
+}
+
 # Thin shell: Chrome --app mode (no browser chrome / tabs) + sensible default size
-Write-Launch " Opening Chrome thin shell (app window)..." 'Cyan'
+if ($appUrl) {
+    Write-Launch " Opening Chrome thin shell via S1: $appUrl" 'Cyan'
+    $appTarget = $appUrl
+} else {
+    Write-Launch " Opening Chrome thin shell via file (S1 offline): $pagePath" 'Yellow'
+    $appTarget = $pagePath
+}
 $chromeArgs = @(
-    "--app=`"$pagePath`"",
+    "--app=`"$appTarget`"",
     '--new-window',
     '--window-size=1400,900',
     '--disable-features=TranslateUI'

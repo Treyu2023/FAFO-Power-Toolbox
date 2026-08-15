@@ -14,10 +14,18 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tiff", ".tif"}
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    # timeout: wait for locks when Media Library + Duplicates + VSR hit the DB together
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=30000")  # ms — multi-tool / multi-tab friendliness
+        conn.execute("PRAGMA temp_store=MEMORY")
+    except sqlite3.Error:
+        # Older SQLite builds may reject some PRAGMAs — still usable
+        pass
     return conn
 
 

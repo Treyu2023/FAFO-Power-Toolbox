@@ -11,6 +11,7 @@
         enabled: true,
         sounds: true,
         marquee: true,
+        autoThrottle: true, // pause marquee when frame times thrash
         intensity: 1 // 0.5–1.5
     };
 
@@ -21,7 +22,9 @@
     let marqueeStage = null;
     let marqueeOffsets = { far: 0, mid: 0, near: 0 };
     let marqueeLastTs = 0;
-    let marqueePaused = false;
+    let marqueePaused = false; // soft pause (hover / bottom band)
+    let marqueeHardOff = false; // auto-throttle or user forced
+    let marqueeThrottleReason = '';
     let scrollProgress = 0;
     let canvas = null;
     let ctx = null;
@@ -33,6 +36,11 @@
     let clipUrls = [];
     let reducedMotion = false;
     let started = false;
+    let lastFrameTs = 0;
+    let lagScore = 0;
+    let lagToastAt = 0;
+    let fxTickSkip = 0; // drop canvas work under load
+    const MAX_PLAYING_VIDEOS = 3; // hard cap — prevents multi-decode thrash
 
     function loadPrefs() {
         try {
@@ -45,6 +53,9 @@
         prefs = { ...prefs, ...patch };
         try { localStorage.setItem(LS, JSON.stringify(prefs)); } catch (_) { /* ignore */ }
         applyEnabled();
+        try {
+            document.dispatchEvent(new CustomEvent('fafo-launcher-fx-prefs', { detail: { ...prefs } }));
+        } catch (_) { /* ignore */ }
         return prefs;
     }
 
@@ -209,7 +220,10 @@ body.lx-active .section-nav { z-index: 40; }
 .lx-m-near .lx-tile { width: min(42vw, 400px); border-radius: 18px; }
 .lx-tile video {
   width: 100%; height: 100%;
-  object-fit: cover;
+  /* Fit whole frame in the tile (letterbox) — no crop; source quality unchanged */
+  object-fit: contain;
+  object-position: center center;
+  background: #000;
   display: block;
   pointer-events: none;
 }
@@ -256,33 +270,38 @@ body.lx-active .section-nav { z-index: 40; }
   will-change: transform;
 }
 
-/* ── Tessellated materials on homepage tiles & blocks ── */
+/* ── Tessellated materials + neon ninja edge softlight ── */
 body.lx-active .tool-card,
 body.lx-active .hub-card,
 body.lx-active .section-header,
 body.lx-active .get-started,
-body.lx-active .get-started-step {
-  --tess-a: rgba(0,243,255, calc(0.1 * var(--lx-tess, 1)));
-  --tess-b: rgba(124,92,255, calc(0.09 * var(--lx-tess, 1)));
-  background-color: #0a0c14;
+body.lx-active .get-started-step,
+body.lx-active .sec-acc,
+body.lx-active .server-banner {
+  --tess-a: rgba(0,243,255, calc(0.12 * var(--lx-tess, 1) * var(--neon-i, 1)));
+  --tess-b: rgba(46,245,201, calc(0.1 * var(--lx-tess, 1) * var(--neon-i, 1)));
+  background-color: #080c12;
   background-image:
     radial-gradient(ellipse 130% 90% at var(--lx-lx) var(--lx-ly),
-      rgba(0,243,255, calc(0.16 * var(--lx-tess, 1))), transparent 58%),
+      rgba(0,243,255, calc(0.18 * var(--lx-tess, 1) * var(--neon-i, 1))), transparent 58%),
     radial-gradient(ellipse 100% 80% at calc(100% - var(--lx-lx)) calc(100% - var(--lx-ly)),
-      rgba(124,92,255, calc(0.14 * var(--lx-tess, 1))), transparent 55%),
+      rgba(46,245,201, calc(0.14 * var(--lx-tess, 1) * var(--neon-i, 1))), transparent 55%),
     repeating-linear-gradient(60deg,
-      transparent 0 11px, rgba(0,243,255,0.035) 11px 12px),
+      transparent 0 11px, rgba(0,243,255,0.04) 11px 12px),
     repeating-linear-gradient(-60deg,
-      transparent 0 11px, rgba(124,92,255,0.028) 11px 12px),
+      transparent 0 11px, rgba(46,245,201,0.032) 11px 12px),
     repeating-linear-gradient(0deg,
       transparent 0 19px, rgba(255,255,255,0.012) 19px 20px),
-    linear-gradient(155deg, rgba(28,32,48,0.96) 0%, rgba(12,14,22,0.98) 48%, rgba(8,9,14,0.99) 100%);
+    linear-gradient(155deg, rgba(16,24,34,0.97) 0%, rgba(8,12,18,0.99) 48%, rgba(4,8,12,0.99) 100%);
   background-blend-mode: soft-light, soft-light, normal, normal, normal, normal;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.07),
-    inset 0 -1px 0 rgba(0,0,0,0.45),
-    0 10px 28px rgba(0,0,0,0.35);
-  border-color: rgba(0,243,255,0.28);
+    inset 0 1px 0 rgba(255,255,255, calc(0.08 * var(--neon-i, 1))),
+    inset 0 0 calc(26px * var(--neon-i, 1)) rgba(0,243,255, calc(0.07 * var(--neon-i, 1))),
+    inset 0 0 1px rgba(46,245,201, calc(0.22 * var(--neon-i, 1))),
+    0 0 calc(18px * var(--neon-i, 1)) rgba(0,243,255, calc(0.14 * var(--neon-i, 1))),
+    0 0 calc(36px * var(--neon-i, 1)) rgba(46,245,201, calc(0.07 * var(--neon-i, 1))),
+    0 10px 28px rgba(0,0,0,0.38);
+  border-color: rgba(0,243,255, calc(0.32 * var(--neon-i, 1)));
   transition:
     transform 0.22s cubic-bezier(.2,.8,.2,1),
     box-shadow 0.22s, border-color 0.22s, filter 0.22s,
@@ -299,7 +318,7 @@ body.lx-active .tool-card.featured {
     radial-gradient(ellipse 120% 90% at var(--lx-lx) var(--lx-ly),
       rgba(255,200,80,0.14), transparent 55%),
     radial-gradient(ellipse 100% 80% at calc(100% - var(--lx-lx)) calc(100% - var(--lx-ly)),
-      rgba(0,243,255,0.1), transparent 50%),
+      rgba(0,243,255,0.12), transparent 50%),
     repeating-linear-gradient(60deg, transparent 0 11px, rgba(255,200,80,0.04) 11px 12px),
     repeating-linear-gradient(-60deg, transparent 0 11px, rgba(0,243,255,0.03) 11px 12px),
     linear-gradient(155deg, rgba(36,30,18,0.97), rgba(12,12,18,0.99));
@@ -307,23 +326,26 @@ body.lx-active .tool-card.featured {
 }
 body.lx-active .tool-card:hover,
 body.lx-active .hub-card:hover {
-  transform: translateY(-6px) scale(1.025);
+  transform: translateY(-7px) scale(1.028);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.1),
-    0 16px 40px rgba(0,0,0,0.5),
-    0 0 28px rgba(0,243,255,0.22);
-  border-color: rgba(0,243,255,0.6);
-  filter: brightness(1.06) saturate(1.08);
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 0 calc(32px * var(--neon-i, 1)) rgba(0,243,255, calc(0.12 * var(--neon-i, 1))),
+    0 16px 40px rgba(0,0,0,0.52),
+    0 0 calc(26px * var(--neon-i, 1)) rgba(0,243,255, calc(0.32 * var(--neon-i, 1))),
+    0 0 calc(52px * var(--neon-i, 1)) rgba(46,245,201, calc(0.14 * var(--neon-i, 1)));
+  border-color: rgba(46,245,201, calc(0.65 * var(--neon-i, 1)));
+  filter: brightness(1.07) saturate(1.1);
 }
 body.lx-active .tool-card .icon-wrap,
 body.lx-active .hub-card .hub-emoji {
   box-shadow:
-    inset 0 0 20px rgba(0,243,255,0.08),
+    inset 0 0 22px rgba(0,243,255, calc(0.12 * var(--neon-i, 1))),
+    0 0 calc(14px * var(--neon-i, 1)) rgba(46,245,201, calc(0.14 * var(--neon-i, 1))),
     0 4px 14px rgba(0,0,0,0.4);
-  border-color: rgba(0,243,255,0.35);
+  border-color: rgba(0,243,255, calc(0.42 * var(--neon-i, 1)));
   background:
-    radial-gradient(circle at var(--lx-lx) var(--lx-ly), rgba(0,243,255,0.12), transparent 60%),
-    #05060a;
+    radial-gradient(circle at var(--lx-lx) var(--lx-ly), rgba(0,243,255,0.14), transparent 60%),
+    #03060a;
 }
 body.lx-active .section-header,
 body.lx-active .get-started {
@@ -390,9 +412,12 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
   100% { opacity: 0; }
 }
 
-#lxToggle {
+#lxControls {
   position: fixed; bottom: 14px; right: 14px; z-index: 60;
   pointer-events: auto;
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+}
+#lxToggle, #lxMarqueeToggle {
   font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
   padding: 7px 11px; border-radius: 999px; cursor: pointer;
   border: 1px solid rgba(0,243,255,0.35);
@@ -400,8 +425,14 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
   backdrop-filter: blur(8px);
   transition: 0.2s;
 }
-#lxToggle:hover { color: #00f3ff; border-color: #00f3ff; box-shadow: 0 0 12px rgba(0,243,255,0.3); }
+#lxToggle:hover, #lxMarqueeToggle:hover { color: #00f3ff; border-color: #00f3ff; box-shadow: 0 0 12px rgba(0,243,255,0.3); }
 #lxToggle.on { color: #00ff88; border-color: rgba(0,255,136,0.45); }
+#lxMarqueeToggle.on { color: #7ee7ff; border-color: rgba(0,200,255,0.55); }
+#lxMarqueeToggle.warn { color: #fbbf24; border-color: rgba(251,191,36,0.55); }
+#lxMarqueeToggle.off { color: #64748b; border-color: rgba(100,116,139,0.45); }
+body.lx-marquee-off .lx-marquee-stage { display: none !important; }
+body.lx-marquee-throttled .lx-marquee-stage { opacity: 0.15; filter: grayscale(0.4); }
+body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
   .lx-wash, .lx-grid, .lx-scan { animation: none !important; }
@@ -519,15 +550,19 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         document.body.prepend(root);
         document.body.classList.add('lx-active');
 
+        const controls = document.createElement('div');
+        controls.id = 'lxControls';
+
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.id = 'lxToggle';
-        toggle.title = 'Toggle ambient FX / depth marquee / soft sounds (anti burn-in)';
+        toggle.title = 'Toggle ambient FX / lights / soft sounds (anti burn-in). Right-click: mute sounds.';
         toggle.textContent = '✦ FX';
         toggle.classList.toggle('on', prefs.enabled);
         toggle.addEventListener('click', () => {
             savePrefs({ enabled: !prefs.enabled });
-            toggle.classList.toggle('on', prefs.enabled);
+            if (!prefs.enabled) pauseMarqueeVideos(true);
+            else if (prefs.marquee && !marqueeHardOff) pauseMarqueeVideos(false);
             try {
                 if (global.AIToolboxUI?.toast) {
                     AIToolboxUI.toast(prefs.enabled ? 'Launcher FX on' : 'Launcher FX off', 'ok');
@@ -543,7 +578,55 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
                 }
             } catch (_) { /* ignore */ }
         });
-        document.body.appendChild(toggle);
+
+        const mqToggle = document.createElement('button');
+        mqToggle.type = 'button';
+        mqToggle.id = 'lxMarqueeToggle';
+        mqToggle.title = 'Cinema marquee on/off (saves decode load). Right-click: toggle auto-pause when laggy.';
+        mqToggle.textContent = '🎬 Marquee';
+        mqToggle.addEventListener('click', () => {
+            const next = !prefs.marquee;
+            savePrefs({ marquee: next });
+            marqueeHardOff = false;
+            marqueeThrottleReason = '';
+            if (next) {
+                pauseMarqueeVideos(false);
+                loadMarquee();
+            } else {
+                pauseMarqueeVideos(true);
+            }
+            updateMarqueeToggleUi();
+            try {
+                if (global.AIToolboxUI?.toast) {
+                    AIToolboxUI.toast(next ? 'Marquee on' : 'Marquee off — less GPU/CPU thrash', 'ok');
+                }
+            } catch (_) { /* ignore */ }
+        });
+        mqToggle.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            savePrefs({ autoThrottle: !prefs.autoThrottle });
+            if (!prefs.autoThrottle) {
+                marqueeHardOff = false;
+                marqueeThrottleReason = '';
+                if (prefs.marquee && prefs.enabled) pauseMarqueeVideos(false);
+            }
+            updateMarqueeToggleUi();
+            try {
+                if (global.AIToolboxUI?.toast) {
+                    AIToolboxUI.toast(
+                        prefs.autoThrottle
+                            ? 'Auto-pause marquee when laggy: ON'
+                            : 'Auto-pause marquee when laggy: OFF',
+                        'ok'
+                    );
+                }
+            } catch (_) { /* ignore */ }
+        });
+
+        controls.appendChild(mqToggle);
+        controls.appendChild(toggle);
+        document.body.appendChild(controls);
+        updateMarqueeToggleUi();
 
         canvas = document.getElementById('lxCanvas');
         ctx = canvas.getContext('2d');
@@ -559,12 +642,89 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         seedTracers();
     }
 
+    function updateMarqueeToggleUi() {
+        const btn = document.getElementById('lxMarqueeToggle');
+        if (btn) {
+            const active = !!(prefs.enabled && prefs.marquee && !marqueeHardOff);
+            btn.classList.toggle('on', active);
+            btn.classList.toggle('off', !prefs.marquee);
+            btn.classList.toggle('warn', !!(prefs.marquee && marqueeHardOff));
+            if (!prefs.marquee) btn.textContent = '🎬 Marquee off';
+            else if (marqueeHardOff) btn.textContent = '🎬 Paused (lag)';
+            else btn.textContent = '🎬 Marquee';
+            btn.title = prefs.autoThrottle
+                ? 'Marquee on/off. Auto-pause when laggy is ON (right-click to change).'
+                : 'Marquee on/off. Auto-pause when laggy is OFF (right-click to change).';
+        }
+        document.body.classList.toggle('lx-marquee-off', !prefs.marquee || !prefs.enabled);
+        document.body.classList.toggle('lx-marquee-throttled', !!(prefs.marquee && marqueeHardOff));
+        // Keep home-page top perf toggles in sync
+        try {
+            document.dispatchEvent(
+                new CustomEvent('fafo-launcher-fx-prefs', {
+                    detail: { ...prefs, marqueeHardOff, marqueeThrottleReason }
+                })
+            );
+        } catch (_) { /* ignore */ }
+    }
+
+    function pauseMarqueeVideos(pause) {
+        try {
+            root?.querySelectorAll('.lx-marquee-track video').forEach((v) => {
+                try {
+                    if (pause) {
+                        v.pause();
+                        // Drop decode pressure — keep src so resume is cheap
+                        v.removeAttribute('autoplay');
+                    } else if (prefs.marquee && prefs.enabled && !marqueeHardOff) {
+                        v.muted = true;
+                        v.play().catch(() => {});
+                    }
+                } catch (_) { /* ignore */ }
+            });
+        } catch (_) { /* ignore */ }
+    }
+
     function applyEnabled() {
         document.body.classList.toggle('lx-off', !prefs.enabled);
         document.getElementById('lxToggle')?.classList.toggle('on', prefs.enabled);
         if (marqueeStage) {
-            marqueeStage.style.display = prefs.marquee && prefs.enabled ? '' : 'none';
+            const show = prefs.marquee && prefs.enabled && !marqueeHardOff;
+            marqueeStage.style.display = show ? '' : 'none';
         }
+        updateMarqueeToggleUi();
+        if (!prefs.enabled || !prefs.marquee || marqueeHardOff) pauseMarqueeVideos(true);
+    }
+
+    function enterMarqueeThrottle(reason) {
+        if (!prefs.autoThrottle || !prefs.marquee) return;
+        if (marqueeHardOff) return;
+        marqueeHardOff = true;
+        marqueeThrottleReason = reason || 'lag';
+        pauseMarqueeVideos(true);
+        applyEnabled();
+        const now = Date.now();
+        if (now - lagToastAt > 20000) {
+            lagToastAt = now;
+            try {
+                if (global.AIToolboxUI?.toast) {
+                    AIToolboxUI.toast(
+                        'Marquee auto-paused (system lag). Click 🎬 Marquee to resume, or leave off while encoding.',
+                        'warn'
+                    );
+                }
+            } catch (_) { /* ignore */ }
+        }
+    }
+
+    function maybeRecoverMarquee() {
+        if (!marqueeHardOff || !prefs.autoThrottle || !prefs.marquee || !prefs.enabled) return;
+        if (lagScore > 2) return;
+        if (document.hidden) return;
+        marqueeHardOff = false;
+        marqueeThrottleReason = '';
+        applyEnabled();
+        pauseMarqueeVideos(false);
     }
 
     function updateScrollLighting() {
@@ -583,7 +743,7 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
     }
 
     function stepMarquee(now) {
-        if (!prefs.enabled || !prefs.marquee || reducedMotion) return;
+        if (!prefs.enabled || !prefs.marquee || reducedMotion || marqueeHardOff) return;
         if (!marqueeLastTs) marqueeLastTs = now;
         let dt = now - marqueeLastTs;
         marqueeLastTs = now;
@@ -649,8 +809,30 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
 
     function tick(now) {
         rafId = requestAnimationFrame(tick);
+
+        // Frame-time lag meter — thrashing while encode/toolbox fights for GPU/CPU
+        if (lastFrameTs) {
+            const frameDt = now - lastFrameTs;
+            if (frameDt > 55) lagScore = Math.min(40, lagScore + (frameDt > 100 ? 3 : 1.5));
+            else if (frameDt > 40) lagScore = Math.min(40, lagScore + 0.6);
+            else lagScore = Math.max(0, lagScore - 0.35);
+            if (prefs.autoThrottle && prefs.marquee && lagScore >= 12) {
+                enterMarqueeThrottle('frame');
+            } else if (lagScore < 1.5) {
+                maybeRecoverMarquee();
+            }
+        }
+        lastFrameTs = now;
+
         stepMarquee(now);
         if (!prefs.enabled || !ctx || !canvas) return;
+
+        // Under load, skip expensive canvas particles (keep rAF cheap)
+        if (lagScore > 6 || marqueeHardOff) {
+            fxTickSkip = (fxTickSkip + 1) % 3;
+            if (fxTickSkip !== 0) return;
+        }
+
         const w = window.innerWidth;
         const h = window.innerHeight;
         ctx.clearRect(0, 0, w, h);
@@ -763,8 +945,12 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
     }
 
     async function loadMarquee() {
-        if (!prefs.marquee) return;
+        if (!prefs.marquee) {
+            pauseMarqueeVideos(true);
+            return;
+        }
         if (!marqueeTracks.near) return;
+        if (marqueeHardOff) return;
 
         clipUrls.forEach((u) => {
             try { URL.revokeObjectURL(u); } catch (_) { /* ignore */ }
@@ -782,7 +968,6 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         }
         if (!Array.isArray(clips)) clips = [];
 
-        // Track blob URLs for cleanup (each clip may revoke its own URL)
         clips.forEach((c) => {
             if (c && c.revoke) clipUrls.push(c.revoke);
             else if (c && c.url && c.url.startsWith('blob:')) clipUrls.push(c.url);
@@ -794,7 +979,9 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
             'linear-gradient(135deg,#120a20,#0a1820)',
             'linear-gradient(135deg,#0a2018,#1a1028)',
             'linear-gradient(135deg,#181028,#0a1420)',
-            'linear-gradient(135deg,#0c1824,#20102a)'
+            'linear-gradient(135deg,#0c1824,#20102a)',
+            'linear-gradient(135deg,#1a0820,#081828)',
+            'linear-gradient(135deg,#082018,#180a28)'
         ];
 
         const makeSynth = (i) => {
@@ -805,17 +992,21 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         };
 
         /**
-         * Progressive playlist tile: play clip N, on ended → next, wrap around.
-         * Single-clip playlists loop that one clip (same as before).
-         * startIdx staggers tiles so the ribbon isn't all the same frame.
+         * Video tile with optional play. Cap concurrent decoders to avoid thrash
+         * while toolbox + encode jobs fight for GPU/CPU.
+         * mode: 'play' | 'still' (load first frame, stay paused)
          */
-        const makeVideoTile = (playlist, startIdx) => {
+        let playingBudget = MAX_PLAYING_VIDEOS;
+        const makeVideoTile = (playlist, startIdx, mode) => {
             const tile = document.createElement('div');
             tile.className = 'lx-tile';
             const list = Array.isArray(playlist)
                 ? playlist.filter((c) => c && c.url)
                 : (playlist && playlist.url ? [playlist] : []);
-            if (!list.length) return makeSynth(0);
+            if (!list.length) return makeSynth(startIdx || 0);
+
+            const wantPlay = mode === 'play' && playingBudget > 0;
+            if (wantPlay) playingBudget -= 1;
 
             let idx = ((startIdx || 0) % list.length + list.length) % list.length;
             const v = document.createElement('video');
@@ -824,9 +1015,9 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
             v.playsInline = true;
             v.setAttribute('playsinline', '');
             v.setAttribute('muted', '');
-            v.preload = 'metadata';
-            // Progressive when 2+ clips; single clip loops
-            v.loop = list.length === 1;
+            v.preload = wantPlay ? 'metadata' : 'none';
+            v.loop = list.length === 1 && wantPlay;
+            if (!wantPlay) v.dataset.lxStill = '1';
 
             const show = (i) => {
                 const clip = list[((i % list.length) + list.length) % list.length];
@@ -834,22 +1025,38 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
                 try {
                     v.src = clip.url;
                     tile.title = clip.label || clip.name || '';
-                    v.play().catch(() => {});
+                    if (wantPlay && !marqueeHardOff && prefs.marquee) v.play().catch(() => {});
+                    else {
+                        // Seek a still frame without continuous decode when possible
+                        const onMeta = () => {
+                            try {
+                                v.currentTime = Math.min(0.12, (v.duration || 1) * 0.05);
+                            } catch (_) { /* ignore */ }
+                            v.pause();
+                            v.removeEventListener('loadedmetadata', onMeta);
+                        };
+                        v.addEventListener('loadedmetadata', onMeta);
+                        v.preload = 'metadata';
+                        v.load();
+                    }
                 } catch (_) { /* ignore */ }
             };
 
-            v.addEventListener('loadeddata', () => { v.play().catch(() => {}); });
-            v.addEventListener('ended', () => {
-                if (list.length < 2) return;
-                idx = (idx + 1) % list.length;
-                show(idx);
-            });
-            // Skip broken sources and keep progressing
-            v.addEventListener('error', () => {
-                if (list.length < 2) return;
-                idx = (idx + 1) % list.length;
-                show(idx);
-            });
+            if (wantPlay) {
+                v.addEventListener('loadeddata', () => {
+                    if (!marqueeHardOff && prefs.marquee) v.play().catch(() => {});
+                });
+                v.addEventListener('ended', () => {
+                    if (list.length < 2 || marqueeHardOff) return;
+                    idx = (idx + 1) % list.length;
+                    show(idx);
+                });
+                v.addEventListener('error', () => {
+                    if (list.length < 2) return;
+                    idx = (idx + 1) % list.length;
+                    show(idx);
+                });
+            }
 
             show(idx);
             tile.appendChild(v);
@@ -861,47 +1068,41 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
                 hint.style.display = '';
                 hint.textContent = '🎬 Intros → pick BG folders (progressive autoplay through each folder)';
             }
-            fillTrack(marqueeTracks.far, makeSynth, 6, true);
-            fillTrack(marqueeTracks.mid, makeSynth, 6, true);
-            fillTrack(marqueeTracks.near, makeSynth, 6, true);
+            fillTrack(marqueeTracks.far, makeSynth, 5, true);
+            fillTrack(marqueeTracks.mid, makeSynth, 5, true);
+            fillTrack(marqueeTracks.near, makeSynth, 5, true);
             return;
         }
         if (hint) hint.style.display = 'none';
 
-        // Shared progressive playlist for all tiles (staggered start indices)
-        const playlist = clips;
-        const farClips = clips.length > 2 ? clips.filter((_, i) => i % 2 === 0) : clips;
-
-        fillTrack(
-            marqueeTracks.far,
-            (i) => makeVideoTile(farClips, i),
-            Math.max(farClips.length, 4),
-            true
-        );
-        fillTrack(
-            marqueeTracks.mid,
-            (i) => makeVideoTile(playlist, i + 1),
-            Math.max(playlist.length, 4),
-            true
-        );
+        // Far/mid = stills only (no continuous multi-decode thrash).
+        // Near = at most MAX_PLAYING_VIDEOS live decoders; rest still frames.
+        playingBudget = MAX_PLAYING_VIDEOS;
+        fillTrack(marqueeTracks.far, (i) => makeVideoTile(clips, i, 'still'), 4, true);
+        fillTrack(marqueeTracks.mid, (i) => makeVideoTile(clips, i + 1, 'still'), 4, true);
         fillTrack(
             marqueeTracks.near,
-            (i) => makeVideoTile(playlist, i + 2),
-            Math.max(playlist.length, 5),
+            (i) => makeVideoTile(clips, i + 2, i < MAX_PLAYING_VIDEOS ? 'play' : 'still'),
+            Math.min(Math.max(clips.length, 3), 5),
             true
         );
 
-        const playAll = () => {
+        const playLive = () => {
+            if (!prefs.marquee || marqueeHardOff || document.hidden) return;
+            let n = 0;
             root?.querySelectorAll('.lx-marquee-track video').forEach((v) => {
+                if (v.dataset.lxStill === '1') return;
+                if (n >= MAX_PLAYING_VIDEOS) {
+                    v.pause();
+                    return;
+                }
+                n += 1;
                 v.muted = true;
                 v.play().catch(() => {});
             });
         };
-        document.addEventListener('pointerdown', playAll, { once: true });
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) playAll();
-        });
-        setTimeout(playAll, 400);
+        document.addEventListener('pointerdown', playLive, { once: true });
+        setTimeout(playLive, 400);
     }
 
     const SELECT_ANIMS = ['lx-pop', 'lx-spin', 'lx-flash', 'lx-glitch', 'lx-rise'];
@@ -1031,19 +1232,86 @@ body.lx-active .tool-card.lx-rise { animation: lxRise 0.55s cubic-bezier(.2,.9,.
         buildDom();
         applyEnabled();
         wireInteractions();
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                pauseMarqueeVideos(true);
+                lagScore = Math.min(40, lagScore + 4);
+            } else if (prefs.marquee && prefs.enabled && !marqueeHardOff) {
+                lagScore = 0;
+                pauseMarqueeVideos(false);
+            }
+        });
+
+        // If the tab is backgrounded long enough, force soft throttle until recovery
+        window.addEventListener('blur', () => {
+            if (prefs.autoThrottle && prefs.marquee) lagScore = Math.min(40, lagScore + 2);
+        });
+
         requestAnimationFrame(tick);
         await loadMarquee();
     }
 
     function refreshMarquee() {
+        marqueeHardOff = false;
+        marqueeThrottleReason = '';
+        lagScore = 0;
         return loadMarquee();
+    }
+
+    function setMarquee(on) {
+        savePrefs({ marquee: !!on });
+        marqueeHardOff = false;
+        marqueeThrottleReason = '';
+        if (on && prefs.enabled) loadMarquee();
+        else pauseMarqueeVideos(true);
+        applyEnabled();
+        return prefs.marquee;
+    }
+
+    function setEnabled(on) {
+        savePrefs({ enabled: !!on });
+        if (!prefs.enabled) pauseMarqueeVideos(true);
+        else if (prefs.marquee && !marqueeHardOff) {
+            pauseMarqueeVideos(false);
+            loadMarquee();
+        }
+        return prefs.enabled;
+    }
+
+    /** One-click calm: marquee + ambient FX off (keeps neon CSS intensity slider). */
+    function setCalmMode(on) {
+        if (on) {
+            marqueeHardOff = false;
+            savePrefs({ enabled: false, marquee: false });
+            pauseMarqueeVideos(true);
+        } else {
+            marqueeHardOff = false;
+            savePrefs({ enabled: true, marquee: true });
+            loadMarquee();
+        }
+        return !prefs.enabled && !prefs.marquee;
     }
 
     global.AIToolboxLauncherFX = {
         start,
         onToolSelect,
         refreshMarquee,
-        getPrefs: () => ({ ...prefs }),
+        setMarquee,
+        setEnabled,
+        setCalmMode,
+        pauseMarquee: () => {
+            marqueeHardOff = true;
+            pauseMarqueeVideos(true);
+            applyEnabled();
+        },
+        resumeMarquee: () => {
+            marqueeHardOff = false;
+            lagScore = 0;
+            applyEnabled();
+            pauseMarqueeVideos(false);
+        },
+        getPrefs: () => ({ ...prefs, marqueeHardOff, marqueeThrottleReason, lagScore }),
         setPrefs: savePrefs,
         playHoverSound,
         playClickSound

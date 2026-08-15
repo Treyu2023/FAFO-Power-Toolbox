@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pair Review Queue — AI HTML Toolbox</title>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
       --bg: #050508;
@@ -160,11 +161,13 @@
   </style>
 </head>
 <body>
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
   <div class="top">
     <h1>🔎 Pair Review Queue</h1>
     <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
     <button class="ui-btn primary" id="btnStartServer" type="button">▶ Start Server</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+    <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'" title="Library · Duplicates · Organizer">🗂️ Media Hub</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'" title="Process-of-elimination matching">🎯 Guided Match</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'" title="Compare Hub pair review tab">⇄ Compare Hub</button>
     <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">VSR</button>
@@ -173,8 +176,8 @@
     <span id="modeHint" style="margin-left:auto;font-size:11px;color:var(--muted)"></span>
   </div>
 
-  <div class="wrap">
-    <div class="source-bar">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-pair-review-queue" data-fafo-layout-type="columns">
+    <div class="source-bar" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
       <label style="font-size:11px;color:var(--muted)">Queue source</label>
       <select id="sourceSelect">
         <option value="vsr1">VSR Stage I — upscale matches</option>
@@ -217,8 +220,12 @@
         Needs the toolbox server online (green pill).
         <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px">
           <button class="ui-btn primary" type="button" id="btnEmptyLoad">↻ Load queue</button>
+          <button class="ui-btn ghost" type="button" id="btnEmptyStartServer">▶ Start Server</button>
           <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'">🎯 Guided Match first</button>
           <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">⚡ Open VSR</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'">⇄ Compare Hub</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
         </div>
       </div>
     </div>
@@ -268,22 +275,37 @@
       </div>
 
       <div class="actions">
-        <button class="ui-btn primary-ok" id="btnAccept" type="button">✓ Accept</button>
-        <button class="ui-btn danger" id="btnReject" type="button">✗ Reject</button>
-        <button class="ui-btn ghost" id="btnSkip" type="button">Skip</button>
-        <button class="ui-btn ghost" id="btnPrev" type="button">← Prev</button>
-        <button class="ui-btn ghost" id="btnNext" type="button">Next →</button>
-        <button class="ui-btn primary" id="btnNextPlay" type="button">⏭ Next + play</button>
-        <button class="ui-btn ghost" id="btnSwapSides" type="button">⇄ Swap L/R</button>
-        <button class="ui-btn ghost" id="btnUndo" type="button">Undo</button>
-        <button class="ui-btn ghost" id="btnCompare" type="button">Open comparator</button>
+        <button class="ui-btn primary-ok" id="btnAccept" type="button"
+                data-tip-title="Accept (A / Enter)" data-tip-basic="Yes — this pair is good. Moves to the next item."
+                data-tip-pro="Mark decision accept; optional flush tags to disk.">✓ Accept</button>
+        <button class="ui-btn danger" id="btnReject" type="button"
+                data-tip-title="Reject (R / X)" data-tip="No — wrong match. Will not rename this one.">✗ Reject</button>
+        <button class="ui-btn ghost" id="btnSkip" type="button"
+                data-tip-title="Skip (S)" data-tip="Leave undecided and move on.">Skip</button>
+        <button class="ui-btn ghost" id="btnPrev" type="button" data-tip-title="Previous" data-tip="Go back one queue item.">← Prev</button>
+        <button class="ui-btn ghost" id="btnNext" type="button" data-tip-title="Next" data-tip="Go forward one queue item.">Next →</button>
+        <button class="ui-btn primary" id="btnNextPlay" type="button"
+                data-tip-title="Next + play" data-tip="Advance and start playback on the new pair.">⏭ Next + play</button>
+        <button class="ui-btn ghost" id="btnSwapSides" type="button"
+                data-tip-title="Swap L/R" data-tip="Swap which side is left/right for this review only.">⇄ Swap L/R</button>
+        <button class="ui-btn ghost" id="btnUndo" type="button"
+                data-tip-title="Undo (U)" data-tip="Clear the decision on the current item.">Undo</button>
+        <button class="ui-btn ghost" id="btnCompare" type="button"
+                data-tip-title="Comparator" data-tip="Open the full before/after comparator for this pair.">Open comparator</button>
       </div>
 
       <div class="footer-actions">
-        <button class="ui-btn primary" id="btnApplyAccepted" type="button">Apply accepted renames…</button>
-        <button class="ui-btn ghost" id="btnDryAccepted" type="button">Dry-run accepted</button>
-        <button class="ui-btn ghost" id="btnSavePairs" type="button">Save accepted as catalog pairs</button>
-        <button class="ui-btn ghost" id="btnDeleteRejected" type="button">Delete rejected catalog pairs</button>
+        <button class="ui-btn primary" id="btnApplyAccepted" type="button"
+                data-tip-title="Apply accepted renames"
+                data-tip-basic="Rename every accepted file to its proposed name on disk."
+                data-tip-pro="vsrApplySelected for accept+renameNeeded rows."
+                data-tip-efficient="Dry-run first if you are unsure.">Apply accepted renames…</button>
+        <button class="ui-btn ghost" id="btnDryAccepted" type="button"
+                data-tip-title="Dry-run" data-tip="Preview renames without changing files.">Dry-run accepted</button>
+        <button class="ui-btn ghost" id="btnSavePairs" type="button"
+                data-tip-title="Save pairs" data-tip="Store accepted before/after links in the media catalog.">Save accepted as catalog pairs</button>
+        <button class="ui-btn ghost" id="btnDeleteRejected" type="button"
+                data-tip-title="Delete rejected links" data-tip="Remove bad pair links from the catalog (files stay on disk).">Delete rejected catalog pairs</button>
         <span id="applyStatus" style="font-size:12px;color:var(--muted)"></span>
       </div>
     </div>
@@ -294,6 +316,8 @@
   <script src="../shared/aitoolbox-debug.js"></script>
   <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/fafo-ops-stats.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     const API = () => window.AIToolboxAPI;
@@ -409,8 +433,24 @@
         active.style.display = 'none';
         empty.style.display = '';
         empty.innerHTML = queue.length
-          ? '<strong>Queue finished reviewing.</strong><br>Apply accepted renames or reload.'
-          : '<strong>No items loaded.</strong><br>Choose a source and click Load queue (server required).';
+          ? ('<strong>Queue finished reviewing.</strong><br>Apply accepted renames or reload.' +
+             '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
+             '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Reload queue</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Media Hub</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Compare Hub.html#video\'">🎬 Video compare</button>' +
+             '</div>')
+          : ('<strong>No items loaded.</strong><br>Choose a source and click Load queue (server required).' +
+             '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
+             '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Load queue</button>' +
+             '<button class="ui-btn ghost" type="button" id="btnEmptyStartServer2">▶ Start Server</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Guided Pair Match.html\'">🎯 Guided Match</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Hub</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'../Toolbox Launcher.html\'">← Launcher</button>' +
+             '</div>');
+        document.getElementById('btnEmptyLoad2')?.addEventListener('click', () => loadQueue());
+        document.getElementById('btnEmptyStartServer2')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click());
         updateFooterButtons();
         return;
       }
@@ -538,6 +578,20 @@
       item.decision = dec;
       // Write previous (this) pair's tags/rating to files before leaving
       await flushItemFilesToDisk(item);
+      try {
+        const metrics = {};
+        if (dec === 'accept') metrics.pairMatches = 1;
+        else if (dec === 'reject') metrics.pairRejects = 1;
+        else if (dec === 'skip') metrics.pairSkips = 1;
+        if (Object.keys(metrics).length) {
+          window.FAFOOpsStats?.record({
+            tool: 'pair-review-queue',
+            action: dec,
+            metrics,
+            extra: { label: item.label || item.id },
+          });
+        }
+      } catch (_) { /* stats optional */ }
       // Auto-advance
       if (index < queue.length - 1) index++;
       else {
@@ -746,6 +800,13 @@
         document.getElementById('applyStatus').textContent = msg;
         toast(msg, r.failed ? 'warn' : 'ok');
         if (!dryRun && r.ok) {
+          try {
+            window.FAFOOpsStats?.record({
+              tool: 'pair-review-queue',
+              action: 'rename',
+              metrics: { renamesApplied: r.ok, syncsCompleted: 1 },
+            });
+          } catch (_) { /* stats optional */ }
           // Mark applied items as done (no longer rename-needed)
           for (const q of queue) {
             if (q.decision === 'accept' && q.renameNeeded) {
@@ -787,6 +848,15 @@
             console.warn(e);
           }
         }
+        if (n) {
+          try {
+            window.FAFOOpsStats?.record({
+              tool: 'pair-review-queue',
+              action: 'save-pairs',
+              metrics: { pairsSaved: n, syncsCompleted: 1 },
+            });
+          } catch (_) { /* stats optional */ }
+        }
         toast(`Saved ${n} pair(s) from paths`, n ? 'ok' : 'warn');
         renderItem();
         return;
@@ -807,6 +877,15 @@
         } catch (e) {
           console.warn(e);
         }
+      }
+      if (n) {
+        try {
+          window.FAFOOpsStats?.record({
+            tool: 'pair-review-queue',
+            action: 'save-pairs',
+            metrics: { pairsSaved: n, syncsCompleted: 1 },
+          });
+        } catch (_) { /* stats optional */ }
       }
       toast(`Saved ${n} catalog pair(s)`, n ? 'ok' : 'warn');
       renderItem();
@@ -835,6 +914,15 @@
           console.warn(e);
         }
       }
+      if (n) {
+        try {
+          window.FAFOOpsStats?.record({
+            tool: 'pair-review-queue',
+            action: 'delete-pairs',
+            metrics: { pairsDeleted: n },
+          });
+        } catch (_) { /* stats optional */ }
+      }
       toast(`Deleted ${n} pair link(s)`, 'ok');
       renderItem();
     }
@@ -842,6 +930,7 @@
     // Wire buttons
     document.getElementById('btnLoad').onclick = loadQueue;
     document.getElementById('btnEmptyLoad')?.addEventListener('click', () => loadQueue());
+    document.getElementById('btnEmptyStartServer')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click());
     document.getElementById('btnAccept').onclick = () => setDecision('accept');
     document.getElementById('btnReject').onclick = () => setDecision('reject');
     document.getElementById('btnSkip').onclick = () => setDecision('skip');

@@ -12,7 +12,7 @@ param(
 $ErrorActionPreference = 'Continue'
 
 $LogDir  = Join-Path $PSScriptRoot 'logs'
-$LogFile = Join-Path $LogDir ("ghost-clean-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
+$LogFile = Join-Path $LogDir ("ghost-buster-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 
 function Write-Log {
@@ -98,6 +98,12 @@ function Test-SafeGhostRemoval {
     return $true
 }
 
+
+function Test-IsOemInf {
+    param([string]$InfName)
+    return ($InfName -match '(?i)^oem\d+\.inf$')
+}
+
 function Get-DeviceDriverInf {
     param([string]$InstanceId)
 
@@ -132,8 +138,9 @@ function Add-DeviceDriverInfo {
     param($Device)
 
     $driverInf = Get-DeviceDriverInf -InstanceId $Device.InstanceId
-    $Device | Add-Member -NotePropertyName DriverInf -NotePropertyValue $driverInf -Force
-    $Device | Add-Member -NotePropertyName DriverAvailable -NotePropertyValue ([bool]$driverInf) -Force
+    $isOem = [bool]($driverInf -and (Test-IsOemInf $driverInf))
+    $Device | Add-Member -NotePropertyName DriverInf -NotePropertyValue $(if ($isOem) { $driverInf } else { $null }) -Force
+    $Device | Add-Member -NotePropertyName DriverAvailable -NotePropertyValue $isOem -Force
     return $Device
 }
 
@@ -158,9 +165,17 @@ function Remove-GhostDevice {
     }
 
     if ($AlsoRemoveDriver -and $DriverInf) {
+        if (-not (Test-IsOemInf $DriverInf)) {
+            Write-Log ("  -> Skipped inbox driver purge: {0}" -f $DriverInf) 'DarkGray'
+            return
+        }
         $driverOutput = & $pnputil /delete-driver $DriverInf /uninstall /force 2>&1
         if ($LASTEXITCODE -ne 0) {
             $text = ($driverOutput | Out-String).Trim()
+            if ($text -match 'not an installed OEM INF') {
+                Write-Log ("  -> Device removed; skipped inbox driver {0}" -f $DriverInf) 'DarkGray'
+                return
+            }
             if ($text) { throw "Device removed but driver delete failed: $text" }
             throw "Device removed but driver delete failed with exit code $LASTEXITCODE for $DriverInf"
         }
@@ -290,9 +305,9 @@ function Select-DevicesGrid {
 
     Write-Log 'Opening device picker...' 'Yellow'
     Write-Log 'Select only the rows you want removed, then click OK.' 'DarkGray'
-    Write-Log 'Driver column shows packages available for optional purge in the next step.' 'DarkGray'
+    Write-Log 'Driver column only lists OEM packages. Inbox drivers like monitor.inf are never offered.' 'DarkGray'
 
-    $picked = $rows | Out-GridView -Title 'Ghost Device Cleaner - Select devices to remove' -PassThru
+    $picked = $rows | Out-GridView -Title 'Ghost Buster - Select devices to remove' -PassThru
     if (-not $picked) { return @() }
 
     $selected = @($picked | ForEach-Object { $_._Device })
@@ -317,10 +332,10 @@ function Select-DevicesGrid {
         }
     }
 
-    Write-Log 'Opening driver purge picker...' 'Yellow'
+    Write-Log 'Opening OEM driver purge picker (inbox drivers like monitor.inf are skipped)...' 'Yellow'
     Write-Log 'Select which of your chosen devices should also have their driver package removed.' 'DarkGray'
 
-    $driverPicked = $driverRows | Out-GridView -Title 'Ghost Device Cleaner - Also remove driver packages?' -PassThru
+    $driverPicked = $driverRows | Out-GridView -Title 'Ghost Buster - Also remove OEM driver packages?' -PassThru
     $driverInstanceIds = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     if ($driverPicked) {
         foreach ($row in $driverPicked) {
@@ -338,7 +353,7 @@ function Select-DevicesGrid {
 }
 
 Clear-Host
-Write-Log 'Ghost Device Cleaner' 'Cyan'
+Write-Log 'Ghost Buster' 'Cyan'
 Write-Log "Log file: $LogFile" 'DarkGray'
 if ($IncludeUsbGhosts) {
     Write-Log 'Mode: monitors + PlayStation VR2 + USB/virtual ghosts' 'Yellow'

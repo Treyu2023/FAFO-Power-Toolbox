@@ -4,6 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Home Health Hub — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{
   --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
@@ -78,9 +79,9 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
 
 /* Main grid */
 .hub-grid{
-  display:grid;grid-template-columns:minmax(280px,380px) 1fr;gap:16px;align-items:start;
+  display:flex;gap:0;align-items:stretch;min-height:420px;
 }
-@media (max-width:960px){.hub-grid{grid-template-columns:1fr}}
+@media (max-width:960px){.hub-grid:not(.fafo-layout-root){flex-direction:column}}
 
 .panel{
   background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;
@@ -186,6 +187,10 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
   <div class="nav-chips">
     <a class="nav-chip primary" href="System Health Desk.html">Health Desk →</a>
     <a class="nav-chip primary" href="PC Diagnostics HUD.html">PC Diagnostics →</a>
+    <a class="nav-chip" href="PC Reports and Log Viewer/index.html">Reports</a>
+    <a class="nav-chip" href="Event Viewer.html">Event Viewer</a>
+    <a class="nav-chip" href="Disk Space Analyzer.html">Disk Analyzer</a>
+    <a class="nav-chip" href="FAFO Task Manager Pro.html">Task Manager</a>
     <a class="nav-chip" href="Secrets Presence Console.html">Secrets</a>
   </div>
   <span class="t">HOME HEALTH HUB</span>
@@ -196,11 +201,18 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
   <p class="sub">Plain-English status for this PC — live vitals, watch/act alerts, and expandable sections. Full dumps stay in the Report Library; process control lives in Task Manager.</p>
 
   <div class="toolbar">
-    <button class="btn" id="btnRefresh" title="Refresh (R)">Refresh hub</button>
-    <button class="btn ghost" id="btnFullScan" type="button">Run full scan</button>
-    <button class="btn ghost" id="btnGenReport" type="button">Save English report</button>
-    <button class="btn ghost" id="btnExportJson" type="button" title="Export hub snapshot JSON">↓ JSON</button>
-    <button class="btn ghost" id="btnCopySummary" type="button" title="Copy plain-English summary">Copy summary</button>
+    <button class="btn" id="btnRefresh" data-tip-title="Refresh (R)" data-tip="Reload live hub sections from this PC.">Refresh hub</button>
+    <button class="btn ghost" id="btnFullScan" type="button"
+            data-tip-title="Full scan"
+            data-tip-basic="Run a deeper diagnostics pass (takes longer)."
+            data-tip-pro="Invoke-FAFOSystemDiagnostics + pack viewer data."
+            data-tip-efficient="Use section re-run for one area instead of full scan when possible.">Run full scan</button>
+    <button class="btn ghost" id="btnGenReport" type="button"
+            data-tip-title="English report" data-tip="Save a plain-language health report for this PC.">Save English report</button>
+    <button class="btn ghost" id="btnExportJson" type="button"
+            data-tip-title="Export JSON" data-tip="Download a machine-readable hub snapshot.">↓ JSON</button>
+    <button class="btn ghost" id="btnCopySummary" type="button"
+            data-tip-title="Copy summary" data-tip="Copy a plain-English summary to the clipboard.">Copy summary</button>
     <label class="auto"><input type="checkbox" id="autoRefresh" checked> Auto
       <select class="sel" id="autoInterval" style="background:var(--panel);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:6px;font-size:11px;margin-left:4px">
         <option value="15" selected>15s</option>
@@ -216,25 +228,35 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
     <a class="btn ghost" href="Event Deep Dive.html" style="text-decoration:none" title="Opens without auto-scan — click Run there">Event Deep Dive</a>
     <a class="btn ghost" href="Hardware Board Map.html" style="text-decoration:none">Board Map</a>
     <a class="btn ghost" href="LAN Task Manager.html#processes" style="text-decoration:none">Task Manager</a>
+    <span data-fafo-layout-toolbar></span>
   </div>
   <div id="toast" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--panel);font-size:12px"></div>
 
   <div id="overall" class="overall info" style="display:none"></div>
   <div class="vitals" id="vitals"></div>
 
-  <div class="hub-grid">
-    <div>
-      <div class="panel">
+  <div class="hub-grid"
+       data-fafo-layout-root
+       data-fafo-layout-app="system-health-dashboard"
+       data-fafo-layout-type="columns">
+    <div data-fafo-panel="left"
+         data-fafo-panel-title="Alerts &amp; processes"
+         data-fafo-panel-min="260"
+         data-fafo-panel-default="360">
+      <div class="panel" data-fafo-section="notifications" data-fafo-section-title="Notifications">
         <div class="ph">Notifications <span class="count" id="alertCount">Watch &amp; Act only</span></div>
         <div class="pb" id="alerts">Loading…</div>
       </div>
-      <div class="panel">
+      <div class="panel" data-fafo-section="processes" data-fafo-section-title="Top processes"
+           data-fafo-resizable="1" data-fafo-section-min="100" data-fafo-section-default="180">
         <div class="ph">Top processes <span class="count">Live</span></div>
         <div class="pb" id="procPreview">—</div>
       </div>
     </div>
-    <div>
-      <div class="panel">
+    <div data-fafo-panel="right"
+         data-fafo-panel-title="Sections &amp; launch"
+         data-fafo-flex="1">
+      <div class="panel" data-fafo-section="sections" data-fafo-section-title="Sections">
         <div class="ph">Sections <span class="count">Click a card to expand</span></div>
         <div class="pb">
           <div class="sec-grid" id="sections"></div>
@@ -247,7 +269,7 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
           </div>
         </div>
       </div>
-      <div class="panel">
+      <div class="panel" data-fafo-section="quick-launch" data-fafo-section-title="Quick launch">
         <div class="ph">Quick launch</div>
         <div class="pb links-row">
           <a class="link" href="LAN Task Manager.html#processes">⚙️ Task Manager</a>
@@ -274,6 +296,7 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;

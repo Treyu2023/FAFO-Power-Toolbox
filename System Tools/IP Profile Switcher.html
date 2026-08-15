@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IP Profile Switcher — AI HTML Toolbox</title>
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root {
   --bg: #050508; --panel: #0c0f16; --border: rgba(0, 243, 255, 0.2);
@@ -132,14 +133,17 @@ fieldset.box legend {
 <nav class="nav">
   <a href="../Toolbox Launcher.html">← Toolbox</a>
   <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <button type="button" class="btn sm" id="btnStartServer" data-tip-title="Start server" data-tip="Start S1 so adapter changes can be applied." style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid rgba(0,255,136,.4);color:var(--ok);background:transparent;cursor:pointer">▶ Start Server</button>
     <a href="LAN Task Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(0,243,255,.06)">← LAN Task Manager</a>
     <a href="Hosts DNS Blocker.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Hosts DNS →</a>
+    <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">PC Diagnostics</a>
     <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
   </div>
   <span style="color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.08em">IP PROFILE SWITCHER</span>
+  <span data-fafo-layout-toolbar></span>
 </nav>
 
-<div class="wrap">
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-tools-ip-profile-switcher" data-fafo-layout-type="rows">
   <h1>IP Profile Switcher</h1>
   <p class="sub">
     Save multiple network setups and switch with one click.
@@ -153,16 +157,16 @@ fieldset.box legend {
   <div id="statusBanner" class="banner"></div>
   <div class="pb" style="padding:0 0 14px" id="statusBar"></div>
 
-  <div class="panel">
+  <div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
     <div class="ph">Saved setups — one-click apply</div>
     <div class="pb">
       <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-        <input class="inp" id="profileFilter" placeholder="Filter setups… (/)" style="margin:0;min-width:160px;flex:0 1 200px">
-        <button type="button" class="btn" id="btnExport" title="Download all setups as JSON (works offline from browser storage)">⬇ Export / backup</button>
-        <button type="button" class="btn" id="btnBackupStamp" title="Download a timestamped backup copy">⏱ Timestamped backup</button>
-        <button type="button" class="btn" id="btnImport">⬆ Import setups</button>
-        <button type="button" class="btn ghost" id="btnCopyBackupHint" title="Copy path tip">📋 Path tip</button>
-        <button type="button" class="btn ghost" id="btnRefreshAdapters" title="Refresh adapters (R)">↻ Adapters</button>
+        <input class="inp" id="profileFilter" data-tip-title="Filter profiles" data-tip="Filter saved IP profiles by name." placeholder="Filter setups… (/)" style="margin:0;min-width:160px;flex:0 1 200px">
+        <button type="button" class="btn" id="btnExport" data-tip-title="Export profiles" data-tip="Export IP profiles for backup or another PC." title="Download all setups as JSON (works offline from browser storage)">⬇ Export / backup</button>
+        <button type="button" class="btn" id="btnBackupStamp" data-tip-title="Timestamped backup" data-tip="Write a timestamped backup of profiles." title="Download a timestamped backup copy">⏱ Timestamped backup</button>
+        <button type="button" class="btn" id="btnImport" data-tip-title="Import profiles" data-tip="Import profiles from a JSON backup file.">⬆ Import setups</button>
+        <button type="button" class="btn ghost" id="btnCopyBackupHint" data-tip-title="Backup hint" data-tip="Copy the backup folder path/hint." title="Copy path tip">📋 Path tip</button>
+        <button type="button" class="btn ghost" id="btnRefreshAdapters" data-tip-title="Refresh adapters" data-tip="Re-enumerate network adapters." title="Refresh adapters (R)">↻ Adapters</button>
         <input type="file" id="importFile" accept=".json,application/json" style="display:none">
         <span style="font-size:11px;color:var(--muted);line-height:1.4;flex:1;min-width:200px">
           Portable file: <code style="color:var(--accent)">Toolbox\data\ip_profiles.json</code>
@@ -183,35 +187,35 @@ fieldset.box legend {
           <fieldset class="box">
             <legend>Basics</legend>
             <label class="field" for="profName">Setup name</label>
-            <input class="inp" id="profName" placeholder="Home · Office · Lab static…" autocomplete="off">
+            <input class="inp" id="profName" data-tip-title="Profile name" data-tip="Friendly name for this IP profile." placeholder="Home · Office · Lab static…" autocomplete="off">
 
             <label class="field" for="profAdapter">Network adapter</label>
-            <select class="sel" id="profAdapter"></select>
+            <select class="sel" id="profAdapter" data-tip-title="Adapter" data-tip="Which NIC this profile targets."></select>
             <input class="inp mono" id="profAdapterCustom" placeholder="Or type adapter name exactly (e.g. ETH_CABLE_CONNECTION)" style="display:none">
             <button type="button" class="btn" id="btnToggleAdapterType" style="margin-bottom:8px">Type adapter name manually</button>
 
             <label class="chk" style="display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;font-size:12px;color:var(--text);cursor:pointer">
-              <input type="checkbox" id="optAutoSelect" checked style="margin-top:2px">
+              <input type="checkbox" id="optAutoSelect" data-tip-title="Auto-select adapter" data-tip="Pick the best matching adapter automatically when applying." checked style="margin-top:2px">
               <span><strong>Auto-select active adapter</strong><br>
               <span style="color:var(--muted);font-size:11px">On load/refresh, pick the live connection (prefers Ethernet when available).</span></span>
             </label>
             <label class="chk" style="display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;font-size:12px;color:var(--text);cursor:pointer">
-              <input type="checkbox" id="optPreferEthernet" checked style="margin-top:2px">
+              <input type="checkbox" id="optPreferEthernet" data-tip-title="Prefer Ethernet" data-tip="Prefer wired adapters when auto-selecting." checked style="margin-top:2px">
               <span><strong>Prefer Ethernet over Wi‑Fi</strong><br>
               <span style="color:var(--muted);font-size:11px">When several adapters are up, choose Ethernet / cable first.</span></span>
             </label>
             <label class="chk" style="display:flex;align-items:flex-start;gap:8px;margin:0 0 12px;font-size:12px;color:var(--text);cursor:pointer">
-              <input type="checkbox" id="profUseActiveOnApply" style="margin-top:2px">
+              <input type="checkbox" id="profUseActiveOnApply" data-tip-title="Use active on apply" data-tip="Prefer the currently active adapter at apply time." style="margin-top:2px">
               <span><strong>This setup always uses the active adapter</strong><br>
               <span style="color:var(--muted);font-size:11px">When you Apply, ignore the saved name and use whichever adapter is active now.</span></span>
             </label>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px">
               <div id="activeHint" style="font-size:12px;color:var(--muted);flex:1;min-height:18px"></div>
-              <button type="button" class="btn ok" id="btnSelectActive" style="margin:0">Select active now</button>
+              <button type="button" class="btn ok" id="btnSelectActive" data-tip-title="Select active" data-tip="Fill adapter from the currently connected NIC." style="margin:0">Select active now</button>
             </div>
 
             <label class="field" for="profMode">Mode</label>
-            <select class="sel" id="profMode">
+            <select class="sel" id="profMode" data-tip-title="IP mode" data-tip="DHCP or static configuration for this profile.">
               <option value="static">Static IP</option>
               <option value="dhcp">Automatic (DHCP)</option>
             </select>
@@ -222,25 +226,25 @@ fieldset.box legend {
             <div class="row2">
               <div>
                 <label class="field" for="profIp">IP address</label>
-                <input class="inp mono" id="profIp" placeholder="192.168.1.50" autocomplete="off">
+                <input class="inp mono" id="profIp" data-tip-title="IP address" data-tip="Static IPv4 address (ignored in DHCP mode)." placeholder="192.168.1.50" autocomplete="off">
               </div>
               <div>
                 <label class="field" for="profPrefix">Subnet prefix</label>
-                <input class="inp mono" id="profPrefix" type="number" min="8" max="32" value="24">
+                <input class="inp mono" id="profPrefix" data-tip-title="Prefix length" data-tip="CIDR prefix (e.g. 24 for 255.255.255.0)." type="number" min="8" max="32" value="24">
               </div>
             </div>
             <div class="row2">
               <div>
                 <label class="field" for="profMask">Subnet mask</label>
-                <input class="inp mono" id="profMask" value="255.255.255.0" placeholder="255.255.255.0">
+                <input class="inp mono" id="profMask" data-tip-title="Subnet mask" data-tip="Alternate way to set subnet mask for static mode." value="255.255.255.0" placeholder="255.255.255.0">
               </div>
               <div>
                 <label class="field" for="profGw">Gateway</label>
-                <input class="inp mono" id="profGw" placeholder="192.168.1.1" autocomplete="off">
+                <input class="inp mono" id="profGw" data-tip-title="Gateway" data-tip="Default gateway for static mode." placeholder="192.168.1.1" autocomplete="off">
               </div>
             </div>
             <label class="field" for="profDns">DNS (comma-separated)</label>
-            <input class="inp mono" id="profDns" placeholder="1.1.1.1, 8.8.8.8" autocomplete="off">
+            <input class="inp mono" id="profDns" data-tip-title="DNS" data-tip="DNS servers (comma or space separated)." placeholder="1.1.1.1, 8.8.8.8" autocomplete="off">
           </fieldset>
 
           <div class="row2">
@@ -254,10 +258,10 @@ fieldset.box legend {
             </div>
           </div>
 
-          <button type="button" class="btn primary" id="btnSave">Save setup</button>
-          <button type="button" class="btn" id="btnNew">Clear form</button>
-          <button type="button" class="btn ok" id="btnApplyForm">Apply this setup now</button>
-          <button type="button" class="btn" id="btnDownloadForm">Download apply script</button>
+          <button type="button" class="btn primary" id="btnSave" data-tip-title="Save profile" data-tip="Save this profile for later apply.">Save setup</button>
+          <button type="button" class="btn" id="btnNew" data-tip-title="New profile" data-tip="Clear the form for a new profile.">Clear form</button>
+          <button type="button" class="btn ok" id="btnApplyForm" data-tip-title="Apply profile" data-tip="Apply this IP configuration to the selected adapter (needs privileges).">Apply this setup now</button>
+          <button type="button" class="btn" id="btnDownloadForm" data-tip-title="Download profile" data-tip="Download this profile as JSON.">Download apply script</button>
         </div>
       </div>
     </div>
@@ -277,8 +281,8 @@ fieldset.box legend {
           <select class="sel" id="captureAdapter"></select>
           <label class="field" for="captureName">Name for saved setup</label>
           <input class="inp" id="captureName" placeholder="Home (auto-captured)" autocomplete="off">
-          <button type="button" class="btn ok" id="btnCapture">Capture current IP → save setup</button>
-          <button type="button" class="btn" id="btnRefresh">↻ Refresh adapters</button>
+          <button type="button" class="btn ok" id="btnCapture" data-tip-title="Capture current" data-tip="Capture the current adapter config into a new profile draft.">Capture current IP → save setup</button>
+          <button type="button" class="btn" id="btnRefresh" data-tip-title="Refresh" data-tip="Refresh adapters and profile list.">↻ Refresh adapters</button>
         </div>
       </div>
     </div>
@@ -292,6 +296,7 @@ fieldset.box legend {
 <script src="../shared/aitoolbox-debug.js"></script>
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
@@ -549,7 +554,15 @@ function renderAdapters() {
       1) Click <strong>▶ Start Server</strong> above<br>
       2) Click <strong>↻ Refresh adapters</strong><br>
       3) Or use <strong>Type adapter name manually</strong> in the form
+      <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+        <button type="button" class="btn primary" id="btnEmptyStartSrv" data-tip-title="Start server" data-tip="Start S1 from empty state.">▶ Start Server</button>
+        <button type="button" class="btn" id="btnEmptyRefreshAdp" data-tip-title="Refresh adapters" data-tip="Re-enumerate NICs when empty.">↻ Refresh adapters</button>
+        <a class="btn" href="LAN Task Manager.html" style="text-decoration:none">LAN Manager</a>
+        <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+      </div>
     </div>`;
+    document.getElementById('btnEmptyStartSrv')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click() || document.getElementById('tbBtnStartServer')?.click());
+    document.getElementById('btnEmptyRefreshAdp')?.addEventListener('click', () => document.getElementById('btnRefreshAdapters')?.click() || document.getElementById('btnRefresh')?.click());
     return;
   }
   box.innerHTML = adapters.map(a => {
@@ -747,11 +760,30 @@ function renderProfiles() {
     );
   }
   if (!profiles.length) {
-    box.innerHTML = '<div class="empty">No setups yet. Fill the form and click <strong>Save setup</strong>, or capture your current IP.</div>';
+    box.innerHTML = `<div class="empty">No setups yet. Fill the form and click <strong>Save setup</strong>, or capture your current IP.
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+        <button type="button" class="btn primary" id="btnEmptyCapture" data-tip-title="Capture" data-tip="Capture active adapter into a draft profile.">Capture current IP</button>
+        <button type="button" class="btn" id="btnEmptyFocusForm">Scroll to form</button>
+        <a class="btn" href="LAN Task Manager.html" style="text-decoration:none">LAN Manager</a>
+        <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+      </div>
+    </div>`;
+    document.getElementById('btnEmptyCapture')?.addEventListener('click', () => document.getElementById('btnCapture')?.click() || document.getElementById('btnCaptureCurrent')?.click());
+    document.getElementById('btnEmptyFocusForm')?.addEventListener('click', () => document.getElementById('profName')?.focus() || document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' }));
     return;
   }
   if (!list.length) {
-    box.innerHTML = '<div class="empty">No setups match filter.</div>';
+    box.innerHTML = `<div class="empty">No setups match filter.
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button type="button" class="btn primary" id="btnEmptyClearFilter">Clear filter</button>
+        <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+      </div>
+    </div>`;
+    document.getElementById('btnEmptyClearFilter')?.addEventListener('click', () => {
+      const f = document.getElementById('profileFilter');
+      if (f) { f.value = ''; f.dispatchEvent(new Event('input')); }
+      renderProfiles();
+    });
     return;
   }
   box.innerHTML = list.map(p => {
@@ -1161,6 +1193,16 @@ document.getElementById('profileFilter')?.addEventListener('input', () => {
   profileFilterTimer = setTimeout(renderProfiles, 200);
 });
 document.getElementById('btnRefreshAdapters')?.addEventListener('click', () => loadAdapters());
+document.getElementById('btnStartServer')?.addEventListener('click', async () => {
+  try {
+    toast('Starting toolbox server…', true);
+    if (window.AIToolboxAPI?.startServer) {
+      await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+      toast('Server ready — refreshing adapters', true);
+      loadAdapters();
+    } else location.href = '../Toolbox Launcher.html';
+  } catch (e) { toast(e.message || 'Start failed', false); }
+});
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -54,17 +55,48 @@ def should_skip_entry(name: str, is_dir: bool, parent_rel: str = "") -> bool:
 INVALID_WIN = re.compile(r'[<>:"/\\|?*]')
 
 
+def _ffmpeg_search_dirs() -> list[Path]:
+    """Common install locations across Windows / macOS / Linux hardware setups."""
+    home = Path.home()
+    dirs: list[Path] = [
+        # Windows typical installs
+        Path(r"C:\ffmpeg\bin"),
+        Path(r"C:\Program Files\ffmpeg\bin"),
+        Path(r"C:\Program Files (x86)\ffmpeg\bin"),
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" if os.environ.get("LOCALAPPDATA") else None,
+        # User-local / portable
+        home / "ffmpeg" / "bin",
+        home / "bin",
+        home / ".local" / "bin",
+        # macOS Homebrew (Intel + Apple Silicon)
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+        # Linux packages
+        Path("/usr/bin"),
+        Path("/usr/local/bin"),
+        Path("/snap/bin"),
+    ]
+    # IMAGEIO / conda envs often ship ffmpeg
+    conda = os.environ.get("CONDA_PREFIX")
+    if conda:
+        dirs.append(Path(conda) / "bin")
+        dirs.append(Path(conda) / "Library" / "bin")  # Windows conda
+    return [d for d in dirs if d is not None]
+
+
 def find_ffmpeg() -> str | None:
     for name in ("ffmpeg", "ffmpeg.exe"):
         p = shutil.which(name)
         if p:
             return p
-    for candidate in (
-        Path(r"C:\ffmpeg\bin\ffmpeg.exe"),
-        Path(r"C:\Program Files\ffmpeg\bin\ffmpeg.exe"),
-    ):
-        if candidate.exists():
-            return str(candidate)
+    for d in _ffmpeg_search_dirs():
+        for name in ("ffmpeg.exe", "ffmpeg"):
+            candidate = d / name
+            try:
+                if candidate.is_file():
+                    return str(candidate)
+            except OSError:
+                continue
     return None
 
 
@@ -73,6 +105,23 @@ def find_ffprobe() -> str | None:
         p = shutil.which(name)
         if p:
             return p
+    # Prefer sibling of discovered ffmpeg (same install tree)
+    ff = find_ffmpeg()
+    if ff:
+        sibling = Path(ff).with_name("ffprobe.exe" if ff.lower().endswith(".exe") else "ffprobe")
+        try:
+            if sibling.is_file():
+                return str(sibling)
+        except OSError:
+            pass
+    for d in _ffmpeg_search_dirs():
+        for name in ("ffprobe.exe", "ffprobe"):
+            candidate = d / name
+            try:
+                if candidate.is_file():
+                    return str(candidate)
+            except OSError:
+                continue
     return None
 
 
@@ -503,7 +552,8 @@ def resolve_path(media: dict) -> Path:
         d = conn.execute("SELECT path FROM directories WHERE id=?", (media["dir_id"],)).fetchone()
     if not d:
         raise FileNotFoundError("Directory missing")
-    return Path(d["path"]) / media["rel_path"].replace("/", "\\")
+    # Always join with pathlib (portable Windows/macOS/Linux); normalize separators
+    return Path(d["path"]) / Path(str(media["rel_path"] or "").replace("\\", "/"))
 
 
 def sanitize_name(name: str) -> str:
@@ -1213,6 +1263,20 @@ def save_pair(
         row = conn.execute("SELECT * FROM pairs WHERE id=?", (pid,)).fetchone()
     enriched = _enrich_pair(dict(row)) or {}
     _tag_linked_media(before_id, after_id, code, kind)
+    # Learn naming scheme from confirmed pairs (guided match + manual)
+    try:
+        from pair_learn import observe_pair
+        observe_pair(
+            before.get("name") or "",
+            after.get("name") or "",
+            before_size=int(before.get("size") or 0),
+            after_size=int(after.get("size") or 0),
+            before_path=before_path,
+            after_path=after_path,
+            source=source or notes or "pair",
+        )
+    except Exception:
+        pass
     return enriched
 
 
@@ -1952,6 +2016,24 @@ def _suggest_pairs_cross_dirs(
     return suggestions[:limit]
 
 
+def _media_abs_path(m: dict[str, Any], dir_paths: dict[str, str] | None = None) -> str:
+    """Absolute path for a catalog media row (best-effort)."""
+    try:
+        if dir_paths is not None and m.get("dir_id") in dir_paths:
+            root = dir_paths[m["dir_id"]]
+            rel = (m.get("rel_path") or m.get("name") or "").replace("/", "\\")
+            return str(Path(root) / rel)
+        return str(resolve_path(m))
+    except Exception:
+        return m.get("rel_path") or m.get("name") or ""
+
+
+def _dir_path_map() -> dict[str, str]:
+    with connect() as conn:
+        rows = conn.execute("SELECT id, path FROM directories").fetchall()
+    return {r["id"]: r["path"] for r in rows}
+
+
 def candidates_for_media(
     media_id: str,
     *,
@@ -1962,10 +2044,16 @@ def candidates_for_media(
     tail_len: int = 5,
     after_dir_id: str | None = None,
     before_dir_id: str | None = None,
+    require_larger_after: bool = True,
 ) -> dict[str, Any]:
     """
     Guided match: rank unpaired peers against ONE anchor file.
-    Returns ordered candidates for process-of-elimination (try N, then next anchor).
+
+    When before_dir_id + after_dir_id are set, peers are limited to the after
+    folder and the anchor is treated as the before (source) side.
+
+    After must be strictly larger than before when require_larger_after is True
+    (same size = duplicate, not a pair).
     """
     anchor = get_media(media_id)
     if not anchor:
@@ -1973,6 +2061,8 @@ def candidates_for_media(
 
     exclude = set(exclude_ids or [])
     exclude.add(media_id)
+    dir_paths = _dir_path_map()
+    two_folder = bool(before_dir_id and after_dir_id and before_dir_id != after_dir_id)
 
     clauses = ["type IN ('video', 'image')"]
     params: list[Any] = []
@@ -1981,76 +2071,178 @@ def candidates_for_media(
     if anchor.get("type") in ("video", "image"):
         clauses.append("type=?")
         params.append(anchor["type"])
+    # Prefer SQL filter when only after folder is used for candidates
+    if after_dir_id and (two_folder or not before_dir_id):
+        clauses.append("dir_id=?")
+        params.append(after_dir_id)
     where = " AND ".join(clauses)
     with connect() as conn:
         rows = conn.execute(f"SELECT * FROM media WHERE {where}", params).fetchall()
     peers = [row_to_media(r) for r in rows if r["id"] not in exclude]
 
-    # Optional: constrain candidates to a folder (VSR output folder)
-    dir_filter = after_dir_id or before_dir_id
-    if dir_filter:
-        peers = [m for m in peers if m.get("dir_id") == dir_filter]
+    # Folder constraints (two-folder: look in after for matches to before anchors)
+    if two_folder:
+        peers = [m for m in peers if m.get("dir_id") == after_dir_id]
+    elif after_dir_id:
+        peers = [m for m in peers if m.get("dir_id") == after_dir_id]
+    elif before_dir_id:
+        # Anchors from before; candidates from anywhere else (not the before tree)
+        peers = [m for m in peers if m.get("dir_id") != before_dir_id]
+
+    # Learn-aware filter: drop stage-2 / intermediate leftovers
+    try:
+        from pair_learn import is_intermediate_leftover, load_model, adjust_confidence
+        _learn = load_model()
+    except Exception:
+        is_intermediate_leftover = None  # type: ignore
+        adjust_confidence = None  # type: ignore
+        _learn = None
+
+    peer_sizes = [int(m.get("size") or 0) for m in peers]
+    if is_intermediate_leftover:
+        filtered = []
+        skipped_intermediate = 0
+        for m in peers:
+            pth = _media_abs_path(m, dir_paths)
+            if is_intermediate_leftover(
+                m.get("name") or "",
+                size=int(m.get("size") or 0),
+                path=pth,
+                model=_learn,
+                peer_sizes=peer_sizes,
+            ):
+                skipped_intermediate += 1
+                continue
+            filtered.append(m)
+        peers = filtered
+    else:
+        skipped_intermediate = 0
 
     scored: list[dict[str, Any]] = []
     methods = ("stem", "tail", "digit_id", "folder", "fuzzy")
+    skipped_same_size = 0
+    skipped_not_larger = 0
+
     for peer in peers:
-        best_conf = 0.0
-        best_reason = "fuzzy"
-        best_before, best_after = anchor, peer
-        for method in methods:
-            before, after, conf, reason = _pair_confidence(
-                anchor, peer, method=method, tail_len=tail_len
-            )
-            if conf > best_conf:
-                best_conf, best_reason = conf, reason
-                best_before, best_after = before, after
-        if best_conf < min_ratio:
+        sa = int(anchor.get("size") or 0)
+        sp = int(peer.get("size") or 0)
+
+        # Same size → duplicate, not a before/after pair
+        if require_larger_after and sa > 0 and sp > 0 and sa == sp:
+            skipped_same_size += 1
             continue
-        # Anchor role: keep user's anchor as fixed side when possible
-        anchor_is_before = best_before["id"] == media_id
-        candidate = best_after if anchor_is_before else best_before
+
+        if two_folder:
+            # Fixed roles: anchor = before (source), peer = after (upscale/output)
+            best_before, best_after = anchor, peer
+            if require_larger_after and sp <= sa:
+                skipped_not_larger += 1
+                continue
+            best_conf = 0.0
+            best_reason = "fuzzy"
+            for method in methods:
+                # Score with forced order (still uses name signals on the pair)
+                _b, _a, conf, reason = _pair_confidence(
+                    anchor, peer, method=method, tail_len=tail_len
+                )
+                # Prefer scores that already ordered anchor as before
+                if _b["id"] == anchor["id"] and _a["id"] == peer["id"]:
+                    conf = min(1.0, conf + 0.04)
+                # Size boost when after is meaningfully larger
+                if sa > 0 and sp > sa * 1.05:
+                    conf = min(1.0, conf + 0.05)
+                if conf > best_conf:
+                    best_conf, best_reason = conf, reason
+            learn_tags: list[str] = []
+            if adjust_confidence:
+                best_conf, learn_tags = adjust_confidence(
+                    best_conf,
+                    before_name=anchor.get("name") or "",
+                    after_name=peer.get("name") or "",
+                    before_size=sa,
+                    after_size=sp,
+                    model=_learn,
+                )
+            if best_conf < min_ratio:
+                continue
+            best_before, best_after = anchor, peer
+            anchor_is_before = True
+            candidate = peer
+        else:
+            best_conf = 0.0
+            best_reason = "fuzzy"
+            best_before, best_after = anchor, peer
+            learn_tags = []
+            for method in methods:
+                before, after, conf, reason = _pair_confidence(
+                    anchor, peer, method=method, tail_len=tail_len
+                )
+                if conf > best_conf:
+                    best_conf, best_reason = conf, reason
+                    best_before, best_after = before, after
+            # Enforce after strictly larger (re-order or reject)
+            bsz = int(best_before.get("size") or 0)
+            asz = int(best_after.get("size") or 0)
+            if require_larger_after and bsz > 0 and asz > 0:
+                if asz == bsz:
+                    skipped_same_size += 1
+                    continue
+                if asz < bsz:
+                    # Swap if we had roles backwards but sizes imply opposite
+                    best_before, best_after = best_after, best_before
+                    bsz, asz = asz, bsz
+                if asz <= bsz:
+                    skipped_not_larger += 1
+                    continue
+            else:
+                bsz = int(best_before.get("size") or 0)
+                asz = int(best_after.get("size") or 0)
+            if adjust_confidence:
+                best_conf, learn_tags = adjust_confidence(
+                    best_conf,
+                    before_name=best_before.get("name") or "",
+                    after_name=best_after.get("name") or "",
+                    before_size=bsz,
+                    after_size=asz,
+                    model=_learn,
+                )
+            if best_conf < min_ratio:
+                continue
+            anchor_is_before = best_before["id"] == media_id
+            candidate = best_after if anchor_is_before else best_before
+
+        reason_out = best_reason
+        if learn_tags:
+            reason_out = best_reason + " · " + "; ".join(learn_tags[:2])
+
         scored.append({
             "candidate_id": candidate["id"],
             "candidate_name": candidate["name"],
             "candidate_dir_id": candidate.get("dir_id"),
+            "candidate_size": int(candidate.get("size") or 0),
+            "candidate_path": _media_abs_path(candidate, dir_paths),
             "anchor_id": media_id,
             "anchor_name": anchor["name"],
+            "anchor_size": int(anchor.get("size") or 0),
+            "anchor_path": _media_abs_path(anchor, dir_paths),
             "anchor_role": "before" if anchor_is_before else "after",
             "before_id": best_before["id"],
             "after_id": best_after["id"],
             "before_name": best_before["name"],
             "after_name": best_after["name"],
+            "before_size": int(best_before.get("size") or 0),
+            "after_size": int(best_after.get("size") or 0),
+            "before_path": _media_abs_path(best_before, dir_paths),
+            "after_path": _media_abs_path(best_after, dir_paths),
             "confidence": round(float(best_conf), 3),
-            "reason": best_reason,
+            "reason": reason_out,
+            "learn_tags": learn_tags if learn_tags else [],
             "type": candidate.get("type") or anchor.get("type") or "video",
+            "size_ok": int(best_after.get("size") or 0) > int(best_before.get("size") or 0),
         })
 
     scored.sort(key=lambda x: (-x["confidence"], x["candidate_name"]))
     top = scored[: max(1, min(50, int(limit or 10)))]
-
-    # Prefer unpaired plain files as next anchors (sources first)
-    with connect() as conn:
-        if unpaired_only:
-            anchor_rows = conn.execute(
-                "SELECT * FROM media WHERE pair_id IS NULL AND type IN ('video','image') ORDER BY name LIMIT 500"
-            ).fetchall()
-        else:
-            anchor_rows = conn.execute(
-                "SELECT * FROM media WHERE type IN ('video','image') ORDER BY name LIMIT 500"
-            ).fetchall()
-    anchors_queue = []
-    for r in anchor_rows:
-        m = row_to_media(r)
-        if m["id"] in exclude and m["id"] != media_id:
-            continue
-        anchors_queue.append({
-            "id": m["id"],
-            "name": m["name"],
-            "type": m.get("type"),
-            "is_upscaled_name": _is_upscaled_name(m["name"]),
-        })
-    # Sources (non-upscale names) first for guided workflow
-    anchors_queue.sort(key=lambda a: (1 if a["is_upscaled_name"] else 0, a["name"].lower()))
 
     return {
         "anchor": {
@@ -2058,12 +2250,19 @@ def candidates_for_media(
             "name": anchor["name"],
             "type": anchor.get("type"),
             "dir_id": anchor.get("dir_id"),
+            "size": int(anchor.get("size") or 0),
+            "path": _media_abs_path(anchor, dir_paths),
             "is_upscaled_name": _is_upscaled_name(anchor["name"]),
         },
         "candidates": top,
         "candidate_count": len(top),
-        "scanned_peers": len(peers),
-        "anchors_remaining_hint": len(anchors_queue),
+        "scanned_peers": len(peers) + skipped_intermediate,
+        "skipped_same_size": skipped_same_size,
+        "skipped_not_larger": skipped_not_larger,
+        "skipped_intermediate": skipped_intermediate,
+        "before_dir_id": before_dir_id,
+        "after_dir_id": after_dir_id,
+        "require_larger_after": require_larger_after,
         "max_tries_recommended": min(10, max(3, len(top))),
     }
 
@@ -2074,35 +2273,81 @@ def list_unpaired_anchors(
     limit: int = 200,
     prefer_sources: bool = True,
     dir_id: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Queue of unpaired files for guided match (sources first by default)."""
-    clauses = ["pair_id IS NULL", "type IN ('video', 'image')"]
+    """Queue of unpaired files for guided match (sources first by default).
+
+    When before_dir_id is set, anchors are taken from that folder (the before/source
+    side). after_dir_id is reserved for candidate lookups and is not used here.
+    """
+    # Prefer explicit before folder for the anchor queue
+    effective_dir = before_dir_id or dir_id
+    clauses = ["m.pair_id IS NULL", "m.type IN ('video', 'image')"]
     params: list[Any] = []
     if kind in ("video", "image"):
-        clauses.append("type=?")
+        clauses.append("m.type=?")
         params.append(kind)
-    if dir_id:
-        clauses.append("dir_id=?")
-        params.append(dir_id)
+    if effective_dir:
+        clauses.append("m.dir_id=?")
+        params.append(effective_dir)
     where = " AND ".join(clauses)
     with connect() as conn:
         rows = conn.execute(
-            f"SELECT * FROM media WHERE {where} ORDER BY name LIMIT ?",
+            f"""SELECT m.*, d.path AS dir_path
+                FROM media m
+                LEFT JOIN directories d ON d.id = m.dir_id
+                WHERE {where}
+                ORDER BY m.name
+                LIMIT ?""",
             (*params, max(1, min(2000, int(limit or 200)))),
         ).fetchall()
+    try:
+        from pair_learn import is_intermediate_leftover, load_model, looks_like_source_before
+        _learn = load_model()
+    except Exception:
+        is_intermediate_leftover = None  # type: ignore
+        looks_like_source_before = None  # type: ignore
+        _learn = None
+
     out = []
     for r in rows:
         m = row_to_media(r)
+        dir_path = r["dir_path"] if "dir_path" in r.keys() else None
+        abs_path = ""
+        if dir_path:
+            rel = (m.get("rel_path") or m.get("name") or "").replace("/", "\\")
+            abs_path = str(Path(dir_path) / rel)
+        else:
+            abs_path = _media_abs_path(m)
+        # Skip stage-2 / intermediate leftovers as anchors
+        if is_intermediate_leftover and is_intermediate_leftover(
+            m.get("name") or "",
+            size=int(m.get("size") or 0),
+            path=abs_path,
+            model=_learn,
+        ):
+            continue
         out.append({
             "id": m["id"],
             "name": m["name"],
             "type": m.get("type"),
             "dir_id": m.get("dir_id"),
             "size": m.get("size") or 0,
+            "path": abs_path,
+            "rel_path": m.get("rel_path") or "",
             "is_upscaled_name": _is_upscaled_name(m["name"]),
         })
     if prefer_sources:
-        out.sort(key=lambda a: (1 if a["is_upscaled_name"] else 0, a["name"].lower()))
+        def _anchor_key(a: dict) -> tuple:
+            # Prefer clean sources (no fps/upscaled) first, then non-upscale names
+            clean = 0
+            if looks_like_source_before and looks_like_source_before(a.get("name") or "", _learn):
+                clean = 0
+            else:
+                clean = 1
+            return (clean, 1 if a["is_upscaled_name"] else 0, a["name"].lower())
+        out.sort(key=_anchor_key)
     return out
 
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LAN & Task Manager — AI HTML Toolbox</title>
     <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
             --bg: #04060d;
@@ -44,7 +45,7 @@
         .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-        .app { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 48px); }
+        .app { display: flex; min-height: calc(100vh - 48px); min-width: 0; }
         .sidebar {
             background: var(--panel); border-right: 1px solid var(--border);
             padding: 16px 10px; display: flex; flex-direction: column; gap: 4px;
@@ -226,20 +227,30 @@
         <a href="../Toolbox Launcher.html">← Toolbox</a>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
             <a href="FAFO Task Manager Pro.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(56,189,248,.08)">Task Manager Pro →</a>
+            <a href="System Health Dashboard.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Hub</a>
+            <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">PC Diagnostics</a>
             <a href="IP Profile Switcher.html" style="color:var(--muted);text-decoration:none;font-size:11px;font-weight:600;padding:4px 10px;border:1px solid var(--border);border-radius:999px">IP Profiles</a>
             <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
         </div>
         <span class="title">LAN & TASK MANAGER</span>
+        <span data-fafo-layout-toolbar></span>
         <span id="serverStatus" class="status-pill offline"><span class="status-dot"></span> Server offline</span>
     </nav>
 
     <div id="serverBanner" class="server-banner" style="display:none;margin:16px 24px 0;">
         Python server required for live monitoring. Use <strong>▶ Start Server</strong> above (backend <code>127.0.0.87:18765</code> — separate from FAFO on :8765), or <code>START SERVER.bat</code>.
-        <a href="#" id="retryServer">Retry connection</a>
+        <a href="#" id="retryServer" data-tip-title="Retry server" data-tip="Retry connecting to the toolbox backend.">Retry connection</a>
     </div>
 
-    <div class="app">
-        <aside class="sidebar">
+    <div class="app"
+         data-fafo-layout-root
+         data-fafo-layout-app="lan-task-manager"
+         data-fafo-layout-type="columns">
+        <aside class="sidebar"
+               data-fafo-panel="sidebar"
+               data-fafo-panel-title="Views"
+               data-fafo-panel-min="160"
+               data-fafo-panel-default="220">
             <button class="nav-btn active" data-view="dashboard"><span class="icon">📊</span> Dashboard</button>
             <button class="nav-btn" data-view="processes"><span class="icon">⚙️</span> Task Manager</button>
             <button class="nav-btn" data-view="connections"><span class="icon">🔗</span> Connections</button>
@@ -248,7 +259,10 @@
             <button class="nav-btn" data-view="diagnostics"><span class="icon">🩺</span> Diagnostics</button>
         </aside>
 
-        <main class="main">
+        <main class="main"
+              data-fafo-panel="main"
+              data-fafo-panel-title="Content"
+              data-fafo-flex="1">
             <!-- DASHBOARD -->
             <section id="view-dashboard" class="view active">
                 <div class="page-header">
@@ -287,16 +301,16 @@
                     <div class="panel-head">
                         <h2>Processes</h2>
                         <div class="toolbar">
-                            <input class="inp" id="procSearch" placeholder="Search name, PID, path… (/)" style="min-width:200px">
-                            <select class="sel" id="procSort">
+                            <input class="inp" id="procSearch" data-tip-title="Search processes" data-tip="Filter remote/local process list." placeholder="Search name, PID, path… (/)" style="min-width:200px">
+                            <select class="sel" id="procSort" data-tip-title="Sort" data-tip="Sort processes by CPU, memory, or name.">
                                 <option value="cpu">Sort: CPU</option>
                                 <option value="memory">Sort: Memory</option>
                                 <option value="connections">Sort: Connections</option>
                                 <option value="name">Sort: Name</option>
                                 <option value="pid">Sort: PID</option>
                             </select>
-                            <button class="btn" id="btnRefreshProcs" title="Refresh (R)">Refresh</button>
-                            <button class="btn" id="btnExportProcs" type="button" title="Export process list CSV">↓ CSV</button>
+                            <button class="btn" id="btnRefreshProcs" data-tip-title="Refresh processes" data-tip="Reload process list." title="Refresh (R)">Refresh</button>
+                            <button class="btn" id="btnExportProcs" data-tip-title="Export processes" data-tip="Export process table as CSV." type="button" title="Export process list CSV">↓ CSV</button>
                             <a class="btn" href="FAFO Task Manager Pro.html" style="text-decoration:none" title="Pro intel + efficiency modes">Pro →</a>
                         </div>
                     </div>
@@ -322,14 +336,14 @@
                     <div class="panel-head">
                         <h2>Active connections</h2>
                         <div class="toolbar">
-                            <input class="inp" id="connSearch" placeholder="Filter IP, port, process…">
-                            <select class="sel" id="connKind">
+                            <input class="inp" id="connSearch" data-tip-title="Search connections" data-tip="Filter TCP/UDP connections." placeholder="Filter IP, port, process…">
+                            <select class="sel" id="connKind" data-tip-title="Connection kind" data-tip="Filter by TCP, UDP, or listening state.">
                                 <option value="all">All</option>
                                 <option value="inet">IPv4/IPv6</option>
                                 <option value="tcp">TCP</option>
                                 <option value="udp">UDP</option>
                             </select>
-                            <button class="btn" id="btnRefreshConn">Refresh</button>
+                            <button class="btn" id="btnRefreshConn" data-tip-title="Refresh connections" data-tip="Reload network connection table.">Refresh</button>
                         </div>
                     </div>
                     <div class="data-table-wrap" id="connTableWrap">
@@ -363,8 +377,8 @@
                     <div class="panel-head">
                         <h2>Discovery scan</h2>
                         <div class="toolbar">
-                            <input class="inp" id="subnetInp" placeholder="Subnet e.g. 192.168.1.0/24 (auto if empty)" style="min-width:260px">
-                            <button class="btn" id="btnDiscover">Scan LAN</button>
+                            <input class="inp" id="subnetInp" data-tip-title="Subnet" data-tip="CIDR/subnet to discover (e.g. 192.168.1.0/24)." placeholder="Subnet e.g. 192.168.1.0/24 (auto if empty)" style="min-width:260px">
+                            <button class="btn" id="btnDiscover" data-tip-title="Discover LAN" data-tip="Scan the subnet for live hosts.">Scan LAN</button>
                         </div>
                     </div>
                     <div class="panel-body">
@@ -385,9 +399,9 @@
                         <div class="panel-head"><h2>Ping</h2></div>
                         <div class="panel-body">
                             <div class="toolbar" style="margin-bottom:14px;">
-                                <input class="inp" id="pingHost" placeholder="Host or IP" value="8.8.8.8">
+                                <input class="inp" id="pingHost" data-tip-title="Ping host" data-tip="Hostname or IP to ping." placeholder="Host or IP" value="8.8.8.8">
                                 <input class="inp" id="pingCount" type="number" value="4" min="1" max="20" style="width:70px;min-width:70px">
-                                <button class="btn" id="btnPing">Ping</button>
+                                <button class="btn" id="btnPing" data-tip-title="Ping" data-tip="ICMP ping the host.">Ping</button>
                             </div>
                             <div id="pingResults" class="ping-results"></div>
                         </div>
@@ -396,9 +410,9 @@
                         <div class="panel-head"><h2>Telnet / Port test</h2></div>
                         <div class="panel-body">
                             <div class="toolbar" style="margin-bottom:14px;">
-                                <input class="inp" id="telHost" placeholder="Host" value="google.com">
-                                <input class="inp" id="telPort" type="number" value="443" style="width:80px;min-width:80px">
-                                <button class="btn" id="btnTelnet">Test port</button>
+                                <input class="inp" id="telHost" data-tip-title="Telnet host" data-tip="Host for TCP port check." placeholder="Host" value="google.com">
+                                <input class="inp" id="telPort" data-tip-title="Port" data-tip="TCP port to test." type="number" value="443" style="width:80px;min-width:80px">
+                                <button class="btn" id="btnTelnet" data-tip-title="Port check" data-tip="Test if the TCP port is open.">Test port</button>
                             </div>
                             <div id="telResult"></div>
                         </div>
@@ -408,9 +422,9 @@
                     <div class="panel-head">
                         <h2>Traceroute — visual path</h2>
                         <div class="toolbar">
-                            <input class="inp" id="traceHost" placeholder="Destination host" value="1.1.1.1">
+                            <input class="inp" id="traceHost" data-tip-title="Trace host" data-tip="Host for traceroute." placeholder="Destination host" value="1.1.1.1">
                             <input class="inp" id="traceHops" type="number" value="30" min="1" max="64" style="width:70px;min-width:70px" title="Max hops">
-                            <button class="btn" id="btnTrace">Trace route</button>
+                            <button class="btn" id="btnTrace" data-tip-title="Traceroute" data-tip="Run traceroute hops to the host.">Trace route</button>
                         </div>
                     </div>
                     <div class="panel-body">
@@ -422,7 +436,7 @@
                         <div class="panel-head"><h2>DNS lookup</h2></div>
                         <div class="panel-body">
                             <div class="toolbar" style="margin-bottom:14px;">
-                                <input class="inp" id="dnsHost" placeholder="Hostname or IP (IPs auto reverse)" value="google.com">
+                                <input class="inp" id="dnsHost" data-tip-title="DNS name" data-tip="Name or IP to resolve." placeholder="Hostname or IP (IPs auto reverse)" value="google.com">
                                 <select class="sel" id="dnsType">
                                     <option value="AUTO" selected>Auto</option>
                                     <option value="A">Forward A</option>
@@ -430,7 +444,7 @@
                                     <option value="CANONICAL">FQDN</option>
                                     <option value="REVERSE">Reverse PTR</option>
                                 </select>
-                                <button class="btn" id="btnDns">Lookup</button>
+                                <button class="btn" id="btnDns" data-tip-title="DNS lookup" data-tip="Resolve DNS records.">Lookup</button>
                             </div>
                             <div id="dnsModeHint" class="stat-sub" style="margin-bottom:8px;min-height:16px;"></div>
                             <div id="dnsResult"></div>
@@ -440,9 +454,9 @@
                         <div class="panel-head"><h2>Port scanner</h2></div>
                         <div class="panel-body">
                             <div class="toolbar" style="margin-bottom:14px;">
-                                <input class="inp" id="scanHost" placeholder="Target host" value="127.0.0.1">
-                                <input class="inp" id="scanPorts" placeholder="Ports (empty = common)" style="min-width:180px">
-                                <button class="btn" id="btnScan">Scan</button>
+                                <input class="inp" id="scanHost" data-tip-title="Scan host" data-tip="Host for port scan." placeholder="Target host" value="127.0.0.1">
+                                <input class="inp" id="scanPorts" data-tip-title="Ports" data-tip="Port list or range to scan." placeholder="Ports (empty = common)" style="min-width:180px">
+                                <button class="btn" id="btnScan" data-tip-title="Port scan" data-tip="Scan the listed ports on the host.">Scan</button>
                             </div>
                             <div id="scanResult"></div>
                         </div>
@@ -459,7 +473,7 @@
                 <div class="panel">
                     <div class="panel-head">
                         <h2>System health</h2>
-                        <button class="btn" id="btnDiag">Run diagnostics</button>
+                        <button class="btn" id="btnDiag" data-tip-title="Quick diag" data-tip="Run a bundled local network diagnostic pass.">Run diagnostics</button>
                     </div>
                     <div class="panel-body" id="diagResult"><div class="empty">Click Run diagnostics to start</div></div>
                 </div>
@@ -469,14 +483,14 @@
 
     <div class="overlay" id="overlay"></div>
     <aside class="detail-drawer" id="procDrawer">
-        <button class="btn sm" id="closeDrawer" style="margin-bottom:12px;">Close</button>
+        <button class="btn sm" id="closeDrawer" data-tip-title="Close drawer" data-tip="Close the process detail drawer." style="margin-bottom:12px;">Close</button>
         <h3 id="drawerTitle">Process</h3>
         <dl class="kv" id="drawerKv"></dl>
         <h3 style="font-size:12px;color:var(--muted);margin-bottom:8px;">CONNECTIONS</h3>
         <div id="drawerConns"></div>
         <div style="margin-top:16px;display:flex;gap:8px;">
-            <button class="btn danger sm" id="btnKillProc">End process</button>
-            <button class="btn danger sm" id="btnForceKill">Force kill</button>
+            <button class="btn danger sm" id="btnKillProc" data-tip-title="End process" data-tip="End the selected process.">End process</button>
+            <button class="btn danger sm" id="btnForceKill" data-tip-title="Force kill" data-tip="Force-terminate the selected process.">Force kill</button>
         </div>
     </aside>
 
@@ -485,6 +499,7 @@
     <script src="../shared/aitoolbox-debug.js"></script>
     <script src="../shared/aitoolbox-api.js"></script>
     <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
     (function () {

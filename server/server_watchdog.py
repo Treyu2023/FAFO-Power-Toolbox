@@ -1049,10 +1049,16 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
             )
             session["s1_unhealthy_streak"] = 0
             session["s2_unhealthy_streak"] = 0
-            session.setdefault("fail_times", [])
-            session["fail_times"] = [
-                t for t in session.get("fail_times", []) if now - t < FAIL_WINDOW_SEC
-            ]
+            # Recovery = clear crash-loop history immediately (do not keep
+            # fail_times for the full 10m window or UI stays on "crash loop N").
+            if session.get("fail_times"):
+                log(
+                    f"cleared {len(session.get('fail_times') or [])} failed-heal "
+                    f"marker(s) after successful recovery",
+                    "INFO",
+                )
+            session["fail_times"] = []
+            session["toast_crash"] = False
         else:
             log(f"lifecycle incomplete: {result.get('actions')}", "ERROR")
             session.setdefault("fail_times", []).append(now)
@@ -1067,10 +1073,49 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
     return actions
 
 
+def _clear_stale_attention_artifacts(reason: str = "recovered") -> None:
+    """Wipe toast / attention flag files so UI does not show yesterday's crash loop."""
+    root = _device_root() / "Reports"
+    try:
+        toast = root / "last-toast.txt"
+        if toast.is_file():
+            toast.write_text(
+                f"{_utc_now()}\nALL CLEAR\n{reason}\n",
+                encoding="utf-8",
+            )
+    except OSError:
+        pass
+    try:
+        flag = root / "ATTENTION-SERVERS.txt"
+        if flag.is_file():
+            flag.unlink()
+    except OSError:
+        pass
+
+
 def cycle(session: dict[str, Any]) -> dict[str, Any]:
     healed = heal_if_needed(session)
     st = launch_ops.companion_status()
     snap = _server_state(st)
+
+    # If wanted servers are up and no critical issues, drop crash-loop history.
+    # Previously fail_times lingered for FAIL_WINDOW_SEC after recovery → sticky
+    # "Crash loop: N failed heals" attention even when S1/S2 were already UP.
+    if not snap["attention"] and snap.get("all_ok"):
+        if session.get("fail_times"):
+            log(
+                f"servers healthy — clearing {len(session['fail_times'])} "
+                f"crash-loop fail marker(s)",
+                "INFO",
+            )
+            session["fail_times"] = []
+            session["toast_crash"] = False
+        if session.get("announced_recovery") is not True:
+            _clear_stale_attention_artifacts("servers healthy — crash loop cleared")
+            session["announced_recovery"] = True
+    else:
+        session["announced_recovery"] = False
+
     fails = [t for t in session.get("fail_times", []) if time.time() - t < FAIL_WINDOW_SEC]
     session["fail_times"] = fails
     crash_loop = len(fails) >= FAIL_THRESHOLD
@@ -1112,6 +1157,10 @@ def cycle(session: dict[str, Any]) -> dict[str, Any]:
     # If still attention after heal, mark attention
     if crash_loop or any(i["severity"] == "critical" for i in payload["issues"]):
         payload["attentionRequired"] = True
+    else:
+        payload["attentionRequired"] = False
+        payload["attentionReason"] = None
+        payload["crashLoop"] = False
     save_report(payload)
     return payload
 
