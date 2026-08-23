@@ -3313,6 +3313,7 @@ import setup_ops
 import launch_ops
 import disk_ops as disk
 import hosts_ops as hosts
+import ditto_ops as ditto
 import convert_ops as convert
 import health_ops as health
 import event_ops as events
@@ -4286,6 +4287,47 @@ class HostsCustom(BaseModel):
     ip: str = "0.0.0.0"
 
 
+class DittoGroupCreate(BaseModel):
+    name: str
+    parent_id: int = -1
+    reflect: bool = True
+
+
+class DittoRename(BaseModel):
+    name: str
+    reflect: bool = True
+
+
+class DittoMove(BaseModel):
+    id: int
+    parent_id: int
+    reflect: bool = True
+
+
+class DittoClipWrite(BaseModel):
+    parent_id: int
+    text: str
+    pin: bool = False
+    reflect: bool = True
+
+
+class DittoClipUpdate(BaseModel):
+    text: str | None = None
+    pin: bool | None = None
+    reflect: bool = True
+
+
+class DittoBulkClips(BaseModel):
+    parent_id: int
+    texts: list[str]
+    pin: bool = False
+    reflect: bool = True
+
+
+class DittoSelection(BaseModel):
+    id: int | None = None
+
+
 class ConvertBatch(BaseModel):
     files: list[str]
     preset: str = "mp4_h264"
@@ -5005,6 +5047,168 @@ def api_hosts_remove(body: HostsCustom):
         return hosts.remove_custom_block(body.host)
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+def _ditto_http(exc: Exception) -> HTTPException:
+    if isinstance(exc, FileNotFoundError):
+        return HTTPException(404, str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(400, str(exc))
+    if isinstance(exc, RuntimeError):
+        return HTTPException(409, str(exc))
+    return HTTPException(500, str(exc))
+
+
+@app.get("/api/ditto/status")
+def api_ditto_status():
+    try:
+        return ditto.status()
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.get("/api/ditto/groups")
+def api_ditto_groups():
+    try:
+        return ditto.list_groups()
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.get("/api/ditto/groups/{group_id}/clips")
+def api_ditto_group_clips(group_id: int, q: str = "", limit: int = 200, offset: int = 0):
+    try:
+        return ditto.list_clips(group_id, q=q, limit=limit, offset=offset)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.get("/api/ditto/groups/{group_id}/export")
+def api_ditto_group_export(group_id: int):
+    try:
+        return ditto.export_group(group_id)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.get("/api/ditto/groups/{group_id}/texts")
+def api_ditto_group_texts(group_id: int, include_children: bool = False, limit: int = 200):
+    try:
+        return ditto.list_clip_texts(group_id, include_children=include_children, limit=limit)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.get("/api/ditto/selection")
+def api_ditto_get_selection():
+    try:
+        return ditto.get_selection()
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.put("/api/ditto/selection")
+def api_ditto_set_selection(body: DittoSelection):
+    try:
+        return ditto.set_selection(body.id)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.get("/api/ditto/clips/{clip_id}")
+def api_ditto_get_clip(clip_id: int):
+    try:
+        return ditto.get_clip(clip_id)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/groups")
+def api_ditto_create_group(body: DittoGroupCreate):
+    try:
+        return ditto.create_group(body.name, body.parent_id, reflect=body.reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/groups/{group_id}/rename")
+def api_ditto_rename_group(group_id: int, body: DittoRename):
+    try:
+        return ditto.rename_item(group_id, body.name, reflect=body.reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/move")
+def api_ditto_move(body: DittoMove):
+    try:
+        return ditto.move_item(body.id, body.parent_id, reflect=body.reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/clips")
+def api_ditto_inject(body: DittoClipWrite):
+    try:
+        return ditto.inject_clip(body.parent_id, body.text, pin=body.pin, reflect=body.reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/clips/bulk")
+def api_ditto_inject_bulk(body: DittoBulkClips):
+    try:
+        return ditto.inject_clips(body.parent_id, body.texts, pin=body.pin, reflect=body.reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.put("/api/ditto/clips/{clip_id}")
+def api_ditto_update_clip(clip_id: int, body: DittoClipUpdate):
+    try:
+        return ditto.update_clip(clip_id, text=body.text, pin=body.pin, reflect=body.reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.delete("/api/ditto/items/{item_id}")
+def api_ditto_delete(item_id: int, recursive: bool = False, reflect: bool = True):
+    try:
+        return ditto.delete_item(item_id, recursive=recursive, reflect=reflect)
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/bounce")
+def api_ditto_bounce():
+    try:
+        return ditto.bounce_ditto()
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/start")
+def api_ditto_start():
+    try:
+        return ditto.start_ditto()
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/stop")
+def api_ditto_stop():
+    try:
+        return ditto.stop_ditto()
+    except Exception as e:
+        raise _ditto_http(e)
+
+
+@app.post("/api/ditto/backup")
+def api_ditto_backup():
+    try:
+        return ditto.backup_db()
+    except Exception as e:
+        raise _ditto_http(e)
 
 
 @app.get("/api/convert/presets")

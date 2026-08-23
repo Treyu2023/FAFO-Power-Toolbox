@@ -716,6 +716,7 @@
       width: 100%;
       min-height: clamp(320px, 62vh, 820px);
       box-sizing: border-box;
+      contain: layout;
     }
     #mainPanel .stats,
     #mainPanel .combo-bar,
@@ -2796,7 +2797,7 @@
   const comboToast = $('comboToast');
   const screenFlash = $('screenFlash');
   const fxCanvas = $('fxCanvas');
-  const fxCtx = fxCanvas.getContext('2d');
+  const fxCtx = fxCanvas && fxCanvas.getContext('2d');
 
   // ——— State ———
   let mode = 'timed';
@@ -3491,6 +3492,7 @@
   }
 
   function tickFx() {
+    if (!fxCtx || !fxCanvas) return;
     fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     ambientFireTick();
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -5721,7 +5723,7 @@
   document.querySelectorAll('#modePills .pill').forEach((p) => {
     p.addEventListener('click', () => setMode(p.dataset.mode));
   });
-  $('btnStart').addEventListener('click', () => {
+  $('btnStart')?.addEventListener('click', () => {
     if (mode === 'campaign') {
       startCampaignAttack();
     } else if (mode === 'minigames') {
@@ -5779,8 +5781,8 @@
     if (mode === 'novel') newTest(false);
   });
   $('optNovelAuto')?.addEventListener('change', savePrefs);
-  $('btnRestart').addEventListener('click', () => newTest(true));
-  $('btnAgain').addEventListener('click', () => {
+  $('btnRestart')?.addEventListener('click', () => newTest(true));
+  $('btnAgain')?.addEventListener('click', () => {
     if (miniRun && miniConfig) startMiniGame(miniConfig);
     else if (mode === 'campaign' || campaignRun) startCampaignAttack();
     else if (mode === 'boards') {
@@ -5792,7 +5794,7 @@
       newTest(false);
     } else newTest(false);
   });
-  $('btnCampStart').addEventListener('click', startCampaignAttack);
+  $('btnCampStart')?.addEventListener('click', startCampaignAttack);
   $('btnBonusPlay')?.addEventListener('click', playPendingBonus);
   $('btnBonusSkip')?.addEventListener('click', () => {
     hideBonusOverlay();
@@ -5802,7 +5804,7 @@
   $('btnResultBonus')?.addEventListener('click', () => {
     if (pendingBonus?.territory) showBonusOverlay(pendingBonus.territory);
   });
-  $('btnSaveHs').addEventListener('click', () => {
+  $('btnSaveHs')?.addEventListener('click', () => {
     if (!pendingHs) {
       showHsNamePrompt();
       return;
@@ -5818,17 +5820,17 @@
       try { savePrefs(); } catch (_) {}
     }
   });
-  $('duration').addEventListener('change', () => {
+  $('duration')?.addEventListener('change', () => {
     if (mode === 'timed' && !campaignRun) newTest(false);
   });
-  $('difficulty').addEventListener('change', () => {
+  $('difficulty')?.addEventListener('change', () => {
     if (!campaignRun) newTest(false);
   });
-  $('lesson').addEventListener('change', () => {
+  $('lesson')?.addEventListener('change', () => {
     if (!campaignRun) newTest(false);
   });
   ['optNoCaps', 'optNoPunct'].forEach((id) => {
-    $(id).addEventListener('change', () => {
+    $(id)?.addEventListener('change', () => {
       savePrefs();
       if (!running && !finished) newTest(false);
     });
@@ -5876,14 +5878,14 @@
     }
   });
   $('playerName')?.addEventListener('keydown', (e) => { e.stopPropagation(); });
-  $('hsFilter').addEventListener('change', renderHighScores);
-  $('btnClearHist').addEventListener('click', () => {
+  $('hsFilter')?.addEventListener('change', renderHighScores);
+  $('btnClearHist')?.addEventListener('click', () => {
     if (confirm('Clear recent run history?')) {
       localStorage.removeItem(KEYS.history);
       renderHistory();
     }
   });
-  $('btnClearHs').addEventListener('click', () => {
+  $('btnClearHs')?.addEventListener('click', () => {
     if (confirm('Clear ALL high scores for every mode?')) {
       localStorage.removeItem(KEYS.highscores);
       renderHighScores();
@@ -5937,13 +5939,13 @@
     });
   });
 
-  promptEl.addEventListener('click', () => typer.focus());
-  $('promptWrap').addEventListener('click', () => typer.focus());
-  mainPanel.addEventListener('click', (e) => {
+  promptEl?.addEventListener('click', () => typer && typer.focus());
+  $('promptWrap')?.addEventListener('click', () => typer.focus());
+  mainPanel?.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
-    typer.focus();
+    typer && typer.focus();
   });
-  typer.addEventListener('keydown', onType);
+  typer?.addEventListener('keydown', onType);
   typer.addEventListener('focus', () => {
     if (!finished) {
       focusHint.textContent = running ? 'Typing… combos multiply your score' : 'Ready — start typing';

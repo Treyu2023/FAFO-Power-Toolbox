@@ -174,6 +174,11 @@
       path: 'System Tools/Secrets Presence Console.html',
       counterparts: ['sys-health-desk', 'malware-defender'],
     },
+    'ditto groups': {
+      id: 'ditto-groups', title: 'Ditto Groups', emoji: '📋',
+      path: 'System Tools/Ditto Groups.html',
+      counterparts: ['startup-command-board', 'sys-health-desk'],
+    },
     'transfer monitor': {
       id: 'transfer-monitor', title: 'Transfer Monitor', emoji: '📡',
       path: 'System Tools/TransferMonitor/Transfer Monitor.html',
