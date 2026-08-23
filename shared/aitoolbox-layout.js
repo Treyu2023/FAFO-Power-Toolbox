@@ -65,7 +65,14 @@
         updatedAt: new Date().toISOString(),
         ...data,
       };
-      localStorage.setItem(storageKey(appId), JSON.stringify(payload));
+      try {
+        localStorage.setItem(storageKey(appId), JSON.stringify(payload));
+      } catch (err) {
+        if (err && (err.name === 'QuotaExceededError' || err.code === 22)) {
+          try { localStorage.removeItem(storageKey(appId)); } catch (_) { /* ignore */ }
+        }
+        return false;
+      }
       // Index for "reset all apps"
       let idx = [];
       try {

@@ -514,6 +514,8 @@ body.atx-dense{--ui-ease:linear}
     }
     const panel = el.querySelector('.panel');
     const custom = (global.AITOOLBOX_PRO && global.AITOOLBOX_PRO.helpLines) || [];
+    let lastErr = '';
+    try { lastErr = sessionStorage.getItem('atx_last_error') || ''; } catch { lastErr = ''; }
     panel.innerHTML = `
       <h2>${tool.emoji || '🧰'} ${escapeHtml(tool.title)} — Pro shortcuts</h2>
       <ul>
@@ -525,6 +527,7 @@ body.atx-dense{--ui-ease:linear}
         <li><kbd>R</kbd> — copy page report to clipboard</li>
         <li><kbd>Esc</kbd> — close help</li>
         ${custom.map((x) => '<li>' + escapeHtml(x) + '</li>').join('')}
+        ${lastErr ? '<li>Last script error: <code>' + escapeHtml(lastErr) + '</code></li>' : ''}
       </ul>
       <div class="row"><button type="button" id="atxHelpClose">Close</button></div>`;
     el.classList.add('open');
@@ -633,10 +636,26 @@ body.atx-dense{--ui-ease:linear}
     });
   }
 
+  function installGuard() {
+    if (global.__atxGuard) return;
+    global.__atxGuard = true;
+    const note = (msg) => {
+      try { sessionStorage.setItem('atx_last_error', String(msg || 'error').slice(0, 400)); } catch { /* ignore */ }
+    };
+    window.addEventListener('error', (e) => {
+      note((e && (e.message || e.error)) || 'script error');
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      const r = e && e.reason;
+      note((r && (r.message || r)) || 'unhandled rejection');
+    });
+  }
+
   function boot() {
     if (global.AITOOLBOX_PRO_DISABLE) return;
     // Don't double-mount inside extension pages without body
     if (!document.body) return;
+    try { installGuard(); } catch { /* ignore */ }
     // Launcher has its own chrome — light mode only (recents + help still ok)
     const tool = detectTool();
     pushRecent(tool);

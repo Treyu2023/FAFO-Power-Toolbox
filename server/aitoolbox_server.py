@@ -10,8 +10,11 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import webbrowser
 from pathlib import Path
+
+_STARTED_AT = time.time()
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -295,6 +298,8 @@ def health():
         "version": TOOLBOX_VERSION,
         "host": BIND_HOST,
         "port": BIND_PORT,
+        "uptime_s": int(time.time() - _STARTED_AT),
+        "pid": os.getpid(),
         "endpoint": f"http://{BIND_HOST}:{BIND_PORT}",
         "features": [
             "vsr_pipeline",
