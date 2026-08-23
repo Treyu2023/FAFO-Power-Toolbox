@@ -27,7 +27,10 @@
     .wrap { max-width: 960px; margin: 0 auto; }
     .nav {
       display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center;
+      min-height: 48px; contain: layout;
     }
+    #serverGrid { min-height: 140px; contain: layout; }
+    .card { contain: layout; min-height: 72px; }
     .nav a, .nav .tab {
       text-decoration: none; font-size: 12px; font-weight: 600;
       padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
@@ -102,7 +105,7 @@
       <a href="System Tools/System Health Desk.html" title="Counterpart · system health">🩺 Health Desk</a>
       <a href="Toolbox Launcher.html">🧰 Launcher</a>
       <button type="button" id="btnCopyFleet" data-tip-title="Copy fleet" data-tip="Copy a text summary of all services and their up/down state." style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--accent);background:transparent;cursor:pointer">📋 Copy fleet</button>
-      <span class="pill" id="pollPill">…</span>
+      <span class="pill" id="pollPill" aria-live="polite">…</span>
       <span data-fafo-layout-toolbar></span>
     </div>
 
@@ -138,7 +141,7 @@
 
     <div class="card" data-fafo-panel="raw-status" data-fafo-flex="1" data-fafo-panel-title="Raw status" data-fafo-panel-min="60" data-fafo-panel-default="140">
       <h2>Raw status</h2>
-      <pre id="rawStatus">Loading…</pre>
+      <pre id="rawStatus" aria-live="polite">Loading…</pre>
     </div>
   </div>
   <div class="toast" id="toast"></div>
@@ -149,8 +152,17 @@
     let pollTimer = null;
 
     const el = (id) => document.getElementById(id);
+    function setText(id, text) {
+      const n = el(id);
+      if (n) n.textContent = text;
+    }
+    function bind(id, ev, fn) {
+      const n = el(id);
+      if (n) n[ev] = fn;
+    }
     function toast(msg, err) {
       const t = el('toast');
+      if (!t) return;
       t.textContent = msg;
       t.className = 'toast show' + (err ? ' err' : '');
       clearTimeout(toast._tm);
@@ -182,7 +194,9 @@
         { key: 'toolbox', code: 'S1', data: tb, prefKey: 'toolboxServer', apiFlag: 'toolbox' },
         { key: 'fafoMeta', code: 'S2', data: meta, prefKey: 'fafoMetaServer', apiFlag: 'fafoMeta' },
       ];
-      el('serverGrid').innerHTML = cards.map(c => {
+      const grid = el('serverGrid');
+      if (!grid) return;
+      grid.innerHTML = cards.map(c => {
         const d = c.data;
         const up = !!(d.healthy || d.listening);
         const blocked = !!d.blockAutoStart;
@@ -222,26 +236,28 @@
       }).join('');
 
       // wire checkboxes
-      el('serverGrid').querySelectorAll('[data-auto]').forEach(cb => {
+      grid.querySelectorAll('[data-auto]').forEach(cb => {
         cb.addEventListener('change', () => savePrefsFromUi());
       });
-      el('serverGrid').querySelectorAll('[data-block]').forEach(cb => {
+      grid.querySelectorAll('[data-block]').forEach(cb => {
         cb.addEventListener('change', () => savePrefsFromUi());
       });
-      el('serverGrid').querySelectorAll('[data-act]').forEach(btn => {
+      grid.querySelectorAll('[data-act]').forEach(btn => {
         btn.addEventListener('click', () => runAction(btn.getAttribute('data-act'), btn.getAttribute('data-flag')));
       });
 
       const win = st.windowsStartup || {};
-      el('chkWinServers').checked = !!(win.servers || (prefs.windowsStartup && prefs.windowsStartup.servers));
-      el('chkWinApp').checked = !!(win.app || (prefs.windowsStartup && prefs.windowsStartup.app));
+      const chkS = el('chkWinServers');
+      const chkA = el('chkWinApp');
+      if (chkS) chkS.checked = !!(win.servers || (prefs.windowsStartup && prefs.windowsStartup.servers));
+      if (chkA) chkA.checked = !!(win.app || (prefs.windowsStartup && prefs.windowsStartup.app));
 
-      el('rawStatus').textContent = JSON.stringify({
+      setText('rawStatus', JSON.stringify({
         toolbox: { listening: tb.listening, healthy: tb.healthy, block: tb.blockAutoStart },
         fafoMeta: { listening: meta.listening, healthy: meta.healthy, block: meta.blockAutoStart },
         prefs: prefs.blockAutoStart,
         windowsStartup: win,
-      }, null, 2);
+      }, null, 2));
     }
 
     function esc(s) {
@@ -294,8 +310,8 @@
             startWithOneClick,
             blockAutoStart,
             windowsStartup: {
-              servers: el('chkWinServers').checked,
-              app: el('chkWinApp').checked,
+              servers: !!el('chkWinServers')?.checked,
+              app: !!el('chkWinApp')?.checked,
             },
           }),
         });
@@ -311,23 +327,24 @@
         const st = await api('/launch/status');
         lastStatus = st;
         renderServers(st);
-        el('pollPill').textContent = 'Live · ' + new Date().toLocaleTimeString();
-        el('pollPill').className = 'pill ok';
+        setText('pollPill', 'Live · ' + new Date().toLocaleTimeString());
+        const pillOk = el('pollPill'); if (pillOk) pillOk.className = 'pill ok';
       } catch (e) {
-        el('pollPill').textContent = 'S1 offline';
-        el('pollPill').className = 'pill bad';
-        el('serverGrid').innerHTML = `<div class="card"><p class="note">${esc(e.message || e)}</p>
+        setText('pollPill', 'S1 offline');
+        const pillBad = el('pollPill'); if (pillBad) pillBad.className = 'pill bad';
+        const g = el('serverGrid');
+        if (g) g.innerHTML = `<div class="card"><p class="note">${esc(e.message || e)}</p>
           <p class="note">If S1 is blocked or stopped, run <code>1-Start-HTML-Toolbox-Server.bat</code> or your personal pack’s start bat.</p></div>`;
       }
     }
 
-    el('btnRefresh').onclick = () => refresh();
-    el('btnStartAll').onclick = () => runAction('start', 'all');
-    el('btnForceAll').onclick = () => runAction('force', 'all');
-    el('btnStopAll').onclick = () => runAction('stop', 'all');
-    el('btnRestartAll').onclick = () => runAction('restart', 'all');
-    el('chkWinServers').onchange = () => savePrefsFromUi();
-    el('chkWinApp').onchange = () => savePrefsFromUi();
+    bind('btnRefresh', 'onclick', () => refresh());
+    bind('btnStartAll', 'onclick', () => runAction('start', 'all'));
+    bind('btnForceAll', 'onclick', () => runAction('force', 'all'));
+    bind('btnStopAll', 'onclick', () => runAction('stop', 'all'));
+    bind('btnRestartAll', 'onclick', () => runAction('restart', 'all'));
+    bind('chkWinServers', 'onchange', () => savePrefsFromUi());
+    bind('chkWinApp', 'onchange', () => savePrefsFromUi());
 
     el('btnCopyFleet')?.addEventListener('click', async () => {
       const raw = el('rawStatus')?.textContent || '';

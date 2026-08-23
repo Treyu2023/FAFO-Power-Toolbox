@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="aitoolbox-tool-id" content="ditto-groups">
+<title>Ditto Groups — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root {
+  --bg: #07060a; --panel: #121018; --border: rgba(255, 159, 28, .28);
+  --accent: #ff9f1c; --accent2: #7c5cff; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+  --text: #f4efe6; --muted: #8a8174;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background:
+    radial-gradient(ellipse at 12% -10%, rgba(255,159,28,.14), transparent 42%),
+    radial-gradient(ellipse at 90% 110%, rgba(124,92,255,.12), transparent 40%),
+    var(--bg);
+  color: var(--text); min-height: 100vh;
+}
+.nav {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.nav a { color: var(--accent); text-decoration: none; font-weight: 700; font-size: 13px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 18px 16px 48px; }
+h1 { font-size: 22px; letter-spacing: .04em; }
+.sub { color: var(--muted); font-size: 13px; margin: 6px 0 14px; line-height: 1.45; }
+.banner {
+  padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; font-size: 12px; line-height: 1.45;
+  border: 1px solid rgba(255,159,28,.4); background: rgba(255,159,28,.08); color: #ffd9a0;
+}
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.pill {
+  font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.pill.ok { color: var(--ok); border-color: rgba(74,222,128,.4); }
+.pill.bad { color: var(--bad); border-color: rgba(248,113,113,.4); }
+.grid {
+  display: grid; grid-template-columns: 280px 1fr; gap: 14px;
+}
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+}
+.ph {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.pb { padding: 12px 14px; }
+.btn {
+  border: 1px solid var(--accent); background: rgba(255,159,28,.1); color: var(--accent);
+  border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.btn:hover { background: rgba(255,159,28,.2); }
+.btn.primary { background: linear-gradient(135deg, #ff9f1c, #7c5cff); border: none; color: #140c04; }
+.btn.ok { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.1); }
+.btn.danger { border-color: var(--bad); color: var(--bad); background: rgba(248,113,113,.08); }
+.btn.ghost { border-color: var(--muted); color: var(--muted); background: transparent; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.inp, select, textarea {
+  background: rgba(0,0,0,.35); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 8px; font-size: 12px; font-family: inherit;
+}
+textarea { width: 100%; min-height: 220px; resize: vertical; line-height: 1.45; }
+.inp.grow { flex: 1; min-width: 140px; }
+.tree { max-height: 62vh; overflow: auto; font-size: 12px; }
+.gnode {
+  padding: 6px 8px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px;
+}
+.gnode:hover { background: rgba(255,159,28,.08); }
+.gnode.active { background: rgba(255,159,28,.16); outline: 1px solid var(--accent); }
+.gnode .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.indent { margin-left: 14px; }
+.clips { max-height: 34vh; overflow: auto; }
+.crow {
+  padding: 8px 8px; border-bottom: 1px solid rgba(255,255,255,.05); cursor: pointer; font-size: 12px;
+}
+.crow:hover { background: rgba(124,92,255,.08); }
+.crow.active { background: rgba(124,92,255,.16); }
+.crow .t { color: var(--muted); font-size: 10px; margin-top: 3px; }
+.msg { font-size: 12px; color: var(--muted); min-height: 18px; margin-top: 8px; }
+.msg.err { color: var(--bad); }
+.msg.ok { color: var(--ok); }
+label.check { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; font-weight: 700; }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    <a href="../Startup Command Board.html" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Startup Board</a>
+    <a href="System Health Desk.html" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Desk</a>
+  </div>
+  <span style="color:var(--accent);font-weight:800;letter-spacing:.08em;font-size:12px">DITTO GROUPS</span>
+  <span data-fafo-layout-toolbar></span>
+</nav>
+
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-tools-ditto-groups" data-fafo-layout-type="columns">
+  <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="70" data-fafo-panel-default="120">
+    <h1>📋 Ditto Groups</h1>
+    <p class="sub">Browse, rename, regroup, edit, and inject clips into Ditto’s SQLite database. Saves close and reopen Ditto so the tray list actually updates.</p>
+    <div class="banner">
+      Ditto caches the database in memory. <strong>Reflect in Ditto</strong> (on by default) stops Ditto, writes <code>%APPDATA%\Ditto\Ditto.db</code>, then starts it again.
+      Full-file backup is optional — the live DB is multi-GB.
+    </div>
+    <div class="pills" id="pills">Loading…</div>
+    <div class="toolbar">
+      <label class="check"><input type="checkbox" id="reflect" checked> Reflect in Ditto (bounce tray)</label>
+      <button class="btn ghost" id="btnReload">↻ Reload</button>
+      <button class="btn ok" id="btnBounce">Bounce Ditto</button>
+      <button class="btn ghost" id="btnBackup">Backup DB</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </header>
+
+  <div class="grid">
+    <div class="panel" data-fafo-panel="groups" data-fafo-panel-title="Groups" data-fafo-panel-min="160" data-fafo-panel-default="280">
+      <div class="ph"><span>Groups</span><span id="groupCount" class="meta"></span></div>
+      <div class="pb">
+        <div class="toolbar">
+          <input class="inp grow" id="newGroupName" placeholder="New group name">
+          <button class="btn primary" id="btnNewGroup">+ Group</button>
+        </div>
+        <div class="toolbar">
+          <input class="inp grow" id="renameName" placeholder="Rename selected">
+          <button class="btn" id="btnRename">Rename</button>
+        </div>
+        <div class="toolbar">
+          <select class="inp grow" id="moveTarget"></select>
+          <button class="btn" id="btnMove">Move here</button>
+        </div>
+        <div class="tree" id="tree">Loading groups…</div>
+        <div class="toolbar" style="margin-top:10px">
+          <button class="btn danger" id="btnDelGroup">Delete group</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel" data-fafo-panel="clips" data-fafo-panel-title="Clips" data-fafo-panel-min="140" data-fafo-panel-default="240">
+        <div class="ph"><span id="clipHead">Clips</span><span id="clipCount"></span></div>
+        <div class="pb">
+          <div class="toolbar">
+            <input class="inp grow" id="clipSearch" placeholder="Filter clips…">
+            <button class="btn ghost" id="btnSearch">Filter</button>
+          </div>
+          <div class="clips" id="clips">Select a group.</div>
+        </div>
+      </div>
+      <div class="panel" data-fafo-panel="editor" data-fafo-flex="1" data-fafo-panel-title="Editor" data-fafo-panel-min="180" data-fafo-panel-default="280">
+        <div class="ph"><span>Editor</span><span id="editMeta"></span></div>
+        <div class="pb">
+          <textarea id="editor" placeholder="Select a clip to edit, or paste new text and inject into the selected group."></textarea>
+          <div class="toolbar" style="margin-top:10px">
+            <label class="check"><input type="checkbox" id="pin"> Pin (don’t auto-delete)</label>
+            <button class="btn primary" id="btnSave">Save clip</button>
+            <button class="btn" id="btnInject">Inject as new</button>
+            <button class="btn" id="btnExport">Export group JSON</button>
+            <button class="btn danger" id="btnDelClip">Delete clip</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+<script>
+window.AITOOLBOX_PRO = {
+  toolId: 'ditto-groups',
+  title: 'Ditto Groups',
+  counterparts: ['startup-command-board', 'sys-health-desk']
+};
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let tree = [];
+let groupsFlat = [];
+let selectedGroup = null;
+let selectedClip = null;
+let clips = [];
+
+function reflectOn() { return document.getElementById('reflect').checked; }
+function setMsg(t, kind) {
+  const el = document.getElementById('msg');
+  el.textContent = t || '';
+  el.className = 'msg' + (kind ? ' ' + kind : '');
+}
+async function api(path, opts) {
+  return UI().apiFetch(path, opts);
+}
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  if (n > 1073741824) return (n/1073741824).toFixed(2) + ' GB';
+  if (n > 1048576) return (n/1048576).toFixed(1) + ' MB';
+  return n + ' B';
+}
+
+async function loadStatus() {
+  const st = await api('/ditto/status');
+  document.getElementById('pills').innerHTML =
+    `<span class="pill ${st.ditto_running ? 'ok' : 'bad'}">${st.ditto_running ? 'Ditto running' : 'Ditto stopped'}</span>`
+    + `<span class="pill">${st.groups || 0} groups</span>`
+    + `<span class="pill">${st.clips || 0} clips</span>`
+    + `<span class="pill">${fmtBytes(st.db_bytes)}</span>`
+    + `<span class="pill">${esc((st.db_path || '').replace(/^.*AppData/, '%APPDATA%'))}</span>`;
+  return st;
+}
+
+function renderTree(nodes, depth) {
+  return (nodes || []).map((g) => {
+    const active = selectedGroup === g.lID ? ' active' : '';
+    const kids = g.children && g.children.length ? renderTree(g.children, depth + 1) : '';
+    return `<div class="${depth ? 'indent' : ''}">`
+      + `<div class="gnode${active}" data-id="${g.lID}">`
+      + `<span>${esc(g.mText || '(unnamed)')}</span>`
+      + `<span class="meta">${g.clip_count || 0}/${g.child_group_count || 0}</span>`
+      + `</div>${kids}</div>`;
+  }).join('');
+}
+
+function fillMoveSelect() {
+  const sel = document.getElementById('moveTarget');
+  const opts = ['<option value="-1">— root —</option>']
+    .concat(groupsFlat.map((g) => `<option value="${g.lID}">${esc(g.mText)} (#${g.lID})</option>`));
+  sel.innerHTML = opts.join('');
+}
+
+async function persistSelection(id) {
+  try {
+    await api('/ditto/selection', { method: 'PUT', body: JSON.stringify({ id: id || null }) });
+  } catch (_) { /* selection is a convenience for ProGen; ignore if offline */ }
+}
+
+async function restoreSelection() {
+  if (selectedGroup) return;
+  try {
+    const sel = await api('/ditto/selection');
+    if (sel && sel.exists && sel.id) selectedGroup = Number(sel.id);
+  } catch (_) { /* ignore */ }
+}
+
+async function loadGroups() {
+  const data = await api('/ditto/groups');
+  tree = data.tree || [];
+  groupsFlat = data.groups || [];
+  await restoreSelection();
+  document.getElementById('groupCount').textContent = data.count || 0;
+  document.getElementById('tree').innerHTML = renderTree(tree, 0) || '<div class="msg">No groups.</div>';
+  fillMoveSelect();
+}
+
+async function loadClips() {
+  if (!selectedGroup) {
+    document.getElementById('clips').textContent = 'Select a group.';
+    return;
+  }
+  const q = document.getElementById('clipSearch').value.trim();
+  const qs = new URLSearchParams({ q, limit: '200' });
+  const data = await api(`/ditto/groups/${selectedGroup}/clips?` + qs.toString());
+  clips = data.clips || [];
+  document.getElementById('clipHead').textContent = data.group?.mText || 'Clips';
+  document.getElementById('clipCount').textContent = (data.total || 0) + ' clips';
+  document.getElementById('clips').innerHTML = clips.map((c) =>
+    `<div class="crow${selectedClip === c.lID ? ' active' : ''}" data-id="${c.lID}">`
+    + `<div>${esc(c.preview || '(empty)')}</div>`
+    + `<div class="t">#${c.lID} · ${c.chars || 0} chars${c.lDontAutoDelete ? ' · pinned' : ''}</div>`
+    + `</div>`
+  ).join('') || '<div class="msg">No clips in this group.</div>';
+}
+
+async function openClip(id) {
+  const data = await api(`/ditto/clips/${id}`);
+  selectedClip = id;
+  document.getElementById('editor').value = data.text || '';
+  document.getElementById('pin').checked = !!(data.clip && data.clip.lDontAutoDelete);
+  document.getElementById('editMeta').textContent = `#${id} · ${(data.text || '').length} chars`;
+  document.querySelectorAll('.crow').forEach((el) => el.classList.toggle('active', Number(el.dataset.id) === id));
+}
+
+async function refreshAll() {
+  setMsg('Loading…');
+  await loadStatus();
+  await loadGroups();
+  if (selectedGroup) await loadClips();
+  setMsg('Ready');
+}
+
+function body(obj) {
+  return { method: 'POST', body: JSON.stringify({ reflect: reflectOn(), ...obj }) };
+}
+
+document.getElementById('tree').addEventListener('click', async (e) => {
+  const n = e.target.closest('.gnode');
+  if (!n) return;
+  selectedGroup = Number(n.dataset.id);
+  selectedClip = null;
+  persistSelection(selectedGroup);
+  document.getElementById('renameName').value = (groupsFlat.find((g) => g.lID === selectedGroup) || {}).mText || '';
+  document.getElementById('moveTarget').value = String(selectedGroup);
+  await loadGroups();
+  await loadClips();
+});
+document.getElementById('clips').addEventListener('click', (e) => {
+  const n = e.target.closest('.crow');
+  if (!n) return;
+  openClip(Number(n.dataset.id)).catch((err) => setMsg(err.message, 'err'));
+});
+document.getElementById('btnReload').onclick = () => refreshAll().catch((e) => setMsg(e.message, 'err'));
+document.getElementById('btnSearch').onclick = () => loadClips().catch((e) => setMsg(e.message, 'err'));
+document.getElementById('clipSearch').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadClips().catch((err) => setMsg(err.message, 'err'));
+});
+document.getElementById('btnBounce').onclick = async () => {
+  setMsg('Bouncing Ditto…');
+  try {
+    const r = await api('/ditto/bounce', { method: 'POST', body: '{}' });
+    setMsg(r.ok ? 'Ditto bounced — tray should refresh.' : JSON.stringify(r), r.ok ? 'ok' : 'err');
+    await loadStatus();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnBackup').onclick = async () => {
+  if (!confirm('Copy the live Ditto database? It can be several GB and takes a while.')) return;
+  setMsg('Backing up (this can take a minute)…');
+  try {
+    const r = await api('/ditto/backup', { method: 'POST', body: '{}' });
+    setMsg('Backup written: ' + r.dest, 'ok');
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnNewGroup').onclick = async () => {
+  const name = document.getElementById('newGroupName').value.trim();
+  if (!name) return setMsg('Name the group first.', 'err');
+  try {
+    const r = await api('/ditto/groups', body({ name, parent_id: selectedGroup || -1 }));
+    selectedGroup = r.id;
+    persistSelection(selectedGroup);
+    document.getElementById('newGroupName').value = '';
+    setMsg(`Created group #${r.id}`, 'ok');
+    await refreshAll();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnRename').onclick = async () => {
+  if (!selectedGroup) return setMsg('Select a group.', 'err');
+  const name = document.getElementById('renameName').value.trim();
+  try {
+    await api(`/ditto/groups/${selectedGroup}/rename`, body({ name }));
+    setMsg('Renamed.', 'ok');
+    await refreshAll();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnMove').onclick = async () => {
+  const id = selectedClip || selectedGroup;
+  if (!id) return setMsg('Select a group or clip.', 'err');
+  const parent_id = Number(document.getElementById('moveTarget').value);
+  try {
+    await api('/ditto/move', body({ id, parent_id }));
+    setMsg(`Moved #${id} → ${parent_id}`, 'ok');
+    await refreshAll();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnDelGroup').onclick = async () => {
+  if (!selectedGroup) return setMsg('Select a group.', 'err');
+  const g = groupsFlat.find((x) => x.lID === selectedGroup);
+  if (!confirm(`Delete group "${g?.mText}" and EVERYTHING inside it? This writes Ditto.db.`)) return;
+  try {
+    const r = await api(`/ditto/items/${selectedGroup}?recursive=true&reflect=${reflectOn()}`, { method: 'DELETE' });
+    selectedGroup = null;
+    setMsg(`Deleted ${r.count} item(s).`, 'ok');
+    await refreshAll();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnSave').onclick = async () => {
+  if (!selectedClip) return setMsg('Select a clip to save, or Inject as new.', 'err');
+  try {
+    await api(`/ditto/clips/${selectedClip}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        text: document.getElementById('editor').value,
+        pin: document.getElementById('pin').checked,
+        reflect: reflectOn()
+      })
+    });
+    setMsg('Clip saved and Ditto refreshed.', 'ok');
+    await refreshAll();
+    await openClip(selectedClip);
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnInject').onclick = async () => {
+  if (!selectedGroup) return setMsg('Select a destination group.', 'err');
+  const text = document.getElementById('editor').value;
+  try {
+    const r = await api('/ditto/clips', body({
+      parent_id: selectedGroup,
+      text,
+      pin: document.getElementById('pin').checked
+    }));
+    selectedClip = r.id;
+    setMsg(`Injected clip #${r.id} into the group. Open Ditto — it should be there.`, 'ok');
+    await refreshAll();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnDelClip').onclick = async () => {
+  if (!selectedClip) return setMsg('Select a clip.', 'err');
+  if (!confirm('Delete this clip from Ditto?')) return;
+  try {
+    await api(`/ditto/items/${selectedClip}?reflect=${reflectOn()}`, { method: 'DELETE' });
+    selectedClip = null;
+    document.getElementById('editor').value = '';
+    setMsg('Clip deleted.', 'ok');
+    await refreshAll();
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+document.getElementById('btnExport').onclick = async () => {
+  if (!selectedGroup) return setMsg('Select a group.', 'err');
+  try {
+    const data = await api(`/ditto/groups/${selectedGroup}/export`);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (data.group?.mText || 'ditto-group').replace(/[^\w\-]+/g, '_') + '.json';
+    a.click();
+    setMsg('Exported ' + data.count + ' clips.', 'ok');
+  } catch (e) { setMsg(e.message, 'err'); }
+};
+
+refreshAll().catch((e) => setMsg(e.message, 'err'));
+</script>
+</body>
+</html>
