@@ -6,8 +6,10 @@ import mimetypes
 import os
 import re
 import subprocess
+import threading
 import time
-from collections import defaultdict
+import uuid
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,7 +48,71 @@ SKIP_SCAN_DIRS = {
     "$recycle.bin", "$RECYCLE.BIN", "system volume information",
     "@eadir", ".git", "node_modules", "__pycache__", "thumbs.db",
     "windows", "program files", "program files (x86)", "programdata",
+    "windows.old", "recovery", "perflogs", "msocache", "config.msi",
+    "system32", "syswow64", "winsxs", "windowsapps",
 }
+
+THIS_PC_TOKENS = {"", "*", "__this_pc__", "this pc", "thispc", "all drives", "whole system"}
+
+# GetDriveTypeW: 2=removable, 3=fixed, 4=remote, 5=cdrom
+_DRIVE_FIXED = 3
+_DRIVE_REMOVABLE = 2
+
+
+def list_local_drives() -> list[Path]:
+    """Ready local volumes (fixed + removable). Skips empty CD/DVD trays."""
+    letters: list[str] = []
+    if hasattr(os, "listdrives"):
+        letters = [str(d) for d in os.listdrives()]
+    else:
+        import string
+        letters = [f"{c}:\\" for c in string.ascii_uppercase]
+    roots: list[Path] = []
+    get_type = None
+    try:
+        import ctypes
+        get_type = ctypes.windll.kernel32.GetDriveTypeW
+    except Exception:
+        get_type = None
+    for raw in letters:
+        text = str(raw).strip()
+        if not text:
+            continue
+        if len(text) == 2 and text[1] == ":":
+            text += "\\"
+        path = Path(text)
+        try:
+            if not path.exists():
+                continue
+        except OSError:
+            continue
+        if get_type is not None:
+            try:
+                kind = int(get_type(str(path)))
+            except Exception:
+                kind = _DRIVE_FIXED
+            if kind not in (_DRIVE_FIXED, _DRIVE_REMOVABLE):
+                continue
+        roots.append(path)
+    return roots
+
+
+def is_whole_system_folder(folder: str | None) -> bool:
+    return str(folder or "").strip().lower() in THIS_PC_TOKENS
+
+
+def resolve_scan_roots(folder: str | None, *, whole_system: bool = False) -> tuple[list[Path], str]:
+    """Return (roots, display_label) for a folder or This PC."""
+    if whole_system or is_whole_system_folder(folder):
+        roots = list_local_drives()
+        if not roots:
+            raise FileNotFoundError("No local drives found to scan")
+        label = "This PC (" + ", ".join(str(r).rstrip("\\/") + "\\" for r in roots) + ")"
+        return roots, label
+    root = Path(str(folder or "").strip())
+    if not str(root) or not root.is_dir():
+        raise FileNotFoundError(folder or "(empty folder)")
+    return [root], str(root.resolve())
 
 
 def extensions_for_type(file_types: str) -> set[str] | None:
@@ -125,7 +191,7 @@ def frame_hash(path: Path) -> str | None:
     return None
 
 
-def iter_files(root: Path, allowed_ext: set[str] | None) -> list[Path]:
+def iter_files(root: Path, allowed_ext: set[str] | None, *, recursive: bool = True) -> list[Path]:
     found: list[Path] = []
     stack = [root]
     while stack:
@@ -137,6 +203,8 @@ def iter_files(root: Path, allowed_ext: set[str] | None) -> list[Path]:
         for entry in entries:
             try:
                 if entry.is_dir():
+                    if not recursive:
+                        continue
                     if entry.name.lower() in SKIP_SCAN_DIRS or entry.name.startswith("."):
                         continue
                     if should_skip_entry(entry.name, True):
@@ -267,13 +335,45 @@ def file_entry(path: Path, *, match_mode: str, deep: bool) -> dict[str, Any] | N
     return apply_match_key(entry, match_mode=match_mode, deep=deep)
 
 
+class ScanController:
+    """Pause / resume / cancel a live duplicate scan without dropping groups already found."""
+
+    def __init__(self) -> None:
+        self._run = threading.Event()
+        self._run.set()
+        self._cancel = threading.Event()
+
+    def wait_if_paused(self) -> None:
+        self._run.wait()
+
+    def is_cancelled(self) -> bool:
+        return self._cancel.is_set()
+
+    def is_paused(self) -> bool:
+        return not self._run.is_set() and not self._cancel.is_set()
+
+    def pause(self) -> None:
+        if not self._cancel.is_set():
+            self._run.clear()
+
+    def resume(self) -> None:
+        self._run.set()
+
+    def cancel(self) -> None:
+        self._cancel.set()
+        self._run.set()
+
+
 def scan_folder_duplicates(
     folder: str,
     *,
     deep: bool = False,
     match_mode: str = "quick",
     file_types: str = "all",
+    recursive: bool = True,
+    whole_system: bool = False,
     on_progress: Callable[..., None] | None = None,
+    controller: ScanController | None = None,
 ) -> dict:
     """Two-phase duplicate scan with live group streaming.
 
@@ -288,10 +388,7 @@ def scan_folder_duplicates(
       phase, total, scanned, groups, wasted_bytes, duplicate_groups,
       partial, provisional_count, message
     """
-    root = Path(folder)
-    if not root.is_dir():
-        raise FileNotFoundError(folder)
-
+    roots, label = resolve_scan_roots(folder, whole_system=whole_system)
     allowed = extensions_for_type(file_types)
     light_entries: list[dict[str, Any]] = []
     size_buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -302,6 +399,17 @@ def scan_folder_duplicates(
     EMIT_EVERY_N = 20
     EMIT_EVERY_S = 0.25
     STREAM_GROUP_CAP = 250
+    cancelled = False
+
+    def should_stop() -> bool:
+        nonlocal cancelled
+        if not controller:
+            return False
+        controller.wait_if_paused()
+        if controller.is_cancelled():
+            cancelled = True
+            return True
+        return False
 
     def current_groups() -> list[dict[str, Any]]:
         groups = list(groups_by_key.values())
@@ -364,16 +472,24 @@ def scan_folder_duplicates(
 
     # Phase 1: walk + size index (fast) — stream provisional groups live
     walk_count = 0
-    stack = [root]
-    while stack:
+    stack = list(roots)
+    stop = False
+    while stack and not stop:
+        if should_stop():
+            break
         current = stack.pop()
         try:
             dir_entries = list(current.iterdir())
         except (OSError, PermissionError):
             continue
         for entry in dir_entries:
+            if should_stop():
+                stop = True
+                break
             try:
                 if entry.is_dir():
+                    if not recursive:
+                        continue
                     if entry.name.lower() in SKIP_SCAN_DIRS or entry.name.startswith("."):
                         continue
                     if should_skip_entry(entry.name, True):
@@ -426,15 +542,44 @@ def scan_folder_duplicates(
     total = len(light_entries)
     emit(
         total or 1,
-        root,
+        label,
         phase="quick_done",
         total=total,
         scanned=total,
         groups=current_groups(),
         force_groups=True,
-        message=f"Quick pass done — {len(groups_by_key)} size groups · hashing next",
+        message=(
+            f"Cancelled after {total} files — {len(groups_by_key)} groups kept"
+            if cancelled else
+            f"Quick pass done — {len(groups_by_key)} size groups · hashing next"
+        ),
         extra={"quick_groups": len(groups_by_key)},
     )
+
+    def _result(groups_list, *, hash_candidates=0, phase="done"):
+        groups_list = list(groups_list)
+        groups_list.sort(key=lambda g: (-g["wasted_bytes"], -g["count"]))
+        wasted = sum(g["wasted_bytes"] for g in groups_list)
+        return {
+            "folder": label,
+            "roots": [str(r) for r in roots],
+            "recursive": bool(recursive),
+            "whole_system": bool(whole_system or is_whole_system_folder(folder)),
+            "scanned": total,
+            "duplicate_groups": len(groups_list),
+            "wasted_bytes": wasted,
+            "match_mode": match_mode,
+            "file_types": file_types,
+            "groups": groups_list,
+            "total_candidates": total,
+            "hash_candidates": hash_candidates,
+            "partial": False,
+            "phase": "cancelled" if cancelled else phase,
+            "cancelled": cancelled,
+        }
+
+    if cancelled:
+        return _result(groups_by_key.values(), phase="cancelled")
 
     # Phase 2: hash only same-size peers
     candidates: list[dict[str, Any]] = []
@@ -444,24 +589,14 @@ def scan_folder_duplicates(
 
     hash_total = len(candidates)
     if not candidates:
-        return {
-            "folder": str(root.resolve()),
-            "scanned": total,
-            "duplicate_groups": 0,
-            "wasted_bytes": 0,
-            "match_mode": match_mode,
-            "file_types": file_types,
-            "groups": [],
-            "total_candidates": total,
-            "hash_candidates": 0,
-            "partial": False,
-            "phase": "done",
-        }
+        return _result([], hash_candidates=0)
 
     hash_buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
     groups_by_key = {}  # rebuild as confirmed hashes arrive
 
     for idx, entry in enumerate(candidates, start=1):
+        if should_stop():
+            break
         refined = apply_match_key(dict(entry), match_mode=match_mode, deep=deep)
         if not refined:
             continue
@@ -487,23 +622,7 @@ def scan_folder_duplicates(
             },
         )
 
-    groups = list(groups_by_key.values())
-    groups.sort(key=lambda g: (-g["wasted_bytes"], -g["count"]))
-    wasted_total = sum(g["wasted_bytes"] for g in groups)
-
-    return {
-        "folder": str(root.resolve()),
-        "scanned": total,
-        "duplicate_groups": len(groups),
-        "wasted_bytes": wasted_total,
-        "match_mode": match_mode,
-        "file_types": file_types,
-        "groups": groups,
-        "total_candidates": total,
-        "hash_candidates": hash_total,
-        "partial": False,
-        "phase": "done",
-    }
+    return _result(groups_by_key.values(), hash_candidates=hash_total)
 
 
 def scan_catalog_duplicates(dir_ids: list[str] | None = None) -> dict:
@@ -747,3 +866,142 @@ def file_info(path: str) -> dict:
         "mime": mime or "application/octet-stream",
         "hash_quick": quick_hash(p),
     }
+
+
+# --- Live scan jobs (pause / resume / cancel) ---
+
+class DupScanJob:
+    def __init__(self) -> None:
+        self.id = uuid.uuid4().hex[:12]
+        self.controller = ScanController()
+        self.lock = threading.Lock()
+        self.events: deque[dict[str, Any]] = deque()
+        self.pending_progress: dict[str, Any] | None = None
+        self.state = "running"
+        self.result: dict[str, Any] | None = None
+        self.error: str | None = None
+        self.finished = False
+        self.created_at = time.time()
+        self._got_event = threading.Event()
+
+    def emit(self, payload: dict[str, Any]) -> None:
+        with self.lock:
+            if payload.get("groups") is not None or payload.get("done") or payload.get("error") or payload.get("state") in ("paused", "running"):
+                self.events.append(payload)
+            elif "count" in payload:
+                self.pending_progress = payload
+            else:
+                self.events.append(payload)
+            self._got_event.set()
+
+    def drain(self, timeout: float = 0.12) -> list[dict[str, Any]]:
+        self._got_event.wait(timeout)
+        with self.lock:
+            out = list(self.events)
+            self.events.clear()
+            if self.pending_progress is not None:
+                out.append(self.pending_progress)
+                self.pending_progress = None
+            self._got_event.clear()
+            return out
+
+
+_JOBS: dict[str, DupScanJob] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _prune_jobs(max_age: float = 3600, keep: int = 8) -> None:
+    now = time.time()
+    with _JOBS_LOCK:
+        stale = [jid for jid, job in _JOBS.items() if job.finished and (now - job.created_at) > max_age]
+        for jid in stale:
+            _JOBS.pop(jid, None)
+        if len(_JOBS) > keep:
+            finished = sorted(
+                (j for j in _JOBS.values() if j.finished),
+                key=lambda j: j.created_at,
+            )
+            for job in finished[: max(0, len(_JOBS) - keep)]:
+                _JOBS.pop(job.id, None)
+
+
+def get_scan_job(job_id: str) -> DupScanJob | None:
+    with _JOBS_LOCK:
+        return _JOBS.get(job_id)
+
+
+def job_state(job_id: str) -> str | None:
+    job = get_scan_job(job_id)
+    if not job:
+        return None
+    if job.controller.is_paused():
+        return "paused"
+    return job.state
+
+
+def control_scan_job(job_id: str, action: str) -> bool:
+    job = get_scan_job(job_id)
+    if not job:
+        return False
+    act = (action or "").strip().lower()
+    if act == "pause":
+        job.controller.pause()
+        job.state = "paused"
+        job.emit({"state": "paused"})
+        return True
+    if act == "resume":
+        job.controller.resume()
+        job.state = "running"
+        job.emit({"state": "running"})
+        return True
+    if act == "cancel":
+        job.controller.cancel()
+        job.state = "cancelled"
+        return True
+    return False
+
+
+def start_scan_job(
+    folder: str,
+    *,
+    deep: bool = False,
+    match_mode: str = "quick",
+    file_types: str = "all",
+    recursive: bool = True,
+    whole_system: bool = False,
+) -> DupScanJob:
+    _prune_jobs()
+    job = DupScanJob()
+    with _JOBS_LOCK:
+        _JOBS[job.id] = job
+
+    def run() -> None:
+        def on_progress(count, file_path, **kw):
+            payload = {"count": count, "file": file_path, "state": job.state}
+            payload.update({k: v for k, v in kw.items() if v is not None})
+            job.emit(payload)
+
+        try:
+            result = scan_folder_duplicates(
+                folder,
+                deep=deep,
+                match_mode=match_mode,
+                file_types=file_types,
+                recursive=recursive,
+                whole_system=whole_system,
+                on_progress=on_progress,
+                controller=job.controller,
+            )
+            job.result = result
+            job.state = "cancelled" if result.get("cancelled") else "done"
+            job.emit({"done": True, "result": result, "state": job.state})
+        except Exception as exc:
+            job.error = str(exc)
+            job.state = "error"
+            job.emit({"error": str(exc)})
+        finally:
+            job.finished = True
+            job._got_event.set()
+
+    threading.Thread(target=run, daemon=True, name=f"dup-scan-{job.id}").start()
+    return job

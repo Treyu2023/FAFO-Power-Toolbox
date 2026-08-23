@@ -69,8 +69,56 @@
 
         .toolbar {
             padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid rgba(255,255,255,0.05);
-            display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 11px;
+            display: flex; gap: 12px; flex-wrap: nowrap; align-items: center; font-size: 11px;
             flex-shrink: 0;
+        }
+        .toolbar-status {
+            min-width: 0; flex: 1; display: flex; gap: 8px; align-items: center;
+        }
+        #toolbarInfo {
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+        }
+        .toolbar-safe {
+            display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: nowrap;
+        }
+        .toolbar-merge {
+            display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto;
+        }
+        .scan-dock {
+            margin-top: 10px; padding: 10px; border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.28);
+            min-height: 118px;
+        }
+        .scan-dock.running { border-color: rgba(0,243,255,0.3); }
+        .scan-dock.paused { border-color: rgba(255,179,71,0.45); }
+        .scan-dock-actions {
+            display: flex; gap: 8px; flex-wrap: nowrap; margin-bottom: 8px;
+        }
+        .scan-dock-actions .ui-btn { flex: 1; white-space: nowrap; flex-shrink: 0; }
+        .keep-rules { display: flex; flex-direction: column; gap: 6px; }
+        .keep-rule {
+            display: grid; grid-template-columns: 22px 18px 1fr auto; gap: 6px; align-items: center;
+            padding: 6px 8px; border-radius: 8px; background: rgba(0,0,0,0.28);
+            border: 1px solid rgba(255,255,255,0.08); font-size: 11px;
+        }
+        .keep-rule.off { opacity: 0.45; }
+        .keep-rule .ord {
+            font-size: 10px; font-weight: 800; color: var(--accent2); text-align: center;
+        }
+        .keep-rule .rule-body { min-width: 0; }
+        .keep-rule .rule-label { color: var(--text); font-weight: 600; line-height: 1.3; }
+        .keep-rule input[type="text"] { margin-top: 4px; padding: 5px 8px; font-size: 11px; }
+        .keep-rule-btns { display: flex; flex-direction: column; gap: 2px; }
+        .keep-rule-btns button {
+            appearance: none; background: transparent; color: var(--muted);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
+            font-size: 9px; padding: 1px 5px; cursor: pointer; line-height: 1.3;
+        }
+        .keep-rule-btns button:hover { color: var(--accent); border-color: var(--accent); }
+        #keepRuleAdd { margin-top: 8px; }
+        .dup-folder {
+            color: var(--muted) !important; font-family: Consolas, 'Cascadia Mono', monospace;
+            font-size: 9px; word-break: break-all; width: 100%;
         }
         .groups-wrap { flex: 1; overflow: auto; padding: 12px; min-height: 0; }
         .dup-group {
@@ -190,8 +238,10 @@
         .file-meta { font-size: 10px; color: var(--accent3); text-align: right; white-space: nowrap; }
         .detail-actions {
             padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.06);
-            display: flex; gap: 8px; flex-wrap: wrap;
+            display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0;
+            background: var(--panel);
         }
+        .detail-actions .ui-btn { flex-shrink: 0; }
 
         .compare-panel {
             position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 200;
@@ -228,7 +278,11 @@
             display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent2), var(--accent));
             transition: width 0.2s;
         }
-        .scan-status { font-size: 10px; color: var(--muted); margin-top: 8px; min-height: 28px; word-break: break-all; }
+        .scan-status {
+            font-size: 10px; color: var(--muted); margin-top: 8px;
+            height: 32px; overflow: hidden; word-break: break-all;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        }
         .launch-banner {
             display: none; padding: 10px 14px; background: rgba(255,179,71,0.1);
             border-bottom: 1px solid rgba(255,179,71,0.3); font-size: 12px;
@@ -278,14 +332,36 @@
                     <button class="ui-btn" id="btnPickFolder" style="flex:1;"
                             data-tip-title="Pick folder" data-tip-basic="Choose the folder to search for duplicates."
                             data-tip-pro="Native folder picker via S1.">📂 Pick Folder</button>
+                    <button class="ui-btn" id="btnScanThisPc" style="flex:1;"
+                            data-tip-title="This PC"
+                            data-tip-basic="Scan every local drive (C:, D:, USB…). Skips Windows and Program Files."
+                            data-tip-pro="Uses GetDriveType: fixed + removable only. CD/DVD and network shares are skipped."
+                            data-tip-efficient="Whole-PC scans take a while. Prefer Images+video, Quick match, and keep subfolders on.">🖥 This PC</button>
                     <button class="ui-btn primary" id="btnScan" style="flex:1;"
                             data-tip-title="Scan"
                             data-tip-basic="Find duplicate files. Groups appear during the quick size pass, then hashes confirm."
                             data-tip-pro="Two-phase stream: size provisional → hash confirm. You can merge while scanning."
                             data-tip-efficient="Start with a smaller folder or narrower file types on slow disks.">↻ Scan</button>
                 </div>
-                <div class="progress-bar"><span id="scanProgress"></span></div>
-                <div class="scan-status" id="scanStatus">Start the server (▶ Start Server above), pick a folder, then scan.</div>
+                <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:10px;cursor:pointer;">
+                    <input type="checkbox" id="scanSubfolders" checked>
+                    Scan subfolders
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:8px;cursor:pointer;">
+                    <input type="checkbox" id="scanWholeSystem">
+                    Scan whole system (all local drives)
+                </label>
+                <div class="hint" id="driveHint" style="margin-top:6px;"></div>
+                <div class="scan-dock" id="scanDock">
+                    <div class="scan-dock-actions">
+                        <button class="ui-btn ghost" id="btnPauseScan" disabled
+                                data-tip="Freeze the list so Merge / Delete stay where you clicked. Resume stays here, never next to Merge.">⏸ Pause scan</button>
+                        <button class="ui-btn danger" id="btnCancelScan" disabled
+                                data-tip="Stop walking the tree. Groups already found stay so you can merge. This button never sits next to Merge.">✕ Cancel scan</button>
+                    </div>
+                    <div class="progress-bar"><span id="scanProgress"></span></div>
+                    <div class="scan-status" id="scanStatus">Start the server (▶ Start Server above), pick a folder, then scan. Pause / Cancel live only in this left dock.</div>
+                </div>
             </div>
             <div class="section"
                  data-fafo-section="options"
@@ -314,6 +390,15 @@
                     <input type="checkbox" id="deepVideo"> Deep video match (first-frame hash)
                 </label>
             </div>
+            <div class="section" data-fafo-section="keep-rules" data-fafo-section-title="Keep rules"
+                 data-fafo-resizable="1" data-fafo-section-min="140" data-fafo-section-default="240">
+                <h3>Keep rules</h3>
+                <p class="hint">Top rule wins. If two copies tie, the next rule breaks it. Used for the default keeper and for <strong>Merge all</strong>.</p>
+                <div class="keep-rules" id="keepRulesList"></div>
+                <select id="keepRuleAdd" aria-label="Add keep criterion">
+                    <option value="">+ Add criterion…</option>
+                </select>
+            </div>
             <div class="section" data-fafo-section="summary" data-fafo-section-title="Summary">
                 <h3>Summary</h3>
                 <div class="stat-grid">
@@ -335,22 +420,36 @@
                 <a class="nav-link" href="../Movie File Manager/Media Hub.html#duplicates" id="launchBannerBack">← Back to Library</a>
             </div>
             <div class="toolbar">
-                <span id="toolbarInfo">No scan yet</span>
-                <span class="persist-pill" id="persistPill" style="display:none" title="Scan kept in this browser until you clear it">💾 Scan kept</span>
-                <span class="persist-pill" id="liveScanPill" style="display:none" title="Groups appear as the scan finds them — you can merge while it runs">🔴 Live scan</span>
-                <button class="ui-btn ghost" id="btnOpenFolder" disabled data-tip-title="Open folder" data-tip="Open the scanned folder in File Explorer.">📂 Open folder</button>
-                <button class="ui-btn ghost" id="btnRefresh" disabled data-tip-title="Rescan" data-tip="Run the scan again from scratch.">↻ Rescan</button>
-                <button class="ui-btn primary" id="btnMergeAllLowest" disabled
-                        data-tip-title="Merge all → lowest #"
-                        data-tip-basic="For every group, keep the file with no (1)/(2) or the lowest number, recycle the rest."
-                        data-tip-pro="Batch merge using copy-number ranking across all groups.">⊕ Merge all → lowest #</button>
-                <button class="ui-btn ghost" id="btnClearScan" disabled
-                        data-tip-title="Clear results" data-tip="Drop scan results from this browser (does not delete files).">✕ Clear results</button>
+                <div class="toolbar-status">
+                    <span id="toolbarInfo">No scan yet</span>
+                    <span class="persist-pill" id="persistPill" style="display:none" title="Scan kept in this browser until you clear it">💾 Scan kept</span>
+                    <span class="persist-pill" id="liveScanPill" style="display:none" title="Groups appear as the scan finds them — pause on the left before merging so rows don't jump">🔴 Live scan</span>
+                </div>
+                <div class="toolbar-safe">
+                    <select id="groupSort" title="How to order the group list" style="width:auto;min-width:160px;padding:6px 8px;font-size:11px;">
+                        <option value="wasted">Sort: recoverable space</option>
+                        <option value="folder">Sort: folder path A–Z</option>
+                        <option value="folder_desc">Sort: folder path Z–A</option>
+                        <option value="name">Sort: file name</option>
+                        <option value="count">Sort: copies</option>
+                        <option value="kind">Sort: type</option>
+                    </select>
+                    <button class="ui-btn ghost" id="btnOpenFolder" disabled data-tip-title="Open folder" data-tip="Open the scanned folder in File Explorer.">📂 Open folder</button>
+                    <button class="ui-btn ghost" id="btnRefresh" disabled data-tip-title="Rescan" data-tip="Run the scan again from scratch.">↻ Rescan</button>
+                    <button class="ui-btn ghost" id="btnClearScan" disabled
+                            data-tip-title="Clear results" data-tip="Drop scan results from this browser (does not delete files). Kept away from Merge so it cannot slide under the cursor.">✕ Clear results</button>
+                </div>
+                <div class="toolbar-merge">
+                    <button class="ui-btn primary" id="btnMergeAllLowest" disabled
+                            data-tip-title="Merge all using keep rules"
+                            data-tip-basic="For every group, keep the file that wins your ranked keep rules, recycle the rest."
+                            data-tip-pro="Uses the stacked criteria on the left (top wins). Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
+                </div>
             </div>
             <div class="groups-wrap" id="groupsWrap">
                 <div class="empty" id="emptyState">
                     <strong style="color:var(--text)">No scan yet</strong><br>
-                    Scan a folder — <strong>quick size pass</strong> fills groups immediately (dashed “likely”), then hashing confirms exact dups while you merge. Keeper defaults to lowest copy # (no # first, then (1) over (2)).<br>
+                    Scan a folder, turn <strong>Scan subfolders</strong> on/off, or hit <strong>This PC</strong> for all local drives. Quick size pass fills groups immediately (dashed “likely”), then hashing confirms exact dups while you merge. Default keeper follows ranked <strong>Keep rules</strong> (top wins). Sort groups by folder path in the toolbar.<br>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">
                         <button class="ui-btn primary" type="button" id="btnEmptyScan">↻ Scan folder</button>
                         <button class="ui-btn" type="button" id="btnEmptyPick">📂 Pick folder</button>
@@ -378,9 +477,9 @@
             <div class="detail-actions" data-fafo-section="detail-actions" data-fafo-section-title="Actions">
                 <h3 style="display:none">Actions</h3>
                 <button class="ui-btn" id="btnCompare" disabled data-tip="Side-by-side preview for two selected files">⇄ Compare</button>
-                <button class="ui-btn primary" id="btnMerge" disabled data-tip="Keep the selected file (defaults to lowest copy #), send all other copies to Recycle Bin">⊕ Merge group</button>
+                <button class="ui-btn primary" id="btnMerge" disabled data-tip="Keep the selected file (defaults to ranked keep rules), send all other copies to Recycle Bin">⊕ Merge group</button>
                 <button class="ui-btn danger" id="btnDeleteSelected" disabled data-tip="Delete checked copies only">✕ Delete selected</button>
-                <p class="hint" style="margin:8px 0 0;font-size:10px;line-height:1.4">Keeper prefers names with no (N) suffix, then lowest number — e.g. <code>photo.jpg</code> over <code>photo (1).jpg</code> over <code>(2)</code>. Use <strong>Merge all → lowest #</strong> in the toolbar to clear every group at once.</p>
+                <p class="hint" style="margin:8px 0 0;font-size:10px;line-height:1.4">Default keeper follows the ranked <strong>Keep rules</strong> on the left (top wins). Override with the radio. <strong>Merge all</strong> uses the same stack.</p>
             </div>
         </aside>
     </div>
@@ -423,13 +522,40 @@
         let compareSelection = new Set();
         let deleteSelection = new Set();
         let scanning = false;
+        let scanPaused = false;
+        let freezeLive = false;
+        let scanHandle = null;
         /** Paths already merged/deleted this session — filtered out of live scan updates */
         let excludedPaths = new Set();
         let bulkMerging = false;
         const LS_DUP = 'fafo_duplicate_manager_settings_v1';
         const LS_DUP_SCAN = 'fafo_duplicate_manager_scan_v1';
 
-        /** Copy-number rank: no suffix wins, then lowest (N). Returns [tier, n] lower = better keeper. */
+        const KEEP_CATALOG = {
+            path_contains: { label: 'Prefer path containing…', needs: 'text', placeholder: 'D:\\Photos\\Keep', multi: true },
+            path_not_contains: { label: 'Avoid path containing…', needs: 'text', placeholder: 'Downloads', multi: true },
+            drive: { label: 'Prefer drive…', needs: 'text', placeholder: 'E:', multi: true },
+            lowest_copy: { label: 'Lowest copy number (no # first, then (1)…)' },
+            highest_copy: { label: 'Highest copy number' },
+            newest: { label: 'Newest (date modified)' },
+            oldest: { label: 'Oldest (date modified)' },
+            largest: { label: 'Largest size' },
+            smallest: { label: 'Smallest size' },
+            shortest_path: { label: 'Shortest full path' },
+            longest_path: { label: 'Longest full path' },
+            shallower: { label: 'Fewer folders (shallower)' },
+            deeper: { label: 'More folders (deeper)' },
+            no_copy_word: { label: 'Name without “copy” / “duplicate”' },
+        };
+
+        let keepRules = [
+            { id: 'path_contains', on: false, value: '' },
+            { id: 'lowest_copy', on: true, value: '' },
+            { id: 'oldest', on: true, value: '' },
+        ];
+        let groupSort = 'wasted';
+
+        /** Copy-number rank: no suffix wins, then lowest (N). Returns [tier, n] lower = better for lowest_copy. */
         function copyNumberRank(name) {
             const stem = String(name || '').replace(/\.[^.]+$/, '');
             let m = stem.match(/\s*\((\d+)\)\s*$/);
@@ -441,38 +567,141 @@
             return [0, 0];
         }
 
-        function pickLowestCountKeeper(items) {
+        function parentFolder(p) {
+            const s = String(p || '').replace(/\//g, '\\');
+            const i = s.lastIndexOf('\\');
+            return i > 0 ? s.slice(0, i) : s;
+        }
+
+        function folderDepth(p) {
+            return String(p || '').replace(/\//g, '\\').split('\\').filter(Boolean).length;
+        }
+
+        function normPath(p) {
+            return String(p || '').replace(/\//g, '\\').toLowerCase();
+        }
+
+        function drivePrefix(value) {
+            let v = String(value || '').trim();
+            if (!v) return '';
+            if (/^[a-zA-Z]$/.test(v)) v += ':';
+            if (/^[a-zA-Z]:$/.test(v)) v += '\\';
+            return v.replace(/\//g, '\\').toLowerCase();
+        }
+
+        function criterionParts(item, rule) {
+            const path = String(item.path || '');
+            const np = normPath(path);
+            const name = String(item.name || '');
+            const size = Number(item.size) || 0;
+            const mtime = Number(item.mtime) || 0;
+            const val = String(rule.value || '').trim();
+            switch (rule.id) {
+                case 'path_contains': {
+                    if (!val) return [0];
+                    return [np.includes(normPath(val)) ? 0 : 1];
+                }
+                case 'path_not_contains': {
+                    if (!val) return [0];
+                    return [np.includes(normPath(val)) ? 1 : 0];
+                }
+                case 'drive': {
+                    const d = drivePrefix(val);
+                    if (!d) return [0];
+                    return [np.startsWith(d) ? 0 : 1];
+                }
+                case 'lowest_copy':
+                    return copyNumberRank(name);
+                case 'highest_copy': {
+                    const r = copyNumberRank(name);
+                    return [-r[1], r[0] === 0 ? 1 : 0];
+                }
+                case 'newest':
+                    return [-mtime];
+                case 'oldest':
+                    return [mtime];
+                case 'largest':
+                    return [-size];
+                case 'smallest':
+                    return [size];
+                case 'shortest_path':
+                    return [path.length];
+                case 'longest_path':
+                    return [-path.length];
+                case 'shallower':
+                    return [folderDepth(path)];
+                case 'deeper':
+                    return [-folderDepth(path)];
+                case 'no_copy_word':
+                    return [/\b(copy|duplicate|dup)\b/i.test(name) ? 1 : 0];
+                default:
+                    return [0];
+            }
+        }
+
+        function activeKeepRules() {
+            return keepRules.filter((r) => r.on && KEEP_CATALOG[r.id] && (!KEEP_CATALOG[r.id].needs || String(r.value || '').trim()));
+        }
+
+        function keeperKey(item) {
+            const parts = [];
+            for (const rule of activeKeepRules()) parts.push(...criterionParts(item, rule));
+            parts.push(normPath(item.path));
+            return parts;
+        }
+
+        function cmpKeys(a, b) {
+            const n = Math.max(a.length, b.length);
+            for (let i = 0; i < n; i++) {
+                const av = a[i];
+                const bv = b[i];
+                if (av === bv) continue;
+                if (typeof av === 'string' || typeof bv === 'string') {
+                    return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true });
+                }
+                return (Number(av) || 0) - (Number(bv) || 0);
+            }
+            return 0;
+        }
+
+        function pickKeeper(items) {
             if (!items || !items.length) return null;
             let best = items[0];
-            let bestKey = [...copyNumberRank(best.name), Number(best.mtime) || 0, String(best.path || '').toLowerCase()];
+            let bestKey = keeperKey(best);
             for (let i = 1; i < items.length; i++) {
                 const it = items[i];
-                const k = [...copyNumberRank(it.name), Number(it.mtime) || 0, String(it.path || '').toLowerCase()];
-                let better = false;
-                for (let j = 0; j < k.length; j++) {
-                    if (k[j] < bestKey[j]) { better = true; break; }
-                    if (k[j] > bestKey[j]) break;
+                const k = keeperKey(it);
+                if (cmpKeys(k, bestKey) < 0) {
+                    best = it;
+                    bestKey = k;
                 }
-                if (better) { best = it; bestKey = k; }
             }
             return best.path || null;
+        }
+
+        function pickLowestCountKeeper(items) {
+            return pickKeeper(items);
+        }
+
+        function keepRulesSummary() {
+            const active = activeKeepRules();
+            if (!active.length) return 'no keep rules (first file wins)';
+            return active.map((r, i) => {
+                const spec = KEEP_CATALOG[r.id];
+                const extra = spec?.needs && r.value ? ` “${r.value}”` : '';
+                return (i + 1) + '. ' + (spec?.label || r.id).replace(/…$/, '') + extra;
+            }).join(' → ');
         }
 
         function normalizeGroup(g) {
             if (!g || !Array.isArray(g.items)) return null;
             const items = g.items.filter((it) => it && it.path && !excludedPaths.has(it.path));
             if (items.length < 2) return null;
-            const keep = pickLowestCountKeeper(items) || items[0].path;
+            const keep = pickKeeper(items) || items[0].path;
             const total = items.reduce((a, it) => a + (Number(it.size) || 0), 0);
             const keepItem = items.find((it) => it.path === keep) || items[0];
             const wasted = Math.max(0, total - (Number(keepItem.size) || 0));
-            const sorted = items.slice().sort((a, b) => {
-                const ra = copyNumberRank(a.name);
-                const rb = copyNumberRank(b.name);
-                if (ra[0] !== rb[0]) return ra[0] - rb[0];
-                if (ra[1] !== rb[1]) return ra[1] - rb[1];
-                return (Number(a.mtime) || 0) - (Number(b.mtime) || 0);
-            });
+            const sorted = items.slice().sort((a, b) => cmpKeys(keeperKey(a), keeperKey(b)));
             return {
                 ...g,
                 items: sorted,
@@ -480,15 +709,117 @@
                 total_bytes: total,
                 wasted_bytes: wasted,
                 suggested_keep: keep,
+                keep_folder: parentFolder(keep),
                 provisional: !!g.provisional,
             };
+        }
+
+        function compareGroups(a, b) {
+            const keepA = a.suggested_keep || pickKeeper(a.items);
+            const keepB = b.suggested_keep || pickKeeper(b.items);
+            const itemA = (a.items || []).find((it) => it.path === keepA) || a.items?.[0] || {};
+            const itemB = (b.items || []).find((it) => it.path === keepB) || b.items?.[0] || {};
+            const folderA = parentFolder(itemA.path);
+            const folderB = parentFolder(itemB.path);
+            switch (groupSort) {
+                case 'folder':
+                    return folderA.localeCompare(folderB, undefined, { sensitivity: 'base', numeric: true })
+                        || String(itemA.name || '').localeCompare(String(itemB.name || ''), undefined, { sensitivity: 'base' });
+                case 'folder_desc':
+                    return folderB.localeCompare(folderA, undefined, { sensitivity: 'base', numeric: true })
+                        || String(itemA.name || '').localeCompare(String(itemB.name || ''), undefined, { sensitivity: 'base' });
+                case 'name':
+                    return String(itemA.name || '').localeCompare(String(itemB.name || ''), undefined, { sensitivity: 'base', numeric: true });
+                case 'count':
+                    return (b.count || 0) - (a.count || 0);
+                case 'kind':
+                    return String(a.kind || itemA.kind || '').localeCompare(String(b.kind || itemB.kind || ''))
+                        || (b.wasted_bytes || 0) - (a.wasted_bytes || 0);
+                default:
+                    return (b.wasted_bytes || 0) - (a.wasted_bytes || 0) || (b.count || 0) - (a.count || 0);
+            }
         }
 
         function normalizeGroupsList(groups) {
             return (groups || [])
                 .map(normalizeGroup)
                 .filter(Boolean)
-                .sort((a, b) => (b.wasted_bytes || 0) - (a.wasted_bytes || 0) || (b.count || 0) - (a.count || 0));
+                .sort(compareGroups);
+        }
+
+        function applyKeepersNow({ resetManual } = {}) {
+            if (resetManual) keeperPath = null;
+            if (scanResult?.groups) applyScanToUi({ restored: true, partial: scanning, quiet: !scanning });
+            saveDupSettings();
+        }
+
+        function renderKeepRules() {
+            const wrap = document.getElementById('keepRulesList');
+            const add = document.getElementById('keepRuleAdd');
+            if (!wrap) return;
+            wrap.innerHTML = keepRules.map((rule, i) => {
+                const spec = KEEP_CATALOG[rule.id] || { label: rule.id };
+                const needs = spec.needs === 'text';
+                return `<div class="keep-rule${rule.on ? '' : ' off'}" data-i="${i}">
+                    <span class="ord">${i + 1}</span>
+                    <input type="checkbox" ${rule.on ? 'checked' : ''} data-keep-on="${i}" title="Use this rule">
+                    <div class="rule-body">
+                        <div class="rule-label">${escapeHtml(spec.label)}</div>
+                        ${needs ? `<input type="text" data-keep-val="${i}" value="${escapeHtml(rule.value || '')}" placeholder="${escapeHtml(spec.placeholder || '')}">` : ''}
+                    </div>
+                    <div class="keep-rule-btns">
+                        <button type="button" data-keep-up="${i}" ${i === 0 ? 'disabled' : ''} title="Higher priority">▲</button>
+                        <button type="button" data-keep-down="${i}" ${i === keepRules.length - 1 ? 'disabled' : ''} title="Lower priority">▼</button>
+                        <button type="button" data-keep-del="${i}" title="Remove">✕</button>
+                    </div>
+                </div>`;
+            }).join('') || '<p class="hint" style="margin:0">No rules — add one below. With none, the first file in the group is kept.</p>';
+            wrap.querySelectorAll('[data-keep-on]').forEach((el) => {
+                el.onchange = () => {
+                    keepRules[Number(el.dataset.keepOn)].on = el.checked;
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            wrap.querySelectorAll('[data-keep-val]').forEach((el) => {
+                el.onchange = () => {
+                    keepRules[Number(el.dataset.keepVal)].value = el.value;
+                    applyKeepersNow({ resetManual: true });
+                };
+            });
+            wrap.querySelectorAll('[data-keep-up]').forEach((el) => {
+                el.onclick = () => {
+                    const i = Number(el.dataset.keepUp);
+                    if (i < 1) return;
+                    [keepRules[i - 1], keepRules[i]] = [keepRules[i], keepRules[i - 1]];
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            wrap.querySelectorAll('[data-keep-down]').forEach((el) => {
+                el.onclick = () => {
+                    const i = Number(el.dataset.keepDown);
+                    if (i >= keepRules.length - 1) return;
+                    [keepRules[i + 1], keepRules[i]] = [keepRules[i], keepRules[i + 1]];
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            wrap.querySelectorAll('[data-keep-del]').forEach((el) => {
+                el.onclick = () => {
+                    keepRules.splice(Number(el.dataset.keepDel), 1);
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            if (add) {
+                const used = new Set(keepRules.map((r) => r.id));
+                add.innerHTML = '<option value="">+ Add criterion…</option>' +
+                    Object.entries(KEEP_CATALOG).map(([id, spec]) => {
+                        if (!spec.multi && used.has(id)) return '';
+                        return `<option value="${id}">${escapeHtml(spec.label)}</option>`;
+                    }).join('');
+            }
         }
 
         function setLiveScanPill(on) {
@@ -550,6 +881,8 @@
                 types: document.getElementById('fileTypes').value,
                 match: document.getElementById('matchMode').value,
                 deep: document.getElementById('deepVideo').checked,
+                recursive: document.getElementById('scanSubfolders')?.checked !== false,
+                wholeSystem: !!document.getElementById('scanWholeSystem')?.checked,
                 activeGroupIndex,
                 keeperPath,
                 result: scanResult,
@@ -579,6 +912,12 @@
                 if (!data || !data.result || !Array.isArray(data.result.groups)) return false;
                 // Prefer restoring folder/options so UI matches the kept scan
                 if (data.folder) document.getElementById('folderPath').value = data.folder;
+                if (typeof data.recursive === 'boolean' && document.getElementById('scanSubfolders')) {
+                    document.getElementById('scanSubfolders').checked = data.recursive;
+                }
+                if (typeof data.wholeSystem === 'boolean' && document.getElementById('scanWholeSystem')) {
+                    document.getElementById('scanWholeSystem').checked = data.wholeSystem;
+                }
                 if (data.types) document.getElementById('fileTypes').value = data.types;
                 if (data.match) document.getElementById('matchMode').value = data.match;
                 if (typeof data.deep === 'boolean') document.getElementById('deepVideo').checked = data.deep;
@@ -639,9 +978,9 @@
             if (toastMsg !== false) UI()?.toast?.(toastMsg || 'Scan results cleared (files untouched)', 'ok');
         }
 
-        function applyScanToUi({ restored, partial } = {}) {
+        function applyScanToUi({ restored, partial, quiet } = {}) {
             if (!scanResult) return;
-            // Always re-normalize keepers to lowest copy #
+            // Re-normalize keepers from the ranked keep-rules stack
             scanResult.groups = normalizeGroupsList(scanResult.groups || []);
             scanResult.duplicate_groups = scanResult.groups.length;
             scanResult.wasted_bytes = scanResult.groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0);
@@ -649,9 +988,11 @@
             const g = scanResult.duplicate_groups ?? scanResult.groups?.length ?? 0;
             if (!partial) {
                 document.getElementById('scanProgress').style.width = '100%';
-                document.getElementById('scanStatus').textContent = restored
-                    ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups (not rescanned).`
-                    : `Done — ${scanResult.scanned} files, ${g} duplicate groups.`;
+                if (!quiet) {
+                    document.getElementById('scanStatus').textContent = restored
+                        ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups (not rescanned).`
+                        : `Done — ${scanResult.scanned} files, ${g} duplicate groups.`;
+                }
                 setLiveScanPill(false);
             } else {
                 setLiveScanPill(true);
@@ -676,7 +1017,7 @@
             updateStats();
             if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
                 const grp = scanResult.groups[activeGroupIndex];
-                // Keep user's manual keeper if still in group; else lowest #
+                // Keep user's manual keeper if still in group; else keep-rules winner
                 if (!keeperPath || !grp.items.some((it) => it.path === keeperPath)) {
                     keeperPath = grp.suggested_keep || pickLowestCountKeeper(grp.items);
                 }
@@ -686,9 +1027,66 @@
             updateActionButtons();
         }
 
+        function updateScanDock() {
+            const dock = document.getElementById('scanDock');
+            const pauseBtn = document.getElementById('btnPauseScan');
+            const cancelBtn = document.getElementById('btnCancelScan');
+            if (!dock || !pauseBtn || !cancelBtn) return;
+            dock.classList.toggle('running', scanning && !scanPaused);
+            dock.classList.toggle('paused', scanning && scanPaused);
+            pauseBtn.disabled = !scanning;
+            cancelBtn.disabled = !scanning;
+            pauseBtn.textContent = scanPaused ? '▶ Resume scan' : '⏸ Pause scan';
+        }
+
+        function freezeForInteraction() {
+            freezeLive = true;
+            if (scanning && !scanPaused && scanHandle) {
+                scanPaused = true;
+                updateScanDock();
+                scanHandle.pause?.().catch(() => {});
+                const el = document.getElementById('scanStatus');
+                if (el) el.textContent = 'Scan paused — Merge stays on the right. Resume / Cancel stay in the left dock.';
+            }
+        }
+
+        async function pauseOrResumeScan() {
+            if (!scanning || !scanHandle) return;
+            if (scanPaused) {
+                freezeLive = false;
+                try { await scanHandle.resume(); } catch (_) {}
+                scanPaused = false;
+                document.getElementById('scanStatus').textContent = 'Resumed scan…';
+            } else {
+                freezeForInteraction();
+                UI().toast('Scan paused. Merge is on the right — Resume stays on the left.', 'ok');
+            }
+            updateScanDock();
+        }
+
+        async function cancelScan() {
+            if (!scanning || !scanHandle) return;
+            freezeLive = true;
+            try { await scanHandle.cancel(); } catch (_) {}
+            document.getElementById('scanStatus').textContent = 'Cancelling scan… keeping groups already found.';
+        }
+
         /** Apply live partial groups from the scan stream (filter out already-merged paths). */
         function applyLivePartial(evt) {
             if (!evt || !Array.isArray(evt.groups)) return;
+            if (freezeLive || scanPaused) {
+                const groups = normalizeGroupsList(evt.groups);
+                scanResult = {
+                    ...(scanResult || {}),
+                    scanned: evt.scanned != null ? evt.scanned : (evt.count || scanResult?.scanned || 0),
+                    groups,
+                    duplicate_groups: groups.length,
+                    wasted_bytes: groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0),
+                    partial: true,
+                };
+                updateStats();
+                return;
+            }
             const prevKey = activeGroupKey;
             scanResult = {
                 folder: scanResult?.folder || document.getElementById('folderPath').value.trim(),
@@ -704,7 +1102,7 @@
             applyScanToUi({ partial: true });
             // Auto-select first group once one appears so user can act immediately
             if (activeGroupIndex < 0 && scanResult.groups.length) {
-                selectGroup(0);
+                selectGroup(0, { fromLive: true });
             } else if (prevKey) {
                 const idx = scanResult.groups.findIndex((x) => x.key === prevKey);
                 if (idx >= 0) {
@@ -765,7 +1163,9 @@
                 btn.textContent = '▶ Start Server';
             }
             document.getElementById('btnScan').disabled = scanning || !on;
-            document.getElementById('btnPickFolder').disabled = !on;
+            if (!isWholeSystemScan()) document.getElementById('btnPickFolder').disabled = scanning || !on;
+            document.getElementById('btnScanThisPc')?.toggleAttribute('disabled', scanning || !on);
+            updateScanDock();
             return on;
         }
 
@@ -829,11 +1229,10 @@
                 return;
             }
             wrap.innerHTML = groups.map((g, i) => {
-                const keepPath = g.suggested_keep || pickLowestCountKeeper(g.items);
+                const keepPath = g.suggested_keep || pickKeeper(g.items);
                 const sample = (g.items || []).find((it) => it.path === keepPath) || g.items[0] || {};
                 const perFile = sample.size != null ? sample.size : Math.round((g.total_bytes || 0) / Math.max(1, g.count || 1));
-                const rank = copyNumberRank(sample.name);
-                const rankHint = rank[0] === 0 ? 'keep: no #' : `keep: (${rank[1]})`;
+                const folder = parentFolder(keepPath);
                 const prov = !!g.provisional;
                 return `
                     <div class="dup-group${i === activeGroupIndex ? ' active' : ''}${prov ? ' provisional' : ''}" data-index="${i}">
@@ -846,9 +1245,10 @@
                                 <span title="Per-file size">${fmtBytesFull(perFile)}</span>
                                 <span title="Sum of all copies">${fmtBytesFull(g.total_bytes)} total</span>
                                 <span>${fmtBytesFull(g.wasted_bytes)} recoverable</span>
-                                <span title="Default keeper uses lowest copy number">${rankHint}</span>
+                                <span title="Keeper from ranked keep rules">keep: ${escapeHtml(sample.name || '')}</span>
                                 <span>${escapeHtml(g.kind || sample.kind || 'file')}</span>
                                 ${prov ? '<span style="color:var(--warn)">size match</span>' : '<span style="color:var(--ok)">hashed</span>'}
+                                <span class="dup-folder" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
                             </div>
                         </div>
                     </div>`;
@@ -858,18 +1258,17 @@
             });
         }
 
-        function selectGroup(index) {
+        function selectGroup(index, opts) {
+            if (!opts || !opts.fromLive) freezeForInteraction();
             activeGroupIndex = index;
             const group = scanResult.groups[index];
             if (!group) return;
             activeGroupKey = group.key || null;
-            // Prefer lowest copy # unless user already picked a keeper still in this group
-            const lowest = pickLowestCountKeeper(group.items) || group.suggested_keep || group.items[0]?.path || null;
+            const suggested = pickKeeper(group.items) || group.suggested_keep || group.items[0]?.path || null;
             if (!keeperPath || !group.items.some((it) => it.path === keeperPath)) {
-                keeperPath = lowest;
+                keeperPath = suggested;
             }
-            // Always re-assert suggested_keep for display
-            group.suggested_keep = lowest;
+            group.suggested_keep = suggested;
             compareSelection.clear();
             deleteSelection.clear();
             renderGroups();
@@ -987,7 +1386,7 @@
             document.getElementById('detailHead').innerHTML = `
                 <h2>${escapeHtml(group.items[0].name)}</h2>
                 <p class="hint" style="margin:0;">${group.count} copies · <span class="size-exact">${fmtBytesFull(group.wasted_bytes)}</span> recoverable if merged.
-                <br>Keeper defaults to <strong>lowest copy #</strong> (no number first) — currently <strong>${escapeHtml(keepName)}</strong>.
+                <br>Keeper from keep rules — currently <strong>${escapeHtml(keepName)}</strong>.
                 ${scanning ? '<br><span style="color:var(--ok)">Scan still running — you can merge this group now.</span>' : ''}
                 <br>Previews autoplay muted below so you can compare without opening full Compare.</p>`;
             const list = document.getElementById('detailList');
@@ -1072,10 +1471,50 @@
             document.getElementById('btnMergeAllLowest').disabled = !gCount || bulkMerging;
         }
 
+        function isWholeSystemScan() {
+            return !!document.getElementById('scanWholeSystem')?.checked;
+        }
+
+        function syncScanScopeUi() {
+            const whole = isWholeSystemScan();
+            const pathEl = document.getElementById('folderPath');
+            const pickEl = document.getElementById('btnPickFolder');
+            if (pathEl) {
+                pathEl.disabled = whole;
+                pathEl.placeholder = whole ? 'All local drives (This PC)' : 'C:\\Users\\You\\Downloads';
+            }
+            if (pickEl) pickEl.disabled = whole;
+            const hint = document.getElementById('driveHint');
+            if (hint && !hint.dataset.loaded) {
+                hint.textContent = whole
+                    ? 'Whole-system scan: Windows / Program Files are skipped. This can take a long time.'
+                    : '';
+            } else if (hint && whole && hint.dataset.drives) {
+                hint.textContent = 'Scanning ' + hint.dataset.drives + ' · Windows / Program Files skipped.';
+            }
+        }
+
+        async function refreshDriveHint() {
+            const hint = document.getElementById('driveHint');
+            if (!hint || !API()?.listDuplicateDrives) return;
+            try {
+                const r = await API().listDuplicateDrives();
+                const drives = r?.drives || [];
+                hint.dataset.loaded = '1';
+                hint.dataset.drives = drives.join(', ');
+                if (isWholeSystemScan()) {
+                    hint.textContent = drives.length
+                        ? 'Scanning ' + drives.join(', ') + ' · Windows / Program Files skipped.'
+                        : 'No local drives reported.';
+                }
+            } catch (_) { /* server offline */ }
+        }
+
         async function runScan() {
+            const whole = isWholeSystemScan();
             const folder = document.getElementById('folderPath').value.trim();
-            if (!folder) {
-                UI().toast('Enter or pick a folder path', 'warn');
+            if (!whole && !folder) {
+                UI().toast('Enter or pick a folder, or turn on Scan whole system', 'warn');
                 return;
             }
             if (!(await API().isOnline(true))) {
@@ -1084,14 +1523,30 @@
             }
 
             scanning = true;
+            scanPaused = false;
+            freezeLive = false;
+            scanHandle = null;
             activeGroupIndex = -1;
             activeGroupKey = null;
             keeperPath = null;
             excludedPaths = new Set();
             compareSelection.clear();
             deleteSelection.clear();
+            const opts = {
+                deep: document.getElementById('deepVideo').checked,
+                matchMode: document.getElementById('matchMode').value,
+                fileTypes: document.getElementById('fileTypes').value,
+                recursive: document.getElementById('scanSubfolders')?.checked !== false,
+                wholeSystem: whole,
+                onHandle: (h) => { scanHandle = h; },
+                onState: (state) => {
+                    if (state === 'paused') scanPaused = true;
+                    if (state === 'running') scanPaused = false;
+                    updateScanDock();
+                },
+            };
             scanResult = {
-                folder,
+                folder: whole ? 'This PC' : folder,
                 scanned: 0,
                 groups: [],
                 duplicate_groups: 0,
@@ -1102,24 +1557,22 @@
             document.getElementById('btnScan').disabled = true;
             document.getElementById('btnMergeAllLowest').disabled = true;
             document.getElementById('scanProgress').style.width = '0%';
-            document.getElementById('scanStatus').textContent =
-                'Phase 1: quick size pass — groups appear immediately, then hashes confirm…';
+            document.getElementById('scanStatus').textContent = whole
+                ? 'Whole system: walking all local drives (Windows / Program Files skipped)…'
+                : (opts.recursive === false
+                    ? 'This folder only (no subfolders) — quick size pass…'
+                    : 'Phase 1: quick size pass — groups appear immediately, then hashes confirm…');
             document.getElementById('toolbarInfo').textContent = 'Quick scan…';
             setLiveScanPill(true);
+            updateScanDock();
             renderGroups();
             updateStats();
-
-            const opts = {
-                deep: document.getElementById('deepVideo').checked,
-                matchMode: document.getElementById('matchMode').value,
-                fileTypes: document.getElementById('fileTypes').value,
-            };
 
             // Throttle UI group redraws slightly if stream is very chatty
             let lastUiGroups = 0;
             let lastPhase = '';
             try {
-                const finalResult = await API().scanDuplicatesStream(folder, opts, (count, file, evt) => {
+                const finalResult = await API().scanDuplicatesStream(whole ? '*' : folder, opts, (count, file, evt) => {
                     const phase = evt?.phase || '';
                     const total = evt?.total || 0;
                     let pct;
@@ -1188,7 +1641,7 @@
                     else selectGroup(activeGroupIndex);
                 }
                 UI().toast(
-                    `Scan complete — ${scanResult.groups.length} groups (lowest # kept by default)`,
+                    `Scan complete — ${scanResult.groups.length} groups (keepers from your keep rules)`,
                     'ok'
                 );
             } catch (e) {
@@ -1197,22 +1650,27 @@
                 UI().toast(e.message, 'error');
             } finally {
                 scanning = false;
+                scanPaused = false;
+                freezeLive = false;
+                scanHandle = null;
                 setLiveScanPill(false);
+                updateScanDock();
                 pollServer();
                 updateActionButtons();
             }
         }
 
         async function mergeGroup() {
+            freezeForInteraction();
             const group = scanResult?.groups?.[activeGroupIndex];
             if (!group || !keeperPath) return;
             const others = group.items.map(i => i.path).filter(p => p !== keeperPath);
-            const preview = `Keep (lowest # default):\n${keeperPath}\n\nSend to Recycle Bin (${others.length}):\n${others.slice(0, 8).join('\n')}${others.length > 8 ? '\n…' : ''}`;
+            const preview = `Keep (keep-rules winner):\n${keeperPath}\n\nSend to Recycle Bin (${others.length}):\n${others.slice(0, 8).join('\n')}${others.length > 8 ? '\n…' : ''}`;
             const r = await UI().confirmAction({
                 title: 'Merge duplicate group',
                 body: `<pre style="font-size:11px;white-space:pre-wrap;color:#ccc">${preview}</pre>`,
                 confirmText: 'Merge to Recycle Bin',
-                cancelText: 'Cancel',
+                cancelText: "Don't merge",
                 trustKey: 'dup_merge_group',
             });
             if (!r.confirmed) return;
@@ -1245,8 +1703,9 @@
             }
         }
 
-        /** Merge every group keeping the lowest copy-number file (no # first, then (1) < (2)…). */
+        /** Merge every group using the ranked keep-rules stack (top rule wins). */
         async function mergeAllToLowest() {
+            freezeForInteraction();
             if (bulkMerging) return;
             const groups = (scanResult?.groups || []).slice();
             if (!groups.length) {
@@ -1255,10 +1714,11 @@
             }
             let totalOthers = 0;
             const plan = groups.map((g) => {
-                const keep = pickLowestCountKeeper(g.items) || g.suggested_keep || g.items[0]?.path;
+                const keep = pickKeeper(g.items) || g.suggested_keep || g.items[0]?.path;
                 const others = (g.items || []).map((i) => i.path).filter((p) => p && p !== keep);
                 totalOthers += others.length;
-                return { keep, paths: (g.items || []).map((i) => i.path), others, sample: g.items?.[0]?.name || 'group' };
+                const keepName = (g.items || []).find((i) => i.path === keep)?.name || keep;
+                return { keep, paths: (g.items || []).map((i) => i.path), others, sample: keepName };
             }).filter((p) => p.keep && p.others.length);
 
             if (!plan.length) {
@@ -1267,13 +1727,13 @@
             }
 
             const r = await UI().confirmAction({
-                title: 'Merge ALL groups → lowest copy #',
-                body: `<p>Keep the <strong>lowest copy number</strong> in each group (no number preferred over (1) over (2)…).</p>
-                    <p><strong>${plan.length}</strong> groups · <strong>${totalOthers}</strong> file(s) → Recycle Bin.</p>
-                    <p style="font-size:11px;color:var(--muted)">Example keep: <code>photo.jpg</code> over <code>photo (1).jpg</code>.</p>`,
+                title: 'Merge ALL groups using keep rules',
+                body: `<p>Keep the file that wins your ranked rules in each group:</p>
+                    <p style="font-size:11px;color:var(--accent)">${escapeHtml(keepRulesSummary())}</p>
+                    <p><strong>${plan.length}</strong> groups · <strong>${totalOthers}</strong> file(s) → Recycle Bin.</p>`,
                 confirmText: `Merge ${plan.length} groups`,
-                cancelText: 'Cancel',
-                trustKey: 'dup_merge_all_lowest',
+                cancelText: "Don't merge",
+                trustKey: 'dup_merge_all_rules',
             });
             if (!r.confirmed) return;
 
@@ -1330,6 +1790,7 @@
         }
 
         async function deleteSelected() {
+            freezeForInteraction();
             const paths = [...deleteSelection].filter(p => p !== keeperPath);
             if (!paths.length) return;
             // Estimate bytes from scan items before delete (API also returns bytes_freed)
@@ -1501,6 +1962,10 @@
                     types: document.getElementById('fileTypes').value,
                     match: document.getElementById('matchMode').value,
                     deep: document.getElementById('deepVideo').checked,
+                    recursive: document.getElementById('scanSubfolders')?.checked !== false,
+                    wholeSystem: !!document.getElementById('scanWholeSystem')?.checked,
+                    keepRules,
+                    groupSort,
                 }));
             } catch (_) {}
         }
@@ -1512,11 +1977,59 @@
                 if (raw.types) document.getElementById('fileTypes').value = raw.types;
                 if (raw.match) document.getElementById('matchMode').value = raw.match;
                 if (typeof raw.deep === 'boolean') document.getElementById('deepVideo').checked = raw.deep;
+                if (typeof raw.recursive === 'boolean' && document.getElementById('scanSubfolders')) {
+                    document.getElementById('scanSubfolders').checked = raw.recursive;
+                }
+                if (typeof raw.wholeSystem === 'boolean' && document.getElementById('scanWholeSystem')) {
+                    document.getElementById('scanWholeSystem').checked = raw.wholeSystem;
+                }
+                if (Array.isArray(raw.keepRules) && raw.keepRules.length) {
+                    keepRules = raw.keepRules
+                        .filter((r) => r && KEEP_CATALOG[r.id])
+                        .map((r) => ({ id: r.id, on: r.on !== false, value: String(r.value || '') }));
+                    if (!keepRules.length) {
+                        keepRules = [
+                            { id: 'path_contains', on: false, value: '' },
+                            { id: 'lowest_copy', on: true, value: '' },
+                            { id: 'oldest', on: true, value: '' },
+                        ];
+                    }
+                }
+                if (raw.groupSort && document.getElementById('groupSort')) {
+                    groupSort = raw.groupSort;
+                    document.getElementById('groupSort').value = raw.groupSort;
+                }
             } catch (_) {}
         }
         restoreDupSettings();
-        ['folderPath', 'fileTypes', 'matchMode', 'deepVideo'].forEach(id => {
-            document.getElementById(id)?.addEventListener('change', saveDupSettings);
+        renderKeepRules();
+        syncScanScopeUi();
+        refreshDriveHint();
+        ['folderPath', 'fileTypes', 'matchMode', 'deepVideo', 'scanSubfolders', 'scanWholeSystem'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => {
+                if (id === 'scanWholeSystem') syncScanScopeUi();
+                saveDupSettings();
+            });
+        });
+        document.getElementById('keepRuleAdd')?.addEventListener('change', (e) => {
+            const id = e.target.value;
+            e.target.value = '';
+            if (!id || !KEEP_CATALOG[id]) return;
+            keepRules.push({ id, on: true, value: '' });
+            renderKeepRules();
+            applyKeepersNow({ resetManual: true });
+        });
+        document.getElementById('groupSort')?.addEventListener('change', (e) => {
+            groupSort = e.target.value || 'wasted';
+            applyKeepersNow();
+        });
+        document.getElementById('btnScanThisPc')?.addEventListener('click', () => {
+            const el = document.getElementById('scanWholeSystem');
+            if (el) el.checked = true;
+            syncScanScopeUi();
+            saveDupSettings();
+            refreshDriveHint();
+            scanWithSave();
         });
 
         function scanWithSave() {
@@ -1526,6 +2039,8 @@
 
         document.getElementById('btnScan').onclick = scanWithSave;
         document.getElementById('btnRefresh').onclick = scanWithSave;
+        document.getElementById('btnPauseScan')?.addEventListener('click', pauseOrResumeScan);
+        document.getElementById('btnCancelScan')?.addEventListener('click', cancelScan);
         document.getElementById('btnClearScan')?.addEventListener('click', () => clearPersistedScan());
         document.getElementById('btnEmptyScan')?.addEventListener('click', () => scanWithSave());
         document.getElementById('btnEmptyPick')?.addEventListener('click', () => document.getElementById('btnPickFolder').click());

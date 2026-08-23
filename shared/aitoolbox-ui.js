@@ -177,8 +177,8 @@
                     ${previewHtml}
                     ${trustKey ? `<label class="trust-row"><input type="checkbox" id="ui-trust-cb"${trustChecked}> ${trustLabel}</label>` : ''}
                     <div class="ui-modal-actions">
-                        <button class="ui-btn ghost" id="ui-cancel">${cancelText}</button>
-                        <button class="ui-btn primary" id="ui-confirm">${confirmText}</button>
+                        <button type="button" class="ui-btn ghost" id="ui-cancel">${cancelText}</button>
+                        <button type="button" class="ui-btn primary" id="ui-confirm">${confirmText}</button>
                     </div>
                 </div>`;
             document.body.appendChild(bg);
