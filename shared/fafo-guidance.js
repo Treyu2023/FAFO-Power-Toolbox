@@ -353,7 +353,7 @@
       { sel: '#btnStart, #btnEmptyStart', title: 'Start', basic: 'Begin the main action for this tool.', pro: 'Run primary workflow / queue.' },
       { sel: '#btnScan, #btnEmptyScan, #btnNoDupRescan', title: 'Scan', basic: 'Look through a folder and list results.', pro: 'Index/hash files (I/O heavy on big trees).', efficient: 'Scan a smaller subfolder first if the drive is spinning rust.' },
       { sel: '#btnRefresh, #btnRefreshLearn', title: 'Refresh', basic: 'Reload the latest data.', pro: 'Re-fetch state without full restart.' },
-      { sel: '#btnMerge, #btnMergeAllLowest', title: 'Merge', basic: 'Keep one file and send extras to Recycle Bin.', pro: 'Destructive de-dupe — verify keeper (lowest copy #).' },
+      { sel: '#btnMerge, #btnMergeAllLowest', title: 'Merge', basic: 'Keep one file and send extras to Recycle Bin.', pro: 'Destructive de-dupe — keeper follows ranked keep rules (top wins).' },
       { sel: '#btnDeleteSelected, #btnDelete, [id*="btnDelete"]', title: 'Delete', basic: 'Remove selected items (usually Recycle Bin).', pro: 'Irreversible if not using trash — double-check selection.' },
       { sel: '#btnYes, .ui-btn.match, #btnAccept', title: 'Accept / Match', basic: 'Yes — keep this choice / lock the pair.', pro: 'Commit decision to catalog or queue.' },
       { sel: '#btnNo, .ui-btn.nomatch, #btnReject', title: 'Reject', basic: 'No — skip this option.', pro: 'Reject candidate; continue elimination.' },
@@ -414,10 +414,18 @@
         'Extra careful video matching (slower).',
         'First-frame hash for near-dup videos.',
         'Requires ffmpeg; use when Quick video groups look wrong.');
-      tip(q('#btnMergeAllLowest'), 'Merge all → lowest #',
-        'In every group, keep the file with the lowest copy number (no # first).',
-        'Batch merge using (1)<(2) ranking; sends extras to Recycle Bin.',
+      tip(q('#btnMergeAllLowest'), 'Merge all (keep rules)',
+        'In every group, keep the file that wins your ranked keep rules.',
+        'Top rule wins; later rules only break ties. Extras go to Recycle Bin.',
         'Bulk delete of non-keepers — review “likely” provisional groups first.');
+      tip(q('#groupSort'), 'Sort groups',
+        'Order the result list. Folder path groups copies by where they live.',
+        'Does not change which file is kept — that is Keep rules.',
+        'Use folder sort when cleaning one tree at a time.');
+      tip(q('#keepRuleAdd'), 'Keep rules',
+        'Stack criteria. #1 beats #2, and so on, for the default keeper and Merge all.',
+        'Prefer a folder or drive first, then copy number / date as tie-breakers.',
+        'Turn on “Prefer path containing” with your master folder so mass merge leaves files there.');
     }
     // Guided pair / pair review
     if (path.includes('guided') || path.includes('pair match')) {

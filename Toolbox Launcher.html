@@ -1097,6 +1097,8 @@
             max-width: 1200px;
             margin: -8px auto 18px;
             padding: 10px 12px;
+            min-height: 52px;
+            contain: layout;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -1433,7 +1435,7 @@
             50% { background: #ff4466; box-shadow: 0 0 12px #ff4466; }
         }
 
-        .server-banner { flex-direction: column; align-items: stretch; max-width: 780px; }
+        .server-banner { flex-direction: column; align-items: stretch; max-width: 1200px; min-height: 96px; contain: layout; }
         .server-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
         .server-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
         .server-hint { font-size: 11px; color: var(--muted); text-align: center; width: 100%; margin-top: 4px; min-height: 16px; }
@@ -1639,7 +1641,7 @@
     <div class="server-banner animate-in" id="serverBanner" data-tip-title="S1 HTML Toolbox Server" data-tip="Green = full power for HTML tools (rename, Explorer tags, ffmpeg, VSR, Verifone). Yellow = starting. Same control exists in Media Library, VSR, and File Organizer.">
         <div class="server-row">
             <span class="server-dot off" id="serverDot"></span>
-            <span id="serverText">Checking S1 HTML Toolbox Server…</span>
+            <span id="serverText" aria-live="polite">Checking S1 HTML Toolbox Server…</span>
         </div>
         <div class="server-actions" id="serverActions">
             <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start all" data-tip="Starts S1 HTML Toolbox + S2 FAFO Local Media Tagger (if enabled) in the background + tray.">▶ Start All Servers</button>
@@ -1652,7 +1654,7 @@
             <button class="ui-btn ghost" id="btnSetupOnce" data-tip-title="Install / Setup" data-tip="Runs Install FAFO Toolbox: Python, protocol, Desktop/Start Menu shortcuts. No UAC.">⚙ Install / Setup</button>
             <button class="ui-btn ghost" id="btnRecheckServer" data-tip="Ping S1 again without launching">↻ Recheck</button>
         </div>
-        <div class="server-hint" id="serverHint"></div>
+        <div class="server-hint" id="serverHint" aria-live="polite"></div>
         <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.45;">
             Servers run <strong>hidden</strong>, are <strong>auto-kept running</strong> (tray + this page),
             and you can still <strong>manually Start / Stop each one</strong> below.
@@ -4428,6 +4430,13 @@
             }).then(r => { if (r.confirmed) AIToolboxAPI.runSetupOnce(); });
         }
 
+
+        function setServerText(html) {
+            const el = document.getElementById('serverText');
+            if (!el) return;
+            el.innerHTML = html;
+        }
+
         function setServerUi(state, hint, hintClass) {
             // state: offline | starting | online | warn | attention
             const dot = document.getElementById('serverDot');
@@ -4506,17 +4515,17 @@
                         btnStart.textContent = '⚠ Attention · Server Online';
                         btnStart.disabled = false;
                     }
-                    document.getElementById('serverText').innerHTML =
+                    setServerText(
                         `<strong>Power mode active — attention</strong> — ${ep}` +
-                        (attn.reason ? ` · ${attn.reason}` : '');
+                        (attn.reason ? ` · ${attn.reason}` : ''));
                 } else {
                     setServerUi('online', 'Server connected @ ' + ep + ' — full features unlocked', 'ok');
                     if (btnStart) {
                         btnStart.textContent = '✓ Server Running';
                         btnStart.disabled = true;
                     }
-                    document.getElementById('serverText').innerHTML =
-                        `<strong>Power mode active</strong> — ${ep}${h.ffmpeg ? ' · ffmpeg ✓' : ''}${h.version ? ' · v' + h.version : ''}`;
+                    setServerText(
+                        `<strong>Power mode active</strong> — ${ep}${h.ffmpeg ? ' · ffmpeg ✓' : ''}${h.version ? ' · v' + h.version : ''}`);
                 }
             } else if (!serverStarting) {
                 if (btnStart) {
@@ -4524,8 +4533,8 @@
                     btnStart.disabled = false;
                 }
                 setServerUi('offline', 'S1 will bind ' + ep + ' · S2 can start with Start All (Chrome optional)', '');
-                document.getElementById('serverText').innerHTML =
-                    '<strong>Browser-only mode</strong> — click <strong>▶ Start All Servers</strong> (S1 + S2; teal while starting, green when ready)';
+                setServerText(
+                    '<strong>Browser-only mode</strong> — click <strong>▶ Start All Servers</strong> (S1 + S2; teal while starting, green when ready)');
             }
             return on;
         }
@@ -4534,7 +4543,7 @@
             if (serverStarting || AIToolboxAPI.isServerLaunching()) return;
             serverStarting = true;
             setServerUi('starting', 'Starting S1 + S2… teal = starting (up to 90s)', 'warn');
-            document.getElementById('serverText').innerHTML = '<strong>Starting…</strong> — launching Python backends';
+            setServerText( '<strong>Starting…</strong> — launching Python backends');
             const btnStart = document.getElementById('btnStartServer');
             if (btnStart) {
                 btnStart.textContent = '◌ Starting…';
@@ -4547,7 +4556,7 @@
                     waitMs: 90000,
                     companions: true,
                     onStatus: (msg) => {
-                        document.getElementById('serverText').innerHTML = '<strong>' + msg + '</strong>';
+                        setServerText( '<strong>' + msg + '</strong>');
                     },
                 });
                 // Ensure S2 even without Chrome (manual force via API)
@@ -4567,7 +4576,7 @@
                     AIToolboxUI.toast('Servers online — power mode active', 'ok');
                 } else {
                     setServerUi('warn', 'Browser blocked launch — use Desktop “Start Servers” or SETUP once', 'warn');
-                    document.getElementById('serverText').innerHTML = '<strong>Not connected</strong> — Desktop <em>Start Servers</em> or START SERVER.bat';
+                    setServerText( '<strong>Not connected</strong> — Desktop <em>Start Servers</em> or START SERVER.bat');
                     if (btnStart) btnStart.textContent = '▶ Start All Servers';
                     showServerHelpModal();
                 }
@@ -4582,19 +4591,19 @@
             }
         }
 
-        document.getElementById('btnStartServer').addEventListener('click', () => launchServer('tray'));
+        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServer('tray'));
 
         async function relaunchFromUi() {
             if (serverStarting || AIToolboxAPI.isServerLaunching()) return;
             serverStarting = true;
             setServerUi('wait', 'Relaunching servers in background (hidden)…', 'warn');
-            document.getElementById('serverText').innerHTML = '<strong>Relaunching…</strong> — no install folder needed';
+            setServerText( '<strong>Relaunching…</strong> — no install folder needed');
             try {
                 const result = AIToolboxAPI.relaunchServers
                     ? await AIToolboxAPI.relaunchServers({
                         waitMs: 60000,
                         onStatus: (msg) => {
-                            document.getElementById('serverText').innerHTML = '<strong>' + msg + '</strong>';
+                            setServerText( '<strong>' + msg + '</strong>');
                         },
                     })
                     : await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 60000 });

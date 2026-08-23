@@ -41,6 +41,10 @@
     let lagToastAt = 0;
     let fxTickSkip = 0; // drop canvas work under load
     const MAX_PLAYING_VIDEOS = 3; // hard cap — prevents multi-decode thrash
+    let probeMode = 'all';
+    let probeFrames = 0;
+    let probeFps = 0;
+    let probeFpsAt = 0;
 
     function loadPrefs() {
         try {
@@ -95,13 +99,13 @@ body.lx-active .section-nav { z-index: 40; }
     radial-gradient(ellipse at calc(100% - var(--lx-lx)) calc(100% - var(--lx-ly)), rgba(124,92,255,0.16), transparent 48%),
     radial-gradient(ellipse at 50% 100%, rgba(0,255,136,0.08), transparent 42%);
   animation: lxWash 48s ease-in-out infinite alternate;
-  filter: blur(2px);
+  /* Do not animate filter/blur — that was the GPU hog in FXPROBE (css ~70% vs canvas ~51%). */
   transition: background 0.2s linear;
 }
 @keyframes lxWash {
-  0%   { transform: translate(0,0) scale(1); filter: hue-rotate(0deg) blur(2px); opacity: 0.75; }
-  50%  { transform: translate(-2%, 2%) scale(1.05); filter: hue-rotate(22deg) blur(3px); opacity: 1; }
-  100% { transform: translate(2%, -1%) scale(0.98); filter: hue-rotate(-18deg) blur(2px); opacity: 0.82; }
+  0%   { transform: translate(0,0) scale(1); opacity: 0.75; }
+  50%  { transform: translate(-2%, 2%) scale(1.05); opacity: 1; }
+  100% { transform: translate(2%, -1%) scale(0.98); opacity: 0.82; }
 }
 
 /* Triangular / tessellation lattice behind content */
@@ -172,7 +176,7 @@ body.lx-active .section-nav { z-index: 40; }
     linear-gradient(180deg, transparent, #000 18%, #000 100%);
   mask-composite: intersect;
   -webkit-mask-composite: source-in;
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
 }
 .lx-marquee-track {
   display: flex; gap: 18px; height: 100%;
@@ -184,14 +188,15 @@ body.lx-active .section-nav { z-index: 40; }
 .lx-m-far {
   height: 58%; bottom: 30%;
   opacity: 0.26;
-  filter: blur(2.8px) saturate(0.85) brightness(0.75);
-  transform: scale(0.9) translateZ(-120px);
+  /* No CSS blur on video layers — compositing decoded frames through blur thrashes the GPU */
+  filter: saturate(0.85) brightness(0.75);
+  transform: scale(0.9);
 }
 .lx-m-mid {
   height: 74%; bottom: 12%;
   opacity: 0.4;
-  filter: blur(1.1px) saturate(1.05) brightness(0.88);
-  transform: scale(0.96) translateZ(-40px);
+  filter: saturate(1.05) brightness(0.88);
+  transform: scale(0.96);
 }
 .lx-m-near {
   height: 100%; bottom: 0;
@@ -444,6 +449,21 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
   .lx-marquee-stage { height: min(32vh, 260px); }
   .lx-m-far { display: none; }
 }
+
+/* Probe A/B: isolate GPU layers */
+.lx-probe-no-css .lx-wash,
+.lx-probe-no-css .lx-tess-field,
+.lx-probe-no-css .lx-grid,
+.lx-probe-no-css .lx-scan { display: none !important; animation: none !important; filter: none !important; }
+.lx-probe-no-canvas #lxCanvas { display: none !important; }
+.lx-probe-no-marquee .lx-marquee-stage { display: none !important; }
+.lx-probe-off { visibility: hidden !important; }
+.lx-probe-noblur .lx-m-far,
+.lx-probe-noblur .lx-m-mid,
+.lx-probe-noblur .lx-m-near {
+  filter: none !important;
+  transform: none !important;
+}
 `;
         document.head.appendChild(style);
     }
@@ -677,6 +697,7 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
                         // Drop decode pressure — keep src so resume is cheap
                         v.removeAttribute('autoplay');
                     } else if (prefs.marquee && prefs.enabled && !marqueeHardOff) {
+                        if (v.dataset.lxStill === '1') return;
                         v.muted = true;
                         v.play().catch(() => {});
                     }
@@ -809,6 +830,13 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
 
     function tick(now) {
         rafId = requestAnimationFrame(tick);
+        probeFrames += 1;
+        if (!probeFpsAt) probeFpsAt = now;
+        if (now - probeFpsAt >= 1000) {
+            probeFps = Math.round((probeFrames * 1000) / (now - probeFpsAt));
+            probeFrames = 0;
+            probeFpsAt = now;
+        }
 
         // Frame-time lag meter — thrashing while encode/toolbox fights for GPU/CPU
         if (lastFrameTs) {
@@ -824,8 +852,10 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
         }
         lastFrameTs = now;
 
-        stepMarquee(now);
-        if (!prefs.enabled || !ctx || !canvas) return;
+        const marqueeOn = probeMode === 'all' || probeMode === 'marquee' || probeMode === 'marquee-noblur';
+        if (marqueeOn) stepMarquee(now);
+        const skipCanvas = probeMode === 'off' || probeMode === 'css' || probeMode === 'marquee' || probeMode === 'marquee-noblur';
+        if (skipCanvas || !prefs.enabled || !ctx || !canvas) return;
 
         // Under load, skip expensive canvas particles (keep rAF cheap)
         if (lagScore > 6 || marqueeHardOff) {
@@ -1293,10 +1323,68 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
         return !prefs.enabled && !prefs.marquee;
     }
 
+    function applyProbeMode(mode) {
+        const allowed = { off: 1, css: 1, canvas: 1, marquee: 1, 'marquee-noblur': 1, all: 1 };
+        probeMode = allowed[mode] ? mode : 'all';
+        if (root) {
+            const noCss = probeMode === 'canvas' || probeMode === 'marquee' || probeMode === 'marquee-noblur' || probeMode === 'off';
+            const noCanvas = probeMode === 'css' || probeMode === 'marquee' || probeMode === 'marquee-noblur' || probeMode === 'off';
+            const noMq = probeMode === 'css' || probeMode === 'canvas' || probeMode === 'off';
+            root.classList.toggle('lx-probe-no-css', noCss);
+            root.classList.toggle('lx-probe-no-canvas', noCanvas);
+            root.classList.toggle('lx-probe-no-marquee', noMq);
+            root.classList.toggle('lx-probe-off', probeMode === 'off');
+            root.classList.toggle('lx-probe-noblur', probeMode === 'marquee-noblur');
+        }
+        const wantMq = probeMode === 'all' || probeMode === 'marquee' || probeMode === 'marquee-noblur';
+        try {
+            root?.querySelectorAll('.lx-marquee-track video').forEach((v) => {
+                if (!wantMq) {
+                    v.pause();
+                    return;
+                }
+                if (v.dataset.lxStill === '1') {
+                    v.pause();
+                    return;
+                }
+                v.muted = true;
+                v.play().catch(() => {});
+            });
+        } catch (_) { /* ignore */ }
+        return probeMode;
+    }
+
+    function probeStats() {
+        const vids = Array.from(document.querySelectorAll('#lxRoot video'));
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        return {
+            mode: probeMode,
+            fps: probeFps,
+            lagScore: Math.round(lagScore * 10) / 10,
+            videos: {
+                elements: vids.length,
+                playing: vids.filter((v) => !v.paused && !v.ended).length,
+                still: vids.filter((v) => v.dataset.lxStill === '1').length,
+                ready: vids.filter((v) => v.readyState >= 2).length
+            },
+            canvas: {
+                bufW: canvas ? canvas.width : 0,
+                bufH: canvas ? canvas.height : 0,
+                dpr,
+                pixels: canvas ? canvas.width * canvas.height : 0,
+                drawing: probeMode === 'all' || probeMode === 'canvas'
+            },
+            tracers: tracers.length,
+            sparks: sparks.length
+        };
+    }
+
     global.AIToolboxLauncherFX = {
         start,
         onToolSelect,
         refreshMarquee,
+        probeSet: applyProbeMode,
+        probeStats,
         setMarquee,
         setEnabled,
         setCalmMode,

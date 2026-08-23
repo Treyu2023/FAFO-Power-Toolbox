@@ -1503,12 +1503,17 @@
         async getPairPaths(pairId) {
             return api(`/pairs/${encodeURIComponent(pairId)}/paths`);
         },
+        async listDuplicateDrives() {
+            return api('/duplicates/drives');
+        },
         async scanDuplicates(folder, deep = false, opts = {}) {
             const p = new URLSearchParams({
-                folder,
+                folder: folder || '',
                 deep: String(!!deep),
                 match_mode: opts.matchMode || 'quick',
                 file_types: opts.fileTypes || 'video',
+                recursive: String(opts.recursive !== false),
+                whole_system: String(!!opts.wholeSystem || !!opts.whole_system),
             });
             return api(`/duplicates/scan?${p}`);
         },
@@ -1519,22 +1524,63 @@
          */
         scanDuplicatesStream(folder, opts = {}, onProgress) {
             const p = new URLSearchParams({
-                folder,
+                folder: folder || '',
                 deep: String(!!opts.deep),
                 match_mode: opts.matchMode || 'quick',
                 file_types: opts.fileTypes || 'all',
+                recursive: String(opts.recursive !== false),
+                whole_system: String(!!opts.wholeSystem || !!opts.whole_system),
             });
-            return new Promise((resolve, reject) => {
-                const es = new EventSource(`${apiBase()}/duplicates/scan/stream?${p}`);
+            let closed = false;
+            const es = new EventSource(`${apiBase()}/duplicates/scan/stream?${p}`);
+            const handle = {
+                jobId: null,
+                es,
+                async pause() {
+                    if (!handle.jobId) return;
+                    return api('/duplicates/scan/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id: handle.jobId, action: 'pause' }),
+                    });
+                },
+                async resume() {
+                    if (!handle.jobId) return;
+                    return api('/duplicates/scan/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id: handle.jobId, action: 'resume' }),
+                    });
+                },
+                async cancel() {
+                    closed = true;
+                    if (!handle.jobId) return;
+                    return api('/duplicates/scan/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id: handle.jobId, action: 'cancel' }),
+                    });
+                },
+            };
+            if (typeof opts.onHandle === 'function') opts.onHandle(handle);
+            const promise = new Promise((resolve, reject) => {
                 es.onmessage = e => {
                     let d;
                     try { d = JSON.parse(e.data); } catch { return; }
+                    if (d.job_id && !d.done) {
+                        handle.jobId = d.job_id;
+                        if (typeof opts.onJob === 'function') opts.onJob(d.job_id, d);
+                    }
+                    if (d.state && typeof opts.onState === 'function') opts.onState(d.state, d);
                     if (d.error) { es.close(); reject(new Error(d.error)); }
                     else if (d.done) { es.close(); resolve(d.result); }
-                    else if (onProgress) onProgress(d.count, d.file, d);
+                    else if (onProgress && (d.count != null || d.groups)) onProgress(d.count, d.file, d);
                 };
-                es.onerror = () => { es.close(); reject(new Error('Duplicate scan stream failed')); };
+                es.onerror = () => {
+                    if (closed) return;
+                    es.close();
+                    reject(new Error('Duplicate scan stream failed'));
+                };
             });
+            promise.handle = handle;
+            return promise;
         },
 
         async deleteDuplicateFiles({ keepPath, deletePaths, toTrash = true, dryRun = false }) {

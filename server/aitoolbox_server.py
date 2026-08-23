@@ -3339,6 +3339,11 @@ class DupScan(BaseModel):
     file_types: str = "all"
 
 
+class DupScanControl(BaseModel):
+    job_id: str
+    action: str  # pause | resume | cancel
+
+
 class DupDelete(BaseModel):
     keep_path: str | None = None
     delete_paths: list[str]
@@ -3383,16 +3388,30 @@ def api_vsr_manual_match():
     return vsr.preview_pipeline()
 
 
+@app.get("/api/duplicates/drives")
+def api_dup_drives():
+    """Local drives available for a This PC / whole-system scan."""
+    roots = [str(p) for p in dup.list_local_drives()]
+    return {"ok": True, "drives": roots, "label": "This PC (" + ", ".join(roots) + ")" if roots else "This PC"}
+
+
 @app.get("/api/duplicates/scan")
 def api_dup_scan(
-    folder: str,
+    folder: str = "",
     deep: bool = False,
     match_mode: str = "quick",
     file_types: str = "video",
+    recursive: bool = True,
+    whole_system: bool = False,
 ):
     try:
         return dup.scan_folder_duplicates(
-            folder, deep=deep, match_mode=match_mode, file_types=file_types,
+            folder,
+            deep=deep,
+            match_mode=match_mode,
+            file_types=file_types,
+            recursive=recursive,
+            whole_system=whole_system,
         )
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
@@ -3400,64 +3419,47 @@ def api_dup_scan(
 
 @app.get("/api/duplicates/scan/stream")
 def api_dup_scan_stream(
-    folder: str,
+    folder: str = "",
     deep: bool = False,
     match_mode: str = "quick",
     file_types: str = "all",
+    recursive: bool = True,
+    whole_system: bool = False,
 ):
     """SSE scan stream. Emits path progress and live `groups` as duplicates appear."""
-    progress: list[str] = []
-
-    def run():
-        try:
-            def on_progress(count, file_path, **kw):
-                payload = {
-                    "count": count,
-                    "file": file_path,
-                }
-                for k in (
-                    "total", "scanned", "phase", "message", "partial",
-                    "wasted_bytes", "duplicate_groups", "provisional_count",
-                    "hash_total", "walk_total", "skipped_unique", "quick_groups",
-                ):
-                    if kw.get(k) is not None:
-                        payload[k] = kw[k]
-                if kw.get("groups") is not None:
-                    payload["groups"] = kw["groups"]
-                    payload["duplicate_groups"] = kw.get(
-                        "duplicate_groups", len(kw["groups"])
-                    )
-                    if "wasted_bytes" not in payload:
-                        payload["wasted_bytes"] = kw.get("wasted_bytes") or 0
-                    payload["partial"] = True
-                progress.append(json.dumps(payload))
-
-            result = dup.scan_folder_duplicates(
-                folder,
-                deep=deep,
-                match_mode=match_mode,
-                file_types=file_types,
-                on_progress=on_progress,
-            )
-            progress.append(json.dumps({"done": True, "result": result}))
-        except Exception as e:
-            progress.append(json.dumps({"error": str(e)}))
-
-    threading.Thread(target=run, daemon=True).start()
+    job = dup.start_scan_job(
+        folder,
+        deep=deep,
+        match_mode=match_mode,
+        file_types=file_types,
+        recursive=recursive,
+        whole_system=whole_system,
+    )
 
     def gen():
-        sent = 0
-        import time
-        while True:
-            while sent < len(progress):
-                yield f"data: {progress[sent]}\n\n"
-                sent += 1
-                item = json.loads(progress[sent - 1])
-                if "done" in item or "error" in item:
+        yield f"data: {json.dumps({'job_id': job.id, 'state': job.state})}\n\n"
+        try:
+            while True:
+                batch = job.drain(timeout=0.12)
+                for item in batch:
+                    yield f"data: {json.dumps(item)}\n\n"
+                    if item.get("done") or item.get("error"):
+                        return
+                if job.finished and not batch:
                     return
-            time.sleep(0.08)
+        except GeneratorExit:
+            job.controller.cancel()
+            raise
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.post("/api/duplicates/scan/control")
+def api_dup_scan_control(body: DupScanControl):
+    ok = dup.control_scan_job(body.job_id, body.action)
+    if not ok:
+        raise HTTPException(404, "Scan job not found")
+    return {"ok": True, "job_id": body.job_id, "state": dup.job_state(body.job_id)}
 
 
 @app.post("/api/duplicates/delete")
