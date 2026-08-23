@@ -642,11 +642,23 @@
 
         try {
             refreshApiBase();
-            const r = await fetch(`${apiBase()}${path}`, {
+            const doFetch = () => fetch(`${apiBase()}${path}`, {
                 ...fetchOpts,
                 headers,
                 signal: combinedSignal,
             });
+            let r;
+            try {
+                r = await doFetch();
+            } catch (first) {
+                const n = first && first.name;
+                const canRetry = (method === 'GET' || method === 'HEAD')
+                    && n !== 'AbortError'
+                    && !fetchOpts.signal?.aborted;
+                if (!canRetry) throw first;
+                await new Promise((ok) => setTimeout(ok, 160));
+                r = await doFetch();
+            }
             if (timeoutTimer) clearTimeout(timeoutTimer);
             if (!r.ok) {
                 const err = await r.json().catch(() => ({ detail: r.statusText }));
