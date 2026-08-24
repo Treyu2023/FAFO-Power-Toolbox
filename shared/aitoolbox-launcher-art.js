@@ -368,9 +368,9 @@
   .fafo-pat::after { animation: none; }
 }
 
-/* Icon crop modal */
+/* Icon crop modal — above tooltips (100000) and launcher chrome */
 #fafoIconCropModal {
-  position: fixed; inset: 0; z-index: 99980;
+  position: fixed; inset: 0; z-index: 200000;
   display: none; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.72); backdrop-filter: blur(6px);
   padding: 16px;
@@ -439,7 +439,9 @@
 
   /**
    * Interactive square crop. Returns Promise<dataURL|null>.
-   * GIFs / SVG: skip crop and resolve original dataURL if opts.skipNonRaster.
+   * null = user cancelled. Decode failures return the original (MIME-fixed) data URL
+   * so Edit Icons still saves .ico / octet-stream files instead of aborting.
+   * GIFs / SVG: skip crop and resolve original dataURL.
    */
   function openIconCropper(fileOrDataUrl, opts) {
     injectPatternCss();
@@ -447,17 +449,21 @@
     const outSize = opts.outSize || 256;
 
     return new Promise((resolve) => {
-      function fail(msg) {
+      let settled = false;
+      function fail(msg, fallback) {
+        if (settled) return;
+        settled = true;
         try {
-          if (global.AIToolboxUI?.toast) AIToolboxUI.toast(msg || 'Crop cancelled', 'warn');
+          if (global.AIToolboxUI?.toast) AIToolboxUI.toast(msg || 'Crop skipped', 'warn');
         } catch (_) { /* ignore */ }
-        resolve(null);
+        resolve(fallback || null);
       }
 
-      const name = (fileOrDataUrl && fileOrDataUrl.name) || '';
+      const name = (fileOrDataUrl && fileOrDataUrl.name) || (opts.filename || '');
       const type = (fileOrDataUrl && fileOrDataUrl.type) || '';
       const isGif = /gif/i.test(type) || /\.gif$/i.test(name);
       const isSvg = /svg/i.test(type) || /\.svg$/i.test(name);
+      const isIco = /icon/i.test(type) || /\.ico$/i.test(name);
 
       const loadAsDataUrl = () =>
         new Promise((res, rej) => {
@@ -471,10 +477,28 @@
           r.readAsDataURL(fileOrDataUrl);
         });
 
+      function fixMime(dataUrl) {
+        if (global.AIToolbox?.normalizeImageDataUrl) {
+          return global.AIToolbox.normalizeImageDataUrl(dataUrl, name);
+        }
+        if (typeof dataUrl === 'string' && /^data:(application\/octet-stream|;base64|,)/i.test(dataUrl)) {
+          const ext = (name.split('.').pop() || '').toLowerCase();
+          const mime = {
+            png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+            webp: 'image/webp', ico: 'image/x-icon', svg: 'image/svg+xml', bmp: 'image/bmp'
+          }[ext] || 'image/png';
+          return dataUrl.replace(/^data:[^,]*,/, 'data:' + mime + ';base64,');
+        }
+        return dataUrl;
+      }
+
       loadAsDataUrl()
-        .then((dataUrl) => {
+        .then((rawUrl) => {
+          const dataUrl = fixMime(rawUrl);
+          // Preserve animation / vectors. ICO can crop if the browser can decode it;
+          // if decode fails we still save the original below.
           if (isGif || isSvg) {
-            // Preserve animation / vectors — no raster crop
+            settled = true;
             resolve(dataUrl);
             return;
           }
@@ -486,7 +510,7 @@
             modal.innerHTML = `
               <div class="ic-card" role="dialog" aria-modal="true" aria-label="Crop tool icon">
                 <h3>Crop tool icon</h3>
-                <p class="ic-sub">Drag to pan · wheel or slider to zoom · square crop for the card. Apply saves the cropped PNG.</p>
+                <p class="ic-sub">Drag to pan · wheel or slider to zoom · square crop for the card. Apply saves the cropped PNG. ICO/GIF keep the original if crop can't read them.</p>
                 <div class="ic-stage" id="icStage">
                   <canvas id="icCanvas"></canvas>
                   <div class="ic-frame"></div>
@@ -516,21 +540,23 @@
           let oy = 0;
           let drag = null;
           let baseFit = 1;
+          let opened = false;
+          // settled lives on the outer promise so fail()/close() share it
 
           function layout() {
             const rect = stage.getBoundingClientRect();
             const dpr = Math.min(window.devicePixelRatio || 1, 2);
-            canvas.width = Math.floor(rect.width * dpr);
-            canvas.height = Math.floor(rect.height * dpr);
-            canvas.style.width = rect.width + 'px';
-            canvas.style.height = rect.height + 'px';
+            canvas.width = Math.floor((rect.width || 360) * dpr);
+            canvas.height = Math.floor((rect.height || 360) * dpr);
+            canvas.style.width = (rect.width || 360) + 'px';
+            canvas.style.height = (rect.height || 360) + 'px';
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             draw();
           }
 
           function draw() {
-            const w = canvas.clientWidth;
-            const h = canvas.clientHeight;
+            const w = canvas.clientWidth || 360;
+            const h = canvas.clientHeight || 360;
             ctx.clearRect(0, 0, w, h);
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, w, h);
@@ -547,7 +573,6 @@
 
           function exportCrop(useFull) {
             if (useFull) {
-              // letterbox full image into square
               const c = document.createElement('canvas');
               c.width = outSize;
               c.height = outSize;
@@ -560,9 +585,8 @@
               g.drawImage(img, (outSize - dw) / 2, (outSize - dh) / 2, dw, dh);
               return c.toDataURL('image/png');
             }
-            // Map the visible frame (inset 8%) to source pixels
-            const w = canvas.clientWidth;
-            const h = canvas.clientHeight;
+            const w = canvas.clientWidth || 360;
+            const h = canvas.clientHeight || 360;
             const frameInset = 0.08;
             const fw = w * (1 - frameInset * 2);
             const fh = h * (1 - frameInset * 2);
@@ -573,7 +597,6 @@
             const dh = img.naturalHeight * s;
             const dx = (w - dw) / 2 + ox;
             const dy = (h - dh) / 2 + oy;
-            // Frame in image space
             const sx = (fx - dx) / s;
             const sy = (fy - dy) / s;
             const sw = fw / s;
@@ -591,6 +614,8 @@
           }
 
           function close(result) {
+            if (settled) return;
+            settled = true;
             modal.classList.remove('open');
             stage.onpointerdown = null;
             window.removeEventListener('pointermove', onMove);
@@ -609,6 +634,10 @@
           }
 
           img.onload = () => {
+            if (!img.naturalWidth || !img.naturalHeight) {
+              fail('Image has no size — saving original file', dataUrl);
+              return;
+            }
             const w = stage.clientWidth || 360;
             const h = stage.clientHeight || 360;
             baseFit = Math.max(w / img.naturalWidth, h / img.naturalHeight) * 1.05;
@@ -618,9 +647,13 @@
             zoomEl.value = '100';
             zoomLbl.textContent = '100%';
             modal.classList.add('open');
+            opened = true;
             layout();
           };
-          img.onerror = () => fail('Could not load image for crop');
+          img.onerror = () => {
+            // ICO/BMP with odd MIME, or unsupported codec — still assign the original.
+            fail(isIco ? 'ICO preview skipped — saving original icon' : 'Could not preview image — saving original file', dataUrl);
+          };
           img.src = dataUrl;
 
           zoomEl.oninput = () => {
@@ -644,11 +677,22 @@
           };
 
           modal.querySelector('#icCancel').onclick = () => close(null);
-          modal.querySelector('#icFull').onclick = () => close(exportCrop(true));
-          modal.querySelector('#icApply').onclick = () => close(exportCrop(false));
+          modal.querySelector('#icFull').onclick = () => {
+            try { close(exportCrop(true)); } catch (_) { close(dataUrl); }
+          };
+          modal.querySelector('#icApply').onclick = () => {
+            try { close(exportCrop(false)); } catch (_) { close(dataUrl); }
+          };
           modal.onclick = (e) => {
             if (e.target === modal) close(null);
           };
+
+          // Safety: if neither load nor error fires (some ICO paths), save original.
+          setTimeout(() => {
+            if (!settled && !opened && !modal.classList.contains('open')) {
+              fail('Crop timed out — saving original file', dataUrl);
+            }
+          }, 4000);
         })
         .catch(() => fail('Could not read image'));
     });

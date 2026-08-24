@@ -1241,21 +1241,41 @@
             border-color: rgba(124,92,255,0.4); color: #a78bfa;
         }
 
-        body.edit-mode .tool-card::after {
-            content: '✎ Change Icon';
+        body.edit-mode .tool-card {
+            cursor: copy;
+            outline: 1px dashed rgba(0, 243, 255, 0.35);
+        }
+        body.edit-mode .tool-card .icon-edit-overlay {
             position: absolute;
             inset: 0;
-            background: rgba(0,0,0,0.75);
+            z-index: 8;
             display: flex;
             align-items: center;
             justify-content: center;
+            background: rgba(0,0,0,0.72);
             font-size: 12px;
             font-weight: bold;
             color: var(--accent);
             opacity: 0;
-            transition: opacity 0.2s;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            text-align: center;
+            padding: 8px;
         }
-        body.edit-mode .tool-card:hover::after { opacity: 1; }
+        body.edit-mode .tool-card:hover .icon-edit-overlay,
+        body.edit-mode .tool-card.icon-drop .icon-edit-overlay { opacity: 1; }
+        body.edit-mode .tool-card.icon-drop {
+            outline: 2px solid var(--accent);
+        }
+        #iconPicker {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            overflow: hidden;
+        }
 
         .hint-bar {
             text-align: center;
@@ -3096,7 +3116,8 @@
                 <p>${shortDesc}</p>
                 ${counterpartHint}
                 <div class="badges">${badges.join('')}</div>
-                <div class="cat">${sec ? sec.name + ' · ' : ''}${tool.category}${parentName ? ' · ' + parentName : ''}${source ? ' · ' + source : ''}</div>`;
+                <div class="cat">${sec ? sec.name + ' · ' : ''}${tool.category}${parentName ? ' · ' + parentName : ''}${source ? ' · ' + source : ''}</div>
+                <div class="icon-edit-overlay">✎ Change icon<br><span style="font-weight:600;font-size:10px;color:#94a3b8">click or drop PNG / GIF / ICO</span></div>`;
             const wrap = card.querySelector('.icon-wrap');
             if (src) {
                 const img = document.createElement('img');
@@ -3162,13 +3183,27 @@
                 }
             });
 
-            card.addEventListener('click', async (ev) => {
+            card.addEventListener('click', (ev) => {
                 if (editMode) {
-                    editingToolId = tool.id;
-                    iconPicker.click();
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    pickAndAssignIcon(tool.id);
                     return;
                 }
-                await openTool(tool, { card, ev });
+                openTool(tool, { card, ev });
+            });
+            card.addEventListener('dragover', (ev) => {
+                if (!editMode) return;
+                ev.preventDefault();
+                card.classList.add('icon-drop');
+            });
+            card.addEventListener('dragleave', () => card.classList.remove('icon-drop'));
+            card.addEventListener('drop', (ev) => {
+                if (!editMode) return;
+                ev.preventDefault();
+                card.classList.remove('icon-drop');
+                const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+                if (file) assignIconFile(tool.id, file);
             });
             return card;
         }
@@ -4148,7 +4183,7 @@
             document.getElementById('btnResetIcons').style.display = editMode ? 'inline-block' : 'none';
             document.getElementById('btnPublishIcons').style.display = editMode ? 'inline-block' : 'none';
             if (editMode) {
-                setIconStatus('Edit mode: click a tool → pick image (crop square before save). GIF/SVG skip crop. Server on = shared for all users.', 'warn');
+                setIconStatus('Edit mode: click or drop an image on a tool. PNG/JPG/WEBP crop to square. GIF/SVG/ICO save as-is if crop can\'t read them. Server on = shared for all users.', 'warn');
             } else {
                 setIconStatus('');
             }
@@ -4188,19 +4223,78 @@
             }
         });
 
-        iconPicker.addEventListener('change', async e => {
-            const file = e.target.files[0];
-            if (!file || !editingToolId) return;
-            const toolId = editingToolId;
+        function clickHiddenIconInput() {
+            return new Promise((resolve) => {
+                let done = false;
+                const finish = (file) => {
+                    if (done) return;
+                    done = true;
+                    iconPicker.removeEventListener('change', onChange);
+                    iconPicker.removeEventListener('cancel', onCancel);
+                    resolve(file || null);
+                };
+                const onChange = () => finish(iconPicker.files && iconPicker.files[0]);
+                const onCancel = () => finish(null);
+                iconPicker.addEventListener('change', onChange, { once: true });
+                iconPicker.addEventListener('cancel', onCancel, { once: true });
+                iconPicker.value = '';
+                try {
+                    iconPicker.click();
+                } catch (err) {
+                    finish(null);
+                }
+            });
+        }
+
+        function pickAndAssignIcon(toolId) {
+            editingToolId = toolId;
+            const types = [{
+                description: 'Tool thumbnail',
+                accept: {
+                    'image/*': ['.png', '.gif', '.jpg', '.jpeg', '.webp', '.ico', '.svg', '.bmp'],
+                    'image/x-icon': ['.ico'],
+                    'image/vnd.microsoft.icon': ['.ico']
+                }
+            }];
+            let pick;
+            if (window.showOpenFilePicker) {
+                pick = window.showOpenFilePicker({
+                    types,
+                    excludeAcceptAllOption: false,
+                    multiple: false
+                }).then(async (handles) => {
+                    if (!handles || !handles[0]) return null;
+                    return handles[0].getFile();
+                }).catch((err) => {
+                    if (err && err.name === 'AbortError') return null;
+                    return clickHiddenIconInput();
+                });
+            } else {
+                pick = clickHiddenIconInput();
+            }
+            pick.then((file) => {
+                if (file) assignIconFile(toolId, file);
+            }).catch((err) => {
+                setIconStatus('Icon pick failed: ' + (err.message || err), 'warn');
+            });
+        }
+
+        async function assignIconFile(toolId, file) {
+            if (!file || !toolId) return;
+            editingToolId = toolId;
             try {
-                setIconStatus(`Crop icon for ${toolId}… (drag / zoom, then Apply)`, 'warn');
+                setIconStatus(`Crop icon for ${toolId}… (drag / zoom, then Apply — or Use full image)`, 'warn');
                 let dataUrl = null;
                 if (window.AIToolboxLauncherArt?.openIconCropper) {
-                    dataUrl = await AIToolboxLauncherArt.openIconCropper(file, { outSize: 256 });
+                    dataUrl = await AIToolboxLauncherArt.openIconCropper(file, { outSize: 256, filename: file.name });
                 } else {
                     dataUrl = await new Promise((resolve, reject) => {
                         const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result);
+                        reader.onload = () => resolve(
+                            (window.AIToolbox?.normalizeImageDataUrl)
+                                ? AIToolbox.normalizeImageDataUrl(reader.result, file.name)
+                                : reader.result
+                        );
                         reader.onerror = () => reject(new Error('read failed'));
                         reader.readAsDataURL(file);
                     });
@@ -4211,7 +4305,10 @@
                     iconPicker.value = '';
                     return;
                 }
-                setIconStatus(`Saving icon for ${toolId}…`, 'warn');
+                if (window.AIToolbox?.normalizeImageDataUrl) {
+                    dataUrl = AIToolbox.normalizeImageDataUrl(dataUrl, file.name);
+                }
+                setIconStatus(`Saving thumbnail for ${toolId}…`, 'warn');
                 const isPng = String(dataUrl).startsWith('data:image/png');
                 const result = await AIToolbox.setLauncherIcon(toolId, dataUrl, {
                     filename: isPng ? (toolId + '.png') : file.name,
@@ -4222,13 +4319,21 @@
                         `Saved personal + shared: assets/tool-icons/${result.shared.file || toolId}. Commit to share with all users.`,
                         'ok'
                     );
-                } else if (result?.shared?.offline || result?.shared?.ok === false) {
+                } else if (result?.personal && (result?.shared?.offline || result?.shared?.ok === false)) {
                     setIconStatus(
-                        `Saved personally in this browser. Start server + Publish Shared (or re-set icon) to copy into the repo for everyone.`,
+                        `Saved in this browser. Start server + Publish Shared to copy into the repo.` +
+                        (result?.shared?.error ? ` (${result.shared.error})` : ''),
                         'warn'
                     );
+                } else if (!result?.personal && result?.shared?.ok) {
+                    setIconStatus(
+                        `Saved shared icon (personal store skipped${result.personalError ? ': ' + result.personalError : ''}).`,
+                        'ok'
+                    );
+                } else if (!result?.personal && result?.personalError) {
+                    setIconStatus('Icon save failed: ' + result.personalError, 'warn');
                 } else {
-                    setIconStatus(`Saved icon for ${toolId}.`, 'ok');
+                    setIconStatus(`Saved thumbnail for ${toolId}.`, 'ok');
                 }
             } catch (err) {
                 setIconStatus('Icon save failed: ' + (err.message || err), 'warn');
@@ -4236,7 +4341,7 @@
             editingToolId = null;
             iconPicker.value = '';
             renderTools();
-        });
+        }
 
         function loadVersion() {
             const v = window.AITOOLBOX_VERSION;
