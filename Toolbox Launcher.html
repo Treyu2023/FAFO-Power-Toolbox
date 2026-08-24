@@ -34,6 +34,8 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             min-height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
             background:
                 radial-gradient(ellipse 90% 50% at 50% -8%, rgba(0, 243, 255, calc(0.14 * var(--neon-i))), transparent 55%),
                 radial-gradient(ellipse 55% 40% at 8% 90%, rgba(46, 245, 201, calc(0.08 * var(--neon-i))), transparent 50%),
@@ -41,8 +43,10 @@
                 radial-gradient(ellipse at 50% 0%, #0e1520 0%, var(--bg) 58%);
             color: var(--text);
             font-family: 'Segoe UI', system-ui, sans-serif;
-            padding: 28px 24px 48px;
-            overflow-x: hidden;
+            padding: 16px 20px 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         /* Page-edge softlight vignette (neon ninja depth) */
         body::before {
@@ -1304,7 +1308,9 @@
         .tile-modal {
             width: min(920px, 100%);
             max-height: min(88vh, 820px);
-            overflow: auto;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
             background: #0a0c14;
             border: 1px solid rgba(0,243,255,0.28);
             border-radius: 16px;
@@ -1318,6 +1324,7 @@
             gap: 12px;
             text-align: left;
             margin-bottom: 12px;
+            flex-shrink: 0;
         }
         .tile-modal h2 {
             font-size: 16px;
@@ -1338,6 +1345,7 @@
             gap: 10px;
             align-items: end;
             margin-bottom: 12px;
+            flex-shrink: 0;
         }
         .tile-toolbar label {
             font-size: 11px;
@@ -1351,6 +1359,7 @@
             flex-wrap: wrap;
             gap: 6px;
             margin-bottom: 10px;
+            flex-shrink: 0;
         }
         .tile-chip {
             font-size: 11px;
@@ -1370,6 +1379,11 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
             gap: 8px;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            overscroll-behavior: contain;
+            padding-right: 4px;
         }
         .tile-pat {
             display: flex;
@@ -1616,9 +1630,57 @@
             text-align: center;
         }
         .sumran-footer-line span { color: rgba(125, 255, 200, 0.75); }
+
+        /* Independent chrome vs tile scroll — Edit Icons / Settings stay on screen */
+        body.lx-split-scroll > header,
+        body.lx-split-scroll > .perf-strip,
+        body.lx-split-scroll > .toolbar-top,
+        body.lx-split-scroll > .section-nav,
+        body.lx-split-scroll > .filter-bar,
+        body.lx-split-scroll > .section-header,
+        body.lx-split-scroll > .home-strips {
+            flex-shrink: 0;
+        }
+        body.lx-split-scroll > .server-banner {
+            flex-shrink: 0;
+            max-height: min(32vh, 280px);
+            overflow: auto;
+            overscroll-behavior: contain;
+        }
+        body.lx-split-scroll > .get-started {
+            flex-shrink: 0;
+            max-height: min(26vh, 220px);
+            overflow: auto;
+            overscroll-behavior: contain;
+        }
+        body.lx-split-scroll > .get-started.collapsed {
+            max-height: 0 !important;
+            overflow: hidden;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+        }
+        body.lx-split-scroll > #firstRunSetupPanel.get-started {
+            max-height: min(48vh, 400px);
+        }
+        .lx-tile-scroll {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 72px;
+        }
+        .section-nav {
+            top: 0; /* chrome is no longer in the page scroller */
+        }
+        .perf-strip {
+            position: relative;
+            top: auto;
+        }
     </style>
 </head>
-<body>
+<body class="lx-split-scroll">
     <header>
         <div class="brand-lockup">
             <div class="brand-fafo">FAFO</div>
@@ -1993,6 +2055,7 @@
         </div>
     </div>
 
+    <div class="lx-tile-scroll" id="lxTileScroll">
     <div class="featured-strip" id="featuredStrip">
         <h3>⭐ Featured</h3>
         <div class="featured-grid tool-grid" id="featuredGrid"></div>
@@ -2011,6 +2074,7 @@
         Icons: personal override shared <code style="color:var(--accent)">assets/tool-icons</code> then emoji.
         <span id="iconStatus" style="display:block;margin-top:6px;color:var(--muted)"></span>
     </p>
+    </div>
 
     <!-- Investor corner host (private overlay only) -->
     <div id="sumranCornerHost"></div>

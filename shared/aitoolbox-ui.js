@@ -248,7 +248,18 @@
         const positionSpotlight = () => {
             const target = step.target ? document.querySelector(step.target) : null;
             if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (window.AIToolboxLayout && typeof window.AIToolboxLayout.scrollInsidePane === 'function') {
+                    window.AIToolboxLayout.scrollInsidePane(target, { behavior: 'smooth' });
+                } else {
+                    const pane = target.closest('.lx-tile-scroll, .fafo-panel-body, .fafo-section-body, .fafo-scroll-pane');
+                    if (pane) {
+                        const t = target.getBoundingClientRect();
+                        const p = pane.getBoundingClientRect();
+                        pane.scrollTop += (t.top + t.height / 2) - (p.top + p.height / 2);
+                    } else {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
                 setTimeout(() => {
                     const r = target.getBoundingClientRect();
                     const pad = 8;

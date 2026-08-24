@@ -13,25 +13,26 @@
   align-items: stretch;
   gap: 0 !important;
   grid-template-columns: none !important;
-  /* Prefer filling the window so width-clamp math uses a real shell */
-  min-height: min(100vh, 100dvh);
+  min-height: 0;
+}
+.fafo-layout-root.fafo-layout-columns:not(.fafo-viewport-pin) {
   min-height: 100dvh;
 }
 .fafo-layout-root.fafo-layout-rows {
   display: flex !important;
   flex-direction: column;
   gap: 0 !important;
-  /* Critical: without this, rows roots collapse to sum(fixed panels) ≈ banner strip */
-  min-height: min(100vh, 100dvh);
-  min-height: 100dvh;
+  min-height: 0;
   height: auto;
   box-sizing: border-box;
+}
+.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin) {
+  min-height: 100dvh;
 }
 /* Auto-scaffolded full-page shells */
 .fafo-auto-shell.fafo-layout-root,
 .fafo-layout-root.fafo-auto-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 0;
 }
 
 /* Panels */
@@ -138,8 +139,40 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 243, 255, 0.45) rgba(255, 255, 255, 0.06);
+}
+
+/* Keep toolbars / action rows from eating the list's scroll budget */
+.fafo-panel-body > .toolbar,
+.fafo-panel-body > .launch-banner,
+.fafo-panel-body > .top-bar,
+.fafo-panel-body > .detail-head,
+.fafo-panel-body > .detail-actions,
+.fafo-panel-body > .nav,
+.fafo-panel-body > .filter-bar {
+  flex-shrink: 0;
+}
+
+/* Lists / grids / tables inside a panel scroll on their own */
+.fafo-scroll-pane,
+.fafo-panel-body > .groups-wrap,
+.fafo-panel-body > .list,
+.fafo-panel-body > .results,
+.fafo-panel-body > .file-list,
+.fafo-panel-body > .item-list,
+.fafo-panel-body > .grid-wrap,
+.fafo-panel-body > .table-wrap,
+.fafo-panel-body > .detail-list,
+.fafo-panel-body > .log,
+.fafo-panel-body > .timeline {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 /* Split handles between panels */
@@ -354,4 +387,113 @@ body:not(.fafo-layout-resizing):not(.fafo-layout-resizing-row):not(.fafo-layout-
 body.atx-dense .fafo-panel-chrome {
   min-height: 22px;
   padding: 2px 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Viewport lock + independent panel/section/tile scroll
+   Without this, the whole page grows with content. Selecting a row in a
+   long list scrolls the document and the options/settings panel (usually
+   at the top of a column or row stack) is stuck off-screen.
+   -------------------------------------------------------------------------- */
+html.fafo-layout-locked {
+  height: 100%;
+  overflow: hidden;
+  overflow-anchor: none;
+}
+html.fafo-layout-locked body.fafo-layout-locked {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior: none;
+}
+.fafo-layout-root.fafo-viewport-pin {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  overflow: hidden;
+  align-self: stretch;
+  width: 100%;
+}
+/* Nested roots (not a direct body child) still fill remaining viewport */
+body.fafo-layout-locked .fafo-layout-root.fafo-viewport-pin:not(body > *) {
+  height: calc(100dvh - var(--fafo-chrome-top, 0px) - var(--fafo-chrome-bottom, 0px));
+  max-height: calc(100dvh - var(--fafo-chrome-top, 0px) - var(--fafo-chrome-bottom, 0px));
+}
+
+/* 2+ sections in a panel: each section scrolls on its own so Options
+   stay on-screen while the list/tiles below move independently. */
+.fafo-panel-body.fafo-body-split {
+  overflow: hidden;
+}
+.fafo-body-split > [data-fafo-section] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.fafo-body-split > [data-fafo-section] > .fafo-section-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 243, 255, 0.45) rgba(255, 255, 255, 0.06);
+}
+.fafo-body-split > [data-fafo-section].fafo-section-compact {
+  flex: 0 1 auto;
+  max-height: 46%;
+  min-height: 72px;
+}
+.fafo-body-split > [data-fafo-section].fafo-section-flex {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+
+/* Launcher / any page that opts into split chrome + tile scroller */
+.lx-tile-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 243, 255, 0.45) rgba(255, 255, 255, 0.06);
+}
+body.lx-split-scroll {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+body.lx-split-scroll > header,
+body.lx-split-scroll > .server-banner,
+body.lx-split-scroll > .toolbar-top,
+body.lx-split-scroll > .section-nav,
+body.lx-split-scroll > .filter-bar,
+body.lx-split-scroll > .section-header,
+body.lx-split-scroll > .home-strips,
+body.lx-split-scroll > .perf-strip {
+  flex-shrink: 0;
+}
+body.lx-split-scroll > .server-banner {
+  max-height: min(34vh, 300px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+body.lx-split-scroll > .get-started {
+  flex-shrink: 0;
+  max-height: min(28vh, 240px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+body.lx-split-scroll > .get-started.collapsed {
+  max-height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
