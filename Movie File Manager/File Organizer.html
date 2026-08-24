@@ -8,15 +8,15 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
-            --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
-            --accent: #00f3ff; --accent2: #7c5cff; --accent3: #ffb347;
-            --text: #e8e8ec; --muted: #777;
-            --danger: #ff4466; --ok: #00ff88;
-            --glow: 0 0 10px rgba(0,243,255,0.4);
+            --bg: #0a1020; --panel: #121826; --panel2: #1a2233;
+            --accent: #00e5ff; --accent2: #ff3d8a; --accent3: #ffc857;
+            --text: #f0f4ff; --muted: #9aa6c0;
+            --danger: #ff5c7a; --ok: #3dffb0;
+            --glow: 0 0 10px rgba(0,229,255,0.45);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background: radial-gradient(ellipse at 80% 0%, #1a1428 0%, var(--bg) 55%);
+            background: radial-gradient(ellipse at 80% 0%, #162038 0%, var(--bg) 55%);
             color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
             min-height: 100vh; display: flex; flex-direction: column; min-width: 1000px;
         }
@@ -188,6 +188,19 @@
         .modal { background: var(--panel); border: 2px solid var(--accent3); border-radius: 10px; padding: 20px; width: 400px; max-width: 95vw; }
         .modal h2 { font-size: 16px; color: var(--accent3); margin-bottom: 14px; }
         .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+        .btn:disabled, [aria-busy="true"] { opacity: 0.55; cursor: wait; }
+        .file-table tr:focus-visible td { outline: 2px solid var(--accent); outline-offset: -2px; }
+        kbd { font: 10px Consolas, monospace; color: var(--accent3); }
+
     </style>
 </head>
 <body>
@@ -425,6 +438,46 @@
         const CATEGORIES = ['Raw','Source','Upscaled','VSR','Interpolated','Reference','Export','Archive'];
         const STATUSES = ['To Review','Approved','Best','WIP','Favorite','Reject'];
 
+        function el(id) {
+            try {
+                if (!id) return null;
+                return typeof id === 'string' ? document.getElementById(id) : id;
+            } catch (_) { return null; }
+        }
+        function setText(n, txt) {
+            const node = typeof n === 'string' ? el(n) : n;
+            if (!node) return null;
+            node.textContent = txt == null ? '' : String(txt);
+            return node;
+        }
+        function bind(n, ev, fn) {
+            const node = typeof n === 'string' ? el(n) : n;
+            if (!node || !ev || typeof fn !== 'function') return null;
+            node.addEventListener(ev, fn);
+            return node;
+        }
+        function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
+        const _busy = new Set();
+        async function withBusy(key, fn, btn) {
+            if (!key || _busy.has(key)) return;
+            _busy.add(key);
+            const b = typeof btn === 'string' ? el(btn) : btn;
+            if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
+            try { return await fn(); }
+            finally {
+                _busy.delete(key);
+                if (b) { b.disabled = false; b.removeAttribute('aria-busy'); }
+            }
+        }
+        function revokeUrl(u) { try { if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u); } catch (_) {} }
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        function safeUI() { try { return typeof UI === 'function' ? UI() : window.AIToolboxUI; } catch (_) { return window.AIToolboxUI; } }
+        function toast(msg, kind) { try { safeUI()?.toast?.(msg, kind); } catch (_) {} }
+
+
         let serverOn = false;
         let items = [];
         let total = 0;
@@ -440,7 +493,7 @@
         let dirNames = {};
 
         async function init() {
-            UI().initTooltips();
+            try { safeUI()?.initTooltips?.(); } catch (_) {}
             await updateServer();
             setInterval(updateServer, 5000);
             await refreshVirtualFolders();
@@ -453,59 +506,71 @@
 
         async function updateServer() {
             if (serverStarting) return;
-            serverOn = await API().isOnline();
-            const el = document.getElementById('serverStatus');
-            const btn = document.getElementById('btnStartServer');
-            el.textContent = serverOn ? '● Online' : '○ Offline — click to start';
-            el.className = 'server-pill ' + (serverOn ? 'online' : 'offline');
+            try { serverOn = !!(await API()?.isOnline?.()); } catch (_) { serverOn = false; }
+            const statusEl = el('serverStatus');
+            const btn = el('btnStartServer');
+            setText(statusEl, serverOn ? '● Online' : '○ Offline — click to start');
+            if (statusEl) statusEl.className = 'server-pill ' + (serverOn ? 'online' : 'offline');
             if (btn) {
                 btn.style.display = serverOn ? 'none' : '';
                 btn.disabled = false;
-                btn.textContent = '▶ Start Server';
+                setText(btn, '▶ Start Server');
             }
         }
 
         async function launchServerFromApp() {
-            if (serverStarting || API().isServerLaunching?.()) return;
-            if (await API().isOnline(true, 2000)) {
-                await updateServer();
-                return;
-            }
-            serverStarting = true;
-            const el = document.getElementById('serverStatus');
-            const btn = document.getElementById('btnStartServer');
-            el.textContent = '◌ Starting…';
-            el.className = 'server-pill waiting';
-            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
-            try {
-                const result = await API().startServer({ mode: 'tray', waitMs: 90000 });
-                serverStarting = false;
-                if (!result.ok && btn) {
-                    btn.disabled = false;
-                    btn.textContent = '▶ Start Server';
-                    el.textContent = '○ Start failed';
-                    el.className = 'server-pill offline';
+            return withBusy('launch-server', async () => {
+                if (serverStarting || API()?.isServerLaunching?.()) return;
+                try {
+                    if (await API()?.isOnline?.(true, 2000)) {
+                        await updateServer();
+                        return;
+                    }
+                } catch (_) {}
+                serverStarting = true;
+                const statusEl = el('serverStatus');
+                const btn = el('btnStartServer');
+                setText(statusEl, '◌ Starting…');
+                if (statusEl) statusEl.className = 'server-pill waiting';
+                if (btn) { btn.disabled = true; setText(btn, 'Starting…'); }
+                try {
+                    const result = await API()?.startServer?.({ mode: 'tray', waitMs: 90000 }) || {};
+                    if (!result.ok && btn) {
+                        btn.disabled = false;
+                        setText(btn, '▶ Start Server');
+                        setText(statusEl, '○ Start failed');
+                        if (statusEl) statusEl.className = 'server-pill offline';
+                    }
+                    await updateServer();
+                } catch (e) {
+                    if (btn) { btn.disabled = false; setText(btn, '▶ Start Server'); }
+                    await updateServer();
+                } finally {
+                    serverStarting = false;
                 }
-                await updateServer();
-            } catch (e) {
-                serverStarting = false;
-                if (btn) { btn.disabled = false; btn.textContent = '▶ Start Server'; }
-                await updateServer();
-            }
+            }, 'btnStartServer');
         }
 
-        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
-        document.getElementById('serverStatus')?.addEventListener('click', () => {
+        bind('btnStartServer', 'click', () => launchServerFromApp());
+        bind('serverStatus', 'click', () => {
             if (!serverOn && !serverStarting) launchServerFromApp();
+        });
+        bind('serverStatus', 'keydown', (e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && !serverOn && !serverStarting) {
+                e.preventDefault();
+                launchServerFromApp();
+            }
         });
 
         async function refreshFacets() {
-            const f = await API().getMetaFacets().catch(() => ({ categories: [], statuses: [] }));
-            const catEl = document.getElementById('categoryFilters');
-            const stEl = document.getElementById('statusFilters');
-            catEl.innerHTML = '';
-            stEl.innerHTML = '';
+            let f = { categories: [], statuses: [] };
+            try { f = await API()?.getMetaFacets?.() || f; } catch (_) {}
+            const catEl = el('categoryFilters');
+            const stEl = el('statusFilters');
+            if (catEl) catEl.innerHTML = '';
+            if (stEl) stEl.innerHTML = '';
             [...new Set([...CATEGORIES, ...(f.categories || [])])].forEach(c => {
+                if (!catEl) return;
                 const d = document.createElement('div');
                 d.className = 'filter-chip' + (filterCategory === c ? ' active' : '');
                 d.dataset.cat = c;
@@ -514,6 +579,7 @@
                 catEl.appendChild(d);
             });
             [...new Set([...STATUSES, ...(f.statuses || [])])].forEach(s => {
+                if (!stEl) return;
                 const d = document.createElement('div');
                 d.className = 'filter-chip' + (filterStatus === s ? ' active' : '');
                 d.dataset.st = s;
@@ -521,24 +587,33 @@
                 d.onclick = () => { filterStatus = filterStatus === s ? '' : s; refreshFacets(); loadItems(); };
                 stEl.appendChild(d);
             });
-            document.querySelectorAll('[data-rank]').forEach(el => {
-                const r = parseInt(el.dataset.rank, 10);
-                el.classList.toggle('active', filterRankMin === r);
-                el.onclick = () => { filterRankMin = filterRankMin === r ? 0 : r; refreshFacets(); loadItems(); };
+            document.querySelectorAll('[data-rank]').forEach(chip => {
+                const r = parseInt(chip.dataset.rank, 10) || 0;
+                chip.classList.toggle('active', filterRankMin === r);
+                chip.onclick = () => { filterRankMin = filterRankMin === r ? 0 : r; refreshFacets(); loadItems(); };
             });
-            document.querySelector('[data-cat=""]').classList.toggle('active', !filterCategory);
-            document.querySelector('[data-cat=""]').onclick = () => { filterCategory = ''; refreshFacets(); loadItems(); };
-            document.querySelector('[data-st=""]').classList.toggle('active', !filterStatus);
-            document.querySelector('[data-st=""]').onclick = () => { filterStatus = ''; refreshFacets(); loadItems(); };
+            const allCat = document.querySelector('[data-cat=""]');
+            if (allCat) {
+                allCat.classList.toggle('active', !filterCategory);
+                allCat.onclick = () => { filterCategory = ''; refreshFacets(); loadItems(); };
+            }
+            const allSt = document.querySelector('[data-st=""]');
+            if (allSt) {
+                allSt.classList.toggle('active', !filterStatus);
+                allSt.onclick = () => { filterStatus = ''; refreshFacets(); loadItems(); };
+            }
         }
 
         async function refreshVirtualFolders() {
-            const list = document.getElementById('virtualFolderList');
+            const list = el('virtualFolderList');
+            if (!list) return;
             if (!serverOn) {
                 list.innerHTML = '<div class="hint-box">Start server for combined folders (▶ Start Server on this page).</div>';
                 return;
             }
-            const vfs = await API().listVirtualFolders();
+            let vfs = [];
+            try { vfs = await API()?.listVirtualFolders?.() || []; } catch (_) { vfs = []; }
+            if (!Array.isArray(vfs)) vfs = [];
             list.innerHTML = '';
             if (!vfs.length) {
                 list.innerHTML = '<div class="hint-box">No nested folders yet. Files must live inside subfolders (e.g. <code>ProjectA/clips/…</code>).</div>';
@@ -551,16 +626,18 @@
             list.appendChild(allBtn);
             vfs.forEach(vf => {
                 const div = document.createElement('div');
-                div.className = 'vf-item' + (virtualRoot === vf.name ? ' active' : '');
-                const srcs = (vf.sources || []).map(s => s.dir_name).join(', ');
-                div.innerHTML = `<div><div>📁 ${vf.name}</div><div class="vf-sources">${srcs}</div></div><span class="vf-count">${vf.total}</span>`;
-                div.onclick = () => selectVirtualRoot(vf.name);
+                const name = vf && vf.name != null ? String(vf.name) : '';
+                div.className = 'vf-item' + (virtualRoot === name ? ' active' : '');
+                const srcs = (vf.sources || []).map(s => escapeHtml(s && s.dir_name != null ? s.dir_name : '')).join(', ');
+                div.innerHTML = `<div><div>📁 ${escapeHtml(name)}</div><div class="vf-sources">${srcs}</div></div><span class="vf-count">${escapeHtml(vf.total ?? 0)}</span>`;
+                div.onclick = () => selectVirtualRoot(name);
                 list.appendChild(div);
             });
         }
 
         function hideVfBrowse() {
-            document.getElementById('vfBrowseSection').style.display = 'none';
+            const sec = el('vfBrowseSection');
+            if (sec) sec.style.display = 'none';
         }
 
         async function selectVirtualRoot(name) {
@@ -573,62 +650,76 @@
         }
 
         async function refreshVfBrowse() {
-            const sec = document.getElementById('vfBrowseSection');
+            const sec = el('vfBrowseSection');
+            if (!sec) return;
             if (!virtualRoot || !serverOn) { sec.style.display = 'none'; return; }
             sec.style.display = 'block';
-            const idx = await API().listVirtualFolderIndex(virtualRoot, virtualSubpath);
+            let idx = {};
+            try { idx = await API()?.listVirtualFolderIndex?.(virtualRoot, virtualSubpath) || {}; } catch (_) { idx = {}; }
             const crumbs = [{ name: virtualRoot, path: '' }, ...(idx.breadcrumb || [])];
-            document.getElementById('vfBreadcrumb').innerHTML = crumbs.map((c, i) => {
-                const sep = i > 0 ? ' / ' : '';
-                return `${sep}<span data-path="${c.path}">${c.name}</span>`;
-            }).join('');
-            document.getElementById('vfBreadcrumb').querySelectorAll('[data-path]').forEach(el => {
-                el.onclick = () => { virtualSubpath = el.dataset.path; refreshVfBrowse(); loadItems(); };
-            });
+            const crumbBox = el('vfBreadcrumb');
+            if (crumbBox) {
+                crumbBox.innerHTML = crumbs.map((c, i) => {
+                    const sep = i > 0 ? ' / ' : '';
+                    return `${sep}<span data-path="${escapeHtml(c.path || '')}">${escapeHtml(c.name || '')}</span>`;
+                }).join('');
+                crumbBox.querySelectorAll('[data-path]').forEach(node => {
+                    node.onclick = () => { virtualSubpath = node.dataset.path || ''; refreshVfBrowse(); loadItems(); };
+                });
+            }
             let html = '';
             if (virtualSubpath) {
                 const parent = virtualSubpath.includes('/') ? virtualSubpath.replace(/\/[^/]+$/, '') : '';
-                html += `<div class="vf-item" data-up="${parent}">⬆ ..</div>`;
+                html += `<div class="vf-item" data-up="${escapeHtml(parent)}">⬆ ..</div>`;
             }
             (idx.subfolders || []).forEach(f => {
-                const p = virtualSubpath ? `${virtualSubpath}/${f.name}` : f.name;
-                html += `<div class="vf-item" data-path="${p}"><span>📁 ${f.name}</span><span class="vf-count">${f.count}</span></div>`;
+                const nm = f && f.name != null ? String(f.name) : '';
+                const pth = virtualSubpath ? `${virtualSubpath}/${nm}` : nm;
+                html += `<div class="vf-item" data-path="${escapeHtml(pth)}"><span>📁 ${escapeHtml(nm)}</span><span class="vf-count">${escapeHtml(f.count ?? 0)}</span></div>`;
             });
-            document.getElementById('vfSubfolders').innerHTML = html || '<div class="hint-box">No subfolders</div>';
-            document.getElementById('vfSubfolders').querySelectorAll('[data-path]').forEach(el => {
-                el.onclick = () => { virtualSubpath = el.dataset.path; refreshVfBrowse(); loadItems(); };
-            });
-            document.getElementById('vfSubfolders').querySelector('[data-up]')?.addEventListener('click', e => {
-                virtualSubpath = e.currentTarget.dataset.up;
-                refreshVfBrowse();
-                loadItems();
-            });
+            const sub = el('vfSubfolders');
+            if (sub) {
+                sub.innerHTML = html || '<div class="hint-box">No subfolders</div>';
+                sub.querySelectorAll('[data-path]').forEach(node => {
+                    node.onclick = () => { virtualSubpath = node.dataset.path || ''; refreshVfBrowse(); loadItems(); };
+                });
+                bind(sub.querySelector('[data-up]'), 'click', e => {
+                    virtualSubpath = e.currentTarget.dataset.up || '';
+                    refreshVfBrowse();
+                    loadItems();
+                });
+            }
             const srcHtml = (idx.sources || []).map(s => `${s.dir_name}: ${s.count}`).join(' · ');
-            document.getElementById('vfSources').textContent = srcHtml ? `Sources: ${srcHtml}` : '';
+            setText('vfSources', srcHtml ? `Sources: ${srcHtml}` : '');
         }
 
         async function loadItems() {
             try {
-                const res = await API().queryMedia({
-                    search: document.getElementById('searchInput').value,
-                    type: document.getElementById('filterType').value || null,
+                const res = await API()?.queryMedia?.({
+                    search: el('searchInput')?.value || '',
+                    type: el('filterType')?.value || null,
                     virtualRoot: virtualRoot || undefined,
                     pathPrefix: virtualRoot ? virtualSubpath : undefined,
                     folderOnly: !!virtualRoot,
                     category: filterCategory || undefined,
                     status: filterStatus || undefined,
                     rankMin: filterRankMin || undefined,
-                    sort: document.getElementById('sortBy').value,
+                    sort: el('sortBy')?.value || 'rank',
                     page, limit: PAGE_SIZE,
-                });
-                items = res.items || [];
-                total = res.total || 0;
-                const dirs = await API().listDirectories();
-                dirNames = Object.fromEntries(dirs.map(d => [d.id, d.name]));
+                }) || {};
+                items = Array.isArray(res.items) ? res.items : [];
+                total = Number(res.total) || 0;
+                let dirs = [];
+                try { dirs = await API()?.listDirectories?.() || []; } catch (_) { dirs = []; }
+                if (!Array.isArray(dirs)) dirs = [];
+                dirNames = Object.fromEntries(dirs.filter(d => d && d.id != null).map(d => [d.id, d.name]));
                 renderTable();
                 refreshKnownTags();
             } catch (e) {
-                UI().toast('Load failed: ' + e.message, 'warn');
+                items = [];
+                total = 0;
+                renderTable();
+                toast('Load failed: ' + (e && e.message ? e.message : e), 'warn');
             }
         }
 
@@ -641,51 +732,59 @@
         }
 
         function renderTable() {
-            const tbody = document.getElementById('fileTableBody');
-            const empty = document.getElementById('emptyState');
+            const tbody = el('fileTableBody');
+            const empty = el('emptyState');
+            if (!tbody) return;
             tbody.innerHTML = '';
-            if (!items.length) {
-                empty.style.display = 'block';
-            } else {
-                empty.style.display = 'none';
-            }
+            if (!Array.isArray(items)) items = [];
+            if (empty) empty.style.display = items.length ? 'none' : 'block';
             items.forEach(item => {
+                if (!item) return;
                 const tr = document.createElement('tr');
+                tr.tabIndex = 0;
                 tr.className = (selected.has(item.id) ? 'selected ' : '') + (current?.id === item.id ? 'active-row' : '');
                 const rel = item.relativePath || item.rel_path || '';
                 const src = dirNames[item.dirId || item.dir_id] || '?';
+                const cat = item.category || '';
+                const st = item.status || '';
                 tr.innerHTML = `
                     <td><input type="checkbox" ${selected.has(item.id) ? 'checked' : ''}></td>
                     <td><div class="rank-stars">${rankStarsHtml(item.rank || 0, true, item.id)}</div></td>
                     <td>
-                        <div class="fname">${item.name}</div>
-                        <div class="fpath">${rel}</div>
-                        <div class="fsource">📂 ${src}</div>
+                        <div class="fname">${escapeHtml(item.name)}</div>
+                        <div class="fpath">${escapeHtml(rel)}</div>
+                        <div class="fsource">📂 ${escapeHtml(src)}</div>
                     </td>
-                    <td><select class="inline-input row-cat" data-id="${item.id}">
-                        <option value=""></option>${CATEGORIES.map(c => `<option ${item.category===c?'selected':''}>${c}</option>`).join('')}
-                        ${item.category && !CATEGORIES.includes(item.category) ? `<option selected>${item.category}</option>` : ''}
+                    <td><select class="inline-input row-cat" data-id="${escapeHtml(item.id)}">
+                        <option value=""></option>${CATEGORIES.map(c => `<option ${cat===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+                        ${cat && !CATEGORIES.includes(cat) ? `<option selected>${escapeHtml(cat)}</option>` : ''}
                     </select></td>
-                    <td><select class="inline-input row-st" data-id="${item.id}">
-                        <option value=""></option>${STATUSES.map(s => `<option ${item.status===s?'selected':''}>${s}</option>`).join('')}
-                        ${item.status && !STATUSES.includes(item.status) ? `<option selected>${item.status}</option>` : ''}
+                    <td><select class="inline-input row-st" data-id="${escapeHtml(item.id)}">
+                        <option value=""></option>${STATUSES.map(s => `<option ${st===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+                        ${st && !STATUSES.includes(st) ? `<option selected>${escapeHtml(st)}</option>` : ''}
                     </select></td>
-                    <td>${(item.tags||[]).map(t => `<span class="tag-mini">${t}</span>`).join('')}</td>`;
-                tr.querySelector('input').onclick = e => { e.stopPropagation(); toggleSel(item.id); };
-                tr.querySelectorAll('.rank-star').forEach(st => {
-                    st.onclick = e => { e.stopPropagation(); setRank(item.id, parseInt(st.dataset.r, 10)); };
+                    <td>${(item.tags||[]).map(tg => `<span class="tag-mini">${escapeHtml(tg)}</span>`).join('')}</td>`;
+                const cb = tr.querySelector('input');
+                if (cb) cb.onclick = e => { e.stopPropagation(); toggleSel(item.id); };
+                tr.querySelectorAll('.rank-star').forEach(star => {
+                    star.onclick = e => { e.stopPropagation(); setRank(item.id, parseInt(star.dataset.r, 10)); };
                 });
-                tr.querySelector('.row-cat').onchange = e => { e.stopPropagation(); patchItem(item.id, { category: e.target.value }); };
-                tr.querySelector('.row-st').onchange = e => { e.stopPropagation(); patchItem(item.id, { status: e.target.value }); };
+                const rowCat = tr.querySelector('.row-cat');
+                const rowSt = tr.querySelector('.row-st');
+                if (rowCat) rowCat.onchange = e => { e.stopPropagation(); patchItem(item.id, { category: e.target.value }); };
+                if (rowSt) rowSt.onchange = e => { e.stopPropagation(); patchItem(item.id, { status: e.target.value }); };
                 tr.onclick = () => selectItem(item);
+                tr.onkeydown = e => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectItem(item); }
+                };
                 tbody.appendChild(tr);
             });
-            const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-            document.getElementById('listStats').textContent = `${total.toLocaleString()} items` + (virtualRoot ? ` · merged: ${virtualRoot}` : '');
-            document.getElementById('pageNum').textContent = page + 1;
-            document.getElementById('pageTotal').textContent = pages;
-            document.getElementById('batchBar').classList.toggle('visible', selected.size > 0);
-            document.getElementById('selCount').textContent = selected.size;
+            const pages = Math.max(1, Math.ceil((total || 0) / PAGE_SIZE));
+            setText('listStats', `${Number(total || 0).toLocaleString()} items` + (virtualRoot ? ` · merged: ${virtualRoot}` : ''));
+            setText('pageNum', page + 1);
+            setText('pageTotal', pages);
+            el('batchBar')?.classList.toggle('visible', selected.size > 0);
+            setText('selCount', selected.size);
         }
 
         function toggleSel(id) {
@@ -706,63 +805,66 @@
                 if (current?.id === id) {
                     Object.assign(current, merged);
                     if ('rank' in merged) renderDetailRank(current.rank || 0);
-                    if ('category' in merged) document.getElementById('detailCategory').value = current.category || '';
-                    if ('status' in merged) document.getElementById('detailStatus').value = current.status || '';
+                    const dc = el('detailCategory');
+                    const ds = el('detailStatus');
+                    if ('category' in merged && dc) dc.value = current.category || '';
+                    if ('status' in merged && ds) ds.value = current.status || '';
                 }
                 if (updated?.file_write && updated.file_write.ok === false) {
-                    UI().toast('Catalog ok; Explorer file write failed', 'warn');
+                    toast('Catalog ok; Explorer file write failed', 'warn');
                 }
                 renderTable();
-            } catch (e) { UI().toast('Save failed: ' + e.message, 'warn'); }
+            } catch (e) { toast('Save failed: ' + (e && e.message ? e.message : e), 'warn'); }
         }
 
         function renderDetailRank(rank) {
-            const el = document.getElementById('detailRank');
-            el.innerHTML = rankStarsHtml(rank, true, 'detail');
-            el.querySelectorAll('.rank-star').forEach(st => {
+            const box = el('detailRank');
+            if (!box) return;
+            box.innerHTML = rankStarsHtml(rank, true, 'detail');
+            box.querySelectorAll('.rank-star').forEach(st => {
                 st.onclick = () => {
-                    const r = parseInt(st.dataset.r, 10);
+                    const r = parseInt(st.dataset.r, 10) || 0;
                     renderDetailRank(r);
-                    el.dataset.rank = r;
+                    box.dataset.rank = r;
                 };
             });
-            el.dataset.rank = rank;
+            box.dataset.rank = rank;
         }
 
         let allKnownTags = [];
         let tagSuggestIdx = -1;
 
         function getDetailTags() {
-            const el = document.getElementById('detailTags');
-            return el._tags ? [...el._tags] : [];
+            const box = el('detailTags');
+            return box && box._tags ? [...box._tags] : [];
         }
 
         function renderDetailTags(tags) {
-            const el = document.getElementById('detailTags');
+            const box = el('detailTags');
+            if (!box) return;
             const list = Array.isArray(tags) ? [...tags] : [];
-            el._tags = list;
-            el.innerHTML = '';
-            list.forEach((t, i) => {
+            box._tags = list;
+            box.innerHTML = '';
+            list.forEach((tg, i) => {
                 const span = document.createElement('span');
                 span.className = 'tag';
-                span.innerHTML = `${escapeHtml(t)} <button type="button" title="Remove">×</button>`;
-                span.querySelector('button').onclick = () => {
+                span.innerHTML = `${escapeHtml(tg)} <button type="button" title="Remove">×</button>`;
+                const rm = span.querySelector('button');
+                if (rm) rm.onclick = () => {
                     list.splice(i, 1);
                     renderDetailTags(list);
                     renderTagLibrary();
                 };
-                el.appendChild(span);
+                box.appendChild(span);
             });
             renderTagLibrary();
         }
 
-        function escapeHtml(s) {
-            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        }
 
         async function refreshKnownTags() {
             try {
-                allKnownTags = await API().getAllTags() || [];
+                allKnownTags = await API()?.getAllTags?.() || [];
+                if (!Array.isArray(allKnownTags)) allKnownTags = [];
             } catch {
                 allKnownTags = [];
             }
@@ -775,9 +877,9 @@
         }
 
         function renderTagLibrary() {
-            const box = document.getElementById('tagLibrary');
-            const countEl = document.getElementById('tagLibCount');
-            const q = (document.getElementById('tagLibFilter')?.value || '').trim().toLowerCase();
+            const box = el('tagLibrary');
+            const countEl = el('tagLibCount');
+            const q = (el('tagLibFilter')?.value || '').trim().toLowerCase();
             const currentTags = getDetailTags();
             const list = allKnownTags.filter(t => !q || t.toLowerCase().includes(q));
             if (countEl) countEl.textContent = allKnownTags.length ? `(${allKnownTags.length})` : '';
@@ -803,7 +905,8 @@
         }
 
         function renderTagSuggestions(query) {
-            const box = document.getElementById('tagSuggestions');
+            const box = el('tagSuggestions');
+            if (!box) return;
             const q = (query || '').trim().toLowerCase();
             const onVideo = new Set(getDetailTags().map(t => t.toLowerCase()));
             let matches = allKnownTags.filter(t => !onVideo.has(t.toLowerCase()));
@@ -847,22 +950,24 @@
                 allKnownTags.push(t);
                 allKnownTags.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
             }
-            document.getElementById('tagInput').value = '';
+            const tin = el('tagInput');
+            if (tin) tin.value = '';
             tagSuggestIdx = -1;
-            document.getElementById('tagSuggestions').classList.remove('show');
+            el('tagSuggestions')?.classList.remove('show');
             renderDetailTags(tags);
         }
 
         function addTagsFromInput() {
-            const raw = document.getElementById('tagInput').value;
+            const raw = el('tagInput')?.value || '';
             raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(addDetailTag);
-            document.getElementById('tagInput').value = '';
-            document.getElementById('tagSuggestions').classList.remove('show');
+            const tin = el('tagInput');
+            if (tin) tin.value = '';
+            el('tagSuggestions')?.classList.remove('show');
         }
 
         async function renderBatchTagLibrary() {
             await refreshKnownTags();
-            const box = document.getElementById('batchTagLibrary');
+            const box = el('batchTagLibrary');
             if (!box) return;
             if (!allKnownTags.length) {
                 box.innerHTML = '<div class="tag-lib-empty">No tags in library yet</div>';
@@ -873,7 +978,7 @@
             ).join('');
             box.querySelectorAll('.tag-lib-chip').forEach(btn => {
                 btn.onclick = () => {
-                    const input = document.getElementById('batchTagInput');
+                    const input = el('batchTagInput');
                     const cur = input.value.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
                     if (!cur.some(x => x.toLowerCase() === btn.dataset.tag.toLowerCase())) cur.push(btn.dataset.tag);
                     input.value = cur.join(', ');
@@ -883,13 +988,15 @@
         }
 
         async function selectItem(item) {
+            if (!item) return;
             current = item;
-            document.getElementById('detailForm').style.display = 'flex';
-            document.getElementById('detailName').value = item.name;
-            document.getElementById('detailCategory').value = item.category || '';
-            document.getElementById('detailStatus').value = item.status || '';
+            const form = el('detailForm');
+            if (form) form.style.display = 'flex';
+            const dn = el('detailName'); if (dn) dn.value = item.name || '';
+            const dc = el('detailCategory'); if (dc) dc.value = item.category || '';
+            const ds = el('detailStatus'); if (ds) ds.value = item.status || '';
             renderDetailTags(item.tags || []);
-            document.getElementById('detailNotes').value = item.notes || '';
+            const notes = el('detailNotes'); if (notes) notes.value = item.notes || '';
             renderDetailRank(item.rank || 0);
             await refreshKnownTags();
             await loadPreview(item);
@@ -897,191 +1004,204 @@
         }
 
         async function loadPreview(item) {
-            const box = document.getElementById('previewBox');
-            const cap = document.getElementById('captureBar');
-            const btn = document.getElementById('btnCapture');
+            const box = el('previewBox');
+            const cap = el('captureBar');
+            const btn = el('btnCapture');
+            if (!box) return;
+            box.querySelectorAll('video, img').forEach(node => revokeUrl(node.src));
             box.innerHTML = '';
-            if (previewVideo) { previewVideo.pause(); previewVideo = null; }
-            if (!serverOn) {
-                box.innerHTML = '<span style="color:#888;padding:20px;text-align:center;">Start server to preview (▶ Start Server)</span>';
-                cap.style.display = 'none';
+            if (previewVideo) { try { previewVideo.pause(); } catch (_) {} previewVideo = null; }
+            if (!item) {
+                box.innerHTML = '<span style="color:#888;padding:20px;text-align:center;">Select a file to preview</span>';
+                if (cap) cap.style.display = 'none';
                 return;
             }
-            const url = API().mediaFileUrl(item.id);
+            if (!serverOn) {
+                box.innerHTML = '<span style="color:#888;padding:20px;text-align:center;">Start server to preview (▶ Start Server)</span>';
+                if (cap) cap.style.display = 'none';
+                return;
+            }
+            let url = '';
+            try { url = API()?.mediaFileUrl?.(item.id) || ''; } catch (_) { url = ''; }
             if (item.type === 'video') {
                 previewVideo = document.createElement('video');
                 previewVideo.src = url;
                 previewVideo.controls = true;
                 previewVideo.playsInline = true;
                 box.appendChild(previewVideo);
-                cap.style.display = 'flex';
-                btn.disabled = false;
-                btn.onclick = captureFrame;
+                if (cap) cap.style.display = 'flex';
+                if (btn) { btn.disabled = false; btn.onclick = captureFrame; }
             } else {
                 const img = document.createElement('img');
                 img.src = url;
                 box.appendChild(img);
-                cap.style.display = 'none';
+                if (cap) cap.style.display = 'none';
             }
         }
 
         async function captureFrame() {
             if (!current || current.type !== 'video' || !serverOn) return;
-            const btn = document.getElementById('btnCapture');
-            btn.disabled = true;
-            try {
-                const ts = previewVideo ? previewVideo.currentTime : 0;
-                await API().captureThumbnail(current.id, ts);
-                UI().toast('Thumbnail saved to catalog + sidecar', 'ok');
-                await loadItems();
-            } catch (e) {
-                UI().toast('Capture failed: ' + e.message, 'warn');
-            }
-            btn.disabled = false;
+            return withBusy('capture-frame', async () => {
+                try {
+                    const ts = previewVideo ? previewVideo.currentTime : 0;
+                    await API()?.captureThumbnail?.(current.id, ts);
+                    toast('Thumbnail saved to catalog + sidecar', 'ok');
+                    await loadItems();
+                } catch (e) {
+                    toast('Capture failed: ' + (e && e.message ? e.message : e), 'warn');
+                }
+            }, 'btnCapture');
         }
 
         async function saveDetail() {
             if (!current) return;
-            const newName = document.getElementById('detailName').value.trim();
-            const tags = getDetailTags();
-            const patch = {
-                tags,
-                notes: document.getElementById('detailNotes').value.trim(),
-                rank: parseInt(document.getElementById('detailRank').dataset.rank || '0', 10),
-                category: document.getElementById('detailCategory').value,
-                status: document.getElementById('detailStatus').value,
-            };
-            try {
-                if (newName && newName !== current.name) {
-                    const ok = await UI().confirmAction({
-                        title: 'Rename on disk?',
-                        body: `Rename <strong>${current.name}</strong> → <strong>${newName}</strong>`,
-                        preview: [{ from: current.name, to: newName }],
-                        confirmText: 'Rename',
-                    });
-                    if (!ok.confirmed) return;
-                    current = await API().renameMedia(current.id, newName);
-                }
-                patch.write_file_tags = true;
-                current = await API().updateMedia(current.id, patch);
-                const fw = current.file_write;
-                if (fw && fw.ok === false) {
-                    UI().toast('Saved catalog; file metadata write failed: ' + (fw.errors || []).join('; '), 'warn');
-                } else if (fw && fw.ok) {
-                    UI().toast('Saved + wrote Explorer tags/rating', 'ok');
-                } else {
-                    UI().toast('Saved', 'ok');
-                }
-                await loadItems();
-                await refreshKnownTags();
-                selectItem(current);
-            } catch (e) { UI().toast(e.message, 'warn'); }
+            return withBusy('save-detail', async () => {
+                const newName = (el('detailName')?.value || '').trim();
+                const tags = getDetailTags();
+                const patch = {
+                    tags,
+                    notes: (el('detailNotes')?.value || '').trim(),
+                    rank: parseInt(el('detailRank')?.dataset.rank || '0', 10),
+                    category: el('detailCategory')?.value || '',
+                    status: el('detailStatus')?.value || '',
+                };
+                try {
+                    if (newName && newName !== current.name) {
+                        const ok = await safeUI()?.confirmAction?.({
+                            title: 'Rename on disk?',
+                            body: `Rename <strong>${escapeHtml(current.name)}</strong> → <strong>${escapeHtml(newName)}</strong>`,
+                            preview: [{ from: current.name, to: newName }],
+                            confirmText: 'Rename',
+                        });
+                        if (!ok || !ok.confirmed) return;
+                        current = await API()?.renameMedia?.(current.id, newName);
+                    }
+                    if (!current) return;
+                    patch.write_file_tags = true;
+                    current = await API()?.updateMedia?.(current.id, patch);
+                    if (!current) { toast('Save returned no data', 'warn'); return; }
+                    const fw = current.file_write;
+                    if (fw && fw.ok === false) {
+                        toast('Saved catalog; file metadata write failed: ' + (fw.errors || []).join('; '), 'warn');
+                    } else if (fw && fw.ok) {
+                        toast('Saved + wrote Explorer tags/rating', 'ok');
+                    } else {
+                        toast('Saved', 'ok');
+                    }
+                    await loadItems();
+                    await refreshKnownTags();
+                    selectItem(current);
+                } catch (e) { toast(e && e.message ? e.message : String(e), 'warn'); }
+            }, 'btnSave');
         }
 
         const LS_ORG = 'fafo_file_organizer_settings_v1';
         function saveOrgSettings() {
-            try {
-                localStorage.setItem(LS_ORG, JSON.stringify({
-                    search: document.getElementById('searchInput').value,
-                    type: document.getElementById('filterType').value,
-                    sort: document.getElementById('sortBy').value,
-                }));
-            } catch (_) {}
+            lsSet(LS_ORG, JSON.stringify({
+                search: el('searchInput')?.value || '',
+                type: el('filterType')?.value || '',
+                sort: el('sortBy')?.value || '',
+            }));
         }
         function restoreOrgSettings() {
             try {
-                const raw = JSON.parse(localStorage.getItem(LS_ORG) || 'null');
-                if (!raw) return;
-                if (raw.search != null) document.getElementById('searchInput').value = raw.search;
-                if (raw.type != null) document.getElementById('filterType').value = raw.type;
-                if (raw.sort != null) document.getElementById('sortBy').value = raw.sort;
+                const raw = JSON.parse(lsGet(LS_ORG, 'null') || 'null');
+                if (!raw || typeof raw !== 'object') return;
+                if (raw.search != null && el('searchInput')) el('searchInput').value = raw.search;
+                if (raw.type != null && el('filterType')) el('filterType').value = raw.type;
+                if (raw.sort != null && el('sortBy')) el('sortBy').value = raw.sort;
             } catch (_) {}
         }
         restoreOrgSettings();
-        document.getElementById('searchInput').oninput = () => { page = 0; saveOrgSettings(); loadItems(); };
-        document.getElementById('filterType').onchange = () => { page = 0; saveOrgSettings(); loadItems(); };
-        document.getElementById('sortBy').onchange = () => { page = 0; saveOrgSettings(); loadItems(); };
-        document.getElementById('btnPrev').onclick = () => { if (page > 0) { page--; loadItems(); } };
-        document.getElementById('btnNext').onclick = () => {
-            if (page < Math.ceil(total / PAGE_SIZE) - 1) { page++; loadItems(); }
-        };
-        document.getElementById('btnSelectPage').onclick = () => { items.forEach(i => selected.add(i.id)); renderTable(); };
-        document.getElementById('btnClearSel').onclick = () => { selected.clear(); renderTable(); };
-        document.getElementById('btnSave').onclick = saveDetail;
-        document.getElementById('detailName').addEventListener('keydown', e => { if (e.key === 'Enter') saveDetail(); });
+        bind('searchInput', 'input', () => { page = 0; saveOrgSettings(); loadItems(); });
+        bind('filterType', 'change', () => { page = 0; saveOrgSettings(); loadItems(); });
+        bind('sortBy', 'change', () => { page = 0; saveOrgSettings(); loadItems(); });
+        bind('btnPrev', 'click', () => { if (page > 0) { page--; loadItems(); } });
+        bind('btnNext', 'click', () => {
+            if (page < Math.ceil((total || 0) / PAGE_SIZE) - 1) { page++; loadItems(); }
+        });
+        bind('btnSelectPage', 'click', () => { (items || []).forEach(i => { if (i && i.id != null) selected.add(i.id); }); renderTable(); });
+        bind('btnClearSel', 'click', () => { selected.clear(); renderTable(); });
+        bind('btnSave', 'click', saveDetail);
+        bind('detailName', 'keydown', e => { if (e.key === 'Enter') saveDetail(); });
 
-        document.getElementById('btnBatchMeta').onclick = async () => {
-            const cat = document.getElementById('batchCategory').value;
-            const st = document.getElementById('batchStatus').value;
-            if (!cat && !st) { UI().toast('Pick category or status', 'warn'); return; }
+        bind('btnBatchMeta', 'click', () => withBusy('batch-meta', async () => {
+            const cat = el('batchCategory')?.value || '';
+            const st = el('batchStatus')?.value || '';
+            if (!cat && !st) { toast('Pick category or status', 'warn'); return; }
             const patch = {};
             if (cat) patch.category = cat;
             if (st) patch.status = st;
-            await API().batchUpdateMeta([...selected], patch);
-            selected.clear();
-            UI().toast('Batch metadata applied', 'ok');
-            await loadItems();
-        };
-        document.getElementById('btnBatchTag').onclick = async () => {
-            document.getElementById('tagModal').classList.add('active');
+            try {
+                await API()?.batchUpdateMeta?.([...selected], patch);
+                selected.clear();
+                toast('Batch metadata applied', 'ok');
+                await loadItems();
+            } catch (e) { toast(e && e.message ? e.message : String(e), 'warn'); }
+        }, 'btnBatchMeta'));
+        bind('btnBatchTag', 'click', async () => {
+            el('tagModal')?.classList.add('active');
             await renderBatchTagLibrary();
-        };
-        document.getElementById('btnTagCancel').onclick = () => document.getElementById('tagModal').classList.remove('active');
-        document.getElementById('btnTagApply').onclick = async () => {
-            const tags = document.getElementById('batchTagInput').value.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-            if (tags.length) {
-                await API().batchAddTags([...selected], tags);
-                document.getElementById('tagModal').classList.remove('active');
-                document.getElementById('batchTagInput').value = '';
+        });
+        bind('btnTagCancel', 'click', () => el('tagModal')?.classList.remove('active'));
+        bind('btnTagApply', 'click', () => withBusy('batch-tags', async () => {
+            const tags = (el('batchTagInput')?.value || '').split(/[,;]+/).map(tg => tg.trim()).filter(Boolean);
+            if (!tags.length) return;
+            try {
+                await API()?.batchAddTags?.([...selected], tags);
+                el('tagModal')?.classList.remove('active');
+                if (el('batchTagInput')) el('batchTagInput').value = '';
                 selected.clear();
                 await loadItems();
                 await refreshKnownTags();
-            }
-        };
+            } catch (e) { toast(e && e.message ? e.message : String(e), 'warn'); }
+        }, 'btnTagApply'));
 
-        // Tag autocomplete + library for detail panel
-        const tagInput = document.getElementById('tagInput');
-        tagInput.addEventListener('input', () => {
+        const tagInput = el('tagInput');
+        bind(tagInput, 'input', () => {
             tagSuggestIdx = -1;
-            renderTagSuggestions(tagInput.value);
+            renderTagSuggestions(tagInput ? tagInput.value : '');
         });
-        tagInput.addEventListener('focus', () => renderTagSuggestions(tagInput.value));
-        tagInput.addEventListener('keydown', e => {
-            const box = document.getElementById('tagSuggestions');
-            const items = box.classList.contains('show') ? [...box.querySelectorAll('[data-tag]')] : [];
-            if (e.key === 'ArrowDown' && items.length) {
+        bind(tagInput, 'focus', () => renderTagSuggestions(tagInput ? tagInput.value : ''));
+        bind(tagInput, 'keydown', e => {
+            const box = el('tagSuggestions');
+            if (!box) return;
+            const sugItems = box.classList.contains('show') ? [...box.querySelectorAll('[data-tag]')] : [];
+            if (e.key === 'ArrowDown' && sugItems.length) {
                 e.preventDefault();
-                tagSuggestIdx = (tagSuggestIdx + 1) % items.length;
+                tagSuggestIdx = (tagSuggestIdx + 1) % sugItems.length;
                 renderTagSuggestions(tagInput.value);
-            } else if (e.key === 'ArrowUp' && items.length) {
+            } else if (e.key === 'ArrowUp' && sugItems.length) {
                 e.preventDefault();
-                tagSuggestIdx = tagSuggestIdx <= 0 ? items.length - 1 : tagSuggestIdx - 1;
+                tagSuggestIdx = tagSuggestIdx <= 0 ? sugItems.length - 1 : tagSuggestIdx - 1;
                 renderTagSuggestions(tagInput.value);
             } else if (e.key === 'Enter') {
                 e.preventDefault();
-                if (tagSuggestIdx >= 0 && items[tagSuggestIdx]) addDetailTag(items[tagSuggestIdx].dataset.tag);
+                if (tagSuggestIdx >= 0 && sugItems[tagSuggestIdx]) addDetailTag(sugItems[tagSuggestIdx].dataset.tag);
                 else addTagsFromInput();
             } else if (e.key === 'Escape') {
                 box.classList.remove('show');
-            } else if (e.key === 'Tab' && tagSuggestIdx >= 0 && items[tagSuggestIdx]) {
+            } else if (e.key === 'Tab' && tagSuggestIdx >= 0 && sugItems[tagSuggestIdx]) {
                 e.preventDefault();
-                addDetailTag(items[tagSuggestIdx].dataset.tag);
+                addDetailTag(sugItems[tagSuggestIdx].dataset.tag);
             }
         });
-        document.getElementById('tagLibFilter').addEventListener('input', renderTagLibrary);
+        bind('tagLibFilter', 'input', renderTagLibrary);
         document.addEventListener('click', e => {
             if (!e.target.closest('.tag-input-wrap')) {
-                document.getElementById('tagSuggestions').classList.remove('show');
+                el('tagSuggestions')?.classList.remove('show');
             }
         });
-        document.getElementById('btnBatchRename').onclick = () => document.getElementById('renameModal').classList.add('active');
-        document.getElementById('btnRenameCancel').onclick = () => document.getElementById('renameModal').classList.remove('active');
-        document.getElementById('btnRenameApply').onclick = async () => {
-            const pattern = document.getElementById('renamePattern').value.trim();
+        bind('btnBatchRename', 'click', () => el('renameModal')?.classList.add('active'));
+        bind('btnRenameCancel', 'click', () => el('renameModal')?.classList.remove('active'));
+        bind('btnRenameApply', 'click', () => withBusy('batch-rename', async () => {
+            const pattern = (el('renamePattern')?.value || '').trim();
             if (!pattern) return;
             const n = selected.size;
-            await API().batchRename([...selected], pattern);
-            document.getElementById('renameModal').classList.remove('active');
+            try {
+                await API()?.batchRename?.([...selected], pattern);
+            } catch (e) { toast(e && e.message ? e.message : String(e), 'warn'); return; }
+            el('renameModal')?.classList.remove('active');
             try {
                 if (n) {
                     window.FAFOOpsStats?.record({
@@ -1093,19 +1213,26 @@
             } catch (_) { /* stats optional */ }
             selected.clear();
             await loadItems();
-        };
-        document.getElementById('btnCopyPaths').onclick = async () => {
+        }, 'btnRenameApply'));
+        bind('btnCopyPaths', 'click', () => withBusy('copy-paths', async () => {
             try {
-                const res = await API().resolvePaths([...selected]);
-                const text = (res.paths || []).filter(p => p.path).map(p => p.path).join('\r\n');
+                const res = await API()?.resolvePaths?.([...selected]) || {};
+                const paths = Array.isArray(res.paths) ? res.paths : [];
+                const text = paths.filter(pp => pp && pp.path).map(pp => pp.path).join('\r\n');
                 await navigator.clipboard.writeText(text);
-                UI().toast(`Copied ${(res.paths||[]).filter(p=>p.path).length} paths`, 'ok');
-            } catch (e) { UI().toast(e.message, 'warn'); }
-        };
+                toast(`Copied ${paths.filter(pp => pp && pp.path).length} paths`, 'ok');
+            } catch (e) { toast(e && e.message ? e.message : String(e), 'warn'); }
+        }, 'btnCopyPaths'));
         async function doRescan() {
-            const dirs = await API().listDirectories();
-            for (const d of dirs) await API().scanDirectory(d.id);
-            UI().toast('Rescan complete', 'ok');
+            return withBusy('rescan', async () => {
+            let dirs = [];
+            try { dirs = await API()?.listDirectories?.() || []; } catch (_) { dirs = []; }
+            if (!Array.isArray(dirs)) dirs = [];
+            for (const d of dirs) {
+                if (!d || d.id == null) continue;
+                try { await API()?.scanDirectory?.(d.id); } catch (_) {}
+            }
+            toast('Rescan complete', 'ok');
             try {
                 window.FAFOOpsStats?.record({
                     tool: 'file-organizer',
@@ -1115,25 +1242,26 @@
             } catch (_) { /* stats optional */ }
             await refreshVirtualFolders();
             await loadItems();
+            }, 'btnRescan');
         }
-        document.getElementById('btnRescan').onclick = doRescan;
-        document.getElementById('btnEmptyRescan')?.addEventListener('click', doRescan);
-        document.getElementById('btnOrgReport')?.addEventListener('click', async () => {
-            const stats = document.getElementById('listStats')?.textContent || '';
+        bind('btnRescan', 'click', doRescan);
+        bind('btnEmptyRescan', 'click', doRescan);
+        bind('btnOrgReport', 'click', async () => {
+            const stats = el('listStats')?.textContent || '';
             const text = [
                 'FAFO File Organizer — session report',
                 'Time: ' + new Date().toISOString(),
-                'Server: ' + (document.getElementById('serverStatus')?.textContent || '').trim(),
-                'Search: ' + (document.getElementById('searchInput').value || '(none)'),
-                'Type: ' + (document.getElementById('filterType').value || 'all'),
-                'Sort: ' + (document.getElementById('sortBy').value || ''),
+                'Server: ' + (el('serverStatus')?.textContent || '').trim(),
+                'Search: ' + (el('searchInput')?.value || '(none)'),
+                'Type: ' + (el('filterType')?.value || 'all'),
+                'Sort: ' + (el('sortBy')?.value || ''),
                 'Selected: ' + (typeof selected !== 'undefined' ? selected.size : 0),
                 'List: ' + stats,
                 'URL: ' + location.href,
             ].join('\n');
             try {
                 await navigator.clipboard.writeText(text);
-                UI().toast('Organizer report copied', 'ok');
+                toast('Organizer report copied', 'ok');
             } catch (_) { prompt('Copy report:', text); }
         });
         document.addEventListener('keydown', e => {
@@ -1144,21 +1272,32 @@
             const tag = e.target?.tagName || '';
             if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(tag)) {
                 e.preventDefault();
-                document.getElementById('searchInput')?.focus();
+                el('searchInput')?.focus();
+                return;
+            }
+            if (e.key === 'Escape') {
+                el('renameModal')?.classList.remove('active');
+                el('tagModal')?.classList.remove('active');
+                el('tagSuggestions')?.classList.remove('show');
                 return;
             }
             if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); if (page > 0) { page--; loadItems(); } }
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (page < Math.ceil((total || 0) / PAGE_SIZE) - 1) { page++; loadItems(); }
+            }
             if (e.key === 'r' || e.key === 'R') { e.preventDefault(); doRescan(); }
             if (e.key === 'e' || e.key === 'E') {
                 e.preventDefault();
-                document.getElementById('btnOrgReport')?.click();
+                el('btnOrgReport')?.click();
             }
         });
-        document.getElementById('btnDebug').onclick = () => {
+        bind('btnDebug', 'click', () => {
             const d = window.AIToolboxDebug;
             d?.setEnabled(!d?.enabled());
             d?.enabled() ? d.boot() : d?.shutdown();
-        };
+        });
 
         init();
     </script>

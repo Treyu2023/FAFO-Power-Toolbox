@@ -15,6 +15,8 @@
       --line: rgba(56, 189, 248, 0.18);
       --accent: #38bdf8;
       --accent2: #f59e0b;
+      --gold: #f5d76e;
+      --magenta: #e879f9;
       --good: #34d399;
       --warn: #fbbf24;
       --text: #e8eef4;
@@ -544,6 +546,18 @@
     .help-md th { color: var(--muted); background: rgba(0,0,0,.25); }
     .help-md a { color: var(--accent); }
     .help-md hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+    .tab.active { box-shadow: 0 0 0 1px var(--magenta); }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+    textarea:focus-visible, .tab:focus-visible, .btn:focus-visible, [role="button"]:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #d5deea; --line: rgba(56, 189, 248, 0.45); }
+    }
   </style>
 </head>
 <body>
@@ -737,11 +751,68 @@
     let smsIeTools = null;
     let smsIeExportId = null;
 
-    const el = (id) => document.getElementById(id);
+    function el(id) {
+      try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+    }
+    function setText(id, text) {
+      const n = el(id);
+      if (n) n.textContent = text == null ? '' : String(text);
+    }
+    function setHtml(id, html) {
+      const n = el(id);
+      if (n) n.innerHTML = html == null ? '' : String(html);
+    }
+    function bind(id, ev, fn) {
+      const n = el(id);
+      if (!n || !fn) return;
+      n.addEventListener(ev, fn);
+    }
+    function lsGet(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? fallback : v;
+      } catch (_) { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+    }
+    function escHtml(str) {
+      const u = window.AIToolboxUI && window.AIToolboxUI.escapeHtml;
+      if (typeof u === 'function') return u(str);
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function isTypingTarget(t) {
+      return !!(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable));
+    }
+    let actionBusy = false;
+    const _blobUrls = [];
+    function trackBlob(url) {
+      if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+      return url;
+    }
+    function revokeBlobs() {
+      while (_blobUrls.length) {
+        try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+      }
+    }
+    async function withBusy(fn, btnId) {
+      if (actionBusy) return;
+      actionBusy = true;
+      const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : [];
+      const btns = ids.map(el).filter(Boolean);
+      btns.forEach(function (b) { b.disabled = true; });
+      try { return await fn(); }
+      finally {
+        actionBusy = false;
+        btns.forEach(function (b) { b.disabled = false; });
+      }
+    }
 
     // --- resizable site list / detail panes ---
     (function initSplitter() {
-      const saved = localStorage.getItem('fafo_commander_list_w');
+      const saved = lsGet('fafo_commander_list_w', '');
       const listPane = document.getElementById('listPane');
       const handle = document.getElementById('splitHandle');
       if (!listPane || !handle) return;
@@ -766,7 +837,7 @@
         if (!dragging) return;
         dragging = false;
         handle.classList.remove('dragging');
-        localStorage.setItem('fafo_commander_list_w', String(listPane.getBoundingClientRect().width | 0));
+        lsSet('fafo_commander_list_w', String(listPane.getBoundingClientRect().width | 0));
       });
     })();
 
@@ -799,14 +870,13 @@
     }
     function toast(msg, ms = 3200) {
       const t = el('toast');
-      t.textContent = msg;
+      if (!t) return;
+      t.textContent = msg == null ? '' : String(msg);
       t.classList.add('show');
       clearTimeout(toast._tm);
       toast._tm = setTimeout(() => t.classList.remove('show'), ms);
     }
-    function esc(s) {
-      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
+    function esc(s) { return escHtml(s); }
     async function api(path, opts = {}) {
       let r;
       try {
@@ -976,10 +1046,10 @@
 
     function openWatchModal() {
       renderWatchList();
-      el('watchModal').classList.add('open');
+      el('watchModal')?.classList.add('open');
     }
     function closeWatchModal() {
-      el('watchModal').classList.remove('open');
+      el('watchModal')?.classList.remove('open');
     }
 
     async function addWatchPath(path, opts = {}) {
@@ -1178,10 +1248,23 @@
         activeTab = 'liferaft';
         renderDetail();
       });
-      el('detail').querySelectorAll('.tab').forEach(t => {
+      const tabBtns = Array.from(el('detail')?.querySelectorAll('.tab') || []);
+      tabBtns.forEach((t, idx) => {
+        t.setAttribute('tabindex', t.classList.contains('active') ? '0' : '-1');
         t.addEventListener('click', async () => {
           activeTab = t.dataset.tab;
           renderDetail();
+        });
+        t.addEventListener('keydown', (e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+          e.preventDefault();
+          let n = idx;
+          if (e.key === 'ArrowLeft') n = (idx - 1 + tabBtns.length) % tabBtns.length;
+          if (e.key === 'ArrowRight') n = (idx + 1) % tabBtns.length;
+          if (e.key === 'Home') n = 0;
+          if (e.key === 'End') n = tabBtns.length - 1;
+          const next = tabBtns[n];
+          if (next) { activeTab = next.dataset.tab; renderDetail(); setTimeout(() => el('detail')?.querySelector('.tab.active')?.focus(), 0); }
         });
       });
       if (activeTab === 'files') loadFiles();
@@ -1968,7 +2051,7 @@
     async function wireSshResetPanel(s) {
       // Prefill host / base from sticky, liferaft, equipment
       try {
-        const sticky = localStorage.getItem(LS_HOST) || '';
+        const sticky = lsGet(LS_HOST, '') || '';
         if (el('sshResetHost') && sticky) el('sshResetHost').value = sticky;
         const eq = (s && s.equipment) || (s && s.dossier && s.dossier.equipment) || {};
         const mnsp = eq.mnsp || {};
@@ -2559,7 +2642,7 @@
     // Pending photo files for survey OCR (File objects + preview URLs)
     let ocrPendingFiles = [];
     // Active pack inside Site survey tab: site | network | pos | forecourt
-    let surveyPack = localStorage.getItem('fafo_survey_pack') || 'site';
+    let surveyPack = lsGet('fafo_survey_pack', 'site') || 'site';
 
     const SURVEY_PACK_DEFS = [
       { id: 'site', label: 'Site info', short: 'Site', desc: 'Address, contacts, brand, service IDs — who/where this store is.' },
@@ -2611,7 +2694,7 @@
       try {
         const data = await api('/verifone/sites/' + encodeURIComponent(selectedExportId) + '/survey');
         survey = data.survey;
-        if (survey?.packs?.lastActive && !localStorage.getItem('fafo_survey_pack')) {
+        if (survey?.packs?.lastActive && !lsGet('fafo_survey_pack', '')) {
           surveyPack = survey.packs.lastActive;
         }
         if (!SURVEY_PACK_DEFS.some(p => p.id === surveyPack)) surveyPack = 'site';
@@ -2629,7 +2712,7 @@
 
     function setSurveyPack(packId, rootEl) {
       surveyPack = packId;
-      try { localStorage.setItem('fafo_survey_pack', packId); } catch (_) {}
+      lsSet('fafo_survey_pack', packId);
       if (survey) {
         survey.packs = survey.packs || {};
         survey.packs.lastActive = packId;
@@ -2681,8 +2764,9 @@
 
       const renderPending = () => {
         if (!preview) return;
+        revokeBlobs();
         preview.innerHTML = ocrPendingFiles.map((f, i) => {
-          const url = URL.createObjectURL(f);
+          const url = trackBlob(URL.createObjectURL(f));
           return `<img class="ocr-thumb" src="${url}" alt="${esc(f.name)}" title="${esc(f.name)} (${Math.round(f.size/1024)} KB)" data-idx="${i}">`;
         }).join('') || '<span class="note">No photos queued yet.</span>';
       };
@@ -2767,7 +2851,7 @@
           ocrPendingFiles = [];
           if (pasteBox) pasteBox.value = '';
           surveyPack = domain;
-          try { localStorage.setItem('fafo_survey_pack', domain); } catch (_) {}
+          lsSet('fafo_survey_pack', domain);
           await loadSurveyUI();
         } catch (e) {
           toast(String(e.message || e), 7000);
@@ -3882,15 +3966,15 @@
         const host = (el('jHost') && el('jHost').value || '').trim();
         const user = (el('jUser') && el('jUser').value || '').trim();
         const pass = el('jPass') ? el('jPass').value : '';
-        if (host) localStorage.setItem(LS_HOST, host);
-        if (user) localStorage.setItem(LS_USER, user);
+        if (host) lsSet(LS_HOST, host);
+        if (user) lsSet(LS_USER, user);
         if (pass) sessionStorage.setItem(SS_PASS, pass);
       } catch (_) {}
     }
     function restoreJournalLoginFields(s, d, eq) {
       try {
-        const stickyHost = localStorage.getItem(LS_HOST) || '';
-        const stickyUser = localStorage.getItem(LS_USER) || DEFAULT_SITE_USER;
+        const stickyHost = lsGet(LS_HOST, '') || '';
+        const stickyUser = lsGet(LS_USER, '') || DEFAULT_SITE_USER;
         const stickyPass = sessionStorage.getItem(SS_PASS) || '';
         const suggested = suggestedSiteHost(s, d, eq);
         if (el('jHost')) el('jHost').value = stickyHost || suggested || '';
@@ -5255,7 +5339,7 @@
       });
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      a.href = trackBlob(URL.createObjectURL(blob));
       a.download = 'journal-transactions.csv';
       a.click();
       URL.revokeObjectURL(a.href);
@@ -5695,7 +5779,7 @@
         const hostGuess =
           ((eq && eq.mnsp && eq.mnsp.hostaddr) || '') ||
           (d && d.equipment && d.equipment.mnsp && d.equipment.mnsp.hostaddr) ||
-          localStorage.getItem(LS_HOST) || '';
+          lsGet(LS_HOST, '') || '';
         if (el('ieHost') && hostGuess && hostGuess !== '0.0.0.0') el('ieHost').value = hostGuess;
       } catch (_) {}
       // Site label for folders = store name (e.g. Quick N Easy 1), never the Manager password
@@ -6394,18 +6478,18 @@
         });
       }
       if (el('jHost')) {
-        el('jHost').addEventListener('keydown', (e) => { if (e.key === 'Enter') journalLogin(); });
+        el('jHost').addEventListener('keydown', (e) => { if (e.key === 'Enter') withBusy(() => journalLogin(), 'btnJLogin'); });
       }
       if (el('jPass')) {
-        el('jPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') journalLogin(); });
+        el('jPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') withBusy(() => journalLogin(), 'btnJLogin'); });
       }
     }
 
-    el('search').addEventListener('input', () => renderCards(el('search').value));
-    el('btnSync').addEventListener('click', () => syncNow());
-    if (el('btnQuickStart')) el('btnQuickStart').addEventListener('click', () => quickStartSites());
-    el('btnSetRoot').addEventListener('click', setRoot);
-    el('btnPunch').addEventListener('click', () => makePunch(selectedExportId));
+    bind('search', 'input', () => renderCards(el('search')?.value || ''));
+    bind('btnSync', 'click', () => withBusy(() => syncNow(), 'btnSync'));
+    bind('btnQuickStart', 'click', () => withBusy(() => quickStartSites(), 'btnQuickStart'));
+    bind('btnSetRoot', 'click', () => withBusy(() => setRoot(), 'btnSetRoot'));
+    bind('btnPunch', 'click', () => withBusy(() => makePunch(selectedExportId), 'btnPunch'));
 
     // Empty-state CTAs (boot wizard, filter miss, offline)
     document.addEventListener('click', (e) => {
@@ -6471,7 +6555,7 @@
       }
     });
 
-    el('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
+    bind('btnStartServer', 'click', () => withBusy(() => launchServerFromApp(), 'btnStartServer'));
     el('serverPill')?.addEventListener('click', () => {
       if (el('serverPill')?.classList.contains('ok')) return;
       launchServerFromApp();
@@ -6669,8 +6753,13 @@
     }
     el('btnCopySiteSummary')?.addEventListener('click', copySelectedSiteSummary);
     document.addEventListener('keydown', (e) => {
-      const tag = (e.target && e.target.tagName) || '';
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (e.key === 'Escape') {
+        const help = el('helpModal');
+        const watch = el('watchModal');
+        if (help && help.style.display !== 'none') { e.preventDefault(); e.stopPropagation(); closeHelpModal(); return; }
+        if (watch && watch.classList.contains('open')) { e.preventDefault(); e.stopPropagation(); closeWatchModal(); return; }
+      }
+      const typing = isTypingTarget(e.target);
       if (typing) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === '/') {
@@ -6681,6 +6770,14 @@
       } else if (e.key === 'p' || e.key === 'P') {
         if (selectedDetail?.id) makePunch(selectedDetail.id);
         else location.href = 'Pre-Reload Punch List.html';
+      } else if (selectedDetail && ((e.key >= '1' && e.key <= '9') || e.key === '0')) {
+        const keys = ['liferaft','overview','equipment','network','journal','plu','smsie','survey','layout','gear','files'];
+        const n = e.key === '0' ? 9 : (Number(e.key) - 1);
+        if (keys[n] && activeTab !== keys[n]) {
+          e.preventDefault();
+          activeTab = keys[n];
+          renderDetail();
+        }
       }
     });
     try {
@@ -6745,6 +6842,10 @@
   }
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
+    const help = document.getElementById('helpModal');
+    const watch = document.getElementById('watchModal');
+    if (help && help.style.display !== 'none') { e.preventDefault(); help.style.display = 'none'; return; }
+    if (watch && watch.classList.contains('open')) { e.preventDefault(); watch.classList.remove('open'); return; }
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
@@ -6765,7 +6866,7 @@
   });
 })();
 </script>
-<script data-extra-polish="csc">
+<script data-extra-polish="csc" data-pet-t52="commander-site-console">
 (async function(){
   try {
     const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);

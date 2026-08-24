@@ -12,7 +12,7 @@
       --card2: #182235;
       --line: #243049;
       --text: #eef3fb;
-      --muted: #8b9bb4;
+      --muted: #9aa9c4;
       --accent: #8b5cf6;
       --accent2: #22d3ee;
       --ok: #34d399;
@@ -23,6 +23,8 @@
       --radius: 16px;
     }
     * { box-sizing: border-box; }
+    .sr-only { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
+    :focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
     html, body { height: 100%; }
     body {
       margin: 0;
@@ -468,12 +470,12 @@
         </div>
       </div>
 
-      <div class="nav-tabs" role="tablist">
-        <button type="button" class="nav-tab active" id="tabReports" data-view="reports">
+      <div class="nav-tabs" role="tablist" aria-label="Library views">
+        <button type="button" class="nav-tab active" id="tabReports" data-view="reports" role="tab" aria-selected="true" aria-controls="viewReports">
           Reports
           <small>Cards &amp; summaries</small>
         </button>
-        <button type="button" class="nav-tab" id="tabLogs" data-view="logs">
+        <button type="button" class="nav-tab" id="tabLogs" data-view="logs" role="tab" aria-selected="false" aria-controls="viewLogs">
           Log Viewer
           <small>Raw .txt / .md / JSON</small>
         </button>
@@ -485,6 +487,7 @@
         <a href="../System Health Dashboard.html" class="chip" style="text-decoration:none">Health Hub</a>
       </div>
 
+      <label class="sr-only" for="q">Search library</label>
       <input id="q" class="search" type="search" placeholder="Search reports… (/)" autocomplete="off" />
 
       <div class="report-filters" id="reportFilters">
@@ -574,7 +577,7 @@
     </main>
   </div>
 
-  <div class="viewer" id="viewer" aria-hidden="true">
+  <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-labelledby="viewerTitle" aria-hidden="true">
     <div class="viewer-panel">
       <div class="viewer-bar">
         <h3 id="viewerTitle">Report</h3>
@@ -583,7 +586,7 @@
           <button class="btn primary" id="btnClose" type="button">Close</button>
         </div>
       </div>
-      <iframe id="frame" title="Report viewer"></iframe>
+      <iframe id="frame" title="Report viewer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
     </div>
   </div>
 
@@ -697,10 +700,10 @@
       const catBox = document.getElementById("catFilters");
       const sevBox = document.getElementById("sevFilters");
       catBox.innerHTML = cats.map(c =>
-        `<button type="button" class="chip ${c === activeCat ? "active" : ""}" data-cat="${c}">${c}</button>`
+        `<button type="button" class="chip ${c === activeCat ? "active" : ""}" data-cat="${escapeHtml(c)}" aria-pressed="${c === activeCat ? "true" : "false"}">${escapeHtml(c)}</button>`
       ).join("");
       sevBox.innerHTML = sevs.map(s =>
-        `<button type="button" class="chip ${s === activeSev ? "active" : ""}" data-sev="${s}">${s === "All" ? "All" : sevLabel(s)}</button>`
+        `<button type="button" class="chip ${s === activeSev ? "active" : ""}" data-sev="${escapeHtml(s)}" aria-pressed="${s === activeSev ? "true" : "false"}">${s === "All" ? "All" : escapeHtml(sevLabel(s))}</button>`
       ).join("");
       catBox.querySelectorAll("[data-cat]").forEach(btn => btn.addEventListener("click", () => {
         activeCat = btn.dataset.cat; renderFilters(); renderGrid();
@@ -739,24 +742,25 @@
       grid.innerHTML = rows.map(r => {
         const icon = ICONS[r.icon] || ICONS.search;
         const hls = (r.highlights || []).map(h =>
-          `<span class="hl"><b>${h.label}</b>${h.value}</span>`
+          `<span class="hl"><b>${escapeHtml(h.label)}</b>${escapeHtml(h.value)}</span>`
         ).join("");
-        const tags = (r.tags || []).slice(0, 5).map(t => `<span class="tag">${t}</span>`).join("");
+        const tags = (r.tags || []).slice(0, 5).map(tg => `<span class="tag">${escapeHtml(tg)}</span>`).join("");
+        const sev = ["ok","warn","bad","info"].includes(r.severity) ? r.severity : "info";
         return `
-          <article class="card sev-${r.severity}" data-id="${r.id}" tabindex="0" role="button">
+          <article class="card sev-${sev}" data-id="${escapeHtml(r.id)}" tabindex="0" role="button" aria-label="${escapeHtml(r.title || "Open report")}">
             <div class="card-top">
               <div class="icon-bubble">${icon}</div>
-              <span class="badge ${r.severity}">${sevLabel(r.severity)}</span>
+              <span class="badge ${sev}">${escapeHtml(sevLabel(r.severity))}</span>
             </div>
             <div>
               <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">${r.category} · ${r.date}</div>
-              <h3>${r.title}</h3>
+              <h3>${escapeHtml(r.title)}</h3>
             </div>
-            <p class="summary">${r.summary}</p>
+            <p class="summary">${escapeHtml(r.summary)}</p>
             <div class="hl-row">${hls}</div>
             <div class="tags">${tags}</div>
             <div class="card-foot">
-              <span>${r.file}</span>
+              <span>${escapeHtml(r.file)}</span>
               <span class="open-hint">Open →</span>
             </div>
           </article>`;
@@ -774,14 +778,24 @@
       });
     }
 
+    function safeLocalPath(p) {
+      const s = String(p || "").trim();
+      if (!s) return "";
+      if (/^[a-z][a-z0-9+.-]*:/i.test(s) && !/^https?:/i.test(s) && !/^about:/i.test(s)) return "";
+      if (s.startsWith("//")) return "";
+      return s;
+    }
     function openReport(r) {
-      currentFile = r.file;
-      document.getElementById("viewerTitle").textContent = r.title;
-      frame.src = r.file;
+      const file = safeLocalPath(r.file);
+      if (!file) { setActionStatus("Blocked report path.", true); return; }
+      currentFile = file;
+      document.getElementById("viewerTitle").textContent = r.title || "Report";
+      frame.src = file;
       viewer.classList.add("open");
       viewer.setAttribute("aria-hidden", "false");
     }
     function closeViewer() {
+      if (!viewer.classList.contains("open")) return;
       viewer.classList.remove("open");
       viewer.setAttribute("aria-hidden", "true");
       frame.src = "about:blank";
@@ -793,7 +807,11 @@
       if (currentFile) window.open(currentFile, "_blank");
     });
     viewer.addEventListener("click", e => { if (e.target === viewer) closeViewer(); });
-    document.addEventListener("keydown", e => { if (e.key === "Escape") closeViewer(); });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && viewer.classList.contains("open")) {
+        e.preventDefault(); e.stopImmediatePropagation(); closeViewer();
+      }
+    }, true);
 
     qEl.addEventListener("input", () => {
       query = qEl.value;
@@ -803,6 +821,8 @@
 
     /* -------- Log Viewer -------- */
     function formatBytes(n) {
+      n = Number(n);
+      if (!Number.isFinite(n) || n < 0) return "0 B";
       if (n < 1024) return n + " B";
       if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
       return (n / (1024 * 1024)).toFixed(1) + " MB";
@@ -917,7 +937,7 @@
       }).join("");
 
       body.innerHTML = html || `<div class="log-empty">Empty log.</div>`;
-      body.style.whiteSpace = wrapOn ? "normal" : "pre";
+      document.querySelectorAll("#logBody .lt").forEach(el => { el.style.whiteSpace = wrapOn ? "pre-wrap" : "pre"; });
 
       document.getElementById("statLines").textContent = String(lines.length);
       document.getElementById("statHits").textContent = String(hits);
@@ -968,7 +988,8 @@
     });
     document.getElementById("btnOpenLogFile").addEventListener("click", () => {
       const log = logData.find(l => l.id === activeLogId);
-      if (log && log.file) window.open(log.file, "_blank");
+      const file = log && (typeof safeLocalPath === "function" ? safeLocalPath(log.file) : log.file);
+      if (file) window.open(file, "_blank", "noopener");
     });
 
     /* -------- actions / server -------- */
@@ -1137,7 +1158,7 @@
           const banner = document.getElementById("serverBanner");
           if (banner && !(catalog.reports && catalog.reports.length && catalog.reports[0].id !== "no-local-reports")) {
             banner.style.display = "block";
-            banner.innerHTML = `Server offline — use Launcher <strong>Start Server</strong>, or double-click <strong>START SERVER.bat</strong>. Empty list? Run diagnostics once on this PC.`;
+            banner.innerHTML = `Server offline — use Launcher <strong>Start Server</strong>, or double-click <strong>START SERVER.bat</strong>. Empty listRun diagnostics once on this PC.`;
           }
         }
       } catch (e) {
@@ -1159,17 +1180,16 @@
       window.addEventListener("hashchange", applyHashRoute);
     }
 
-    // QoL: export filtered catalog + keyboard focus search + remember filter prefs
     const PCR_PREF = "fafo_pc_reports_prefs_v1";
     try {
-      const p = JSON.parse(localStorage.getItem(PCR_PREF) || "{}");
-      if (p.q) document.getElementById("q").value = p.q;
+      const pref = JSON.parse(localStorage.getItem(PCR_PREF) || "{}");
+      if (typeof pref.q === "string" && qEl) { qEl.value = pref.q; query = pref.q; }
+      if (typeof pref.cat === "string" && pref.cat) activeCat = pref.cat;
+      if (typeof pref.sev === "string" && pref.sev) activeSev = pref.sev;
     } catch (_) {}
-    const qEl = document.getElementById("q");
     if (qEl) {
-      const orig = qEl.oninput;
       qEl.addEventListener("input", () => {
-        try { localStorage.setItem(PCR_PREF, JSON.stringify({ q: qEl.value })); } catch (_) {}
+        try { localStorage.setItem(PCR_PREF, JSON.stringify({ q: qEl.value, cat: activeCat, sev: activeSev })); } catch (_) {}
       });
     }
     document.getElementById("btnExportCatalog")?.addEventListener("click", () => {
@@ -1221,7 +1241,8 @@
     if (e.key !== 'Escape') return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    if (document.getElementById('viewer')?.classList.contains('open')) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal, .viewer.open')) return;
     location.href = launcherHref();
   }, true);
   // One soft status toast so launch failures are visible
@@ -1237,16 +1258,6 @@
     if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
     try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
   });
-})();
-</script>
-<script data-extra-polish="pcr">
-(function(){
-  try {
-    if (!sessionStorage.getItem('pcr_tip') && window.AIToolboxUI?.toast) {
-      sessionStorage.setItem('pcr_tip','1');
-      AIToolboxUI.toast('PC Reports · use #logs for log tab · Esc = launcher', 'ok');
-    }
-  } catch(_){}
 })();
 </script>
   <script src="../../shared/aitoolbox-pro.js"></script>

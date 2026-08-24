@@ -7,10 +7,10 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{
-  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
-  --accent:#00f3ff;--accent2:#a78bfa;
+  --bg:#070b12;--panel:#0c1220;--panel2:#141c2c;--border:rgba(0,243,255,.24);
+  --accent:#00f3ff;--accent2:#f5c542;--gold:#f5c542;--magenta:#e879f9;
   --ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;
-  --text:#e2e8f0;--muted:#8b9bb4;--shadow:0 18px 50px rgba(0,0,0,.45);
+  --text:#f1f5f9;--muted:#b6c4d8;--shadow:0 18px 50px rgba(0,0,0,.55);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
@@ -179,6 +179,17 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
 .nav-chip.primary{border-color:rgba(167,139,250,.5);color:#c4b5fd;background:rgba(167,139,250,.1)}
 .meta-line{font-size:11px;color:var(--muted)}
 .vitals{position:sticky;top:48px;z-index:12;background:rgba(5,5,8,.88);padding:6px 0 10px;backdrop-filter:blur(8px)}
+.btn:focus-visible, .chip-btn:focus-visible, .sec:focus-visible, a:focus-visible,
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (prefers-contrast: more) {
+  :root { --text: #ffffff; --muted: #d5deea; --border: rgba(0, 243, 255, 0.45); }
+}
+.sec { transition: border-color .15s ease, transform .15s ease; }
 </style>
 </head>
 <body>
@@ -300,14 +311,77 @@ h1{font-size:1.55rem;letter-spacing:-.02em;margin-bottom:4px}
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
-const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
-  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-}[c]));
+
+const PREF_KEY = 'fafo_health_hub_auto_v1';
+function el(id) {
+  try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+}
+function setText(id, text) {
+  const n = el(id);
+  if (n) n.textContent = text == null ? '' : String(text);
+}
+function bind(id, ev, fn) {
+  const n = el(id);
+  if (!n || !fn) return;
+  n.addEventListener(ev, fn);
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+}
+function escHtml(str) {
+  const u = UI()?.escapeHtml;
+  if (typeof u === 'function') return u(str);
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function isTypingTarget(t) {
+  return !!(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable));
+}
+async function api(p, o) {
+  o = o || {};
+  const ui = UI();
+  if (!ui || typeof ui.apiFetch !== 'function') throw new Error('Toolbox API unavailable');
+  return ui.apiFetch(p, o);
+}
+const esc = escHtml;
 
 let timer = null;
 let lastData = null;
 let openSectionId = null;
-let busy = false;
+let actionBusy = false;
+const _blobUrls = [];
+function trackBlob(url) {
+  if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+  return url;
+}
+function revokeBlobs() {
+  while (_blobUrls.length) {
+    try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+  }
+}
+window.addEventListener('pagehide', revokeBlobs);
+
+async function withBusy(fn, btnId) {
+  if (actionBusy) return;
+  actionBusy = true;
+  const ids = btnId ? [btnId] : ['btnRefresh', 'btnFullScan', 'btnGenReport', 'btnExportJson', 'btnCopySummary'];
+  const btns = ids.map(el).filter(Boolean);
+  btns.forEach(b => { b.disabled = true; });
+  try { return await fn(); }
+  finally {
+    actionBusy = false;
+    btns.forEach(b => { b.disabled = false; });
+  }
+}
+
+
 
 const LABEL = { ok: 'Fine', info: 'FYI', warn: 'Watch', error: 'Act', bad: 'Act' };
 const LEVEL_CLASS = { ok: 'ok', info: 'info', warn: 'warn', error: 'error', bad: 'error' };
@@ -320,7 +394,7 @@ function levelLabel(lv) {
 }
 function badge(lv) {
   const c = levelClass(lv);
-  return `<span class="badge ${c}">${levelLabel(lv)}</span>`;
+  return `<span class="badge ${c}">${escHtml(levelLabel(lv))}</span>`;
 }
 function bar(pct, forceColor) {
   const p = Math.min(100, Math.max(0, Number(pct) || 0));
@@ -329,12 +403,16 @@ function bar(pct, forceColor) {
 }
 
 function toast(msg, ok = true) {
-  const el = document.getElementById('toast');
-  el.style.display = 'block';
-  el.style.borderColor = ok ? 'rgba(52,211,153,.4)' : 'rgba(244,63,94,.4)';
-  el.textContent = msg;
+  const n = el('toast');
+  if (!n) {
+    try { UI()?.toast?.(String(msg || ''), ok ? 'ok' : 'warn'); } catch (_) {}
+    return;
+  }
+  n.style.display = 'block';
+  n.style.borderColor = ok ? 'rgba(52,211,153,.4)' : 'rgba(244,63,94,.4)';
+  n.textContent = msg == null ? '' : String(msg);
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.style.display = 'none'; }, 8000);
+  toast._t = setTimeout(() => { n.style.display = 'none'; }, 8000);
 }
 
 function actionHref(href) {
@@ -361,12 +439,13 @@ function renderActions(actions, alertId) {
 function renderOverall(d) {
   const o = d.overall || {};
   const lv = o.level || (d.healthy ? 'ok' : 'warn');
-  const el = document.getElementById('overall');
-  el.style.display = 'block';
-  el.className = 'overall ' + levelClass(lv);
+  const node = el('overall');
+  if (!node) return;
+  node.style.display = 'block';
+  node.className = 'overall ' + levelClass(lv);
   const ts = d.timestamp ? new Date(d.timestamp).toLocaleString() : '';
   const hidden = o.hiddenAlertCount || (d.hiddenAlerts || []).length || 0;
-  el.innerHTML = `
+  node.innerHTML = `
     <div class="row">
       <div>
         ${badge(lv)}
@@ -381,13 +460,13 @@ function renderOverall(d) {
         <span class="status ${levelClass(lv)}">${esc(levelLabel(lv).toUpperCase())}</span>
       </div>
     </div>`;
-  document.getElementById('btnShowHidden')?.addEventListener('click', () => {
+  el('btnShowHidden')?.addEventListener('click', () => {
     const list = (d.hiddenAlerts || []).map(h =>
       `• ${h.title || h.id} (${h.hiddenReason || 'hidden'}${h.snoozedUntil ? ' until ' + new Date(h.snoozedUntil).toLocaleString() : ''})`
     ).join('\n') || 'None';
     alert('Hidden alerts:\n\n' + list + '\n\nUse Restore all alerts to show them again.');
   });
-  document.getElementById('btnClearPrefs')?.addEventListener('click', () => clearAllPrefs());
+  el('btnClearPrefs')?.addEventListener('click', () => clearAllPrefs());
 }
 
 function renderVitals(d) {
@@ -400,7 +479,9 @@ function renderVitals(d) {
     { l: 'Network', v: '↑↓', h: `↑ ${esc(s.net_send_human || '0')} · ↓ ${esc(s.net_recv_human || '0')}` },
     { l: 'Threat DB', v: (d.security?.threat_hashes || 0).toLocaleString(), h: d.security?.quarantine_count ? `${d.security.quarantine_count} quarantined` : 'Malware Defender' },
   ];
-  document.getElementById('vitals').innerHTML = items.map(c =>
+  const vitalsBox = el('vitals');
+  if (!vitalsBox) return;
+  vitalsBox.innerHTML = items.map(c =>
     `<div class="vital"><div class="lbl">${c.l}</div><div class="val">${c.v}</div><div class="hint">${c.h || ''}</div></div>`
   ).join('');
 }
@@ -409,12 +490,14 @@ function renderAlerts(d) {
   const raw = d.alerts || [];
   // Inbox: only watch + act (warn/error) — already filtered server-side for snooze/dismiss
   const alerts = raw.filter(a => a.level === 'warn' || a.level === 'error' || a.level === 'bad');
-  const box = document.getElementById('alerts');
+  const box = el('alerts');
   const hiddenN = (d.hiddenAlerts || []).length;
-  document.getElementById('alertCount').textContent = alerts.length
+  const ac = el('alertCount');
+  if (ac) ac.textContent = alerts.length
     ? `${alerts.length} open${hiddenN ? ` · ${hiddenN} hidden` : ''}`
     : (hiddenN ? `Clear · ${hiddenN} hidden` : 'Watch & Act only');
 
+  if (!box) return;
   if (!alerts.length) {
     box.innerHTML = `<div class="empty-ok">No yellow or red issues — you're clear ✓</div>` +
       (hiddenN ? `<div style="margin-top:8px;font-size:12px;color:var(--muted)">${hiddenN} snoozed/dismissed. Restore from the status banner.</div>` : '');
@@ -442,7 +525,8 @@ function renderAlerts(d) {
 
 function renderSections(d) {
   const sections = d.sections || [];
-  const grid = document.getElementById('sections');
+  const grid = el('sections');
+  if (!grid) return;
   grid.innerHTML = sections.map(s => {
     const lv = s.level || 'info';
     const active = openSectionId === s.id ? ' active' : '';
@@ -465,7 +549,8 @@ function renderSections(d) {
 }
 
 function renderDrawer(d) {
-  const drawer = document.getElementById('drawer');
+  const drawer = el('drawer');
+  if (!drawer) return;
   if (!openSectionId || !d) {
     drawer.className = 'drawer';
     drawer.innerHTML = '';
@@ -490,7 +575,7 @@ function renderDrawer(d) {
     ${s.detail ? `<div class="d-detail">${esc(s.detail)}</div>` : ''}
     ${findings ? `<ul>${findings}</ul>` : ''}
     <div class="links">
-      <button type="button" class="chip-btn" id="btnRerunSection" ${busy ? 'disabled' : ''}>↻ Re-run this section</button>
+      <button type="button" class="chip-btn" id="btnRerunSection" ${actionBusy ? 'disabled' : ''}>↻ Re-run this section</button>
       ${(s.links || []).map(l => `<a class="chip-btn" href="${esc(l.href || '#')}">${esc(l.label || 'Open')}</a>`).join('')}
       <button type="button" class="chip-btn" id="btnCloseDrawer">Close</button>
     </div>
@@ -498,17 +583,18 @@ function renderDrawer(d) {
       Re-run refreshes live collectors for this section and regenerates the plain-English report.
       Use <strong>Run full scan</strong> for the complete FAFO diagnostics pack.
     </p>`;
-  document.getElementById('btnCloseDrawer')?.addEventListener('click', () => {
+  el('btnCloseDrawer')?.addEventListener('click', () => {
     openSectionId = null;
     renderSections(d);
   });
-  document.getElementById('btnRerunSection')?.addEventListener('click', () => runSection(s.id));
+  el('btnRerunSection')?.addEventListener('click', () => runSection(s.id));
 }
 
 function renderProcPreview(d) {
   const prev = d.processesPreview || {};
   const top = prev.topCpu || [];
-  const box = document.getElementById('procPreview');
+  const box = el('procPreview');
+  if (!box) return;
   if (!top.length) {
     box.innerHTML = '<div style="color:var(--muted);font-size:12px">No process sample yet.</div>';
     return;
@@ -537,69 +623,68 @@ function renderProcPreview(d) {
 }
 
 async function load() {
-  const btn = document.getElementById('btnRefresh');
-  btn.disabled = true;
+  return withBusy(async () => {
   try {
-    await UI().apiFetch('/health');
-    document.getElementById('pill').className = 'status ok';
-    document.getElementById('pill').textContent = 'Connected';
+    await api('/health');
+    const pill = el('pill');
+    if (pill) { pill.className = 'status ok'; pill.textContent = 'Connected'; }
   } catch {
-    document.getElementById('pill').className = 'status bad';
-    document.getElementById('pill').textContent = 'Server offline';
-    document.getElementById('alerts').innerHTML =
+    const pill = el('pill');
+    if (pill) { pill.className = 'status bad'; pill.textContent = 'Server offline'; }
+    const alertsEl = el('alerts');
+    if (alertsEl) alertsEl.innerHTML =
       '<div class="alert warn"><div class="title">Server offline</div>' +
       '<div class="plain">Start the toolbox server (▶ Start Server on this page or Launcher), backend at <code>127.0.0.87:18765</code>, then refresh.</div></div>';
-    document.getElementById('vitals').innerHTML = '';
-    document.getElementById('sections').innerHTML = '';
-    document.getElementById('procPreview').innerHTML = '—';
-    document.getElementById('overall').style.display = 'none';
-    document.getElementById('drawer').className = 'drawer';
-    btn.disabled = false;
+    const v = el('vitals'); if (v) v.innerHTML = '';
+    const sec = el('sections'); if (sec) sec.innerHTML = '';
+    const pp = el('procPreview'); if (pp) pp.innerHTML = '\u2014';
+    const ov = el('overall'); if (ov) ov.style.display = 'none';
+    const dr = el('drawer'); if (dr) dr.className = 'drawer';
     return;
   }
   try {
-    const d = await UI().apiFetch('/health/dashboard');
-    lastData = d;
-    renderOverall(d);
-    renderVitals(d);
-    renderAlerts(d);
-    renderSections(d);
-    renderProcPreview(d);
-    const lu = document.getElementById('lastUpdated');
-    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    const d = await api('/health/dashboard');
+    lastData = d && typeof d === 'object' ? d : {};
+    renderOverall(lastData);
+    renderVitals(lastData);
+    renderAlerts(lastData);
+    renderSections(lastData);
+    renderProcPreview(lastData);
+    setText('lastUpdated', 'Updated ' + new Date().toLocaleTimeString());
   } catch (e) {
-    document.getElementById('alerts').innerHTML =
+    const alertsEl = el('alerts');
+    if (alertsEl) alertsEl.innerHTML =
       `<div class="alert warn"><div class="title">Dashboard error</div><div class="plain">${esc(e.message || e)}</div></div>`;
   }
-  btn.disabled = false;
+  }, 'btnRefresh');
 }
 
 function setupAuto() {
   if (timer) clearInterval(timer);
   timer = null;
-  if (document.getElementById('autoRefresh').checked) {
-    const sec = Math.max(10, Number(document.getElementById('autoInterval')?.value || 15));
+  if (el('autoRefresh')?.checked) {
+    const sec = Math.max(10, Number(el('autoInterval')?.value || 15));
     // Pause when tab is hidden so background hub does not keep hammering the PC
     timer = setInterval(() => {
       if (document.hidden) return;
       load();
     }, sec * 1000);
   }
-  try {
-    localStorage.setItem('fafo_health_hub_auto_v1', JSON.stringify({
-      auto: document.getElementById('autoRefresh').checked,
-      interval: document.getElementById('autoInterval')?.value || '15',
-    }));
-  } catch (_) {}
+  lsSet(PREF_KEY, JSON.stringify({
+    auto: !!(el('autoRefresh') && el('autoRefresh').checked),
+    interval: el('autoInterval')?.value || '15',
+  }));
 }
 
 function exportHubJson() {
   if (!lastData) { toast('Nothing to export yet', false); return; }
+  revokeBlobs();
+  const url = trackBlob(URL.createObjectURL(new Blob([JSON.stringify(lastData, null, 2)], { type: 'application/json' })));
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(lastData, null, 2)], { type: 'application/json' }));
+  a.href = url;
   a.download = `health-hub-${Date.now()}.json`;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 2000);
   toast('Exported hub JSON');
 }
 
@@ -624,15 +709,15 @@ async function copyHubSummary() {
 
 document.addEventListener('visibilitychange', () => {
   // When user returns to the tab, refresh once if auto is on
-  if (!document.hidden && document.getElementById('autoRefresh')?.checked) {
+  if (!document.hidden && el('autoRefresh')?.checked) {
     load().catch(() => {});
   }
 });
 
 async function snoozeAlert(id, hours) {
-  if (!id || busy) return;
+  if (!id || actionBusy) return;
   try {
-    await UI().apiFetch('/health/alerts/snooze', {
+    await api('/health/alerts/snooze', {
       method: 'POST',
       body: JSON.stringify({ alert_id: id, hours }),
     });
@@ -644,9 +729,9 @@ async function snoozeAlert(id, hours) {
 }
 
 async function dismissAlert(id) {
-  if (!id || busy) return;
+  if (!id || actionBusy) return;
   try {
-    await UI().apiFetch('/health/alerts/dismiss', {
+    await api('/health/alerts/dismiss', {
       method: 'POST',
       body: JSON.stringify({ alert_id: id }),
     });
@@ -659,7 +744,7 @@ async function dismissAlert(id) {
 
 async function clearAllPrefs() {
   try {
-    await UI().apiFetch('/health/alerts/clear', {
+    await api('/health/alerts/clear', {
       method: 'POST',
       body: JSON.stringify({}),
     });
@@ -671,11 +756,11 @@ async function clearAllPrefs() {
 }
 
 async function runSection(sectionId) {
-  if (!sectionId || busy) return;
-  busy = true;
+  if (!sectionId || actionBusy) return;
+  actionBusy = true;
   toast(`Refreshing section: ${sectionId}…`);
   try {
-    const r = await UI().apiFetch('/diagnostics/run-section', {
+    const r = await api('/diagnostics/run-section', {
       method: 'POST',
       body: JSON.stringify({ section: sectionId, write_report: true }),
     });
@@ -684,19 +769,19 @@ async function runSection(sectionId) {
   } catch (e) {
     toast(String(e.message || e), false);
   } finally {
-    busy = false;
+    actionBusy = false;
   }
 }
 
 async function runFullScan() {
-  if (busy) return;
+  if (actionBusy) return;
   if (!confirm('Run full system diagnostics? This can take a minute or two.')) return;
-  busy = true;
-  const btn = document.getElementById('btnFullScan');
-  btn.disabled = true;
+  actionBusy = true;
+  const btn = el('btnFullScan');
+  if (btn) btn.disabled = true;
   toast('Full diagnostics running…');
   try {
-    const r = await UI().apiFetch('/diagnostics/run', {
+    const r = await api('/diagnostics/run', {
       method: 'POST',
       body: JSON.stringify({ open_viewer: false }),
     });
@@ -705,47 +790,64 @@ async function runFullScan() {
   } catch (e) {
     toast(String(e.message || e), false);
   } finally {
-    busy = false;
-    btn.disabled = false;
+    actionBusy = false;
+    if (btn) btn.disabled = false;
   }
 }
 
 async function genReport() {
-  if (busy) return;
-  busy = true;
+  if (actionBusy) return;
+  actionBusy = true;
   toast('Generating plain-English report…');
   try {
-    const r = await UI().apiFetch('/health/report/generate', { method: 'POST', body: '{}' });
+    const r = await api('/health/report/generate', { method: 'POST', body: '{}' });
     toast(`Saved: ${r.htmlPath || 'report'} (${r.alertCount ?? '?'} alerts)`);
   } catch (e) {
     toast(String(e.message || e), false);
   } finally {
-    busy = false;
+    actionBusy = false;
   }
 }
 
-document.getElementById('btnRefresh').onclick = load;
-document.getElementById('btnFullScan').onclick = runFullScan;
-document.getElementById('btnGenReport').onclick = genReport;
-document.getElementById('btnExportJson').onclick = exportHubJson;
-document.getElementById('btnCopySummary').onclick = copyHubSummary;
-document.getElementById('autoRefresh').onchange = setupAuto;
-document.getElementById('autoInterval')?.addEventListener('change', setupAuto);
+bind('btnRefresh', 'click', load);
+bind('btnFullScan', 'click', runFullScan);
+bind('btnGenReport', 'click', genReport);
+bind('btnExportJson', 'click', exportHubJson);
+bind('btnCopySummary', 'click', copyHubSummary);
+bind('autoRefresh', 'change', setupAuto);
+bind('autoInterval', 'change', setupAuto);
 document.addEventListener('keydown', (e) => {
-  const t = e.target;
-  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) {
+  if (isTypingTarget(e.target)) return;
+  if (e.key === 'Escape' && openSectionId) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openSectionId = null;
+    if (lastData) renderSections(lastData);
+    return;
+  }
+  if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
     load();
+    return;
   }
-});
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    const cards = Array.from(document.querySelectorAll('.sec[data-id]'));
+    if (!cards.length) return;
+    const cur = cards.findIndex(c => c === document.activeElement || c.classList.contains('active'));
+    let next = cur;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = cur < 0 ? 0 : Math.min(cards.length - 1, cur + 1);
+    else next = cur < 0 ? cards.length - 1 : Math.max(0, cur - 1);
+    e.preventDefault();
+    cards[next].focus();
+  }
+}, true);
 try {
-  const p = JSON.parse(localStorage.getItem('fafo_health_hub_auto_v1') || '{}');
-  if (typeof p.auto === 'boolean') document.getElementById('autoRefresh').checked = p.auto;
-  if (p.interval && document.querySelector(`#autoInterval option[value="${p.interval}"]`))
-    document.getElementById('autoInterval').value = p.interval;
+  const p = JSON.parse(lsGet(PREF_KEY, '{}') || '{}');
+  if (typeof p.auto === 'boolean' && el('autoRefresh')) el('autoRefresh').checked = p.auto;
+  if (p.interval && el('autoInterval') && document.querySelector(`#autoInterval option[value="${p.interval}"]`))
+    el('autoInterval').value = p.interval;
 } catch (_) {}
-UI()?.mountServerBar?.({ onOnline: load });
+try { UI()?.mountServerBar?.({ onOnline: load }); } catch (_) {}
 load();
 setupAuto();
 </script>

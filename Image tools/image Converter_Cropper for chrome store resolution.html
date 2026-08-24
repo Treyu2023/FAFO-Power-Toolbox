@@ -8,8 +8,9 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
-            --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.2);
-            --accent: #00f3ff; --text: #e2e8f0; --muted: #64748b;
+            --bg: #07090f; --panel: #10141d; --border: rgba(0,243,255,.28);
+            --accent: #00f3ff; --gold: #f5c542; --magenta: #ff2bd6;
+            --text: #e8eef6; --muted: #8b9bb4;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -20,7 +21,7 @@
         .nav {
             display: flex; justify-content: space-between; align-items: center;
             padding: 10px 20px; border-bottom: 1px solid var(--border);
-            background: rgba(5,5,8,.95); position: sticky; top: 0; z-index: 10;
+            background: rgba(7,9,15,.95); position: sticky; top: 0; z-index: 10;
         }
         .nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
         .wrap { max-width: 960px; margin: 0 auto; padding: 24px; }
@@ -43,6 +44,9 @@
         }
         .btn:hover { background: var(--accent); color: #000; }
         .btn:disabled { opacity: .4; cursor: not-allowed; }
+        a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, .drop-target:focus-visible {
+            outline: 2px solid var(--gold); outline-offset: 2px;
+        }
         #previewWrap {
             margin-top: 14px; overflow: auto; max-height: 70vh;
             border: 1px solid var(--border); border-radius: 10px; background: #000;
@@ -50,6 +54,7 @@
         }
         #preview { display: block; max-width: 100%; height: auto; }
         .meta { font-size: 11px; color: var(--muted); margin-top: 10px; font-family: Consolas, monospace; }
+        .meta[data-tone="warn"] { color: var(--magenta); }
         ul { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }
         .custom-dims { display: none; gap: 10px; }
         .custom-dims.show { display: flex; flex-wrap: wrap; }
@@ -75,6 +80,9 @@
             font-family: Consolas, monospace; font-size: 10px; color: var(--accent);
             padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
         }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition: none !important; animation: none !important; }
+        }
     </style>
 </head>
 <body>
@@ -97,7 +105,7 @@
         </p>
 
         <div class="panel" data-fafo-panel="workspace" data-fafo-panel-title="Workspace" data-fafo-panel-min="60" data-fafo-panel-default="140">
-            <div class="drop-target" id="dropTarget">Drop an image here, or use the file picker below</div>
+            <div class="drop-target" id="dropTarget" tabindex="0" role="button">Drop an image here, or use the file picker below</div>
             <div class="preset-chips" id="sizePresets" aria-label="Quick size presets">
                 <button type="button" data-size="small">440×280 promo</button>
                 <button type="button" data-size="icon128">128 icon</button>
@@ -142,7 +150,7 @@
                 </div>
             </div>
             <div class="row">
-                <button class="btn" id="exportBtn" disabled>Export processed image</button>
+                <button class="btn" id="exportBtn" type="button" disabled>Export processed image</button>
                 <button class="btn" id="btnReset" type="button" style="border-color:var(--muted);color:var(--muted)">Clear</button>
             </div>
             <ul>
@@ -157,21 +165,57 @@
     <a id="downloadLink" style="display:none"></a>
 
     <script>
-        const fileInput = document.getElementById('fileInput');
-        const preview = document.getElementById('preview');
-        const ctx = preview.getContext('2d');
-        const sizeSelect = document.getElementById('sizeSelect');
-        const modeSelect = document.getElementById('modeSelect');
-        const formatSelect = document.getElementById('formatSelect');
-        const exportBtn = document.getElementById('exportBtn');
-        const downloadLink = document.getElementById('downloadLink');
-        const customDims = document.getElementById('customDims');
-        const customW = document.getElementById('customW');
-        const customH = document.getElementById('customH');
-        const meta = document.getElementById('meta');
+        function el(id) { return document.getElementById(id); }
+        function setText(node, t) { if (node) node.textContent = t == null ? '' : String(t); }
+        function bind(node, ev, fn) { if (node && typeof fn === 'function') node.addEventListener(ev, fn); return node; }
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+        function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
+        function withBusy(btn, fn) {
+            if (btn && btn.dataset && btn.dataset.busy === '1') return;
+            if (btn && btn.dataset) btn.dataset.busy = '1';
+            if (btn) btn.disabled = true;
+            Promise.resolve().then(fn).catch(function (err) {
+                setMeta((err && err.message) || 'Action failed', true);
+            }).finally(function () {
+                if (btn && btn.dataset) btn.dataset.busy = '0';
+                if (btn && img && img.src) btn.disabled = false;
+            });
+        }
+
+        const fileInput = el('fileInput');
+        const preview = el('preview');
+        const ctx = preview && preview.getContext ? preview.getContext('2d') : null;
+        const sizeSelect = el('sizeSelect');
+        const modeSelect = el('modeSelect');
+        const formatSelect = el('formatSelect');
+        const exportBtn = el('exportBtn');
+        const downloadLink = el('downloadLink');
+        const customDims = el('customDims');
+        const customW = el('customW');
+        const customH = el('customH');
+        const meta = el('meta');
 
         let img = new Image();
         let objectUrl = null;
+        let exportUrl = null;
+
+        function setMeta(text, warn) {
+            setText(meta, text);
+            if (meta) {
+                if (warn) meta.setAttribute('data-tone', 'warn');
+                else meta.removeAttribute('data-tone');
+            }
+        }
+
+        function revoke(url) {
+            if (!url) return;
+            try { URL.revokeObjectURL(url); } catch (_) {}
+        }
+        function revokeAll() {
+            revoke(objectUrl); objectUrl = null;
+            revoke(exportUrl); exportUrl = null;
+        }
 
         const SIZES = {
             small: { width: 440, height: 280, name: 'chrome_small_promo', group: 'Chrome Web Store' },
@@ -188,25 +232,33 @@
         };
 
         function populateSizes() {
+            if (!sizeSelect) return;
+            sizeSelect.textContent = '';
             const groups = {};
-            Object.entries(SIZES).forEach(([id, s]) => {
+            Object.entries(SIZES).forEach(function ([id, s]) {
                 if (!groups[s.group]) groups[s.group] = [];
-                groups[s.group].push({ id, ...s });
+                groups[s.group].push({ id: id, width: s.width, height: s.height, name: s.name });
             });
-            sizeSelect.innerHTML = Object.entries(groups).map(([g, items]) =>
-                `<optgroup label="${g}">${items.map(s =>
-                    `<option value="${s.id}">${s.id === 'custom' ? 'Custom size…' : `${s.width}×${s.height} — ${s.name}`}</option>`
-                ).join('')}</optgroup>`
-            ).join('');
+            Object.keys(groups).forEach(function (g) {
+                const og = document.createElement('optgroup');
+                og.label = g;
+                groups[g].forEach(function (s) {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.id === 'custom' ? 'Custom size…' : (s.width + '×' + s.height + ' — ' + s.name);
+                    og.appendChild(opt);
+                });
+                sizeSelect.appendChild(og);
+            });
             sizeSelect.value = 'small';
         }
 
         function currentSize() {
-            const id = sizeSelect.value;
+            const id = sizeSelect ? sizeSelect.value : 'small';
             if (id === 'custom') {
                 return {
-                    width: Math.max(16, Math.min(4096, parseInt(customW.value, 10) || 1280)),
-                    height: Math.max(16, Math.min(4096, parseInt(customH.value, 10) || 800)),
+                    width: Math.max(16, Math.min(4096, parseInt(customW && customW.value, 10) || 1280)),
+                    height: Math.max(16, Math.min(4096, parseInt(customH && customH.value, 10) || 800)),
                     name: 'custom',
                 };
             }
@@ -214,10 +266,16 @@
         }
 
         function syncCustomUi() {
+            if (!customDims || !sizeSelect) return;
             customDims.classList.toggle('show', sizeSelect.value === 'custom');
         }
 
         function computeDraw(srcW, srcH, dstW, dstH, mode) {
+            srcW = Number(srcW) || 0; srcH = Number(srcH) || 0;
+            dstW = Number(dstW) || 0; dstH = Number(dstH) || 0;
+            if (srcW < 1 || srcH < 1 || dstW < 1 || dstH < 1) {
+                return { drawWidth: 0, drawHeight: 0, offsetX: 0, offsetY: 0, sx: 0, sy: 0, sWidth: 0, sHeight: 0, useSourceCrop: false, invalid: true };
+            }
             const imgRatio = srcW / srcH;
             const canvasRatio = dstW / dstH;
             let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
@@ -248,200 +306,244 @@
                     offsetX = (dstW - drawWidth) / 2;
                 }
             }
-            return { drawWidth, drawHeight, offsetX, offsetY, sx, sy, sWidth, sHeight, useSourceCrop };
+            return { drawWidth: drawWidth, drawHeight: drawHeight, offsetX: offsetX, offsetY: offsetY, sx: sx, sy: sy, sWidth: sWidth, sHeight: sHeight, useSourceCrop: useSourceCrop };
         }
 
         function drawPreview() {
-            if (!img.src) return;
+            if (!img || !img.src || !preview || !ctx) return;
+            if (!img.width || !img.height) {
+                setMeta('Image loaded but has no dimensions', true);
+                return;
+            }
             const size = currentSize();
-            // Cap preview canvas for huge targets so UI stays snappy
             const maxPreview = 900;
             let pw = size.width, ph = size.height;
-            const scale = Math.min(1, maxPreview / Math.max(pw, ph));
-            pw = Math.round(pw * scale);
-            ph = Math.round(ph * scale);
+            const scale = Math.min(1, maxPreview / Math.max(pw, ph, 1));
+            pw = Math.max(1, Math.round(pw * scale));
+            ph = Math.max(1, Math.round(ph * scale));
             preview.width = pw;
             preview.height = ph;
 
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, pw, ph);
 
-            const mode = modeSelect.value;
+            const mode = modeSelect ? modeSelect.value : 'cover';
             const d = computeDraw(img.width, img.height, pw, ph, mode);
-            if (d.useSourceCrop) {
-                ctx.drawImage(img, d.sx, d.sy, d.sWidth, d.sHeight, 0, 0, pw, ph);
-            } else {
-                ctx.drawImage(img, d.offsetX, d.offsetY, d.drawWidth, d.drawHeight);
+            if (d.invalid) return;
+            try {
+                if (d.useSourceCrop) {
+                    ctx.drawImage(img, d.sx, d.sy, d.sWidth, d.sHeight, 0, 0, pw, ph);
+                } else {
+                    ctx.drawImage(img, d.offsetX, d.offsetY, d.drawWidth, d.drawHeight);
+                }
+            } catch (err) {
+                setMeta((err && err.message) || 'Preview draw failed', true);
+                return;
             }
 
-            meta.textContent = `Source ${img.width}×${img.height} → Output ${size.width}×${size.height} · ${mode} · preview ${pw}×${ph}`;
+            setMeta('Source ' + img.width + '×' + img.height + ' → Output ' + size.width + '×' + size.height + ' · ' + mode + ' · preview ' + pw + '×' + ph);
         }
 
         function exportImage() {
-            if (!img.src) return;
+            if (!img || !img.src || !img.width) return;
             const size = currentSize();
-            const mode = modeSelect.value;
+            const mode = modeSelect ? modeSelect.value : 'cover';
             const outputCanvas = document.createElement('canvas');
             outputCanvas.width = size.width;
             outputCanvas.height = size.height;
             const outCtx = outputCanvas.getContext('2d');
+            if (!outCtx) { setMeta('Canvas 2D unavailable', true); return; }
             outCtx.fillStyle = '#000000';
             outCtx.fillRect(0, 0, size.width, size.height);
 
             const d = computeDraw(img.width, img.height, size.width, size.height, mode);
-            if (d.useSourceCrop) {
-                outCtx.drawImage(img, d.sx, d.sy, d.sWidth, d.sHeight, 0, 0, size.width, size.height);
-            } else {
-                outCtx.drawImage(img, d.offsetX, d.offsetY, d.drawWidth, d.drawHeight);
+            if (d.invalid) { setMeta('Cannot export — invalid source or size', true); return; }
+            try {
+                if (d.useSourceCrop) {
+                    outCtx.drawImage(img, d.sx, d.sy, d.sWidth, d.sHeight, 0, 0, size.width, size.height);
+                } else {
+                    outCtx.drawImage(img, d.offsetX, d.offsetY, d.drawWidth, d.drawHeight);
+                }
+            } catch (err) {
+                setMeta((err && err.message) || 'Export draw failed', true);
+                return;
             }
 
-            const fmt = formatSelect.value;
+            const fmt = formatSelect ? formatSelect.value : 'jpeg';
             const mime = fmt === 'png' ? 'image/png' : fmt === 'webp' ? 'image/webp' : 'image/jpeg';
             const quality = fmt === 'png' ? undefined : (fmt === 'webp' ? 0.92 : 0.95);
             const ext = fmt === 'png' ? 'png' : fmt === 'webp' ? 'webp' : 'jpg';
 
-            outputCanvas.toBlob(blob => {
-                if (!blob) {
-                    alert('Export failed — try a smaller size or another format.');
-                    return;
-                }
-                const url = URL.createObjectURL(blob);
-                downloadLink.href = url;
-                downloadLink.download = `processed_${size.name}_${mode}.${ext}`;
-                downloadLink.click();
-                setTimeout(() => URL.revokeObjectURL(url), 2000);
-            }, mime, quality);
+            try {
+                outputCanvas.toBlob(function (blob) {
+                    if (!blob) {
+                        setMeta('Export failed — try a smaller size or another format.', true);
+                        return;
+                    }
+                    revoke(exportUrl);
+                    exportUrl = URL.createObjectURL(blob);
+                    if (!downloadLink) return;
+                    downloadLink.href = exportUrl;
+                    downloadLink.download = 'processed_' + size.name + '_' + mode + '.' + ext;
+                    downloadLink.click();
+                    const toRevoke = exportUrl;
+                    setTimeout(function () {
+                        if (exportUrl === toRevoke) { revoke(exportUrl); exportUrl = null; }
+                    }, 2000);
+                }, mime, quality);
+            } catch (err) {
+                setMeta((err && err.message) || 'toBlob failed', true);
+            }
         }
 
         function clearImage() {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-                objectUrl = null;
-            }
+            revokeAll();
             img = new Image();
-            fileInput.value = '';
-            exportBtn.disabled = true;
-            ctx.clearRect(0, 0, preview.width, preview.height);
-            preview.width = 440;
-            preview.height = 280;
-            meta.textContent = 'No image loaded';
+            if (fileInput) fileInput.value = '';
+            if (exportBtn) exportBtn.disabled = true;
+            if (ctx && preview) ctx.clearRect(0, 0, preview.width, preview.height);
+            if (preview) { preview.width = 440; preview.height = 280; }
+            setMeta('No image loaded');
         }
 
-        fileInput.addEventListener('change', e => {
-            const file = e.target.files[0];
+        function loadFile(file) {
             if (!file) return;
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            revoke(objectUrl);
             objectUrl = URL.createObjectURL(file);
             img = new Image();
-            img.onload = () => {
-                exportBtn.disabled = false;
+            img.onload = function () {
+                if (exportBtn) exportBtn.disabled = false;
                 drawPreview();
             };
-            img.onerror = () => {
-                alert('Could not load that image.');
+            img.onerror = function () {
+                setMeta('Could not load that image.', true);
                 clearImage();
             };
             img.src = objectUrl;
-        });
-
-        sizeSelect.addEventListener('change', () => { syncCustomUi(); drawPreview(); });
-        customW.addEventListener('input', drawPreview);
-        customH.addEventListener('input', drawPreview);
-        modeSelect.addEventListener('change', drawPreview);
-        exportBtn.addEventListener('click', exportImage);
-        document.getElementById('btnReset').addEventListener('click', clearImage);
-
-        // Drag & drop polish
-        const dropTarget = document.getElementById('dropTarget');
-        function acceptImageFile(file) {
-            if (!file || !file.type.startsWith('image/')) return;
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            fileInput.files = dt.files;
-            fileInput.dispatchEvent(new Event('change'));
         }
-        ['dragenter', 'dragover'].forEach(ev => {
-            document.body.addEventListener(ev, e => {
-                e.preventDefault();
-                dropTarget?.classList.add('dragover');
-            });
-        });
-        ['dragleave', 'drop'].forEach(ev => {
-            document.body.addEventListener(ev, e => {
-                if (ev === 'drop') e.preventDefault();
-                dropTarget?.classList.remove('dragover');
-            });
-        });
-        document.body.addEventListener('drop', e => {
-            e.preventDefault();
-            acceptImageFile(e.dataTransfer?.files?.[0]);
-        });
-        dropTarget?.addEventListener('click', () => fileInput.click());
 
-        // Remember last settings
+        function looksLikeImage(file) {
+            if (!file) return false;
+            if (file.type && file.type.indexOf('image/') === 0) return true;
+            return /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i.test(file.name || '');
+        }
+
+        bind(fileInput, 'change', function (e) {
+            const file = e && e.target && e.target.files && e.target.files[0];
+            if (!file) return;
+            loadFile(file);
+        });
+
+        bind(sizeSelect, 'change', function () { syncCustomUi(); drawPreview(); });
+        bind(customW, 'input', drawPreview);
+        bind(customH, 'input', drawPreview);
+        bind(modeSelect, 'change', drawPreview);
+        bind(exportBtn, 'click', function () { withBusy(exportBtn, exportImage); });
+        bind(el('btnReset'), 'click', clearImage);
+
+        const dropTarget = el('dropTarget');
+        function acceptImageFile(file) {
+            if (!looksLikeImage(file)) {
+                if (file) setMeta('That file does not look like an image.', true);
+                return;
+            }
+            try {
+                if (fileInput && typeof DataTransfer !== 'undefined') {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                }
+            } catch (_) {}
+            loadFile(file);
+        }
+        ['dragenter', 'dragover'].forEach(function (ev) {
+            bind(document.body, ev, function (e) {
+                e.preventDefault();
+                if (dropTarget) dropTarget.classList.add('dragover');
+            });
+        });
+        ['dragleave', 'drop'].forEach(function (ev) {
+            bind(document.body, ev, function (e) {
+                if (ev === 'drop') e.preventDefault();
+                if (dropTarget) dropTarget.classList.remove('dragover');
+            });
+        });
+        bind(document.body, 'drop', function (e) {
+            e.preventDefault();
+            acceptImageFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+        });
+        bind(dropTarget, 'click', function () { if (fileInput) fileInput.click(); });
+        bind(dropTarget, 'keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (fileInput) fileInput.click();
+            }
+        });
+
         const LS_CROP = 'fafo_image_cropper_settings_v1';
         function saveCropSettings() {
-            try {
-                localStorage.setItem(LS_CROP, JSON.stringify({
-                    size: sizeSelect.value,
-                    mode: modeSelect.value,
-                    format: formatSelect.value,
-                    customW: customW.value,
-                    customH: customH.value,
-                }));
-            } catch (_) {}
+            lsSet(LS_CROP, JSON.stringify({
+                size: sizeSelect ? sizeSelect.value : 'small',
+                mode: modeSelect ? modeSelect.value : 'cover',
+                format: formatSelect ? formatSelect.value : 'jpeg',
+                customW: customW ? customW.value : '1280',
+                customH: customH ? customH.value : '800',
+            }));
         }
         function restoreCropSettings() {
             try {
-                const raw = JSON.parse(localStorage.getItem(LS_CROP) || 'null');
+                const raw = JSON.parse(lsGet(LS_CROP, 'null') || 'null');
                 if (!raw) return;
-                if (raw.size && SIZES[raw.size]) sizeSelect.value = raw.size;
-                if (raw.mode) modeSelect.value = raw.mode;
-                if (raw.format) formatSelect.value = raw.format;
-                if (raw.customW) customW.value = raw.customW;
-                if (raw.customH) customH.value = raw.customH;
+                if (raw.size && SIZES[raw.size] && sizeSelect) sizeSelect.value = raw.size;
+                if (raw.mode && modeSelect) modeSelect.value = raw.mode;
+                if (raw.format && formatSelect) formatSelect.value = raw.format;
+                if (raw.customW && customW) customW.value = raw.customW;
+                if (raw.customH && customH) customH.value = raw.customH;
             } catch (_) {}
         }
-        sizeSelect.addEventListener('change', saveCropSettings);
-        modeSelect.addEventListener('change', saveCropSettings);
-        formatSelect.addEventListener('change', saveCropSettings);
-        customW.addEventListener('change', saveCropSettings);
-        customH.addEventListener('change', saveCropSettings);
+        bind(sizeSelect, 'change', saveCropSettings);
+        bind(modeSelect, 'change', saveCropSettings);
+        bind(formatSelect, 'change', saveCropSettings);
+        bind(customW, 'change', saveCropSettings);
+        bind(customH, 'change', saveCropSettings);
 
-        document.getElementById('sizePresets')?.addEventListener('click', e => {
-            const btn = e.target.closest('[data-size]');
-            if (!btn) return;
+        bind(el('sizePresets'), 'click', function (e) {
+            const btn = e.target && e.target.closest ? e.target.closest('[data-size]') : null;
+            if (!btn || !sizeSelect) return;
             sizeSelect.value = btn.dataset.size;
-            document.querySelectorAll('#sizePresets button').forEach(b => b.classList.toggle('active', b === btn));
+            document.querySelectorAll('#sizePresets button').forEach(function (b) { b.classList.toggle('active', b === btn); });
             syncCustomUi();
             drawPreview();
             saveCropSettings();
         });
 
-        document.addEventListener('keydown', e => {
+        document.addEventListener('keydown', function (e) {
             if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.key !== 'Escape') return;
-            if ((e.key === 'e' || e.key === 'E') && !exportBtn.disabled) {
+            if ((e.key === 'e' || e.key === 'E') && exportBtn && !exportBtn.disabled) {
                 e.preventDefault();
-                exportImage();
+                withBusy(exportBtn, exportImage);
             }
             if (e.key === 'Escape') { e.preventDefault(); clearImage(); }
             const sizeKeys = { '1': 'small', '2': 'icon128', '3': 'screenshot1280', '4': 'og1200' };
-            if (sizeKeys[e.key]) {
+            if (sizeKeys[e.key] && sizeSelect) {
                 e.preventDefault();
                 sizeSelect.value = sizeKeys[e.key];
-                document.querySelectorAll('#sizePresets button').forEach(b =>
-                    b.classList.toggle('active', b.dataset.size === sizeKeys[e.key]));
+                document.querySelectorAll('#sizePresets button').forEach(function (b) {
+                    b.classList.toggle('active', b.dataset.size === sizeKeys[e.key]);
+                });
                 syncCustomUi();
                 drawPreview();
                 saveCropSettings();
             }
         });
 
+        bind(window, 'pagehide', revokeAll);
+        bind(window, 'beforeunload', revokeAll);
+
         populateSizes();
         restoreCropSettings();
         syncCustomUi();
-        preview.width = 440;
-        preview.height = 280;
+        if (preview) { preview.width = 440; preview.height = 280; }
     </script>
 
 <script data-tool-polish="image-cropper">
@@ -452,40 +554,38 @@
   const TOOL_NAME = "Image Cropper";
   function launcherHref(){
     try {
-      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (window.AIToolboxUI && AIToolboxUI.launcherHref) return AIToolboxUI.launcherHref();
       if (location.hostname === '127.0.0.87' || location.port === '18765')
         return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
     } catch(_){}
     const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
-    if (a?.href) return a.href;
+    if (a && a.href) return a.href;
     return '../Toolbox Launcher.html';
   }
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    if (t && t.closest && t.closest('[role="dialog"], .modal, .overlay, .ui-modal')) return;
     location.href = launcherHref();
   }, true);
-  // One soft status toast so launch failures are visible
   window.addEventListener('load', function(){
     try {
       if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
       sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
-      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+      if (window.AIToolboxUI && AIToolboxUI.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
     } catch(_){}
   });
-  // Surface failed module loads
   window.addEventListener('error', function(ev){
-    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
-    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+    if (!ev || !ev.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { if (window.AIToolboxUI && AIToolboxUI.toast) AIToolboxUI.toast('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
   });
 })();
 </script>
 <script data-extra-polish="crop">
 (function(){
   try {
-    if (!sessionStorage.getItem('crop_tip') && window.AIToolboxUI?.toast) {
+    if (!sessionStorage.getItem('crop_tip') && window.AIToolboxUI && AIToolboxUI.toast) {
       sessionStorage.setItem('crop_tip','1');
       AIToolboxUI.toast('Cropper: pick a store preset, then export', 'ok');
     }

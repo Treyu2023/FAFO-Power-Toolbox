@@ -3,36 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAFO Dynamic Video Wall — AI HTML Toolbox</title>
+    <title>FAFO Video Wall — AI HTML Toolbox</title>
     <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html {
             width: 100%; height: 100%;
             background-color: #0b0b0c;
             font-family: 'Segoe UI', system-ui, sans-serif;
-            color: #e2e8f0;
+            color: #e4e4e7;
             overflow: hidden;
         }
         .toolbox-nav {
             position: fixed; top: 0; left: 0; right: 0; z-index: 30;
             display: flex; align-items: center; justify-content: space-between; gap: 10px;
             padding: 8px 14px;
-            background: rgba(5,5,8,.92);
-            border-bottom: 1px solid rgba(0,243,255,.2);
+            background: rgba(5,5,8,.94);
+            border-bottom: 1px solid rgba(0,243,255,.22);
             font-size: 12px;
         }
         .toolbox-nav a { color: #00f3ff; text-decoration: none; font-weight: 600; }
+        .toolbox-nav a:focus-visible,
+        .hud-controls button:focus-visible,
+        .hud-controls select:focus-visible,
+        .btn:focus-visible {
+            outline: 2px solid #00f3ff;
+            outline-offset: 2px;
+        }
         .hud-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-        .hud-controls button, .hud-controls select {
+        .hud-controls button, .hud-controls select, .hud-controls a.chip {
             background: rgba(0,243,255,.1); border: 1px solid rgba(0,243,255,.35);
             color: #00f3ff; padding: 5px 10px; border-radius: 6px; font-size: 11px;
-            cursor: pointer; font-weight: 600;
+            cursor: pointer; font-weight: 600; text-decoration: none;
         }
-        .hud-controls button:hover { background: #00f3ff; color: #000; }
-        .hud-controls select { color: #e2e8f0; background: #111; }
-        #statusText { color: #888; font-size: 11px; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .hud-controls a.chip.dim {
+            color: #d4d4d8; border-color: rgba(255,255,255,.16); background: transparent;
+        }
+        .hud-controls button:hover, .hud-controls a.chip:hover { background: #00f3ff; color: #000; }
+        .hud-controls button:disabled { opacity: .45; cursor: not-allowed; }
+        .hud-controls select { color: #e4e4e7; background: #111; }
+        #statusText {
+            color: #a1a1aa; font-size: 11px; max-width: 280px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        #statusText[data-tone="err"] { color: #fca5a5; }
+        #statusText[data-tone="ok"] { color: #86efac; }
 
         #setupOverlay {
             position: fixed; inset: 0;
@@ -41,11 +57,12 @@
             z-index: 20; transition: opacity 0.45s ease; padding: 24px; text-align: center;
             padding-top: 56px;
         }
+        #setupOverlay[hidden] { display: none !important; }
         #setupOverlay h1 {
             font-weight: 300; letter-spacing: 3px; color: #00f3ff; margin-bottom: 10px;
             text-shadow: 0 0 16px rgba(0,243,255,.4);
         }
-        #setupOverlay p { color: #888; font-size: 13px; max-width: 420px; line-height: 1.5; margin-bottom: 22px; }
+        #setupOverlay p { color: #a1a1aa; font-size: 13px; max-width: 440px; line-height: 1.5; margin-bottom: 22px; }
         .btn {
             background: #00f3ff; color: #000; border: none;
             padding: 14px 28px; font-size: 15px; font-weight: 700;
@@ -53,6 +70,7 @@
             box-shadow: 0 0 18px rgba(0,243,255,.35);
         }
         .btn:hover { filter: brightness(1.08); }
+        .btn:disabled { opacity: .5; cursor: wait; }
         .btn.secondary {
             background: transparent; color: #00f3ff; border: 1px solid #00f3ff;
             margin-top: 10px; box-shadow: none;
@@ -73,9 +91,9 @@
         .video-container {
             position: relative; background: #141416; border-radius: 6px; overflow: hidden;
             display: flex; justify-content: center; align-items: center;
-            border: 1px solid #27272a;
+            border: 1px solid #3f3f46;
         }
-        .video-container.hidden-slot { display: none; }
+        .video-container:focus-visible { outline: 2px solid #00f3ff; outline-offset: -2px; }
         video {
             width: 100%; height: 100%;
             object-fit: contain;
@@ -83,113 +101,195 @@
         }
         .video-label {
             position: absolute; bottom: 4px; left: 4px;
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0, 0, 0, 0.82);
             padding: 2px 6px; font-size: 11px; border-radius: 4px;
             max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            pointer-events: none; color: #a1a1aa;
+            pointer-events: none; color: #d4d4d8;
         }
         .hint-keys {
-            margin-top: 18px; font-size: 11px; color: #555; line-height: 1.6;
+            margin-top: 18px; font-size: 11px; color: #a1a1aa; line-height: 1.6;
+        }
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0,0,0,0); border: 0;
         }
     </style>
 </head>
 <body>
 <div data-fafo-layout-root data-fafo-layout-app="video-tools-gemplayhtml" data-fafo-layout-type="columns" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
-    <nav class="toolbox-nav">
-        <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <nav class="toolbox-nav" aria-label="Video wall">
+        <a href="../Toolbox Launcher.html" class="toolbox-back">Toolbox</a>
         <div class="hud-controls">
-            <a href="../Movie File Manager/Media Hub.html" style="color:#00f3ff;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(0,243,255,.3);border-radius:6px" title="Media Hub">🗂️ Hub</a>
-            <a href="Video Comparison Slider Tool.html" style="color:#00f3ff;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(0,243,255,.3);border-radius:6px" title="Video Comparator">🎬 Compare</a>
-            <a href="FAFO_VID_TRIM.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(255,255,255,.12);border-radius:6px" title="Video max-side / export">🎬 VID ŦRIM</a>
-            <a href="../Movie File Manager/VSR Pipeline Manager.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(255,255,255,.12);border-radius:6px" title="VSR pipeline">⚡ VSR</a>
-            <a href="../System Tools/Batch Media Converter.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:5px 8px;border:1px solid rgba(255,255,255,.12);border-radius:6px" title="Batch convert">🔄 Convert</a>
-            <button type="button" id="btnPick" data-tip-title="Folder" data-tip="Pick a media folder for the wall (many decodes — can be heavy).">📁 Folder</button>
-            <button type="button" id="btnShuffle" data-tip-title="Shuffle" data-tip="Reshuffle which files fill the slots.">🔀 Shuffle</button>
-            <button type="button" id="btnMute" data-tip-title="Mute" data-tip="Mute or unmute wall audio.">🔇 Unmute</button>
-            <select id="layoutSelect" title="Grid layout">
-                <option value="2x2">2×2 (4)</option>
-                <option value="3x2">3×2 (6)</option>
-                <option value="4x2" selected>4×2 (8)</option>
-                <option value="3x3">3×3 (9)</option>
+            <a class="chip" href="../Movie File Manager/Media Hub.html" title="Media Hub">Hub</a>
+            <a class="chip" href="Video Comparison Slider Tool.html" title="Video Comparator">Compare</a>
+            <a class="chip dim" href="FAFO_VID_TRIM.html" title="Video max-side / export">Trim</a>
+            <a class="chip dim" href="../Movie File Manager/VSR Pipeline Manager.html" title="VSR pipeline">VSR</a>
+            <a class="chip dim" href="../System Tools/Batch Media Converter.html" title="Batch convert">Convert</a>
+            <button type="button" id="btnPick" data-tip-title="Folder" data-tip="Pick a media folder for the wall (many decodes can be heavy).">Folder</button>
+            <button type="button" id="btnRescan" hidden data-tip-title="Rescan" data-tip="Rescan the last folder without picking again.">Rescan</button>
+            <button type="button" id="btnShuffle" data-tip-title="Shuffle" data-tip="Reshuffle which files fill the slots.">Shuffle</button>
+            <button type="button" id="btnMute" aria-pressed="true" data-tip-title="Mute" data-tip="Mute or unmute wall audio.">Unmute</button>
+            <label class="sr-only" for="layoutSelect">Grid layout</label>
+            <select id="layoutSelect" title="Grid layout" aria-label="Grid layout">
+                <option value="2x2">2x2 (4)</option>
+                <option value="3x2">3x2 (6)</option>
+                <option value="4x2" selected>4x2 (8)</option>
+                <option value="3x3">3x3 (9)</option>
             </select>
-            <select id="fitSelect" title="Object fit">
+            <label class="sr-only" for="fitSelect">Object fit</label>
+            <select id="fitSelect" title="Object fit" aria-label="Object fit">
                 <option value="contain">Contain</option>
                 <option value="cover">Cover</option>
             </select>
-            <button type="button" id="btnWallReport" data-tip-title="Report" data-tip="Copy a wall session report to the clipboard.">📋</button>
-            <span id="statusText">Pick a folder of videos</span>
+            <button type="button" id="btnWallReport" data-tip-title="Report" data-tip="Copy a wall session report to the clipboard.">Report</button>
+            <span id="statusText" role="status" aria-live="polite">Pick a folder of videos</span>
         </div>
-        <span style="color:#00f3ff;opacity:.7;font-size:11px">FAFO VIDEO WALL · <span style="opacity:.8">S shuffle · M mute · 1-4 layout</span></span>
-      <span data-fafo-layout-toolbar></span>
-</nav>
+        <span style="color:#00f3ff;opacity:.85;font-size:11px">VIDEO WALL · S shuffle · M mute · 1–4 layout · Esc overlay</span>
+        <span data-fafo-layout-toolbar></span>
+    </nav>
 
-    <div id="setupOverlay" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
-        <h1>FAFO VIDEO WALL</h1>
-        <p>Pick a folder (Chrome/Edge). Scans recursively for video files and fills a multi-slot wall that auto-cycles when clips end.</p>
-        <button class="btn" id="loadDirectoryBtn" data-tip-title="Select directory" data-tip="Choose the folder that fills the video wall.">Select Media Directory</button>
+    <div id="setupOverlay" role="dialog" aria-modal="true" aria-labelledby="wallTitle" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+        <h1 id="wallTitle">FAFO VIDEO WALL</h1>
+        <p>Chrome or Edge. Pick a folder — recursive scan, multi-slot wall, auto-cycle when a clip ends. Click a slot to skip it.</p>
+        <button class="btn" id="loadDirectoryBtn" data-tip-title="Select directory" data-tip="Choose the folder that fills the video wall.">Select media folder</button>
+        <p id="overlayErr" hidden style="color:#fca5a5;margin-top:12px;max-width:420px"></p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">
-            <button class="btn secondary" type="button" id="btnEmptyCompare" onclick="location.href='Video Comparison Slider Tool.html'">🎬 Video Compare</button>
-            <button class="btn secondary" type="button" onclick="location.href='../Movie File Manager/Media Hub.html'">🗂️ Media Hub</button>
+            <button class="btn secondary" type="button" id="btnEmptyCompare">Video Compare</button>
+            <button class="btn secondary" type="button" id="btnEmptyHub">Media Hub</button>
         </div>
-        <button class="btn secondary" id="btnBackToolbox" type="button">← Back to Toolbox</button>
-        <div class="hint-keys">Keys: <strong>S</strong> shuffle · <strong>M</strong> mute · <strong>1–4</strong> layouts · Esc overlay</div>
+        <button class="btn secondary" id="btnBackToolbox" type="button">Back to Toolbox</button>
+        <div class="hint-keys">Keys: <strong>S</strong> shuffle · <strong>M</strong> mute · <strong>1–4</strong> layouts · <strong>Esc</strong> overlay, again for launcher · <strong>R</strong> report</div>
     </div>
 
-    <div id="wallGrid" class="layout-4x2"></div>
+    <div id="wallGrid" class="layout-4x2" aria-label="Video wall"></div>
 
     <script>
         const VIDEO_EXT = new Set(['.mp4', '.webm', '.mkv', '.mov', '.m4v', '.avi', '.ogv']);
-        const LAYOUTS = {
-            '2x2': 4,
-            '3x2': 6,
-            '4x2': 8,
-            '3x3': 9,
-        };
+        const LAYOUTS = { '2x2': 4, '3x2': 6, '4x2': 8, '3x3': 9 };
+        const MAX_SLOT_RETRIES = 6;
+        const LS_WALL = 'fafo_video_wall_settings_v1';
 
         let videoFiles = [];
         let muted = true;
         let activeSlots = 8;
         let objectFit = 'contain';
+        let scanning = false;
         /** @type {FileSystemDirectoryHandle|null} */
         let lastDirHandle = null;
+        const inUse = new Set();
+        const slotRetries = Object.create(null);
 
         const grid = document.getElementById('wallGrid');
         const statusText = document.getElementById('statusText');
         const overlay = document.getElementById('setupOverlay');
+        const overlayErr = document.getElementById('overlayErr');
+        const btnMute = document.getElementById('btnMute');
+        const btnRescan = document.getElementById('btnRescan');
 
         function extOf(name) {
-            const i = name.lastIndexOf('.');
+            const i = String(name || '').lastIndexOf('.');
             return i >= 0 ? name.slice(i).toLowerCase() : '';
         }
 
-        function setStatus(msg) {
+        function setStatus(msg, tone) {
+            if (!statusText) return;
             statusText.textContent = msg || '';
+            if (tone) statusText.dataset.tone = tone;
+            else delete statusText.dataset.tone;
+        }
+
+        function setOverlayErr(msg) {
+            if (!overlayErr) return;
+            if (!msg) { overlayErr.hidden = true; overlayErr.textContent = ''; return; }
+            overlayErr.hidden = false;
+            overlayErr.textContent = msg;
+        }
+
+        function overlayVisible() {
+            return !!(overlay && !overlay.hasAttribute('hidden') && overlay.style.display !== 'none');
+        }
+
+        function hideOverlay() {
+            if (!overlay) return;
+            overlay.style.opacity = '0';
+            overlay.setAttribute('aria-hidden', 'true');
+            setTimeout(() => {
+                overlay.hidden = true;
+                overlay.style.display = 'none';
+            }, 420);
+        }
+
+        function showOverlay() {
+            if (!overlay) return;
+            document.querySelectorAll('#wallGrid video').forEach((v) => { try { v.pause(); } catch (_) {} });
+            overlay.hidden = false;
+            overlay.style.display = 'flex';
+            overlay.style.opacity = '1';
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function revokeSlot(videoEl) {
+            if (!videoEl) return;
+            const prev = videoEl.dataset.label;
+            if (prev) inUse.delete(prev);
+            if (videoEl.dataset.blobUrl) {
+                try { URL.revokeObjectURL(videoEl.dataset.blobUrl); } catch (_) {}
+                delete videoEl.dataset.blobUrl;
+            }
+            videoEl.removeAttribute('src');
+            try { videoEl.load(); } catch (_) {}
         }
 
         function buildSlots(count) {
-            grid.innerHTML = '';
+            if (!grid) return;
+            grid.querySelectorAll('video').forEach(revokeSlot);
+            grid.replaceChildren();
             for (let i = 0; i < count; i++) {
                 const wrap = document.createElement('div');
                 wrap.className = 'video-container';
-                wrap.innerHTML = `<video id="vid${i}" autoplay playsinline muted></video><div class="video-label" id="lbl${i}"></div>`;
-                grid.appendChild(wrap);
-                const v = wrap.querySelector('video');
+                wrap.tabIndex = 0;
+                wrap.dataset.slot = String(i);
+                wrap.title = 'Click or Enter: next clip in this slot';
+                const v = document.createElement('video');
+                v.id = 'vid' + i;
+                v.autoplay = true;
+                v.playsInline = true;
                 v.muted = muted;
+                v.defaultMuted = muted;
+                v.setAttribute('playsinline', '');
                 v.style.objectFit = objectFit;
+                const lbl = document.createElement('div');
+                lbl.className = 'video-label';
+                lbl.id = 'lbl' + i;
+                wrap.append(v, lbl);
+                wrap.addEventListener('click', () => setupPlayer(i));
+                wrap.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setupPlayer(i);
+                    }
+                });
+                grid.appendChild(wrap);
             }
         }
 
         function applyLayout(key) {
             const slots = LAYOUTS[key] || 8;
             activeSlots = slots;
-            grid.className = 'layout-' + key;
+            if (grid) grid.className = 'layout-' + key;
             buildSlots(slots);
             if (videoFiles.length) {
                 for (let i = 0; i < slots; i++) setupPlayer(i);
             }
         }
 
-        /** Recursive folder scan via File System Access API */
+        function pickFile() {
+            if (!videoFiles.length) return null;
+            const unused = videoFiles.filter((f) => !inUse.has(f.label));
+            const pool = unused.length ? unused : videoFiles;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
         async function collectVideos(dirHandle, prefix = '', out = []) {
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file') {
@@ -197,44 +297,68 @@
                         out.push({ handle: entry, label: prefix ? prefix + '/' + entry.name : entry.name });
                     }
                 } else if (entry.kind === 'directory') {
-                    // Skip heavy/system dirs
                     if (/^(node_modules|\.git|\.venv|__pycache__|thumbnails)$/i.test(entry.name)) continue;
                     try {
                         await collectVideos(entry, prefix ? prefix + '/' + entry.name : entry.name, out);
-                    } catch { /* permission / locked */ }
+                    } catch (_) { /* permission / locked */ }
                 }
             }
             return out;
         }
 
+        function setBusy(on) {
+            scanning = !!on;
+            ['loadDirectoryBtn', 'btnPick', 'btnRescan', 'btnShuffle'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = !!on;
+            });
+        }
+
         async function pickAndLoad(reuse) {
+            if (scanning) return;
+            setOverlayErr('');
             try {
                 let dirHandle = reuse && lastDirHandle ? lastDirHandle : null;
                 if (!dirHandle) {
                     if (!window.showDirectoryPicker) {
-                        alert('Chrome or Edge is required for folder access (File System Access API).');
+                        const msg = 'Chrome or Edge required (File System Access API).';
+                        setOverlayErr(msg);
+                        setStatus(msg, 'err');
                         return;
                     }
-                    dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+                    const opts = { mode: 'read', id: 'fafo-video-wall' };
+                    if (lastDirHandle) opts.startIn = lastDirHandle;
+                    dirHandle = await window.showDirectoryPicker(opts);
                 }
                 lastDirHandle = dirHandle;
+                if (btnRescan) btnRescan.hidden = false;
+                setBusy(true);
                 setStatus('Scanning…');
                 videoFiles = await collectVideos(dirHandle);
+                inUse.clear();
 
                 if (!videoFiles.length) {
-                    alert('No supported video files found (.mp4, .webm, .mkv, .mov, .m4v, .avi, .ogv) — including subfolders.');
-                    setStatus('No videos found');
+                    setOverlayErr('No supported videos in that tree (.mp4 .webm .mkv .mov .m4v .avi .ogv), including subfolders.');
+                    setStatus('No videos found', 'err');
+                    showOverlay();
                     return;
                 }
 
-                overlay.style.opacity = '0';
-                setTimeout(() => { overlay.style.display = 'none'; }, 450);
-                setStatus(`${videoFiles.length} video${videoFiles.length === 1 ? '' : 's'} · ${dirHandle.name}`);
-                for (let i = 0; i < activeSlots; i++) setupPlayer(i);
+                hideOverlay();
+                setStatus(videoFiles.length + ' video' + (videoFiles.length === 1 ? '' : 's') + ' · ' + dirHandle.name, 'ok');
+                for (let i = 0; i < activeSlots; i++) {
+                    slotRetries[i] = 0;
+                    setupPlayer(i);
+                }
             } catch (err) {
-                if (err && err.name === 'AbortError') return;
-                console.warn('Directory access failed:', err);
-                setStatus('Folder access cancelled or failed');
+                if (err && err.name === 'AbortError') {
+                    setStatus('Folder pick cancelled');
+                    return;
+                }
+                setStatus('Folder access failed', 'err');
+                setOverlayErr((err && err.message) ? String(err.message).slice(0, 160) : 'Folder access failed');
+            } finally {
+                setBusy(false);
             }
         }
 
@@ -243,90 +367,114 @@
             const labelEl = document.getElementById('lbl' + slotId);
             if (!videoEl || !videoFiles.length) return;
 
-            // Revoke previous blob URL
-            if (videoEl.dataset.blobUrl) {
-                try { URL.revokeObjectURL(videoEl.dataset.blobUrl); } catch { /* ignore */ }
-                delete videoEl.dataset.blobUrl;
-            }
+            revokeSlot(videoEl);
 
-            // Prefer unused files first when enough exist
-            const pick = videoFiles[Math.floor(Math.random() * videoFiles.length)];
+            const pick = pickFile();
+            if (!pick) return;
             try {
                 const file = await pick.handle.getFile();
                 const fileUrl = URL.createObjectURL(file);
                 videoEl.dataset.blobUrl = fileUrl;
-                labelEl.textContent = pick.label;
+                videoEl.dataset.label = pick.label;
+                inUse.add(pick.label);
+                if (labelEl) labelEl.textContent = pick.label;
                 videoEl.muted = muted;
+                videoEl.defaultMuted = muted;
                 videoEl.style.objectFit = objectFit;
                 videoEl.src = fileUrl;
+                slotRetries[slotId] = 0;
                 videoEl.play().catch(() => { /* autoplay policy */ });
             } catch (error) {
-                console.error('Slot ' + slotId + ' load failed:', error);
-                // Brief delay then retry another file
-                setTimeout(() => setupPlayer(slotId), 400);
+                const n = (slotRetries[slotId] || 0) + 1;
+                slotRetries[slotId] = n;
+                if (labelEl) labelEl.textContent = 'Slot failed · retry ' + n;
+                if (n >= MAX_SLOT_RETRIES) {
+                    setStatus('Slot ' + (slotId + 1) + ' gave up after ' + n + ' load errors', 'err');
+                    return;
+                }
+                setTimeout(() => setupPlayer(slotId), 350 * n);
                 return;
             }
 
             videoEl.onended = () => setupPlayer(slotId);
             videoEl.onerror = () => {
-                console.warn('Playback error slot ' + slotId);
+                const n = (slotRetries[slotId] || 0) + 1;
+                slotRetries[slotId] = n;
+                if (n >= MAX_SLOT_RETRIES) return;
                 setupPlayer(slotId);
             };
         }
 
         function shuffleAll() {
-            if (!videoFiles.length) return;
-            for (let i = 0; i < activeSlots; i++) setupPlayer(i);
-            setStatus(`Shuffled · ${videoFiles.length} videos`);
+            if (!videoFiles.length || scanning) return;
+            for (let i = 0; i < activeSlots; i++) {
+                slotRetries[i] = 0;
+                setupPlayer(i);
+            }
+            setStatus('Shuffled · ' + videoFiles.length + ' videos');
+        }
+
+        function syncMuteButton() {
+            if (!btnMute) return;
+            btnMute.textContent = muted ? 'Unmute' : 'Mute';
+            btnMute.setAttribute('aria-pressed', muted ? 'true' : 'false');
         }
 
         function toggleMute() {
             muted = !muted;
-            document.querySelectorAll('video').forEach(v => { v.muted = muted; });
-            document.getElementById('btnMute').textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+            document.querySelectorAll('video').forEach((v) => {
+                v.muted = muted;
+                v.defaultMuted = muted;
+            });
+            syncMuteButton();
         }
 
-        // Remember layout / fit
-        const LS_WALL = 'fafo_video_wall_settings_v1';
         try {
             const saved = JSON.parse(localStorage.getItem(LS_WALL) || 'null');
-            if (saved?.layout) document.getElementById('layoutSelect').value = saved.layout;
-            if (saved?.fit) {
-                document.getElementById('fitSelect').value = saved.fit;
+            const layoutEl = document.getElementById('layoutSelect');
+            const fitEl = document.getElementById('fitSelect');
+            if (saved?.layout && LAYOUTS[saved.layout] && layoutEl) layoutEl.value = saved.layout;
+            if (saved?.fit && fitEl) {
+                fitEl.value = saved.fit;
                 objectFit = saved.fit;
             }
-            if (typeof saved?.muted === 'boolean') {
-                muted = saved.muted;
-                document.getElementById('btnMute').textContent = muted ? '🔇 Unmute' : '🔊 Mute';
-            }
+            if (typeof saved?.muted === 'boolean') muted = saved.muted;
+            syncMuteButton();
         } catch (_) {}
+
         function saveWallSettings() {
             try {
                 localStorage.setItem(LS_WALL, JSON.stringify({
-                    layout: document.getElementById('layoutSelect').value,
-                    fit: document.getElementById('fitSelect').value,
+                    layout: document.getElementById('layoutSelect')?.value || '4x2',
+                    fit: document.getElementById('fitSelect')?.value || 'contain',
                     muted,
                 }));
             } catch (_) {}
         }
 
-        // Init default grid
-        applyLayout(document.getElementById('layoutSelect').value || '4x2');
+        applyLayout(document.getElementById('layoutSelect')?.value || '4x2');
 
-        document.getElementById('loadDirectoryBtn').addEventListener('click', () => pickAndLoad(false));
-        document.getElementById('btnPick').addEventListener('click', () => pickAndLoad(false));
-        document.getElementById('btnShuffle').addEventListener('click', shuffleAll);
-        document.getElementById('btnMute').addEventListener('click', () => { toggleMute(); saveWallSettings(); });
+        document.getElementById('loadDirectoryBtn')?.addEventListener('click', () => pickAndLoad(false));
+        document.getElementById('btnPick')?.addEventListener('click', () => pickAndLoad(false));
+        document.getElementById('btnRescan')?.addEventListener('click', () => pickAndLoad(true));
+        document.getElementById('btnShuffle')?.addEventListener('click', shuffleAll);
+        document.getElementById('btnMute')?.addEventListener('click', () => { toggleMute(); saveWallSettings(); });
         document.getElementById('btnBackToolbox')?.addEventListener('click', () => {
             location.href = '../Toolbox Launcher.html';
         });
-        document.getElementById('layoutSelect').addEventListener('change', (e) => {
+        document.getElementById('btnEmptyCompare')?.addEventListener('click', () => {
+            location.href = 'Video Comparison Slider Tool.html';
+        });
+        document.getElementById('btnEmptyHub')?.addEventListener('click', () => {
+            location.href = '../Movie File Manager/Media Hub.html';
+        });
+        document.getElementById('layoutSelect')?.addEventListener('change', (e) => {
             applyLayout(e.target.value);
             saveWallSettings();
         });
-        document.getElementById('fitSelect').addEventListener('change', (e) => {
+        document.getElementById('fitSelect')?.addEventListener('change', (e) => {
             objectFit = e.target.value;
-            document.querySelectorAll('video').forEach(v => { v.style.objectFit = objectFit; });
+            document.querySelectorAll('video').forEach((v) => { v.style.objectFit = objectFit; });
             saveWallSettings();
         });
         document.getElementById('btnWallReport')?.addEventListener('click', async () => {
@@ -334,36 +482,49 @@
                 'FAFO Video Wall — session report',
                 'Time: ' + new Date().toISOString(),
                 'Videos loaded: ' + videoFiles.length,
-                'Layout: ' + document.getElementById('layoutSelect').value,
+                'Layout: ' + (document.getElementById('layoutSelect')?.value || ''),
                 'Fit: ' + objectFit,
                 'Muted: ' + muted,
                 'Active slots: ' + activeSlots,
-                'Status: ' + (document.getElementById('statusText')?.textContent || ''),
+                'Status: ' + (statusText?.textContent || ''),
             ].join('\n');
             try {
                 await navigator.clipboard.writeText(text);
-                setStatus('Report copied');
-            } catch (_) { prompt('Copy report:', text); }
+                setStatus('Report copied', 'ok');
+            } catch (_) {
+                window.prompt('Copy report:', text);
+            }
         });
 
         document.addEventListener('keydown', (e) => {
             if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+            if (e.target?.isContentEditable) return;
+            if (e.key === 'Escape') {
+                if (overlayVisible()) {
+                    location.href = '../Toolbox Launcher.html';
+                } else {
+                    showOverlay();
+                }
+                return;
+            }
+            if (overlayVisible()) return;
             if (e.key === 's' || e.key === 'S') shuffleAll();
             if (e.key === 'm' || e.key === 'M') { toggleMute(); saveWallSettings(); }
-            if (e.key === '1') { document.getElementById('layoutSelect').value = '2x2'; applyLayout('2x2'); saveWallSettings(); }
-            if (e.key === '2') { document.getElementById('layoutSelect').value = '3x2'; applyLayout('3x2'); saveWallSettings(); }
-            if (e.key === '3') { document.getElementById('layoutSelect').value = '4x2'; applyLayout('4x2'); saveWallSettings(); }
-            if (e.key === '4') { document.getElementById('layoutSelect').value = '3x3'; applyLayout('3x3'); saveWallSettings(); }
+            if (e.key === '1') { const el = document.getElementById('layoutSelect'); if (el) el.value = '2x2'; applyLayout('2x2'); saveWallSettings(); }
+            if (e.key === '2') { const el = document.getElementById('layoutSelect'); if (el) el.value = '3x2'; applyLayout('3x2'); saveWallSettings(); }
+            if (e.key === '3') { const el = document.getElementById('layoutSelect'); if (el) el.value = '4x2'; applyLayout('4x2'); saveWallSettings(); }
+            if (e.key === '4') { const el = document.getElementById('layoutSelect'); if (el) el.value = '3x3'; applyLayout('3x3'); saveWallSettings(); }
             if (e.key === 'r' || e.key === 'R') document.getElementById('btnWallReport')?.click();
-            if (e.key === 'Escape' && overlay.style.display === 'none') {
-                overlay.style.display = 'flex';
-                overlay.style.opacity = '1';
-            }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            const vids = document.querySelectorAll('#wallGrid video');
+            if (document.hidden) vids.forEach((v) => { try { v.pause(); } catch (_) {} });
+            else vids.forEach((v) => { v.play().catch(() => {}); });
         });
     </script>
 
 <script data-tool-polish="video-wall">
-/* Tool polish: video-wall — Esc → launcher, load toast, error surface */
 (function(){
   if (window.__tbToolPolish) return; window.__tbToolPolish = true;
   const TOOL_ID = "video-wall";
@@ -378,37 +539,17 @@
     if (a?.href) return a.href;
     return '../Toolbox Launcher.html';
   }
-  document.addEventListener('keydown', function(e){
-    if (e.key !== 'Escape') return;
-    const t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
-    location.href = launcherHref();
-  }, true);
-  // One soft status toast so launch failures are visible
+  window.__fafoWallLauncherHref = launcherHref;
   window.addEventListener('load', function(){
     try {
       if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
       sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
-      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = overlay, again = launcher', 'ok');
     } catch(_){}
   });
-  // Surface failed module loads
   window.addEventListener('error', function(ev){
     if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
     try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
-  });
-})();
-</script>
-<script data-extra-polish="vwall">
-(function(){
-  // Ensure any autoplay videos stay muted (browser policy + living-room safe)
-  document.addEventListener('DOMContentLoaded', function(){
-    document.querySelectorAll('video').forEach(function(v){ v.muted = true; v.defaultMuted = true; });
-    const obs = new MutationObserver(function(){
-      document.querySelectorAll('video').forEach(function(v){ if(!v.muted) v.muted = true; });
-    });
-    obs.observe(document.body, { childList:true, subtree:true });
   });
 })();
 </script>

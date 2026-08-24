@@ -8,27 +8,39 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
-      --bg: #050508;
-      --panel: #0c0f16;
-      --border: rgba(0, 243, 255, 0.18);
+      --bg: #0b1220;
+      --panel: #121a28;
+      --border: rgba(0, 243, 255, 0.22);
       --accent: #00f3ff;
-      --accent2: #a78bfa;
+      --accent2: #e879f9;
+      --gold: #f5d76e;
       --ok: #4ade80;
       --warn: #fbbf24;
       --danger: #f87171;
-      --text: #e2e8f0;
-      --muted: #64748b;
+      --text: #e8eef8;
+      --muted: #94a3b8;
+    }
+    :focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
-      background: radial-gradient(ellipse at 50% -15%, #0f1a2a, var(--bg) 55%);
+      background: radial-gradient(ellipse at 50% -15%, #132033, var(--bg) 55%);
       color: var(--text); min-height: 100vh;
     }
     .top {
       display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
       padding: 12px 18px; border-bottom: 1px solid var(--border);
-      background: rgba(5, 5, 8, 0.95); position: sticky; top: 0; z-index: 20;
+      background: rgba(11, 18, 32, 0.96); position: sticky; top: 0; z-index: 20;
     }
     .top h1 { font-size: 16px; font-weight: 600; color: var(--accent); letter-spacing: 0.04em; margin-right: 6px; }
     .wrap { max-width: 1280px; margin: 0 auto; padding: 18px 18px 48px; }
@@ -332,6 +344,39 @@
 
     const params = new URLSearchParams(location.search);
 
+    function el(id) {
+      try { return document.getElementById(id); } catch (_) { return null; }
+    }
+    function setText(id, text) {
+      const n = typeof id === 'string' ? el(id) : id;
+      if (n) n.textContent = text == null ? '' : String(text);
+    }
+    function bind(id, ev, fn) {
+      const n = typeof id === 'string' ? el(id) : id;
+      if (!n || !fn) return;
+      n.addEventListener(ev, fn);
+    }
+    function lsGet(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? fallback : v;
+      } catch (_) { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+    }
+    async function withBusy(fn) {
+      if (busy) return;
+      busy = true;
+      const loadBtn = el('btnLoad');
+      if (loadBtn) loadBtn.disabled = true;
+      try { return await fn(); }
+      finally {
+        busy = false;
+        if (loadBtn) loadBtn.disabled = false;
+      }
+    }
+
     function toast(msg, type) { UI()?.toast?.(msg, type || ''); }
 
     function scoreClass(score) {
@@ -362,77 +407,106 @@
 
     function updateProgress() {
       const c = counts();
-      document.getElementById('progressWrap').style.display = queue.length ? '' : 'none';
-      document.getElementById('posLabel').textContent = queue.length ? String(index + 1) : '0';
-      document.getElementById('totalLabel').textContent = String(c.total);
-      document.getElementById('nAccept').textContent = c.accept + ' accepted';
-      document.getElementById('nReject').textContent = c.reject + ' rejected';
-      document.getElementById('nSkip').textContent = c.skip + ' skipped';
-      document.getElementById('nLeft').textContent = c.left + ' left';
-      const t = Math.max(1, c.total);
-      document.getElementById('barOk').style.width = (c.accept / t * 100) + '%';
-      document.getElementById('barNo').style.width = (c.reject / t * 100) + '%';
-      document.getElementById('barLeft').style.width = (c.left / t * 100) + '%';
+      const wrap = el('progressWrap');
+      if (wrap) wrap.style.display = queue.length ? '' : 'none';
+      setText('posLabel', queue.length ? String(index + 1) : '0');
+      setText('totalLabel', String(c.total));
+      setText('nAccept', c.accept + ' accepted');
+      setText('nReject', c.reject + ' rejected');
+      setText('nSkip', c.skip + ' skipped');
+      setText('nLeft', c.left + ' left');
+      const tot = Math.max(1, c.total);
+      const barOk = el('barOk');
+      const barNo = el('barNo');
+      const barLeft = el('barLeft');
+      if (barOk) barOk.style.width = (c.accept / tot * 100) + '%';
+      if (barNo) barNo.style.width = (c.reject / tot * 100) + '%';
+      if (barLeft) barLeft.style.width = (c.left / tot * 100) + '%';
 
-      const dots = document.getElementById('queueDots');
+      const dots = el('queueDots');
+      if (!dots) return;
       dots.innerHTML = queue.map((q, i) => {
         const cls = ['q-dot', q.decision !== 'pending' ? q.decision : '', i === index ? 'current' : ''].filter(Boolean).join(' ');
-        return `<button type="button" class="${cls}" data-i="${i}" title="${esc(q.label)}">${i + 1}</button>`;
+        return '<button type="button" class="' + cls + '" data-i="' + i + '" title="' + esc(q.label) + '">' + (i + 1) + '</button>';
       }).join('');
       dots.querySelectorAll('[data-i]').forEach(btn => {
-        btn.onclick = () => { index = +btn.dataset.i; renderItem(); };
+        btn.onclick = () => {
+          const i = Number(btn.dataset.i);
+          if (!Number.isFinite(i)) return;
+          index = i;
+          renderItem();
+        };
       });
     }
 
-    function clearMedia(el) {
-      el.innerHTML = '<div class="empty-media">No preview</div>';
+    function revokeMediaUrls(box) {
+      if (!box) return;
+      box.querySelectorAll('img,video,source').forEach(m => {
+        const src = m.getAttribute('src') || '';
+        if (src.startsWith('blob:')) {
+          try { URL.revokeObjectURL(src); } catch (_) { /* ignore */ }
+        }
+      });
     }
 
-    function setMediaFromItem(el, item, side) {
-      if (!item) { clearMedia(el); return; }
-      // Catalog suggestions: stream by media id
+    function clearMedia(box) {
+      if (!box) return;
+      revokeMediaUrls(box);
+      box.innerHTML = '<div class="empty-media">No preview</div>';
+    }
+
+    function setMediaFromItem(box, item, side) {
+      if (!box) return;
+      if (!item) { clearMedia(box); return; }
+      const api = API();
       if (item._useMediaId) {
         const mid = side === 'before' ? item.beforeMediaId : item.afterMediaId;
-        if (mid && API().mediaFileUrl) {
-          const url = API().mediaFileUrl(mid);
+        if (mid && api && api.mediaFileUrl) {
+          const url = api.mediaFileUrl(mid);
           const isImage = item.kind === 'image';
-          el.innerHTML = isImage
-            ? `<img alt="" src="${esc(url)}">`
-            : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
-          const media = el.querySelector('img,video');
-          if (media) media.onerror = () => clearMedia(el);
+          revokeMediaUrls(box);
+          box.innerHTML = isImage
+            ? '<img alt="" src="' + esc(url) + '">'
+            : '<video controls muted playsinline preload="metadata" src="' + esc(url) + '"></video>';
+          const media = box.querySelector('img,video');
+          if (media) media.onerror = () => clearMedia(box);
           return;
         }
       }
       const path = side === 'before' ? item.beforePath : item.afterPath;
       const name = side === 'before' ? item.beforeName : item.afterName;
-      if (!path) { clearMedia(el); return; }
-      const url = API().fileServeUrl(path);
+      if (!path) { clearMedia(box); return; }
+      const url = api && api.fileServeUrl ? api.fileServeUrl(path) : '';
+      if (!url) { clearMedia(box); return; }
       const isImage = item.kind === 'image' || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(path || name || '');
-      el.innerHTML = isImage
-        ? `<img alt="" src="${esc(url)}">`
-        : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
-      const media = el.querySelector('img,video');
-      if (media) media.onerror = () => clearMedia(el);
+      revokeMediaUrls(box);
+      box.innerHTML = isImage
+        ? '<img alt="" src="' + esc(url) + '">'
+        : '<video controls muted playsinline preload="metadata" src="' + esc(url) + '"></video>';
+      const media = box.querySelector('img,video');
+      if (media) media.onerror = () => clearMedia(box);
     }
 
     function updateFooterButtons() {
-      document.getElementById('btnApplyAccepted').disabled = !queue.some(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName);
-      document.getElementById('btnDryAccepted').disabled = !queue.some(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName);
-      document.getElementById('btnSavePairs').disabled = !queue.some(q => q.decision === 'accept' && ((q.beforeMediaId && q.afterMediaId && !q.pairId) || (q.beforePath && q.afterPath && !q.pairId)));
-      document.getElementById('btnDeleteRejected').disabled = !queue.some(q => q.decision === 'reject' && q.pairId);
+      const canRename = queue.some(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName);
+      const canSave = queue.some(q => q.decision === 'accept' && ((q.beforeMediaId && q.afterMediaId && !q.pairId) || (q.beforePath && q.afterPath && !q.pairId)));
+      const canDel = queue.some(q => q.decision === 'reject' && q.pairId);
+      const ba = el('btnApplyAccepted'); if (ba) ba.disabled = !canRename;
+      const bd = el('btnDryAccepted'); if (bd) bd.disabled = !canRename;
+      const bs = el('btnSavePairs'); if (bs) bs.disabled = !canSave;
+      const bdel = el('btnDeleteRejected'); if (bdel) bdel.disabled = !canDel;
     }
 
     function renderItem() {
       updateProgress();
       const item = current();
-      const empty = document.getElementById('emptyState');
-      const active = document.getElementById('activeReview');
+      const empty = el('emptyState');
+      const active = el('activeReview');
 
       if (!item) {
-        active.style.display = 'none';
-        empty.style.display = '';
-        empty.innerHTML = queue.length
+        if (active) active.style.display = 'none';
+        if (empty) empty.style.display = '';
+        if (empty) empty.innerHTML = queue.length
           ? ('<strong>Queue finished reviewing.</strong><br>Apply accepted renames or reload.' +
              '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
              '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Reload queue</button>' +
@@ -449,27 +523,29 @@
              '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Hub</button>' +
              '<button class="ui-btn ghost" type="button" onclick="location.href=\'../Toolbox Launcher.html\'">← Launcher</button>' +
              '</div>');
-        document.getElementById('btnEmptyLoad2')?.addEventListener('click', () => loadQueue());
-        document.getElementById('btnEmptyStartServer2')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click());
+        bind('btnEmptyLoad2', 'click', () => loadQueue());
+        bind('btnEmptyStartServer2', 'click', () => el('btnStartServer')?.click());
         updateFooterButtons();
         return;
       }
 
-      empty.style.display = 'none';
-      active.style.display = '';
+      if (empty) empty.style.display = 'none';
+      if (active) active.style.display = '';
 
-      document.getElementById('beforeName').textContent = item.beforeName || '—';
-      document.getElementById('afterName').textContent = item.afterName || '—';
-      document.getElementById('itemTitle').textContent = item.label || (item.beforeName + ' ↔ ' + item.afterName);
-      document.getElementById('kindVal').textContent = item.kind || 'video';
-      document.getElementById('stageVal').textContent = item.mode || '—';
+      setText('beforeName', item.beforeName || '—');
+      setText('afterName', item.afterName || '—');
+      setText('itemTitle', item.label || ((item.beforeName || '') + ' ↔ ' + (item.afterName || '')));
+      setText('kindVal', item.kind || 'video');
+      setText('stageVal', item.mode || '—');
 
-      const pill = document.getElementById('scorePill');
-      pill.textContent = scoreLabel(item.score);
-      pill.className = 'score-pill ' + scoreClass(item.score || 0);
+      const pill = el('scorePill');
+      if (pill) {
+        pill.textContent = scoreLabel(item.score);
+        pill.className = 'score-pill ' + scoreClass(item.score || 0);
+      }
 
-      const dec = document.getElementById('decisionVal');
-      dec.textContent = '';
+      const dec = el('decisionVal');
+      if (dec) dec.textContent = '';
       if (item.decision === 'pending') {
         dec.textContent = 'pending';
       } else {
@@ -479,17 +555,17 @@
         dec.appendChild(sp);
       }
 
-      const rl = document.getElementById('renameLine');
+      const rl = el('renameLine');
       if (item.proposedName) {
-        rl.style.display = '';
-        document.getElementById('renameFrom').textContent = item.currentName || item.afterName;
-        document.getElementById('renameTo').textContent = item.proposedName + (item.renameNeeded === false ? ' (already OK)' : '');
-      } else {
+        if (rl) rl.style.display = '';
+        setText('renameFrom', item.currentName || item.afterName);
+        setText('renameTo', item.proposedName + (item.renameNeeded === false ? ' (already OK)' : ''));
+      } else if (rl) {
         rl.style.display = 'none';
       }
 
-      setMediaFromItem(document.getElementById('beforeMedia'), item, 'before');
-      setMediaFromItem(document.getElementById('afterMedia'), item, 'after');
+      setMediaFromItem(el('beforeMedia'), item, 'before');
+      setMediaFromItem(el('afterMedia'), item, 'after');
       wireEndedAdvance();
       updateFooterButtons();
     }
@@ -504,9 +580,9 @@
     const UPDATE_FILES_KEY = 'aitoolbox_update_files_on_next';
 
     function isUpdateFilesOnNext() {
-      const el = document.getElementById('chkUpdateFiles');
-      if (el) return !!el.checked;
-      return localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+      const box = el('chkUpdateFiles');
+      if (box) return !!box.checked;
+      return lsGet(UPDATE_FILES_KEY, '1') !== '0';
     }
 
     /**
@@ -516,7 +592,7 @@
     async function flushItemFilesToDisk(item) {
       if (!isUpdateFilesOnNext() || !item) return;
       if (!API()?.flushMediaTagsToFile) return;
-      const online = await API().isOnline?.(false, 800).catch(() => false);
+      const online = await API()?.isOnline?.(false, 800).catch(() => false);
       if (!online) {
         toast('Server offline — skipped file tag write', 'warn');
         return;
@@ -547,11 +623,11 @@
     }
 
     function wireEndedAdvance() {
-      const afterBox = document.getElementById('afterMedia');
-      const beforeBox = document.getElementById('beforeMedia');
+      const afterBox = el('afterMedia');
+      const beforeBox = el('beforeMedia');
       const vids = [...document.querySelectorAll('#activeReview video')];
       vids.forEach(v => { v.onended = null; });
-      if (!document.getElementById('chkAutoNext')?.checked) return;
+      if (!el('chkAutoNext')?.checked) return;
       const afterV = afterBox?.querySelector('video');
       const beforeV = beforeBox?.querySelector('video');
       const primary = afterV || beforeV;
@@ -574,7 +650,8 @@
 
     async function setDecision(dec) {
       const item = current();
-      if (!item || busy) return;
+      if (!item) return;
+      await withBusy(async () => {
       item.decision = dec;
       // Write previous (this) pair's tags/rating to files before leaving
       await flushItemFilesToDisk(item);
@@ -602,6 +679,7 @@
       renderItem();
       toast(dec === 'accept' ? 'Accepted' : dec === 'reject' ? 'Rejected' : 'Skipped',
         dec === 'accept' ? 'ok' : 'warn');
+      });
     }
 
     function undoDecision() {
@@ -622,10 +700,12 @@
     async function openComparator() {
       const item = current();
       if (!item) return;
+      const api = API();
+      if (!api) { toast('API unavailable', 'warn'); return; }
       try {
         let pairId = item.pairId;
         if (!pairId && item.beforePath && item.afterPath) {
-          const p = await API().savePairFromPaths({
+          const p = await api.savePairFromPaths({
             beforePath: item.beforePath,
             afterPath: item.afterPath,
             name: item.label || '',
@@ -633,14 +713,15 @@
             pinned: false,
             notes: 'pair-review-temp',
           });
-          pairId = p.id;
+          pairId = p && p.id;
           item.pairId = pairId;
         }
         if (!pairId) {
           toast('No pair id — save as catalog pair first or use VSR paths', 'warn');
           return;
         }
-        const url = API().comparatorUrl({ id: pairId, kind: item.kind || 'video' }, {});
+        const url = api.comparatorUrl ? api.comparatorUrl({ id: pairId, kind: item.kind || 'video' }, {}) : '';
+        if (!url) { toast('Comparator URL unavailable', 'warn'); return; }
         window.open(url, '_blank');
       } catch (e) {
         toast(e.message || String(e), 'warn');
@@ -677,103 +758,103 @@
     }
 
     async function loadQueue() {
-      busy = true;
-      document.getElementById('btnLoad').disabled = true;
-      document.getElementById('applyStatus').textContent = '';
-      try {
-        const online = await API().isOnline(true);
-        if (!online) throw new Error('Server offline — click ▶ Start Server');
+      await withBusy(async () => {
+        const st = el('applyStatus');
+        if (st) st.textContent = '';
+        try {
+          const api = API();
+          if (!api || !api.isOnline) throw new Error('API unavailable');
+          const online = await api.isOnline(true);
+          if (!online) throw new Error('Server offline — click ▶ Start Server');
 
-        const source = document.getElementById('sourceSelect').value;
-        const onlyRename = document.getElementById('onlyRename').checked;
-        const minScore = parseFloat(document.getElementById('minScore').value) || 0;
-        let items = [];
+          const source = (el('sourceSelect') && el('sourceSelect').value) || 'vsr1';
+          const onlyRename = !!(el('onlyRename') && el('onlyRename').checked);
+          const minScore = parseFloat((el('minScore') && el('minScore').value) || '') || 0;
+          let items = [];
 
-        if (source === 'vsr1' || source === 'vsr2') {
-          const stage = source === 'vsr1' ? '1' : '2';
-          const data = await API().vsrPreview();
-          if (data.error) throw new Error(data.error);
-          const rows = stage === '1' ? (data.stage1 || []) : (data.stage2 || []);
-          items = rows.map(r => mapVsrItem(r, stage));
-          if (onlyRename) items = items.filter(i => i.renameNeeded);
-          document.getElementById('modeHint').textContent =
-            `VSR Stage ${stage === '1' ? 'I' : 'II'} · ${items.length} matches`;
-        } else if (source === 'catalog') {
-          const pairs = await API().listPairs();
-          for (const p of pairs) {
-            let beforePath = p.beforePath || '', afterPath = p.afterPath || '';
-            try {
-              const paths = await API().getPairPaths(p.id);
-              beforePath = paths.before || beforePath;
-              afterPath = paths.after || afterPath;
-            } catch { /* paths optional */ }
-            items.push({
-              id: p.id,
-              mode: 'catalog',
-              kind: p.kind || 'video',
-              score: 1,
-              beforePath,
-              afterPath,
-              beforeName: p.beforeName || 'before',
-              afterName: p.afterName || 'after',
-              beforeMediaId: p.beforeMediaId,
-              afterMediaId: p.afterMediaId,
-              pairId: p.id,
-              decision: 'pending',
-              label: p.name || `${p.beforeName || 'before'} ↔ ${p.afterName || 'after'}`,
-            });
+          if (source === 'vsr1' || source === 'vsr2') {
+            const stage = source === 'vsr1' ? '1' : '2';
+            const data = (api.vsrPreview && await api.vsrPreview()) || {};
+            if (data.error) throw new Error(data.error);
+            const rows = stage === '1' ? (data.stage1 || []) : (data.stage2 || []);
+            items = (Array.isArray(rows) ? rows : []).map(r => mapVsrItem(r || {}, stage));
+            if (onlyRename) items = items.filter(i => i.renameNeeded);
+            setText('modeHint', 'VSR Stage ' + (stage === '1' ? 'I' : 'II') + ' · ' + items.length + ' matches');
+          } else if (source === 'catalog') {
+            const pairs = api.listPairs ? await api.listPairs() : [];
+            for (const pair of (Array.isArray(pairs) ? pairs : [])) {
+              let beforePath = pair.beforePath || '', afterPath = pair.afterPath || '';
+              try {
+                const paths = (api.getPairPaths && await api.getPairPaths(pair.id)) || {};
+                beforePath = paths.before || beforePath;
+                afterPath = paths.after || afterPath;
+              } catch { /* paths optional */ }
+              items.push({
+                id: pair.id,
+                mode: 'catalog',
+                kind: pair.kind || 'video',
+                score: 1,
+                beforePath,
+                afterPath,
+                beforeName: pair.beforeName || 'before',
+                afterName: pair.afterName || 'after',
+                beforeMediaId: pair.beforeMediaId,
+                afterMediaId: pair.afterMediaId,
+                pairId: pair.id,
+                decision: 'pending',
+                label: pair.name || ((pair.beforeName || 'before') + ' ↔ ' + (pair.afterName || 'after')),
+              });
+            }
+            setText('modeHint', 'Catalog · ' + items.length + ' pairs');
+          } else if (source === 'suggest') {
+            const sug = api.suggestPairs ? await api.suggestPairs(120, {
+              minRatio: 0.45,
+              tailLen: 5,
+              useTail: true,
+              useDigits: true,
+              useFuzzy: true,
+              useFolder: true,
+              forcePost: true,
+            }) : [];
+            for (const s of (Array.isArray(sug) ? sug : [])) {
+              items.push({
+                id: 'sug-' + (s.before_id || '') + '-' + (s.after_id || ''),
+                mode: 'suggest',
+                kind: 'video',
+                score: Number(s.confidence) || 0,
+                beforePath: '',
+                afterPath: '',
+                beforeName: s.before_name || '',
+                afterName: s.after_name || '',
+                beforeMediaId: s.before_id,
+                afterMediaId: s.after_id,
+                decision: 'pending',
+                label: (s.before_name || '') + ' ↔ ' + (s.after_name || '') + ' (' + (s.reason || 'suggest') + (s.tail ? ' · tail ' + s.tail : '') + ')',
+              });
+            }
+            items = items.map(it => Object.assign({}, it, { _useMediaId: true }));
+            setText('modeHint', 'Suggestions (multi-signal) · ' + items.length);
           }
-          document.getElementById('modeHint').textContent = `Catalog · ${items.length} pairs`;
-        } else if (source === 'suggest') {
-          const sug = await API().suggestPairs(120, {
-            minRatio: 0.45,
-            tailLen: 5,
-            useTail: true,
-            useDigits: true,
-            useFuzzy: true,
-            useFolder: true,
-            forcePost: true,
-          });
-          for (const s of sug) {
-            items.push({
-              id: `sug-${s.before_id}-${s.after_id}`,
-              mode: 'suggest',
-              kind: 'video',
-              score: Number(s.confidence) || 0,
-              beforePath: '',
-              afterPath: '',
-              beforeName: s.before_name || '',
-              afterName: s.after_name || '',
-              beforeMediaId: s.before_id,
-              afterMediaId: s.after_id,
-              decision: 'pending',
-              label: `${s.before_name} ↔ ${s.after_name} (${s.reason || 'suggest'}${s.tail ? ' · tail ' + s.tail : ''})`,
-            });
+
+          if (minScore > 0) {
+            items = items.filter(i => (i.score || 0) >= minScore || (i.score > 1 && i.score / 100 >= minScore));
           }
-          items = items.map(it => ({ ...it, _useMediaId: true }));
-          document.getElementById('modeHint').textContent = `Suggestions (multi-signal) · ${items.length}`;
-        }
 
-        if (minScore > 0) {
-          items = items.filter(i => (i.score || 0) >= minScore || (i.score > 1 && i.score / 100 >= minScore));
+          queue = items;
+          index = 0;
+          if (!queue.length) toast('No items for this source / filter', 'warn');
+          else toast('Loaded ' + queue.length + ' item(s)', 'ok');
+          renderItem();
+        } catch (e) {
+          toast(e.message || String(e), 'warn');
+          queue = [];
+          renderItem();
         }
-
-        queue = items;
-        index = 0;
-        if (!queue.length) toast('No items for this source / filter', 'warn');
-        else toast(`Loaded ${queue.length} item(s)`, 'ok');
-        renderItem();
-      } catch (e) {
-        toast(e.message || String(e), 'warn');
-        queue = [];
-        renderItem();
-      } finally {
-        busy = false;
-        document.getElementById('btnLoad').disabled = false;
-      }
+      });
     }
 
     async function applyAccepted(dryRun) {
+      await withBusy(async () => {
       const renames = queue
         .filter(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName)
         .map(q => ({ path: q.renamePath, new_name: q.proposedName }));
@@ -782,7 +863,7 @@
         return;
       }
       if (!dryRun) {
-        const conf = await UI().confirmAction({
+        const conf = await UI()?.confirmAction?.({
           title: 'Apply accepted renames?',
           body: `<strong>${renames.length}</strong> file(s) will be renamed on disk. Rejected/skipped items are left alone.`,
           preview: renames.slice(0, 12).map(r => ({ from: r.path.split(/[/\\]/).pop(), to: r.new_name })),
@@ -790,14 +871,14 @@
           confirmText: `Rename ${renames.length}`,
           cancelText: 'Cancel',
         });
-        if (!conf.confirmed) return;
+        if (!conf?.confirmed) return;
       }
       try {
-        const r = await API().vsrApplySelected(renames, dryRun);
+        const r = await API()?.vsrApplySelected?.(renames, dryRun) || {};
         const msg = dryRun
-          ? `Dry run: ${r.ok}/${r.count} would succeed`
-          : `Renamed ${r.ok}/${r.count}` + (r.failed ? ` · ${r.failed} failed` : '');
-        document.getElementById('applyStatus').textContent = msg;
+          ? `Dry run: ${r.ok || 0}/${r.count || 0} would succeed`
+          : `Renamed ${r.ok || 0}/${r.count || 0}` + (r.failed ? ` · ${r.failed} failed` : '');
+        setText('applyStatus', msg);
         toast(msg, r.failed ? 'warn' : 'ok');
         if (!dryRun && r.ok) {
           try {
@@ -820,9 +901,11 @@
       } catch (e) {
         toast(e.message || String(e), 'warn');
       }
+      });
     }
 
     async function saveAcceptedPairs() {
+      await withBusy(async () => {
       const toSave = queue.filter(q => q.decision === 'accept' && q.beforeMediaId && q.afterMediaId && !q.pairId);
       if (!toSave.length) {
         // Try path-based for VSR accepts
@@ -842,7 +925,7 @@
               pinned: true,
               notes: 'pair-review-accepted',
             });
-            q.pairId = p.id;
+            q.pairId = p && p.id;
             n++;
           } catch (e) {
             console.warn(e);
@@ -889,21 +972,23 @@
       }
       toast(`Saved ${n} catalog pair(s)`, n ? 'ok' : 'warn');
       renderItem();
+      });
     }
 
     async function deleteRejectedPairs() {
+      await withBusy(async () => {
       const toDel = queue.filter(q => q.decision === 'reject' && q.pairId);
       if (!toDel.length) {
         toast('No rejected catalog pairs', 'warn');
         return;
       }
-      const conf = await UI().confirmAction({
+      const conf = await UI()?.confirmAction?.({
         title: 'Delete rejected pairs?',
         body: `Removes <strong>${toDel.length}</strong> pair link(s) from the catalog (files stay on disk).`,
         confirmText: 'Delete pair links',
         cancelText: 'Cancel',
       });
-      if (!conf.confirmed) return;
+      if (!conf?.confirmed) return;
       let n = 0;
       for (const q of toDel) {
         try {
@@ -925,72 +1010,71 @@
       }
       toast(`Deleted ${n} pair link(s)`, 'ok');
       renderItem();
+      });
     }
 
     // Wire buttons
-    document.getElementById('btnLoad').onclick = loadQueue;
-    document.getElementById('btnEmptyLoad')?.addEventListener('click', () => loadQueue());
-    document.getElementById('btnEmptyStartServer')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click());
-    document.getElementById('btnAccept').onclick = () => setDecision('accept');
-    document.getElementById('btnReject').onclick = () => setDecision('reject');
-    document.getElementById('btnSkip').onclick = () => setDecision('skip');
-    document.getElementById('btnPrev').onclick = async () => {
+    bind('btnLoad', 'click', () => loadQueue());
+    bind('btnEmptyLoad', 'click', () => loadQueue());
+    bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
+    bind('btnAccept', 'click', () => setDecision('accept'));
+    bind('btnReject', 'click', () => setDecision('reject'));
+    bind('btnSkip', 'click', () => setDecision('skip'));
+    bind('btnPrev', 'click', async () => {
       if (index > 0) {
         await flushItemFilesToDisk(current());
         index--;
         renderItem();
       }
-    };
-    document.getElementById('btnNext').onclick = async () => {
+    });
+    bind('btnNext', 'click', async () => {
       if (index < queue.length - 1) {
         await flushItemFilesToDisk(current());
         index++;
         renderItem();
       }
-    };
-    document.getElementById('btnNextPlay').onclick = () => goNextAndPlay();
-    document.getElementById('btnSwapSides').onclick = swapCurrentSides;
-    document.getElementById('chkAutoNext')?.addEventListener('change', wireEndedAdvance);
+    });
+    bind('btnNextPlay', 'click', () => goNextAndPlay());
+    bind('btnSwapSides', 'click', swapCurrentSides);
+    bind('chkAutoNext', 'change', wireEndedAdvance);
     // Sync Update files toggle (shared with Pair Studio / Comparator)
     (() => {
-      const el = document.getElementById('chkUpdateFiles');
-      if (!el) return;
-      el.checked = localStorage.getItem(UPDATE_FILES_KEY) !== '0';
-      el.addEventListener('change', () => {
-        localStorage.setItem(UPDATE_FILES_KEY, el.checked ? '1' : '0');
+      const box = el('chkUpdateFiles');
+      if (!box) return;
+      box.checked = lsGet(UPDATE_FILES_KEY, '1') !== '0';
+      bind(box, 'change', () => {
+        lsSet(UPDATE_FILES_KEY, box.checked ? '1' : '0');
       });
     })();
-    document.getElementById('btnUndo').onclick = undoDecision;
-    document.getElementById('btnCompare').onclick = openComparator;
-    document.getElementById('btnApplyAccepted').onclick = () => applyAccepted(false);
-    document.getElementById('btnDryAccepted').onclick = () => applyAccepted(true);
-    document.getElementById('btnSavePairs').onclick = saveAcceptedPairs;
-    document.getElementById('btnDeleteRejected').onclick = deleteRejectedPairs;
+    bind('btnUndo', 'click', undoDecision);
+    bind('btnCompare', 'click', openComparator);
+    bind('btnApplyAccepted', 'click', () => applyAccepted(false));
+    bind('btnDryAccepted', 'click', () => applyAccepted(true));
+    bind('btnSavePairs', 'click', saveAcceptedPairs);
+    bind('btnDeleteRejected', 'click', deleteRejectedPairs);
 
     const LS_REVIEW = 'fafo_pair_review_settings_v1';
     function saveReviewSettings() {
-      try {
-        localStorage.setItem(LS_REVIEW, JSON.stringify({
-          source: document.getElementById('sourceSelect').value,
-          onlyRename: document.getElementById('onlyRename').checked,
-          minScore: document.getElementById('minScore').value,
-          autoNext: document.getElementById('chkAutoNext')?.checked !== false,
-        }));
-      } catch (_) {}
+      lsSet(LS_REVIEW, JSON.stringify({
+        source: el('sourceSelect') && el('sourceSelect').value,
+        onlyRename: !!(el('onlyRename') && el('onlyRename').checked),
+        minScore: el('minScore') && el('minScore').value,
+        autoNext: el('chkAutoNext') ? el('chkAutoNext').checked !== false : true,
+      }));
     }
     function restoreReviewSettings() {
       try {
-        const raw = JSON.parse(localStorage.getItem(LS_REVIEW) || 'null');
+        const raw = JSON.parse(lsGet(LS_REVIEW, 'null') || 'null');
         if (!raw) return;
-        if (raw.source) document.getElementById('sourceSelect').value = raw.source;
-        if (typeof raw.onlyRename === 'boolean') document.getElementById('onlyRename').checked = raw.onlyRename;
-        if (raw.minScore != null) document.getElementById('minScore').value = raw.minScore;
-        if (document.getElementById('chkAutoNext') && typeof raw.autoNext === 'boolean')
-          document.getElementById('chkAutoNext').checked = raw.autoNext;
+        if (raw.source && el('sourceSelect')) el('sourceSelect').value = raw.source;
+        if (typeof raw.onlyRename === 'boolean' && el('onlyRename')) el('onlyRename').checked = raw.onlyRename;
+        if (raw.minScore != null && el('minScore')) el('minScore').value = raw.minScore;
+        if (el('chkAutoNext') && typeof raw.autoNext === 'boolean')
+          el('chkAutoNext').checked = raw.autoNext;
       } catch (_) {}
     }
     ['sourceSelect', 'onlyRename', 'minScore', 'chkAutoNext'].forEach(id => {
-      document.getElementById(id)?.addEventListener('change', saveReviewSettings);
+      bind(id, 'change', saveReviewSettings);
     });
 
     async function exportReviewReport() {
@@ -999,7 +1083,7 @@
       const lines = [
         'FAFO Pair Review Queue — session report',
         'Time: ' + new Date().toISOString(),
-        'Source: ' + document.getElementById('sourceSelect').value,
+        'Source: ' + ((el('sourceSelect') && el('sourceSelect').value) || ''),
         'Queue size: ' + c.total,
         'Accepted: ' + c.accept + ' · Rejected: ' + c.reject + ' · Skipped: ' + c.skip + ' · Left: ' + c.left,
         'Position: ' + (queue.length ? (index + 1) : 0) + ' / ' + c.total,
@@ -1017,10 +1101,11 @@
         toast('Review report copied', 'ok');
       } catch (_) { prompt('Copy report:', text); }
     }
-    document.getElementById('btnExportReview')?.addEventListener('click', exportReviewReport);
+    bind('btnExportReview', 'click', exportReviewReport);
 
     document.addEventListener('keydown', (e) => {
       if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      if (busy) return;
       const k = e.key;
       if (k === 'a' || k === 'A' || k === 'Enter') { e.preventDefault(); setDecision('accept'); }
       else if (k === 'r' || k === 'R' || k === 'x' || k === 'X') { e.preventDefault(); setDecision('reject'); }
@@ -1052,17 +1137,18 @@
     (function applyQuery() {
       const src = (params.get('source') || '').toLowerCase();
       const stage = params.get('stage') || '1';
+      const srcEl = el('sourceSelect');
       if (src === 'vsr' || src === 'vsr1' || src === 'stage1') {
-        document.getElementById('sourceSelect').value = stage === '2' || stage === 'II' ? 'vsr2' : 'vsr1';
+        if (srcEl) srcEl.value = stage === '2' || stage === 'II' ? 'vsr2' : 'vsr1';
       } else if (src === 'vsr2' || src === 'stage2') {
-        document.getElementById('sourceSelect').value = 'vsr2';
+        if (srcEl) srcEl.value = 'vsr2';
       } else if (src === 'catalog' || src === 'pairs') {
-        document.getElementById('sourceSelect').value = 'catalog';
+        if (srcEl) srcEl.value = 'catalog';
       } else if (src === 'suggest' || src === 'suggestions') {
-        document.getElementById('sourceSelect').value = 'suggest';
+        if (srcEl) srcEl.value = 'suggest';
       }
-      if (params.get('min') != null) document.getElementById('minScore').value = params.get('min');
-      if (params.get('all') === '1') document.getElementById('onlyRename').checked = false;
+      if (params.get('min') != null && el('minScore')) el('minScore').value = params.get('min');
+      if (params.get('all') === '1' && el('onlyRename')) el('onlyRename').checked = false;
     })();
 
     if (UI()?.bindServerControls) {
@@ -1075,9 +1161,9 @@
         },
       });
     } else {
-      document.getElementById('btnStartServer').onclick = async () => {
+      bind('btnStartServer', 'click', async () => {
         await API()?.startServer?.({ mode: 'tray' });
-      };
+      });
     }
 
     // mediaFileUrl helper if missing

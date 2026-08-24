@@ -8,26 +8,29 @@
   <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
-      --bg: #050508; --panel: #0c0c12; --panel2: #12121a;
-      --accent: #00f3ff; --accent2: #ff6b35; --ok: #00ff88;
-      --text: #e8e8ec; --muted: #888; --border: rgba(0,243,255,.18);
+      --bg: #070b12; --panel: #0c1220; --panel2: #141c2c;
+      --accent: #00f3ff; --gold: #f5c542; --magenta: #e879f9;
+      --ok: #34d399; --warn: #fbbf24; --danger: #f43f5e;
+      --text: #f1f5f9; --muted: #b6c4d8; --border: rgba(0,243,255,.24);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       min-height: 100vh;
-      background: radial-gradient(ellipse at 30% 0%, #141428 0%, var(--bg) 55%);
+      background:
+        radial-gradient(ellipse at 20% -10%, rgba(96,165,250,.14), transparent 50%),
+        radial-gradient(ellipse at 50% -20%, #0f172a, var(--bg) 60%);
       color: var(--text);
       font-family: 'Segoe UI', system-ui, sans-serif;
     }
     .nav {
       display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
       padding: 10px 18px; border-bottom: 1px solid var(--border);
-      background: rgba(8,8,14,.92); position: sticky; top: 0; z-index: 20;
+      background: rgba(5,5,8,.95); position: sticky; top: 0; z-index: 20;
     }
     .nav a {
       color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px;
     }
-    .nav .t { color: var(--accent); letter-spacing: .08em; font-weight: 700; font-size: 13px; }
+    .nav .t { color: var(--gold); letter-spacing: .08em; font-weight: 700; font-size: 13px; }
     .nav .chip {
       font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
       border: 1px solid var(--border); color: var(--muted); text-decoration: none;
@@ -47,8 +50,8 @@
     .kpi .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
     .kpi .val { font-size: 20px; font-weight: 700; color: var(--accent); margin-top: 6px; }
     .kpi .val.ok { color: var(--ok); }
-    .kpi .val.warn { color: var(--accent2); }
-    .kpi .val.pink { color: #f472b6; }
+    .kpi .val.warn { color: var(--warn); }
+    .kpi .val.pink { color: var(--magenta); }
     .grid2 {
       display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-bottom: 16px;
     }
@@ -57,6 +60,7 @@
       background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
       padding: 14px 16px; min-height: 200px;
     }
+    .card:hover { border-color: var(--gold); }
     .card h2 {
       font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
       color: var(--muted); margin-bottom: 12px;
@@ -73,7 +77,8 @@
       padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
     }
     .btn:hover { background: rgba(0,243,255,.1); }
-    .btn.danger { border-color: rgba(255,68,102,.45); color: #ff6b8a; }
+    .btn:disabled { opacity: .5; cursor: wait; }
+    .btn.danger { border-color: rgba(244,63,94,.45); color: var(--danger); }
     .btn.primary { border-color: var(--accent); background: rgba(0,243,255,.12); }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -85,7 +90,7 @@
       display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
       border: 1px solid var(--border); color: var(--muted);
     }
-    .pill.live { color: var(--ok); border-color: rgba(0,255,136,.4); }
+    .pill.live { color: var(--ok); border-color: rgba(52,211,153,.4); }
     .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
     .tab {
       background: transparent; border: 1px solid var(--border); color: var(--muted);
@@ -101,6 +106,15 @@
     }
     .metric-chip .m-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
     .metric-chip .m-val { font-size: 16px; font-weight: 700; color: var(--text); margin-top: 4px; }
+    .btn:focus-visible, .tab:focus-visible, .card:focus-visible, .nav a:focus-visible, a:focus-visible {
+      outline: 2px solid var(--gold); outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #d5deea; --border: rgba(0,243,255,.45); }
+    }
   </style>
 </head>
 <body>
@@ -140,10 +154,10 @@
     <div class="grid2">
       <div class="card" data-fafo-panel="charts" data-fafo-panel-title="Charts">
         <h2>Activity by tool</h2>
-        <div class="tabs" id="chartTabs">
-          <button type="button" class="tab on" data-chart="bytes">Storage freed</button>
-          <button type="button" class="tab" data-chart="pairs">Pair decisions</button>
-          <button type="button" class="tab" data-chart="actions">Actions</button>
+        <div class="tabs" id="chartTabs" role="tablist">
+          <button type="button" class="tab on" data-chart="bytes" role="tab" aria-selected="true">Storage freed</button>
+          <button type="button" class="tab" data-chart="pairs" role="tab" aria-selected="false">Pair decisions</button>
+          <button type="button" class="tab" data-chart="actions" role="tab" aria-selected="false">Actions</button>
         </div>
         <div class="chart-row">
           <canvas id="pieMain" width="220" height="220"></canvas>
@@ -186,20 +200,84 @@
   <script src="../shared/aitoolbox-pro.js"></script>
   <script>
 (function () {
-  const S = () => window.FAFOOpsStats;
-  const fmt = (n) => (S() ? S().formatBytes(n) : n);
-  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
+  const UI = () => window.AIToolboxUI;
+  function el(id) {
+    try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+  }
+  function setText(id, text) {
+    const n = el(id);
+    if (n) n.textContent = text == null ? '' : String(text);
+  }
+  function setHtml(id, html) {
+    const n = el(id);
+    if (n) n.innerHTML = html == null ? '' : String(html);
+  }
+  function bind(id, ev, fn) {
+    const n = el(id);
+    if (!n || !fn) return;
+    n.addEventListener(ev, fn);
+  }
+  function lsGet(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v == null ? fallback : v;
+    } catch (_) { return fallback; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+  }
+  function escHtml(s) {
+    const u = UI()?.escapeHtml;
+    if (typeof u === 'function') return u(s);
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  const esc = escHtml;
+  let busy = false;
+  const _blobUrls = [];
+  function trackBlob(url) {
+    if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+    return url;
+  }
+  function revokeBlobs() {
+    while (_blobUrls.length) {
+      try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+    }
+  }
+  window.addEventListener('pagehide', revokeBlobs);
+  async function withBusy(fn, btnId) {
+    if (busy) return;
+    busy = true;
+    const b = btnId ? el(btnId) : null;
+    if (b) b.disabled = true;
+    try { return await fn(); }
+    finally {
+      busy = false;
+      if (b) b.disabled = false;
+    }
+  }
 
-  let chartMode = 'bytes';
+  const S = () => window.FAFOOpsStats || null;
+  const fmt = (n) => (S() && S().formatBytes ? S().formatBytes(n) : String(n == null ? 0 : n));
+  const CHART_MODES = ['bytes', 'pairs', 'actions'];
+  const PREF_KEY = 'fafo_ops_stats_chart_v1';
+  let chartMode = CHART_MODES.includes(lsGet(PREF_KEY, 'bytes')) ? lsGet(PREF_KEY, 'bytes') : 'bytes';
+
+  function safeColor(c) {
+    const s = String(c || '');
+    return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : '#00f3ff';
+  }
 
   function drawPie(canvas, slices, centerLabel) {
+    if (!canvas || !canvas.getContext) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const list = Array.isArray(slices) ? slices : [];
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.38;
-    const total = slices.reduce((a, s) => a + s.value, 0);
+    const total = list.reduce((a, s) => a + (Number(s.value) || 0), 0);
     if (!total) {
       ctx.fillStyle = '#444';
       ctx.beginPath();
@@ -212,17 +290,17 @@
       return;
     }
     let a0 = -Math.PI / 2;
-    slices.forEach((s) => {
-      const a1 = a0 + (s.value / total) * Math.PI * 2;
+    list.forEach((s) => {
+      const a1 = a0 + ((Number(s.value) || 0) / total) * Math.PI * 2;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r, a0, a1);
       ctx.closePath();
-      ctx.fillStyle = s.color;
+      ctx.fillStyle = safeColor(s.color);
       ctx.fill();
       a0 = a1;
     });
-    ctx.fillStyle = '#0c0c12';
+    ctx.fillStyle = '#0c1220';
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.52, 0, Math.PI * 2);
     ctx.fill();
@@ -233,35 +311,39 @@
   }
 
   function drawBars(canvas, points) {
+    if (!canvas || !canvas.getContext) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pts = Array.isArray(points) ? points : [];
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    if (!points.length) {
+    if (!pts.length) {
       ctx.fillStyle = '#888';
       ctx.font = '12px system-ui';
       ctx.fillText('No sessions yet — use tools to start the tally.', 12, h / 2);
       return;
     }
-    const max = Math.max(1, ...points.map((p) => p.value));
+    const max = Math.max(1, ...pts.map((p) => Number(p.value) || 0));
     const pad = { l: 36, r: 10, t: 12, b: 36 };
-    const bw = (w - pad.l - pad.r) / points.length;
-    points.forEach((p, i) => {
-      const bh = ((h - pad.t - pad.b) * p.value) / max;
+    const bw = (w - pad.l - pad.r) / pts.length;
+    pts.forEach((p, i) => {
+      const bh = ((h - pad.t - pad.b) * (Number(p.value) || 0)) / max;
       const x = pad.l + i * bw + 4;
       const y = h - pad.b - bh;
-      ctx.fillStyle = p.color || '#00f3ff';
+      ctx.fillStyle = safeColor(p.color);
       ctx.fillRect(x, y, Math.max(4, bw - 8), bh);
       ctx.fillStyle = '#666';
       ctx.font = '9px system-ui';
       ctx.save();
       ctx.translate(x + (bw - 8) / 2, h - 8);
       ctx.rotate(-0.6);
-      ctx.fillText(p.label, 0, 0);
+      ctx.fillText(String(p.label || ''), 0, 0);
       ctx.restore();
     });
   }
 
   function toolActivityScore(b) {
+    b = b || {};
     return (b.actions || 0)
       + (b.filesRemoved || 0)
       + (b.pairMatches || 0) + (b.pairRejects || 0)
@@ -273,6 +355,7 @@
   }
 
   function summarizeSession(s) {
+    s = s || {};
     const parts = [];
     if (s.filesRemoved) parts.push(s.filesRemoved + ' files');
     if (s.bytesFreed) parts.push(fmt(s.bytesFreed));
@@ -288,44 +371,73 @@
     return parts.join(' · ') || '—';
   }
 
+  function setChartMode(mode) {
+    if (!CHART_MODES.includes(mode)) mode = 'bytes';
+    chartMode = mode;
+    lsSet(PREF_KEY, mode);
+    const tabs = el('chartTabs');
+    if (tabs) {
+      tabs.querySelectorAll('.tab').forEach((btn) => {
+        const on = (btn.dataset.chart || '') === mode;
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    render();
+  }
+
+  function cycleChart(dir) {
+    const i = Math.max(0, CHART_MODES.indexOf(chartMode));
+    setChartMode(CHART_MODES[(i + dir + CHART_MODES.length) % CHART_MODES.length]);
+  }
+
   function render() {
-    const snap = S().snapshot({ limit: 40 });
+    const api = S();
+    if (!api || typeof api.snapshot !== 'function') {
+      setHtml('kpis', '<div class="empty">Ops stats module not loaded.</div>');
+      return;
+    }
+    let snap;
+    try { snap = api.snapshot({ limit: 40 }) || {}; }
+    catch (_) { snap = {}; }
     const L = snap.lifetime || {};
     const pairTotal = (L.pairMatches || 0) + (L.pairRejects || 0);
     const pairPct = pairTotal
       ? Math.round(((L.pairMatches || 0) / pairTotal) * 100) + '%'
       : '—';
 
-    document.getElementById('kpis').innerHTML = `
+    setHtml('kpis', `
       <div class="kpi"><div class="lbl">Files removed</div><div class="val warn">${(L.filesRemoved || 0).toLocaleString()}</div></div>
-      <div class="kpi"><div class="lbl">Storage freed</div><div class="val ok">${fmt(L.bytesFreed || 0)}</div></div>
+      <div class="kpi"><div class="lbl">Storage freed</div><div class="val ok">${esc(fmt(L.bytesFreed || 0))}</div></div>
       <div class="kpi"><div class="lbl">Pair matches ✓</div><div class="val pink">${(L.pairMatches || 0).toLocaleString()}</div></div>
       <div class="kpi"><div class="lbl">Pair rejects ✗</div><div class="val warn">${(L.pairRejects || 0).toLocaleString()}</div></div>
       <div class="kpi"><div class="lbl">Match rate</div><div class="val">${pairPct}</div></div>
       <div class="kpi"><div class="lbl">Syncs / renames</div><div class="val">${(L.syncsCompleted || 0).toLocaleString()} / ${(L.renamesApplied || 0).toLocaleString()}</div></div>
       <div class="kpi"><div class="lbl">Typing runs</div><div class="val">${(L.typingRuns || 0).toLocaleString()}</div></div>
       <div class="kpi"><div class="lbl">Sessions</div><div class="val">${(L.sessionCount || 0).toLocaleString()}</div></div>
-    `;
+    `);
 
     const open = snap.openSession;
-    const pill = document.getElementById('sessionPill');
-    if (open && (open.actions || open.filesRemoved || open.pairMatches || open.typingRuns)) {
-      pill.textContent = `Live · ${open.label || open.tool} · ${summarizeSession(open)}`;
-      pill.className = 'pill live';
-    } else {
-      pill.textContent = 'No open dirty session';
-      pill.className = 'pill';
+    const pill = el('sessionPill');
+    if (pill) {
+      if (open && (open.actions || open.filesRemoved || open.pairMatches || open.typingRuns)) {
+        pill.textContent = `Live · ${open.label || open.tool} · ${summarizeSession(open)}`;
+        pill.className = 'pill live';
+      } else {
+        pill.textContent = 'No open dirty session';
+        pill.className = 'pill';
+      }
     }
 
-    const byTool = L.byTool || {};
+    const byTool = L.byTool && typeof L.byTool === 'object' ? L.byTool : {};
     const toolRows = Object.keys(byTool).map((id) => {
-      const meta = S().toolMeta(id);
-      const b = byTool[id];
+      const meta = (typeof api.toolMeta === 'function' ? api.toolMeta(id) : null) || {};
+      const b = byTool[id] || {};
       return {
         id,
-        label: meta.label,
-        emoji: meta.emoji,
-        color: meta.color,
+        label: meta.label || id,
+        emoji: meta.emoji || '',
+        color: safeColor(meta.color),
         b,
         score: toolActivityScore(b),
         bytes: b.bytesFreed || 0,
@@ -337,87 +449,92 @@
     let slices;
     let center;
     if (chartMode === 'pairs') {
-      slices = toolRows.map((s) => ({ ...s, value: s.pairs })).filter((s) => s.value > 0);
+      slices = toolRows.map((s) => Object.assign({}, s, { value: s.pairs })).filter((s) => s.value > 0);
       center = String(slices.reduce((a, s) => a + s.value, 0));
     } else if (chartMode === 'actions') {
-      slices = toolRows.map((s) => ({ ...s, value: s.actions })).filter((s) => s.value > 0);
+      slices = toolRows.map((s) => Object.assign({}, s, { value: s.actions })).filter((s) => s.value > 0);
       center = String(slices.reduce((a, s) => a + s.value, 0));
     } else {
-      slices = toolRows.map((s) => ({ ...s, value: s.bytes })).filter((s) => s.value > 0);
+      slices = toolRows.map((s) => Object.assign({}, s, { value: s.bytes })).filter((s) => s.value > 0);
       center = fmt(slices.reduce((a, s) => a + s.value, 0));
     }
-    // fallback: any activity if chosen metric empty
     if (!slices.length) {
-      slices = toolRows.map((s) => ({ ...s, value: s.score })).filter((s) => s.value > 0);
+      slices = toolRows.map((s) => Object.assign({}, s, { value: s.score })).filter((s) => s.value > 0);
       center = String(slices.reduce((a, s) => a + s.value, 0));
     }
 
-    drawPie(document.getElementById('pieMain'), slices, center);
-    document.getElementById('pieLegend').innerHTML = slices.length
+    drawPie(el('pieMain'), slices, center);
+    setHtml('pieLegend', slices.length
       ? slices.map((s) => {
-          const b = s.b;
+          const b = s.b || {};
           const detail = chartMode === 'pairs'
             ? `${b.pairMatches || 0}✓ / ${b.pairRejects || 0}✗`
             : chartMode === 'actions'
               ? `${s.actions} actions`
-              : `${fmt(s.bytes)} · ${b.filesRemoved || 0} files`;
-          return `<li><i style="background:${s.color}"></i><strong style="color:#ddd">${esc(s.label)}</strong> · ${detail}</li>`;
+              : `${esc(fmt(s.bytes))} · ${b.filesRemoved || 0} files`;
+          return `<li><i style="background:${safeColor(s.color)}"></i><strong style="color:#ddd">${esc(s.label)}</strong> · ${detail}</li>`;
         }).join('')
-      : '<li>Use pairing, cleanup, or typing tools to populate charts.</li>';
+      : '<li>Use pairing, cleanup, or typing tools to populate charts.</li>');
 
-    const sess = (snap.sessions || []).slice(0, 12).reverse();
-    drawBars(document.getElementById('barSessions'), sess.map((s) => ({
-      label: new Date(s.startedAt || s.endedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      value: s.actions || toolActivityScore(s) || 0,
-      color: (S().toolMeta(s.tool) || {}).color || '#00f3ff',
-    })));
+    const sess = (Array.isArray(snap.sessions) ? snap.sessions : []).slice(0, 12).reverse();
+    drawBars(el('barSessions'), sess.map((s) => {
+      const when = s.startedAt || s.endedAt;
+      let label = '—';
+      if (when) {
+        const d = new Date(when);
+        if (!isNaN(d.getTime())) label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      }
+      const meta = (typeof api.toolMeta === 'function' ? api.toolMeta(s.tool) : null) || {};
+      return {
+        label,
+        value: s.actions || toolActivityScore(s) || 0,
+        color: safeColor(meta.color),
+      };
+    }));
 
-    // All metrics grid
-    const defs = S().METRIC_DEFS || {};
-    const metricKeys = Object.keys(defs).filter((k) => k !== 'typingWpmSum' && (L[k] || 0) > 0 || defs[k]?.primary);
-    const showKeys = [...new Set([
+    const defs = api.METRIC_DEFS || {};
+    const showKeys = [
       'filesRemoved', 'bytesFreed', 'groupsMerged',
       'pairMatches', 'pairRejects', 'pairSkips', 'syncsCompleted',
       'renamesApplied', 'pairsSaved', 'pairsDeleted',
       'scansCompleted', 'filesOrganized', 'conversions',
       'typingRuns', 'typingChars', 'typingBestWpm', 'actions',
-    ])];
-    document.getElementById('metricGrid').innerHTML = showKeys.map((k) => {
+    ];
+    setHtml('metricGrid', showKeys.map((k) => {
       const def = defs[k] || { label: k };
       let val = L[k] || 0;
-      let display = S().formatMetric ? S().formatMetric(k, val) : String(val);
+      let display = api.formatMetric ? api.formatMetric(k, val) : String(val);
       if (k === 'typingBestWpm' && val) display = val + ' WPM';
       if (k === 'typingRuns' && L.typingWpmSum && val) {
-        display = val.toLocaleString() + ' · avg ' + S().avgWpm(L) + ' WPM';
+        display = val.toLocaleString() + ' · avg ' + (api.avgWpm ? api.avgWpm(L) : '—') + ' WPM';
       }
-      return `<div class="metric-chip"><div class="m-lbl">${esc(def.label)}</div><div class="m-val">${display}</div></div>`;
-    }).join('');
+      return `<div class="metric-chip"><div class="m-lbl">${esc(def.label)}</div><div class="m-val">${esc(display)}</div></div>`;
+    }).join(''));
 
-    // Typing by actor
-    const byActor = L.byActor || {};
+    const byActor = L.byActor && typeof L.byActor === 'object' ? L.byActor : {};
     const actors = Object.keys(byActor)
-      .map((name) => ({ name, b: byActor[name] }))
+      .map((name) => ({ name, b: byActor[name] || {} }))
       .filter((a) => (a.b.typingRuns || 0) > 0 || (a.b.typingChars || 0) > 0)
       .sort((a, b) => (b.b.typingRuns || 0) - (a.b.typingRuns || 0));
-    document.getElementById('actorTable').innerHTML = actors.length
+    setHtml('actorTable', actors.length
       ? `<table><thead><tr><th>Player</th><th>Runs</th><th>Chars</th><th>Avg WPM</th><th>Best WPM</th></tr></thead><tbody>` +
         actors.map((a) => {
-          const avg = S().avgWpm(a.b);
+          const avg = api.avgWpm ? api.avgWpm(a.b) : '';
           return `<tr>
             <td><strong>${esc(a.name)}</strong></td>
             <td>${a.b.typingRuns || 0}</td>
             <td class="mono">${(a.b.typingChars || 0).toLocaleString()}</td>
-            <td>${avg || '—'}</td>
-            <td>${a.b.typingBestWpm || '—'}</td>
+            <td>${esc(avg || '—')}</td>
+            <td>${esc(a.b.typingBestWpm || '—')}</td>
           </tr>`;
         }).join('') +
         `</tbody></table>`
-      : '<div class="empty">Complete typing runs to see per-player scores (default name: Ryan Key).</div>';
+      : '<div class="empty">Complete typing runs to see per-player scores (default name: Ryan Key).</div>');
 
-    document.getElementById('toolTable').innerHTML = toolRows.length
+    setHtml('toolTable', toolRows.length
       ? `<table><thead><tr><th>Tool</th><th>Actions</th><th>Cleanup</th><th>Pairs ✓/✗</th><th>Other</th><th>Sessions</th></tr></thead><tbody>` +
         toolRows.map((s) => {
-          const b = s.b;
+          const b = s.b || {};
           const cleanup = (b.filesRemoved || b.bytesFreed)
             ? `${b.filesRemoved || 0} · ${fmt(b.bytesFreed || 0)}`
             : '—';
@@ -431,47 +548,54 @@
           if (b.typingRuns) other.push(b.typingRuns + ' type');
           if (b.conversions) other.push(b.conversions + ' conv');
           return `<tr>
-            <td>${esc(s.emoji + ' ' + s.label)}</td>
+            <td>${esc((s.emoji || '') + ' ' + (s.label || ''))}</td>
             <td>${s.actions}</td>
-            <td class="mono">${cleanup}</td>
-            <td>${pairs}</td>
-            <td class="mono">${other.join(' · ') || '—'}</td>
+            <td class="mono">${esc(cleanup)}</td>
+            <td>${esc(pairs)}</td>
+            <td class="mono">${esc(other.join(' · ') || '—')}</td>
             <td>${b.sessions || 0}</td>
           </tr>`;
         }).join('') +
         `</tbody></table>`
-      : '<div class="empty">No tool activity yet.</div>';
+      : '<div class="empty">No tool activity yet.</div>');
 
-    const allSess = snap.sessions || [];
-    document.getElementById('sessCount').textContent = String(allSess.length);
-    document.getElementById('sessionTable').innerHTML = allSess.length
+    const allSess = Array.isArray(snap.sessions) ? snap.sessions : [];
+    setText('sessCount', String(allSess.length));
+    setHtml('sessionTable', allSess.length
       ? `<table><thead><tr><th>When</th><th>Tool</th><th>Summary</th><th>Actions</th></tr></thead><tbody>` +
         allSess.map((s) => {
-          const meta = S().toolMeta(s.tool);
+          const meta = (typeof api.toolMeta === 'function' ? api.toolMeta(s.tool) : null) || {};
           const when = s.endedAt || s.startedAt;
+          let whenTxt = '—';
+          if (when) {
+            const d = new Date(when);
+            if (!isNaN(d.getTime())) whenTxt = d.toLocaleString();
+          }
           return `<tr>
-            <td class="mono">${when ? new Date(when).toLocaleString() : '—'}</td>
-            <td>${esc(meta.emoji + ' ' + (s.label || meta.label))}</td>
+            <td class="mono">${esc(whenTxt)}</td>
+            <td>${esc((meta.emoji || '') + ' ' + (s.label || meta.label || s.tool || ''))}</td>
             <td>${esc(summarizeSession(s))}</td>
             <td>${s.actions || 0}</td>
           </tr>`;
         }).join('') +
         `</tbody></table>`
-      : '<div class="empty">Sessions appear after tools record real activity (merge, match, type, convert…).</div>';
+      : '<div class="empty">Sessions appear after tools record real activity (merge, match, type, convert…).</div>');
   }
 
-  document.getElementById('chartTabs').addEventListener('click', (e) => {
-    const t = e.target.closest('.tab');
+  bind('chartTabs', 'click', (e) => {
+    const t = e.target && e.target.closest ? e.target.closest('.tab') : null;
     if (!t) return;
-    chartMode = t.dataset.chart || 'bytes';
-    document.querySelectorAll('#chartTabs .tab').forEach((el) => el.classList.toggle('on', el === t));
-    render();
+    setChartMode(t.dataset.chart || 'bytes');
   });
 
-  document.getElementById('btnRefresh').onclick = render;
-  document.getElementById('btnCopy').onclick = async () => {
-    const snap = S().snapshot({ limit: 30 });
-    const L = snap.lifetime;
+  bind('btnRefresh', 'click', () => withBusy(async () => { render(); }, 'btnRefresh'));
+  bind('btnCopy', 'click', () => withBusy(async () => {
+    const api = S();
+    if (!api || typeof api.snapshot !== 'function') return;
+    let snap;
+    try { snap = api.snapshot({ limit: 30 }) || {}; }
+    catch (_) { snap = {}; }
+    const L = snap.lifetime || {};
     const lines = [
       'FAFO Ops Stats report',
       'Generated: ' + new Date().toISOString(),
@@ -489,40 +613,56 @@
       '',
       'BY TOOL',
       ...Object.keys(L.byTool || {}).map((id) => {
-        const b = L.byTool[id];
-        const m = S().toolMeta(id);
-        return `  ${m.label}: actions=${b.actions || 0} files=${b.filesRemoved || 0} pairs=${b.pairMatches || 0}/${b.pairRejects || 0} typing=${b.typingRuns || 0}`;
+        const b = (L.byTool || {})[id] || {};
+        const m = (typeof api.toolMeta === 'function' ? api.toolMeta(id) : null) || {};
+        return `  ${m.label || id}: actions=${b.actions || 0} files=${b.filesRemoved || 0} pairs=${b.pairMatches || 0}/${b.pairRejects || 0} typing=${b.typingRuns || 0}`;
       }),
       '',
       'TYPING BY NAME',
       ...Object.keys(L.byActor || {}).map((name) => {
-        const b = L.byActor[name];
+        const b = (L.byActor || {})[name] || {};
         if (!(b.typingRuns || 0)) return null;
-        return `  ${name}: runs=${b.typingRuns} chars=${b.typingChars || 0} avgWpm=${S().avgWpm(b)} best=${b.typingBestWpm || 0}`;
+        return `  ${name}: runs=${b.typingRuns} chars=${b.typingChars || 0} avgWpm=${api.avgWpm ? api.avgWpm(b) : ''} best=${b.typingBestWpm || 0}`;
       }).filter(Boolean),
       '',
       'RECENT SESSIONS',
-      ...(snap.sessions || []).slice(0, 15).map((s) =>
+      ...(Array.isArray(snap.sessions) ? snap.sessions : []).slice(0, 15).map((s) =>
         `  ${s.endedAt || s.startedAt} · ${s.tool} · ${summarizeSession(s)}`
       ),
     ];
     const text = lines.join('\n');
     try {
       await navigator.clipboard.writeText(text);
-      window.AIToolboxUI?.toast?.('Ops stats report copied', 'ok');
+      UI()?.toast?.('Ops stats report copied', 'ok');
     } catch (_) {
-      prompt('Copy report:', text);
+      try { prompt('Copy report:', text); } catch (__) {}
     }
-  };
-  document.getElementById('btnReset').onclick = () => {
+  }, 'btnCopy'));
+  bind('btnReset', 'click', () => withBusy(async () => {
     if (!confirm('Clear ALL lifetime tallies and session history on this browser?')) return;
-    S().resetAll();
+    const api = S();
+    if (api && typeof api.resetAll === 'function') api.resetAll();
     render();
-    window.AIToolboxUI?.toast?.('Ops stats cleared', 'ok');
-  };
+    UI()?.toast?.('Ops stats cleared', 'ok');
+  }, 'btnReset'));
 
-  window.addEventListener('fafo-ops-stats', render);
-  render();
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
+    if (e.key === 'Escape') {
+      try { document.activeElement && document.activeElement.blur(); } catch (_) {}
+      return;
+    }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); cycleChart(-1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); cycleChart(1); return; }
+    if (e.key === '1' || e.key === '2' || e.key === '3') {
+      e.preventDefault();
+      setChartMode(CHART_MODES[Number(e.key) - 1]);
+    }
+  });
+
+  window.addEventListener('fafo-ops-stats', () => { try { render(); } catch (_) {} });
+  try { render(); } catch (_) {}
 })();
   </script>
 </body>

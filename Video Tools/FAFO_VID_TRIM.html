@@ -8,9 +8,11 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root {
-  --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.22);
-  --accent: #00f3ff; --accent2: #7c5cff; --ok: #4ade80; --text: #e2e8f0; --muted: #64748b;
-  --warn: #fbbf24; --danger: #f87171;
+  --bg: #070b12; --panel: #0c0f16; --navy: #0a1020; --charcoal: #10141c;
+  --border: rgba(0,243,255,.28);
+  --accent: #00f3ff; --gold: #f5c542; --magenta: #ff2bd6;
+  --accent2: #7c5cff; --ok: #4ade80; --text: #e8eef6; --muted: #94a3b8;
+  --warn: #f5c542; --danger: #f87171; --focus: #f5c542;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -267,6 +269,21 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 .chk-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 8px 0 10px; font-size: 12px; color: var(--muted); }
 .chk-row label { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-weight: 600; cursor: pointer; color: var(--text); font-size: 12px; }
 .chk-row input { accent-color: var(--accent); width: auto; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .tab:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+body { background-color: var(--navy); }
+.tab.active { color: #041018; background: var(--accent); }
 </style>
 </head>
 <body>
@@ -537,13 +554,61 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
 <script src="../shared/aitoolbox-layout.js"></script>
-<script src="../shared/aitoolbox-pro.js"></script>
 <script>
 (function () {
   'use strict';
 
+
+  let actionBusy = false;
+  function el(id) {
+    try { return typeof id === 'string' ? el(id) : id; } catch (_) { return null; }
+  }
+  function setText(id, text) {
+    const n = el(id);
+    if (n) n.textContent = text == null ? '' : String(text);
+  }
+  function setHtml(id, html) {
+    const n = el(id);
+    if (n) n.innerHTML = html == null ? '' : String(html);
+  }
+  function bind(id, ev, fn) {
+    const n = el(id);
+    if (!n || !fn) return;
+    n.addEventListener(ev, fn);
+  }
+  function lsGet(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v == null ? fallback : v;
+    } catch (_) { return fallback; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+  const escapeHtml = escHtml;
+  async function withBusy(fn, btnId) {
+    if (actionBusy) return;
+    actionBusy = true;
+    const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : [];
+    const btns = ids.map(el).filter(Boolean);
+    btns.forEach(function (b) { b.disabled = true; });
+    try { return await fn(); }
+    finally {
+      actionBusy = false;
+      btns.forEach(function (b) { b.disabled = false; });
+    }
+  }
+  function revokeUrl(u) {
+    try { if (u) URL.revokeObjectURL(u); } catch (_) {}
+  }
+
   const LS = 'fafo_vid_trim_v1';
-  const dl = document.getElementById('dl');
+  const dl = el('dl');
 
   /* ── helpers ── */
   function even(n) { n = Math.round(n); return n % 2 ? n + 1 : n; }
@@ -553,26 +618,27 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     catch (_) { /* ignore */ }
   }
   function downloadBlob(blob, name) {
+    if (!blob || !dl) return;
     const url = URL.createObjectURL(blob);
     dl.href = url;
-    dl.download = name;
+    dl.download = name || 'download';
     dl.click();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setTimeout(() => revokeUrl(url), 4000);
   }
   function saveState(patch) {
     try {
-      const cur = JSON.parse(localStorage.getItem(LS) || '{}');
-      localStorage.setItem(LS, JSON.stringify({ ...cur, ...patch }));
+      const cur = JSON.parse(lsGet(LS, '{}') || '{}');
+      lsSet(LS, JSON.stringify({ ...cur, ...patch }));
     } catch (_) { /* ignore */ }
   }
   function loadState() {
-    try { return JSON.parse(localStorage.getItem(LS) || '{}'); }
+    try { return JSON.parse(lsGet(LS, '{}') || '{}'); }
     catch (_) { return {}; }
   }
 
   /* ── tabs + layout refresh ── */
-  const panelVideo = document.getElementById('panelVideo');
-  const panelImage = document.getElementById('panelImage');
+  const panelVideo = el('panelVideo');
+  const panelImage = el('panelImage');
   const LAYOUT_APP = 'fafo-vid-trim-v2';
   // Drop the broken fixed-height layout from v1 (120px strip bug)
   try { localStorage.removeItem('fafo_layout_v1_fafo-vid-trim'); } catch (_) { /* ignore */ }
@@ -589,18 +655,19 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 
   function setTab(name) {
     const isImg = name === 'image';
-    panelVideo.classList.toggle('hidden', isImg);
-    panelImage.classList.toggle('hidden', !isImg);
-    document.getElementById('tabVideo').classList.toggle('active', !isImg);
-    document.getElementById('tabImage').classList.toggle('active', isImg);
+    if (panelVideo) panelVideo.classList.toggle('hidden', isImg);
+    if (panelImage) panelImage.classList.toggle('hidden', !isImg);
+    const tv = el('tabVideo'); const ti = el('tabImage');
+    if (tv) tv.classList.toggle('active', !isImg);
+    if (ti) ti.classList.toggle('active', isImg);
     if (isImg && location.hash !== '#image') history.replaceState(null, '', '#image');
     if (!isImg && location.hash === '#image') history.replaceState(null, '', location.pathname + location.search);
     saveState({ tab: isImg ? 'image' : 'video' });
     // Let display:none settle, then re-apply flex fill so the active panel uses full height
     requestAnimationFrame(() => refreshLayout());
   }
-  document.getElementById('tabVideo').onclick = () => setTab('video');
-  document.getElementById('tabImage').onclick = () => setTab('image');
+  bind('tabVideo', 'click', () => setTab('video'));
+  bind('tabImage', 'click', () => setTab('image'));
   if (location.hash === '#image' || loadState().tab === 'image') setTab('image');
   // Ensure full-height flex after modular layout auto-init
   window.addEventListener('load', () => {
@@ -642,16 +709,20 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   /* ── server pill ── */
   let serverOnline = false;
   async function pingServer() {
-    const p = document.getElementById('serverPill');
+    const p = el('serverPill');
     try {
       const on = await window.AIToolboxAPI?.isOnline?.(false, 1200).catch(() => false);
       serverOnline = !!on;
-      p.textContent = on ? '● S1 online' : '○ Browser-only';
-      p.className = 'status-pill ' + (on ? 'ok' : '');
+      if (p) {
+        p.textContent = on ? '● S1 online' : '○ Browser-only';
+        p.className = 'status-pill ' + (on ? 'ok' : '');
+      }
     } catch (_) {
       serverOnline = false;
-      p.textContent = '○ Browser-only';
-      p.className = 'status-pill';
+      if (p) {
+        p.textContent = '○ Browser-only';
+        p.className = 'status-pill';
+      }
     }
     updateExportLabel();
   }
@@ -660,21 +731,21 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   /* ══════════════════════════════════════
      VIDEO — max side scale
      ══════════════════════════════════════ */
-  const vidFile = document.getElementById('vidFile');
-  const vidDrop = document.getElementById('vidDrop');
-  const vidPreview = document.getElementById('vidPreview');
-  const vidMeta = document.getElementById('vidMeta');
-  const maxSideEl = document.getElementById('maxSide');
-  const outFmtEl = document.getElementById('outFmt');
-  const outDirEl = document.getElementById('outDir');
-  const srcPathEl = document.getElementById('srcPath');
-  const vidProgress = document.getElementById('vidProgress');
-  const vidBar = document.getElementById('vidBar');
-  const btnVidExport = document.getElementById('btnVidExport');
-  const btnVidFfmpeg = document.getElementById('btnVidFfmpeg');
-  const ffmpegCmd = document.getElementById('ffmpegCmd');
-  const outListEl = document.getElementById('outList');
-  const recentOutEl = document.getElementById('recentOutDirs');
+  const vidFile = el('vidFile');
+  const vidDrop = el('vidDrop');
+  const vidPreview = el('vidPreview');
+  const vidMeta = el('vidMeta');
+  const maxSideEl = el('maxSide');
+  const outFmtEl = el('outFmt');
+  const outDirEl = el('outDir');
+  const srcPathEl = el('srcPath');
+  const vidProgress = el('vidProgress');
+  const vidBar = el('vidBar');
+  const btnVidExport = el('btnVidExport');
+  const btnVidFfmpeg = el('btnVidFfmpeg');
+  const ffmpegCmd = el('ffmpegCmd');
+  const outListEl = el('outList');
+  const recentOutEl = el('recentOutDirs');
 
   let vidObjectUrl = null;
   let vidSourceFile = null;
@@ -695,12 +766,12 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   }
 
   function currentQuality() {
-    const q = (document.getElementById('vidQuality')?.value || 'match').toLowerCase();
+    const q = (el('vidQuality')?.value || 'match').toLowerCase();
     return ['match', 'archive', 'high', 'balanced', 'small'].includes(q) ? q : 'match';
   }
 
   function currentBitrateMode() {
-    const m = (document.getElementById('bitrateMode')?.value || 'retain').toLowerCase();
+    const m = (el('bitrateMode')?.value || 'retain').toLowerCase();
     return m === 'proportional' ? 'proportional' : 'retain';
   }
 
@@ -718,14 +789,14 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   }
 
   function effectiveCrf() {
-    const raw = document.getElementById('vidCrf')?.value;
+    const raw = el('vidCrf')?.value;
     if (raw === '' || raw == null) return qualityCrfDefault(currentQuality());
     const n = parseInt(raw, 10);
     return Number.isFinite(n) ? n : qualityCrfDefault(currentQuality());
   }
 
   function syncBitrateModeUi() {
-    const bm = document.getElementById('bitrateMode');
+    const bm = el('bitrateMode');
     if (!bm) return;
     const match = currentQuality() === 'match';
     bm.disabled = !match;
@@ -764,11 +835,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       `<button type="button" data-out="${escapeAttr(p)}" title="${escapeAttr(p)}">${escapeHtml(shortPath(p))}</button>`
     ).join('');
   }
-  function escapeHtml(s) {
-    return String(s || '').replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-  }
+  /* escapeHtml hoisted as escHtml */
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
   function shortPath(p) {
     const s = String(p || '');
@@ -817,7 +884,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     const crf = effectiveCrf();
     const preset = qualityPreset(q);
     const audioK = qualityAudioK(q);
-    const fps = parseInt(document.getElementById('vidFps').value, 10) || 0;
+    const fps = parseInt(el('vidFps').value, 10) || 0;
     const fpsArg = fps > 0 ? ` -r ${fps}` : '';
     const match = q === 'match';
     // Placeholder ceiling — S1 probes source Mbps + resolution floor
@@ -842,27 +909,26 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   }
 
   function clearVideo() {
-    if (vidObjectUrl) { try { URL.revokeObjectURL(vidObjectUrl); } catch (_) {} }
+    revokeUrl(vidObjectUrl);
     vidObjectUrl = null;
     vidSourceFile = null;
     vidW = vidH = vidDur = 0;
-    vidPreview.removeAttribute('src');
-    vidPreview.load();
-    vidFile.value = '';
+    if (vidPreview) { vidPreview.removeAttribute('src'); try { vidPreview.load(); } catch (_) {} }
+    if (vidFile) vidFile.value = '';
     // keep srcPath / outDir
-    btnVidExport.disabled = !(srcPathEl.value || '').trim();
-    btnVidFfmpeg.disabled = btnVidExport.disabled;
-    vidProgress.style.display = 'none';
-    vidBar.style.width = '0%';
+    if (btnVidExport) btnVidExport.disabled = !((srcPathEl && srcPathEl.value) || '').trim();
+    if (btnVidFfmpeg && btnVidExport) btnVidFfmpeg.disabled = btnVidExport.disabled;
+    if (vidProgress) vidProgress.style.display = 'none';
+    if (vidBar) vidBar.style.width = '0%';
     refreshVidMeta();
   }
 
   function loadVideoFile(file) {
     if (!file) return;
-    if (vidObjectUrl) { try { URL.revokeObjectURL(vidObjectUrl); } catch (_) {} }
+    revokeUrl(vidObjectUrl);
     vidSourceFile = file;
     vidObjectUrl = URL.createObjectURL(file);
-    vidPreview.src = vidObjectUrl;
+    if (vidPreview) vidPreview.src = vidObjectUrl;
     // If path empty, fill name hint only (not full path — browser sandbox)
     if (!(srcPathEl.value || '').trim() && file.name) {
       // leave path for user; show name in meta
@@ -1016,24 +1082,24 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     saveState({ srcPath: srcPathEl.value.trim() });
     refreshVidMeta();
   });
-  document.getElementById('vidQuality')?.addEventListener('change', () => {
+  el('vidQuality')?.addEventListener('change', () => {
     saveState({ quality: currentQuality() });
     syncBitrateModeUi();
     refreshVidMeta();
   });
-  document.getElementById('bitrateMode')?.addEventListener('change', () => {
+  el('bitrateMode')?.addEventListener('change', () => {
     saveState({ bitrateMode: currentBitrateMode() });
     refreshVidMeta();
   });
-  document.getElementById('vidCrf').addEventListener('change', () => {
-    saveState({ crf: document.getElementById('vidCrf').value });
+  el('vidCrf').addEventListener('change', () => {
+    saveState({ crf: el('vidCrf').value });
     refreshVidMeta();
   });
-  document.getElementById('vidFps').addEventListener('change', () => {
-    saveState({ fps: document.getElementById('vidFps').value });
+  el('vidFps').addEventListener('change', () => {
+    saveState({ fps: el('vidFps').value });
     refreshVidMeta();
   });
-  document.getElementById('vidPresets').addEventListener('click', (e) => {
+  el('vidPresets').addEventListener('click', (e) => {
     const b = e.target.closest('[data-side]');
     if (!b) return;
     maxSideEl.value = b.dataset.side;
@@ -1049,10 +1115,10 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     refreshVidMeta();
     if (serverOnline) listOutDir().catch(() => {});
   });
-  document.getElementById('btnPickOut').onclick = () => pickFolderPath('out');
-  document.getElementById('btnPickSrc').onclick = () => pickSourceFilePath();
-  document.getElementById('btnListOut').onclick = () => listOutDir();
-  document.getElementById('btnOpenOut').onclick = async () => {
+  bind('btnPickOut', 'click', () => pickFolderPath('out'));
+  bind('btnPickSrc', 'click', () => pickSourceFilePath());
+  bind('btnListOut', 'click', () => withBusy(() => listOutDir(), 'btnListOut'));
+  bind('btnOpenOut', 'click', async () => {
     const folder = (outDirEl.value || '').trim();
     if (!folder) { toast('Set output directory first', 'warn'); return; }
     try {
@@ -1067,8 +1133,8 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     } catch (_) { /* ignore */ }
     toast('Copy path and open in Explorer: ' + folder, 'warn');
   };
-  document.getElementById('btnVidClear').onclick = clearVideo;
-  btnVidFfmpeg.onclick = async () => {
+  bind('btnVidClear', 'click', clearVideo);
+  if (btnVidFfmpeg) btnVidFfmpeg.onclick = async () => {
     try {
       await navigator.clipboard.writeText(ffmpegCmd.value);
       toast('ffmpeg command copied', 'ok');
@@ -1109,9 +1175,9 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     if (!outDir) throw new Error('Set output directory');
     const maxSide = parseInt(maxSideEl.value, 10) || 3840;
     const fmt = currentFmt();
-    const crfRaw = document.getElementById('vidCrf')?.value;
+    const crfRaw = el('vidCrf')?.value;
     const crf = crfRaw === '' || crfRaw == null ? null : parseInt(crfRaw, 10);
-    const fps = parseInt(document.getElementById('vidFps').value, 10) || 0;
+    const fps = parseInt(el('vidFps').value, 10) || 0;
     const quality = currentQuality();
     const bitrateMode = currentBitrateMode();
     if (!opts.quiet) {
@@ -1200,7 +1266,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     canvas.width = t.w;
     canvas.height = t.h;
     const ctx = canvas.getContext('2d', { alpha: false });
-    const fpsCap = parseInt(document.getElementById('vidFps').value, 10) || 0;
+    const fpsCap = parseInt(el('vidFps').value, 10) || 0;
     const fps = fpsCap > 0 ? fpsCap : 30;
     const canvasStream = canvas.captureStream(fps);
 
@@ -1295,7 +1361,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   }
 
   function afterProcessSuccess() {
-    if (document.getElementById('chkClearAfter')?.checked) {
+    if (el('chkClearAfter')?.checked) {
       clearVideo();
       srcPathEl.value = '';
       saveState({ srcPath: '' });
@@ -1336,14 +1402,14 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     }
   }
 
-  btnVidExport.onclick = () => {
-    exportScaledVideo().catch((e) => {
+  if (btnVidExport) btnVidExport.onclick = () => {
+    withBusy(() => exportScaledVideo().catch((e) => {
       console.error(e);
       toast(e.message || 'Video export failed', 'warn');
-      btnVidExport.disabled = false;
-      vidProgress.style.display = 'none';
+      if (btnVidExport) btnVidExport.disabled = false;
+      if (vidProgress) vidProgress.style.display = 'none';
       refreshVidMeta();
-    });
+    }), 'btnVidExport');
   };
 
   /* ══════════════════════════════════════
@@ -1357,10 +1423,10 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   let queueIdSeq = 1;
   /** When set, only these job ids are eligible this run (Run selected). */
   let queueRunOnlyIds = null;
-  const queueListEl = document.getElementById('queueList');
-  const queueMetaEl = document.getElementById('queueMeta');
-  const btnQStart = document.getElementById('btnQStart');
-  const btnQStop = document.getElementById('btnQStop');
+  const queueListEl = el('queueList');
+  const queueMetaEl = el('queueMeta');
+  const btnQStart = el('btnQStart');
+  const btnQStop = el('btnQStop');
 
   function qId() { return 'q' + (queueIdSeq++); }
 
@@ -1480,7 +1546,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     // Refresh vs output folder — mark already-finished as skipped then remove
     const outDir = (outDirEl.value || '').trim();
     if (
-      document.getElementById('chkSkipExisting')?.checked &&
+      el('chkSkipExisting')?.checked &&
       serverOnline &&
       outDir
     ) {
@@ -1598,7 +1664,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       btnQStop.disabled = !queueRunning;
       btnQStop.textContent = queueStopAfter ? '⏸ Pausing…' : '⏸ Pause after current';
     }
-    const selAll = document.getElementById('chkSelectAllQ');
+    const selAll = el('chkSelectAllQ');
     if (selAll) {
       const selectable = jobQueue.filter((j) => j.status !== 'running');
       selAll.checked = selectable.length > 0 && selectable.every((j) => j.selected);
@@ -1621,7 +1687,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     // S1 path job
     if (job.srcPath && serverOnline && outDir) {
       // optional skip if exists
-      if (document.getElementById('chkSkipExisting')?.checked) {
+      if (el('chkSkipExisting')?.checked) {
         try {
           const listing = await apiFetch(
             `/convert/list-dir?folder=${encodeURIComponent(outDir)}&limit=80`
@@ -1679,7 +1745,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     opts = opts || {};
 
     // Preflight only on full batch start (not single-item re-run unless requested)
-    if (opts.preflight !== false && document.getElementById('chkPreflight')?.checked !== false && !opts.single) {
+    if (opts.preflight !== false && el('chkPreflight')?.checked !== false && !opts.single) {
       const pf = await preflightQueue();
       const bits = [];
       if (pf.removedDupes) bits.push(`${pf.removedDupes} dupes`);
@@ -1732,18 +1798,18 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
           vidBar.style.width = '20%';
           await processOneJob(next);
           vidBar.style.width = '100%';
-          if (document.getElementById('chkClearAfter')?.checked) {
+          if (el('chkClearAfter')?.checked) {
             clearVideo();
             if (!jobQueue.some((j) => j.status === 'queued' || j.status === 'running')) {
               srcPathEl.value = '';
               saveState({ srcPath: '' });
             }
           }
-          if (document.getElementById('chkRemoveDone')?.checked && (next.status === 'done' || next.status === 'skipped')) {
+          if (el('chkRemoveDone')?.checked && (next.status === 'done' || next.status === 'skipped')) {
             jobQueue = jobQueue.filter((j) => j.id !== next.id);
           }
           // Step-through: pause after each success so you can inspect before the batch continues
-          if (document.getElementById('chkPauseEach')?.checked && next.status === 'done') {
+          if (el('chkPauseEach')?.checked && next.status === 'done') {
             queueStopAfter = true;
             toast('Paused after job — check output, then Run / resume', 'ok');
           }
@@ -1753,7 +1819,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
           next.error = (e && e.message) ? e.message : String(e);
           console.warn('[queue]', next.name, e);
           // Default safety: don't burn the whole batch with bad settings
-          if (document.getElementById('chkStopOnError')?.checked !== false) {
+          if (el('chkStopOnError')?.checked !== false) {
             queueStopAfter = true;
             toast('Stopped on error — fix settings, requeue, then resume', 'warn');
           }
@@ -1761,7 +1827,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
         renderQueue();
         // brief yield so UI can accept new queue adds / clicks
         await new Promise((r) => setTimeout(r, 40));
-        if (failed && document.getElementById('chkStopOnError')?.checked !== false) break;
+        if (failed && el('chkStopOnError')?.checked !== false) break;
         if (queueStopAfter) break;
       }
       await listOutDir().catch(() => {});
@@ -1795,7 +1861,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     await runQueueLoop({ preflight: false, single: true });
   }
 
-  document.getElementById('btnQAdd')?.addEventListener('click', () => {
+  el('btnQAdd')?.addEventListener('click', () => {
     const src = (srcPathEl.value || '').trim();
     if (src) {
       const item = enqueueJob({ name: basenamePath(src), srcPath: src });
@@ -1810,17 +1876,17 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     // keep running loop picking up new items
   });
 
-  document.getElementById('btnQAddFiles')?.addEventListener('click', () => {
-    document.getElementById('vidFileQueue')?.click();
+  el('btnQAddFiles')?.addEventListener('click', () => {
+    el('vidFileQueue')?.click();
   });
-  document.getElementById('vidFileQueue')?.addEventListener('change', (e) => {
+  el('vidFileQueue')?.addEventListener('change', (e) => {
     const files = Array.from(e.target.files || []);
     const n = enqueueFiles(files);
     e.target.value = '';
     toast(n ? `Queued ${n} file(s)` : 'No new files', n ? 'ok' : 'warn');
   });
 
-  document.getElementById('btnQAddPaths')?.addEventListener('click', () => {
+  el('btnQAddPaths')?.addEventListener('click', () => {
     const text = prompt(
       'Paste full video paths (one per line or | separated):',
       (srcPathEl.value || '').trim()
@@ -1851,7 +1917,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 
   btnQStart?.addEventListener('click', () => {
     queueRunOnlyIds = null;
-    startQueueFromUi();
+    withBusy(() => startQueueFromUi(), 'btnQStart');
   });
 
   btnQStop?.addEventListener('click', () => {
@@ -1861,17 +1927,17 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     renderQueue();
   });
 
-  document.getElementById('btnQRequeueFail')?.addEventListener('click', () => {
+  el('btnQRequeueFail')?.addEventListener('click', () => {
     const n = requeueJobs((j) => j.status === 'error' || j.status === 'paused');
     toast(n ? `Requeued ${n} failed/paused job(s)` : 'No failed items to requeue', n ? 'ok' : 'warn');
   });
 
-  document.getElementById('btnQRequeueSel')?.addEventListener('click', () => {
+  el('btnQRequeueSel')?.addEventListener('click', () => {
     const n = requeueJobs((j) => j.selected && j.status !== 'running' && j.status !== 'queued');
     toast(n ? `Requeued ${n} selected job(s)` : 'Select done/error/skipped rows first', n ? 'ok' : 'warn');
   });
 
-  document.getElementById('btnQRunSel')?.addEventListener('click', () => {
+  el('btnQRunSel')?.addEventListener('click', () => {
     if (queueRunning) {
       toast('Pause the queue first', 'warn');
       return;
@@ -1886,12 +1952,12 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     startQueueFromUi({ preflight: false });
   });
 
-  document.getElementById('btnQClearDone')?.addEventListener('click', () => {
+  el('btnQClearDone')?.addEventListener('click', () => {
     jobQueue = jobQueue.filter((j) => j.status === 'queued' || j.status === 'running' || j.status === 'error');
     renderQueue();
   });
 
-  document.getElementById('btnQClearAll')?.addEventListener('click', () => {
+  el('btnQClearAll')?.addEventListener('click', () => {
     if (queueRunning) {
       toast('Pause after current, wait for idle, then clear', 'warn');
       return;
@@ -1901,7 +1967,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     renderQueue();
   });
 
-  document.getElementById('chkSelectAllQ')?.addEventListener('change', (e) => {
+  el('chkSelectAllQ')?.addEventListener('change', (e) => {
     const on = !!e.target.checked;
     jobQueue.forEach((j) => {
       if (j.status !== 'running') j.selected = on;
@@ -1982,22 +2048,22 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     if (st.outDir) outDirEl.value = st.outDir;
     if (st.srcPath) srcPathEl.value = st.srcPath;
     if (st.outFmt) outFmtEl.value = st.outFmt;
-    if (st.maxSide) maxSideEl.value = st.maxSide;
-    if (st.quality && document.getElementById('vidQuality')) {
+    if (st.maxSide && maxSideEl) maxSideEl.value = st.maxSide;
+    if (st.quality && el('vidQuality')) {
       // migrate old default "high" once if user never picked match (optional keep high if intentional)
-      document.getElementById('vidQuality').value = st.quality;
+      el('vidQuality').value = st.quality;
     }
-    if (st.bitrateMode && document.getElementById('bitrateMode')) {
-      document.getElementById('bitrateMode').value = st.bitrateMode === 'proportional' ? 'proportional' : 'retain';
+    if (st.bitrateMode && el('bitrateMode')) {
+      el('bitrateMode').value = st.bitrateMode === 'proportional' ? 'proportional' : 'retain';
     }
-    if (st.crf != null && st.crf !== '') document.getElementById('vidCrf').value = st.crf;
-    else if (document.getElementById('vidCrf')) document.getElementById('vidCrf').value = '';
+    if (st.crf != null && st.crf !== '') el('vidCrf').value = st.crf;
+    else if (el('vidCrf')) el('vidCrf').value = '';
     // Prefer Source FPS unless user explicitly saved a cap (old default was 30 — only restore if set)
-    if (st.fps != null && st.fps !== '') document.getElementById('vidFps').value = st.fps;
-    if (st.clearAfter === false) document.getElementById('chkClearAfter').checked = false;
-    if (st.removeDone === false) document.getElementById('chkRemoveDone').checked = false;
-    if (st.skipExisting === false) document.getElementById('chkSkipExisting').checked = false;
-    if (st.preflight === false) document.getElementById('chkPreflight').checked = false;
+    if (st.fps != null && st.fps !== '') el('vidFps').value = st.fps;
+    if (st.clearAfter === false) el('chkClearAfter').checked = false;
+    if (st.removeDone === false) el('chkRemoveDone').checked = false;
+    if (st.skipExisting === false) el('chkSkipExisting').checked = false;
+    if (st.preflight === false) el('chkPreflight').checked = false;
     renderRecentOut(st.recentOut);
     syncBitrateModeUi();
     refreshVidMeta();
@@ -2005,12 +2071,12 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   }
 
   ['chkClearAfter', 'chkRemoveDone', 'chkSkipExisting', 'chkPreflight'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('change', () => {
+    el(id)?.addEventListener('change', () => {
       saveState({
-        clearAfter: !!document.getElementById('chkClearAfter')?.checked,
-        removeDone: !!document.getElementById('chkRemoveDone')?.checked,
-        skipExisting: !!document.getElementById('chkSkipExisting')?.checked,
-        preflight: !!document.getElementById('chkPreflight')?.checked,
+        clearAfter: !!el('chkClearAfter')?.checked,
+        removeDone: !!el('chkRemoveDone')?.checked,
+        skipExisting: !!el('chkSkipExisting')?.checked,
+        preflight: !!el('chkPreflight')?.checked,
       });
     });
   });
@@ -2040,21 +2106,21 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     uhd_4k: { w: 3840, h: 2160, name: 'uhd_4k', group: 'Video frames' },
   };
 
-  const imgFile = document.getElementById('imgFile');
-  const imgDrop = document.getElementById('imgDrop');
-  const imgPreview = document.getElementById('imgPreview');
+  const imgFile = el('imgFile');
+  const imgDrop = el('imgDrop');
+  const imgPreview = el('imgPreview');
   const imgCtx = imgPreview.getContext('2d');
-  const imgMeta = document.getElementById('imgMeta');
-  const imgPreset = document.getElementById('imgPreset');
-  const imgMode = document.getElementById('imgMode');
-  const imgFormat = document.getElementById('imgFormat');
-  const aspectLock = document.getElementById('aspectLock');
-  const customDims = document.getElementById('customDims');
-  const customW = document.getElementById('customW');
-  const customH = document.getElementById('customH');
-  const manualRow = document.getElementById('manualRow');
-  const btnImgExport = document.getElementById('btnImgExport');
-  const cropOverlay = document.getElementById('cropOverlay');
+  const imgMeta = el('imgMeta');
+  const imgPreset = el('imgPreset');
+  const imgMode = el('imgMode');
+  const imgFormat = el('imgFormat');
+  const aspectLock = el('aspectLock');
+  const customDims = el('customDims');
+  const customW = el('customW');
+  const customH = el('customH');
+  const manualRow = el('manualRow');
+  const btnImgExport = el('btnImgExport');
+  const cropOverlay = el('cropOverlay');
 
   let img = new Image();
   let imgUrl = null;
@@ -2071,7 +2137,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       ).join('')}</optgroup>`
     ).join('');
 
-    const chipHost = document.getElementById('imgPresets');
+    const chipHost = el('imgPresets');
     const quick = ['og1200', 'ig_square', 'story', 'chrome_small', 'chrome_marquee', 'icon128', 'hd_1080', 'custom'];
     chipHost.innerHTML = quick.map((id) => {
       const s = SIZES[id];
@@ -2126,7 +2192,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     const size = currentSize();
     const outAr = size.w / size.h;
     // cropW/H are % of source width/height; enforce (srcW*w%)/(srcH*h%) = outAr
-    let wPct = clamp(parseFloat(document.getElementById('cropW').value) || 100, 1, 100);
+    let wPct = clamp(parseFloat(el('cropW').value) || 100, 1, 100);
     let hPct = (wPct * img.width) / (outAr * img.height);
     if (hPct > 100) {
       hPct = 100;
@@ -2134,13 +2200,13 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     }
     wPct = clamp(wPct, 1, 100);
     hPct = clamp(hPct, 1, 100);
-    document.getElementById('cropW').value = String(Math.round(wPct * 10) / 10);
-    document.getElementById('cropH').value = String(Math.round(hPct * 10) / 10);
+    el('cropW').value = String(Math.round(wPct * 10) / 10);
+    el('cropH').value = String(Math.round(hPct * 10) / 10);
     // keep crop inside image
-    const x = clamp(parseFloat(document.getElementById('cropX').value) || 0, 0, 100 - wPct);
-    const y = clamp(parseFloat(document.getElementById('cropY').value) || 0, 0, 100 - hPct);
-    document.getElementById('cropX').value = String(Math.round(x * 10) / 10);
-    document.getElementById('cropY').value = String(Math.round(y * 10) / 10);
+    const x = clamp(parseFloat(el('cropX').value) || 0, 0, 100 - wPct);
+    const y = clamp(parseFloat(el('cropY').value) || 0, 0, 100 - hPct);
+    el('cropX').value = String(Math.round(x * 10) / 10);
+    el('cropY').value = String(Math.round(y * 10) / 10);
   }
 
   function computeDraw(srcW, srcH, dstW, dstH, mode) {
@@ -2150,10 +2216,10 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     }
     if (mode === 'manual') {
       syncManualCropToOutputAr();
-      const x = clamp(parseFloat(document.getElementById('cropX').value) || 0, 0, 99) / 100;
-      const y = clamp(parseFloat(document.getElementById('cropY').value) || 0, 0, 99) / 100;
-      const w = clamp(parseFloat(document.getElementById('cropW').value) || 100, 1, 100 - x * 100) / 100;
-      const h = clamp(parseFloat(document.getElementById('cropH').value) || 100, 1, 100 - y * 100) / 100;
+      const x = clamp(parseFloat(el('cropX').value) || 0, 0, 99) / 100;
+      const y = clamp(parseFloat(el('cropY').value) || 0, 0, 99) / 100;
+      const w = clamp(parseFloat(el('cropW').value) || 100, 1, 100 - x * 100) / 100;
+      const h = clamp(parseFloat(el('cropH').value) || 100, 1, 100 - y * 100) / 100;
       return {
         sx: srcW * x, sy: srcH * y, sw: srcW * w, sh: srcH * h,
         dx: 0, dy: 0, dw: dstW, dh: dstH, crop: true
@@ -2222,10 +2288,10 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 
     if (imgMode.value === 'manual') {
       cropOverlay.style.display = 'block';
-      const x = clamp(parseFloat(document.getElementById('cropX').value) || 0, 0, 99) / 100;
-      const y = clamp(parseFloat(document.getElementById('cropY').value) || 0, 0, 99) / 100;
-      const w = clamp(parseFloat(document.getElementById('cropW').value) || 100, 1, 100) / 100;
-      const h = clamp(parseFloat(document.getElementById('cropH').value) || 100, 1, 100) / 100;
+      const x = clamp(parseFloat(el('cropX').value) || 0, 0, 99) / 100;
+      const y = clamp(parseFloat(el('cropY').value) || 0, 0, 99) / 100;
+      const w = clamp(parseFloat(el('cropW').value) || 100, 1, 100) / 100;
+      const h = clamp(parseFloat(el('cropH').value) || 100, 1, 100) / 100;
       // overlay relative to preview wrap — approximate on canvas box
       const rect = imgPreview.getBoundingClientRect();
       const wrap = imgPreview.parentElement.getBoundingClientRect();
@@ -2276,7 +2342,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 
   imgDrop.addEventListener('click', () => imgFile.click());
   imgFile.addEventListener('change', () => loadImageFile(imgFile.files?.[0]));
-  document.getElementById('btnImgClear').onclick = clearImage;
+  bind('btnImgClear', 'click', clearImage);
 
   imgPreset.addEventListener('change', () => {
     syncImgUi();
@@ -2297,20 +2363,20 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
     saveState({ imgMode: imgMode.value });
   });
   imgFormat.addEventListener('change', () => saveState({ imgFormat: imgFormat.value }));
-  document.getElementById('aspectChips')?.addEventListener('click', (e) => {
+  el('aspectChips')?.addEventListener('click', (e) => {
     const b = e.target.closest('[data-ar]');
     if (!b) return;
     setAspectLock(b.getAttribute('data-ar'));
   });
   ['customW', 'customH', 'cropX', 'cropY', 'cropW', 'cropH'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('input', () => {
+    el(id)?.addEventListener('input', () => {
       if (id === 'customW') applyAspectLock('w');
       else if (id === 'customH') applyAspectLock('h');
       else if (id === 'cropW' || id === 'cropX' || id === 'cropY') syncManualCropToOutputAr();
       drawImgPreview();
     });
   });
-  document.getElementById('imgPresets').addEventListener('click', (e) => {
+  el('imgPresets').addEventListener('click', (e) => {
     const b = e.target.closest('[data-size]');
     if (!b) return;
     imgPreset.value = b.dataset.size;
@@ -2429,7 +2495,7 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
       toast(`Exported ${size.w}×${size.h} ${ext.toUpperCase()}`, 'ok');
     }, mime, quality);
   }
-  btnImgExport.onclick = exportImage;
+  if (btnImgExport) btnImgExport.onclick = () => withBusy(() => exportImage(), 'btnImgExport');
 
   /* ── drag & drop ── */
   function wireDrop(el, acceptFiles) {
@@ -2487,9 +2553,9 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
   /* ── restore + keys ── */
   const st = loadState();
   if (st.maxSide) maxSideEl.value = st.maxSide;
-  if (st.imgPreset && SIZES[st.imgPreset]) imgPreset.value = st.imgPreset;
-  if (st.imgMode) imgMode.value = st.imgMode;
-  if (st.imgFormat) imgFormat.value = st.imgFormat;
+  if (st.imgPreset && SIZES[st.imgPreset] && imgPreset) imgPreset.value = st.imgPreset;
+  if (st.imgMode && imgMode) imgMode.value = st.imgMode;
+  if (st.imgFormat && imgFormat) imgFormat.value = st.imgFormat;
   if (st.aspectLock) {
     aspectLock.value = st.aspectLock;
     document.querySelectorAll('#aspectChips button').forEach((b) => {
@@ -2500,21 +2566,25 @@ ul.notes { margin: 8px 0 0 18px; color: var(--muted); font-size: 12px; line-heig
 
   document.addEventListener('keydown', (e) => {
     if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.key !== 'Escape') return;
-    if (e.key === '1') { e.preventDefault(); setTab('video'); }
-    if (e.key === '2') { e.preventDefault(); setTab('image'); }
+    if (e.key === '1' || e.key === 'ArrowLeft') { e.preventDefault(); setTab('video'); }
+    if (e.key === '2' || e.key === 'ArrowRight') { e.preventDefault(); setTab('image'); }
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (!panelImage.classList.contains('hidden')) clearImage();
+      if (panelImage && !panelImage.classList.contains('hidden')) clearImage();
       else clearVideo();
     }
     if ((e.key === 'e' || e.key === 'E')) {
       e.preventDefault();
-      if (!panelImage.classList.contains('hidden')) {
-        if (!btnImgExport.disabled) exportImage();
-      } else if (!btnVidExport.disabled) {
+      if (panelImage && !panelImage.classList.contains('hidden')) {
+        if (btnImgExport && !btnImgExport.disabled) withBusy(() => exportImage(), 'btnImgExport');
+      } else if (btnVidExport && !btnVidExport.disabled) {
         btnVidExport.click();
       }
     }
+  });
+  window.addEventListener('pagehide', () => {
+    revokeUrl(vidObjectUrl); vidObjectUrl = null;
+    try { revokeUrl(imgUrl); imgUrl = null; } catch (_) {}
   });
 })();
 </script>

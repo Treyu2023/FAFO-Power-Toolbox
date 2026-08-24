@@ -7,15 +7,16 @@
   <style>
     :root {
       --bg: #05080f;
-      --panel: rgba(10, 16, 28, 0.95);
-      --line: rgba(0, 243, 255, 0.25);
+      --panel: rgba(10, 16, 28, 0.96);
+      --line: rgba(0, 243, 255, 0.28);
       --accent: #00f3ff;
       --gold: #ffd700;
+      --magenta: #e879f9;
       --ok: #00ff88;
       --bad: #ff4466;
       --warn: #ffc800;
-      --muted: #7a8494;
-      --text: #e8eef4;
+      --muted: #9aa6b4;
+      --text: #f2f6fa;
     }
     * { box-sizing: border-box; }
     body {
@@ -66,7 +67,7 @@
       padding: 16px 18px; margin: 10px auto; max-width: 720px;
     }
     .panel h2 { margin: 0 0 8px; font-size: 14px; color: var(--gold); letter-spacing: .08em; }
-    .panel p, .panel li { color: #c5ced8; font-size: 13px; }
+    .panel p, .panel li { color: #d5dde6; font-size: 13px; }
     .panel pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, Consolas, monospace; color: #b8c4d0; background: rgba(0,0,0,.35); padding: 12px; border-radius: 8px; }
 
     .class-grid {
@@ -138,6 +139,22 @@
     .note { font-size: 12px; color: var(--muted); text-align: center; margin-top: 14px; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 900px; margin: 0 auto; }
     @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+    .class-card:focus-visible, .roster-card:focus-visible, .unit-card:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    .class-card:focus, .roster-card:focus { outline: none; }
+    .btn.magenta { border-color: rgba(232,121,249,.45); color: var(--magenta); }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #dce4ee; --panel: #0a1018; --line: rgba(0,243,255,.45); }
+      body { background: #030508; }
+      .panel p, .panel li { color: #eef3f8; }
+    }
   </style>
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 </head>
@@ -159,7 +176,7 @@
       <div class="menu-btns">
         <button type="button" class="btn" id="btnNew">New Chronicle</button>
         <button type="button" class="btn" id="btnContinue">Continue</button>
-        <button type="button" class="btn gold" id="btnTreasure">🏆 Hidden Treasure Room</button>
+        <button type="button" class="btn gold magenta" id="btnTreasure">🏆 Hidden Treasure Room</button>
         <button type="button" class="btn" id="btnHow">How to play</button>
         <button type="button" class="btn" id="btnLore">Hammer Lore</button>
         <a class="btn small" href="../Toolbox Launcher.html" style="text-decoration:none;text-align:center">← Toolbox</a>
@@ -313,9 +330,73 @@
   <script src="techquest-engine.js"></script>
   <script>
 (function () {
+
+  function el(id) {
+    try { return typeof id === "string" ? document.getElementById(id) : id; } catch (_) { return null; }
+  }
+  function setText(id, text) {
+    const n = el(id);
+    if (n) n.textContent = text == null ? "" : String(text);
+  }
+  function setHtml(id, html) {
+    const n = el(id);
+    if (n) n.innerHTML = html == null ? "" : String(html);
+  }
+  function bind(id, ev, fn) {
+    const n = el(id);
+    if (!n || !fn) return;
+    n.addEventListener(ev, fn);
+  }
+  function lsGet(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v == null ? fallback : v;
+    } catch (_) { return fallback; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+  }
+  function escHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  const esc = escHtml;
+  function isTypingTarget(t) {
+    return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable));
+  }
+  let actionBusy = false;
+  const _blobUrls = [];
+  function trackBlob(url) {
+    if (url && String(url).indexOf("blob:") === 0) _blobUrls.push(url);
+    return url;
+  }
+  function revokeBlobs() {
+    while (_blobUrls.length) {
+      try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+    }
+  }
+  window.addEventListener("pagehide", revokeBlobs);
+  async function withBusy(fn, btnId) {
+    if (actionBusy) return;
+    actionBusy = true;
+    const ids = btnId == null ? [] : (Array.isArray(btnId) ? btnId : [btnId]);
+    const btns = ids.map(el).filter(Boolean);
+    btns.forEach(function (b) { b.disabled = true; });
+    try { return await fn(); }
+    finally {
+      actionBusy = false;
+      btns.forEach(function (b) { b.disabled = false; });
+    }
+  }
+
   const D = window.TECHQUEST_DATA;
   const E = window.TECHQUEST;
-  const $ = (id) => document.getElementById(id);
+  const $ = el;
+  if (!D || !E) {
+    setText("storyName", "Tech Quest data missing");
+    return;
+  }
 
   let campaign = null;
   let battle = null;
@@ -352,109 +433,168 @@
   }
 
   document.querySelectorAll('[data-go]').forEach((b) => {
-    b.addEventListener('click', () => show(b.getAttribute('data-go')));
+    b.addEventListener('click', () => show(b.getAttribute('data-go') || 'title'));
   });
 
   // Esc: pop one screen (battle/story → title), title → Toolbox. Never dead-end.
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (isTypingTarget(e.target)) return;
     const active = document.querySelector('.screen.active')?.id?.replace('screen-', '') || 'title';
-    const backMap = {
-      class: 'title', how: 'title', lore: 'title', treasure: 'title',
-      story: 'title', shop: 'story', roster: 'story', battle: 'story', result: 'story',
-    };
-    if (active === 'title' || active === 'battle') {
-      // In battle Esc does not abandon mid-fight accidentally — go result/story only via UI
-      if (active === 'battle') return;
-      location.href = '../Toolbox Launcher.html';
+    if (e.key === 'Escape') {
+      const backMap = {
+        class: 'title', how: 'title', lore: 'title', treasure: 'title',
+        story: 'title', shop: 'story', roster: 'story', battle: 'story', result: 'story',
+      };
+      if (active === 'title' || active === 'battle') {
+        if (active === 'battle') return;
+        location.href = '../Toolbox Launcher.html';
+        return;
+      }
+      show(backMap[active] || 'title');
+      e.preventDefault();
       return;
     }
-    const dest = backMap[active] || 'title';
-    show(dest);
-    e.preventDefault();
+    if (active === 'title' && e.key >= '1' && e.key <= '6') {
+      const ids = ['btnNew', 'btnContinue', 'btnTreasure', 'btnHow', 'btnLore'];
+      const n = el(ids[Number(e.key) - 1]);
+      if (n && !n.disabled) n.click();
+      e.preventDefault();
+      return;
+    }
+    if (active === 'class' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const cards = Array.from(document.querySelectorAll('#classGrid .class-card'));
+      if (!cards.length) return;
+      const cur = cards.findIndex((c) => c.classList.contains('sel') || c === document.activeElement);
+      const cols = Math.max(1, Math.floor((el('classGrid') && el('classGrid').clientWidth || 400) / 212));
+      let next = cur < 0 ? 0 : cur;
+      if (e.key === 'ArrowRight') next = Math.min(cards.length - 1, cur + 1);
+      if (e.key === 'ArrowLeft') next = Math.max(0, cur - 1);
+      if (e.key === 'ArrowDown') next = Math.min(cards.length - 1, cur + cols);
+      if (e.key === 'ArrowUp') next = Math.max(0, cur - cols);
+      pickClass(cards[next].dataset.id, cards[next]);
+      e.preventDefault();
+      return;
+    }
+    if (active === 'battle' && battle && ctx && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const g = battle.grid;
+      if (!g || !g[0]) return;
+      const h0 = hover || { x: 0, y: 0 };
+      let x = h0.x, y = h0.y;
+      if (e.key === 'ArrowLeft') x = Math.max(0, x - 1);
+      if (e.key === 'ArrowRight') x = Math.min(g[0].length - 1, x + 1);
+      if (e.key === 'ArrowUp') y = Math.max(0, y - 1);
+      if (e.key === 'ArrowDown') y = Math.min(g.length - 1, y + 1);
+      hover = { x, y };
+      draw();
+      e.preventDefault();
+    }
   });
 
-  const saved = E.loadSave();
+  const saved = (E.loadSave && E.loadSave()) || {};
   sfx = !!saved.sfx;
-  $('sfxOn').checked = sfx;
-  $('sfxOn').onchange = () => { sfx = $('sfxOn').checked; E.saveSave({ sfx, campaign }); };
+  const sfxEl = el('sfxOn');
+  if (sfxEl) {
+    sfxEl.checked = sfx;
+    sfxEl.onchange = () => { sfx = !!sfxEl.checked; try { E.saveSave({ sfx, campaign }); } catch (_) {} };
+  }
 
   function refreshContinue() {
-    const c = saved.campaign || E.loadSave().campaign;
-    $('btnContinue').disabled = !c || !c.roster;
+    let c = saved.campaign;
+    try { if (!c && E.loadSave) c = E.loadSave().campaign; } catch (_) {}
+    const b = el('btnContinue');
+    if (b) b.disabled = !c || !c.roster;
   }
   refreshContinue();
 
-  $('btnNew').onclick = () => {
+  bind('btnNew', 'click', () => withBusy(() => {
     selectedClass = null;
-    $('btnConfirmClass').disabled = true;
+    const bc = el('btnConfirmClass');
+    if (bc) bc.disabled = true;
     renderClasses();
     show('class');
-  };
+  }, 'btnNew'));
 
-  $('btnContinue').onclick = () => {
-    const c = E.loadSave().campaign;
+  bind('btnContinue', 'click', () => withBusy(() => {
+    let c = null;
+    try { c = E.loadSave() && E.loadSave().campaign; } catch (_) {}
     if (!c || !c.roster) return alert('No save.');
     campaign = c;
     openNode();
-  };
+  }, 'btnContinue'));
 
-  $('btnHow').onclick = () => show('how');
-  $('btnLore').onclick = () => {
-    $('loreTitle').textContent = D.LORE.hammer.title;
-    $('loreBody').textContent = D.LORE.hammer.body;
+  bind('btnHow', 'click', () => show('how'));
+  bind('btnLore', 'click', () => {
+    const h = (D.LORE && D.LORE.hammer) || {};
+    setText('loreTitle', h.title || 'Hammer Lore');
+    setText('loreBody', h.body || '');
     show('lore');
-  };
-  $('btnTreasure').onclick = openTreasure;
-  $('btnResultTreasure').onclick = openTreasure;
-  $('btnOpenChamber').onclick = () => { location.href = '../Progress Map/Progress Map.html'; };
+  });
+  bind('btnTreasure', 'click', openTreasure);
+  bind('btnResultTreasure', 'click', openTreasure);
+  bind('btnOpenChamber', 'click', () => { location.href = '../Progress Map/Progress Map.html'; });
 
   function openTreasure() {
-    $('treasureHammer').textContent = D.LORE.hammer.body;
-    const c = campaign || E.loadSave().campaign;
-    const champ = localStorage.getItem('fafo.techquest.champion') === '1' || c?.champion;
-    $('treasureStatus').innerHTML =
-      `<strong>Champion:</strong> ${champ ? 'YES — ANY Key legend' : 'Not yet'}<br>` +
-      `<strong>Gold:</strong> ${c?.gold ?? '—'} · <strong>Node:</strong> ${c?.node ?? 0}<br>` +
-      `<strong>Recruited:</strong> ${(c?.recruited || []).join(', ') || '—'}<br><br>` +
-      D.LORE.treasure.body.replace(/\n/g, '<br>');
+    const h = (D.LORE && D.LORE.hammer) || {};
+    setText('treasureHammer', h.body || '');
+    let c = campaign;
+    try { if (!c && E.loadSave) c = E.loadSave().campaign; } catch (_) {}
+    const champ = lsGet('fafo.techquest.champion', '') === '1' || !!(c && c.champion);
+    const rec = ((c && c.recruited) || []).map(esc).join(', ') || '—';
+    const tbody = esc((D.LORE && D.LORE.treasure && D.LORE.treasure.body) || '').replace(/\n/g, '<br>');
+    setHtml('treasureStatus',
+      '<strong>Champion:</strong> ' + (champ ? 'YES — ANY Key legend' : 'Not yet') + '<br>' +
+      '<strong>Gold:</strong> ' + esc(c && c.gold != null ? c.gold : '—') +
+      ' · <strong>Node:</strong> ' + esc(c && c.node != null ? c.node : 0) + '<br>' +
+      '<strong>Recruited:</strong> ' + rec + '<br><br>' + tbody);
     show('treasure');
     beep(520, 0.08, 'triangle');
   }
 
+  function pickClass(id, node) {
+    const g = el('classGrid');
+    if (!g || !id || !D.CLASSES || !D.CLASSES[id]) return;
+    selectedClass = id;
+    g.querySelectorAll('.class-card').forEach((x) => x.classList.toggle('sel', x.dataset.id === id));
+    const bc = el('btnConfirmClass');
+    if (bc) bc.disabled = false;
+    const c = D.CLASSES[id];
+    const det = el('classDetail');
+    if (det) det.style.display = 'block';
+    const skills = (c.skills || []).map((s) => esc((D.SKILLS && D.SKILLS[s] && D.SKILLS[s].name) || s)).join(' · ');
+    const b = c.base || {};
+    setHtml('classDetail', '<h2>' + esc(c.emoji) + ' ' + esc(c.name) + '</h2>' +
+      '<p><em>' + esc(c.flavor) + '</em></p>' +
+      '<p>Skills: ' + skills + '</p>' +
+      '<p style="font-size:11px;color:var(--muted)">HP ' + esc(b.maxHp) + ' · ATK ' + esc(b.atk) +
+      ' · DEF ' + esc(b.def) + ' · MAG ' + esc(b.mag) + ' · MOV ' + esc(b.move) + '</p>');
+    if (node && node.focus) node.focus();
+  }
   function renderClasses() {
-    const g = $('classGrid');
-    g.innerHTML = Object.values(D.CLASSES).map((c) => `
-      <div class="class-card" data-id="${c.id}" style="--card:${c.color}">
-        <div class="em">${c.emoji}</div>
-        <div class="role">${c.role}</div>
-        <h3>${c.name}</h3>
-        <p>${c.blurb}</p>
-      </div>`).join('');
-    g.querySelectorAll('.class-card').forEach((el) => {
-      el.onclick = () => {
-        selectedClass = el.dataset.id;
-        g.querySelectorAll('.class-card').forEach((x) => x.classList.toggle('sel', x === el));
-        $('btnConfirmClass').disabled = false;
-        const c = D.CLASSES[selectedClass];
-        $('classDetail').style.display = 'block';
-        $('classDetail').innerHTML = `<h2>${c.emoji} ${c.name}</h2>
-          <p><em>${c.flavor}</em></p>
-          <p>Skills: ${c.skills.map((s) => D.SKILLS[s]?.name || s).join(' · ')}</p>
-          <p style="font-size:11px;color:var(--muted)">HP ${c.base.maxHp} · ATK ${c.base.atk} · DEF ${c.base.def} · MAG ${c.base.mag} · MOV ${c.base.move}</p>`;
+    const g = el('classGrid');
+    if (!g || !D.CLASSES) return;
+    g.innerHTML = Object.values(D.CLASSES).map((c) =>
+      '<div class="class-card" data-id="' + esc(c.id) + '" tabindex="0" style="--card:' + esc(c.color) + '">' +
+      '<div class="em">' + esc(c.emoji) + '</div>' +
+      '<div class="role">' + esc(c.role) + '</div>' +
+      '<h3>' + esc(c.name) + '</h3>' +
+      '<p>' + esc(c.blurb) + '</p></div>').join('');
+    g.querySelectorAll('.class-card').forEach((card) => {
+      card.onclick = () => pickClass(card.dataset.id, card);
+      card.onkeydown = (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickClass(card.dataset.id, card); }
       };
     });
   }
 
-  $('btnConfirmClass').onclick = () => {
+  bind('btnConfirmClass', 'click', () => withBusy(() => {
     if (!selectedClass) return;
     campaign = E.defaultCampaign(selectedClass);
-    E.saveSave({ campaign, sfx });
+    try { E.saveSave({ campaign, sfx }); } catch (_) {}
     openNode();
-  };
+  }, 'btnConfirmClass'));
 
   function currentNode() {
+    if (!campaign || !D.CAMPAIGN) return null;
     return D.CAMPAIGN[campaign.node] || null;
   }
 
@@ -462,52 +602,58 @@
     const node = currentNode();
     if (!node) {
       show('result');
-      $('resultTitle').textContent = 'Chronicle complete';
-      $('resultBody').textContent = 'All tickets closed. Champion energy. Treasure Room awaits.';
+      setText('resultTitle', 'Chronicle complete');
+      setText('resultBody', 'All tickets closed. Champion energy. Treasure Room awaits.');
       return;
     }
     if (node.type === 'shop') return openShop(node);
     if (node.type === 'recruit') return openRecruit(node);
     if (node.type === 'ending') return openEnding(node);
-    // battle / story
-    $('storyChapter').textContent = node.chapter;
-    $('storyName').textContent = node.name;
-    $('storyMap').textContent = node.mapHint || '';
-    $('storyText').innerHTML = (node.story || []).map((p) => `<p>${p}</p>`).join('');
+    setText('storyChapter', node.chapter);
+    setText('storyName', node.name);
+    setText('storyMap', node.mapHint || '');
+    setHtml('storyText', (node.story || []).map((p) => '<p>' + esc(p) + '</p>').join(''));
     const isBattle = node.type === 'battle';
-    $('deployBox').style.display = isBattle ? 'block' : 'none';
+    const db = el('deployBox');
+    if (db) db.style.display = isBattle ? 'block' : 'none';
+    const bp = el('btnPrimary');
     if (isBattle) {
       const cap = node.partyCap || 4;
-      deploySet = new Set(campaign.roster.slice(0, cap).map((m) => m.mid));
+      const roster = (campaign && campaign.roster) || [];
+      deploySet = new Set(roster.slice(0, cap).map((m) => m.mid));
       renderDeploy(cap);
-      $('btnPrimary').textContent = 'Deploy to site';
-      $('btnPrimary').onclick = () => startBattle(node);
-    } else {
-      $('btnPrimary').textContent = 'Continue';
-      $('btnPrimary').onclick = () => { E.advanceNode(campaign); campaign = E.loadSave().campaign; openNode(); };
+      if (bp) {
+        bp.textContent = 'Deploy to site';
+        bp.onclick = () => withBusy(() => startBattle(node), 'btnPrimary');
+      }
+    } else if (bp) {
+      bp.textContent = 'Continue';
+      bp.onclick = () => withBusy(() => {
+        try { E.advanceNode(campaign); campaign = E.loadSave().campaign; } catch (_) {}
+        openNode();
+      }, 'btnPrimary');
     }
     show('story');
   }
 
   function renderDeploy(cap) {
-    const grid = $('deployGrid');
-    grid.innerHTML = campaign.roster.map((m) => {
+    const grid = el('deployGrid');
+    if (!grid || !campaign) return;
+    const roster = campaign.roster || [];
+    grid.innerHTML = roster.map((m) => {
       const on = deploySet.has(m.mid);
-      const st = E.computeStats(m);
-      return `<div class="roster-card ${on ? 'on' : ''}" data-mid="${m.mid}">
-        ${m.emoji} <strong>${m.name}</strong><br>Lv${m.level} ${D.CLASSES[m.classId]?.role || ''}
-        <br>HP ${m.hp}/${st.maxHp}
-      </div>`;
+      const st = (E.computeStats && E.computeStats(m)) || {};
+      const role = (D.CLASSES && D.CLASSES[m.classId] && D.CLASSES[m.classId].role) || '';
+      return '<div class="roster-card ' + (on ? 'on' : '') + '" data-mid="' + esc(m.mid) + '" tabindex="0">' +
+        esc(m.emoji) + ' <strong>' + esc(m.name) + '</strong><br>Lv' + esc(m.level) + ' ' + esc(role) +
+        '<br>HP ' + esc(m.hp) + '/' + esc(st.maxHp) + '</div>';
     }).join('');
-    grid.querySelectorAll('.roster-card').forEach((el) => {
-      el.onclick = () => {
-        const mid = el.dataset.mid;
+    grid.querySelectorAll('.roster-card').forEach((card) => {
+      card.onclick = () => {
+        const mid = card.dataset.mid;
         if (deploySet.has(mid)) deploySet.delete(mid);
         else {
-          if (deploySet.size >= cap) {
-            // replace first
-            deploySet.delete([...deploySet][0]);
-          }
+          if (deploySet.size >= cap) deploySet.delete([...deploySet][0]);
           deploySet.add(mid);
         }
         renderDeploy(cap);
@@ -516,122 +662,146 @@
   }
 
   function openRecruit(node) {
-    $('storyChapter').textContent = node.chapter;
-    $('storyName').textContent = node.name;
-    $('storyMap').textContent = '';
-    $('storyText').innerHTML = (node.story || []).map((p) => `<p>${p}</p>`).join('');
-    $('deployBox').style.display = 'none';
-    $('btnPrimary').textContent = 'Recruit';
-    $('btnPrimary').onclick = () => {
-      const r = E.recruit(campaign, node.recruitId);
-      campaign = E.loadSave().campaign;
-      if (r.ok) alert(`${r.member.emoji} ${r.member.name} joined the van!`);
-      else { E.advanceNode(campaign); campaign = E.loadSave().campaign; }
-      openNode();
-    };
+    setText('storyChapter', node.chapter);
+    setText('storyName', node.name);
+    setText('storyMap', '');
+    setHtml('storyText', (node.story || []).map((p) => '<p>' + esc(p) + '</p>').join(''));
+    const db = el('deployBox');
+    if (db) db.style.display = 'none';
+    const bp = el('btnPrimary');
+    if (bp) {
+      bp.textContent = 'Recruit';
+      bp.onclick = () => withBusy(() => {
+        let r = { ok: false };
+        try { r = E.recruit(campaign, node.recruitId) || r; } catch (_) {}
+        try { campaign = E.loadSave().campaign; } catch (_) {}
+        if (r.ok && r.member) alert((r.member.emoji || '') + ' ' + (r.member.name || '') + ' joined the van!');
+        else {
+          try { E.advanceNode(campaign); campaign = E.loadSave().campaign; } catch (_) {}
+        }
+        openNode();
+      }, 'btnPrimary');
+    }
     show('story');
   }
 
   function openEnding(node) {
     show('result');
-    $('resultTitle').textContent = '🏆 ' + node.name;
-    $('resultBody').textContent = (node.story || []).join(' ');
-    campaign.champion = true;
-    E.saveSave({ campaign });
-    try { localStorage.setItem('fafo.techquest.champion', '1'); } catch (_) {}
+    setText('resultTitle', '🏆 ' + (node.name || ''));
+    setText('resultBody', (node.story || []).join(' '));
+    if (campaign) campaign.champion = true;
+    try { E.saveSave({ campaign }); } catch (_) {}
+    lsSet('fafo.techquest.champion', '1');
   }
 
   function openShop(node) {
-    const { stock, discount } = E.shopStock(campaign, node);
-    $('shopChapter').textContent = node.chapter;
-    $('shopName').textContent = node.name;
-    $('shopStory').innerHTML = (node.story || []).map((p) => `<p>${p}</p>`).join('');
-    $('shopGold').textContent = campaign.gold;
-    $('shopDisc').textContent = Math.round(discount * 100) + '%';
-    $('shopList').innerHTML = stock.map((id) => {
-      const it = E.itemById(id);
-      if (!it) return '';
-      const price = Math.max(1, Math.floor(it.price * (1 - discount)));
-      const col = D.RARITY_COLOR[it.rarity] || '#aaa';
-      return `<div class="shop-item">
-        <div><strong style="color:${col}">${it.name}</strong><br><span style="color:var(--muted)">${it.desc}</span></div>
-        <button type="button" class="btn small" data-buy="${id}">${price}g</button>
-      </div>`;
-    }).join('') || '<p>Shelf is empty. Bard tax was real.</p>';
-    $('shopList').querySelectorAll('[data-buy]').forEach((b) => {
-      b.onclick = () => {
-        const r = E.buyItem(campaign, b.dataset.buy, discount);
-        campaign = E.loadSave().campaign;
-        if (!r.ok) return alert(r.reason === 'gold' ? 'Not enough gold.' : 'Nope.');
-        beep(480, 0.06, 'triangle');
-        openShop(node);
-      };
-    });
+    let stock = [], discount = 0;
+    try {
+      const pack = E.shopStock(campaign, node) || {};
+      stock = pack.stock || [];
+      discount = pack.discount || 0;
+    } catch (_) {}
+    setText('shopChapter', node.chapter);
+    setText('shopName', node.name);
+    setHtml('shopStory', (node.story || []).map((p) => '<p>' + esc(p) + '</p>').join(''));
+    setText('shopGold', campaign && campaign.gold != null ? campaign.gold : 0);
+    setText('shopDisc', Math.round(discount * 100) + '%');
+    const list = el('shopList');
+    if (list) {
+      list.innerHTML = stock.map((id) => {
+        const it = E.itemById ? E.itemById(id) : null;
+        if (!it) return '';
+        const price = Math.max(1, Math.floor((it.price || 0) * (1 - discount)));
+        const col = esc((D.RARITY_COLOR && D.RARITY_COLOR[it.rarity]) || '#aaa');
+        return '<div class="shop-item"><div><strong style="color:' + col + '">' + esc(it.name) +
+          '</strong><br><span style="color:var(--muted)">' + esc(it.desc) + '</span></div>' +
+          '<button type="button" class="btn small" data-buy="' + esc(id) + '">' + price + 'g</button></div>';
+      }).join('') || '<p>Shelf is empty. Bard tax was real.</p>';
+      list.querySelectorAll('[data-buy]').forEach((b) => {
+        b.onclick = () => withBusy(() => {
+          let r = { ok: false };
+          try { r = E.buyItem(campaign, b.dataset.buy, discount) || r; } catch (_) {}
+          try { campaign = E.loadSave().campaign; } catch (_) {}
+          if (!r.ok) return alert(r.reason === 'gold' ? 'Not enough gold.' : 'Nope.');
+          beep(480, 0.06, 'triangle');
+          openShop(node);
+        }, b);
+      });
+    }
     show('shop');
   }
 
-  $('btnLeaveShop').onclick = () => {
-    E.consumeShopBuff(campaign);
-    campaign = E.loadSave().campaign;
+  bind('btnLeaveShop', 'click', () => withBusy(() => {
+    try { E.consumeShopBuff(campaign); campaign = E.loadSave().campaign; } catch (_) {}
     openNode();
-  };
+  }, 'btnLeaveShop'));
 
   function openRoster() {
+    if (!campaign) return;
     returnScreen = document.querySelector('.screen.active')?.id?.replace('screen-', '') || 'story';
-    $('rosterGold').textContent = campaign.gold;
-    rosterFocusMid = campaign.roster[0]?.mid;
+    setText('rosterGold', campaign.gold);
+    rosterFocusMid = (campaign.roster && campaign.roster[0] && campaign.roster[0].mid) || null;
     renderRoster();
     show('roster');
   }
-  $('btnRoster').onclick = openRoster;
-  $('btnShopRoster').onclick = openRoster;
-  $('btnRosterBack').onclick = () => {
-    if (returnScreen === 'shop') openShop(currentNode());
+  bind('btnRoster', 'click', openRoster);
+  bind('btnShopRoster', 'click', openRoster);
+  bind('btnRosterBack', 'click', () => {
+    if (returnScreen === 'shop') openShop(currentNode() || {});
     else openNode();
-  };
+  });
 
   function renderRoster() {
-    $('rosterList').innerHTML = campaign.roster.map((m) => {
-      const st = E.computeStats(m);
-      const c = D.CLASSES[m.classId];
-      const eq = Object.entries(m.equip || {}).map(([k, v]) => `${k}: ${E.itemById(v)?.name || v}`).join('<br>');
-      return `<div class="unit-card player ${m.mid === rosterFocusMid ? 'sel' : ''}" data-mid="${m.mid}" style="cursor:pointer">
-        ${m.emoji} <strong>${m.name}</strong> · Lv${m.level}<br>
-        <span style="color:${c?.color}">${c?.role}</span><br>
-        HP ${m.hp}/${st.maxHp} · ATK ${st.atk} · DEF ${st.def} · MAG ${st.mag}<br>
-        <span style="font-size:10px;color:var(--muted)">${eq}</span>
-      </div>`;
+    const rl = el('rosterList');
+    const il = el('invList');
+    if (!campaign || !rl) return;
+    rl.innerHTML = (campaign.roster || []).map((m) => {
+      const st = (E.computeStats && E.computeStats(m)) || {};
+      const c = (D.CLASSES && D.CLASSES[m.classId]) || {};
+      const eq = Object.entries(m.equip || {}).map(([k, v]) => {
+        const it = E.itemById ? E.itemById(v) : null;
+        return esc(k) + ': ' + esc((it && it.name) || v);
+      }).join('<br>');
+      return '<div class="unit-card player ' + (m.mid === rosterFocusMid ? 'sel' : '') +
+        '" data-mid="' + esc(m.mid) + '" style="cursor:pointer" tabindex="0">' +
+        esc(m.emoji) + ' <strong>' + esc(m.name) + '</strong> · Lv' + esc(m.level) + '<br>' +
+        '<span style="color:' + esc(c.color) + '">' + esc(c.role) + '</span><br>' +
+        'HP ' + esc(m.hp) + '/' + esc(st.maxHp) + ' · ATK ' + esc(st.atk) + ' · DEF ' + esc(st.def) +
+        ' · MAG ' + esc(st.mag) + '<br>' +
+        '<span style="font-size:10px;color:var(--muted)">' + eq + '</span></div>';
     }).join('');
-    $('rosterList').querySelectorAll('[data-mid]').forEach((el) => {
-      el.onclick = () => { rosterFocusMid = el.dataset.mid; renderRoster(); };
+    rl.querySelectorAll('[data-mid]').forEach((card) => {
+      card.onclick = () => { rosterFocusMid = card.dataset.mid; renderRoster(); };
     });
-    $('invList').innerHTML = (campaign.inventory || []).map((id, i) => {
-      const it = E.itemById(id);
+    if (!il) return;
+    il.innerHTML = (campaign.inventory || []).map((id, i) => {
+      const it = E.itemById ? E.itemById(id) : null;
       if (!it) return '';
-      return `<div class="shop-item">
-        <div>${it.name} <span style="color:var(--muted)">(${it.slot})</span></div>
-        <button type="button" class="btn small" data-eq="${id}" data-i="${i}">Equip</button>
-      </div>`;
+      return '<div class="shop-item"><div>' + esc(it.name) +
+        ' <span style="color:var(--muted)">(' + esc(it.slot) + ')</span></div>' +
+        '<button type="button" class="btn small" data-eq="' + esc(id) + '" data-i="' + i + '">Equip</button></div>';
     }).join('') || '<p style="color:var(--muted)">Empty pockets.</p>';
-    $('invList').querySelectorAll('[data-eq]').forEach((b) => {
-      b.onclick = () => {
+    il.querySelectorAll('[data-eq]').forEach((b) => {
+      b.onclick = () => withBusy(() => {
         if (!rosterFocusMid) return;
-        const r = E.equipItem(campaign, rosterFocusMid, b.dataset.eq);
-        campaign = E.loadSave().campaign;
+        let r = { ok: false };
+        try { r = E.equipItem(campaign, rosterFocusMid, b.dataset.eq) || r; } catch (_) {}
+        try { campaign = E.loadSave().campaign; } catch (_) {}
         if (!r.ok) return alert(r.reason === 'class' ? 'Class cannot wear that.' : 'Equip failed.');
         beep(400, 0.05, 'triangle');
         renderRoster();
-      };
+      }, b);
     });
   }
 
   // ——— BATTLE ———
   function startBattle(node) {
     if (!deploySet.size) return alert('Deploy at least one tech.');
-    battle = E.createBattle(node, campaign, [...deploySet]);
-    E.pushLog(battle, 'On site. Boots down. Class fantasy engaged.');
+    try { battle = E.createBattle(node, campaign, [...deploySet]); } catch (err) { battle = null; return; }
+    if (!battle || !battle.units) return;
+    try { E.pushLog(battle, 'On site. Boots down. Class fantasy engaged.'); } catch (_) {}
     battle.units.filter((u) => u.onCall).forEach((u) => {
-      E.pushLog(battle, `⚠️ ${u.name} is ON-CALL (−2 rolls this ticket).`);
+      try { E.pushLog(battle, '⚠️ ' + u.name + ' is ON-CALL (−2 rolls this ticket).'); } catch (_) {}
     });
     show('battle');
     beep(200, 0.1);
@@ -639,8 +809,8 @@
     renderSide();
   }
 
-  const canvas = $('board');
-  const ctx = canvas.getContext('2d');
+  const canvas = el('board');
+  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
   const CELL = 52;
   const PAD = 20;
 
@@ -650,13 +820,16 @@
     const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
     const x = Math.floor(((mx - rect.left) * sx - PAD) / CELL);
     const y = Math.floor(((my - rect.top) * sy - PAD) / CELL);
+    if (!battle.grid || !battle.grid.length || !battle.grid[0]) return null;
     if (y < 0 || x < 0 || y >= battle.grid.length || x >= battle.grid[0].length) return null;
     return { x, y };
   }
 
   function draw() {
-    if (!battle) return;
-    const g = battle.grid, h = g.length, w = g[0].length;
+    if (!battle || !ctx || !canvas) return;
+    const g = battle.grid;
+    if (!g || !g.length || !g[0]) return;
+    const h = g.length, w = g[0].length;
     canvas.width = PAD * 2 + w * CELL;
     canvas.height = PAD * 2 + h * CELL;
     ctx.fillStyle = '#050a12';
@@ -726,21 +899,22 @@
       ctx.fillText('🪽 Airborne: ' + air.map((a) => a.name).join(', '), PAD, 14);
     }
 
-    $('hudChapter').textContent = battle.node.name;
-    $('hudRound').textContent = String(battle.turn + 1);
-    $('hudGold').textContent = String(battle.goldDelta);
-    $('hudPhase').textContent =
+    setText('hudChapter', (battle.node && battle.node.name) || '');
+    setText('hudRound', String((battle.turn || 0) + 1));
+    setText('hudGold', String(battle.goldDelta || 0));
+    setText('hudPhase',
       battle.phase === 'player' ? 'Your turn' :
       battle.phase === 'enemy' ? 'Enemy' :
-      battle.phase === 'won' ? 'Victory' : 'Defeat';
+      battle.phase === 'won' ? 'Victory' : 'Defeat');
   }
 
   function renderSide() {
-    if (!battle) return;
+    if (!battle || !battle.units) return;
     const sel = battle.units.find((u) => u.iid === battle.selected);
-    const sp = $('selPanel');
-    const ab = $('actBar');
-    ab.innerHTML = '';
+    const sp = el('selPanel');
+    const ab = el('actBar');
+    if (ab) ab.innerHTML = '';
+    if (!sp) return;
     if (!sel) {
       sp.innerHTML = '<p style="color:var(--muted);font-size:12px;">Click a unit.</p>';
     } else {
@@ -750,18 +924,20 @@
       if (sel.slow) st.push('Slow');
       if (sel.airborne) st.push('AIRBORNE');
       if (sel.onCall) st.push('ON-CALL −2');
-      sp.innerHTML = `<div class="unit-card ${sel.team} sel">
-        <strong>${sel.emoji} ${sel.name}</strong>
-        <div>HP ${sel.hp}/${sel.maxHp} · ATK ${sel.atk} · MAG ${sel.mag || 0} · MOV ${sel.move}</div>
-        <div class="hpbar"><i style="width:${100 * sel.hp / sel.maxHp}%"></i></div>
-        ${st.length ? '<div style="color:var(--warn);margin-top:4px">' + st.join(' · ') + '</div>' : ''}
-      </div>`;
+      const pct = sel.maxHp ? (100 * sel.hp / sel.maxHp) : 0;
+      sp.innerHTML = '<div class="unit-card ' + esc(sel.team) + ' sel"><strong>' +
+        esc(sel.emoji) + ' ' + esc(sel.name) + '</strong>' +
+        '<div>HP ' + esc(sel.hp) + '/' + esc(sel.maxHp) + ' · ATK ' + esc(sel.atk) +
+        ' · MAG ' + esc(sel.mag || 0) + ' · MOV ' + esc(sel.move) + '</div>' +
+        '<div class="hpbar"><i style="width:' + pct + '%"></i></div>' +
+        (st.length ? '<div style="color:var(--warn);margin-top:4px">' + esc(st.join(' · ')) + '</div>' : '') +
+        '</div>';
 
-      if (sel.team === 'player' && battle.phase === 'player' && !sel.acted && sel.stun <= 0) {
+      if (ab && sel.team === 'player' && battle.phase === 'player' && !sel.acted && sel.stun <= 0) {
         if (!sel.airborne) {
           const atk = document.createElement('button');
           atk.className = 'btn small'; atk.textContent = 'Attack';
-          atk.onclick = () => { battle.mode = 'attack'; $('hudHint').textContent = 'Click enemy'; draw(); };
+          atk.onclick = () => { battle.mode = 'attack'; setText('hudHint', 'Click enemy'); draw(); };
           ab.appendChild(atk);
         }
         (sel.skills || []).forEach((sid) => {
@@ -792,12 +968,12 @@
             }
             if (sid === 'shadowstep') {
               battle.mode = 'skill:shadowstep';
-              $('hudHint').textContent = 'Click empty tile within 5';
+              setText('hudHint', 'Click empty tile within 5');
               draw();
               return;
             }
             battle.mode = 'skill:' + sid;
-            $('hudHint').textContent = 'Target for ' + sk.name;
+            setText('hudHint', 'Target for ' + (sk.name || sid));
             draw();
           };
           ab.appendChild(b);
@@ -809,21 +985,24 @@
       }
     }
 
-    $('rosterBattle').innerHTML = battle.units
-      .filter((u) => u.hp > 0)
-      .sort((a, b) => (a.team === b.team ? b.spd - a.spd : a.team === 'player' ? -1 : 1))
-      .map((u) => `<div class="unit-card ${u.team}${u.iid === battle.selected ? ' sel' : ''}" data-iid="${u.iid}">
-        ${u.emoji} ${u.name}${u.airborne ? ' 🪽' : ''} · ${u.hp}/${u.maxHp}
-        <div class="hpbar"><i style="width:${100 * u.hp / u.maxHp}%"></i></div>
-      </div>`).join('');
-    $('rosterBattle').querySelectorAll('[data-iid]').forEach((el) => {
-      el.onclick = () => {
-        battle.selected = el.dataset.iid;
-        battle.mode = 'select';
-        draw(); renderSide();
-      };
-    });
-    $('battleLog').innerHTML = battle.log.map((l) => `<div>${l.msg}</div>`).join('');
+    const rb = el('rosterBattle');
+    if (rb) {
+      rb.innerHTML = battle.units
+        .filter((u) => u.hp > 0)
+        .sort((a, b) => (a.team === b.team ? b.spd - a.spd : a.team === 'player' ? -1 : 1))
+        .map((u) => '<div class="unit-card ' + esc(u.team) + (u.iid === battle.selected ? ' sel' : '') +
+          '" data-iid="' + esc(u.iid) + '" tabindex="0">' +
+          esc(u.emoji) + ' ' + esc(u.name) + (u.airborne ? ' 🪽' : '') + ' · ' + esc(u.hp) + '/' + esc(u.maxHp) +
+          '<div class="hpbar"><i style="width:' + (u.maxHp ? (100 * u.hp / u.maxHp) : 0) + '%"></i></div></div>').join('');
+      rb.querySelectorAll('[data-iid]').forEach((card) => {
+        card.onclick = () => {
+          battle.selected = card.dataset.iid;
+          battle.mode = 'select';
+          draw(); renderSide();
+        };
+      });
+    }
+    setHtml('battleLog', (battle.log || []).map((l) => '<div>' + esc(l && l.msg) + '</div>').join(''));
   }
 
   function fail(r) {
@@ -845,58 +1024,58 @@
   function onWin() {
     beep(523, 0.1, 'triangle');
     setTimeout(() => beep(784, 0.15, 'triangle'), 100);
-    const { campaign: c, reward } = E.applyVictory(campaign, battle);
-    campaign = c;
+    let reward = { xp: 0, gold: 0 };
+    try {
+      const pack = E.applyVictory(campaign, battle) || {};
+      campaign = pack.campaign || campaign;
+      reward = pack.reward || reward;
+    } catch (_) {}
     // auto recruit flag handled by next nodes
-    if (battle.node.recruitAfter && !campaign.recruited.includes(battle.node.recruitAfter)) {
+    if (battle.node && battle.node.recruitAfter && campaign && !(campaign.recruited || []).includes(battle.node.recruitAfter)) {
       // node already advanced; insert handled by separate recruit nodes in campaign
     }
     show('result');
-    $('resultTitle').textContent = battle.node.final ? '🏆 CHAMPION OF THE ANY KEY' : 'Ticket closed';
-    $('resultBody').textContent = `+${reward.xp} XP · +${reward.gold} gold. Route continues…`;
-    $('btnNext').textContent = 'Continue route';
+    setText('resultTitle', (battle.node && battle.node.final) ? '🏆 CHAMPION OF THE ANY KEY' : 'Ticket closed');
+    setText('resultBody', '+' + ((reward && reward.xp) || 0) + ' XP · +' + ((reward && reward.gold) || 0) + ' gold. Route continues…');
+    setText('btnNext', 'Continue route');
     battle = null;
   }
 
   function onLose() {
     beep(110, 0.25, 'sawtooth');
     show('result');
-    $('resultTitle').textContent = 'Ticket failed';
-    $('resultBody').textContent = 'Retry from story — same node, more humility.';
-    $('btnNext').textContent = 'Retry';
+    setText('resultTitle', 'Ticket failed');
+    setText('resultBody', 'Retry from story — same node, more humility.');
+    setText('btnNext', 'Retry');
     // don't advance node on loss
     battle = null;
   }
 
-  $('btnNext').onclick = () => {
-    if ($('btnNext').textContent === 'Retry') {
-      openNode();
-      return;
-    }
+  bind('btnNext', 'click', () => withBusy(() => {
     openNode();
-  };
+  }, 'btnNext'));
 
-  $('btnEndTurn').onclick = () => {
+  bind('btnEndTurn', 'click', () => withBusy(() => {
     if (!battle || battle.phase !== 'player') return;
-    E.endPlayerTurn(battle);
+    try { E.endPlayerTurn(battle); } catch (_) {}
     beep(160, 0.05);
     if (battle.phase === 'won') return onWin();
     if (battle.phase === 'lost') return onLose();
     draw(); renderSide();
-  };
+  }, 'btnEndTurn'));
 
-  $('btnFlee').onclick = () => {
+  bind('btnFlee', 'click', () => withBusy(() => {
     if (!confirm('Flee? No loot. Mild shame.')) return;
     battle = null;
     show('title');
-  };
+  }, 'btnFlee'));
 
-  canvas.addEventListener('mousemove', (e) => {
+  if (canvas) canvas.addEventListener('mousemove', (e) => {
     hover = cellAt(e.clientX, e.clientY);
     if (battle) draw();
   });
 
-  canvas.addEventListener('click', (e) => {
+  if (canvas) canvas.addEventListener('click', (e) => {
     if (!battle || battle.phase !== 'player') return;
     const c = cellAt(e.clientX, e.clientY);
     if (!c) return;
@@ -941,7 +1120,7 @@
     if (unitThere) {
       battle.selected = unitThere.iid;
       battle.mode = 'select';
-      $('hudHint').textContent = unitThere.team === 'player' ? (unitThere.acted ? 'Done' : 'Move / act') : unitThere.name;
+      setText('hudHint', unitThere.team === 'player' ? (unitThere.acted ? 'Done' : 'Move / act') : unitThere.name);
       beep(560, 0.03, 'triangle');
       draw(); renderSide();
     }
@@ -953,6 +1132,5 @@
 <script src="../shared/aitoolbox-api.js"></script>
 <script src="../shared/aitoolbox-ui.js"></script>
 <script src="../shared/aitoolbox-layout.js"></script>
-<script src="../shared/aitoolbox-pro.js"></script>
 </body>
 </html>
