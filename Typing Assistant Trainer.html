@@ -20,14 +20,15 @@
       --warn: #ffc800;
       --combo: #ff9f43;
       --text: #e8e8ec;
-      --muted: #888;
+      --muted: #b4b4c0;
       --border: rgba(0, 243, 255, 0.22);
       --glow: 0 0 14px rgba(0, 243, 255, 0.4);
       --font-mono: "Cascadia Code", "Consolas", "SF Mono", ui-monospace, monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      min-height: 100vh;
+      min-height: 0;
+      height: 100%;
       background:
         radial-gradient(ellipse at 50% -10%, #14142a 0%, transparent 55%),
         radial-gradient(ellipse at 90% 80%, rgba(124, 92, 255, 0.08) 0%, transparent 40%),
@@ -35,7 +36,7 @@
       color: var(--text);
       font-family: "Segoe UI", system-ui, sans-serif;
       padding: 10px clamp(8px, 1.4vw, 18px) 28px;
-      overflow-x: hidden;
+      overflow: hidden;
     }
     body.combo-glow {
       animation: comboBg 0.55s ease;
@@ -294,7 +295,9 @@
       .pill-row .pill:not(.active),
       .stat,
       header h1,
-      a.toolbox-back {
+      a.toolbox-back,
+      body.fire-inferno,
+      body.combo-glow {
         animation: none !important;
       }
       #ambient { opacity: 0.25; }
@@ -423,7 +426,94 @@
       position: relative;
       z-index: 1;
       box-sizing: border-box;
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
+
+    /* PET-T61: independent panel wheel.
+       layout.js pinViewport + .fafo-layout-locked hide html/body overflow.
+       Wheel only works over a real overflow:auto pane with a CONSTRAINED height
+       (.fafo-panel-body / .fafo-scroll-pane) — not height:auto growing boxes. */
+    html, body {
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
+    }
+    html.fafo-layout-locked,
+    html.fafo-layout-locked body,
+    body.fafo-layout-locked {
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .wrap[data-fafo-layout-root],
+    .wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .wrap > header,
+    .wrap > .panel,
+    .wrap > .grid-2,
+    .fafo-layout-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .wrap > .grid-2 {
+      flex: 0 1 auto;
+      max-height: 34%;
+      min-height: 0;
+    }
+    .wrap > .grid-2 > .panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .grid-2.fafo-layout-panel > .fafo-panel-body,
+    .grid-2 > .fafo-scroll-pane {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      min-height: 0;
+    }
+    @media (max-width: 760px) {
+      .grid-2.fafo-layout-panel > .fafo-panel-body,
+      .grid-2 > .fafo-scroll-pane { grid-template-columns: 1fr; }
+    }
+    .fafo-panel-body,
+    .fafo-scroll-pane {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    #mainPanel {
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
+    }
+    .prompt-wrap {
+      min-height: 0 !important;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+
 
     header {
       text-align: center;
@@ -450,6 +540,9 @@
       position: relative;
       overflow: hidden;
       isolation: isolate;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .panel.pulse-ok {
       animation: panelPulse 0.35s ease;
@@ -714,7 +807,7 @@
       display: flex;
       flex-direction: column;
       width: 100%;
-      min-height: clamp(320px, 62vh, 820px);
+      min-height: 0;
       box-sizing: border-box;
       contain: layout;
     }
@@ -737,7 +830,7 @@
       flex-direction: column;
       justify-content: center;
       width: 100%;
-      min-height: clamp(180px, 32vh, 480px);
+      min-height: 0;
       /* Scale children off this box's width */
       container-type: inline-size;
       container-name: promptbox;
@@ -817,8 +910,8 @@
       header { padding-top: 18px; margin-bottom: 8px; }
       header p { display: none; }
       .panel { padding: 12px 12px; margin-bottom: 10px; }
-      #mainPanel { min-height: clamp(260px, 58vh, 700px); }
-      .prompt-wrap { min-height: clamp(140px, 28vh, 360px); }
+      #mainPanel { min-height: 0; }
+      .prompt-wrap { min-height: 0; overflow: auto; overscroll-behavior: contain; }
       .prompt {
         font-size: clamp(1.05rem, 0.4rem + 3.2cqi + 0.8vw, 2.4rem);
         letter-spacing: 0.02em;
@@ -838,8 +931,15 @@
     }
 
     .hidden-input {
-      position: absolute; opacity: 0; pointer-events: none;
-      height: 0; width: 0;
+      position: absolute;
+      left: 8px;
+      bottom: 8px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      border: 0;
+      padding: 0;
+      overflow: hidden;
     }
     .focus-hint {
       text-align: center;
@@ -953,7 +1053,7 @@
 
     /* Campaign map */
     .campaign-panel { display: none; }
-    .campaign-panel.show { display: block; }
+    .campaign-panel.show { display: flex; flex-direction: column; min-height: 0; }
     .map-wrap {
       position: relative;
       min-height: 280px;
@@ -1041,6 +1141,8 @@
       list-style: none;
       max-height: 240px;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
     }
@@ -1329,7 +1431,7 @@
       font-size: 12px; color: #bbb; line-height: 1.4;
     }
     .journal-entry strong { color: var(--warn); }
-    .journal-entry .when { color: #666; font-size: 10px; }
+    .journal-entry .when { color: #9aa3ad; font-size: 10px; }
 
     .territory .t-stars { font-size: 11px; margin-top: 4px; letter-spacing: 1px; color: var(--warn); }
     .territory.has-bonus::after {
@@ -1668,12 +1770,12 @@
     .prompt.color-cyan .current { color: #fff; }
 
     .prompt.color-neon { color: #ff9ad5; }
-    .prompt.color-neon .todo { color: #7a4a66; }
+    .prompt.color-neon .todo { color: #c47a9a; }
     .prompt.color-neon .done { color: #ff4d9a; }
     .prompt.color-neon .current { color: #fff; outline-color: #ff4d9a; box-shadow: 0 0 22px rgba(255,77,154,0.55); background: rgba(255,77,154,0.25); }
 
     .prompt.color-gold { color: #ffe8a3; }
-    .prompt.color-gold .todo { color: #7a6a40; }
+    .prompt.color-gold .todo { color: #c4a85a; }
     .prompt.color-gold .done { color: #ffc800; }
     .prompt.color-gold .current { color: #fff; outline-color: #ffc800; box-shadow: 0 0 22px rgba(255,200,0,0.5); background: rgba(255,200,0,0.2); }
     .prompt.color-parchment { color: #f5e6c8; }
@@ -1701,12 +1803,12 @@
     .prompt.color-ice .current { outline-color: #38bdf8; box-shadow: 0 0 22px rgba(56,189,248,0.5); }
 
     .prompt.color-fire { color: #ffd0b5; }
-    .prompt.color-fire .todo { color: #7a4a35; }
+    .prompt.color-fire .todo { color: #d08050; }
     .prompt.color-fire .done { color: #ff9f43; }
     .prompt.color-fire .current { outline-color: #ff6b1a; box-shadow: 0 0 22px rgba(255,107,26,0.55); background: rgba(255,90,0,0.22); }
 
     .prompt.color-white { color: #f0f0f5; }
-    .prompt.color-white .todo { color: #666; }
+    .prompt.color-white .todo { color: #9aa3ad; }
     .prompt.color-white .done { color: #ccc; }
 
     /* ——— Text FX: borders / shadows / gradients ——— */
@@ -1893,6 +1995,33 @@
   </style>
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="shared/aitoolbox-layout.css">
+<style id="tat-t61-wheel">
+  /* PET-T61 ADD: wheel on a panel scrolls THAT panel (layout 1.16.20).
+     Native overflow + overscroll-behavior. Do not preventDefault wheel on document. */
+  :focus-visible { outline: 2px solid var(--accent, #00f3ff); outline-offset: 2px; }
+  .fafo-layout-panel,
+  .panel.fafo-layout-panel,
+  .campaign-panel.show {
+    display: flex !important;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .fafo-layout-panel { overflow: hidden; }
+  .fafo-panel-body,
+  .fafo-layout-panel > .fafo-panel-body,
+  [data-fafo-section][data-fafo-resizable="1"] .fafo-section-body {
+    overflow: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .history-list, .hs-list, .map-wrap, .mini-row, #storyJournal, .territories, .novel-chapter-list {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .history-list, .hs-list { overflow-y: auto; }
+</style>
 </head>
 <body data-tb-esc="off">
   <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
@@ -1910,7 +2039,7 @@
   <div id="screenFlash"></div>
   <div id="comboToast"></div>
   <div id="reactionLayer"></div>
-  <div class="bonus-overlay" id="bonusOverlay" aria-hidden="true">
+  <div class="bonus-overlay" id="bonusOverlay" role="dialog" aria-modal="true" aria-labelledby="bonusTitle" aria-describedby="bonusDesc" aria-hidden="true">
     <div class="bonus-card">
       <div class="badge" id="bonusBadge">BONUS ROUND</div>
       <h2 id="bonusTitle">Victory bonus!</h2>
@@ -1925,6 +2054,7 @@
 
   <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows">
     <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="fafo-panel-body fafo-scroll-pane">
       <h1>⌨️ TYPING ASSISTANT TRAINER</h1>
       <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center">
@@ -1934,15 +2064,17 @@
         <span style="font-size:11px;color:var(--muted)">Tab restart · sound prefs persist · ? for Pro help</span>
       </div>
       <span data-fafo-layout-toolbar></span>
+      </div>
 </header>
 
     <!-- Setup -->
     <div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <div class="fafo-panel-body fafo-scroll-pane">
       <div class="toolbar">
         <div class="toolbar-group">
           <div class="field">
             <label>Mode</label>
-            <div class="pill-row" id="modePills">
+            <div class="pill-row" id="modePills" role="group" aria-label="Typing mode">
               <button type="button" class="pill active" data-mode="timed" title="Race the clock">Timed</button>
               <button type="button" class="pill" data-mode="practice" title="Open-ended practice">Practice</button>
               <button type="button" class="pill" data-mode="lesson" title="Home-row drills">Lessons</button>
@@ -1957,7 +2089,7 @@
         </div>
         <div class="toolbar-group">
           <div class="field" id="durationField">
-            <label>Duration</label>
+            <label for="duration">Duration</label>
             <select id="duration" data-tip-title="Duration" data-tip="How long the timed test runs. No limit is open-ended practice.">
               <option value="0">No limit</option>
               <option value="15">15 sec</option>
@@ -1969,7 +2101,7 @@
             </select>
           </div>
           <div class="field" id="lessonField" style="display:none">
-            <label>Lesson</label>
+            <label for="lesson">Lesson</label>
             <select id="lesson" data-tip-title="Lesson" data-tip="Home-row / row drills for structured practice.">
               <option value="home">Home row</option>
               <option value="top">Top row</option>
@@ -1980,7 +2112,7 @@
             </select>
           </div>
           <div class="field" id="difficultyField">
-            <label>Difficulty</label>
+            <label for="difficulty">Difficulty</label>
             <select id="difficulty" data-tip-title="Difficulty" data-tip="Harder passages use longer words and denser punctuation.">
               <option value="easy">Easy</option>
               <option value="medium" selected>Medium</option>
@@ -1994,7 +2126,7 @@
 
       <div class="name-row">
         <div class="field">
-          <label>Your name (optional here — you can set it after a run too)</label>
+          <label for="playerName">Your name (optional here — you can set it after a run too)</label>
           <input type="text" id="playerName" placeholder="Ryan Key" maxlength="48" autocomplete="name" value="Ryan Key" data-tip-title="Player name" data-tip="Name used for high scores and Ops Stats (default Ryan Key). You can also set it after a run.">
         </div>
       </div>
@@ -2035,7 +2167,7 @@
         <div class="section-label">Text style — fonts · colors · effects · animations</div>
         <div class="opt-grid">
           <div class="field">
-            <label>Font</label>
+            <label for="optFont">Font</label>
             <select id="optFont" title="Prompt typeface">
               <option value="mono" selected>Cascadia / Mono</option>
               <option value="jetbrains">JetBrains Mono</option>
@@ -2052,7 +2184,7 @@
             </select>
           </div>
           <div class="field">
-            <label>Color theme</label>
+            <label for="optColor">Color theme</label>
             <select id="optColor">
               <option value="cyan">Cyan neon</option>
               <option value="neon">Hot pink</option>
@@ -2066,7 +2198,7 @@
             </select>
           </div>
           <div class="field">
-            <label>Letter effect</label>
+            <label for="optTextFx">Letter effect</label>
             <select id="optTextFx">
               <option value="none">None (clean)</option>
               <option value="border">Thin border</option>
@@ -2081,7 +2213,7 @@
             </select>
           </div>
           <div class="field">
-            <label>Text animation</label>
+            <label for="optTextAnim">Text animation</label>
             <select id="optTextAnim">
               <option value="none">None</option>
               <option value="glint">Glint sweep</option>
@@ -2094,7 +2226,7 @@
             </select>
           </div>
           <div class="field">
-            <label>Particle intensity</label>
+            <label for="optFxLevel">Particle intensity</label>
             <select id="optFxLevel">
               <option value="low">Low</option>
               <option value="med" selected>Medium</option>
@@ -2122,6 +2254,7 @@
 
       <!-- Novel Mode book shelf -->
       <div class="novel-panel" id="novelPanel">
+        <div class="fafo-panel-body fafo-scroll-pane">
         <div class="novel-head">
           <div>
             <div class="novel-title" id="novelBookTitle">The Keyseeker's Almanac</div>
@@ -2135,11 +2268,11 @@
         </div>
         <div class="novel-fields">
           <div class="field">
-            <label>Book</label>
+            <label for="novelBook">Book</label>
             <select id="novelBook"></select>
           </div>
           <div class="field">
-            <label>Pace</label>
+            <label for="novelPace">Pace</label>
             <select id="novelPace">
               <option value="chapter" selected>Full chapter</option>
               <option value="scene">Scene (~half chapter)</option>
@@ -2153,16 +2286,19 @@
           <button type="button" class="btn ghost" id="btnNovelNext" data-tip="Jump to the next chapter (or auto-advance when enabled).">Next chapter</button>
           <button type="button" class="btn ghost" id="btnNovelPrev" data-tip="Go back one chapter.">Previous chapter</button>
         </div>
-      </div>
+              </div>
+</div>
 
       <div class="custom-area" id="customArea">
         <label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:6px;font-weight:600">Your practice text — paste anything</label>
         <textarea id="customText" placeholder="Paste emails, notes, scripts, lyrics, whatever you want to practice…"></textarea>
       </div>
-    </div>
+          </div>
+</div>
 
     <!-- Campaign map + story -->
     <div class="panel campaign-panel" id="campaignPanel" data-fafo-panel="lesson" data-fafo-panel-title="Lesson" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <div class="fafo-panel-body fafo-scroll-pane">
       <div class="section-title" data-fafo-section="block-1-sec-0" data-fafo-section-title="Section 1">Campaign — The Keystroke Chronicles <span class="mode-tag" id="campChapterTag">Ch. 1</span></div>
       <div class="story-banner show" id="storyBanner">
         <div class="ch" id="storyChapter">Chapter 1 · Awakening</div>
@@ -2180,19 +2316,23 @@
       </div>
       <div class="section-title" style="margin-top:14px" data-fafo-section="block-1-sec-1" data-fafo-section-title="Section 2">Story journal</div>
       <div id="storyJournal"><div class="empty-hist">Conquer territories to fill your journal.</div></div>
-    </div>
+          </div>
+</div>
 
     <!-- Mini-games lobby -->
     <div class="panel campaign-panel" id="miniPanel" data-fafo-panel="campaign" data-fafo-panel-title="Campaign" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <div class="fafo-panel-body fafo-scroll-pane">
       <div class="section-title">Mini-games — pure typing challenges</div>
       <p style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4">
         Short arcade modes. All practice real typing — no mouse aiming required.
       </p>
       <div class="mini-row" id="miniRow"></div>
-    </div>
+          </div>
+</div>
 
     <!-- Main typing -->
-    <div class="panel" id="mainPanel" data-fafo-panel="test-complete" data-fafo-panel-title="Results" data-fafo-panel-min="60" data-fafo-panel-default="140">
+    <div class="panel" id="mainPanel" data-fafo-panel="test-complete" data-fafo-panel-title="Results" data-fafo-panel-min="60" data-fafo-panel-default="140" data-fafo-flex="1">
+      <div class="fafo-panel-body fafo-scroll-pane">
       <div class="companion-bar" id="companionBar">
         <div class="companion-face" id="companionFace" aria-hidden="true">⌨️</div>
         <div class="companion-meta">
@@ -2223,7 +2363,7 @@
           <span id="novelHudHint">Type the page like reading a novel</span>
         </div>
       </div>
-      <div class="stats">
+      <div class="stats" aria-live="polite">
         <div class="stat" id="statScoreBox"><div class="val" id="statScore">0</div><div class="lbl">Score</div></div>
         <div class="stat"><div class="val" id="statWpm">0</div><div class="lbl">WPM</div></div>
         <div class="stat"><div class="val" id="statAcc">100%</div><div class="lbl">Accuracy</div></div>
@@ -2270,18 +2410,22 @@
         <input class="hidden-input" id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Typing input">
       </div>
       <div class="focus-hint" id="focusHint">Click the text (or press a key) to focus and start</div>
-    </div>
+          </div>
+</div>
 
     <div class="panel" data-fafo-panel="block-4" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <div class="fafo-panel-body fafo-scroll-pane">
       <div class="section-title">Keyboard guide</div>
       <div class="kb" id="keyboard" aria-hidden="true"></div>
-    </div>
+          </div>
+</div>
 
     <div class="grid-2">
       <div class="panel">
+        <div class="fafo-panel-body fafo-scroll-pane">
         <div class="section-title">🏆 High scores</div>
         <div class="hs-filter">
-          <select id="hsFilter">
+          <select id="hsFilter" aria-label="Filter high scores">
             <option value="all">All modes</option>
           </select>
         </div>
@@ -2291,8 +2435,10 @@
           <button type="button" class="btn ghost" id="btnExportHs2" data-tip="Export high scores to clipboard/file.">Export high scores</button>
           <button type="button" class="btn ghost" id="btnClearHs" data-tip-title="Clear high scores" data-tip="Erase the local high-score board. Cannot undo.">Clear high scores</button>
         </div>
-      </div>
+              </div>
+</div>
       <div class="panel">
+        <div class="fafo-panel-body fafo-scroll-pane">
         <div class="tab-row">
           <button type="button" class="tab-btn active" data-tab="history">Recent runs</button>
           <button type="button" class="tab-btn" data-tab="tips">Tips</button>
@@ -2314,7 +2460,8 @@
             <p style="margin-top:8px"><strong>Simplify</strong> with No capitals / No punctuation when learning. <kbd>Tab</kbd> restarts · scores stay in this browser only.</p>
           </div>
         </div>
-      </div>
+              </div>
+</div>
     </div>
     <p class="footer-note">Offline · localStorage only · soft Web Audio (no files)</p>
   </div>
@@ -2780,10 +2927,32 @@
     for (let i = 0; i < repeats * 6; i++) out.push(parts[Math.floor(Math.random() * parts.length)]);
     return out.join(' ');
   }
-  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function pick(arr) { if (!arr || !arr.length) return ''; return arr[Math.floor(Math.random() * arr.length)]; }
 
   // ——— DOM ———
   const $ = (id) => document.getElementById(id);
+  const setText = (elOrId, v) => {
+    const el = typeof elOrId === 'string' ? $(elOrId) : elOrId;
+    if (el) el.textContent = v == null ? '' : String(v);
+  };
+  const later = (fn, ms) => {
+    const id = setTimeout(() => {
+      const i = pendingTimers.indexOf(id);
+      if (i >= 0) pendingTimers.splice(i, 1);
+      try { fn(); } catch (_) {}
+    }, ms);
+    pendingTimers.push(id);
+    return id;
+  };
+  const clearPendingTimers = () => {
+    pendingTimers.forEach((id) => clearTimeout(id));
+    pendingTimers.length = 0;
+    clearTimeout(showComboToast._t);
+  };
+  const setRunActive = (on) => {
+    try { document.body.classList.toggle('run-active', !!on); } catch (_) {}
+  };
+
   const promptEl = $('prompt');
   const typer = $('typer');
   const focusHint = $('focusHint');
@@ -2845,6 +3014,12 @@
   // Particles
   let particles = [];
   let rafId = null;
+  let pendingTimers = [];
+  let fxPaused = false;
+  let pausedAt = 0;
+  let hiddenMs = 0;
+  let lastKeyAt = 0;
+  let composing = false;
 
   // ——— Audio (soft, not annoying) ———
   let audioCtx = null;
@@ -2858,7 +3033,7 @@
   }
 
   function tone(freq, dur, type, gain, when) {
-    if (!$('optSound').checked) return;
+    if (!$('optSound')?.checked) return;
     const ctx = ensureAudio();
     if (!ctx) return;
     const t0 = (when || 0) + ctx.currentTime;
@@ -3032,8 +3207,8 @@
     boardCleanChars = 0;
     const next = STORY_BOARDS[boardIndex];
     applyBoardTheme(next);
-    if (next.noCaps != null) $('optNoCaps').checked = !!next.noCaps;
-    if (next.noPunct != null) $('optNoPunct').checked = !!next.noPunct;
+    if (next.noCaps != null && $('optNoCaps')) $('optNoCaps').checked = !!next.noCaps;
+    if (next.noPunct != null && $('optNoPunct')) $('optNoPunct').checked = !!next.noPunct;
     target = simplifyText(next.text()) || 'keep going';
     // Ensure enough text so we never "complete" right after a board clear
     if (target.length < 40) {
@@ -3485,6 +3660,7 @@
   }
 
   function showComboToast(text, sub) {
+    if (!comboToast) return;
     comboToast.innerHTML = escapeHtml(text) + (sub ? `<span class="sub">${escapeHtml(sub)}</span>` : '');
     comboToast.classList.add('show');
     clearTimeout(showComboToast._t);
@@ -3492,7 +3668,8 @@
   }
 
   function tickFx() {
-    if (!fxCtx || !fxCanvas) return;
+    if (document.hidden) { rafId = null; return; }
+    if (!fxCtx || !fxCanvas) { rafId = null; return; }
     fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     ambientFireTick();
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -3627,15 +3804,16 @@
     if (particles.length > 780) particles.splice(0, particles.length - 780);
     fxCtx.globalAlpha = 1;
     fxCtx.shadowBlur = 0;
-    rafId = requestAnimationFrame(tickFx);
+    if (!fxPaused) rafId = requestAnimationFrame(tickFx);
+    else rafId = null;
   }
   tickFx();
 
   // ——— Simplify text ———
   function simplifyText(text) {
-    let t = text;
-    if ($('optNoCaps').checked) t = t.toLowerCase();
-    if ($('optNoPunct').checked) {
+    let t = String(text || '');
+    if ($('optNoCaps')?.checked) t = t.toLowerCase();
+    if ($('optNoPunct')?.checked) {
       // keep letters, numbers, spaces, newlines
       t = t.replace(/[^\p{L}\p{N}\s]/gu, '');
       t = t.replace(/[ \t]+/g, ' ');
@@ -3646,13 +3824,25 @@
   }
 
   // ——— Prompt style (fonts / colors / effects / animations) ———
+  const STYLE_ALLOW = {
+    font: ['mono','jetbrains','space','orbitron','audiowide','cinzel','playfair','syne','righteous','press','pacifico','system'],
+    color: ['cyan','neon','gold','parchment','emerald','violet','ice','fire','white'],
+    fx: ['none','border','thick-border','shadow','double-shadow','emboss','neon','chrome','rainbow','outline-glow'],
+    anim: ['none','glint','pulse','float','shimmer','wave','glitch','breathe'],
+    fxLevel: ['low','med','high','insane'],
+  };
+  function allowedSelect(id, val, list, fallback) {
+    const el = $(id);
+    const ok = list.includes(String(val || ''));
+    if (el && ok) el.value = String(val);
+    return ok ? String(val) : fallback;
+  }
   function applyPromptStyle() {
     if (!promptEl) return;
-    const font = $('optFont')?.value || 'mono';
-    const color = $('optColor')?.value || 'cyan';
-    const fx = $('optTextFx')?.value || 'none';
-    const anim = $('optTextAnim')?.value || 'none';
-    // strip old classes
+    const font = allowedSelect('optFont', $('optFont')?.value, STYLE_ALLOW.font, 'mono');
+    const color = allowedSelect('optColor', $('optColor')?.value, STYLE_ALLOW.color, 'cyan');
+    const fx = allowedSelect('optTextFx', $('optTextFx')?.value, STYLE_ALLOW.fx, 'none');
+    const anim = allowedSelect('optTextAnim', $('optTextAnim')?.value, STYLE_ALLOW.anim, 'none');
     promptEl.className = 'prompt'
       + ' font-' + font
       + ' color-' + color
@@ -3663,7 +3853,8 @@
   // ——— Document library (PDF / text) + skill-based passages ———
   function estimateUserSkill() {
     // From recent history: WPM + accuracy → easy | medium | hard
-    const hist = loadJson(KEYS.history, []);
+    const histRaw = loadJson(KEYS.history, []);
+    const hist = Array.isArray(histRaw) ? histRaw : [];
     const recent = hist.slice(0, 12);
     if (!recent.length) {
       const d = $('difficulty')?.value || 'medium';
@@ -4062,7 +4253,8 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
   function charClass(i) {
     if (i < index) return 'done' + (wrongFlags[i] ? ' wrong' : '');
@@ -4092,6 +4284,7 @@
    * Spaces / newlines are the only wrap points.
    */
   function renderPrompt() {
+    if (!promptEl) return;
     if (!target) {
       promptEl.innerHTML = '<span class="todo">Press New Test to begin…</span>';
       return;
@@ -4119,13 +4312,19 @@
   // ——— Stats ———
   function elapsedMs() {
     if (!startedAt) return 0;
-    return Math.max(0, Date.now() - startedAt);
+    const now = pausedAt || Date.now();
+    return Math.max(0, now - startedAt - hiddenMs);
   }
   function minutes() {
-    return Math.max(elapsedMs() / 60000, 1 / 60000);
+    // Floor at 1s so the first tick cannot explode to 12k WPM
+    return Math.max(elapsedMs() / 60000, 1 / 60);
   }
   function calcWpm() {
-    return Math.max(0, Math.round((correctKeystrokes / 5) / minutes()));
+    if (!startedAt || elapsedMs() < 400) return 0;
+    // Net accepted chars for the whole run (index resets on word-rush / echo / boards)
+    const chars = Math.max(0, correctKeystrokes);
+    const wpm = Math.round((chars / 5) / minutes());
+    return Number.isFinite(wpm) ? Math.max(0, Math.min(400, wpm)) : 0;
   }
   function calcAccuracy() {
     if (totalKeystrokes === 0) return 100;
@@ -4154,13 +4353,16 @@
   function updateStats() {
     const wpm = running || finished ? calcWpm() : 0;
     const acc = calcAccuracy();
-    $('statWpm').textContent = String(wpm);
-    $('statAcc').textContent = acc + '%';
-    $('statErr').textContent = String(errors);
-    $('statScore').textContent = String(score);
-    $('statAcc').className = 'val' + (acc >= 95 ? ' ok' : acc >= 85 ? '' : ' warn');
-    $('statErr').className = 'val' + (errors === 0 ? ' ok' : errors > 10 ? ' err' : ' warn');
-    $('statScore').className = 'val' + (score > 0 ? ' ok' : '');
+    setText('statWpm', wpm);
+    setText('statAcc', acc + '%');
+    setText('statErr', errors);
+    setText('statScore', score);
+    const accEl = $('statAcc');
+    const errEl = $('statErr');
+    const scEl = $('statScore');
+    if (accEl) accEl.className = 'val' + (acc >= 95 ? ' ok' : acc >= 85 ? '' : ' warn');
+    if (errEl) errEl.className = 'val' + (errors === 0 ? ' ok' : errors > 10 ? ' err' : ' warn');
+    if (scEl) scEl.className = 'val' + (score > 0 ? ' ok' : '');
 
     if (isTimedModeActive() && durationSec > 0) {
       const dur = durationSec;
@@ -4169,10 +4371,10 @@
       const leftLabel = left >= 60
         ? `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`
         : left.toFixed(1) + 's';
-      $('statTime').textContent = running || finished ? leftLabel : (dur >= 60 ? (dur / 60) + 'm' : dur + 's');
-      $('statTimeLbl').textContent = 'Left';
+      setText('statTime', running || finished ? leftLabel : (dur >= 60 ? (dur / 60) + 'm' : dur + 's'));
+      setText('statTimeLbl', 'Left');
       const pct = running ? Math.min(100, (elapsedMs() / 1000 / dur) * 100) : 0;
-      progressFill.style.width = pct + '%';
+      if (progressFill) progressFill.style.width = pct + '%';
       if (running && miniRun && miniConfig?.type === 'ghost') {
         const ghostChars = Math.round((miniConfig.targetWpm || 50) / 60 * (elapsedMs() / 1000) * 5);
         const delta = correctKeystrokes - ghostChars;
@@ -4184,16 +4386,16 @@
       if (running && left <= 0) finishTest('time');
     } else if (boardsRun) {
       // Lives-only boards: show elapsed + board progress on the bar
-      $('statTime').textContent = running || finished ? formatClock(elapsedMs()) : '∞';
-      $('statTimeLbl').textContent = 'Elapsed';
+      setText('statTime', running || finished ? formatClock(elapsedMs()) : '∞');
+      setText('statTimeLbl', 'Elapsed');
       const b = STORY_BOARDS[boardIndex];
       const pct = b ? Math.min(100, (boardCleanChars / Math.max(1, b.need)) * 100) : 0;
-      progressFill.style.width = pct + '%';
+      if (progressFill) progressFill.style.width = pct + '%';
     } else {
       const pct = target.length ? (index / target.length) * 100 : 0;
-      $('statTime').textContent = running || finished ? formatClock(elapsedMs()) : '—';
-      $('statTimeLbl').textContent = 'Time';
-      progressFill.style.width = pct + '%';
+      setText('statTime', running || finished ? formatClock(elapsedMs()) : '—');
+      setText('statTimeLbl', 'Time');
+      if (progressFill) progressFill.style.width = pct + '%';
     }
     if (mode === 'novel') updateNovelHud();
   }
@@ -4214,9 +4416,9 @@
     if (campaignRun && selectedTerritory) {
       return 'campaign:' + selectedTerritory.id;
     }
-    if (mode === 'timed') return 'timed:' + $('difficulty').value + ':' + $('duration').value;
-    if (mode === 'practice') return 'practice:' + $('difficulty').value;
-    if (mode === 'lesson') return 'lesson:' + $('lesson').value;
+    if (mode === 'timed') return 'timed:' + ($('difficulty')?.value || 'medium') + ':' + ($('duration')?.value || '30');
+    if (mode === 'practice') return 'practice:' + ($('difficulty')?.value || 'medium');
+    if (mode === 'lesson') return 'lesson:' + ($('lesson')?.value || 'home');
     if (mode === 'code') return 'code';
     if (mode === 'custom') return 'custom';
     if (mode === 'novel') {
@@ -4329,8 +4531,8 @@
     if (miniRun && miniConfig) return buildMiniTarget(miniConfig);
     if (boardsRun || mode === 'boards') {
       const b = STORY_BOARDS[boardIndex] || STORY_BOARDS[0];
-      if (b.noCaps != null) $('optNoCaps').checked = !!b.noCaps;
-      if (b.noPunct != null) $('optNoPunct').checked = !!b.noPunct;
+      if (b.noCaps != null && $('optNoCaps')) $('optNoCaps').checked = !!b.noCaps;
+      if (b.noPunct != null && $('optNoPunct')) $('optNoPunct').checked = !!b.noPunct;
       return b.text();
     }
     if (campaignRun && selectedTerritory) {
@@ -4407,8 +4609,8 @@
     }
     if (campaignRun && selectedTerritory) {
       const t = selectedTerritory;
-      if (t.noCaps != null) $('optNoCaps').checked = !!t.noCaps;
-      if (t.noPunct != null) $('optNoPunct').checked = !!t.noPunct;
+      if (t.noCaps != null && $('optNoCaps')) $('optNoCaps').checked = !!t.noCaps;
+      if (t.noPunct != null && $('optNoPunct')) $('optNoPunct').checked = !!t.noPunct;
       return simplifyText(getRawText()) || 'ready';
     }
     return simplifyText(getRawText()) || 'ready';
@@ -4417,9 +4619,13 @@
   // ——— Run lifecycle ———
   function newTest(reuseText) {
     stopTimer();
+    clearPendingTimers();
+    setRunActive(false);
     finished = false;
     running = false;
     startedAt = 0;
+    pausedAt = 0;
+    hiddenMs = 0;
     index = 0;
     errors = 0;
     totalKeystrokes = 0;
@@ -4431,7 +4637,7 @@
     pendingHs = null;
     lastResultMeta = null;
     setFireMode(0);
-    resultBanner.classList.remove('show-name', 'highscore');
+    resultBanner && resultBanner.classList.remove('show-name', 'highscore');
     boardsRun = mode === 'boards';
     if (boardsRun) {
       if (!reuseText) {
@@ -4445,8 +4651,8 @@
       livesMax = LIVES_MAX;
       const b = STORY_BOARDS[boardIndex];
       applyBoardTheme(b);
-      if (b?.noCaps != null) $('optNoCaps').checked = !!b.noCaps;
-      if (b?.noPunct != null) $('optNoPunct').checked = !!b.noPunct;
+      if (b?.noCaps != null && $('optNoCaps')) $('optNoCaps').checked = !!b.noCaps;
+      if (b?.noPunct != null && $('optNoPunct')) $('optNoPunct').checked = !!b.noPunct;
     } else {
       clearBoardTheme();
       if (!miniRun) {
@@ -4461,7 +4667,7 @@
     updateLivesUI();
     updateBoardHud();
     // Allow 0 = no time limit (important for Boards lives-only)
-    const durRaw = parseInt($('duration').value, 10);
+    const durRaw = parseInt($('duration')?.value, 10);
     durationSec = Number.isFinite(durRaw) ? durRaw : 30;
     if (mode === 'timed' && durationSec <= 0) durationSec = 30; // timed needs a clock
     // Mini-game / bonus may force duration
@@ -4476,10 +4682,10 @@
     skipNextIndexInc = false;
     if (!reuseText) target = getTargetText();
     wrongFlags = new Array(target.length).fill(false);
-    resultBanner.classList.remove('show', 'highscore');
-    $('btnSaveHs').style.display = 'none';
+    resultBanner && resultBanner.classList.remove('show', 'highscore');
+    if ($('btnSaveHs')) $('btnSaveHs').style.display = 'none';
     if ($('btnResultBonus')) $('btnResultBonus').style.display = 'none';
-    progressFill.style.width = '0%';
+    if (progressFill) progressFill.style.width = '0%';
     applyPromptStyle();
     renderPrompt();
     highlightNext();
@@ -4517,6 +4723,9 @@
     if (running || finished || !target) return;
     running = true;
     startedAt = Date.now();
+    pausedAt = 0;
+    hiddenMs = 0;
+    setRunActive(true);
     startTimer();
     focusHint.textContent = miniRun
       ? 'Arcade focus — clean keys win'
@@ -4551,7 +4760,9 @@
     if (finished) return;
     finished = true;
     running = false;
+    setRunActive(false);
     stopTimer();
+    if (!pausedAt) pausedAt = Date.now();
     updateStats();
     highlightNext();
 
@@ -4568,10 +4779,10 @@
       if (correctKeystrokes >= ghostChars) score += 200;
     }
 
-    $('resultScore').textContent = String(score);
-    $('resultWpm').textContent = String(wpm);
-    $('resultAcc').textContent = acc + '%';
-    $('resultMult').textContent = '×' + bestMult;
+    setText('resultScore', score);
+    setText('resultWpm', wpm);
+    setText('resultAcc', acc + '%');
+    setText('resultMult', '×' + bestMult);
 
     let title = 'Test complete';
     let sub = 'Score saved to recent runs.';
@@ -4712,12 +4923,12 @@
 
     $('resultTitle').textContent = title;
     $('resultSub').textContent = sub;
-    resultBanner.classList.add('show');
+    resultBanner && resultBanner.classList.add('show');
     if (isHs && score > 0) {
       // Prefill name from pre-run field (default Ryan Key); user can edit on this screen, then Save
       showHsNamePrompt();
     } else {
-      resultBanner.classList.remove('show-name');
+      resultBanner && resultBanner.classList.remove('show-name');
     }
     setFireMode(0);
 
@@ -4726,7 +4937,7 @@
     }
     if (offerBonus && pendingBonus) {
       // slight delay so result is readable first
-      setTimeout(() => showBonusOverlay(pendingBonus.territory), 700);
+      later(() => showBonusOverlay(pendingBonus.territory), 700);
     }
 
     lastResultMeta = { wpm, acc, conquered, mini: !!miniRun, starsEarned };
@@ -4771,7 +4982,8 @@
 
   // ——— Typing ———
   function onType(e) {
-    typer.value = '';
+    if (e.isComposing || e.keyCode === 229 || composing) return;
+    lastKeyAt = Date.now();
     if (finished) return;
     if (!target) return;
 
@@ -4783,18 +4995,32 @@
     }
     if (key === 'Escape') {
       e.preventDefault();
-      typer.focus();
+      const ov = $('bonusOverlay');
+      if (ov && ov.classList.contains('show')) {
+        hideBonusOverlay();
+        return;
+      }
+      typer && typer.focus();
       return;
     }
     if (key.length > 1 && key !== 'Enter' && key !== 'Backspace') return;
 
     e.preventDefault();
+    if (typer) typer.value = '';
+    try {
+      if (!window.__tatCapsNoted && e.getModifierState && e.getModifierState('CapsLock') && !$('optNoCaps')?.checked) {
+        window.__tatCapsNoted = true;
+        try { AIToolboxUI?.toast?.('Caps Lock is on', 'warn'); } catch (_) {}
+      }
+    } catch (_) {}
     beginRun();
 
     if (key === 'Backspace') {
       if (index > 0) {
-        // optional: allow backspace without killing streak heavily
         index--;
+        if (correctKeystrokes > 0) correctKeystrokes--;
+        if (totalKeystrokes > 0) totalKeystrokes--;
+        if (index < wrongFlags.length) wrongFlags[index] = false;
         renderPrompt();
         highlightNext();
         updateStats();
@@ -4864,8 +5090,8 @@
         spawnCharredBits(cx, cy, expected, burnI);
         // Delayed second sear so late shards get torched
         if ($('optBurn')?.checked) {
-          setTimeout(() => burnExplosionRemnants(cx, cy, 110 + streak, burnI + 0.2), 40);
-          setTimeout(() => burnExplosionRemnants(cx, cy, 140, burnI + 0.35), 90);
+          later(() => burnExplosionRemnants(cx, cy, 110 + streak, burnI + 0.2), 40);
+          later(() => burnExplosionRemnants(cx, cy, 140, burnI + 0.35), 90);
         }
         // Briefly charcoal the completed glyph in the prompt
         if ($('optBurn')?.checked) {
@@ -4874,9 +5100,9 @@
             const last = dones[dones.length - 1];
             if (last) {
               last.classList.add('charred');
-              setTimeout(() => {
+              later(() => {
                 last.classList.add('charred-ash');
-                setTimeout(() => {
+                later(() => {
                   last.classList.remove('charred', 'charred-ash');
                 }, 420);
               }, 180);
@@ -4993,7 +5219,7 @@
       const cur = promptEl.querySelector('.current');
       if (cur) {
         cur.style.background = 'rgba(255,77,106,0.4)';
-        setTimeout(() => { if (cur) cur.style.background = ''; }, 100);
+        later(() => { if (cur) cur.style.background = ''; }, 100);
       }
       // Boards lives: −0.5 per miss
       if (boardsRun) {
@@ -5024,10 +5250,13 @@
   function isNameFieldActive() {
     const el = document.activeElement;
     if (!el) return false;
+    if (el.id === 'typer') return false;
     const id = el.id || '';
     if (id === 'playerName' || id === 'resultName' || id === 'customText') return true;
     const tag = (el.tagName || '').toLowerCase();
-    return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'option') return true;
+    if (el.isContentEditable) return true;
+    return !!el.closest?.('select, textarea, input:not(#typer), [contenteditable="true"]');
   }
 
   function getPlayerName() {
@@ -5047,8 +5276,8 @@
   }
 
   function showHsNamePrompt() {
-    resultBanner.classList.add('show-name', 'highscore');
-    $('btnSaveHs').style.display = '';
+    resultBanner && resultBanner.classList.add('show-name', 'highscore');
+    if ($('btnSaveHs')) $('btnSaveHs').style.display = '';
     // Prefill from pre-run field (or default); user can edit here after typing
     if ($('resultName')) {
       const pre = ($('playerName')?.value || '').trim() || DEFAULT_PLAYER_NAME;
@@ -5072,7 +5301,13 @@
     }
   }
   function saveJson(key, val) {
-    localStorage.setItem(key, JSON.stringify(val));
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+      return true;
+    } catch (_) {
+      try { AIToolboxUI?.toast?.('Could not save locally (storage full or blocked)', 'warn'); } catch (e) {}
+      return false;
+    }
   }
 
   function saveHistory(entry) {
@@ -5085,7 +5320,7 @@
 
   function loadHighScores() {
     const data = loadJson(KEYS.highscores, {});
-    return data && typeof data === 'object' ? data : {};
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
   }
 
   function isHighScore(bucket, sc, wpm) {
@@ -5144,6 +5379,7 @@
 
   function fillHsFilter() {
     const sel = $('hsFilter');
+    if (!sel) return;
     const cur = sel.value || 'all';
     sel.innerHTML = '<option value="all">All modes</option>';
     allBucketKeys().forEach((k) => {
@@ -5157,10 +5393,11 @@
 
   function renderHighScores() {
     fillHsFilter();
-    const filter = $('hsFilter').value;
+    const filter = $('hsFilter')?.value || 'all';
     const all = loadHighScores();
     const ul = $('hsList');
     const empty = $('emptyHs');
+    if (!ul) return;
     ul.innerHTML = '';
 
     let rows = [];
@@ -5175,17 +5412,17 @@
     }
 
     if (!rows.length) {
-      empty.style.display = '';
+      if (empty) empty.style.display = '';
       return;
     }
-    empty.style.display = 'none';
+    if (empty) empty.style.display = 'none';
     rows.forEach((h) => {
       const li = document.createElement('li');
       li.innerHTML =
         `<span class="name" title="${escapeHtml(h.name)}">${escapeHtml(h.name)}</span>` +
         `<span title="${escapeHtml(optionLabel(h.bucket))}">${escapeHtml(optionLabel(h.bucket))}</span>` +
-        `<span class="score">${h.score}</span>` +
-        `<span class="wpm">${h.wpm} wpm</span>`;
+        `<span class="score">${Number(h.score) || 0}</span>` +
+        `<span class="wpm">${Number(h.wpm) || 0} wpm</span>`;
       ul.appendChild(li);
     });
   }
@@ -5194,12 +5431,13 @@
     const list = loadJson(KEYS.history, []);
     const ul = $('historyList');
     const empty = $('emptyHist');
+    if (!ul) return;
     ul.innerHTML = '';
-    if (!list.length) {
-      empty.style.display = '';
+    if (!Array.isArray(list) || !list.length) {
+      if (empty) empty.style.display = '';
       return;
     }
-    empty.style.display = 'none';
+    if (empty) empty.style.display = 'none';
     list.slice(0, 15).forEach((h) => {
       const li = document.createElement('li');
       const when = new Date(h.at);
@@ -5208,8 +5446,8 @@
       });
       li.innerHTML =
         `<span>${escapeHtml(optionLabel(h.bucket || h.mode))} · ${escapeHtml(timeStr)}</span>` +
-        `<span class="wpm">${h.score || 0} pts</span>` +
-        `<span class="acc">${h.wpm} wpm</span>` +
+        `<span class="wpm">${Number(h.score) || 0} pts</span>` +
+        `<span class="acc">${Number(h.wpm) || 0} wpm</span>` +
         `<span>×${h.bestMult || 1}</span>`;
       ul.appendChild(li);
     });
@@ -5219,10 +5457,11 @@
   function loadCampaign() {
     // migrate v2 → v3 shape
     let data = loadJson(KEYS.campaign, null);
-    if (!data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
       const legacy = loadJson('aitoolbox.typingTrainer.campaign.v2', { conquered: [] });
+      const leg = (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) ? legacy : {};
       data = {
-        conquered: Array.isArray(legacy.conquered) ? legacy.conquered : [],
+        conquered: Array.isArray(leg.conquered) ? leg.conquered : [],
         stars: {},
         bonuses: [],
         journal: [],
@@ -5597,14 +5836,16 @@
     updateWordRushHud();
     updateBoardHud();
     document.querySelectorAll('#modePills .pill').forEach((p) => {
-      p.classList.toggle('active', p.dataset.mode === mode);
+      const on = p.dataset.mode === mode;
+      p.classList.toggle('active', on);
+      p.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     // Boards can use optional timer (pick "No limit" for lives-only)
-    $('durationField').style.display = (mode === 'timed' || mode === 'boards') ? '' : 'none';
-    $('lessonField').style.display = mode === 'lesson' ? '' : 'none';
-    $('difficultyField').style.display = (mode === 'timed' || mode === 'practice') ? '' : 'none';
-    customArea.classList.toggle('show', mode === 'custom');
-    $('campaignPanel').classList.toggle('show', mode === 'campaign');
+    if ($('durationField')) $('durationField').style.display = (mode === 'timed' || mode === 'boards') ? '' : 'none';
+    if ($('lessonField')) $('lessonField').style.display = mode === 'lesson' ? '' : 'none';
+    if ($('difficultyField')) $('difficultyField').style.display = (mode === 'timed' || mode === 'practice') ? '' : 'none';
+    customArea?.classList.toggle('show', mode === 'custom');
+    $('campaignPanel')?.classList.toggle('show', mode === 'campaign');
     if ($('miniPanel')) $('miniPanel').classList.toggle('show', mode === 'minigames');
     if ($('novelPanel')) $('novelPanel').classList.toggle('show', mode === 'novel');
     document.body.classList.toggle('novel-mode', mode === 'novel');
@@ -5668,22 +5909,23 @@
   }
   function loadPrefs() {
     const p = loadJson(KEYS.prefs, {});
-    if (p.noCaps) $('optNoCaps').checked = true;
-    if (p.noPunct) $('optNoPunct').checked = true;
-    if (p.sound === false) $('optSound').checked = false;
-    if (p.fx === false) $('optFx').checked = false;
-    if (p.ambient === false && $('optAmbient')) $('optAmbient').checked = false;
-    if (p.burn === false && $('optBurn')) $('optBurn').checked = false;
-    if (p.novelAuto === false && $('optNovelAuto')) $('optNovelAuto').checked = false;
-    if (p.font && $('optFont')) $('optFont').value = p.font;
-    if (p.color && $('optColor')) $('optColor').value = p.color;
-    if (p.textFx && $('optTextFx')) $('optTextFx').value = p.textFx;
-    if (p.textAnim && $('optTextAnim')) $('optTextAnim').value = p.textAnim;
-    if (p.fxLevel && $('optFxLevel')) $('optFxLevel').value = p.fxLevel;
-    if (p.novelBookId && NOVEL_BOOKS.some((b) => b.id === p.novelBookId)) novelBookId = p.novelBookId;
-    if (typeof p.novelChapterIndex === 'number') novelChapterIndex = p.novelChapterIndex;
-    if (p.novelDone && typeof p.novelDone === 'object') novelDoneChapters = p.novelDone;
-    if (p.novelPace && $('novelPace')) $('novelPace').value = p.novelPace;
+    const prefs = p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+    if (prefs.noCaps && $('optNoCaps')) $('optNoCaps').checked = true;
+    if (prefs.noPunct && $('optNoPunct')) $('optNoPunct').checked = true;
+    if (prefs.sound === false && $('optSound')) $('optSound').checked = false;
+    if (prefs.fx === false && $('optFx')) $('optFx').checked = false;
+    if (prefs.ambient === false && $('optAmbient')) $('optAmbient').checked = false;
+    if (prefs.burn === false && $('optBurn')) $('optBurn').checked = false;
+    if (prefs.novelAuto === false && $('optNovelAuto')) $('optNovelAuto').checked = false;
+    allowedSelect('optFont', prefs.font, STYLE_ALLOW.font, 'mono');
+    allowedSelect('optColor', prefs.color, STYLE_ALLOW.color, 'cyan');
+    allowedSelect('optTextFx', prefs.textFx, STYLE_ALLOW.fx, 'none');
+    allowedSelect('optTextAnim', prefs.textAnim, STYLE_ALLOW.anim, 'none');
+    allowedSelect('optFxLevel', prefs.fxLevel, STYLE_ALLOW.fxLevel, 'med');
+    if (prefs.novelBookId && NOVEL_BOOKS.some((b) => b.id === prefs.novelBookId)) novelBookId = prefs.novelBookId;
+    if (Number.isFinite(prefs.novelChapterIndex)) novelChapterIndex = Math.max(0, prefs.novelChapterIndex | 0);
+    if (prefs.novelDone && typeof prefs.novelDone === 'object') novelDoneChapters = prefs.novelDone;
+    if (prefs.novelPace && $('novelPace')) $('novelPace').value = prefs.novelPace;
     applyAmbientPref();
     applyPromptStyle();
     populateNovelBookSelect();
@@ -5696,11 +5938,14 @@
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
   function savePrefs() {
+    const prev = loadJson(KEYS.prefs, {});
+    const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? prev : {};
     saveJson(KEYS.prefs, {
-      noCaps: $('optNoCaps').checked,
-      noPunct: $('optNoPunct').checked,
-      sound: $('optSound').checked,
-      fx: $('optFx').checked,
+      ...base,
+      noCaps: !!$('optNoCaps')?.checked,
+      noPunct: !!$('optNoPunct')?.checked,
+      sound: $('optSound') ? !!$('optSound').checked : true,
+      fx: $('optFx') ? !!$('optFx').checked : true,
       ambient: $('optAmbient') ? $('optAmbient').checked : true,
       burn: $('optBurn') ? $('optBurn').checked : true,
       novelAuto: $('optNovelAuto') ? $('optNovelAuto').checked : true,
@@ -5714,7 +5959,7 @@
       novelDone: novelDoneChapters,
       novelPace: $('novelPace')?.value || 'chapter',
     });
-    localStorage.setItem(KEYS.name, getPlayerName());
+    try { localStorage.setItem(KEYS.name, getPlayerName()); } catch (_) {}
     applyAmbientPref();
     applyPromptStyle();
   }
@@ -5813,7 +6058,7 @@
     syncNameFields($('resultName') || $('playerName'));
     if (saveHighScore(pendingHs)) {
       pendingHs = null;
-      $('btnSaveHs').style.display = 'none';
+      if ($('btnSaveHs')) $('btnSaveHs').style.display = 'none';
       $('resultSub').textContent = 'High score saved for ' + getPlayerName() + '!';
       sfxFinish(true);
       spawnSparkles(window.innerWidth / 2, window.innerHeight * 0.35, 4);
@@ -5910,7 +6155,7 @@
         a.href = URL.createObjectURL(blob);
         a.download = 'typing-highscores.json';
         a.click();
-        URL.revokeObjectURL(a.href);
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       });
     } else {
       const blob = new Blob([text], { type: 'application/json' });
@@ -5918,7 +6163,7 @@
       a.href = URL.createObjectURL(blob);
       a.download = 'typing-highscores.json';
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     }
   }
   $('btnExportHs')?.addEventListener('click', exportHighScores);
@@ -5945,14 +6190,47 @@
     if (e.target.closest('button')) return;
     typer && typer.focus();
   });
+  function consumeTypedText(str) {
+    if (!str || finished) return;
+    for (const ch of str) {
+      if (ch === '\r') continue;
+      const key = ch === '\n' ? 'Enter' : ch;
+      onType({ key, preventDefault() {} });
+    }
+  }
   typer?.addEventListener('keydown', onType);
-  typer.addEventListener('focus', () => {
-    if (!finished) {
+  typer?.addEventListener('compositionstart', () => { composing = true; });
+  typer?.addEventListener('compositionend', (e) => {
+    composing = false;
+    const data = e.data || (typer && typer.value) || '';
+    if (typer) typer.value = '';
+    if (data) consumeTypedText(data);
+  });
+  typer?.addEventListener('input', (e) => {
+    if (composing) return;
+    const v = typer ? typer.value : '';
+    if (typer) typer.value = '';
+    if (!v) return;
+    if (Date.now() - lastKeyAt < 50) return; // desktop keydown already handled
+    if (e.inputType && e.inputType.startsWith('delete')) {
+      onType({ key: 'Backspace', preventDefault() {} });
+      return;
+    }
+    consumeTypedText(v);
+  });
+  typer?.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const t = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    consumeTypedText(t.slice(0, 4000));
+  });
+  typer?.addEventListener('focus', () => {
+    if (!finished && focusHint) {
       focusHint.textContent = running ? 'Typing… combos multiply your score' : 'Ready — start typing';
       focusHint.className = 'focus-hint live';
     }
   });
-  typer.addEventListener('blur', () => {
+  typer?.addEventListener('blur', () => {
+    if (!focusHint) return;
     if (!finished && !running) {
       focusHint.textContent = 'Click the text (or press a key) to focus and start';
       focusHint.className = 'focus-hint';
@@ -5961,15 +6239,46 @@
       focusHint.className = 'focus-hint warn';
     }
   });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (running && !pausedAt) pausedAt = Date.now();
+      stopTimer();
+      fxPaused = true;
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    } else {
+      if (pausedAt) {
+        hiddenMs += Date.now() - pausedAt;
+        pausedAt = 0;
+      }
+      fxPaused = false;
+      if (running) startTimer();
+      if (!rafId) tickFx();
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    stopTimer();
+    fxPaused = true;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  });
   document.addEventListener('keydown', (e) => {
-    // Never steal keys from name / custom text / any form field
+    if (e.key === 'Escape') {
+      const ov = $('bonusOverlay');
+      if (ov && ov.classList.contains('show')) {
+        e.preventDefault();
+        e.stopPropagation();
+        hideBonusOverlay();
+        return;
+      }
+    }
+    // Never steal keys from name / custom text / selects / any form field
     if (isNameFieldActive()) return;
     if (e.key === 'Tab') {
+      if (document.activeElement !== typer) return;
       e.preventDefault();
       newTest(true);
       return;
     }
-    if (document.activeElement !== typer && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (typer && document.activeElement !== typer && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       // After a finished run, don't yank focus away from save UI
       if (finished && pendingHs) return;
       typer.focus();
@@ -6014,6 +6323,8 @@
   let lastEsc = 0;
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
+    const ov = document.getElementById('bonusOverlay');
+    if (ov && ov.classList.contains('show')) return;
     const t = e.target;
     // Name / form fields: stay
     if (t && (t.id === 'playerName' || t.id === 'resultName' || t.id === 'customText' || t?.closest?.('.name-field'))) return;
@@ -6025,7 +6336,7 @@
     // Mid-run / results panel: require double-Esc to leave
     const now = Date.now();
     const busy = document.body.classList.contains('run-active')
-      || document.querySelector('.result-panel.show, .results.show, #resultPanel:not(.hidden), .board-results:not(.hidden)');
+      || document.querySelector('.result-panel.show, .results.show, #resultBanner.show, #resultPanel:not(.hidden), .board-results:not(.hidden)');
     if (busy || now - lastEsc > 900) {
       lastEsc = now;
       try { window.AIToolboxUI?.toast?.('Esc again to leave → Toolbox (or use ← Toolbox)', 'ok'); } catch(_){}
