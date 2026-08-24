@@ -96,8 +96,7 @@
                 if (tooltipEl && tooltipEl.classList.contains('visible')) positionTooltip(el);
             });
             el.addEventListener('mouseleave', () => {
-                clearTimeout(tooltipTimer);
-                tooltipEl.classList.remove('visible');
+                hideTooltip();
             });
             // Keyboard focus also shows tip (accessibility)
             el.addEventListener('focus', () => {
@@ -130,13 +129,22 @@
             t = document.createElement('div');
             t.id = 'ui-toast-global';
             t.className = 'ui-toast';
+            t.setAttribute('role', 'status');
+            t.addEventListener('click', () => t.classList.remove('show'));
             document.body.appendChild(t);
         }
         t.className = 'ui-toast' + (type ? ' ' + type : '');
         t.textContent = msg;
+        t.title = 'Click to dismiss';
         requestAnimationFrame(() => t.classList.add('show'));
         clearTimeout(t._hide);
-        t._hide = setTimeout(() => t.classList.remove('show'), 2800);
+        const ms = type === 'warn' || type === 'error' ? 5600 : 2800;
+        t._hide = setTimeout(() => t.classList.remove('show'), ms);
+    }
+
+    function hideTooltip() {
+        clearTimeout(tooltipTimer);
+        if (tooltipEl) tooltipEl.classList.remove('visible');
     }
 
     function confirmAction(opts) {
@@ -1042,6 +1050,12 @@
      */
     function tryCloseTransientUi() {
         try {
+            const ctx = document.getElementById('lxCtx');
+            if (ctx && ctx.classList.contains('open')) {
+                ctx.classList.remove('open');
+                ctx.hidden = true;
+                return true;
+            }
             // Explicit close targets (Dup Manager compare, etc.)
             const cmp = document.getElementById('comparePanel');
             if (cmp && cmp.classList.contains('open')) {
@@ -1066,7 +1080,7 @@
             }
             // Open dropdown menus (Media Library Pairs/Tools menus)
             const menus = document.querySelectorAll(
-                '.menu-wrap.open, .dropdown.open, .menu.open, .nav-menu.open, details[open].menu-details'
+                '.menu-wrap.open, .dropdown.open, .menu.open, .nav-menu.open, details[open].menu-details, .lx-ctx.open'
             );
             if (menus.length) {
                 menus.forEach((m) => {
@@ -1077,8 +1091,10 @@
             }
             // Visible modal overlays
             const modal = document.querySelector(
-                '.modal.open, .ui-modal.open, .overlay.open, .overlay.visible, ' +
+                '.ui-modal-bg.open, .modal.open, .ui-modal.open, .overlay.open, .overlay.visible, ' +
                 '.modal.show, .ui-modal.show, dialog[open], ' +
+                '.vis-modal-backdrop.open, .tile-modal-backdrop.open, .cmdk-backdrop.open, ' +
+                '.settings-drawer.open, #atx-pro-help.open, ' +
                 '[role="dialog"].open, [role="dialog"][aria-hidden="false"]'
             );
             if (modal) {
@@ -1095,7 +1111,9 @@
                 return true;
             }
             // Tutorial / walkthrough
-            const tut = document.querySelector('.tutorial-overlay, .cine-root, #tutorialRoot, [data-tutorial-open]');
+            const tut = document.querySelector(
+                '.ui-tutorial-bg, .tutorial-overlay, .cine-root, #tutorialRoot, [data-tutorial-open]'
+            );
             if (tut && (tut.classList.contains('open') || tut.classList.contains('active') || getComputedStyle(tut).display !== 'none')) {
                 try { endTutorial?.(); } catch { /* ignore */ }
                 tut.classList.remove('open', 'active');
@@ -1244,6 +1262,61 @@
         }, true);
     }
 
+    /**
+     * Shared QoL that every toolbox page gets for free:
+     *  / focuses the first search box
+     *  click [data-copy] copies text
+     *  scroll/click hides leftover tooltips
+     */
+    function installGlobalQol() {
+        if (typeof document === 'undefined' || document.documentElement.dataset.tbQol === '1') return;
+        document.documentElement.dataset.tbQol = '1';
+
+        const hideTip = () => { try { hideTooltip(); } catch { /* ignore */ } };
+        window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+        document.addEventListener('click', hideTip, true);
+        document.addEventListener('keydown', hideTip, true);
+
+        document.addEventListener('click', async (e) => {
+            const hit = e.target?.closest?.('[data-copy]');
+            if (!hit) return;
+            const text = hit.getAttribute('data-copy') || hit.textContent || '';
+            if (!text.trim()) return;
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text.trim());
+                else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text.trim();
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                }
+                toast('Copied', 'ok');
+            } catch {
+                toast('Copy failed', 'warn');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.defaultPrevented) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const t = e.target;
+            const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+            if (typing) return;
+            if (e.key !== '/') return;
+            const search = document.querySelector(
+                '#toolSearch, input[type="search"], input[name="q"], input[placeholder*="earch" i], input[placeholder*="filter" i]'
+            );
+            if (!search || search.disabled) return;
+            e.preventDefault();
+            search.focus();
+            if (typeof search.select === 'function') search.select();
+        });
+    }
+
     // Auto-install on every page that loads the UI kit (low cost, high value)
     if (typeof window !== 'undefined') {
         try { installStabilityGuards({ quiet: false }); } catch { /* ignore */ }
@@ -1255,6 +1328,7 @@
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
                 bindFramedHubLinks();
+                installGlobalQol();
                 // Guidance (PC score + skill tooltips) — load once
                 ensureGuidanceScript();
             } catch (e) {
@@ -1327,5 +1401,6 @@
         parseToolboxDeepLink,
         navigateToolbox,
         bindFramedHubLinks,
+        installGlobalQol,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

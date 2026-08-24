@@ -825,6 +825,20 @@
       const chrome = panel.querySelector(':scope > .fafo-panel-chrome');
       if (!chrome || chrome._fafoDrag) return;
       chrome._fafoDrag = true;
+      if (!chrome._fafoMaxBound) {
+        chrome._fafoMaxBound = true;
+        chrome.addEventListener('dblclick', (ev) => {
+          if (ev.target && ev.target.closest && ev.target.closest('button, a, input, select, textarea, .fafo-chrome-btn')) {
+            return;
+          }
+          ev.preventDefault();
+          const turningOn = !panel.classList.contains('fafo-max-panel');
+          panelEls(root).forEach((p) => p.classList.remove('fafo-max-panel'));
+          root.classList.toggle('fafo-maxed', turningOn);
+          if (turningOn) panel.classList.add('fafo-max-panel');
+          toast(turningOn ? 'Panel maximized — double-click header to restore' : 'Layout restored');
+        });
+      }
       // Only the grip starts a drag — buttons/reset must not steal the hand cursor forever
       chrome.addEventListener('dragstart', (ev) => {
         if (ev.target && ev.target.closest && ev.target.closest('button, a, input, select, textarea, .fafo-chrome-btn')) {
@@ -973,6 +987,31 @@
       dock = el('div', 'fafo-layout-float-dock');
       dock.id = 'fafo-layout-float-dock';
       document.body.appendChild(dock);
+    }
+    if (!dock.querySelector('[data-fafo-dock-toggle]')) {
+      const tog = el('button', 'fafo-layout-dock-toggle', {
+        type: 'button',
+        title: 'Show or hide layout controls (also: double-click a panel header to maximize it)',
+        'data-fafo-dock-toggle': '1',
+        text: 'Layout',
+      });
+      tog.addEventListener('click', () => {
+        dock.classList.toggle('collapsed');
+        tog.textContent = dock.classList.contains('collapsed') ? 'Layout' : 'Layout ▾';
+        try {
+          localStorage.setItem(
+            'fafo_layout_dock_collapsed',
+            dock.classList.contains('collapsed') ? '1' : '0'
+          );
+        } catch (_) { /* ignore */ }
+      });
+      dock.insertBefore(tog, dock.firstChild);
+      let collapsed = true;
+      try {
+        collapsed = localStorage.getItem('fafo_layout_dock_collapsed') !== '0';
+      } catch (_) { /* ignore */ }
+      dock.classList.toggle('collapsed', collapsed);
+      tog.textContent = collapsed ? 'Layout' : 'Layout ▾';
     }
     // One bar per app id inside the dock
     const safeId = String(appId || 'app').replace(/[^\w.\-]+/g, '_');

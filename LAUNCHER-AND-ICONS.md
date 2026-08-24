@@ -66,6 +66,15 @@ Windows shortcuts prefer **`.ico`**. The HTML launcher still shows PNG/GIF/etc.
 
 The launcher chrome (search, Edit Icons, section tabs) stays put while the **tile grid scrolls on its own**. Same idea in the Tile studio: cell-size / category chips stay at the top while the pattern gallery independently scrolls.
 
+**Launcher QoL (1.16.21)**
+
+- **Servers ▴/▾** collapses the watchdog / prefs / get-started chrome so tiles get the window (remembered; default collapsed).
+- **Continue** reopens the last tool. In any other tool, **B** jumps back.
+- **Right-click** a card: Open / new tab / favorite / copy path / change icon.
+- **Ctrl/⌘-click** or **middle-click** opens in a new tab. **Shift-click** stars a favorite. **★** on the card does the same.
+- **/** focuses search. **Esc** closes overlays, then clears search. **Ctrl+Enter** in search opens the first match.
+- `?tool=id` (query or hash) deep-links a tool. Opt-in “resume last tool on launch” lives in Settings.
+
 ICO files from Windows (Completed ICO library) are supported even when the OS reports them as `octet-stream`. If the square cropper cannot decode a file, the original is saved instead of aborting.
 
 **PowerShell**

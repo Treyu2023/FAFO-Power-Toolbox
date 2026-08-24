@@ -16,6 +16,7 @@
   const LS_RECENT = 'aitoolbox.pro.recents';
   const LS_FOCUS = 'aitoolbox.pro.focus';
   const LS_DENSE = 'aitoolbox.pro.dense';
+  const LS_MINI = 'aitoolbox.pro.minibar';
   const MAX_RECENT = 14;
 
   /** Canonical tool graph: path fragment → meta + counterparts */
@@ -413,6 +414,10 @@
   border-radius:4px;padding:1px 4px;margin-left:4px;
 }
 body.atx-pro-pad{padding-bottom:52px !important}
+body.atx-pro-min #atx-pro-bar{transform:translateY(72%);opacity:.45}
+body.atx-pro-min #atx-pro-bar:hover, body.atx-pro-min #atx-pro-bar:focus-within{
+  transform:none;opacity:1
+}
 body.atx-focus #atx-pro-bar{opacity:.18;transform:translateY(70%);transition:.25s}
 body.atx-focus #atx-pro-bar:hover, body.atx-focus #atx-pro-bar:focus-within{
   opacity:1;transform:none
@@ -525,12 +530,15 @@ body.atx-dense{--ui-ease:linear}
       <h2>${tool.emoji || '🧰'} ${escapeHtml(tool.title)} — Pro shortcuts</h2>
       <ul>
         <li><kbd>?</kbd> or <kbd>Ctrl</kbd>+<kbd>/</kbd> — this help</li>
+        <li><kbd>/</kbd> — jump to search / filter box</li>
         <li><kbd>F</kbd> — focus mode (dim chrome)</li>
         <li><kbd>D</kbd> — compact density</li>
+        <li><kbd>B</kbd> — previous tool (recents)</li>
         <li><kbd>L</kbd> — Toolbox launcher</li>
         <li><kbd>C</kbd> — jump first counterpart</li>
         <li><kbd>R</kbd> — copy page report to clipboard</li>
-        <li><kbd>Esc</kbd> — close help</li>
+        <li><kbd>Esc</kbd> — close overlays, then back to launcher</li>
+        <li>Ctrl/⌘-click a launcher card — open in a new tab</li>
         ${custom.map((x) => '<li>' + escapeHtml(x) + '</li>').join('')}
         ${lastErr ? '<li>Last script error: <code>' + escapeHtml(lastErr) + '</code></li>' : ''}
       </ul>
@@ -554,6 +562,7 @@ body.atx-dense{--ui-ease:linear}
     document.body.classList.add('atx-pro-pad');
     if (localStorage.getItem(LS_FOCUS) === '1') document.body.classList.add('atx-focus');
     if (localStorage.getItem(LS_DENSE) === '1') document.body.classList.add('atx-dense');
+    if (localStorage.getItem(LS_MINI) === '1') document.body.classList.add('atx-pro-min');
 
     const bar = document.createElement('div');
     bar.id = 'atx-pro-bar';
@@ -580,9 +589,11 @@ body.atx-dense{--ui-ease:linear}
       <div class="atx-actions">
         <a class="atx-chip" href="${launcher}">🚀 Launcher</a>
         <button type="button" class="atx-chip" data-act="help">Help <span class="atx-kbd">?</span></button>
+        <button type="button" class="atx-chip" data-act="back">Back <span class="atx-kbd">B</span></button>
         <button type="button" class="atx-chip" data-act="focus">Focus <span class="atx-kbd">F</span></button>
         <button type="button" class="atx-chip" data-act="dense">Dense <span class="atx-kbd">D</span></button>
         <button type="button" class="atx-chip" data-act="report">Report <span class="atx-kbd">R</span></button>
+        <button type="button" class="atx-chip" data-act="minibar" title="Tuck the bar away until hover">▾</button>
       </div>`;
 
     bar.addEventListener('click', async (e) => {
@@ -604,9 +615,23 @@ body.atx-dense{--ui-ease:linear}
         const ok = await copyText(buildReport(tool));
         toast(ok ? 'Report copied to clipboard' : 'Copy failed');
       }
+      if (act === 'back') goBack(tool);
+      if (act === 'minibar') {
+        document.body.classList.toggle('atx-pro-min');
+        localStorage.setItem(LS_MINI, document.body.classList.contains('atx-pro-min') ? '1' : '0');
+        toast(document.body.classList.contains('atx-pro-min') ? 'Bar tucked — hover to expand' : 'Bar pinned');
+      }
     });
 
     document.body.appendChild(bar);
+  }
+
+  function goBack(tool) {
+    const rec = loadRecents();
+    const prev = rec.find((x) => x && x.id && x.id !== tool.id && x.id !== 'launcher' && x.id !== 'unknown');
+    const href = prev ? resolveHref(prev) : resolveHref(BY_ID.launcher);
+    if (href) location.href = href;
+    else toast('No previous tool yet');
   }
 
   function bindKeys(tool) {
@@ -623,12 +648,18 @@ body.atx-dense{--ui-ease:linear}
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (tool.id === 'launcher') {
+        if (e.key === 'b' || e.key === 'B') goBack(tool);
+        return;
+      }
       if (e.key === 'f' || e.key === 'F') {
         document.body.classList.toggle('atx-focus');
         localStorage.setItem(LS_FOCUS, document.body.classList.contains('atx-focus') ? '1' : '0');
       } else if (e.key === 'd' || e.key === 'D') {
         document.body.classList.toggle('atx-dense');
         localStorage.setItem(LS_DENSE, document.body.classList.contains('atx-dense') ? '1' : '0');
+      } else if (e.key === 'b' || e.key === 'B') {
+        goBack(tool);
       } else if (e.key === 'l' || e.key === 'L') {
         location.href = resolveHref(BY_ID.launcher) || '../Toolbox Launcher.html';
       } else if (e.key === 'c' || e.key === 'C') {
