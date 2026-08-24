@@ -1678,9 +1678,101 @@
             position: relative;
             top: auto;
         }
+        body.lx-chrome-compact > #watchdogPanel,
+        body.lx-chrome-compact > #launchPrefsPanel,
+        body.lx-chrome-compact > #getStartedPanel {
+            display: none !important;
+        }
+        body.lx-chrome-compact > .perf-strip {
+            display: none !important;
+        }
+        body.lx-chrome-compact > .server-banner > p,
+        body.lx-chrome-compact > .server-banner > .server-hint {
+            display: none !important;
+        }
+        body.lx-chrome-compact > .server-banner {
+            max-height: none;
+            padding: 8px 12px !important;
+            margin-bottom: 10px;
+        }
+        body.lx-chrome-compact > .server-banner .server-actions .ui-btn.ghost {
+            display: none;
+        }
+        .tool-card .card-star {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 6;
+            border: none;
+            background: rgba(0,0,0,0.4);
+            color: #64748b;
+            width: 26px;
+            height: 26px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .tool-card .card-star:hover,
+        .tool-card .card-star.on { color: #fbbf24; }
+        .tool-card .card-ago {
+            position: absolute;
+            left: 8px;
+            bottom: 8px;
+            z-index: 5;
+            font-size: 9px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #7ee7ff;
+            background: rgba(0,0,0,0.45);
+            padding: 2px 6px;
+            border-radius: 999px;
+        }
+        .lx-ctx {
+            position: fixed;
+            z-index: 20000;
+            min-width: 220px;
+            background: #0c1018;
+            border: 1px solid rgba(0,243,255,0.35);
+            border-radius: 10px;
+            padding: 6px;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+            display: none;
+        }
+        .lx-ctx.open { display: block; }
+        .lx-ctx button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: transparent;
+            border: none;
+            color: #e8eef4;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .lx-ctx button:hover { background: rgba(0,243,255,0.12); color: #00f3ff; }
+        .lx-ctx .sep {
+            height: 1px;
+            background: rgba(255,255,255,0.08);
+            margin: 4px 6px;
+        }
+        .set-check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text);
+            margin-top: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .set-check input { accent-color: var(--accent); }
     </style>
 </head>
-<body class="lx-split-scroll">
+<body class="lx-split-scroll lx-chrome-compact">
     <header>
         <div class="brand-lockup">
             <div class="brand-fafo">FAFO</div>
@@ -1688,11 +1780,12 @@
             <div class="brand-credit">@NEON NINJA<span class="neon-i">I</span> · LOCAL TOOLS · with <span style="color:#7dffc8;letter-spacing:0.12em">SUMRAN</span></div>
         </div>
         <p class="subtitle">
-            <strong>S1</strong> <code style="color:var(--accent)">127.0.0.87:18765</code> HTML Toolbox ·
-            <strong>S2</strong> <code style="color:var(--accent)">127.0.0.1:8765</code> FAFO Tagger
+            <strong>S1</strong> <code style="color:var(--accent)" data-copy="http://127.0.0.87:18765" title="Click to copy">127.0.0.87:18765</code> HTML Toolbox ·
+            <strong>S2</strong> <code style="color:var(--accent)" data-copy="http://127.0.0.1:8765" title="Click to copy">127.0.0.1:8765</code> FAFO Tagger
             · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">Ctrl+K</kbd> command palette
+            · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">/</kbd> search
             · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">?</kbd> keyboard help
-            · Settings · Recents · <span id="appVersion" style="opacity:0.65"></span>
+            · Settings · Recents · <span id="appVersion" style="opacity:0.65" title="Click to copy version"></span>
         </p>
     </header>
 
@@ -1895,10 +1988,12 @@
             data-tip-title="Command palette" data-tip="Jump to any tool or action. Shortcut: Ctrl+K (⌘K on Mac).">
             ⌕ Search tools… <kbd>Ctrl K</kbd>
         </button>
+        <button class="ui-btn primary" id="btnContinue" style="display:none;" data-tip-title="Continue" data-tip="Reopen the last tool you used on this PC. Shortcut: B from any other tool.">↩ Continue</button>
+        <button class="ui-btn" id="btnChromeCompact" aria-pressed="true" data-tip-title="Server chrome" data-tip="Collapse the big server / watchdog panels so tiles get the window. Expand anytime. Remembered on this PC.">Servers ▾</button>
         <button class="ui-btn" id="btnSettings" data-tip-title="Settings" data-tip="Shortcuts, recents, visibility, intros, and launcher preferences. Also Ctrl+,">⚙ Settings</button>
         <button class="ui-btn" id="btnGetStarted" data-tip-title="Tutorial" data-tip="Replay the interactive walkthrough or show the quick-start panel above.">🎓 Get Started</button>
         <button class="ui-btn" id="btnCineSettings" data-tip-title="Intro cinematics" data-tip="90s production intros: pick video folders per screen, mute, skip-on-launch, or replay Neon Ninja + Producer + FAFO.">🎬 Intros</button>
-        <button class="ui-btn" id="btnPortalSettings" data-tip-title="Holo-Portal launch" data-tip="Random 3–5 effects per open (toggle each in settings). Portal pack themes + optional per-tool videos. Right-click a card for Set video / Preview / Settings.">🌀 Portal</button>
+        <button class="ui-btn" id="btnPortalSettings" data-tip-title="Holo-Portal launch" data-tip="Random 3–5 effects per open (toggle each in settings). Portal pack themes + optional per-tool videos. Right-click a card for Open / new tab / favorite / icon.">🌀 Portal</button>
         <button class="ui-btn" id="btnEditIcons" data-tip-title="Custom icons" data-tip="Edit mode: click a tool and pick PNG, GIF, JPG, WEBP, ICO, or SVG. With the server running, the file is copied into assets/tool-icons for all users. Personal overrides still work offline in this browser.">✎ Edit Icons</button>
         <button class="ui-btn ghost" id="btnPublishIcons" style="display:none;" data-tip="Copy all personal browser icons into assets/tool-icons (shared repo defaults for everyone)">⬆ Publish Shared</button>
         <button class="ui-btn ghost" id="btnResetIcons" style="display:none;" data-tip="Clear personal browser overrides only — shared repo icons stay">Reset Personal</button>
@@ -1944,6 +2039,14 @@
                 <h3>Keyboard</h3>
                 <table class="kbd-table">
                     <tr><td>Ctrl + K</td><td>Command palette — jump to any tool</td></tr>
+                    <tr><td>/ </td><td>Focus the search box</td></tr>
+                    <tr><td>Ctrl+Enter in search</td><td>Open the first matching tool</td></tr>
+                    <tr><td>Ctrl/⌘ + click</td><td>Open a tool in a new tab</td></tr>
+                    <tr><td>Middle-click</td><td>Open a tool in a new tab</td></tr>
+                    <tr><td>Shift + click</td><td>Star / unstar a favorite</td></tr>
+                    <tr><td>Right-click a card</td><td>Open / new tab / favorite / copy path / change icon</td></tr>
+                    <tr><td>← → ↑ ↓</td><td>Move between focused tool cards</td></tr>
+                    <tr><td>B</td><td>In tools: previous tool (recents). Continue on the launcher.</td></tr>
                     <tr><td>Ctrl + ,</td><td>Open this settings drawer</td></tr>
                     <tr><td>Esc</td><td>Close palette / settings (in tools: back to launcher)</td></tr>
                     <tr><td>↑ ↓ Enter</td><td>Navigate palette results</td></tr>
@@ -1964,12 +2067,17 @@
             </div>
             <div class="settings-block">
                 <h3>Home layout</h3>
-                <p>Category accordion on Home — expand or collapse every section at once.</p>
+                <p>Category accordion on Home — expand or collapse every section at once. Collapse the server banner so tiles get the window.</p>
                 <div class="row-btns">
                     <button type="button" id="setExpandAll">Expand all categories</button>
                     <button type="button" id="setCollapseAll">Collapse all</button>
                     <button type="button" id="setClearRecents">Clear recents</button>
+                    <button type="button" id="setBtnCompact">Show server chrome</button>
                 </div>
+                <label class="set-check">
+                    <input type="checkbox" id="setResumeLast">
+                    Open last tool once when this browser session starts
+                </label>
             </div>
             <div class="settings-block">
                 <h3>Tile patterns</h3>
@@ -2027,7 +2135,8 @@
 
     <div class="filter-bar animate-in animate-in-delay-2" id="filterBar">
         <input type="search" id="toolSearch" placeholder="Search all tools by name, desc, or tag…" autocomplete="off"
-            data-tip-title="Search" data-tip="Searches across every section. Clear the box to return to the current page.">
+            data-tip-title="Search" data-tip="Searches across every section. Press / to focus, Esc to clear, Ctrl+Enter to open the first match.">
+        <button type="button" class="ui-btn ghost" id="btnClearSearch" style="display:none;" title="Clear search">✕</button>
         <span id="toolCount" style="font-size:11px;color:var(--muted);width:100%;text-align:center;"></span>
     </div>
 
@@ -2069,6 +2178,9 @@
 
     <p class="hint-bar">
         <span>Tip:</span> Press <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">?</kbd> or <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">Ctrl+/</kbd> for keyboard help (also in Settings).
+        <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">/</kbd> search ·
+        right-click a card · Ctrl/⌘-click or middle-click for a new tab ·
+        <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">B</kbd> previous tool.
         Cards show <strong>counterpart pair chips</strong> when related tools exist · Recents merge visits from every Pro-shell tool ·
         In tools: <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">C</kbd> jumps the pair · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">R</kbd> report · <kbd style="border:1px solid rgba(0,243,255,.3);border-radius:4px;padding:1px 5px;font-size:11px">F</kbd> focus.
         Icons: personal override shared <code style="color:var(--accent)">assets/tool-icons</code> then emoji.
@@ -2080,6 +2192,7 @@
     <div id="sumranCornerHost"></div>
 
     <input type="file" id="iconPicker" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/x-icon,image/vnd.microsoft.icon,image/svg+xml,image/bmp,.ico,.png,.gif,.jpg,.jpeg,.webp,.svg,.bmp">
+    <div class="lx-ctx" id="lxCtx" role="menu" hidden></div>
 
     <script src="shared/fafo-tile-patterns.js"></script>
     <script src="shared/aitoolbox-config.js"></script>
@@ -2729,7 +2842,214 @@
         const EXPAND_KEY = 'aitoolbox.launcher.expandedSections';
         const RECENT_KEY = 'aitoolbox.launcher.recents';
         const FAV_KEY = 'aitoolbox.launcher.favorites';
+        const COMPACT_KEY = 'aitoolbox.launcher.compactChrome';
+        const RESUME_KEY = 'aitoolbox.launcher.resumeLast';
+        const SEARCH_KEY = 'aitoolbox.launcher.search';
+        const RECENT_AT_KEY = 'aitoolbox.launcher.recentAt';
         const MAX_RECENTS = 12;
+        let recentAt = {};
+
+        function loadRecentAt() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(RECENT_AT_KEY) || '{}');
+                recentAt = raw && typeof raw === 'object' ? raw : {};
+            } catch (e) { recentAt = {}; }
+        }
+        function saveRecentAt() {
+            try { localStorage.setItem(RECENT_AT_KEY, JSON.stringify(recentAt)); } catch (e) { /* ignore */ }
+        }
+        function formatAgo(ts) {
+            const n = Number(ts);
+            if (!n) return '';
+            const s = Math.round((Date.now() - n) / 1000);
+            if (s < 45) return 'just now';
+            if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
+            if (s < 86400) return Math.max(1, Math.round(s / 3600)) + 'h ago';
+            return Math.max(1, Math.round(s / 86400)) + 'd ago';
+        }
+        function isCompactChrome() {
+            try {
+                const v = localStorage.getItem(COMPACT_KEY);
+                if (v === null) return true;
+                return v !== '0';
+            } catch (e) { return true; }
+        }
+        function applyCompactChrome(on) {
+            const next = (on === undefined) ? isCompactChrome() : !!on;
+            document.body.classList.toggle('lx-chrome-compact', next);
+            try { localStorage.setItem(COMPACT_KEY, next ? '1' : '0'); } catch (e) { /* ignore */ }
+            const btn = document.getElementById('btnChromeCompact');
+            if (btn) {
+                btn.textContent = next ? 'Servers ▾' : 'Servers ▴';
+                btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+                btn.title = next
+                    ? 'Show server / watchdog panels'
+                    : 'Collapse server / watchdog panels so tiles get the window';
+            }
+            const setBtn = document.getElementById('setBtnCompact');
+            if (setBtn) setBtn.textContent = next ? 'Show server chrome' : 'Collapse server chrome';
+        }
+        function lastContinueTool() {
+            return recentIds.map(toolById).find(t => t && isToolVisible(t)) || null;
+        }
+        function updateContinueBtn() {
+            const btn = document.getElementById('btnContinue');
+            if (!btn) return;
+            const t = lastContinueTool();
+            if (!t) {
+                btn.style.display = 'none';
+                btn.textContent = '↩ Continue';
+                btn.removeAttribute('data-tool');
+                return;
+            }
+            btn.style.display = '';
+            btn.textContent = '↩ ' + t.name;
+            btn.title = 'Reopen ' + t.name;
+            btn.dataset.tool = t.id;
+        }
+        function isResumeLast() {
+            try { return localStorage.getItem(RESUME_KEY) === '1'; } catch (e) { return false; }
+        }
+        function setResumeLast(on) {
+            try { localStorage.setItem(RESUME_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+            const el = document.getElementById('setResumeLast');
+            if (el) el.checked = !!on;
+        }
+        function syncSearchClearBtn() {
+            const btn = document.getElementById('btnClearSearch');
+            if (btn) btn.style.display = searchQuery.trim() ? '' : 'none';
+        }
+        function persistSearchQuery() {
+            try {
+                if (searchQuery.trim()) sessionStorage.setItem(SEARCH_KEY, searchQuery);
+                else sessionStorage.removeItem(SEARCH_KEY);
+            } catch (e) { /* ignore */ }
+            syncSearchClearBtn();
+        }
+        function loadSearchQuery() {
+            try {
+                const q = sessionStorage.getItem(SEARCH_KEY) || '';
+                searchQuery = q;
+                const el = document.getElementById('toolSearch');
+                if (el) el.value = q;
+            } catch (e) { /* ignore */ }
+            syncSearchClearBtn();
+        }
+        function clearLauncherSearch() {
+            searchQuery = '';
+            const el = document.getElementById('toolSearch');
+            if (el) el.value = '';
+            persistSearchQuery();
+            renderSectionNav();
+            renderTools();
+        }
+        function hideLxCtx() {
+            const m = document.getElementById('lxCtx');
+            if (!m) return;
+            m.classList.remove('open');
+            m.hidden = true;
+            m.innerHTML = '';
+            m._tool = null;
+        }
+        function showLxCtx(ev, tool) {
+            hideLxCtx();
+            const m = document.getElementById('lxCtx');
+            if (!m || !tool) return;
+            m._tool = tool;
+            const fav = isFavorite(tool.id);
+            m.innerHTML =
+                '<button type="button" data-act="open">Open</button>' +
+                '<button type="button" data-act="tab">Open in new tab</button>' +
+                '<button type="button" data-act="fav">' + (fav ? '★ Unfavorite' : '☆ Favorite') + '</button>' +
+                '<div class="sep"></div>' +
+                '<button type="button" data-act="copy">Copy path</button>' +
+                '<button type="button" data-act="icon">Change icon…</button>';
+            m.hidden = false;
+            m.classList.add('open');
+            const pad = 8;
+            m.style.left = '0px';
+            m.style.top = '0px';
+            const rect = m.getBoundingClientRect();
+            let x = ev.clientX;
+            let y = ev.clientY;
+            if (x + rect.width > window.innerWidth - pad) x = window.innerWidth - rect.width - pad;
+            if (y + rect.height > window.innerHeight - pad) y = window.innerHeight - rect.height - pad;
+            m.style.left = Math.max(pad, x) + 'px';
+            m.style.top = Math.max(pad, y) + 'px';
+        }
+        async function copyToolPath(tool) {
+            if (!tool) return;
+            let dest = tool.path || '';
+            try {
+                if (window.AIToolboxAPI?.isOnline && window.AIToolboxAPI?.toolPageUrl) {
+                    const on = await AIToolboxAPI.isOnline(false, 800).catch(() => false);
+                    if (on) dest = AIToolboxAPI.toolPageUrl(tool.path);
+                }
+            } catch (_) { /* ignore */ }
+            let abs = dest;
+            try { abs = new URL(dest, location.href).href; } catch (_) { /* keep dest */ }
+            try {
+                if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(abs);
+                else {
+                    const ta = document.createElement('textarea');
+                    ta.value = abs;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                }
+                AIToolboxUI.toast('Copied path', 'ok');
+            } catch (e) {
+                try { AIToolboxUI.toast('Copy failed', 'warn'); } catch (_) { /* ignore */ }
+            }
+        }
+        function consumeDeepLink() {
+            try {
+                const params = new URLSearchParams(location.search || '');
+                let hash = '';
+                try { hash = (location.hash || '').replace(/^#/, ''); } catch (_) { hash = ''; }
+                const hp = new URLSearchParams(hash.indexOf('=') >= 0 ? hash : '');
+                const id = params.get('tool') || params.get('open') || hp.get('tool') || hp.get('open');
+                if (!id) return false;
+                const t = toolById(id);
+                if (t && isToolVisible(t)) {
+                    setTimeout(() => openTool(t), 60);
+                    return true;
+                }
+                try { AIToolboxUI.toast('Unknown tool: ' + id, 'warn'); } catch (_) { /* ignore */ }
+            } catch (_) { /* ignore */ }
+            return false;
+        }
+        function maybeResumeLast(alreadyOpened) {
+            if (alreadyOpened) return;
+            if (!isResumeLast()) return;
+            try {
+                if (sessionStorage.getItem('aitoolbox.launcher.resumeOnce') === '1') return;
+                sessionStorage.setItem('aitoolbox.launcher.resumeOnce', '1');
+            } catch (_) { /* ignore */ }
+            const t = lastContinueTool();
+            if (!t) return;
+            try { AIToolboxUI.toast('Resuming ' + t.name, 'ok'); } catch (_) { /* ignore */ }
+            setTimeout(() => openTool(t), 350);
+        }
+        function moveCardFocus(dir) {
+            const cards = [...document.querySelectorAll('.tool-card')].filter((el) => el.offsetParent);
+            if (!cards.length) return;
+            const i = cards.indexOf(document.activeElement);
+            const next = i < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, i + dir));
+            cards[next].focus();
+            try { cards[next].scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) { /* ignore */ }
+        }
+        function firstVisibleSearchTool() {
+            const q = (searchQuery || '').trim().toLowerCase();
+            if (!q) return TOOLS.find(t => isToolVisible(t) && t.featured) || TOOLS.find(t => isToolVisible(t)) || null;
+            const words = q.split(/\s+/).filter(Boolean);
+            return TOOLS.find(t => {
+                if (!isToolVisible(t)) return false;
+                const hay = [t.name, t.desc, t.tip, t.category, t.id].join(' ').toLowerCase();
+                return words.every(w => hay.includes(w));
+            }) || null;
+        }
 
         // Merge owner-only tools/sections when private/launcher-private.js is present
         (function mergePrivateLauncher() {
@@ -2804,6 +3124,7 @@
                 const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
                 recentIds = Array.isArray(raw) ? raw.filter(id => typeof id === 'string') : [];
             } catch (e) { recentIds = []; }
+            loadRecentAt();
             // Merge recents recorded by AIToolboxPro across tools (if available)
             try {
                 const proList = (window.AIToolboxPro && typeof AIToolboxPro.loadRecents === 'function')
@@ -2833,12 +3154,18 @@
         function recordRecent(toolId) {
             if (!toolId) return;
             recentIds = [toolId, ...recentIds.filter(id => id !== toolId)].slice(0, MAX_RECENTS);
+            recentAt[toolId] = Date.now();
             saveRecents();
+            saveRecentAt();
+            updateContinueBtn();
         }
         function clearRecents() {
             recentIds = [];
+            recentAt = {};
             saveRecents();
+            saveRecentAt();
             renderHomeStrips();
+            updateContinueBtn();
             try { AIToolboxUI.toast('Recents cleared', 'ok'); } catch (e) { /* ignore */ }
         }
         function loadFavorites() {
@@ -2859,6 +3186,10 @@
             else favoriteIds = [toolId, ...favoriteIds];
             saveFavorites();
             renderHomeStrips();
+            document.querySelectorAll('[data-fav="' + toolId + '"]').forEach((el) => {
+                el.classList.toggle('on', isFavorite(toolId));
+            });
+            updateContinueBtn();
         }
         function isToolVisible(tool) {
             if (!tool) return false;
@@ -3174,7 +3505,11 @@
             const sec = sectionForTool(tool);
             // Card body shows short desc; full tip is on hover
             const shortDesc = tool.desc || '';
+            const ago = recentIds.includes(tool.id) ? formatAgo(recentAt[tool.id]) : '';
+            const favOn = isFavorite(tool.id);
             card.innerHTML = `
+                <button type="button" class="card-star${favOn ? ' on' : ''}" data-fav="${tool.id}" title="${favOn ? 'Unfavorite' : 'Favorite'}">★</button>
+                ${ago ? `<span class="card-ago">${ago}</span>` : ''}
                 <div class="icon-wrap"></div>
                 <h3>${tool.name}</h3>
                 <p>${shortDesc}</p>
@@ -3228,33 +3563,48 @@
                 } catch (_) { /* ignore */ }
             }
 
-            // Right-click: portal context menu (set video, clear, preview, settings)
-            card.addEventListener('contextmenu', async (ev) => {
+            // Right-click: Open / new tab / favorite / copy path / change icon
+            card.addEventListener('contextmenu', (ev) => {
                 if (editMode) return;
                 ev.preventDefault();
-                try {
-                    if (window.AIToolboxLauncherFX?.openToolContextMenu) {
-                        await AIToolboxLauncherFX.openToolContextMenu(ev, {
-                            toolId: tool.id,
-                            toolName: tool.name,
-                            category: tool.category,
-                            emoji: tool.emoji,
-                            card
-                        });
-                    }
-                } catch (err) {
-                    console.warn('[Launcher] portal context menu', err);
-                }
+                ev.stopPropagation();
+                showLxCtx(ev, tool);
             });
 
             card.addEventListener('click', (ev) => {
+                if (ev.target?.closest?.('[data-fav]')) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    toggleFavorite(tool.id);
+                    return;
+                }
                 if (editMode) {
                     ev.preventDefault();
                     ev.stopPropagation();
                     pickAndAssignIcon(tool.id);
                     return;
                 }
-                openTool(tool, { card, ev });
+                if (ev.shiftKey) {
+                    ev.preventDefault();
+                    toggleFavorite(tool.id);
+                    return;
+                }
+                openTool(tool, { card, ev, newTab: !!(ev.ctrlKey || ev.metaKey) });
+            });
+            card.addEventListener('auxclick', (ev) => {
+                if (editMode) return;
+                if (ev.button !== 1) return;
+                ev.preventDefault();
+                openTool(tool, { card, ev, newTab: true });
+            });
+            card.addEventListener('mousedown', (ev) => {
+                if (ev.button === 1) ev.preventDefault();
+            });
+            card.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    openTool(tool, { card, ev, newTab: !!(ev.ctrlKey || ev.metaKey) });
+                }
             });
             card.addEventListener('dragover', (ev) => {
                 if (!editMode) return;
@@ -3279,10 +3629,11 @@
             if (!tool) return;
             const card = opts.card || null;
             const ev = opts.ev || null;
+            const newTab = !!(opts.newTab || (ev && (ev.ctrlKey || ev.metaKey || ev.button === 1)));
             try {
                 recordRecent(tool.id);
                 try {
-                    if (window.AIToolboxLauncherFX?.onToolSelect && card) {
+                    if (!newTab && window.AIToolboxLauncherFX?.onToolSelect && card) {
                         await AIToolboxLauncherFX.onToolSelect(card, ev, {
                             toolId: tool.id,
                             toolName: tool.name,
@@ -3336,6 +3687,10 @@
                         );
                     } catch (e) { /* ignore */ }
                 }
+                if (newTab) {
+                    window.open(dest, '_blank', 'noopener');
+                    return;
+                }
                 window.location.href = dest;
             } catch (e) {
                 console.error('[Launcher] open tool failed', tool.id, e);
@@ -3372,7 +3727,19 @@
                         toggleFavorite(tool.id);
                         return;
                     }
-                    openTool(tool);
+                    openTool(tool, { ev: e, newTab: !!(e.ctrlKey || e.metaKey) });
+                });
+                chip.addEventListener('auxclick', (e) => {
+                    if (e.button !== 1) return;
+                    e.preventDefault();
+                    openTool(tool, { ev: e, newTab: true });
+                });
+                chip.addEventListener('mousedown', (e) => {
+                    if (e.button === 1) e.preventDefault();
+                });
+                chip.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    showLxCtx(e, tool);
                 });
                 return chip;
             };
@@ -3388,7 +3755,7 @@
             favHost.innerHTML = '';
             const favs = favoriteIds.map(toolById).filter(t => t && isToolVisible(t));
             if (!favs.length) {
-                favHost.innerHTML = '<span class="chip-empty">Star any tool (★ on a chip) or from the command palette.</span>';
+                favHost.innerHTML = '<span class="chip-empty">Star any tool (★ on the card) or right-click → Favorite.</span>';
             } else {
                 favs.forEach(t => favHost.appendChild(makeChip(t, { favStyle: true })));
             }
@@ -3659,9 +4026,21 @@
                 const empty = document.createElement('div');
                 empty.className = 'empty-tools';
                 empty.style.gridColumn = '1 / -1';
-                empty.textContent = searching
-                    ? 'No tools match your search (or they are hidden in Visible tools).'
-                    : 'No visible tools. Use 👁 Visible tools to turn some back on.';
+                if (searching) {
+                    empty.appendChild(document.createTextNode('No tools match “'));
+                    const qEl = document.createElement('strong');
+                    qEl.textContent = searchQuery.trim();
+                    empty.appendChild(qEl);
+                    empty.appendChild(document.createTextNode('”. '));
+                    const clr = document.createElement('button');
+                    clr.type = 'button';
+                    clr.className = 'ui-btn ghost';
+                    clr.textContent = 'Clear search';
+                    clr.addEventListener('click', clearLauncherSearch);
+                    empty.appendChild(clr);
+                } else {
+                    empty.textContent = 'No visible tools. Use 👁 Visible tools to turn some back on.';
+                }
                 grid?.appendChild(empty);
                 return;
             }
@@ -3714,9 +4093,11 @@
 
         document.getElementById('toolSearch')?.addEventListener('input', (e) => {
             searchQuery = e.target.value || '';
+            persistSearchQuery();
             renderSectionNav();
             renderTools();
         });
+        document.getElementById('btnClearSearch')?.addEventListener('click', clearLauncherSearch);
         document.getElementById('btnBackHub')?.addEventListener('click', () => {
             const searchEl = document.getElementById('toolSearch');
             if (searchEl) { searchEl.value = ''; searchQuery = ''; }
@@ -3760,6 +4141,24 @@
 
             // Actions first when query empty or matches
             const actions = [
+                {
+                    id: 'act-continue', emoji: '↩', name: 'Continue last tool',
+                    desc: lastContinueTool() ? ('Reopen ' + lastContinueTool().name) : 'No recents yet',
+                    hint: 'B',
+                    run: () => {
+                        closeCmdk();
+                        const t = lastContinueTool();
+                        if (t) openTool(t);
+                        else try { AIToolboxUI.toast('No recents yet', 'warn'); } catch (_) { /* ignore */ }
+                    },
+                    keys: 'continue last resume recent',
+                },
+                {
+                    id: 'act-compact', emoji: '▣', name: isCompactChrome() ? 'Show server chrome' : 'Collapse server chrome',
+                    desc: 'Hide or show watchdog / prefs / get-started panels', hint: '',
+                    run: () => { closeCmdk(); applyCompactChrome(!isCompactChrome()); },
+                    keys: 'compact chrome servers watchdog tiles',
+                },
                 {
                     id: 'act-settings', emoji: '⚙', name: 'Open Settings',
                     desc: 'Shortcuts, recents, visibility, intros', hint: 'Ctrl+,',
@@ -3972,8 +4371,8 @@
             const about = document.getElementById('settingsAbout');
             if (about) {
                 about.textContent =
-                    `${visiblePrimaryTools().length} visible tools · ${recentIds.length} recents · ${favoriteIds.length} favorites · ` +
-                    `prefs in this browser (localStorage).`;
+                    `v${window.AITOOLBOX_VERSION || '?'} · ${visiblePrimaryTools().length} visible tools · ${recentIds.length} recents · ${favoriteIds.length} favorites · ` +
+                    `prefs in this browser (localStorage). Compact chrome and resume-last are per-PC.`;
             }
         }
         function closeSettingsDrawer() {
@@ -4014,9 +4413,36 @@
         document.getElementById('setExpandAll')?.addEventListener('click', () => expandAllSections(true));
         document.getElementById('setCollapseAll')?.addEventListener('click', () => expandAllSections(false));
         document.getElementById('setClearRecents')?.addEventListener('click', clearRecents);
+        document.getElementById('setBtnCompact')?.addEventListener('click', () => applyCompactChrome(!isCompactChrome()));
+        document.getElementById('setResumeLast')?.addEventListener('change', (e) => setResumeLast(!!e.target.checked));
+        document.getElementById('btnContinue')?.addEventListener('click', () => {
+            const t = lastContinueTool();
+            if (t) openTool(t);
+        });
+        document.getElementById('btnChromeCompact')?.addEventListener('click', () => applyCompactChrome(!isCompactChrome()));
+        document.getElementById('lxCtx')?.addEventListener('click', (e) => {
+            const act = e.target?.closest?.('[data-act]')?.getAttribute('data-act');
+            const tool = document.getElementById('lxCtx')?._tool;
+            hideLxCtx();
+            if (!act || !tool) return;
+            if (act === 'open') openTool(tool);
+            else if (act === 'tab') openTool(tool, { newTab: true });
+            else if (act === 'fav') toggleFavorite(tool.id);
+            else if (act === 'copy') copyToolPath(tool);
+            else if (act === 'icon') pickAndAssignIcon(tool.id);
+        });
+        document.addEventListener('click', (e) => {
+            const m = document.getElementById('lxCtx');
+            if (!m || !m.classList.contains('open')) return;
+            if (m.contains(e.target)) return;
+            if (e.target?.closest?.('.tool-card, .tool-chip')) return;
+            hideLxCtx();
+        });
+        document.addEventListener('scroll', hideLxCtx, true);
 
         document.addEventListener('keydown', (e) => {
             const mod = e.ctrlKey || e.metaKey;
+            const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable);
             // Ctrl+K palette
             if (mod && (e.key === 'k' || e.key === 'K')) {
                 e.preventDefault();
@@ -4032,25 +4458,62 @@
                 return;
             }
             if (e.key === 'Escape') {
+                if (document.getElementById('lxCtx')?.classList.contains('open')) {
+                    e.preventDefault();
+                    hideLxCtx();
+                    return;
+                }
                 if (isCmdkOpen()) { e.preventDefault(); closeCmdk(); return; }
                 if (isSettingsOpen()) { e.preventDefault(); closeSettingsDrawer(); return; }
                 if (document.getElementById('visModal')?.classList.contains('open')) {
                     closeVisModal(false);
                     return;
                 }
+                if (document.getElementById('tileModal')?.classList.contains('open')) {
+                    closeTileStudio();
+                    return;
+                }
+                const searchEl = document.getElementById('toolSearch');
+                if (searchEl && (document.activeElement === searchEl || searchQuery.trim())) {
+                    e.preventDefault();
+                    if (searchQuery.trim()) clearLauncherSearch();
+                    else searchEl.blur();
+                    return;
+                }
             }
-            if (!isCmdkOpen()) return;
-            if (e.key === 'ArrowDown') {
+            if (isCmdkOpen()) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    cmdkIndex = Math.min(cmdkItems.length - 1, cmdkIndex + 1);
+                    renderCmdkList();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    cmdkIndex = Math.max(0, cmdkIndex - 1);
+                    renderCmdkList();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const item = cmdkItems[cmdkIndex];
+                    if (item?.kind === 'tool' && mod) {
+                        closeCmdk();
+                        const t = toolById(item.id);
+                        if (t) openTool(t, { newTab: true });
+                    } else {
+                        item?.run?.();
+                    }
+                }
+                return;
+            }
+            if (e.key === 'Enter' && mod && e.target && e.target.id === 'toolSearch') {
                 e.preventDefault();
-                cmdkIndex = Math.min(cmdkItems.length - 1, cmdkIndex + 1);
-                renderCmdkList();
-            } else if (e.key === 'ArrowUp') {
+                const t = firstVisibleSearchTool();
+                if (t) openTool(t, { newTab: e.shiftKey });
+                return;
+            }
+            if (!typing && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                if (!e.target?.closest?.('.tool-card')) return;
                 e.preventDefault();
-                cmdkIndex = Math.max(0, cmdkIndex - 1);
-                renderCmdkList();
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                cmdkItems[cmdkIndex]?.run?.();
+                const delta = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+                moveCardFocus(delta);
             }
         });
 
@@ -4059,6 +4522,10 @@
         loadRecents();
         loadFavorites();
         loadSavedSection();
+        loadSearchQuery();
+        applyCompactChrome();
+        setResumeLast(isResumeLast());
+        updateContinueBtn();
         // Prefer accordion home over old "section filter" saved state (except all)
         if (activeSection !== 'home' && activeSection !== 'all') {
             // Migrate: remember that section as expanded, show home accordion
@@ -4409,7 +4876,12 @@
 
         function loadVersion() {
             const v = window.AITOOLBOX_VERSION;
-            if (v) document.getElementById('appVersion').textContent = 'v' + v;
+            const el = document.getElementById('appVersion');
+            if (v && el) {
+                el.textContent = 'v' + v;
+                el.setAttribute('data-copy', v);
+                el.title = 'Click to copy version';
+            }
         }
 
         /** Soft turquoise/cyan neon edge intensity (persists per browser). */
@@ -5373,23 +5845,21 @@
                 console.warn('[Launcher] tile studio skipped', err);
             }
 
-            // Merge cross-tool Pro recents (from aitoolbox-pro.js) into launcher chips
-            try {
-                if (window.AIToolboxPro && AIToolboxPro.loadRecents) {
-                    const pro = AIToolboxPro.loadRecents() || [];
-                    pro.forEach(r => {
-                        if (r && r.id && typeof toolById === 'function' && toolById(r.id)) pushRecent(r.id);
-                    });
-                    if (typeof saveRecents === 'function') saveRecents();
-                }
-            } catch (e) { console.warn('[Launcher] pro recents merge', e); }
+            // Recents from Pro tools already merged in loadRecents()
+            try { updateContinueBtn(); } catch (_) { /* ignore */ }
 
             // Last themed section is restored via loadSavedSection() already called above
             await renderTools();
+            updateContinueBtn();
             AIToolboxUI.initTooltips();
             checkServer().then(() => refreshLaunchPrefs().catch(() => {}));
             setInterval(checkServer, 4000);
             setInterval(() => { refreshLaunchPrefs().catch(() => {}); }, 12000);
+
+            try {
+                const opened = consumeDeepLink();
+                maybeResumeLast(opened);
+            } catch (e) { console.warn('[Launcher] deep link / resume', e); }
 
             // First-run setup panel vs workflow get-started
             refreshSetupStatus().then((status) => {
