@@ -7,16 +7,24 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪐</text></svg>">
     <style>
         :root {
-            --bg: #030308;
-            --panel: rgba(8, 10, 22, 0.88);
-            --accent: #4fc3f7;
-            --accent2: #ff6b35;
-            --text: #e8ecf4;
-            --muted: #7a8499;
-            --border: rgba(79, 195, 247, 0.22);
-            --glow: 0 0 18px rgba(79, 195, 247, 0.35);
+            --bg: #070a10; --navy: #0a1220; --panel: #0e1520; --charcoal: #121820;
+            --line: rgba(56,189,248,.28);
+            --accent: #38bdf8; --gold: #f5d36c; --magenta: #e879f9;
+            --emerald: #1a9b6e; --mint: #7dffc8;
+            --text: #f2f6fb; --muted: #a8b8cc;
+            --danger: #f87171; --good: #34d399;
+            --accent2: #e879f9;
+            --border: rgba(56,189,248,.28);
+            --glow: 0 0 18px rgba(56,189,248,.35);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+        button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+            outline: 2px solid var(--gold); outline-offset: 2px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition: none !important; animation: none !important; }
+        }
         html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
         #canvas-container { position: fixed; inset: 0; }
         canvas { display: block; }
@@ -32,8 +40,12 @@
             top: 0; left: 0; right: 0;
             display: flex; align-items: center; justify-content: space-between;
             padding: 14px 20px;
-            background: linear-gradient(180deg, rgba(3,3,8,0.95) 0%, transparent 100%);
+            background: rgba(7,10,16,.96);
+            border-bottom: 1px solid var(--line);
             gap: 12px;
+            min-height: 56px;
+            contain: layout;
+            z-index: 20;
         }
         #top-bar a.toolbox-back {
             color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600;
@@ -43,7 +55,7 @@
         #top-bar a.toolbox-back:hover { background: var(--accent); color: #000; }
         #title-block h1 {
             font-size: 18px; font-weight: 300; letter-spacing: 3px;
-            color: var(--accent); text-shadow: var(--glow);
+            color: var(--gold); text-shadow: var(--glow);
         }
         #title-block p { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
@@ -62,7 +74,8 @@
             top: 70px; left: 16px; width: 300px; max-height: calc(100vh - 90px);
             overflow-y: auto; padding: 16px;
             background: var(--panel); border: 1px solid var(--border);
-            border-radius: 12px; backdrop-filter: blur(12px);
+            border-radius: 12px;
+            min-height: 200px; contain: layout;
             scrollbar-width: thin; scrollbar-color: var(--border) transparent;
         }
         .section { margin-bottom: 18px; }
@@ -77,8 +90,9 @@
             color: var(--text); padding: 6px 12px; border-radius: 6px;
             cursor: pointer; font-size: 11px; transition: all 0.2s;
         }
-        .btn:hover, .btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
-        .btn.warn:hover, .btn.warn.active { background: var(--accent2); border-color: var(--accent2); }
+        .btn:hover:not(:disabled), .btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+        .btn.warn:hover:not(:disabled), .btn.warn.active { background: var(--accent2); border-color: var(--accent2); color: #0a0a10; }
+        .btn:disabled { opacity: .45; cursor: not-allowed; }
 
         label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
         input[type="range"] { width: 100%; accent-color: var(--accent); }
@@ -92,8 +106,9 @@
 
         .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .stat-card {
-            background: rgba(0,0,0,0.35); border: 1px solid var(--border);
+            background: var(--charcoal); border: 1px solid var(--border);
             border-radius: 8px; padding: 10px; text-align: center;
+            min-height: 64px; contain: layout;
         }
         .stat-val { font-size: 20px; font-weight: 600; color: var(--accent); }
         .stat-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
@@ -105,7 +120,8 @@
         #info-panel {
             bottom: 16px; right: 16px; width: 320px; padding: 14px;
             background: var(--panel); border: 1px solid var(--border);
-            border-radius: 12px; backdrop-filter: blur(12px);
+            border-radius: 12px;
+            min-height: 80px; contain: layout;
             display: none;
         }
         #info-panel.visible { display: block; }
@@ -136,6 +152,16 @@
 
         .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; }
         .checkbox-row input { accent-color: var(--accent); }
+
+
+        .toast {
+            position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+            background: #122; color: var(--good); border: 1px solid var(--good);
+            padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 99;
+            opacity: 0; pointer-events: none; transition: opacity .2s;
+        }
+        .toast.show { opacity: 1; }
+        .toast.err { color: var(--danger); border-color: var(--danger); background: #211; }
 
         @media (max-width: 768px) {
             #side-panel { width: calc(100% - 32px); max-height: 45vh; }
@@ -168,7 +194,7 @@
           <a class="btn" href="Toolbox Launcher.html" style="text-decoration:none" title="Leave to FAFO Toolbox">← Toolbox</a>
           <div class="status-pill">
               <div class="status-dot loading" id="status-dot"></div>
-              <span id="status-text">Loading orbital data…</span>
+              <span id="status-text" aria-live="polite">Loading orbital data…</span>
           </div>
         </div>
     </div>
@@ -177,9 +203,9 @@
         <div class="section">
             <div class="section-title">View Mode</div>
             <div class="btn-row">
-                <button class="btn active" data-view="solar">Solar System</button>
-                <button class="btn" data-view="earth">Earth Orbit</button>
-                <button class="btn" data-view="debris">Debris Focus</button>
+                <button class="btn active" type="button" data-view="solar">Solar System</button>
+                <button class="btn" type="button" data-view="earth">Earth Orbit</button>
+                <button class="btn" type="button" data-view="debris">Debris Focus</button>
             </div>
             <div class="checkbox-row" style="margin-top:10px">
                 <input type="checkbox" id="cam-lock" checked>
@@ -216,9 +242,9 @@
             <label style="margin-top:8px">Simulation time (UTC)</label>
             <input type="datetime-local" id="sim-time">
             <div class="btn-row" style="margin-top:8px">
-                <button class="btn warn" data-archive="2007-01-11">Fengyun ASAT 2007</button>
-                <button class="btn warn" data-archive="2009-02-10">Iridium 33 2009</button>
-                <button class="btn warn" data-archive="2009-02-10">Cosmos 2251 2009</button>
+                <button class="btn warn" type="button" data-archive="2007-01-11">Fengyun ASAT 2007</button>
+                <button class="btn warn" type="button" data-archive="2009-02-10">Iridium 33 2009</button>
+                <button class="btn warn" type="button" data-archive="2009-02-10">Cosmos 2251 2009</button>
             </div>
         </div>
 
@@ -274,6 +300,8 @@
         </div>
     </div>
 
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
     <div class="hud" id="info-panel">
         <h3 id="info-name">—</h3>
         <div class="detail" id="info-body"></div>
@@ -291,6 +319,46 @@
     <script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
 
     <script type="module">
+
+    const el = (id) => document.getElementById(id);
+    function setText(id, text) {
+        const n = el(id);
+        if (n) n.textContent = text;
+    }
+    function bind(id, ev, fn) {
+        const n = el(id);
+        if (n) n[ev] = fn;
+    }
+    function withBusy(id, fn) {
+        return async function (e) {
+            const btn = (e && e.currentTarget) || (id ? el(id) : null);
+            if (btn && btn.disabled) return;
+            try {
+                if (btn) btn.disabled = true;
+                await fn.call(this, e);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        };
+    }
+    function toast(msg, err) {
+        const n = el('toast');
+        if (!n) return;
+        n.textContent = msg;
+        n.className = 'toast show' + (err ? ' err' : '');
+        clearTimeout(toast._tm);
+        toast._tm = setTimeout(() => n.classList.remove('show'), 3800);
+    }
+    function bindTileKeys(sel, fn) {
+        document.querySelectorAll(sel).forEach(btn => {
+            btn.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fn(btn, e);
+                }
+            });
+        });
+    }
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -433,10 +501,10 @@ COSMOS 2251 DEB
     async function loadDebrisData() {
         setStatus('loading', 'Fetching live TLE catalogs…');
         const cats = {
-            fengyun: document.getElementById('cat-fengyun').checked,
-            iridium: document.getElementById('cat-iridium').checked,
-            cosmos: document.getElementById('cat-cosmos').checked,
-            analyst: document.getElementById('cat-analyst').checked
+            fengyun: !!(el('cat-fengyun') && el('cat-fengyun').checked),
+            iridium: !!(el('cat-iridium') && el('cat-iridium').checked),
+            cosmos: !!(el('cat-cosmos') && el('cat-cosmos').checked),
+            analyst: !!(el('cat-analyst') && el('cat-analyst').checked)
         };
 
         let all = [];
@@ -472,16 +540,24 @@ COSMOS 2251 DEB
                 `${dataSource === 'live' ? 'Live TLE' : 'Archived'} · ${all.length.toLocaleString()} objects (capped for performance)`);
         }
 
-        debrisObjects = all;
-        rebuildDebrisGeometry();
-        updateStats();
+        debrisObjects = Array.isArray(all) ? all : [];
+        try {
+            rebuildDebrisGeometry();
+            updateStats();
+        } catch (_) {
+            debrisObjects = debrisObjects || [];
+            setText('stat-total', String((debrisObjects || []).length));
+            setText('stat-visible', '0');
+            setText('stat-leo', '0');
+            setText('stat-meo', '0');
+        }
     }
 
     function setStatus(mode, text) {
-        const dot = document.getElementById('status-dot');
-        const txt = document.getElementById('status-text');
-        dot.className = 'status-dot ' + (mode === 'loading' ? 'loading' : mode === 'offline' ? 'offline' : '');
-        txt.textContent = text;
+        const dot = el('status-dot');
+        const txt = el('status-text');
+        if (dot) dot.className = 'status-dot ' + (mode === 'loading' ? 'loading' : mode === 'offline' ? 'offline' : '');
+        if (txt) txt.textContent = text;
     }
 
     // ─── Orbital Propagation ───────────────────────────────────────────────────
@@ -519,7 +595,7 @@ COSMOS 2251 DEB
 
         debrisPoints.geometry.attributes.position.needsUpdate = true;
         debrisPoints.geometry.attributes.visible.needsUpdate = true;
-        document.getElementById('stat-visible').textContent = visibleCount.toLocaleString();
+        setText('stat-visible', visibleCount.toLocaleString());
     }
 
     function rebuildDebrisGeometry() {
@@ -547,7 +623,7 @@ COSMOS 2251 DEB
         geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geo.setAttribute('visible', new THREE.BufferAttribute(visible, 1));
 
-        const size = parseFloat(document.getElementById('debris-size').value);
+        const size = parseFloat((el('debris-size') && el('debris-size').value) || '3');
         const mat = new THREE.PointsMaterial({
             size: size * 0.01,
             vertexColors: true,
@@ -562,7 +638,7 @@ COSMOS 2251 DEB
         debrisPoints.frustumCulled = false;
         earthGroup.add(debrisPoints);
 
-        document.getElementById('stat-total').textContent = n.toLocaleString();
+        setText('stat-total', n.toLocaleString());
         propagateDebris(simDate);
         countAltitudeBands();
     }
@@ -575,8 +651,8 @@ COSMOS 2251 DEB
                 else meo++;
             }
         });
-        document.getElementById('stat-leo').textContent = leo.toLocaleString();
-        document.getElementById('stat-meo').textContent = meo.toLocaleString();
+        setText('stat-leo', leo.toLocaleString());
+        setText('stat-meo', meo.toLocaleString());
     }
 
     // ─── Scene Setup ───────────────────────────────────────────────────────────
@@ -913,17 +989,20 @@ COSMOS 2251 DEB
         const pad = n => String(n).padStart(2, '0');
         const d = simDate;
         const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        document.getElementById('sim-time').value = local;
+        const st = el('sim-time');
+        if (st) st.value = local;
     }
 
     function updateStats() {
-        document.getElementById('stat-total').textContent = debrisObjects.length.toLocaleString();
+        setText('stat-total', (debrisObjects || []).length.toLocaleString());
     }
 
     function showObjectInfo(obj) {
-        const panel = document.getElementById('info-panel');
-        document.getElementById('info-name').textContent = obj.name;
-        document.getElementById('info-body').innerHTML = `
+        if (!obj) return;
+        const panel = el('info-panel');
+        setText('info-name', obj.name || '—');
+        const body = el('info-body');
+        if (body) body.innerHTML = `
             <span>NORAD ID:</span> ${obj.norad}<br>
             <span>Catalog:</span> ${obj.group}<br>
             <span>Event:</span> ${obj.event}<br>
@@ -933,7 +1012,7 @@ COSMOS 2251 DEB
             <span>Velocity:</span> ${obj._vel?.toFixed(2) ?? '—'} km/s<br>
             <span>Data:</span> ${dataSource === 'live' ? 'CelesTrak live TLE' : 'Archived snapshot'}
         `;
-        panel.classList.add('visible');
+        if (panel) panel.classList.add('visible');
     }
 
     function onMouseMove(e) {
@@ -941,13 +1020,14 @@ COSMOS 2251 DEB
         mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
         if (!debrisPoints || viewMode === 'solar') {
-            document.getElementById('tooltip').style.display = 'none';
+            const tipHide = el('tooltip'); if (tipHide) tipHide.style.display = 'none';
             return;
         }
 
         raycaster.setFromCamera(mouse, camera);
         const hits = raycaster.intersectObject(debrisPoints);
-        const tip = document.getElementById('tooltip');
+        const tip = el('tooltip');
+        if (!tip) return;
 
         if (hits.length > 0) {
             const idx = hits[0].index;
@@ -982,6 +1062,7 @@ COSMOS 2251 DEB
     const LS_SOLAR = 'fafo_solar_debris_prefs';
     function saveSolarPrefs() {
         try {
+            if (!window.localStorage) return;
             localStorage.setItem(LS_SOLAR, JSON.stringify({
                 speedIdx,
                 viewMode: typeof viewMode !== 'undefined' ? viewMode : 'solar',
@@ -1004,83 +1085,90 @@ COSMOS 2251 DEB
     }
     function loadSolarPrefs() {
         try {
-            return JSON.parse(localStorage.getItem(LS_SOLAR) || 'null');
+            return JSON.parse((window.localStorage && localStorage.getItem(LS_SOLAR)) || 'null');
         } catch { return null; }
     }
 
     function setupUI() {
-        document.getElementById('btn-play').onclick = () => { playing = true; saveSolarPrefs(); };
-        document.getElementById('btn-pause').onclick = () => { playing = false; saveSolarPrefs(); };
-        document.getElementById('btn-now').onclick = () => { simDate = new Date(); updateSimTimeInput(); };
+        bind('btn-play', 'onclick', withBusy('btn-play', () => { playing = true; saveSolarPrefs(); }));
+        bind('btn-pause', 'onclick', withBusy('btn-pause', () => { playing = false; saveSolarPrefs(); }));
+        bind('btn-now', 'onclick', withBusy('btn-now', () => { simDate = new Date(); updateSimTimeInput(); }));
 
-        document.getElementById('speed-slider').oninput = e => {
+        bind('speed-slider', 'oninput', e => {
             speedIdx = parseInt(e.target.value);
-            document.getElementById('speed-val').textContent = SPEED_STEPS[speedIdx].toLocaleString() + '×';
+            setText('speed-val', SPEED_STEPS[speedIdx].toLocaleString() + '×');
             saveSolarPrefs();
         };
 
-        document.getElementById('sim-time').onchange = e => {
+        bind('sim-time', 'onchange', e => {
             simDate = new Date(e.target.value);
             playing = false;
         };
 
         document.querySelectorAll('[data-view]').forEach(btn => {
-            btn.onclick = () => setViewMode(btn.dataset.view);
+            btn.onclick = withBusy(null, () => setViewMode(btn.dataset.view));
         });
+        bindTileKeys('[data-view]', (btn) => setViewMode(btn.dataset.view));
 
-        document.getElementById('cam-lock').onchange = e => {
+        bind('cam-lock', 'onchange', e => {
             lockEnabled = e.target.checked;
-            if (lockEnabled) resetCameraLock(parseFloat(document.getElementById('lock-distance').value));
+            if (lockEnabled) resetCameraLock(parseFloat((el('lock-distance') && el('lock-distance').value) || '8'));
             else {
                 lockInitialized = false;
                 lastPlanetPos.set(0, 0, 0);
             }
         };
 
-        document.getElementById('lock-planet').onchange = e => {
+        bind('lock-planet', 'onchange', e => {
             lockPlanetName = e.target.value;
-            resetCameraLock(parseFloat(document.getElementById('lock-distance').value));
+            resetCameraLock(parseFloat((el('lock-distance') && el('lock-distance').value) || '8'));
         };
 
-        document.getElementById('lock-distance').oninput = e => {
+        bind('lock-distance', 'oninput', e => {
             const dist = parseFloat(e.target.value);
-            document.getElementById('lock-dist-val').textContent = dist.toFixed(1);
+            setText('lock-dist-val', dist.toFixed(1));
             if (lockEnabled) setLockDistance(dist);
         };
 
         document.querySelectorAll('[data-archive]').forEach(btn => {
-            btn.onclick = () => {
+            btn.onclick = withBusy(null, () => {
                 simDate = new Date(btn.dataset.archive + 'T12:00:00Z');
                 updateSimTimeInput();
                 playing = false;
                 setViewMode('debris');
-            };
+            });
+        });
+        bindTileKeys('[data-archive]', (btn) => {
+            simDate = new Date(btn.dataset.archive + 'T12:00:00Z');
+            updateSimTimeInput();
+            playing = false;
+            setViewMode('debris');
         });
 
-        document.getElementById('btn-refresh').onclick = () => loadDebrisData();
+        bind('btn-refresh', 'onclick', withBusy('btn-refresh', () => loadDebrisData()));
 
         ['cat-fengyun','cat-iridium','cat-cosmos','cat-analyst'].forEach(id => {
-            document.getElementById(id).onchange = () => loadDebrisData();
+            bind(id, 'onchange', () => loadDebrisData());
         });
 
-        document.getElementById('gfx-bloom').onchange = () => {};
-        document.getElementById('gfx-trails').onchange = e => {
+        bind('gfx-bloom', 'onchange', () => {});
+        bind('gfx-trails', 'onchange', e => {
             orbitLines.forEach(l => l.visible = e.target.checked);
         };
-        document.getElementById('gfx-labels').onchange = e => {
+        bind('gfx-labels', 'onchange', e => {
             labelSprites.forEach(s => s.visible = e.target.checked);
         };
-        document.getElementById('gfx-atmo').onchange = e => {
+        bind('gfx-atmo', 'onchange', e => {
             if (earthAtmosphere) earthAtmosphere.visible = e.target.checked;
         };
-        document.getElementById('debris-size').oninput = e => {
+        bind('debris-size', 'oninput', e => {
             if (debrisPoints) {
                 const mult = viewMode === 'solar' ? 0.003 : viewMode === 'earth' ? 0.01 : 0.02;
                 debrisPoints.material.size = parseFloat(e.target.value) * mult;
             }
         };
 
-        document.getElementById('search-input').oninput = e => {
+        bind('search-input', 'oninput', e => {
             const q = e.target.value.trim().toLowerCase();
             if (!q) return;
             const found = debrisObjects.find(o =>
@@ -1109,7 +1197,7 @@ COSMOS 2251 DEB
             }
             if (pref.lockDist != null && document.getElementById('lock-distance')) {
                 document.getElementById('lock-distance').value = pref.lockDist;
-                document.getElementById('lock-dist-val').textContent = parseFloat(pref.lockDist).toFixed(1);
+                setText('lock-dist-val', parseFloat(pref.lockDist).toFixed(1));
             }
             if (pref.camLock != null && document.getElementById('cam-lock')) {
                 document.getElementById('cam-lock').checked = pref.camLock;
@@ -1127,7 +1215,7 @@ COSMOS 2251 DEB
                 if (pref.cats.analyst != null) document.getElementById('cat-analyst').checked = pref.cats.analyst;
             }
         }
-        document.getElementById('speed-val').textContent = SPEED_STEPS[speedIdx].toLocaleString() + '×';
+        setText('speed-val', SPEED_STEPS[speedIdx].toLocaleString() + '×');
         updateLockDistanceUI(lockOffset.length());
 
         function copyFocusSummary() {
@@ -1153,7 +1241,8 @@ COSMOS 2251 DEB
                 });
             }
         }
-        document.getElementById('btn-copy-focus')?.addEventListener('click', copyFocusSummary);
+        const copyBtn = el('btn-copy-focus');
+        if (copyBtn) copyBtn.addEventListener('click', withBusy('btn-copy-focus', copyFocusSummary));
         document.addEventListener('keydown', (e) => {
             const tag = (e.target && e.target.tagName) || '';
             const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
