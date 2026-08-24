@@ -60,9 +60,11 @@ Windows shortcuts prefer **`.ico`**. The HTML launcher still shows PNG/GIF/etc.
 **In the launcher**
 
 1. `▶ Start Server`
-2. **Edit Icons** → click a tool → pick PNG/GIF/ICO/…
+2. **Edit Icons** → click a tool (or drop a file on the card) → pick PNG/GIF/ICO/…
 3. Status should say it saved to `assets/tool-icons/…`
 4. **Commit & push** `assets/tool-icons/`
+
+ICO files from Windows (Completed ICO library) are supported even when the OS reports them as `octet-stream`. If the square cropper cannot decode a file, the original is saved instead of aborting.
 
 **PowerShell**
 

@@ -6,7 +6,10 @@
     'use strict';
 
     const DB_NAME = 'AIToolboxMedia';
-    const DB_VER = 1;
+    // v2: create launcherIcons on DBs that were already at v1 (media library)
+    // before tool-thumbnail assignment existed. Without this bump, put() throws
+    // NotFoundError and Edit Icons silently fails.
+    const DB_VER = 2;
 
     const STORES = {
         dirs: 'directories',
@@ -51,10 +54,21 @@
                         db.createObjectStore(STORES.launcher, { keyPath: 'toolId' });
                     }
                 };
-                req.onsuccess = () => resolve(req.result);
+                req.onsuccess = () => {
+                    const db = req.result;
+                    db.onversionchange = () => {
+                        try { db.close(); } catch { /* ignore */ }
+                        dbPromise = null;
+                    };
+                    db.onclose = () => { dbPromise = null; };
+                    resolve(db);
+                };
                 req.onerror = () => {
                     dbPromise = null;
                     reject(req.error);
+                };
+                req.onblocked = () => {
+                    // Another tab holds the old version open; still wait for success.
                 };
             });
         }
@@ -83,13 +97,17 @@
 
     async function put(store, value, key) {
         const db = await openDB();
+        if (!db.objectStoreNames.contains(store)) {
+            throw new Error('IndexedDB store missing: ' + store + ' (reload after toolbox update)');
+        }
         return new Promise((res, rej) => {
             const tx = db.transaction(store, 'readwrite');
             const os = tx.objectStore(store);
-            if (key !== undefined) os.put(value, key);
-            else os.put(value);
-            tx.oncomplete = res;
+            const req = (key !== undefined) ? os.put(value, key) : os.put(value);
+            req.onerror = () => rej(req.error);
+            tx.oncomplete = () => res();
             tx.onerror = () => rej(tx.error);
+            tx.onabort = () => rej(tx.error || new Error('IndexedDB write aborted'));
         });
     }
 
@@ -607,18 +625,60 @@
             : (m.icons && m.icons[toolId]);
         if (!entry || !entry.url) return null;
         try {
-            return new URL(entry.url, root).href;
+            const href = new URL(entry.url, root).href;
+            const bust = encodeURIComponent(String(m.updatedAt || _sharedIconManifestAt || Date.now()));
+            return href + (href.includes('?') ? '&' : '?') + 'v=' + bust;
         } catch {
             return entry.url;
         }
     }
 
+    const ICON_MIME_BY_EXT = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        ico: 'image/x-icon',
+        svg: 'image/svg+xml',
+        bmp: 'image/bmp'
+    };
+
+    /**
+     * Windows often reports .ico/.bmp as application/octet-stream (or empty).
+     * Those data URLs cannot be shown in <img> or loaded by the cropper.
+     */
+    function normalizeImageDataUrl(dataUrl, filename) {
+        if (!dataUrl || typeof dataUrl !== 'string') return dataUrl;
+        const m = dataUrl.match(/^data:([^;,]+)?(;base64)?,/i);
+        if (!m) return dataUrl;
+        const mime = (m[1] || '').trim().toLowerCase();
+        const usable = /^image\//.test(mime) && mime !== 'image/jpg';
+        if (usable) {
+            return dataUrl;
+        }
+        let ext = '';
+        if (filename) {
+            const i = String(filename).lastIndexOf('.');
+            if (i >= 0) ext = String(filename).slice(i + 1).toLowerCase();
+        }
+        if (!ext) {
+            if (/icon/i.test(mime)) ext = 'ico';
+            else if (/bmp/i.test(mime)) ext = 'bmp';
+            else if (/svg/i.test(mime)) ext = 'svg';
+        }
+        const next = ICON_MIME_BY_EXT[ext] || 'image/png';
+        return dataUrl.replace(/^data:[^,]*,/, 'data:' + next + ';base64,');
+    }
+
     async function getLauncherIcon(toolId) {
         // 1) Personal override (this browser)
-        const row = await get(STORES.launcher, toolId);
-        if (row?.dataUrl) {
-            return { src: row.dataUrl, source: 'personal', toolId };
-        }
+        try {
+            const row = await get(STORES.launcher, toolId);
+            if (row?.dataUrl) {
+                return { src: normalizeImageDataUrl(row.dataUrl, row.filename || toolId), source: 'personal', toolId };
+            }
+        } catch { /* store missing / IDB closed — fall through to shared */ }
         // 2) Shared repo icon
         const man = await loadSharedIconManifest(false);
         const url = sharedIconUrl(toolId, man);
@@ -629,9 +689,12 @@
     async function setLauncherIcon(toolId, dataUrl, opts = {}) {
         if (dataUrl == null) {
             await remove(STORES.launcher, toolId).catch(async () => {
-                // remove() may need key only — fallback put empty then delete via openDB
                 const db = await openDB();
                 await new Promise((resolve, reject) => {
+                    if (!db.objectStoreNames.contains(STORES.launcher)) {
+                        resolve();
+                        return;
+                    }
                     const tx = db.transaction(STORES.launcher, 'readwrite');
                     tx.objectStore(STORES.launcher).delete(toolId);
                     tx.oncomplete = () => resolve();
@@ -640,18 +703,37 @@
             });
             return { personal: false, shared: null };
         }
-        await put(STORES.launcher, {
+        const normalized = normalizeImageDataUrl(dataUrl, opts.filename);
+        let personal = false;
+        let personalError = null;
+        const row = {
             toolId,
-            dataUrl,
+            dataUrl: normalized,
             updatedAt: Date.now(),
-            mime: (String(dataUrl).match(/^data:([^;]+);/) || [])[1] || null
-        });
+            filename: opts.filename || null,
+            mime: (String(normalized).match(/^data:([^;]+);/) || [])[1] || null
+        };
+        try {
+            await put(STORES.launcher, row);
+            personal = true;
+        } catch (e) {
+            personalError = e && (e.message || e.name) ? (e.message || e.name) : String(e);
+            // One retry after dropping a stale connection (versionchange / close)
+            try {
+                dbPromise = null;
+                await put(STORES.launcher, row);
+                personal = true;
+                personalError = null;
+            } catch (e2) {
+                personalError = e2 && (e2.message || e2.name) ? (e2.message || e2.name) : String(e2);
+            }
+        }
 
         let shared = null;
         if (opts.publish !== false) {
             try {
                 if (global.AIToolboxAPI?.publishToolIcon) {
-                    shared = await global.AIToolboxAPI.publishToolIcon(toolId, dataUrl, {
+                    shared = await global.AIToolboxAPI.publishToolIcon(toolId, normalized, {
                         filename: opts.filename || null,
                         asAppIcon: !!opts.asAppIcon
                     });
@@ -661,7 +743,7 @@
                 shared = { ok: false, error: e.message || String(e) };
             }
         }
-        return { personal: true, shared };
+        return { personal, personalError, shared };
     }
 
     async function listPersonalLauncherIcons() {
@@ -719,6 +801,7 @@
         saveSettings,
         getLauncherIcon,
         setLauncherIcon,
+        normalizeImageDataUrl,
         loadSharedIconManifest,
         sharedIconUrl,
         listPersonalLauncherIcons,
