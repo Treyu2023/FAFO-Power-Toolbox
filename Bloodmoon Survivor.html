@@ -10,18 +10,35 @@
   :root {
     --blood: #c41e3a;
     --blood-glow: #ff2d55;
-    --gold: #d4a853;
+    --gold: #f5d36c;
     --purple: #6b2fa0;
-    --dark: #0a0612;
-    --panel: rgba(12, 8, 20, 0.92);
-    --text: #e8e0f0;
-    --muted: #8a7a9a;
+    --dark: #070a10;
+    --bg: #070a10;
+    --navy: #0a1220;
+    --charcoal: #121820;
+    --panel: #0e1520;
+    --text: #f2f6fb;
+    --muted: #a8b8cc;
+    --accent: #f5d36c;
+    --accent2: #38bdf8;
+    --cyan: #38bdf8;
+    --magenta: #e879f9;
+    --accent3: #e879f9;
+    --border: rgba(56,189,248,.28);
+    --glow: 0 0 18px rgba(56,189,248,.35);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, .charCard:focus-visible, .upgrade-card:focus-visible {
+    outline: 2px solid var(--gold); outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
 
   body {
-    background: var(--dark);
+    background: radial-gradient(ellipse at 20% 0%, #101830, var(--bg) 55%);
     color: var(--text);
     font-family: 'Rajdhani', system-ui, sans-serif;
     overflow: hidden;
@@ -33,9 +50,9 @@
 
   a.toolbox-back {
     position: fixed; top: 10px; left: 12px; z-index: 9999;
-    color: var(--gold); text-decoration: none; font-size: 12px; font-weight: 700;
-    padding: 6px 10px; border: 1px solid rgba(212,168,83,.35); border-radius: 6px;
-    background: rgba(10,6,18,.75); letter-spacing: .04em;
+    color: var(--cyan); text-decoration: none; font-size: 12px; font-weight: 700;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: #0a1220; letter-spacing: .04em;
   }
   a.toolbox-back:hover { background: rgba(212,168,83,.2); }
 
@@ -149,6 +166,7 @@
     padding: 18px 14px;
     border: 2px solid rgba(196,30,58,0.3);
     background: var(--panel);
+    contain: layout paint;
     cursor: pointer;
     text-align: center;
     transition: all 0.25s;
@@ -172,36 +190,59 @@
   #hud.hidden { display: none; }
 
   .hud-top {
-    position: absolute;
-    top: 16px;
-    left: 16px;
-    right: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 6;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 12px;
+    padding: 16px;
+    background: #0a1220;
+    border-bottom: 1px solid var(--border);
+    contain: layout;
   }
 
   .hud-panel {
-    background: var(--panel);
+    background: #0e1520;
     border: 1px solid rgba(196,30,58,0.35);
+    contain: layout paint;
     padding: 10px 16px;
     border-radius: 4px;
     backdrop-filter: blur(8px);
     min-width: 140px;
   }
   .hud-panel .label {
-    font-size: 0.7rem;
-    color: var(--muted);
+    font-size: 0.72rem;
+    color: #e8eef8;
     text-transform: uppercase;
     letter-spacing: 2px;
+    font-weight: 700;
   }
   .hud-panel .value {
     font-family: 'Cinzel', serif;
-    font-size: 1.4rem;
-    color: var(--gold);
+    font-size: 1.45rem;
+    color: #fff8dc;
     font-weight: 700;
+    text-shadow: 0 0 8px rgba(0,0,0,.85);
   }
+  .hud-sub {
+    font-size: 0.78rem;
+    color: #f2f6fb;
+    font-weight: 700;
+    letter-spacing: .04em;
+    margin-top: 2px;
+  }
+  .hud-meter-copy {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #f2f6fb;
+    text-align: center;
+    text-shadow: 0 1px 3px #000;
+    letter-spacing: .03em;
+  }
+  .controls-hint { opacity: .55; font-size: 11px; }
 
   .hp-bar-wrap {
     position: absolute;
@@ -339,6 +380,7 @@
     cursor: pointer;
     transition: all 0.25s;
     text-align: center;
+    contain: layout paint;
   }
   .upgrade-card:hover {
     border-color: var(--gold);
@@ -401,6 +443,13 @@
     overflow: hidden;
   }
   #minimapCanvas { width: 100%; height: 100%; }
+  #bmQoLBar {
+    background: #0a1220;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    contain: layout;
+  }
 </style>
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="shared/aitoolbox-layout.css">
@@ -416,6 +465,7 @@
   <button type="button" id="bmExportScore" style="font:600 11px system-ui;color:#e8e0f0;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(255,255,255,.2);cursor:pointer" title="Export run / high score">📋 Score</button>
 </div>
 <div id="gameWrap">
+  <div id="bmLive" role="status" aria-live="polite" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)"></div>
   <canvas id="game"></canvas>
 
   <div id="startScreen" class="overlay">
@@ -434,6 +484,7 @@
       <p><strong style="color:var(--text)">WASD / Arrow Keys</strong> — Move your hunter</p>
       <p><strong style="color:var(--text)">Weapons auto-attack</strong> — Collect XP gems to level up</p>
       <p><strong style="color:var(--text)">Choose upgrades</strong> — Pick 1 of 3 cards each level</p>
+      <p><strong style="color:var(--text)">1 / 2 / 3</strong> - Pick upgrade cards (or click / Enter)</p>
       <p><strong style="color:var(--text)">Survive 15 minutes</strong> — Defeat bosses at 5, 10, and 15 min</p>
       <p><strong style="color:var(--text)">ESC</strong> — Pause</p>
     </div>
@@ -451,7 +502,7 @@
   <div id="gameOverScreen" class="overlay hidden">
     <div class="title" style="font-size:2.5rem;">FALLEN</div>
     <div class="subtitle">The night claims another soul</div>
-    <div class="stats-grid" id="deathStats"></div>
+    <div class="stats-grid" id="deathStats" role="status" aria-live="polite"></div>
     <button class="btn" id="retryBtn">Rise Again</button>
     <button class="btn secondary" id="menuBtn">Main Menu</button>
     <a class="btn secondary" href="Toolbox Launcher.html" style="display:inline-block;text-decoration:none;margin-top:10px">← Toolbox</a>
@@ -460,7 +511,7 @@
   <div id="victoryScreen" class="overlay hidden">
     <div class="title" style="font-size:2.5rem;">DAWN BREAKS</div>
     <div class="subtitle">You survived the bloodmoon</div>
-    <div class="stats-grid" id="victoryStats"></div>
+    <div class="stats-grid" id="victoryStats" role="status" aria-live="polite"></div>
     <button class="btn" id="victoryRetryBtn">Hunt Again</button>
     <button class="btn secondary" id="victoryMenuBtn">Main Menu</button>
     <a class="btn secondary" href="Toolbox Launcher.html" style="display:inline-block;text-decoration:none;margin-top:10px">← Toolbox</a>
@@ -469,21 +520,24 @@
   <div id="hud" class="hidden">
     <div class="hud-top">
       <div class="hud-panel">
-        <div class="label">Time</div>
+        <div class="label">Night</div>
         <div class="value" id="timeDisplay">00:00</div>
+        <div class="hud-sub" id="waveDisplay">Wave 1</div>
       </div>
       <div class="hud-panel">
         <div class="label">Level</div>
         <div class="value" id="levelDisplay">1</div>
+        <div class="hud-sub" id="xpCopy">XP 0 / 20</div>
       </div>
       <div class="hud-panel">
         <div class="label">Kills</div>
         <div class="value" id="killDisplay">0</div>
+        <div class="hud-sub" id="hpCopy">HP 100 / 100</div>
       </div>
     </div>
     <div class="minimap"><canvas id="minimapCanvas" width="100" height="100"></canvas></div>
     <div class="weapon-bar" id="weaponBar"></div>
-    <div class="wave-banner" id="waveBanner"></div>
+    <div class="wave-banner" id="waveBanner" role="status" aria-live="polite"></div>
     <div class="hp-bar-wrap">
       <div class="hp-bar-bg"><div class="hp-bar-fill" id="hpBar" style="width:100%"></div></div>
     </div>
@@ -495,21 +549,66 @@
 
   <div id="upgradeMenu">
     <h2>LEVEL UP</h2>
-    <div class="level-text" id="upgradeLevelText">Choose your power</div>
+    <div class="level-text" id="upgradeLevelText" role="status" aria-live="polite">Choose your power</div>
     <div class="upgrade-cards" id="upgradeCards"></div>
   </div>
 </div>
 
 <script>
 (() => {
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  const minimapCanvas = document.getElementById('minimapCanvas');
-  const mctx = minimapCanvas.getContext('2d');
+  const el = (id) => document.getElementById(id);
+  function setText(id, text) {
+    const n = el(id);
+    if (n) n.textContent = text == null ? '' : String(text);
+  }
+  function bind(id, ev, fn) {
+    const n = el(id);
+    if (n) n[ev] = fn;
+  }
+  function withBusy(id, fn) {
+    return async function (e) {
+      const btn = (e && e.currentTarget) || (id ? el(id) : null);
+      if (btn && btn.disabled) return;
+      try {
+        if (btn) btn.disabled = true;
+        await fn.call(this, e);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    };
+  }
+  const LS_CHAR = 'fafo_bloodmoon_char';
+  function lsGet(k) {
+    try { return localStorage.getItem(k); } catch (_) { return null; }
+  }
+  function lsSet(k, v) {
+    try { localStorage.setItem(k, String(v)); } catch (_) {}
+  }
+  let startLock = false;
+  let lastUpgradeOpts = [];
+  function bindTileKeys(root, sel) {
+    const scope = root || document;
+    if (!scope || !scope.querySelectorAll) return;
+    scope.querySelectorAll(sel).forEach((n) => {
+      if (n.dataset.tileKeys === '1') return;
+      n.dataset.tileKeys = '1';
+      if (!n.hasAttribute('tabindex')) n.tabIndex = 0;
+      n.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          n.click();
+        }
+      });
+    });
+  }
+
+  const canvas = el('game');
+  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+  const minimapCanvas = el('minimapCanvas');
+  const mctx = minimapCanvas && minimapCanvas.getContext ? minimapCanvas.getContext('2d') : null;
 
   const W = 1280, H = 720;
-  canvas.width = W;
-  canvas.height = H;
+  if (canvas) { canvas.width = W; canvas.height = H; }
 
   const WORLD = 4000;
   const GOAL_TIME = 15 * 60;
@@ -649,6 +748,11 @@
 
   let state = 'menu';
   let selectedChar = CHARACTERS[0];
+  (function restoreLastChar() {
+    const id = lsGet(LS_CHAR);
+    const found = CHARACTERS.find(c => c && c.id === id);
+    if (found) selectedChar = found;
+  })();
   let player, enemies, gems, projectiles, particles, pools, damageNumbers;
   let gameTime, kills, paused, shake, screenFlash;
   let spawnTimer, wave, difficulty;
@@ -699,6 +803,7 @@
 
   function spawnEnemy(type, x, y) {
     const t = ENEMY_TYPES[type];
+    if (!t || !player || !enemies) return;
     enemies.push({
       x: x ?? player.x + rand(400, 600) * (Math.random() < 0.5 ? 1 : -1),
       y: y ?? player.y + rand(400, 600) * (Math.random() < 0.5 ? 1 : -1),
@@ -720,7 +825,10 @@
     for (let i = 0; i < count; i++) {
       spawnEnemy(types[Math.floor(Math.random() * types.length)]);
     }
-    showWaveBanner(`Wave ${wave}`);
+    const flavor = ['The night thickens.', 'Something hungry woke up.', 'Keep moving, hunter.', 'Moon wants a body count.'];
+    const line = flavor[(wave - 1) % flavor.length];
+    showWaveBanner('Wave ' + wave + ' - ' + line);
+    setText('waveDisplay', 'Wave ' + wave);
     wave++;
   }
 
@@ -731,15 +839,17 @@
   }
 
   function showWaveBanner(text) {
-    const el = document.getElementById('waveBanner');
-    el.textContent = text;
-    el.classList.remove('show');
-    void el.offsetWidth;
-    el.classList.add('show');
+    const n = el('waveBanner');
+    if (!n) return;
+    n.textContent = text || '';
+    n.classList.remove('show');
+    void n.offsetWidth;
+    n.classList.add('show');
+    setText('bmLive', text || '');
   }
 
   function damageEnemy(e, dmg) {
-    if (e.dead) return;
+    if (!e || e.dead || !player) return;
     e.hp -= dmg;
     e.hitFlash = 0.15;
     damageNumbers.push({ x: e.x, y: e.y - e.r, text: Math.round(dmg), life: 0.8, vy: -40 });
@@ -789,7 +899,8 @@
   }
 
   function addXp(amount) {
-    player.xp += amount * player.xpMult;
+    if (!player) return;
+    player.xp += (amount || 0) * (player.xpMult || 1);
     while (player.xp >= player.xpToLevel) {
       player.xp -= player.xpToLevel;
       player.level++;
@@ -817,7 +928,7 @@
       else if (lv < p.maxLevel) options.push({ id, kind: 'passive', level: lv + 1, new: false });
     }
 
-    if (options.length === 0) {
+    if (options.length === 0 && PASSIVES.might) {
       options.push({ id: 'might', kind: 'passive', level: (ownedPassives.might || 0) + 1, new: false });
     }
 
@@ -826,41 +937,54 @@
   }
 
   function showUpgradeMenu() {
+    if (!player) return;
     state = 'upgrade';
     paused = true;
-    const menu = document.getElementById('upgradeMenu');
-    const cards = document.getElementById('upgradeCards');
-    document.getElementById('upgradeLevelText').textContent = `Level ${player.level} — Choose your power`;
-    const opts = getUpgradeOptions();
-    cards.innerHTML = '';
+    const menu = el('upgradeMenu');
+    const cards = el('upgradeCards');
+    const lv = player.level != null ? player.level : 1;
+    setText('upgradeLevelText', 'Level ' + lv + ' - pick one. Keys 1-3 or click.');
+    const opts = getUpgradeOptions() || [];
+    lastUpgradeOpts = opts;
+    if (cards) cards.innerHTML = '';
     opts.forEach(opt => {
+      if (!opt) return;
       const data = opt.kind === 'weapon' ? WEAPONS[opt.id] : PASSIVES[opt.id];
+      if (!data || !cards) return;
       const card = document.createElement('div');
       card.className = 'upgrade-card';
-      const tagClass = opt.new ? (opt.kind === 'weapon' ? 'weapon' : 'passive') : (opt.kind === 'weapon' ? 'weapon' : 'passive');
-      const tagText = opt.new ? 'NEW' : `LV ${opt.level}`;
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      const tagClass = opt.kind === 'weapon' ? 'weapon' : 'passive';
+      const tagText = opt.new ? 'NEW' : ('LV ' + opt.level);
       card.innerHTML = `
-        <div class="u-icon">${data.icon}</div>
-        <h3>${data.name}</h3>
-        <p>${data.desc}</p>
+        <div class="u-icon">${data.icon || ''}</div>
+        <h3>${data.name || opt.id}</h3>
+        <p>${data.desc || ''}</p>
         <span class="tag ${tagClass}">${tagText}</span>
       `;
-      card.onclick = () => applyUpgrade(opt);
+      card.onclick = withBusy(null, () => applyUpgrade(opt));
       cards.appendChild(card);
     });
-    menu.classList.add('show');
+    if (cards) bindTileKeys(cards, '.upgrade-card');
+    if (menu) menu.classList.add('show');
   }
 
   function applyUpgrade(opt) {
+    if (state !== 'upgrade' || !opt || !player) return;
     if (opt.kind === 'weapon') {
+      if (!WEAPONS[opt.id]) return;
       ownedWeapons[opt.id] = opt.level;
+      player.weaponTimers = player.weaponTimers || {};
       player.weaponTimers[opt.id] = 0;
     } else {
+      const pas = PASSIVES[opt.id];
+      if (!pas || typeof pas.apply !== 'function') return;
       ownedPassives[opt.id] = opt.level;
-      PASSIVES[opt.id].apply(player, opt.level);
+      pas.apply(player, opt.level);
     }
-    pendingLevels--;
-    document.getElementById('upgradeMenu').classList.remove('show');
+    pendingLevels = Math.max(0, (pendingLevels || 1) - 1);
+    el('upgradeMenu')?.classList.remove('show');
     updateWeaponBar();
     if (pendingLevels > 0) {
       setTimeout(showUpgradeMenu, 300);
@@ -871,31 +995,44 @@
   }
 
   function updateWeaponBar() {
-    const bar = document.getElementById('weaponBar');
+    const bar = el('weaponBar');
+    if (!bar) return;
     bar.innerHTML = '';
-    for (const [id, lv] of Object.entries(ownedWeapons)) {
+    const owned = ownedWeapons || {};
+    for (const [id, lv] of Object.entries(owned)) {
       if (!lv) continue;
       const w = WEAPONS[id];
+      if (!w) continue;
       const slot = document.createElement('div');
       slot.className = 'weapon-slot';
-      slot.innerHTML = `${w.icon}<span class="lvl">${lv}</span>`;
-      slot.title = w.name;
+      slot.innerHTML = `${w.icon || ''}<span class="lvl">${lv}</span>`;
+      slot.title = w.name || id;
       bar.appendChild(slot);
     }
   }
 
   function updateHUD() {
-    const mins = Math.floor(gameTime / 60);
-    const secs = Math.floor(gameTime % 60);
-    document.getElementById('timeDisplay').textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
-    document.getElementById('levelDisplay').textContent = player.level;
-    document.getElementById('killDisplay').textContent = kills;
-    document.getElementById('hpBar').style.width = `${(player.hp / player.maxHp) * 100}%`;
-    document.getElementById('xpBar').style.width = `${(player.xp / player.xpToLevel) * 100}%`;
+    if (!player) return;
+    const mins = Math.floor((gameTime || 0) / 60);
+    const secs = Math.floor((gameTime || 0) % 60);
+    setText('timeDisplay', String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0'));
+    setText('levelDisplay', player.level);
+    setText('killDisplay', kills || 0);
+    const hp = el('hpBar');
+    const xp = el('xpBar');
+    const maxHp = player.maxHp || 1;
+    const need = player.xpToLevel || 1;
+    const hpNow = Math.max(0, Math.round(player.hp || 0));
+    const xpNow = Math.max(0, Math.round(player.xp || 0));
+    if (hp) hp.style.width = ((player.hp / maxHp) * 100) + '%';
+    if (xp) xp.style.width = ((player.xp / need) * 100) + '%';
+    setText('hpCopy', 'HP ' + hpNow + ' / ' + Math.round(maxHp));
+    setText('xpCopy', 'XP ' + xpNow + ' / ' + Math.round(need));
+    if (typeof wave === 'number') setText('waveDisplay', 'Wave ' + Math.max(1, wave - 1 || 1));
   }
 
   function update(dt) {
-    if (paused || state !== 'playing') return;
+    if (paused || state !== 'playing' || !player) return;
 
     gameTime += dt;
     difficulty = 1 + gameTime / 120;
@@ -922,7 +1059,9 @@
       const cooldown = (1.2 - lv * 0.05) * player.cooldownMult;
       if (player.weaponTimers[id] >= cooldown) {
         player.weaponTimers[id] = 0;
-        w.fire(player, lv);
+        if (w && typeof w.fire === 'function') {
+          try { w.fire(player, lv); } catch (_) {}
+        }
       }
     }
 
@@ -1079,6 +1218,7 @@
   }
 
   function draw() {
+    if (!ctx || !player) return;
     const cam = { x: player.x - W/2, y: player.y - H/2 };
     if (shake > 0) {
       cam.x += rand(-shake, shake);
@@ -1360,12 +1500,16 @@
   }
 
   function drawMinimap() {
+    if (!mctx || !player) return;
+    const enemiesSafe = enemies || [];
+    const gemsSafe = gems || [];
     mctx.fillStyle = 'rgba(10,5,18,0.8)';
     mctx.fillRect(0, 0, 100, 100);
     const scale = 100 / WORLD;
 
     mctx.fillStyle = 'rgba(196,30,58,0.6)';
-    for (const e of enemies) {
+    for (const e of enemiesSafe) {
+      if (!e) continue;
       const mx = e.x * scale;
       const my = e.y * scale;
       mctx.beginPath();
@@ -1374,7 +1518,8 @@
     }
 
     mctx.fillStyle = '#9b59d4';
-    for (const g of gems) {
+    for (const g of gemsSafe) {
+      if (!g) continue;
       mctx.fillRect(g.x * scale - 0.5, g.y * scale - 0.5, 1, 1);
     }
 
@@ -1387,56 +1532,74 @@
   function gameOver() {
     state = 'dead';
     paused = true;
-    document.getElementById('hud').classList.add('hidden');
-    const screen = document.getElementById('gameOverScreen');
-    screen.classList.remove('hidden');
+    el('hud')?.classList.add('hidden');
+    el('gameOverScreen')?.classList.remove('hidden');
     fillStats('deathStats');
+    setText('bmLive', 'Fallen');
   }
 
   function victory() {
     state = 'victory';
     paused = true;
-    document.getElementById('hud').classList.add('hidden');
-    const screen = document.getElementById('victoryScreen');
-    screen.classList.remove('hidden');
+    el('hud')?.classList.add('hidden');
+    el('victoryScreen')?.classList.remove('hidden');
     fillStats('victoryStats');
+    setText('bmLive', 'Dawn breaks');
   }
 
   function fillStats(elId) {
-    const el = document.getElementById(elId);
-    const mins = Math.floor(gameTime / 60);
-    const secs = Math.floor(gameTime % 60);
-    el.innerHTML = `
+    const node = el(elId);
+    if (!node || !player) return;
+    const mins = Math.floor((gameTime || 0) / 60);
+    const secs = Math.floor((gameTime || 0) % 60);
+    const charName = (selectedChar && selectedChar.name) || 'Hunter';
+    const wCount = Object.keys(ownedWeapons || {}).length;
+    const pCount = Object.keys(ownedPassives || {}).length;
+    node.innerHTML = `
       <div class="stat-row"><span>Time Survived</span><span>${mins}:${String(secs).padStart(2,'0')}</span></div>
-      <div class="stat-row"><span>Level Reached</span><span>${player.level}</span></div>
-      <div class="stat-row"><span>Enemies Slain</span><span>${kills}</span></div>
-      <div class="stat-row"><span>Character</span><span>${selectedChar.name}</span></div>
-      <div class="stat-row"><span>Weapons</span><span>${Object.keys(ownedWeapons).length}</span></div>
-      <div class="stat-row"><span>Passives</span><span>${Object.keys(ownedPassives).length}</span></div>
+      <div class="stat-row"><span>Level Reached</span><span>${player.level || 1}</span></div>
+      <div class="stat-row"><span>Enemies Slain</span><span>${kills || 0}</span></div>
+      <div class="stat-row"><span>Character</span><span>${charName}</span></div>
+      <div class="stat-row"><span>Weapons</span><span>${wCount}</span></div>
+      <div class="stat-row"><span>Passives</span><span>${pCount}</span></div>
     `;
   }
 
   function startGame() {
-    initGame();
-    state = 'playing';
-    paused = false;
-    document.getElementById('startScreen').classList.add('hidden');
-    document.getElementById('gameOverScreen').classList.add('hidden');
-    document.getElementById('victoryScreen').classList.add('hidden');
-    document.getElementById('pauseScreen').classList.add('hidden');
-    document.getElementById('hud').classList.remove('hidden');
-    updateHUD();
+    if (startLock) return;
+    if (state === 'playing' || state === 'upgrade') return;
+    startLock = true;
+    try {
+      initGame();
+      state = 'playing';
+      paused = false;
+      lastUpgradeOpts = [];
+      el('startScreen')?.classList.add('hidden');
+      el('gameOverScreen')?.classList.add('hidden');
+      el('victoryScreen')?.classList.add('hidden');
+      el('pauseScreen')?.classList.add('hidden');
+      el('howToScreen')?.classList.add('hidden');
+      el('upgradeMenu')?.classList.remove('show');
+      el('hud')?.classList.remove('hidden');
+      setText('waveDisplay', 'Wave 1');
+      updateHUD();
+      setText('bmLive', 'Night begins. Try not to donate blood.');
+      if (selectedChar && selectedChar.id) lsSet(LS_CHAR, selectedChar.id);
+    } finally {
+      setTimeout(() => { startLock = false; }, 450);
+    }
   }
 
   function showMenu() {
     state = 'menu';
     paused = true;
-    document.getElementById('startScreen').classList.remove('hidden');
-    document.getElementById('gameOverScreen').classList.add('hidden');
-    document.getElementById('victoryScreen').classList.add('hidden');
-    document.getElementById('pauseScreen').classList.add('hidden');
-    document.getElementById('hud').classList.add('hidden');
-    document.getElementById('upgradeMenu').classList.remove('show');
+    el('startScreen')?.classList.remove('hidden');
+    el('gameOverScreen')?.classList.add('hidden');
+    el('victoryScreen')?.classList.add('hidden');
+    el('pauseScreen')?.classList.add('hidden');
+    el('hud')?.classList.add('hidden');
+    el('upgradeMenu')?.classList.remove('show');
+    setText('bmLive', 'Main menu');
   }
 
   let lastTime = 0;
@@ -1449,53 +1612,80 @@
   }
 
   function buildCharSelect() {
-    const el = document.getElementById('charSelect');
+    const box = el('charSelect');
+    if (!box || !CHARACTERS.length) return;
+    box.innerHTML = '';
     CHARACTERS.forEach((c, i) => {
       const card = document.createElement('div');
-      card.className = 'charCard' + (i === 0 ? ' selected' : '');
-      card.innerHTML = `<div class="icon">${c.icon}</div><h3>${c.name}</h3><p>${c.desc}</p>`;
+      const isSel = selectedChar && selectedChar.id === c.id;
+      card.className = 'charCard' + (isSel ? ' selected' : '');
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.innerHTML = `<div class="icon">${c.icon || ''}</div><h3>${c.name}</h3><p>${c.desc || ''}</p>`;
       card.onclick = () => {
         selectedChar = c;
-        document.querySelectorAll('.charCard').forEach(x => x.classList.remove('selected'));
+        lsSet(LS_CHAR, c.id);
+        box.querySelectorAll('.charCard').forEach(x => x.classList.remove('selected'));
         card.classList.add('selected');
       };
-      el.appendChild(card);
+      box.appendChild(card);
     });
+    bindTileKeys(box, '.charCard');
   }
 
-  document.getElementById('startBtn').onclick = startGame;
-  document.getElementById('retryBtn').onclick = startGame;
-  document.getElementById('victoryRetryBtn').onclick = startGame;
-  document.getElementById('menuBtn').onclick = showMenu;
-  document.getElementById('victoryMenuBtn').onclick = showMenu;
-  document.getElementById('howToBtn').onclick = () => {
-    document.getElementById('startScreen').classList.add('hidden');
-    document.getElementById('howToScreen').classList.remove('hidden');
-  };
-  document.getElementById('backBtn').onclick = () => {
-    document.getElementById('howToScreen').classList.add('hidden');
-    document.getElementById('startScreen').classList.remove('hidden');
-  };
-  document.getElementById('resumeBtn').onclick = () => {
-    if (state === 'paused') { state = 'playing'; paused = false; document.getElementById('pauseScreen').classList.add('hidden'); }
-  };
-  document.getElementById('quitBtn').onclick = showMenu;
+  bind('startBtn', 'onclick', withBusy('startBtn', startGame));
+  bind('retryBtn', 'onclick', withBusy('retryBtn', startGame));
+  bind('victoryRetryBtn', 'onclick', withBusy('victoryRetryBtn', startGame));
+  bind('menuBtn', 'onclick', withBusy('menuBtn', showMenu));
+  bind('victoryMenuBtn', 'onclick', withBusy('victoryMenuBtn', showMenu));
+  bind('howToBtn', 'onclick', () => {
+    el('startScreen')?.classList.add('hidden');
+    el('howToScreen')?.classList.remove('hidden');
+  });
+  bind('backBtn', 'onclick', () => {
+    el('howToScreen')?.classList.add('hidden');
+    el('startScreen')?.classList.remove('hidden');
+  });
+  function resumePlay() {
+    if (state !== 'paused') return;
+    state = 'playing';
+    paused = false;
+    el('pauseScreen')?.classList.add('hidden');
+  }
+  bind('resumeBtn', 'onclick', withBusy('resumeBtn', resumePlay));
+  bind('quitBtn', 'onclick', withBusy('quitBtn', showMenu));
 
   window.addEventListener('keydown', e => {
+    if (!e || !e.key) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     keys[e.key.toLowerCase()] = true;
+    if (state === 'upgrade' && /^[1-3]$/.test(e.key)) {
+      const opt = lastUpgradeOpts[parseInt(e.key, 10) - 1];
+      if (opt) applyUpgrade(opt);
+      e.preventDefault();
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && state === 'menu') {
+      const startVis = el('startScreen') && !el('startScreen').classList.contains('hidden');
+      const howVis = el('howToScreen') && !el('howToScreen').classList.contains('hidden');
+      if (startVis && !howVis) {
+        e.preventDefault();
+        startGame();
+      }
+    }
     if (e.key === 'Escape') {
+      if (state === 'upgrade') return;
       if (state === 'playing') {
         state = 'paused';
         paused = true;
-        document.getElementById('pauseScreen').classList.remove('hidden');
+        el('pauseScreen')?.classList.remove('hidden');
       } else if (state === 'paused') {
-        state = 'playing';
-        paused = false;
-        document.getElementById('pauseScreen').classList.add('hidden');
+        resumePlay();
       }
     }
   });
-  window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+  window.addEventListener('keyup', e => { if (e && e.key) keys[e.key.toLowerCase()] = false; });
 
   buildCharSelect();
   initGame();
@@ -1535,7 +1725,8 @@
   // QoL: mute persist · high-score export · pause hint (M key)
   const LS_MUTE = 'fafo_bloodmoon_mute';
   const LS_HS = 'fafo_bloodmoon_highscores';
-  window.BM_MUTED = localStorage.getItem(LS_MUTE) === '1';
+  window.BM_MUTED = false;
+  try { window.BM_MUTED = localStorage.getItem(LS_MUTE) === '1'; } catch (_) { window.BM_MUTED = false; }
   function syncMuteBtn() {
     const b = document.getElementById('bmMuteBtn');
     if (!b) return;
@@ -1558,7 +1749,11 @@
   });
   function exportScore() {
     let best = [];
-    try { best = JSON.parse(localStorage.getItem(LS_HS) || '[]'); } catch { best = []; }
+    try {
+      const raw = localStorage.getItem(LS_HS);
+      best = raw ? JSON.parse(raw) : [];
+    } catch (_) { best = []; }
+    if (!Array.isArray(best)) best = [];
     const killTxt = document.getElementById('killDisplay')?.textContent;
     const timeTxt = document.getElementById('timeDisplay')?.textContent;
     const killN = killTxt != null && killTxt !== '' ? parseInt(killTxt, 10) : null;
@@ -1582,7 +1777,14 @@
       });
     }
   }
-  document.getElementById('bmExportScore')?.addEventListener('click', exportScore);
+  const exportBtn = document.getElementById('bmExportScore');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async function (e) {
+      if (exportBtn.disabled) return;
+      exportBtn.disabled = true;
+      try { exportScore(); } finally { exportBtn.disabled = false; }
+    });
+  }
   try {
     window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
       toolId: 'bloodmoon',
