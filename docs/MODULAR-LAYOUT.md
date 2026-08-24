@@ -18,7 +18,9 @@ In apps that adopt the layout engine you get a small toolbar:
 - **Drag section title (⠿)** — reorder sections *inside* a panel  
 - **Drag section bottom edge** — resize height (when section is resizable)
 
-Layouts **auto-save** to `localStorage` under `fafo_layout_v1_<appId>`.
+Each **panel** (and each **section** inside a panel, plus launcher tiles / the tile studio gallery) scrolls **on its own**. Selecting a row in a long list no longer yanks the Options / Settings pane off the top of the page. Layouts pin to the remaining viewport (`html.fafo-layout-locked`). Opt out with `data-fafo-layout-page-scroll="1"` on the root.
+
+Layouts **auto-save** to `localStorage` under `fafo_layout_v2_<appId>`.
 
 ## Adopting in a new app (required going forward)
 

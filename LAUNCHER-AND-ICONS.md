@@ -64,6 +64,8 @@ Windows shortcuts prefer **`.ico`**. The HTML launcher still shows PNG/GIF/etc.
 3. Status should say it saved to `assets/tool-icons/…`
 4. **Commit & push** `assets/tool-icons/`
 
+The launcher chrome (search, Edit Icons, section tabs) stays put while the **tile grid scrolls on its own**. Same idea in the Tile studio: cell-size / category chips stay at the top while the pattern gallery independently scrolls.
+
 ICO files from Windows (Completed ICO library) are supported even when the OS reports them as `octet-stream`. If the square cropper cannot decode a file, the original is saved instead of aborting.
 
 **PowerShell**

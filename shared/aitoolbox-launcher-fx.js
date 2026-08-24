@@ -748,9 +748,19 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
         pauseMarqueeVideos(false);
     }
 
+    function scrollSource() {
+        return document.getElementById('lxTileScroll') || document.querySelector('.lx-tile-scroll') || null;
+    }
+
     function updateScrollLighting() {
-        const maxScroll = Math.max(1, (document.documentElement.scrollHeight || 1) - window.innerHeight);
-        const p = Math.min(1, Math.max(0, window.scrollY / maxScroll));
+        const pane = scrollSource();
+        let p = 0;
+        if (pane && pane.scrollHeight > pane.clientHeight + 4) {
+            p = Math.min(1, Math.max(0, pane.scrollTop / Math.max(1, pane.scrollHeight - pane.clientHeight)));
+        } else {
+            const maxScroll = Math.max(1, (document.documentElement.scrollHeight || 1) - window.innerHeight);
+            p = Math.min(1, Math.max(0, window.scrollY / maxScroll));
+        }
         scrollProgress = p;
         // Light source drifts as you scroll — tessellation “faces” catch light
         const lx = 22 + p * 48 + Math.sin(p * Math.PI * 2) * 8;
@@ -1206,13 +1216,19 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
         });
 
         let scrollRaf = 0;
-        window.addEventListener('scroll', () => {
+        const onScrollLight = () => {
             if (scrollRaf) return;
             scrollRaf = requestAnimationFrame(() => {
                 scrollRaf = 0;
                 updateScrollLighting();
             });
-        }, { passive: true });
+        };
+        window.addEventListener('scroll', onScrollLight, { passive: true });
+        const tilePane = scrollSource();
+        if (tilePane) tilePane.addEventListener('scroll', onScrollLight, { passive: true });
+        document.querySelectorAll('.server-banner, .get-started').forEach((el) => {
+            el.addEventListener('scroll', onScrollLight, { passive: true });
+        });
         updateScrollLighting();
 
         document.addEventListener('pointerover', (e) => {

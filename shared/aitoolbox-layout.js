@@ -1056,6 +1056,178 @@
     } catch (_) { /* ignore */ }
   }
 
+  const SETTINGS_RE = /option|setting|control|scan|filter|config|pref|keep|action|sidebar|intro|assist/i;
+  const LIST_RE = /list|result|group|file|preview|library|grid|log|queue|detail-list|timeline|tile|catalog/i;
+  const LIST_CHILD_SEL =
+    '.groups-wrap, .list, .results, .file-list, .item-list, .grid-wrap, .table-wrap, .detail-list, .detail-list-inner, .log, .timeline, #groupsWrap, #fileGrid, #toolGrid, [data-fafo-scroll]';
+
+  function isSettingsSection(s) {
+    const id =
+      (s.getAttribute('data-fafo-section') || '') +
+      ' ' +
+      (s.getAttribute('data-fafo-section-title') || '');
+    return SETTINGS_RE.test(id);
+  }
+  function isListSection(s) {
+    const id =
+      (s.getAttribute('data-fafo-section') || '') +
+      ' ' +
+      (s.getAttribute('data-fafo-section-title') || '');
+    return LIST_RE.test(id);
+  }
+
+  /**
+   * Pin the layout root to the remaining viewport so each panel gets a real
+   * height and overflow:auto actually kicks in (instead of growing the page).
+   */
+  function pinViewport(root) {
+    if (!root || root.getAttribute('data-fafo-layout-page-scroll') === '1') return;
+    const html = document.documentElement;
+    html.classList.add('fafo-layout-locked');
+    document.body.classList.add('fafo-layout-locked');
+    root.classList.add('fafo-viewport-pin');
+
+    function measure() {
+      let top = 0;
+      try {
+        const r = root.getBoundingClientRect();
+        top = Math.max(0, Math.round(r.top));
+      } catch (_) { /* ignore */ }
+      let bottom = 0;
+      ['atx-pro-bar', 'tbSharedServerBar', 'tbCompanionBar', 'fafo-layout-float-dock'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        try {
+          const br = el.getBoundingClientRect();
+          if (br.height > 0 && br.top >= window.innerHeight * 0.6) {
+            bottom = Math.max(bottom, Math.round(window.innerHeight - br.top));
+          }
+        } catch (_) { /* ignore */ }
+      });
+      html.style.setProperty('--fafo-chrome-top', top + 'px');
+      html.style.setProperty('--fafo-chrome-bottom', bottom + 'px');
+    }
+    measure();
+    requestAnimationFrame(measure);
+    if (!root._fafoPinBound) {
+      root._fafoPinBound = true;
+      window.addEventListener('resize', debounce(measure, 80));
+    }
+    return measure;
+  }
+
+  /**
+   * Split a panel's sections into independently scrolling panes.
+   * Settings/options stay compact at the top of the panel; lists flex and
+   * scroll so selecting a row never yanks the options off-screen.
+   */
+  function markScrollPanes(root) {
+    panelEls(root).forEach((panel) => {
+      const body = panel.querySelector(':scope > .fafo-panel-body') || panel;
+      const secs = sectionEls(panel);
+      body.classList.remove('fafo-body-split');
+      secs.forEach((s) => {
+        s.classList.remove('fafo-section-compact', 'fafo-section-flex');
+      });
+      if (secs.length >= 2) {
+        body.classList.add('fafo-body-split');
+        let flexed = false;
+        secs.forEach((s, i) => {
+          const last = i === secs.length - 1;
+          const resizable = s.getAttribute('data-fafo-resizable') === '1';
+          if (resizable) return;
+          if (isListSection(s) || (last && !flexed && !isSettingsSection(s))) {
+            s.classList.add('fafo-section-flex');
+            flexed = true;
+          } else {
+            s.classList.add('fafo-section-compact');
+          }
+        });
+        if (!flexed) {
+          const last = secs[secs.length - 1];
+          last.classList.add('fafo-section-flex');
+          last.classList.remove('fafo-section-compact');
+        }
+      }
+      try {
+        body.querySelectorAll(LIST_CHILD_SEL).forEach((el) => {
+          if (el.closest('[data-fafo-section]')) return;
+          el.classList.add('fafo-scroll-pane');
+        });
+      } catch (_) { /* ignore */ }
+    });
+  }
+
+  /**
+   * Scroll `el` only inside its nearest panel/section/tile pane.
+   * Never moves the window, so a sibling settings panel stays put.
+   */
+  function scrollInsidePane(el, opts) {
+    if (!el || !el.getBoundingClientRect) return;
+    const pane = el.closest(
+      '.fafo-section-body, .fafo-scroll-pane, .lx-tile-scroll, .fafo-panel-body'
+    );
+    const behavior = (opts && opts.behavior) || 'auto';
+    if (!pane) {
+      try {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior });
+      } catch (_) { /* ignore */ }
+      try {
+        window.scrollTo(0, 0);
+      } catch (_) { /* ignore */ }
+      return;
+    }
+    const pad = (opts && opts.padding) || 12;
+    const elRect = el.getBoundingClientRect();
+    const paneRect = pane.getBoundingClientRect();
+    let dy = 0;
+    if (elRect.top < paneRect.top + pad) dy = elRect.top - paneRect.top - pad;
+    else if (elRect.bottom > paneRect.bottom - pad) dy = elRect.bottom - paneRect.bottom + pad;
+    let dx = 0;
+    if (elRect.left < paneRect.left + pad) dx = elRect.left - paneRect.left - pad;
+    else if (elRect.right > paneRect.right - pad) dx = elRect.right - paneRect.right + pad;
+    if (!dy && !dx) return;
+    if (behavior === 'smooth' && typeof pane.scrollTo === 'function') {
+      pane.scrollTo({
+        top: pane.scrollTop + dy,
+        left: pane.scrollLeft + dx,
+        behavior: 'smooth',
+      });
+    } else {
+      pane.scrollTop += dy;
+      pane.scrollLeft += dx;
+    }
+  }
+
+  /** One-time: make scrollIntoView stay inside independent panes. */
+  function installScrollContainment() {
+    if (global.__fafoScrollContain) return;
+    global.__fafoScrollContain = true;
+    const proto = typeof Element !== 'undefined' ? Element.prototype : null;
+    if (!proto || !proto.scrollIntoView) return;
+    const orig = proto.scrollIntoView;
+    proto.scrollIntoView = function fafoContainedScrollIntoView(arg) {
+      try {
+        if (document.querySelector('.ui-tutorial-bg')) {
+          return orig.apply(this, arguments);
+        }
+        const locked =
+          document.documentElement.classList.contains('fafo-layout-locked') ||
+          document.body.classList.contains('lx-split-scroll');
+        const inPane = this.closest &&
+          this.closest('.fafo-layout-root, .lx-tile-scroll, .fafo-panel-body, .fafo-scroll-pane');
+        if (locked || inPane) {
+          const opts = typeof arg === 'object' && arg ? arg : {};
+          scrollInsidePane(this, {
+            behavior: opts.behavior || (arg === true ? 'smooth' : 'auto'),
+          });
+          return;
+        }
+      } catch (_) { /* fall through */ }
+      return orig.apply(this, arguments);
+    };
+  }
+
   /**
    * When a root has no explicit data-fafo-panel children, invent panels/sections
    * from common toolbox markup (sidebar/main/detail, cards, panels, etc.).
@@ -1282,6 +1454,7 @@
         applyState(root, snap, opts);
         rebindAll();
         wireResets();
+        markScrollPanes(root);
       },
       reset() {
         clearStore(appId);
@@ -1289,6 +1462,7 @@
         applyState(root, fresh, opts);
         rebindAll();
         wireResets();
+        markScrollPanes(root);
         saveNow();
       },
       /** Reset one panel to default size (keeps others). */
@@ -1323,6 +1497,7 @@
         applyState(root, next, opts);
         rebindAll();
         wireResets();
+        markScrollPanes(root);
         saveNow();
       },
       /** Reset one section height to its data-fafo-section-default. */
@@ -1350,6 +1525,7 @@
         applyState(root, next, opts);
         rebindAll();
         wireResets();
+        markScrollPanes(root);
         saveNow();
       },
       getState() {
@@ -1392,16 +1568,21 @@
     applyState(root, state, opts);
     rebindAll();
     wireResets();
+    pinViewport(root);
+    markScrollPanes(root);
+    installScrollContainment();
     // Never inherit a stuck grab/resize cursor from a previous session/tab
     clearLayoutPointerState(root);
     // Second pass after paint: root has real height; heal any remaining banner strip
     requestAnimationFrame(() => {
       try {
+        pinViewport(root);
         let healed = sanitizeState(root, captureState(root, opts), opts);
         healed = healBannerStripState(root, healed, opts);
         applyState(root, healed, opts);
         rebindAll();
         wireResets();
+        markScrollPanes(root);
         // Only persist once layout looks like a real window
         if (!looksLikeCollapsedCapture(root, opts)) saveNow();
       } catch (e) {
@@ -1434,10 +1615,12 @@
       'resize',
       debounce(() => {
         // Re-clamp if viewport shrank under a huge saved panel
+        pinViewport(root);
         const cur = sanitizeState(root, captureState(root, opts), opts);
         applyState(root, cur, opts);
         rebindAll();
         wireResets();
+        markScrollPanes(root);
         saveNow();
       }, 400)
     );
@@ -1542,6 +1725,8 @@
     get(appId) {
       return instances.get(appId) || null;
     },
+    scrollInsidePane,
+    pinViewport,
     STORAGE_PREFIX,
   };
 
@@ -1549,9 +1734,11 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+      installScrollContainment();
       if (!global.AITOOLBOX_LAYOUT_NO_AUTO) autoInit();
     });
-  } else if (!global.AITOOLBOX_LAYOUT_NO_AUTO) {
-    autoInit();
+  } else {
+    installScrollContainment();
+    if (!global.AITOOLBOX_LAYOUT_NO_AUTO) autoInit();
   }
 })(typeof window !== 'undefined' ? window : globalThis);
