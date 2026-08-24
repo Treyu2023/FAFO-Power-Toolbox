@@ -8,11 +8,12 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
-            --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
-            --accent: #00f3ff; --accent2: #7c5cff; --accent3: #ffb347;
-            --text: #e8e8ec; --muted: #777;
+            --bg: #070b12; --panel: #10161f; --panel2: #161d28;
+            --accent: #00e5ff; --accent2: #e14cff; --accent3: #f5c542;
+            --focus: #f5c542; --magenta: #e14cff;
+            --text: #eef2f8; --muted: #8b93a7;
             --danger: #ff4466; --ok: #00ff88;
-            --glow: 0 0 10px rgba(0,243,255,0.4);
+            --glow: 0 0 10px rgba(0,229,255,0.4);
             /* Layout + density (persisted via JS) */
             --ui-scale: 1;
             --font-base: 13px;
@@ -720,6 +721,21 @@
         .health-list div { padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .health-list button { font-size: 10px; margin-left: 6px; }
         .modal.wide { width: min(720px, 96vw); max-width: 96vw; }
+
+        :focus { outline: none; }
+        :focus-visible {
+            outline: 2px solid var(--focus);
+            outline-offset: 2px;
+            box-shadow: 0 0 0 3px rgba(245, 197, 66, 0.28);
+        }
+        button:disabled, .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                transition: none !important;
+                animation: none !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1523,6 +1539,75 @@
 <script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
+        function el(id) {
+            try { return el(id); } catch (_) { return null; }
+        }
+        function setText(node, text) {
+            if (!node) return;
+            try { node.textContent = text == null ? '' : String(text); } catch (_) {}
+        }
+        function bind(node, ev, fn) {
+            if (!node || !ev || typeof fn !== 'function') return;
+            try { node.addEventListener(ev, fn); } catch (_) {}
+        }
+        function lsGet(key, fallback) {
+            try {
+                const v = lsGet(key);
+                return v == null ? fallback : v;
+            } catch (_) { return fallback; }
+        }
+        function lsSet(key, val) {
+            try { lsSet(key, val); return true; } catch (_) { return false; }
+        }
+        function lsDel(key) {
+            try { lsDel(key); } catch (_) {}
+        }
+        function lsJson(key, fallback) {
+            try {
+                const v = lsGet(key, null);
+                if (v == null || v === '') return fallback;
+                const parsed = JSON.parse(v);
+                return parsed == null ? fallback : parsed;
+            } catch (_) { return fallback; }
+        }
+        function escHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+        function revokeBlobUrl(url) {
+            try {
+                if (url && String(url).indexOf('blob:') === 0) URL.revokeObjectURL(url);
+            } catch (_) {}
+        }
+        function revokeMediaBlobs(root) {
+            try {
+                (root || document).querySelectorAll('img, video, a').forEach(n => {
+                    revokeBlobUrl(n.src);
+                    revokeBlobUrl(n.href);
+                });
+            } catch (_) {}
+        }
+        const busyFlags = Object.create(null);
+        async function withBusy(key, fn) {
+            if (busyFlags[key]) return;
+            busyFlags[key] = true;
+            try { return await fn(); }
+            catch (e) {
+                try { window.AIToolboxUI?.toast?.(e?.message || String(e), 'warn'); } catch (_) {}
+            } finally { busyFlags[key] = false; }
+        }
+        function isTypingTarget(t) {
+            if (!t) return false;
+            const tag = t.tagName || '';
+            if (/INPUT|TEXTAREA|SELECT/.test(tag)) return true;
+            if (t.isContentEditable) return true;
+            return false;
+        }
+
         const PAGE_SIZE = 80;
         const GROUP_FETCH_LIMIT = 1000;
         const API = () => window.AIToolboxAPI;
@@ -1562,41 +1647,42 @@
         let pathToMediaItem = new Map();
 
         const els = {
-            dirList: document.getElementById('dirList'),
-            tagCloud: document.getElementById('tagCloud'),
-            mediaList: document.getElementById('mediaList'),
-            searchInput: document.getElementById('searchInput'),
-            filterType: document.getElementById('filterType'),
-            sortBy: document.getElementById('sortBy'),
-            batchBar: document.getElementById('batchBar'),
-            selCount: document.getElementById('selCount'),
-            listStats: document.getElementById('listStats'),
-            pageNum: document.getElementById('pageNum'),
-            pageTotal: document.getElementById('pageTotal'),
-            previewArea: document.getElementById('previewArea'),
-            detailBody: document.getElementById('detailBody'),
-            detailName: document.getElementById('detailName'),
-            detailTags: document.getElementById('detailTags'),
-            detailNotes: document.getElementById('detailNotes'),
-            tagInput: document.getElementById('tagInput'),
-            tagSuggestions: document.getElementById('tagSuggestions'),
-            btnOpenCompare: document.getElementById('btnOpenCompare'),
-            miniPairs: document.getElementById('miniPairs'),
-            pairsSection: document.getElementById('pairsSection'),
-            workflowBar: document.getElementById('workflowBar'),
-            pathHint: document.getElementById('pathHint'),
-            folderBrowseSection: document.getElementById('folderBrowseSection'),
-            folderBreadcrumb: document.getElementById('folderBreadcrumb'),
-            folderIndex: document.getElementById('folderIndex'),
-            groupBy: document.getElementById('groupBy'),
-            playlistList: document.getElementById('playlistList'),
+            dirList: el('dirList'),
+            tagCloud: el('tagCloud'),
+            mediaList: el('mediaList'),
+            searchInput: el('searchInput'),
+            filterType: el('filterType'),
+            sortBy: el('sortBy'),
+            batchBar: el('batchBar'),
+            selCount: el('selCount'),
+            listStats: el('listStats'),
+            pageNum: el('pageNum'),
+            pageTotal: el('pageTotal'),
+            previewArea: el('previewArea'),
+            detailBody: el('detailBody'),
+            detailName: el('detailName'),
+            detailTags: el('detailTags'),
+            detailNotes: el('detailNotes'),
+            tagInput: el('tagInput'),
+            tagSuggestions: el('tagSuggestions'),
+            btnOpenCompare: el('btnOpenCompare'),
+            miniPairs: el('miniPairs'),
+            pairsSection: el('pairsSection'),
+            workflowBar: el('workflowBar'),
+            pathHint: el('pathHint'),
+            folderBrowseSection: el('folderBrowseSection'),
+            folderBreadcrumb: el('folderBreadcrumb'),
+            folderIndex: el('folderIndex'),
+            groupBy: el('groupBy'),
+            playlistList: el('playlistList'),
         };
 
         function syncDebugButton() {
             const on = DBG()?.enabled();
-            const btn = document.getElementById('btnDebug');
+            const btn = el('btnDebug');
+            if (!btn) return;
             btn.classList.toggle('debug-on', !!on);
-            btn.textContent = on ? '🐛 Debug ON' : '🐛 Debug';
+            setText(btn, on ? '🐛 Debug ON' : '🐛 Debug');
         }
 
         function updateWorkflow() {
@@ -1618,21 +1704,21 @@
                     states.browse = 'active';
                 }
             }
-            UI().renderWorkflow(els.workflowBar, WORKFLOW_STEPS, states);
-            document.getElementById('btnPair').classList.toggle('active', selected.size === 2);
-            document.getElementById('btnBatchRename').classList.toggle('active', selected.size > 0);
+            try { UI()?.renderWorkflow?.(els.workflowBar, WORKFLOW_STEPS, states); } catch (_) {}
+            el('btnPair')?.classList.toggle('active', selected.size === 2);
+            el('btnBatchRename')?.classList.toggle('active', selected.size > 0);
         }
 
         let serverStarting = false;
 
         function setStartServerButtons(disabled, label) {
             ['btnStartServer', 'btnStartServerBanner'].forEach(id => {
-                const b = document.getElementById(id);
+                const b = el(id);
                 if (!b) return;
                 b.disabled = !!disabled;
                 if (label != null) b.textContent = label;
             });
-            const consoleBtn = document.getElementById('btnServerConsole');
+            const consoleBtn = el('btnServerConsole');
             if (consoleBtn) consoleBtn.style.display = serverOn ? 'none' : '';
         }
 
@@ -1640,23 +1726,24 @@
             if (serverStarting) return;
             const was = serverOn;
             serverOn = await API().isOnline(false, 2000);
-            const el = document.getElementById('serverStatus');
-            const banner = document.getElementById('serverOfflineBanner');
+            const statusEl = el('serverStatus');
+            const banner = el('serverOfflineBanner');
+            if (!statusEl) return;
             if (serverOn) {
-                el.textContent = '● Server Online';
-                el.className = 'server-pill online';
-                el.title = 'Python backend active — full rename, ffmpeg, metadata';
-                el.style.cursor = 'default';
+                statusEl.textContent = '● Server Online';
+                statusEl.className = 'server-pill online';
+                statusEl.title = 'Python backend active — full rename, ffmpeg, metadata';
+                statusEl.style.cursor = 'default';
                 setStartServerButtons(true, '✓ Running');
-                document.getElementById('btnStartServer').style.display = 'none';
+                const bssOn = el('btnStartServer'); if (bssOn) bssOn.style.display = 'none';
                 if (banner) banner.classList.remove('show');
             } else {
-                el.textContent = '○ Server Offline — click to start';
-                el.className = 'server-pill offline';
-                el.title = 'Click to start the Python server from this app';
-                el.style.cursor = 'pointer';
+                statusEl.textContent = '○ Server Offline — click to start';
+                statusEl.className = 'server-pill offline';
+                statusEl.title = 'Click to start the Python server from this app';
+                statusEl.style.cursor = 'pointer';
                 setStartServerButtons(false, '▶ Start Server');
-                document.getElementById('btnStartServer').style.display = '';
+                const bssOff = el('btnStartServer'); if (bssOff) bssOff.style.display = '';
                 if (banner) banner.classList.add('show');
             }
             if (serverOn && !was) {
@@ -1668,6 +1755,7 @@
         }
 
         async function launchServerFromApp(mode) {
+            return withBusy('launchServer', async () => {
             if (serverStarting || API().isServerLaunching?.()) return;
             if (await API().isOnline(true, 2000)) {
                 await updateServerStatus();
@@ -1675,9 +1763,11 @@
                 return;
             }
             serverStarting = true;
-            const el = document.getElementById('serverStatus');
-            el.textContent = '◌ Starting…';
-            el.className = 'server-pill waiting';
+            const statusEl = el('serverStatus');
+            if (statusEl) {
+                statusEl.textContent = '◌ Starting…';
+                statusEl.className = 'server-pill waiting';
+            }
             setStartServerButtons(true, 'Starting…');
             showToast(mode === 'console' ? 'Launching console server…' : 'Starting server…', 'ok');
 
@@ -1686,7 +1776,7 @@
                     mode: mode || 'tray',
                     waitMs: 90000,
                     onStatus: (msg) => {
-                        el.textContent = '◌ ' + msg;
+                        if (statusEl) statusEl.textContent = '◌ ' + msg;
                         DBG()?.log('library', 'info', msg);
                     },
                 });
@@ -1699,11 +1789,13 @@
                     refreshPairsList();
                     refreshSmartSearches();
                 } else {
-                    el.textContent = '○ Start failed — try Console or Folder';
-                    el.className = 'server-pill offline';
+                    if (statusEl) {
+                        statusEl.textContent = '○ Start failed — try Console or Folder';
+                        statusEl.className = 'server-pill offline';
+                    }
                     setStartServerButtons(false, '▶ Start Server');
-                    document.getElementById('btnServerConsole').style.display = '';
-                    document.getElementById('serverOfflineBanner')?.classList.add('show');
+                    const cons = el('btnServerConsole'); if (cons) cons.style.display = '';
+                    el('serverOfflineBanner')?.classList.add('show');
                     showToast('Browser blocked launch — use 🖥 Console, 📂 Open Folder → START SERVER.bat, or ⚙ Setup Once', 'warn');
                 }
             } catch (e) {
@@ -1712,31 +1804,32 @@
                 showToast('Start failed: ' + (e.message || e), 'warn');
                 await updateServerStatus();
             }
+            });
         }
 
-        document.getElementById('btnDebug').onclick = () => {
+        bind(el('btnDebug'), 'click', () => {
             const next = !DBG()?.enabled();
             DBG()?.setEnabled(next);
             if (next) DBG()?.boot();
             else DBG()?.shutdown();
             syncDebugButton();
-        };
+        });
 
-        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServerFromApp('tray'));
-        document.getElementById('btnStartServerBanner')?.addEventListener('click', () => launchServerFromApp('tray'));
-        document.getElementById('btnServerConsole')?.addEventListener('click', () => launchServerFromApp('console'));
-        document.getElementById('btnOpenToolboxFolder')?.addEventListener('click', () => {
+        el('btnStartServer')?.addEventListener('click', () => launchServerFromApp('tray'));
+        el('btnStartServerBanner')?.addEventListener('click', () => launchServerFromApp('tray'));
+        el('btnServerConsole')?.addEventListener('click', () => launchServerFromApp('console'));
+        el('btnOpenToolboxFolder')?.addEventListener('click', () => {
             API().openToolboxFolder?.();
             showToast('Opened toolbox folder — double-click START SERVER.bat', 'ok');
         });
-        document.getElementById('btnSetupOnce')?.addEventListener('click', () => {
+        el('btnSetupOnce')?.addEventListener('click', () => {
             API().runSetupOnce?.();
             showToast('Run the setup window — then try Start Server again', 'ok');
         });
-        document.getElementById('serverStatus')?.addEventListener('click', () => {
+        el('serverStatus')?.addEventListener('click', () => {
             if (!serverOn && !serverStarting) launchServerFromApp('tray');
         });
-        document.getElementById('serverStatus')?.addEventListener('keydown', (e) => {
+        el('serverStatus')?.addEventListener('keydown', (e) => {
             if ((e.key === 'Enter' || e.key === ' ') && !serverOn && !serverStarting) {
                 e.preventDefault();
                 launchServerFromApp('tray');
@@ -1744,8 +1837,7 @@
         });
 
         async function init() {
-            UI().initTooltips();
-            UI().migrateLegacyTrustKeys();
+            try { UI()?.initTooltips?.(); UI()?.migrateLegacyTrustKeys?.(); } catch (_) {}
             updateTrustStatusBar();
             syncDebugButton();
             loadPanelSizes();
@@ -1764,24 +1856,24 @@
             await refreshSmartSearches();
             updateWorkflow();
             if (!UI().isTutorialDone('library')) {
-                setTimeout(() => UI().startTutorial(LIBRARY_TUTORIAL, 'library'), 600);
+                setTimeout(() => { try { UI()?.startTutorial?.(LIBRARY_TUTORIAL, 'library'); } catch (_) {} }, 600);
             }
         }
 
         async function refreshFolderIndex() {
             if (!activeDir || !serverOn) {
-                els.folderBrowseSection.style.display = 'none';
+                if (els.folderBrowseSection) els.folderBrowseSection.style.display = 'none';
                 return;
             }
-            els.folderBrowseSection.style.display = 'block';
+            if (els.folderBrowseSection) els.folderBrowseSection.style.display = 'block';
             try {
                 const idx = await API().listFolderIndex(activeDir, activeSubpath);
                 const crumbs = [{ name: '🏠 Root', path: '' }, ...(idx.breadcrumb || [])];
-                els.folderBreadcrumb.innerHTML = crumbs.map((c, i) => {
+                if (els.folderBreadcrumb) els.folderBreadcrumb.innerHTML = crumbs.map((c, i) => {
                     const sep = i > 0 ? '<span class="sep">/</span>' : '';
-                    return `${sep}<span data-path="${c.path}">${c.name}</span>`;
+                    return `${sep}<span data-path="${escHtml(c.path)}">${escHtml(c.name)}</span>`;
                 }).join('');
-                els.folderBreadcrumb.querySelectorAll('[data-path]').forEach(el => {
+                (els.folderBreadcrumb?.querySelectorAll('[data-path]') || []).forEach(el => {
                     el.onclick = () => navigateToSubpath(el.dataset.path);
                 });
 
@@ -1792,17 +1884,17 @@
                     html += `<div class="folder-child" data-up="${parent}">⬆ ..</div>`;
                 }
                 (idx.subfolders || []).forEach(f => {
-                    const childPath = activeSubpath ? `${activeSubpath}/${f.name}` : f.name;
-                    html += `<div class="folder-child" data-path="${childPath}"><span>📁 ${f.name}</span><span class="fc-count">${f.count}</span></div>`;
+                    const childPath = activeSubpath ? `${activeSubpath}/${escHtml(f.name)}` : f.name;
+                    html += `<div class="folder-child" data-path="${escHtml(childPath)}"><span>📁 ${escHtml(f.name)}</span><span class="fc-count">${f.count}</span></div>`;
                 });
                 if (!html && !idx.files_count) {
                     html = '<div style="font-size:10px;color:#666;padding:8px;">No indexed files here</div>';
                 }
-                els.folderIndex.innerHTML = html;
-                els.folderIndex.querySelectorAll('[data-path]').forEach(el => {
+                if (els.folderIndex) els.folderIndex.innerHTML = html;
+                (els.folderIndex?.querySelectorAll('[data-path]') || []).forEach(el => {
                     el.onclick = () => navigateToSubpath(el.dataset.path);
                 });
-                els.folderIndex.querySelector('[data-up]')?.addEventListener('click', e => {
+                els.folderIndex?.querySelector('[data-up]')?.addEventListener('click', e => {
                     navigateToSubpath(e.currentTarget.dataset.up);
                 });
             } catch (e) {
@@ -1858,34 +1950,34 @@
             root.style.setProperty('--tag-pad-y', p.padY);
             root.style.setProperty('--tag-pad-x', p.padX);
             root.style.setProperty('--tag-gap', p.gap);
-            localStorage.setItem('ml_tag_scale', k);
+            lsSet('ml_tag_scale', k);
             document.querySelectorAll('[data-tagscale]').forEach(b => b.classList.toggle('active', b.dataset.tagscale === k));
-            const sel = document.getElementById('tagScaleSelect');
+            const sel = el('tagScaleSelect');
             if (sel) sel.value = k;
-            const setSel = document.getElementById('setTagScale');
+            const setSel = el('setTagScale');
             if (setSel) setSel.value = k;
         }
 
         function applyTagCols(n) {
             const cols = Math.max(1, Math.min(4, parseInt(n, 10) || 2));
             document.documentElement.style.setProperty('--tag-cols', String(cols));
-            localStorage.setItem('ml_tag_cols', String(cols));
+            lsSet('ml_tag_cols', String(cols));
             document.querySelectorAll('[data-cols]').forEach(b => b.classList.toggle('active', b.dataset.cols === String(cols)));
-            const setSel = document.getElementById('setTagCols');
+            const setSel = el('setTagCols');
             if (setSel) setSel.value = String(cols);
         }
 
         function applyUiScale(scale) {
             const s = Math.max(0.75, Math.min(1.6, parseFloat(scale) || 1));
             document.documentElement.style.setProperty('--ui-scale', String(s));
-            localStorage.setItem('ml_ui_scale', String(s));
-            const sel = document.getElementById('uiScaleSelect');
+            lsSet('ml_ui_scale', String(s));
+            const sel = el('uiScaleSelect');
             if (sel) {
                 const opt = [...sel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.01);
                 if (opt) sel.value = opt.value;
                 else sel.value = '1';
             }
-            const setSel = document.getElementById('setUiScale');
+            const setSel = el('setUiScale');
             if (setSel) {
                 const opt = [...setSel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.01);
                 if (opt) setSel.value = opt.value;
@@ -1894,48 +1986,48 @@
 
         function setTagsCollapsed(collapsed) {
             document.body.classList.toggle('tags-collapsed', !!collapsed);
-            localStorage.setItem('ml_tags_collapsed', collapsed ? '1' : '0');
-            const btn = document.getElementById('btnToggleTagsPanel');
+            lsSet('ml_tags_collapsed', collapsed ? '1' : '0');
+            const btn = el('btnToggleTagsPanel');
             if (btn) btn.classList.toggle('active', !collapsed);
-            const fab = document.getElementById('btnShowTagsFab');
+            const fab = el('btnShowTagsFab');
             if (fab) fab.style.display = collapsed ? '' : 'none';
             try { window.AIToolboxLayout?.get?.('media-library-manager')?.refresh?.(); } catch (_) {}
         }
 
         function setDetailCollapsed(collapsed) {
             document.body.classList.toggle('detail-collapsed', !!collapsed);
-            localStorage.setItem('ml_detail_collapsed', collapsed ? '1' : '0');
-            const btn = document.getElementById('btnToggleDetailPanel');
+            lsSet('ml_detail_collapsed', collapsed ? '1' : '0');
+            const btn = el('btnToggleDetailPanel');
             if (btn) btn.classList.toggle('active', !collapsed);
-            const fab = document.getElementById('btnShowDetailFab');
+            const fab = el('btnShowDetailFab');
             if (fab) fab.style.display = collapsed ? '' : 'none';
             try { window.AIToolboxLayout?.get?.('media-library-manager')?.refresh?.(); } catch (_) {}
         }
 
         function loadPanelSizes() {
             const root = document.documentElement;
-            const ph = localStorage.getItem('ml_preview_h');
-            const dw = localStorage.getItem('ml_detail_w');
-            const sw = localStorage.getItem('ml_sidebar_w');
-            const tw = localStorage.getItem('ml_tags_w');
+            const ph = lsGet('ml_preview_h');
+            const dw = lsGet('ml_detail_w');
+            const sw = lsGet('ml_sidebar_w');
+            const tw = lsGet('ml_tags_w');
             if (ph) root.style.setProperty('--preview-h', ph + 'px');
             if (dw) root.style.setProperty('--detail-w', dw + 'px');
             if (sw) root.style.setProperty('--sidebar-w', sw + 'px');
             if (tw) root.style.setProperty('--tags-w', tw + 'px');
-            applyUiScale(localStorage.getItem('ml_ui_scale') || '1');
-            applyTagScale(localStorage.getItem('ml_tag_scale') || 'md');
-            applyTagCols(localStorage.getItem('ml_tag_cols') || '2');
-            setTagsCollapsed(localStorage.getItem('ml_tags_collapsed') === '1');
-            setDetailCollapsed(localStorage.getItem('ml_detail_collapsed') === '1');
-            const sort = localStorage.getItem('ml_tag_sort') || 'session';
-            const sortEl = document.getElementById('tagLibSort');
+            applyUiScale(lsGet('ml_ui_scale') || '1');
+            applyTagScale(lsGet('ml_tag_scale') || 'md');
+            applyTagCols(lsGet('ml_tag_cols') || '2');
+            setTagsCollapsed(lsGet('ml_tags_collapsed') === '1');
+            setDetailCollapsed(lsGet('ml_detail_collapsed') === '1');
+            const sort = lsGet('ml_tag_sort') || 'session';
+            const sortEl = el('tagLibSort');
             if (sortEl) sortEl.value = sort;
         }
 
         function resetLayout() {
             ['ml_preview_h', 'ml_detail_w', 'ml_sidebar_w', 'ml_tags_w',
              'ml_ui_scale', 'ml_tag_scale', 'ml_tag_cols', 'ml_tags_collapsed', 'ml_detail_collapsed'
-            ].forEach(k => localStorage.removeItem(k));
+            ].forEach(k => lsDel(k));
             const root = document.documentElement;
             root.style.setProperty('--preview-h', '280px');
             root.style.setProperty('--detail-w', '360px');
@@ -1950,10 +2042,10 @@
         }
 
         function initResizeHandles() {
-            const previewHandle = document.getElementById('previewResizeHandle');
-            const panelHandle = document.getElementById('panelResizeHandle');
-            const tagsHandle = document.getElementById('tagsResizeHandle');
-            const sideHandle = document.getElementById('sidebarResizeHandle');
+            const previewHandle = el('previewResizeHandle');
+            const panelHandle = el('panelResizeHandle');
+            const tagsHandle = el('tagsResizeHandle');
+            const sideHandle = el('sidebarResizeHandle');
             let mode = null, startX = 0, startW = 0;
 
             function startDrag(m, handle, e) {
@@ -1961,9 +2053,9 @@
                 startX = e.clientX;
                 if (m === 'preview') {
                     /* handled separately */
-                } else if (m === 'detail') startW = document.getElementById('detailPanel').offsetWidth;
-                else if (m === 'tags') startW = document.getElementById('tagsPanel').offsetWidth;
-                else if (m === 'sidebar') startW = document.getElementById('sidebarPanel').offsetWidth;
+                } else if (m === 'detail') startW = el('detailPanel').offsetWidth;
+                else if (m === 'tags') startW = el('tagsPanel').offsetWidth;
+                else if (m === 'sidebar') startW = el('sidebarPanel').offsetWidth;
                 handle?.classList.add('dragging');
                 document.body.style.cursor = m === 'preview' ? 'ns-resize' : 'ew-resize';
                 document.body.style.userSelect = 'none';
@@ -1985,7 +2077,7 @@
                 if (!mode) return;
                 const root = document.documentElement;
                 if (mode === 'preview') {
-                    const panel = document.getElementById('detailPanel');
+                    const panel = el('detailPanel');
                     if (!panel || panel.offsetParent === null) return;
                     const top = panel.getBoundingClientRect().top;
                     const h = Math.max(120, Math.min(window.innerHeight * 0.65, e.clientY - top - 40));
@@ -2012,51 +2104,54 @@
                 const root = document.documentElement;
                 if (mode === 'preview') {
                     const h = parseInt(getComputedStyle(root).getPropertyValue('--preview-h'), 10);
-                    if (h) localStorage.setItem('ml_preview_h', h);
+                    if (h) lsSet('ml_preview_h', h);
                 } else if (mode === 'detail') {
-                    const w = document.getElementById('detailPanel')?.offsetWidth;
-                    if (w) localStorage.setItem('ml_detail_w', w);
+                    const w = el('detailPanel')?.offsetWidth;
+                    if (w) lsSet('ml_detail_w', w);
                 } else if (mode === 'tags') {
-                    const w = document.getElementById('tagsPanel')?.offsetWidth;
-                    if (w) localStorage.setItem('ml_tags_w', w);
+                    const w = el('tagsPanel')?.offsetWidth;
+                    if (w) lsSet('ml_tags_w', w);
                 } else if (mode === 'sidebar') {
-                    const w = document.getElementById('sidebarPanel')?.offsetWidth;
-                    if (w) localStorage.setItem('ml_sidebar_w', w);
+                    const w = el('sidebarPanel')?.offsetWidth;
+                    if (w) lsSet('ml_sidebar_w', w);
                 }
                 mode = null;
             });
         }
 
         function initLayoutControls() {
-            document.getElementById('uiScaleSelect')?.addEventListener('change', e => applyUiScale(e.target.value));
-            document.getElementById('tagScaleSelect')?.addEventListener('change', e => applyTagScale(e.target.value));
-            document.getElementById('btnResetLayout')?.addEventListener('click', resetLayout);
-            document.getElementById('btnToggleTagsPanel')?.addEventListener('click', () => {
+            el('uiScaleSelect')?.addEventListener('change', e => applyUiScale(e.target.value));
+            el('tagScaleSelect')?.addEventListener('change', e => applyTagScale(e.target.value));
+            el('btnResetLayout')?.addEventListener('click', resetLayout);
+            el('btnToggleTagsPanel')?.addEventListener('click', () => {
                 setTagsCollapsed(!document.body.classList.contains('tags-collapsed'));
             });
-            document.getElementById('btnToggleDetailPanel')?.addEventListener('click', () => {
+            el('btnToggleDetailPanel')?.addEventListener('click', () => {
                 setDetailCollapsed(!document.body.classList.contains('detail-collapsed'));
             });
-            document.getElementById('btnCollapseTags')?.addEventListener('click', () => setTagsCollapsed(true));
-            document.getElementById('btnShowTagsFab')?.addEventListener('click', () => setTagsCollapsed(false));
-            document.getElementById('btnShowDetailFab')?.addEventListener('click', () => setDetailCollapsed(false));
+            el('btnCollapseTags')?.addEventListener('click', () => setTagsCollapsed(true));
+            el('btnShowTagsFab')?.addEventListener('click', () => setTagsCollapsed(false));
+            el('btnShowDetailFab')?.addEventListener('click', () => setDetailCollapsed(false));
             document.querySelectorAll('[data-cols]').forEach(b => {
                 b.addEventListener('click', () => applyTagCols(b.dataset.cols));
             });
             document.querySelectorAll('[data-tagscale]').forEach(b => {
                 b.addEventListener('click', () => applyTagScale(b.dataset.tagscale));
             });
-            document.getElementById('tagLibSort')?.addEventListener('change', e => {
-                localStorage.setItem('ml_tag_sort', e.target.value);
+            el('tagLibSort')?.addEventListener('change', e => {
+                lsSet('ml_tag_sort', e.target.value);
                 renderMlTagLibrary();
             });
-            document.getElementById('setUiScale')?.addEventListener('change', e => applyUiScale(e.target.value));
-            document.getElementById('setTagScale')?.addEventListener('change', e => applyTagScale(e.target.value));
-            document.getElementById('setTagCols')?.addEventListener('change', e => applyTagCols(e.target.value));
-            document.getElementById('btnSettingsResetLayout')?.addEventListener('click', resetLayout);
+            el('setUiScale')?.addEventListener('change', e => applyUiScale(e.target.value));
+            el('setTagScale')?.addEventListener('change', e => applyTagScale(e.target.value));
+            el('setTagCols')?.addEventListener('change', e => applyTagCols(e.target.value));
+            el('btnSettingsResetLayout')?.addEventListener('click', resetLayout);
         }
 
         async function deleteMediaItems(ids, label) {
+            return withBusy('deleteMedia', async () => { await _deleteMediaItems(ids, label); });
+        }
+        async function _deleteMediaItems(ids, label) {
             if (!ids.length) return;
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             const recs = [];
@@ -2073,14 +2168,14 @@
                 cancelText: 'Cancel',
                 showSafetyNote: true,
             });
-            if (!confirm.confirmed) return;
+            if (!confirm || !confirm.confirmed) return;
             try {
                 const r = await API().deleteMedia(ids, { toTrash: true });
                 const n = r.deleted ?? (r.ok ? 1 : 0);
                 if (currentItem && ids.includes(currentItem.id)) {
                     currentItem = null;
-                    els.detailBody.style.display = 'none';
-                    els.previewArea.innerHTML = '<span style="color:#555;font-size:12px;">File deleted</span>';
+                    if (els.detailBody) els.detailBody.style.display = 'none';
+                    if (els.previewArea) els.previewArea.innerHTML = '<span style="color:#555;font-size:12px;">File deleted</span>';
                 }
                 selected.clear();
                 await refreshDirs();
@@ -2103,7 +2198,7 @@
             const dirs = await API().listDirectories();
             watchedDirs = dirs;
             watchedDirCount = dirs.length;
-            els.dirList.innerHTML = '';
+            if (els.dirList) els.dirList.innerHTML = '';
             const allBtn = document.createElement('div');
             allBtn.className = 'dir-item' + (!activeDir ? ' active' : '');
             allBtn.innerHTML = '<span>All Folders</span>';
@@ -2116,14 +2211,14 @@
                 applyFilters();
                 updateWorkflow();
             };
-            els.dirList.appendChild(allBtn);
+            if (els.dirList) els.dirList.appendChild(allBtn);
 
             for (const d of dirs) {
                 const q = await API().queryMedia({ dirId: d.id, limit: 1, page: 0 });
                 const count = q.total ?? q.items?.length ?? 0;
                 const div = document.createElement('div');
                 div.className = 'dir-item' + (activeDir === d.id ? ' active' : '');
-                div.innerHTML = `<span>📁 ${d.name}</span><span class="count">${count}</span>`;
+                div.innerHTML = `<span>📁 ${escHtml(d.name)}</span><span class="count">${count}</span>`;
                 div.onclick = () => {
                     activeDir = d.id;
                     activeSubpath = '';
@@ -2138,7 +2233,7 @@
                 del.style.cssText = 'background:none;border:none;color:#f66;cursor:pointer;margin-left:6px;';
                 del.onclick = async e => {
                     e.stopPropagation();
-                    if (confirm(`Remove "${d.name}" from library? (won't delete files)`)) {
+                    if (confirm(`Remove "${escHtml(d.name)}" from library? (won't delete files)`)) {
                         await API().removeDirectory(d.id);
                         if (activeDir === d.id) activeDir = null;
                         await refreshDirs();
@@ -2146,15 +2241,15 @@
                     }
                 };
                 div.appendChild(del);
-                els.dirList.appendChild(div);
+                if (els.dirList) els.dirList.appendChild(div);
             }
         }
 
         async function refreshTags() {
             const tags = await API().getAllTags();
-            els.tagCloud.innerHTML = '';
+            if (els.tagCloud) els.tagCloud.innerHTML = '';
             if (!tags.length) {
-                els.tagCloud.innerHTML = '<div style="font-size:10px;color:#666;">No tags yet — tag files in the detail panel</div>';
+                if (els.tagCloud) els.tagCloud.innerHTML = '<div style="font-size:10px;color:#666;">No tags yet — tag files in the detail panel</div>';
                 return;
             }
             tags.forEach(t => {
@@ -2170,12 +2265,12 @@
                     activePlaylist = null;
                     applyFilters();
                 };
-                els.tagCloud.appendChild(chip);
+                if (els.tagCloud) els.tagCloud.appendChild(chip);
             });
         }
 
         async function refreshPairsList() {
-            const box = document.getElementById('pairsList');
+            const box = el('pairsList');
             if (!box) return;
             if (!serverOn) {
                 box.innerHTML = '<div style="font-size:10px;color:#666;">Server offline — ▶ Start Server</div>';
@@ -2225,7 +2320,7 @@
                     box.appendChild(div);
                 });
             } catch (e) {
-                box.innerHTML = `<div style="font-size:10px;color:#f66;">${e.message}</div>`;
+                box.innerHTML = `<div style="font-size:10px;color:#f66;">${escHtml(e.message)}</div>`;
             }
         }
 
@@ -2236,11 +2331,11 @@
                 type: els.filterType.value || null,
                 sort: els.sortBy.value || 'name',
             };
-            const pairF = document.getElementById('filterPair')?.value || '';
-            const rankF = document.getElementById('filterRank')?.value || '';
+            const pairF = el('filterPair')?.value || '';
+            const rankF = el('filterRank')?.value || '';
             if (pairF === 'paired') q.has_pair = true;
             if (pairF === 'unpaired') q.has_pair = false;
-            if (pairF === 'unpaired_upscale' || document.getElementById('smartBuildPair')?.value === 'unpaired_upscale') {
+            if (pairF === 'unpaired_upscale' || el('smartBuildPair')?.value === 'unpaired_upscale') {
                 // handled in applyFilters via smart query
             }
             if (rankF) q.rank_min = parseInt(rankF, 10);
@@ -2249,9 +2344,9 @@
 
         function setViewMode(mode) {
             viewMode = mode;
-            document.getElementById('btnViewList').classList.toggle('active', mode === 'list');
-            document.getElementById('btnViewGrid').classList.toggle('active', mode === 'grid');
-            document.getElementById('btnViewGroup').classList.toggle('active', mode === 'group');
+            el('btnViewList').classList.toggle('active', mode === 'list');
+            el('btnViewGrid').classList.toggle('active', mode === 'grid');
+            el('btnViewGroup').classList.toggle('active', mode === 'group');
             els.groupBy.style.display = mode === 'group' ? '' : 'none';
             els.mediaList.classList.toggle('grid-mode', mode === 'grid' || mode === 'group');
             page = 0;
@@ -2266,8 +2361,8 @@
             const inGroup = viewMode === 'group';
             const limit = inGroup ? GROUP_FETCH_LIMIT : PAGE_SIZE;
             const usePage = inGroup ? 0 : page;
-            const pairF = document.getElementById('filterPair')?.value || '';
-            const rankF = document.getElementById('filterRank')?.value || '';
+            const pairF = el('filterPair')?.value || '';
+            const rankF = el('filterRank')?.value || '';
             try {
                 let result;
                 // Pair/rank filters or saved smart query → smart search API
@@ -2312,7 +2407,7 @@
         }
 
         async function refreshSmartSearches() {
-            const bar = document.getElementById('smartSearchBar');
+            const bar = el('smartSearchBar');
             if (!bar || !serverOn) {
                 if (bar) bar.innerHTML = '';
                 return;
@@ -2346,14 +2441,14 @@
                         // Sync tag chips
                         activeTags.clear();
                         (activeSmartQuery.tags || []).forEach(t => activeTags.add(t));
-                        const pairSel = document.getElementById('filterPair');
+                        const pairSel = el('filterPair');
                         if (pairSel) {
                             if (activeSmartQuery.unpaired_upscale) pairSel.value = 'unpaired_upscale';
                             else if (activeSmartQuery.has_pair === true) pairSel.value = 'paired';
                             else if (activeSmartQuery.has_pair === false) pairSel.value = 'unpaired';
                             else pairSel.value = '';
                         }
-                        const rankSel = document.getElementById('filterRank');
+                        const rankSel = el('filterRank');
                         if (rankSel) rankSel.value = activeSmartQuery.rank_min ? String(activeSmartQuery.rank_min) : '';
                         await applyFilters();
                         refreshSmartSearches();
@@ -2371,8 +2466,8 @@
                         }
                     };
                 });
-                document.getElementById('btnBuildSmartBar')?.addEventListener('click', () => openSmartBuilder());
-                document.getElementById('btnSaveSmart')?.addEventListener('click', async () => {
+                el('btnBuildSmartBar')?.addEventListener('click', () => openSmartBuilder());
+                el('btnSaveSmart')?.addEventListener('click', async () => {
                     const name = prompt('Name this smart list:', [...activeTags].join(', ') || els.searchInput.value || 'My filter');
                     if (!name) return;
                     const query = collectSmartQueryFromUi();
@@ -2380,13 +2475,13 @@
                     showToast('Saved smart list', 'ok');
                     refreshSmartSearches();
                 });
-                document.getElementById('btnClearSmart')?.addEventListener('click', async () => {
+                el('btnClearSmart')?.addEventListener('click', async () => {
                     activeSmartQuery = null;
                     activeSmartId = null;
                     activeTags.clear();
                     els.searchInput.value = '';
-                    const pairSel = document.getElementById('filterPair');
-                    const rankSel = document.getElementById('filterRank');
+                    const pairSel = el('filterPair');
+                    const rankSel = el('filterRank');
                     if (pairSel) pairSel.value = '';
                     if (rankSel) rankSel.value = '';
                     page = 0;
@@ -2400,8 +2495,8 @@
         let activeSmartId = null;
 
         async function openSmartBuilder(prefillTags) {
-            const modal = document.getElementById('smartBuilderModal');
-            const tagBox = document.getElementById('smartBuildTags');
+            const modal = el('smartBuilderModal');
+            const tagBox = el('smartBuildTags');
             const tags = await API().getAllTags().catch(() => []);
             const selected = new Set(prefillTags || [...activeTags]);
             tagBox.innerHTML = '';
@@ -2420,24 +2515,24 @@
                 tagBox.appendChild(chip);
             });
             tagBox._selected = selected;
-            document.getElementById('smartBuildName').value = [...selected].slice(0, 3).join(', ') || '';
-            document.getElementById('smartBuildSearch').value = els.searchInput.value || '';
-            document.getElementById('smartBuildPair').value = document.getElementById('filterPair')?.value || '';
-            document.getElementById('smartBuildRank').value = document.getElementById('filterRank')?.value || '';
-            document.getElementById('smartBuildType').value = els.filterType.value || '';
+            el('smartBuildName').value = [...selected].slice(0, 3).join(', ') || '';
+            el('smartBuildSearch').value = els.searchInput.value || '';
+            el('smartBuildPair').value = el('filterPair')?.value || '';
+            el('smartBuildRank').value = el('filterRank')?.value || '';
+            el('smartBuildType').value = els.filterType.value || '';
             modal.classList.add('active');
         }
 
         function readSmartBuilderQuery() {
-            const selected = document.getElementById('smartBuildTags')._selected || new Set();
+            const selected = el('smartBuildTags')._selected || new Set();
             const q = {
-                search: document.getElementById('smartBuildSearch').value.trim(),
+                search: el('smartBuildSearch').value.trim(),
                 tags: [...selected],
-                type: document.getElementById('smartBuildType').value || null,
+                type: el('smartBuildType').value || null,
                 sort: 'name',
             };
-            const pairF = document.getElementById('smartBuildPair').value;
-            const rankF = document.getElementById('smartBuildRank').value;
+            const pairF = el('smartBuildPair').value;
+            const rankF = el('smartBuildRank').value;
             if (pairF === 'paired') q.has_pair = true;
             if (pairF === 'unpaired') q.has_pair = false;
             if (pairF === 'unpaired_upscale') q.unpaired_upscale = true;
@@ -2453,14 +2548,14 @@
             (q.tags || []).forEach(t => activeTags.add(t));
             els.searchInput.value = q.search || '';
             els.filterType.value = q.type || '';
-            const pairSel = document.getElementById('filterPair');
+            const pairSel = el('filterPair');
             if (pairSel) {
                 if (q.unpaired_upscale) pairSel.value = 'unpaired_upscale';
                 else if (q.has_pair === true) pairSel.value = 'paired';
                 else if (q.has_pair === false) pairSel.value = 'unpaired';
                 else pairSel.value = '';
             }
-            const rankSel = document.getElementById('filterRank');
+            const rankSel = el('filterRank');
             if (rankSel) rankSel.value = q.rank_min ? String(q.rank_min) : '';
             page = 0;
             await applyFilters();
@@ -2563,17 +2658,17 @@
                     ${itemMetaBadgesHtml(item, true)}
                 </div>
                 <div>
-                    <div class="name">${item.name}</div>
-                    <div class="path">${item.relativePath || item.rel_path || ''}</div>
+                    <div class="name">${escHtml(item.name)}</div>
+                    <div class="path">${escHtml(item.relativePath || item.rel_path || '')}</div>
                     <div class="tags-inline">
                         <span class="badge-pair ${isPaired(item) ? 'on' : 'off'}" title="${pairTitle}">${isPaired(item) ? '🔗 paired' : '○ unpaired'}</span>
                         ${rank ? `<span class="badge-stars" title="Rating">${rankStarsText(rank)}</span>` : ''}
-                        ${tagN ? `<span class="badge-tags" title="${(item.tags||[]).join(', ')}">T#${tagN}</span>` : ''}
-                        ${(item.tags || []).slice(0, 4).map(t => `<span class="tag-mini">${t}</span>`).join('')}
+                        ${tagN ? `<span class="badge-tags" title="${escHtml((item.tags||[]).join(', '))}">T#${tagN}</span>` : ''}
+                        ${(item.tags || []).slice(0, 4).map(t => `<span class="tag-mini">${escHtml(t)}</span>`).join('')}
                         ${tagN > 4 ? `<span class="tag-mini">+${tagN - 4}</span>` : ''}
                     </div>
                 </div>
-                <span class="type-badge type-${item.type}">${item.type}</span>
+                <span class="type-badge type-${escHtml(item.type)}">${escHtml(item.type)}</span>
                 <button type="button" class="row-del" title="Delete" data-del="${item.id}">🗑</button>`;
             wireItemSelect(row, item);
             row.querySelector('.row-del')?.addEventListener('click', e => {
@@ -2595,23 +2690,25 @@
             ].filter(Boolean).join(' · ');
             tile.innerHTML = `
                 <input type="checkbox" class="tile-check" ${selected.has(item.id) ? 'checked' : ''}>
-                <span class="tile-badge type-${item.type}">${item.type}</span>
+                <span class="tile-badge type-${escHtml(item.type)}">${escHtml(item.type)}</span>
                 <div class="thumb-slot-wrap">
                     <div class="thumb-slot"></div>
                     ${itemMetaBadgesHtml(item, false)}
                 </div>
-                <div class="tile-name" title="${item.name}">${item.name}</div>`;
+                <div class="tile-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>`;
             wireItemSelect(tile, item);
             return tile;
         }
 
         async function fillThumbSlot(slot, item) {
+            if (!slot) return;
             const url = await thumbUrl(item);
             if (url) {
                 const img = document.createElement('img');
                 img.className = slot.closest('.grid-tile') ? 'tile-thumb' : 'thumb';
                 img.src = url;
                 img.alt = '';
+                img.addEventListener('load', () => { if (String(url).startsWith('blob:')) { /* keep until list rebuild */ } }, { once: true });
                 slot.replaceWith(img);
             } else {
                 const ph = document.createElement('div');
@@ -2622,6 +2719,8 @@
         }
 
         function renderDuplicates() {
+            if (!els.mediaList) return;
+            revokeMediaBlobs(els.mediaList);
             els.mediaList.innerHTML = '';
             const groups = dupScanResult?.groups || [];
             if (!groups.length) {
@@ -2642,7 +2741,7 @@
                     row.className = 'dup-file-row' + (isKeeper ? ' keeper' : '');
                     row.innerHTML = `
                         <input type="radio" name="dup-keep-${gi}" ${isKeeper ? 'checked' : ''}>
-                        <div><div>${item.name}</div><div class="dup-path">${item.path}</div></div>
+                        <div><div>${escHtml(item.name)}</div><div class="dup-path">${item.path}</div></div>
                         <span style="color:var(--muted)">${fmtBytes(item.size)}</span>
                         <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:3px;">
                             <input type="checkbox" class="dup-del-chk" ${dupDeletePaths.has(item.path) ? 'checked' : ''}${isKeeper ? ' disabled' : ''}> del
@@ -2708,18 +2807,19 @@
         }
 
         function updateDupBar() {
-            const bar = document.getElementById('dupBar');
+            const bar = el('dupBar');
             bar.classList.toggle('visible', dupMode);
             if (!dupMode) return;
             const g = dupScanResult?.groups?.length || 0;
             const wasted = dupScanResult?.wasted_bytes || 0;
-            document.getElementById('dupSummary').textContent =
+            el('dupSummary').textContent =
                 `${g} duplicate groups · ${fmtBytes(wasted)} recoverable`;
-            document.getElementById('btnDupMerge').disabled = activeDupGroup < 0 || !dupKeeperPath;
-            document.getElementById('btnDupDeleteMarked').disabled = dupDeletePaths.size === 0;
+            el('btnDupMerge').disabled = activeDupGroup < 0 || !dupKeeperPath;
+            el('btnDupDeleteMarked').disabled = dupDeletePaths.size === 0;
         }
 
         async function scanDuplicates() {
+
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             let folder = null;
             if (activeDir) {
@@ -2728,7 +2828,7 @@
             } else if (watchedDirs.length === 1) {
                 folder = watchedDirs[0].path;
             } else if (watchedDirs.length > 1) {
-                const names = watchedDirs.map((d, i) => `${i + 1}. ${d.name}`).join('\n');
+                const names = watchedDirs.map((d, i) => `${i + 1}. ${escHtml(d.name)}`).join('\n');
                 const pick = prompt(`Scan which folder?\n${names}\n\nEnter number (1-${watchedDirs.length}) or paste a path:`);
                 if (!pick) return;
                 const n = parseInt(pick, 10);
@@ -2742,7 +2842,7 @@
             dupMode = true;
             viewMode = 'list';
             els.mediaList.classList.remove('grid-mode');
-            document.getElementById('btnFindDup').classList.add('active');
+            el('btnFindDup').classList.add('active');
             els.mediaList.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Scanning for duplicates…</div>';
             updateDupBar();
 
@@ -2752,7 +2852,7 @@
                     matchMode: 'quick',
                     fileTypes: 'media',
                 }, (count, file) => {
-                    document.getElementById('dupSummary').textContent = `Scanning… ${count} files — ${file?.split(/[/\\]/).pop() || ''}`;
+                    el('dupSummary').textContent = `Scanning… ${count} files — ${file?.split(/[/\\]/).pop() || ''}`;
                 });
                 activeDupGroup = dupScanResult.groups?.length ? 0 : -1;
                 if (activeDupGroup >= 0) {
@@ -2789,6 +2889,7 @@
         }
 
         async function mergeDupGroup(index) {
+
             const group = dupScanResult?.groups?.[index];
             if (!group || !dupKeeperPath) return;
             const confirm = await UI().confirmAction({
@@ -2858,7 +2959,7 @@
             activeDupGroup = -1;
             dupKeeperPath = null;
             dupDeletePaths.clear();
-            document.getElementById('btnFindDup').classList.remove('active');
+            el('btnFindDup').classList.remove('active');
             updateDupBar();
             applyFilters();
         }
@@ -2923,11 +3024,11 @@
                 { wrap: 'menuToolsWrap', btn: 'btnToolsMenu' },
             ];
             const closeAll = () => {
-                wraps.forEach(({ wrap }) => document.getElementById(wrap)?.classList.remove('open'));
+                wraps.forEach(({ wrap }) => el(wrap)?.classList.remove('open'));
             };
             wraps.forEach(({ wrap, btn }) => {
-                const w = document.getElementById(wrap);
-                const b = document.getElementById(btn);
+                const w = el(wrap);
+                const b = el(btn);
                 if (!w || !b) return;
                 b.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -2943,13 +3044,14 @@
                 if (e.key === 'Escape') closeAll();
             });
             // Organizer was previously an inline navigation button
-            document.getElementById('btnOrganizer')?.addEventListener('click', () => {
+            el('btnOrganizer')?.addEventListener('click', () => {
                 if (window.AIToolboxUI?.navigateToolbox) AIToolboxUI.navigateToolbox('Media Hub.html#organizer');
                 else location.href = 'Media Hub.html#organizer';
             });
         }
 
         async function renderPage() {
+            if (els.mediaList) revokeMediaBlobs(els.mediaList);
             if (dupMode) {
                 renderDuplicates();
                 updateDupBar();
@@ -2971,11 +3073,11 @@
                     '<a class="btn" href="Compare Hub.html#match" style="text-decoration:none">⇄ Compare Hub</a>' +
                     '<a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Launcher</a>' +
                     '</div></div>';
-                document.getElementById('btnEmptyStartSrv')?.addEventListener('click', () => {
-                    document.getElementById('btnStartServer')?.click() || document.getElementById('btnStartServerBanner')?.click();
+                el('btnEmptyStartSrv')?.addEventListener('click', () => {
+                    el('btnStartServer')?.click() || el('btnStartServerBanner')?.click();
                 });
-                document.getElementById('btnEmptyAddFolder')?.addEventListener('click', () => {
-                    document.getElementById('btnNativeDir')?.click() || document.getElementById('btnAddDir')?.click();
+                el('btnEmptyAddFolder')?.addEventListener('click', () => {
+                    el('btnNativeDir')?.click() || el('btnAddDir')?.click();
                 });
             }
 
@@ -3018,8 +3120,8 @@
             els.listStats.textContent = stats;
             els.pageNum.textContent = page + 1;
             els.pageTotal.textContent = totalPages;
-            document.getElementById('btnPrevPage').style.visibility = viewMode === 'group' ? 'hidden' : '';
-            document.getElementById('btnNextPage').style.visibility = viewMode === 'group' ? 'hidden' : '';
+            el('btnPrevPage').style.visibility = viewMode === 'group' ? 'hidden' : '';
+            el('btnNextPage').style.visibility = viewMode === 'group' ? 'hidden' : '';
             updateBatchBar();
             updateWorkflow();
         }
@@ -3067,7 +3169,7 @@
                 playlists.forEach(pl => {
                     const div = document.createElement('div');
                     div.className = 'playlist-item' + (activePlaylist === pl.id ? ' active' : '');
-                    div.innerHTML = `<span>${pl.name}</span><span class="pl-count">${pl.item_count || 0}</span>`;
+                    div.innerHTML = `<span>${escHtml(pl.name)}</span><span class="pl-count">${pl.item_count || 0}</span>`;
                     div.onclick = () => loadPlaylist(pl.id);
                     els.playlistList.appendChild(div);
                 });
@@ -3083,17 +3185,17 @@
                 filtered = (pl.items || []).map(it => normalizePlaylistItem(it.media));
                 totalCount = filtered.length;
                 viewMode = 'list';
-                document.getElementById('btnViewList').classList.add('active');
-                document.getElementById('btnViewGrid').classList.remove('active');
-                document.getElementById('btnViewGroup').classList.remove('active');
+                el('btnViewList').classList.add('active');
+                el('btnViewGrid').classList.remove('active');
+                el('btnViewGroup').classList.remove('active');
                 els.groupBy.style.display = 'none';
                 els.mediaList.classList.remove('grid-mode');
-                els.pathHint.textContent = `📋 Playlist: ${pl.name} (${filtered.length} items)`;
+                els.pathHint.textContent = `📋 Playlist: ${escHtml(pl.name)} (${filtered.length} items)`;
                 els.pathHint.classList.add('visible');
                 page = 0;
                 await refreshPlaylists();
                 renderPage();
-                showToast(`Loaded playlist: ${pl.name}`, 'ok');
+                showToast(`Loaded playlist: ${escHtml(pl.name)}`, 'ok');
             } catch (e) {
                 showToast('Load playlist failed: ' + e.message, 'warn');
             }
@@ -3108,24 +3210,24 @@
         }
 
         function openPlaylistModal(createNew = false) {
-            const pick = document.getElementById('playlistPick');
+            const pick = el('playlistPick');
             pick.innerHTML = '<option value="">— pick existing —</option>';
             playlists.forEach(pl => {
-                pick.innerHTML += `<option value="${pl.id}">${pl.name} (${pl.item_count || 0})</option>`;
+                pick.innerHTML += `<option value="${escHtml(pl.id)}">${escHtml(pl.name)} (${pl.item_count || 0})</option>`;
             });
             const n = selected.size;
-            document.getElementById('playlistModalTitle').textContent = createNew
+            el('playlistModalTitle').textContent = createNew
                 ? (n ? `New playlist from ${n} selected` : 'New empty playlist')
                 : `Add ${n || 0} file(s) to playlist`;
-            const hint = document.getElementById('playlistModalHint');
+            const hint = el('playlistModalHint');
             if (hint) {
                 hint.textContent = n
                     ? `Will add ${n} selected file(s). Pick an existing playlist or type a new name.`
                     : 'No files selected — create an empty playlist, or cancel and select files first.';
             }
-            document.getElementById('playlistName').value = '';
-            document.getElementById('playlistDesc').value = '';
-            document.getElementById('playlistModal').classList.add('active');
+            el('playlistName').value = '';
+            el('playlistDesc').value = '';
+            el('playlistModal').classList.add('active');
         }
 
         function toggleSelect(id) {
@@ -3145,30 +3247,30 @@
             currentItem = item;
             DBG()?.log('library', 'event', 'Open file: ' + item.name);
             updateWorkflow();
-            els.detailBody.style.display = 'flex';
+            if (els.detailBody) els.detailBody.style.display = 'flex';
             requestAnimationFrame(() => {
-                const el = document.querySelector(`[data-id="${item.id}"]`);
-                if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                const rowEl = document.querySelector(`[data-id="${CSS.escape(String(item.id))}"]`);
+                if (rowEl) rowEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             });
-            els.detailName.value = item.name;
-            els.detailNotes.value = item.notes || '';
+            if (els.detailName) els.detailName.value = item.name;
+            if (els.detailNotes) els.detailNotes.value = item.notes || '';
             renderDetailTags(item.tags || []);
             await loadPreview(item);
             const pid = item.pair_id || item.pairId;
-            els.btnOpenCompare.style.display = pid ? 'block' : 'none';
-            const pairWrap = document.getElementById('tagPairPartnerWrap');
-            const pushBtn = document.getElementById('btnPushTagsToPair');
-            const archBtn = document.getElementById('btnArchivePair');
-            const openSys = document.getElementById('btnOpenSystem');
-            const copyOne = document.getElementById('btnCopyPathOne');
+            if (els.btnOpenCompare) els.btnOpenCompare.style.display = pid ? 'block' : 'none';
+            const pairWrap = el('tagPairPartnerWrap');
+            const pushBtn = el('btnPushTagsToPair');
+            const archBtn = el('btnArchivePair');
+            const openSys = el('btnOpenSystem');
+            const copyOne = el('btnCopyPathOne');
             if (pairWrap) pairWrap.style.display = pid ? 'block' : 'none';
             if (pushBtn) pushBtn.style.display = pid ? 'block' : 'none';
             if (archBtn) archBtn.style.display = pid ? 'block' : 'none';
             if (openSys) openSys.style.display = 'block';
             if (copyOne) copyOne.style.display = 'block';
-            const plBtn = document.getElementById('btnDetailPlaylist');
+            const plBtn = el('btnDetailPlaylist');
             if (plBtn) plBtn.style.display = 'block';
-            const badge = document.getElementById('pairCodeBadge');
+            const badge = el('pairCodeBadge');
             if (pid && serverOn) {
                 try {
                     const pair = await API().getPair(pid);
@@ -3201,7 +3303,7 @@
         let twoDirSuggestions = [];
 
         function loadTagSessionUse() {
-            try { return JSON.parse(localStorage.getItem(TAG_SESSION_KEY) || '{}') || {}; }
+            try { return JSON.parse(lsGet(TAG_SESSION_KEY) || '{}') || {}; }
             catch { return {}; }
         }
         function bumpTagSessionUse(tags) {
@@ -3212,7 +3314,7 @@
                 if (!k) continue;
                 u[k] = (u[k] || 0) + 1;
             }
-            try { localStorage.setItem(TAG_SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
+            try { lsSet(TAG_SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
         }
         function sortTagsSessionFirst(list) {
             const u = loadTagSessionUse();
@@ -3232,7 +3334,7 @@
         }
         function loadTagPresets() {
             try {
-                const raw = JSON.parse(localStorage.getItem(TAG_PRESETS_KEY) || 'null');
+                const raw = JSON.parse(lsGet(TAG_PRESETS_KEY) || 'null');
                 if (Array.isArray(raw) && raw.length === 3) {
                     return raw.map((p, i) => ({
                         name: (p && p.name) ? String(p.name).slice(0, 24) : defaultTagPresets()[i].name,
@@ -3243,13 +3345,13 @@
             return defaultTagPresets();
         }
         function saveTagPresets(presets) {
-            try { localStorage.setItem(TAG_PRESETS_KEY, JSON.stringify(presets)); } catch { /* ignore */ }
+            try { lsSet(TAG_PRESETS_KEY, JSON.stringify(presets)); } catch { /* ignore */ }
             renderTagPresetButtons();
         }
         function renderTagPresetButtons() {
             const presets = loadTagPresets();
             for (let i = 0; i < 3; i++) {
-                const btn = document.getElementById('tagPreset' + i);
+                const btn = el('tagPreset' + i);
                 if (!btn) continue;
                 const p = presets[i];
                 const empty = !p.tags.length;
@@ -3295,10 +3397,10 @@
         function openPresetEditor() {
             const presets = loadTagPresets();
             for (let i = 0; i < 3; i++) {
-                document.getElementById('presetName' + i).value = presets[i].name || '';
-                document.getElementById('presetTags' + i).value = (presets[i].tags || []).join(', ');
+                el('presetName' + i).value = presets[i].name || '';
+                el('presetTags' + i).value = (presets[i].tags || []).join(', ');
             }
-            document.getElementById('presetModal').classList.add('active');
+            el('presetModal').classList.add('active');
         }
 
         function renderDetailTags(tags) {
@@ -3332,13 +3434,13 @@
         }
 
         function renderMlTagLibrary() {
-            const box = document.getElementById('tagLibrary');
-            const countEl = document.getElementById('tagLibCount');
+            const box = el('tagLibrary');
+            const countEl = el('tagLibCount');
             if (!box) return;
-            const q = (document.getElementById('tagLibFilter')?.value || '').trim().toLowerCase();
+            const q = (el('tagLibFilter')?.value || '').trim().toLowerCase();
             const current = els.detailTags?._tags || [];
             let list = mlAllTags.filter(t => !q || t.toLowerCase().includes(q));
-            const sortMode = document.getElementById('tagLibSort')?.value || 'session';
+            const sortMode = el('tagLibSort')?.value || 'session';
             if (sortMode === 'alpha') {
                 list = [...list].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
             } else if (sortMode === 'alpha-desc') {
@@ -3385,20 +3487,26 @@
         }
 
         function showPreviewError(msg, item) {
-            els.previewArea.innerHTML = `<div class="preview-error">${msg}<br><small>${item?.name || ''}</small></div>`;
+            if (els.previewArea) els.previewArea.innerHTML = `<div class="preview-error">${escHtml(msg)}<br><small>${escHtml(item?.name || '')}</small></div>`;
             DBG()?.log('library', 'error', 'Preview failed: ' + msg, { id: item?.id, name: item?.name });
         }
 
+        let previewBlobUrl = null;
         async function loadPreview(item) {
+            if (!item || !els.previewArea) return;
+            revokeMediaBlobs(els.previewArea);
+            revokeBlobUrl(previewBlobUrl);
+            previewBlobUrl = null;
             els.previewArea.innerHTML = '';
-            document.getElementById('previewCaptureBar').classList.remove('visible');
-            if (previewVideo) { previewVideo.pause(); previewVideo = null; }
+            el('previewCaptureBar')?.classList.remove('visible');
+            if (previewVideo) { try { previewVideo.pause(); } catch (_) {} previewVideo = null; }
 
             let url;
             if (serverOn) {
                 url = API().mediaFileUrl(item.id);
             } else if (item.fileHandle && await AIToolbox.ensurePermission(item.fileHandle)) {
                 url = URL.createObjectURL(await item.fileHandle.getFile());
+                previewBlobUrl = url;
             } else {
                 showPreviewError('Start server (▶ Start Server) or re-add folder to preview files.', item);
                 return;
@@ -3411,7 +3519,7 @@
 
             DBG()?.log('library', 'info', 'Preview load: ' + item.name, { url });
 
-            const capBar = document.getElementById('previewCaptureBar');
+            const capBar = el('previewCaptureBar');
             if (item.type === 'video') {
                 previewVideo = document.createElement('video');
                 previewVideo.src = url;
@@ -3421,9 +3529,9 @@
                 previewVideo.onerror = () => showPreviewError('Video failed to load. Try rescan or open in Comparator. MKV may need Chrome/Edge.', item);
                 previewVideo.onloadeddata = () => DBG()?.log('library', 'info', 'Video ready: ' + item.name);
                 els.previewArea.appendChild(previewVideo);
-                capBar.classList.add('visible');
+                capBar?.classList.add('visible');
             } else {
-                capBar.classList.remove('visible');
+                capBar?.classList.remove('visible');
                 const img = document.createElement('img');
                 img.src = url;
                 img.onerror = () => showPreviewError('Image failed to load.', item);
@@ -3455,7 +3563,7 @@
         }
 
         function showToast(msg, type) {
-            UI().toast(msg, type || '');
+            try { UI()?.toast?.(msg, type || ''); } catch (_) {}
         }
 
         function applyPatternLocal(pattern, orig, tags, n) {
@@ -3512,7 +3620,7 @@
         function updateTrustStatusBar() {
             const keys = Object.values(TK());
             const any = keys.some(k => UI().isTrusted(k));
-            const bar = document.getElementById('trustStatusBar');
+            const bar = el('trustStatusBar');
             if (!any) {
                 bar.classList.remove('active');
                 return;
@@ -3588,6 +3696,7 @@
         }
 
         async function rescanAll() {
+
             const dirs = await API().listDirectories();
             for (const d of dirs) await scanDir(d);
         }
@@ -3597,13 +3706,13 @@
             const newName = els.detailName.value.trim();
             const tags = els.detailTags._tags || [];
             const notes = els.detailNotes.value.trim();
-            const writeTags = document.getElementById('setWriteFileTags')?.checked !== false;
+            const writeTags = el('setWriteFileTags')?.checked !== false;
             bumpTagSessionUse(tags);
 
             try {
                 if (newName && newName !== currentItem.name) {
                     const kind = isImageType(currentItem) ? 'image' : 'video';
-                    const confirm = await UI().confirmAction({
+                    const confirm = await UI()?.confirmAction?.({
                         title: `Rename ${kind} on disk?`,
                         body: `This renames the actual file — not just the catalog entry.`,
                         preview: [{ from: currentItem.name, to: newName }],
@@ -3619,7 +3728,7 @@
                     if (!confirm.skipped) showToast('Renamed on disk', 'ok');
                     updateTrustStatusBar();
                 }
-                const tagPartner = !!(document.getElementById('tagPairPartner')?.checked && (currentItem.pair_id || currentItem.pairId));
+                const tagPartner = !!(el('tagPairPartner')?.checked && (currentItem.pair_id || currentItem.pairId));
                 currentItem = await API().updateMedia(currentItem.id, {
                     tags,
                     notes,
@@ -3670,16 +3779,16 @@
 
         function isUpdateFilesOnNext() {
             try {
-                const el = document.getElementById('studioUpdateFiles');
-                if (el) return !!el.checked;
+                const ufEl = el('studioUpdateFiles');
+                if (ufEl) return !!ufEl.checked;
             } catch { /* ignore */ }
-            return localStorage.getItem(UPDATE_FILES_ON_NEXT_KEY) !== '0';
+            return lsGet(UPDATE_FILES_ON_NEXT_KEY) !== '0';
         }
 
         function setUpdateFilesOnNext(on) {
-            localStorage.setItem(UPDATE_FILES_ON_NEXT_KEY, on ? '1' : '0');
-            const el = document.getElementById('studioUpdateFiles');
-            if (el) el.checked = !!on;
+            lsSet(UPDATE_FILES_ON_NEXT_KEY, on ? '1' : '0');
+            const ufEl = el('studioUpdateFiles');
+            if (ufEl) ufEl.checked = !!on;
         }
 
         /**
@@ -3738,11 +3847,11 @@
         }
 
         function openPairStudio() {
-            document.getElementById('pairStudioModal').classList.add('active');
-            const uf = document.getElementById('studioUpdateFiles');
-            if (uf) uf.checked = localStorage.getItem(UPDATE_FILES_ON_NEXT_KEY) !== '0';
+            el('pairStudioModal').classList.add('active');
+            const uf = el('studioUpdateFiles');
+            if (uf) uf.checked = lsGet(UPDATE_FILES_ON_NEXT_KEY) !== '0';
             renderStudioSlots();
-            UI()?.initTooltips?.(document.getElementById('pairStudioModal'));
+            UI()?.initTooltips?.(el('pairStudioModal'));
             // Prefill from current selection if empty
             if (!studioBefore && !studioAfter) {
                 const ids = [...selected];
@@ -3788,10 +3897,10 @@
 
         function renderStudioSlots() {
             const fill = (side, m) => {
-                const slot = document.getElementById(side === 'before' ? 'studioSlotBefore' : 'studioSlotAfter');
-                const nameEl = document.getElementById(side === 'before' ? 'studioBeforeName' : 'studioAfterName');
-                const metaEl = document.getElementById(side === 'before' ? 'studioBeforeMeta' : 'studioAfterMeta');
-                const prev = document.getElementById(side === 'before' ? 'studioBeforePreview' : 'studioAfterPreview');
+                const slot = el(side === 'before' ? 'studioSlotBefore' : 'studioSlotAfter');
+                const nameEl = el(side === 'before' ? 'studioBeforeName' : 'studioAfterName');
+                const metaEl = el(side === 'before' ? 'studioBeforeMeta' : 'studioAfterMeta');
+                const prev = el(side === 'before' ? 'studioBeforePreview' : 'studioAfterPreview');
                 slot.classList.toggle('filled', !!m);
                 if (!m) {
                     nameEl.textContent = 'Empty — select a file or pick from suggestions';
@@ -3814,7 +3923,7 @@
         }
 
         function studioPlaySide(side) {
-            const root = document.getElementById(side === 'before' ? 'studioBeforePreview' : 'studioAfterPreview');
+            const root = el(side === 'before' ? 'studioBeforePreview' : 'studioAfterPreview');
             const v = root?.querySelector('video');
             if (!v) { showToast('No video in that slot', 'warn'); return; }
             document.querySelectorAll('#pairStudioModal video').forEach(x => { if (x !== v) x.pause(); });
@@ -3832,7 +3941,7 @@
         function bindStudioAutoNext() {
             document.querySelectorAll('#pairStudioModal video').forEach(v => {
                 v.onended = null;
-                if (document.getElementById('studioAutoNext')?.checked) {
+                if (el('studioAutoNext')?.checked) {
                     v.onended = () => {
                         // Prefer advancing after the After clip ends
                         if (v.closest('#studioAfterPreview') || !document.querySelector('#studioAfterPreview video')) {
@@ -3845,21 +3954,21 @@
 
         async function studioFindSuggestions() {
             if (!serverOn) { showToast('Start server first', 'warn'); return; }
-            const list = document.getElementById('studioSuggestList');
-            const sum = document.getElementById('studioSummary');
+            const list = el('studioSuggestList');
+            const sum = el('studioSummary');
             list.innerHTML = 'Finding matches (stem · tail · digits · folder · fuzzy)…';
             sum.textContent = 'Scanning…';
-            const minRatio = (parseFloat(document.getElementById('studioMinPct').value) || 50) / 100;
-            const tailLen = parseInt(document.getElementById('studioTailLen').value, 10) || 5;
-            const limit = parseInt(document.getElementById('studioLimit').value, 10) || 80;
+            const minRatio = (parseFloat(el('studioMinPct').value) || 50) / 100;
+            const tailLen = parseInt(el('studioTailLen').value, 10) || 5;
+            const limit = parseInt(el('studioLimit').value, 10) || 80;
             try {
                 studioSuggestions = await API().suggestPairs(limit, {
                     minRatio,
                     tailLen,
-                    useTail: document.getElementById('studioUseTail').checked,
-                    useDigits: document.getElementById('studioUseDigits').checked,
-                    useFuzzy: document.getElementById('studioUseFuzzy').checked,
-                    useFolder: document.getElementById('studioUseFolder').checked,
+                    useTail: el('studioUseTail').checked,
+                    useDigits: el('studioUseDigits').checked,
+                    useFuzzy: el('studioUseFuzzy').checked,
+                    useFolder: el('studioUseFolder').checked,
                     unpairedOnly: true,
                     forcePost: true,
                 });
@@ -3879,7 +3988,7 @@
         }
 
         function renderStudioSuggestions() {
-            const list = document.getElementById('studioSuggestList');
+            const list = el('studioSuggestList');
             if (!studioSuggestions.length) {
                 list.innerHTML = '<div style="color:#666;padding:8px;">No suggestions yet. Adjust tail length (try 4–6) and Find again.</div>';
                 return;
@@ -3960,6 +4069,7 @@
         }
 
         async function studioLockPair() {
+
             if (!studioBefore || !studioAfter) {
                 showToast('Fill both Left and Right slots', 'warn');
                 return;
@@ -3989,43 +4099,43 @@
         async function showSuggestPairs() {
             openPairStudio();
             // Also keep a compact sidebar teaser
-            const panel = document.getElementById('suggestPanel');
+            const panel = el('suggestPanel');
             if (panel) {
                 panel.style.display = 'block';
                 panel.innerHTML = '<div style="padding:6px;font-size:11px;color:var(--muted);">Pair Studio opened — multi-signal match + independent L/R slots. <button type="button" class="btn" id="reopenStudio" style="font-size:9px;padding:2px 6px;">Reopen</button></div>';
-                document.getElementById('reopenStudio')?.addEventListener('click', openPairStudio);
+                el('reopenStudio')?.addEventListener('click', openPairStudio);
             }
             await studioFindSuggestions();
         }
 
         function wirePairStudio() {
-            document.getElementById('studioAssignBefore')?.addEventListener('click', () => assignStudioSide('before'));
-            document.getElementById('studioAssignAfter')?.addEventListener('click', () => assignStudioSide('after'));
-            document.getElementById('studioClearBefore')?.addEventListener('click', () => clearStudioSide('before'));
-            document.getElementById('studioClearAfter')?.addEventListener('click', () => clearStudioSide('after'));
-            document.getElementById('studioSwap')?.addEventListener('click', studioSwap);
-            document.getElementById('studioPlayBefore')?.addEventListener('click', () => studioPlaySide('before'));
-            document.getElementById('studioPlayAfter')?.addEventListener('click', () => studioPlaySide('after'));
-            document.getElementById('studioPlayBoth')?.addEventListener('click', () => { studioPlayBoth(); bindStudioAutoNext(); });
-            document.getElementById('studioLockPair')?.addEventListener('click', studioLockPair);
-            document.getElementById('studioOpenCompare')?.addEventListener('click', async () => {
+            el('studioAssignBefore')?.addEventListener('click', () => assignStudioSide('before'));
+            el('studioAssignAfter')?.addEventListener('click', () => assignStudioSide('after'));
+            el('studioClearBefore')?.addEventListener('click', () => clearStudioSide('before'));
+            el('studioClearAfter')?.addEventListener('click', () => clearStudioSide('after'));
+            el('studioSwap')?.addEventListener('click', studioSwap);
+            el('studioPlayBefore')?.addEventListener('click', () => studioPlaySide('before'));
+            el('studioPlayAfter')?.addEventListener('click', () => studioPlaySide('after'));
+            el('studioPlayBoth')?.addEventListener('click', () => { studioPlayBoth(); bindStudioAutoNext(); });
+            el('studioLockPair')?.addEventListener('click', studioLockPair);
+            el('studioOpenCompare')?.addEventListener('click', async () => {
                 if (!studioBefore || !studioAfter) { showToast('Fill both slots first', 'warn'); return; }
                 await studioLockPair();
             });
-            document.getElementById('studioFind')?.addEventListener('click', studioFindSuggestions);
-            document.getElementById('studioNextPair')?.addEventListener('click', () => studioNextSuggestion(true));
-            document.getElementById('studioAutoNext')?.addEventListener('change', bindStudioAutoNext);
-            document.getElementById('studioUpdateFiles')?.addEventListener('change', (e) => {
+            el('studioFind')?.addEventListener('click', studioFindSuggestions);
+            el('studioNextPair')?.addEventListener('click', () => studioNextSuggestion(true));
+            el('studioAutoNext')?.addEventListener('change', bindStudioAutoNext);
+            el('studioUpdateFiles')?.addEventListener('change', (e) => {
                 setUpdateFilesOnNext(!!e.target.checked);
             });
-            document.getElementById('studioClose')?.addEventListener('click', async () => {
+            el('studioClose')?.addEventListener('click', async () => {
                 // Optional final flush when closing with toggle on
                 if (isUpdateFilesOnNext() && (studioBefore || studioAfter)) {
                     await flushStudioSlotsToFiles(studioBefore, studioAfter);
                 }
-                document.getElementById('pairStudioModal').classList.remove('active');
+                el('pairStudioModal').classList.remove('active');
             });
-            document.getElementById('studioOpenReview')?.addEventListener('click', () => {
+            el('studioOpenReview')?.addEventListener('click', () => {
                 location.href = 'Pair Review Queue.html?source=suggest';
             });
         }
@@ -4033,8 +4143,8 @@
         async function openTwoDirModal() {
             if (!serverOn) { showToast('Start server first', 'warn'); return; }
             const dirs = await API().listDirectories();
-            const beforeSel = document.getElementById('twoDirBefore');
-            const afterSel = document.getElementById('twoDirAfter');
+            const beforeSel = el('twoDirBefore');
+            const afterSel = el('twoDirAfter');
             const opts = (dirs || []).map(d =>
                 `<option value="${d.id}">${(d.name || d.path || d.id).replace(/</g, '')}</option>`
             ).join('');
@@ -4047,20 +4157,20 @@
             if (dirs.length > 1) afterSel.selectedIndex = 1;
             // Restore last pick
             try {
-                const last = JSON.parse(localStorage.getItem('aitoolbox_two_dir_pick') || '{}');
+                const last = JSON.parse(lsGet('aitoolbox_two_dir_pick') || '{}');
                 if (last.before && [...beforeSel.options].some(o => o.value === last.before)) beforeSel.value = last.before;
                 if (last.after && [...afterSel.options].some(o => o.value === last.after)) afterSel.value = last.after;
             } catch { /* ignore */ }
-            document.getElementById('twoDirList').innerHTML = '';
-            document.getElementById('twoDirSummary').textContent = 'Pick folders, then Find matches.';
+            el('twoDirList').innerHTML = '';
+            el('twoDirSummary').textContent = 'Pick folders, then Find matches.';
             twoDirSuggestions = [];
-            document.getElementById('twoDirModal').classList.add('active');
+            el('twoDirModal').classList.add('active');
         }
 
         function renderTwoDirList(suggestions) {
             twoDirSuggestions = suggestions || [];
-            const box = document.getElementById('twoDirList');
-            const sum = document.getElementById('twoDirSummary');
+            const box = el('twoDirList');
+            const sum = el('twoDirSummary');
             if (!twoDirSuggestions.length) {
                 box.innerHTML = '<div class="hint-box" style="padding:12px;">No matches. Ensure both folders are watched + scanned, and filenames share a stem (clip.mp4 ↔ clip_upscaled.mp4 or same name in each tree).</div>';
                 sum.textContent = '0 suggestions';
@@ -4082,9 +4192,9 @@
         }
 
         async function findTwoDirMatches() {
-            const beforeDirId = document.getElementById('twoDirBefore').value;
-            const afterDirId = document.getElementById('twoDirAfter').value;
-            const minRatio = parseFloat(document.getElementById('twoDirMin').value) || 0.55;
+            const beforeDirId = el('twoDirBefore').value;
+            const afterDirId = el('twoDirAfter').value;
+            const minRatio = parseFloat(el('twoDirMin').value) || 0.55;
             if (!beforeDirId || !afterDirId) {
                 showToast('Select both folders', 'warn');
                 return;
@@ -4094,9 +4204,9 @@
                 return;
             }
             try {
-                localStorage.setItem('aitoolbox_two_dir_pick', JSON.stringify({ before: beforeDirId, after: afterDirId }));
+                lsSet('aitoolbox_two_dir_pick', JSON.stringify({ before: beforeDirId, after: afterDirId }));
             } catch { /* ignore */ }
-            document.getElementById('twoDirSummary').textContent = 'Scanning for matches…';
+            el('twoDirSummary').textContent = 'Scanning for matches…';
             try {
                 const suggestions = await API().suggestPairs(200, {
                     beforeDirId,
@@ -4300,7 +4410,7 @@
                 items[mlTagSuggestIdx].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             }
         });
-        document.getElementById('tagLibFilter')?.addEventListener('input', renderMlTagLibrary);
+        el('tagLibFilter')?.addEventListener('input', renderMlTagLibrary);
         document.addEventListener('click', e => {
             if (!e.target.closest('.tag-input-wrap')) els.tagSuggestions.classList.remove('show');
         });
@@ -4308,12 +4418,12 @@
         refreshMlAllTags();
 
         // --- Events ---
-        document.getElementById('btnHome').onclick = () => {
+        bind(el('btnHome'), 'click', () => {
             if (window.AIToolboxUI?.navigateToolbox) AIToolboxUI.navigateToolbox('../Toolbox Launcher.html');
             else location.href = '../Toolbox Launcher.html';
-        };
-        document.getElementById('btnLibReport')?.addEventListener('click', async () => {
-            const server = document.getElementById('serverStatus')?.textContent || 'unknown';
+        });
+        el('btnLibReport')?.addEventListener('click', async () => {
+            const server = el('serverStatus')?.textContent || 'unknown';
             const nItems = (typeof allItems !== 'undefined' && Array.isArray(allItems)) ? allItems.length
                 : (typeof items !== 'undefined' && Array.isArray(items)) ? items.length : '?';
             const nSel = (typeof selected !== 'undefined' && selected?.size != null) ? selected.size : 0;
@@ -4335,9 +4445,9 @@
                 prompt('Copy report:', text);
             }
         });
-        document.getElementById('btnAddDir').onclick = addDirectory;
-        document.getElementById('btnAddDir2').onclick = addDirectory;
-        document.getElementById('btnNativeDir').onclick = async () => {
+        el('btnAddDir').onclick = addDirectory;
+        el('btnAddDir2').onclick = addDirectory;
+        el('btnNativeDir').onclick = async () => {
             try {
                 const entry = await API().pickDirectoryNative();
                 showToast(`Added: ${entry.name}`);
@@ -4345,62 +4455,62 @@
                 await scanDir(entry);
             } catch (e) { alert(e.message); }
         };
-        document.getElementById('btnPathAdd').onclick = () => addDirectoryByPath(document.getElementById('pathInput').value);
-        document.getElementById('btnSuggest').onclick = showSuggestPairs;
+        el('btnPathAdd').onclick = () => addDirectoryByPath(el('pathInput').value);
+        el('btnSuggest').onclick = showSuggestPairs;
         wirePairStudio();
-        document.getElementById('btnTwoDirPairs')?.addEventListener('click', openTwoDirModal);
-        document.getElementById('btnTwoDirClose')?.addEventListener('click', () => document.getElementById('twoDirModal').classList.remove('active'));
-        document.getElementById('btnTwoDirFind')?.addEventListener('click', findTwoDirMatches);
-        document.getElementById('btnTwoDirAcceptHigh')?.addEventListener('click', () => acceptTwoDirChecked(0.85));
-        document.getElementById('btnTwoDirAcceptAll')?.addEventListener('click', () => acceptTwoDirChecked(0));
-        document.getElementById('btnHealthTwoDir')?.addEventListener('click', () => {
-            document.getElementById('healthModal').classList.remove('active');
+        el('btnTwoDirPairs')?.addEventListener('click', openTwoDirModal);
+        el('btnTwoDirClose')?.addEventListener('click', () => el('twoDirModal').classList.remove('active'));
+        el('btnTwoDirFind')?.addEventListener('click', findTwoDirMatches);
+        el('btnTwoDirAcceptHigh')?.addEventListener('click', () => acceptTwoDirChecked(0.85));
+        el('btnTwoDirAcceptAll')?.addEventListener('click', () => acceptTwoDirChecked(0));
+        el('btnHealthTwoDir')?.addEventListener('click', () => {
+            el('healthModal').classList.remove('active');
             openTwoDirModal();
         });
-        document.getElementById('btnEditPresets')?.addEventListener('click', openPresetEditor);
-        document.getElementById('tagPresetRow')?.addEventListener('click', (e) => {
+        el('btnEditPresets')?.addEventListener('click', openPresetEditor);
+        el('tagPresetRow')?.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-preset]');
             if (!btn) return;
             applyTagPreset(Number(btn.dataset.preset));
         });
-        document.getElementById('btnPresetCancel')?.addEventListener('click', () => document.getElementById('presetModal').classList.remove('active'));
-        document.getElementById('btnPresetSave')?.addEventListener('click', () => {
+        el('btnPresetCancel')?.addEventListener('click', () => el('presetModal').classList.remove('active'));
+        el('btnPresetSave')?.addEventListener('click', () => {
             const next = [0, 1, 2].map(i => ({
-                name: (document.getElementById('presetName' + i).value || ('Preset ' + (i + 1))).trim().slice(0, 24),
-                tags: (document.getElementById('presetTags' + i).value || '')
+                name: (el('presetName' + i).value || ('Preset ' + (i + 1))).trim().slice(0, 24),
+                tags: (el('presetTags' + i).value || '')
                     .split(',')
                     .map(t => t.trim())
                     .filter(Boolean),
             }));
             saveTagPresets(next);
-            document.getElementById('presetModal').classList.remove('active');
+            el('presetModal').classList.remove('active');
             showToast('Presets saved', 'ok');
         });
         renderTagPresetButtons();
-        document.getElementById('btnRescan').onclick = rescanAll;
-        document.getElementById('btnSaveDetail').onclick = saveDetail;
+        el('btnRescan').onclick = rescanAll;
+        el('btnSaveDetail').onclick = saveDetail;
         els.searchInput.addEventListener('input', () => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); });
         els.filterType.addEventListener('change', () => { page = 0; activePlaylist = null; applyFilters(); });
         els.sortBy.addEventListener('change', () => { page = 0; applyFilters(); });
         els.groupBy.addEventListener('change', () => { page = 0; applyFilters(); });
-        document.getElementById('filterPair')?.addEventListener('change', () => {
+        el('filterPair')?.addEventListener('change', () => {
             page = 0; activePlaylist = null; activeSmartId = null;
             // Keep activeSmartQuery null so pair filter drives smart API via UI
-            if (!document.getElementById('filterPair').value && !document.getElementById('filterRank')?.value && !activeTags.size) {
+            if (!el('filterPair').value && !el('filterRank')?.value && !activeTags.size) {
                 activeSmartQuery = null;
             }
             applyFilters();
         });
-        document.getElementById('filterRank')?.addEventListener('change', () => {
+        el('filterRank')?.addEventListener('change', () => {
             page = 0; activePlaylist = null; activeSmartId = null; applyFilters();
         });
 
-        document.getElementById('btnClearTagFilter')?.addEventListener('click', () => {
+        el('btnClearTagFilter')?.addEventListener('click', () => {
             activeTags.clear();
             page = 0;
             applyFilters();
         });
-        document.getElementById('btnSmartFromTags')?.addEventListener('click', async () => {
+        el('btnSmartFromTags')?.addEventListener('click', async () => {
             if (!activeTags.size) { showToast('Click one or more tags in the sidebar first', 'warn'); return; }
             const name = prompt('Name for this tag smart list:', [...activeTags].join(' + '));
             if (!name) return;
@@ -4411,7 +4521,7 @@
             refreshSmartSearches();
             applyFilters();
         });
-        document.getElementById('btnPlaylistFromTags')?.addEventListener('click', async () => {
+        el('btnPlaylistFromTags')?.addEventListener('click', async () => {
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             if (!activeTags.size) { showToast('Select tag(s) in the sidebar first', 'warn'); return; }
             const name = prompt('Playlist name:', 'Tags: ' + [...activeTags].join(', '));
@@ -4423,50 +4533,50 @@
                 const pl = await API().createPlaylist(name, 'From tags: ' + [...activeTags].join(', '));
                 await API().addToPlaylist(pl.id, ids);
                 lastPlaylistId = pl.id;
-                localStorage.setItem('ml_last_playlist', pl.id);
+                lsSet('ml_last_playlist', pl.id);
                 showToast(`Playlist “${name}” with ${ids.length} files`, 'ok');
                 await refreshPlaylists();
             } catch (e) {
                 showToast(e.message || 'Failed', 'warn');
             }
         });
-        document.getElementById('btnRefreshPairs')?.addEventListener('click', () => refreshPairsList());
-        document.getElementById('btnFilterPaired')?.addEventListener('click', () => {
-            document.getElementById('filterPair').value = 'paired';
+        el('btnRefreshPairs')?.addEventListener('click', () => refreshPairsList());
+        el('btnFilterPaired')?.addEventListener('click', () => {
+            el('filterPair').value = 'paired';
             page = 0; activeSmartQuery = null; activeSmartId = null; applyFilters();
         });
-        document.getElementById('btnFilterUnpaired')?.addEventListener('click', () => {
-            document.getElementById('filterPair').value = 'unpaired';
+        el('btnFilterUnpaired')?.addEventListener('click', () => {
+            el('filterPair').value = 'unpaired';
             page = 0; activeSmartQuery = null; activeSmartId = null; applyFilters();
         });
-        document.getElementById('btnAddToPlaylistSide')?.addEventListener('click', () => {
+        el('btnAddToPlaylistSide')?.addEventListener('click', () => {
             if (!selected.size && currentItem) selected.add(currentItem.id);
             if (!selected.size) { showToast('Select files in the library first', 'warn'); return; }
             openPlaylistModal(false);
             renderPage();
         });
-        document.getElementById('btnBuildSmart')?.addEventListener('click', () => openSmartBuilder());
+        el('btnBuildSmart')?.addEventListener('click', () => openSmartBuilder());
 
-        document.getElementById('btnSmartBuildCancel')?.addEventListener('click', () => {
-            document.getElementById('smartBuilderModal').classList.remove('active');
+        el('btnSmartBuildCancel')?.addEventListener('click', () => {
+            el('smartBuilderModal').classList.remove('active');
         });
-        document.getElementById('btnSmartBuildRun')?.addEventListener('click', async () => {
+        el('btnSmartBuildRun')?.addEventListener('click', async () => {
             const q = readSmartBuilderQuery();
-            document.getElementById('smartBuilderModal').classList.remove('active');
+            el('smartBuilderModal').classList.remove('active');
             await applySmartQuery(q, 'Custom filter');
         });
-        document.getElementById('btnSmartBuildSave')?.addEventListener('click', async () => {
+        el('btnSmartBuildSave')?.addEventListener('click', async () => {
             const q = readSmartBuilderQuery();
-            const name = document.getElementById('smartBuildName').value.trim() || 'Smart list';
+            const name = el('smartBuildName').value.trim() || 'Smart list';
             await API().addSmartSearch(name, q);
-            document.getElementById('smartBuilderModal').classList.remove('active');
+            el('smartBuilderModal').classList.remove('active');
             await applySmartQuery(q, name);
             refreshSmartSearches();
             showToast('Smart list saved', 'ok');
         });
-        document.getElementById('btnSmartBuildPlaylist')?.addEventListener('click', async () => {
+        el('btnSmartBuildPlaylist')?.addEventListener('click', async () => {
             const q = readSmartBuilderQuery();
-            const name = document.getElementById('smartBuildName').value.trim() || 'From smart list';
+            const name = el('smartBuildName').value.trim() || 'From smart list';
             try {
                 await API().addSmartSearch(name, q);
                 const res = await API().runSmartSearch(q, 0, 500);
@@ -4475,8 +4585,8 @@
                 const pl = await API().createPlaylist(name, 'From smart list');
                 await API().addToPlaylist(pl.id, ids);
                 lastPlaylistId = pl.id;
-                localStorage.setItem('ml_last_playlist', pl.id);
-                document.getElementById('smartBuilderModal').classList.remove('active');
+                lsSet('ml_last_playlist', pl.id);
+                el('smartBuilderModal').classList.remove('active');
                 showToast(`Playlist “${name}” · ${ids.length} files`, 'ok');
                 await refreshPlaylists();
                 await applySmartQuery(q, name);
@@ -4484,26 +4594,26 @@
                 showToast(e.message || 'Failed', 'warn');
             }
         });
-        document.getElementById('btnViewList').onclick = () => setViewMode('list');
-        document.getElementById('btnViewGrid').onclick = () => setViewMode('grid');
-        document.getElementById('btnViewGroup').onclick = () => setViewMode('group');
-        document.getElementById('btnPrevPage').onclick = async () => { if (page > 0) { page--; await applyFilters(); } };
-        document.getElementById('btnNextPage').onclick = async () => {
+        el('btnViewList').onclick = () => setViewMode('list');
+        el('btnViewGrid').onclick = () => setViewMode('grid');
+        el('btnViewGroup').onclick = () => setViewMode('group');
+        el('btnPrevPage').onclick = async () => { if (page > 0) { page--; await applyFilters(); } };
+        el('btnNextPage').onclick = async () => {
             const tp = Math.ceil(totalCount / PAGE_SIZE);
             if (page < tp - 1) { page++; await applyFilters(); }
         };
-        document.getElementById('btnSelectAll').onclick = () => {
+        el('btnSelectAll').onclick = () => {
             filtered.forEach(m => selected.add(m.id));
             renderPage();
         };
-        document.getElementById('btnClearSel').onclick = () => { selected.clear(); renderPage(); };
-        document.getElementById('btnBatchDelete').onclick = () => deleteMediaItems(getSelectedIds(), 'Selected files');
-        document.getElementById('btnDeleteDetail').onclick = () => {
+        el('btnClearSel').onclick = () => { selected.clear(); renderPage(); };
+        el('btnBatchDelete').onclick = () => deleteMediaItems(getSelectedIds(), 'Selected files');
+        el('btnDeleteDetail').onclick = () => {
             if (currentItem) deleteMediaItems([currentItem.id], currentItem.name);
         };
-        document.getElementById('btnFindDup').onclick = () => dupMode ? exitDupMode() : scanDuplicates();
-        document.getElementById('btnDupHere').onclick = () => openDuplicateManager();
-        document.getElementById('btnDupFileFolder').onclick = async () => {
+        el('btnFindDup').onclick = () => dupMode ? exitDupMode() : scanDuplicates();
+        el('btnDupHere').onclick = () => openDuplicateManager();
+        el('btnDupFileFolder').onclick = async () => {
             if (!currentItem) return;
             try {
                 const res = await API().resolvePaths([currentItem.id]);
@@ -4512,31 +4622,31 @@
                 openDuplicateManager({ folder: parentFolderPath(p), label: currentItem.name });
             } catch (e) { showToast(e.message, 'warn'); }
         };
-        document.getElementById('btnDupExit').onclick = exitDupMode;
-        document.getElementById('btnDupMerge').onclick = () => mergeDupGroup(activeDupGroup);
-        document.getElementById('btnDupDeleteMarked').onclick = deleteMarkedDuplicates;
+        el('btnDupExit').onclick = exitDupMode;
+        el('btnDupMerge').onclick = () => mergeDupGroup(activeDupGroup);
+        el('btnDupDeleteMarked').onclick = deleteMarkedDuplicates;
 
-        document.getElementById('btnCopyPaths').onclick = async () => {
+        el('btnCopyPaths').onclick = async () => {
             if (!selected.size) return;
             try {
                 const n = await copyPathsForIds(getSelectedIds());
                 if (n) showToast(`Copied ${n} paths to clipboard`, 'ok');
             } catch (e) { showToast(e.message, 'warn'); }
         };
-        document.getElementById('btnExportPaths').onclick = () => {
+        el('btnExportPaths').onclick = () => {
             if (!selected.size) return;
             exportPathsText(getSelectedIds(), 'selected-media-paths.txt');
         };
-        let lastPlaylistId = localStorage.getItem('ml_last_playlist') || '';
+        let lastPlaylistId = lsGet('ml_last_playlist') || '';
 
-        document.getElementById('btnAddPlaylist').onclick = () => {
+        el('btnAddPlaylist').onclick = () => {
             if (!selected.size && currentItem) selected.add(currentItem.id);
             if (!selected.size) { showToast('Select files or open one in the detail panel', 'warn'); return; }
             if (!serverOn) { showToast('Playlists require server', 'warn'); return; }
             openPlaylistModal(false);
             renderPage();
         };
-        document.getElementById('btnDetailPlaylist')?.addEventListener('click', () => {
+        el('btnDetailPlaylist')?.addEventListener('click', () => {
             if (!currentItem) return;
             if (!serverOn) { showToast('Playlists require server', 'warn'); return; }
             selected.clear();
@@ -4544,7 +4654,7 @@
             openPlaylistModal(false);
             renderPage();
         });
-        document.getElementById('btnQuickPlaylist')?.addEventListener('click', async () => {
+        el('btnQuickPlaylist')?.addEventListener('click', async () => {
             if (!serverOn) { showToast('Playlists require server', 'warn'); return; }
             if (!selected.size && currentItem) selected.add(currentItem.id);
             if (!selected.size) { showToast('Select files first', 'warn'); return; }
@@ -4563,15 +4673,15 @@
                 openPlaylistModal(false);
             }
         });
-        document.getElementById('btnNewPlaylist').onclick = () => {
+        el('btnNewPlaylist').onclick = () => {
             if (!serverOn) { showToast('Playlists require server', 'warn'); return; }
             openPlaylistModal(true);
         };
-        document.getElementById('btnPlaylistCancel').onclick = () => document.getElementById('playlistModal').classList.remove('active');
-        document.getElementById('btnPlaylistSave').onclick = async () => {
-            const pick = document.getElementById('playlistPick').value;
-            const name = document.getElementById('playlistName').value.trim();
-            const desc = document.getElementById('playlistDesc').value.trim();
+        el('btnPlaylistCancel').onclick = () => el('playlistModal').classList.remove('active');
+        el('btnPlaylistSave').onclick = async () => {
+            const pick = el('playlistPick').value;
+            const name = el('playlistName').value.trim();
+            const desc = el('playlistDesc').value.trim();
             const ids = getSelectedIds();
             try {
                 let plId = pick;
@@ -4587,12 +4697,12 @@
                     showToast('Playlist created', 'ok');
                 }
                 lastPlaylistId = plId;
-                localStorage.setItem('ml_last_playlist', plId);
-                document.getElementById('playlistModal').classList.remove('active');
+                lsSet('ml_last_playlist', plId);
+                el('playlistModal').classList.remove('active');
                 await refreshPlaylists();
             } catch (e) { showToast(e.message, 'warn'); }
         };
-        document.getElementById('btnCopyPlaylistPaths').onclick = async () => {
+        el('btnCopyPlaylistPaths').onclick = async () => {
             if (!activePlaylist) { showToast('Load a playlist first', 'warn'); return; }
             try {
                 const res = await API().getPlaylistPaths(activePlaylist);
@@ -4602,7 +4712,7 @@
                 showToast(`Copied ${paths.length} paths`, 'ok');
             } catch (e) { showToast(e.message, 'warn'); }
         };
-        document.getElementById('btnExportPlaylist').onclick = async () => {
+        el('btnExportPlaylist').onclick = async () => {
             if (!activePlaylist) { showToast('Load a playlist first', 'warn'); return; }
             try {
                 const pl = await API().getPlaylist(activePlaylist);
@@ -4620,14 +4730,14 @@
             } catch (e) { showToast(e.message, 'warn'); }
         };
 
-        document.getElementById('btnBatchRename').onclick = () => {
+        el('btnBatchRename').onclick = () => {
             if (!selected.size) return;
-            document.getElementById('renameModal').classList.add('active');
+            el('renameModal').classList.add('active');
             renameHistIdx = -1;
         };
-        document.getElementById('btnRenameCancel').onclick = () => document.getElementById('renameModal').classList.remove('active');
-        document.getElementById('btnRenameApply').onclick = async () => {
-            const pattern = document.getElementById('renamePattern').value.trim();
+        el('btnRenameCancel').onclick = () => el('renameModal').classList.remove('active');
+        el('btnRenameApply').onclick = async () => {
+            const pattern = el('renamePattern').value.trim();
             if (!pattern) return;
             const recs = await getSelectedRecords();
             if (!recs.length) return;
@@ -4649,11 +4759,11 @@
                 confirmText: `Rename ${recs.length} Files`,
             });
             if (!confirm.confirmed) return;
-            const prog = document.getElementById('renameProgress');
+            const prog = el('renameProgress');
             const fill = prog.querySelector('.fill');
             prog.style.display = 'block';
             await API().batchRename(getSelectedIds(), pattern);
-            document.getElementById('renameModal').classList.remove('active');
+            el('renameModal').classList.remove('active');
             selected.clear();
             renameHistory = await API().getRenameHistory();
             await applyFilters();
@@ -4661,28 +4771,28 @@
             updateTrustStatusBar();
         };
 
-        document.getElementById('btnTutorial').onclick = () => {
+        el('btnTutorial').onclick = () => {
             UI().startTutorial(LIBRARY_TUTORIAL, 'library', null, { force: true });
         };
-        document.getElementById('btnFaq')?.addEventListener('click', () => {
-            document.getElementById('faqModal').classList.add('active');
+        el('btnFaq')?.addEventListener('click', () => {
+            el('faqModal').classList.add('active');
         });
-        document.getElementById('btnFaqClose')?.addEventListener('click', () => {
-            document.getElementById('faqModal').classList.remove('active');
+        el('btnFaqClose')?.addEventListener('click', () => {
+            el('faqModal').classList.remove('active');
         });
-        document.getElementById('faqModal')?.addEventListener('click', (e) => {
+        el('faqModal')?.addEventListener('click', (e) => {
             if (e.target.id === 'faqModal') e.target.classList.remove('active');
         });
 
-        document.getElementById('btnBatchTag').onclick = () => document.getElementById('tagModal').classList.add('active');
-        document.getElementById('btnTagCancel').onclick = () => document.getElementById('tagModal').classList.remove('active');
-        document.getElementById('btnTagApply').onclick = async () => {
-            const raw = document.getElementById('batchTagInput').value;
+        el('btnBatchTag').onclick = () => el('tagModal').classList.add('active');
+        el('btnTagCancel').onclick = () => el('tagModal').classList.remove('active');
+        el('btnTagApply').onclick = async () => {
+            const raw = el('batchTagInput').value;
             const tags = raw.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
             if (!tags.length) return;
             tagHistory = [raw, ...tagHistory.filter(h => h !== raw)].slice(0, 30);
             const ids = getSelectedIds();
-            const includePartners = !!document.getElementById('batchTagPairPartners')?.checked;
+            const includePartners = !!el('batchTagPairPartners')?.checked;
             const pairIdsDone = new Set();
             let partnerHits = 0;
             await API().batchAddTags(ids, tags);
@@ -4698,7 +4808,7 @@
                     } catch (e) { /* skip unpaired */ }
                 }
             }
-            document.getElementById('tagModal').classList.remove('active');
+            el('tagModal').classList.remove('active');
             selected.clear();
             await applyFilters();
             showToast(partnerHits
@@ -4706,7 +4816,7 @@
                 : 'Tags applied');
         };
 
-        document.getElementById('btnPushTagsToPair')?.addEventListener('click', async () => {
+        el('btnPushTagsToPair')?.addEventListener('click', async () => {
             if (!currentItem) return;
             const pid = currentItem.pair_id || currentItem.pairId;
             if (!pid) { showToast('Not in a pair', 'warn'); return; }
@@ -4723,20 +4833,20 @@
             }
         });
 
-        document.getElementById('btnPair').onclick = () => {
+        el('btnPair').onclick = () => {
             if (selected.size !== 2) {
                 alert('Select exactly 2 files to pair (first = Before, second = After).');
                 return;
             }
-            document.getElementById('pairModal').classList.add('active');
+            el('pairModal').classList.add('active');
         };
-        document.getElementById('btnPairCancel').onclick = () => document.getElementById('pairModal').classList.remove('active');
-        document.getElementById('btnPairSave').onclick = async () => {
+        el('btnPairCancel').onclick = () => el('pairModal').classList.remove('active');
+        el('btnPairSave').onclick = async () => {
             const ids = [...selected];
             const before = await API().getMedia(ids[0]);
             const after = await API().getMedia(ids[1]);
             const kind = before.type === 'image' && after.type === 'image' ? 'image' : 'video';
-            const name = document.getElementById('pairName').value.trim();
+            const name = el('pairName').value.trim();
             const pair = await API().savePair({
                 name: name || undefined,
                 beforeMediaId: before.id,
@@ -4744,14 +4854,14 @@
                 kind,
                 pinned: true,
             });
-            document.getElementById('pairModal').classList.remove('active');
+            el('pairModal').classList.remove('active');
             selected.clear();
             const code = pair.pairCode || pair.pair_code || pair.id;
             showToast(`Locked pair ${code} — tagged source/upscaled, persists across reboots`, 'ok');
             openComparator(pair.id);
         };
 
-        document.getElementById('btnAutoPair').onclick = async () => {
+        el('btnAutoPair').onclick = async () => {
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             const preview = await API().autoPairUpscaled({ dryRun: true, minConfidence: 0.7 });
             const n = preview.created || preview.pairs?.length || 0;
@@ -4763,7 +4873,7 @@
             await applyFilters();
         };
 
-        document.getElementById('btnRelinkPairs')?.addEventListener('click', async () => {
+        el('btnRelinkPairs')?.addEventListener('click', async () => {
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             try {
                 showToast('Relinking pairs from UP-#### file tags…');
@@ -4781,7 +4891,7 @@
 
         function renderHealthModal(data) {
             const s = data.summary || {};
-            document.getElementById('healthStats').innerHTML = [
+            el('healthStats').innerHTML = [
                 ['Complete', s.complete, '#00ff88'],
                 ['Partial', s.partial, '#ffb347'],
                 ['Broken', s.broken, '#ff4466'],
@@ -4792,17 +4902,17 @@
                 `<div><strong>${p.pair_code || p.id || ''}</strong> ${p.before_name || '?'} ↔ ${p.after_name || '?'} ${extra}
                 ${p.id ? `<button class="btn btn-sm" data-open="${p.id}">Compare</button>` : ''}
                 ${p.id ? `<button class="btn btn-sm orange" data-arch="${p.id}">Archive…</button>` : ''}</div>`;
-            document.getElementById('healthPartial').innerHTML = (data.partial || []).map(p => row(p, '⚠️')).join('') || '<div class="hint-box">None</div>';
-            document.getElementById('healthBroken').innerHTML = (data.broken || []).map(p => row(p, '❌')).join('') || '<div class="hint-box">None</div>';
+            el('healthPartial').innerHTML = (data.partial || []).map(p => row(p, '⚠️')).join('') || '<div class="hint-box">None</div>';
+            el('healthBroken').innerHTML = (data.broken || []).map(p => row(p, '❌')).join('') || '<div class="hint-box">None</div>';
             const orphans = [
                 ...(data.orphan_tagged || []).map(o => `<div>Orphan <code>${o.pair_code}</code> · ${o.name} (${o.role || '?'})</div>`),
                 ...(data.unpaired_upscale_named || []).slice(0, 40).map(o => `<div>Unpaired upscale name · ${o.name}</div>`),
             ].join('') || '<div class="hint-box">None</div>';
-            document.getElementById('healthOrphans').innerHTML = orphans;
-            document.getElementById('healthModal').querySelectorAll('[data-open]').forEach(b => {
+            el('healthOrphans').innerHTML = orphans;
+            el('healthModal').querySelectorAll('[data-open]').forEach(b => {
                 b.onclick = () => openComparator(b.dataset.open);
             });
-            document.getElementById('healthModal').querySelectorAll('[data-arch]').forEach(b => {
+            el('healthModal').querySelectorAll('[data-arch]').forEach(b => {
                 b.onclick = () => archivePairPrompt(b.dataset.arch);
             });
         }
@@ -4818,18 +4928,18 @@
             }
         }
 
-        document.getElementById('btnPairHealth')?.addEventListener('click', async () => {
+        el('btnPairHealth')?.addEventListener('click', async () => {
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             try {
                 const data = await API().pairHealth(false);
                 renderHealthModal(data);
-                document.getElementById('healthModal').classList.add('active');
+                el('healthModal').classList.add('active');
             } catch (e) {
                 showToast(e.message || 'Health check failed', 'warn');
             }
         });
-        document.getElementById('btnHealthClose')?.addEventListener('click', () => document.getElementById('healthModal').classList.remove('active'));
-        document.getElementById('btnHealthRelink')?.addEventListener('click', async () => {
+        el('btnHealthClose')?.addEventListener('click', () => el('healthModal').classList.remove('active'));
+        el('btnHealthRelink')?.addEventListener('click', async () => {
             try {
                 showToast('Relinking…');
                 await API().relinkPairsFromMetadata();
@@ -4841,54 +4951,56 @@
             }
         });
 
-        document.getElementById('btnVerifyTags')?.addEventListener('click', () => {
-            document.getElementById('verifyModal').classList.add('active');
-            document.getElementById('verifySummary').textContent = 'Ready to compare catalog vs disk metadata.';
-            document.getElementById('verifyList').innerHTML = '';
+        el('btnVerifyTags')?.addEventListener('click', () => {
+            el('verifyModal').classList.add('active');
+            el('verifySummary').textContent = 'Ready to compare catalog vs disk metadata.';
+            el('verifyList').innerHTML = '';
         });
-        document.getElementById('btnVerifyClose')?.addEventListener('click', () => document.getElementById('verifyModal').classList.remove('active'));
-        document.getElementById('btnVerifyRun')?.addEventListener('click', async () => {
+        el('btnVerifyClose')?.addEventListener('click', () => el('verifyModal').classList.remove('active'));
+        el('btnVerifyRun')?.addEventListener('click', async () => {
             if (!serverOn) return;
             const ids = selected.size ? [...selected] : null;
             showToast('Checking tags…');
             const r = await API().verifyTags({ ids, limit: 400, fix: false });
-            document.getElementById('verifySummary').textContent =
+            el('verifySummary').textContent =
                 `Checked ${r.checked}: ${r.match_count} match, ${r.mismatch_count} mismatch, ${r.missing_count} missing files`;
-            document.getElementById('verifyList').innerHTML = (r.mismatches || []).slice(0, 80).map(m =>
+            el('verifyList').innerHTML = (r.mismatches || []).slice(0, 80).map(m =>
                 `<div><strong>${m.name}</strong><br>cat: ${(m.catalog_tags||[]).join(', ')||'—'} ★${m.catalog_rank}<br>disk: ${(m.disk_tags||[]).join(', ')||'—'} ★${m.disk_rank}${m.has_sidecar ? ' · sidecar' : ''}</div>`
             ).join('') || '<div class="hint-box">No mismatches in sample</div>';
         });
-        document.getElementById('btnVerifyFix')?.addEventListener('click', async () => {
+        el('btnVerifyFix')?.addEventListener('click', async () => {
             if (!serverOn) return;
             if (!confirm('Rewrite file metadata (and sidecars) to match catalog for mismatches?')) return;
             const ids = selected.size ? [...selected] : null;
             const r = await API().verifyTags({ ids, limit: 400, fix: true });
             showToast(`Fixed ${r.fixed_count} file(s)`, 'ok');
-            document.getElementById('verifySummary').textContent =
+            el('verifySummary').textContent =
                 `Fixed ${r.fixed_count}. Still mismatched sample: ${r.mismatch_count}`;
-            document.getElementById('verifyList').innerHTML = (r.fixed || []).slice(0, 40).map(m =>
+            el('verifyList').innerHTML = (r.fixed || []).slice(0, 40).map(m =>
                 `<div>Fixed <strong>${m.name}</strong></div>`
             ).join('') || '<div class="hint-box">Nothing fixed</div>';
         });
 
-        document.getElementById('btnPairMap')?.addEventListener('click', () => {
-            document.getElementById('pairMapModal').classList.add('active');
-            document.getElementById('pairMapPreview').style.display = 'none';
+        el('btnPairMap')?.addEventListener('click', () => {
+            el('pairMapModal').classList.add('active');
+            el('pairMapPreview').style.display = 'none';
         });
-        document.getElementById('btnPairMapClose')?.addEventListener('click', () => document.getElementById('pairMapModal').classList.remove('active'));
-        document.getElementById('btnExportPairMap')?.addEventListener('click', async () => {
+        el('btnPairMapClose')?.addEventListener('click', () => el('pairMapModal').classList.remove('active'));
+        el('btnExportPairMap')?.addEventListener('click', async () => {
             const data = await API().exportPairMap();
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
+            const mapUrl = URL.createObjectURL(blob);
+            a.href = mapUrl;
             a.download = `pair-map-${new Date().toISOString().slice(0, 10)}.json`;
             a.click();
-            document.getElementById('pairMapPreview').style.display = 'block';
-            document.getElementById('pairMapPreview').textContent = JSON.stringify(data, null, 2).slice(0, 4000);
+            revokeBlobUrl(mapUrl);
+            el('pairMapPreview').style.display = 'block';
+            el('pairMapPreview').textContent = JSON.stringify(data, null, 2).slice(0, 4000);
             showToast(`Exported ${(data.pairs || []).length} pairs`, 'ok');
         });
-        document.getElementById('btnImportPairMap')?.addEventListener('click', () => document.getElementById('importPairMapFile').click());
-        document.getElementById('importPairMapFile')?.addEventListener('change', async (e) => {
+        el('btnImportPairMap')?.addEventListener('click', () => el('importPairMapFile').click());
+        el('importPairMapFile')?.addEventListener('change', async (e) => {
             const f = e.target.files?.[0];
             if (!f) return;
             try {
@@ -4902,11 +5014,11 @@
             e.target.value = '';
         });
 
-        document.getElementById('btnArchivePair')?.addEventListener('click', () => {
+        el('btnArchivePair')?.addEventListener('click', () => {
             const pid = currentItem?.pair_id || currentItem?.pairId;
             if (pid) archivePairPrompt(pid);
         });
-        document.getElementById('btnOpenSystem')?.addEventListener('click', async () => {
+        el('btnOpenSystem')?.addEventListener('click', async () => {
             if (!currentItem || !serverOn) return;
             try {
                 const res = await API().resolvePaths([currentItem.id]);
@@ -4919,7 +5031,7 @@
                 showToast(e.message, 'warn');
             }
         });
-        document.getElementById('btnCopyPathOne')?.addEventListener('click', async () => {
+        el('btnCopyPathOne')?.addEventListener('click', async () => {
             if (!currentItem || !serverOn) return;
             try {
                 const res = await API().resolvePaths([currentItem.id]);
@@ -4933,82 +5045,80 @@
             }
         });
 
-        els.btnOpenCompare.onclick = async () => {
+        bind(els.btnOpenCompare, 'click', async () => {
             const pid = currentItem?.pair_id || currentItem?.pairId;
             if (pid) openComparator(pid);
-        };
+        });
 
 
 
         function wireTrustReset(btnId, key, label) {
-            document.getElementById(btnId).onclick = () => {
-                UI().setTrusted(key, false);
+            bind(el(btnId), 'click', () => {
+                try { UI()?.setTrusted?.(key, false); } catch (_) {}
                 updateTrustStatusBar();
                 showToast(`${label} confirmations restored`, 'ok');
-            };
+            });
         }
         wireTrustReset('btnResetTrustSingleVid', TK().singleVideo, 'Single video');
         wireTrustReset('btnResetTrustSingleImg', TK().singleImage, 'Single image');
         wireTrustReset('btnResetTrustBatchVid', TK().batchVideo, 'Batch video');
         wireTrustReset('btnResetTrustBatchImg', TK().batchImage, 'Batch image');
-        document.getElementById('btnResetTrustAll').onclick = () => {
-            UI().resetAllRenameTrust();
+        bind(el('btnResetTrustAll'), 'click', () => {
+            try { UI()?.resetAllRenameTrust?.(); } catch (_) {}
             updateTrustStatusBar();
             showToast('All rename confirmations restored', 'ok');
-        };
+        });
 
         wireTopMenus();
 
-        document.getElementById('btnSettings').onclick = () => {
-            document.getElementById('setThumbKey').value = settings.thumb_shortcut || settings.thumbShortcut || 'KeyT';
-            document.getElementById('setSidecar').checked = (settings.thumb_sidecar ?? settings.thumbExportSidecar) !== 'false';
-            document.getElementById('setThumbExt').value = settings.thumb_ext || settings.thumbExt || '.thumb.jpg';
-            // Default ON so Explorer sees tags/ratings unless user explicitly disabled
-            document.getElementById('setWriteFileTags').checked = settings.write_file_tags !== 'false';
-            const autoPairEl = document.getElementById('setAutoPairScan');
+        bind(el('btnSettings'), 'click', () => {
+            const sk = el('setThumbKey'); if (sk) sk.value = settings.thumb_shortcut || settings.thumbShortcut || 'KeyT';
+            const ss = el('setSidecar'); if (ss) ss.checked = (settings.thumb_sidecar ?? settings.thumbExportSidecar) !== 'false';
+            const se = el('setThumbExt'); if (se) se.value = settings.thumb_ext || settings.thumbExt || '.thumb.jpg';
+            const sw = el('setWriteFileTags'); if (sw) sw.checked = settings.write_file_tags !== 'false';
+            const autoPairEl = el('setAutoPairScan');
             if (autoPairEl) autoPairEl.checked = settings.auto_pair_after_scan === 'true';
-            document.getElementById('setDebugMode').checked = DBG()?.enabled();
-            // Sync display controls
-            applyUiScale(localStorage.getItem('ml_ui_scale') || '1');
-            applyTagScale(localStorage.getItem('ml_tag_scale') || 'md');
-            applyTagCols(localStorage.getItem('ml_tag_cols') || '2');
-            document.getElementById('settingsModal').classList.add('active');
-            UI().initTooltips(document.getElementById('settingsModal'));
-        };
-        document.getElementById('setDebugMode').addEventListener('change', e => {
+            const sd = el('setDebugMode'); if (sd) sd.checked = DBG()?.enabled();
+            applyUiScale(lsGet('ml_ui_scale', '1') || '1');
+            applyTagScale(lsGet('ml_tag_scale', 'md') || 'md');
+            applyTagCols(lsGet('ml_tag_cols', '2') || '2');
+            el('settingsModal')?.classList.add('active');
+            try { UI()?.initTooltips?.(el('settingsModal')); } catch (_) {}
+        });
+        el('setDebugMode')?.addEventListener('change', e => {
             DBG()?.setEnabled(e.target.checked);
             if (e.target.checked) DBG()?.boot();
             else DBG()?.shutdown();
             syncDebugButton();
         });
-        document.getElementById('btnSettingsClose').onclick = async () => {
+        bind(el('btnSettingsClose'), 'click', async () => {
             settings = {
-                thumb_shortcut: document.getElementById('setThumbKey').value,
-                thumb_sidecar: String(document.getElementById('setSidecar').checked),
-                thumb_ext: document.getElementById('setThumbExt').value,
-                write_file_tags: String(document.getElementById('setWriteFileTags').checked),
-                auto_pair_after_scan: String(!!document.getElementById('setAutoPairScan')?.checked),
+                thumb_shortcut: el('setThumbKey').value,
+                thumb_sidecar: String(el('setSidecar').checked),
+                thumb_ext: el('setThumbExt').value,
+                write_file_tags: String(el('setWriteFileTags').checked),
+                auto_pair_after_scan: String(!!el('setAutoPairScan')?.checked),
             };
             await API().saveSettings(settings);
-            document.getElementById('settingsModal').classList.remove('active');
-        };
+            el('settingsModal')?.classList.remove('active');
+        });
 
-        document.getElementById('btnCaptureFrame').onclick = () => captureFrame();
+        bind(el('btnCaptureFrame'), 'click', () => captureFrame());
 
         let capturingKey = false;
-        document.getElementById('setThumbKey').addEventListener('click', () => {
+        el('setThumbKey')?.addEventListener('click', () => {
             capturingKey = true;
-            document.getElementById('setThumbKey').value = 'Press a key…';
+            el('setThumbKey').value = 'Press a key…';
         });
         document.addEventListener('keydown', e => {
             if (capturingKey) {
                 capturingKey = false;
-                document.getElementById('setThumbKey').value = e.code === 'Escape' ? 'none' : e.code;
+                const tk = el('setThumbKey'); if (tk) tk.value = e.code === 'Escape' ? 'none' : e.code;
                 return;
             }
             const shortcut = settings.thumb_shortcut || settings.thumbShortcut || 'none';
             if (!shortcut || shortcut === 'none') return;
-            const inField = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            const inField = isTypingTarget(e.target);
             if (inField) return;
             if (e.code === shortcut && e.ctrlKey && e.shiftKey && currentItem?.type === 'video') {
                 e.preventDefault();
@@ -5016,16 +5126,20 @@
             }
         });
 
-        attachHistoryInput(document.getElementById('renamePattern'), renameHistory);
-        attachHistoryInput(els.detailName, renameHistory);
-        attachHistoryInput(document.getElementById('batchTagInput'), tagHistory);
+        attachHistoryInput(el('renamePattern'), renameHistory);
+        if (els.detailName) attachHistoryInput(els.detailName, renameHistory);
+        attachHistoryInput(el('batchTagInput'), tagHistory);
 
-        els.detailName.addEventListener('keydown', e => {
+        bind(els.detailName, 'keydown', e => {
             if (e.key === 'Enter') saveDetail();
         });
 
         document.addEventListener('keydown', e => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+                document.querySelectorAll('.menu-wrap.open').forEach(m => m.classList.remove('open'));
+            }
+            if (isTypingTarget(e.target)) return;
             if (e.key === 'Delete' && selected.size > 0) {
                 e.preventDefault();
                 deleteMediaItems(getSelectedIds(), 'Selected files');
@@ -5069,7 +5183,8 @@
 (function(){
   // Ctrl+D opens duplicates in Media Hub
   document.addEventListener('keydown', function(e){
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && !/INPUT|TEXTAREA/.test(e.target?.tagName||'')) {
+    const t = e.target; const tag = (t && t.tagName) || '';
+    if ((e.ctrlKey || e.metaKey) && String(e.key||'').toLowerCase() === 'd' && !/INPUT|TEXTAREA|SELECT/.test(tag) && !(t && t.isContentEditable)) {
       e.preventDefault();
       if (window.AIToolboxUI?.navigateToolbox) AIToolboxUI.navigateToolbox('Media Hub.html#duplicates');
       else location.href = 'Media Hub.html#duplicates';

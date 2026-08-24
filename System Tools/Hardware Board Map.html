@@ -7,15 +7,15 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{
-  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
-  --accent:#00f3ff;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;
-  --text:#e2e8f0;--muted:#8b9bb4;--purple:#a78bfa;
+  --bg:#070b12;--panel:#0c1220;--panel2:#141c2c;--border:rgba(0,243,255,.24);
+  --accent:#00f3ff;--gold:#f5c542;--magenta:#e879f9;--ok:#34d399;--warn:#fbbf24;
+  --danger:#f43f5e;--info:#7dd3fc;--text:#f1f5f9;--muted:#b6c4d8;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;
   background:
-    radial-gradient(ellipse at 10% -10%,rgba(167,139,250,.16),transparent 50%),
+    radial-gradient(ellipse at 10% -10%,rgba(232,121,249,.12),transparent 50%),
     radial-gradient(ellipse at 90% 0%,rgba(0,243,255,.1),transparent 45%),
     radial-gradient(ellipse at 50% -20%,#0f172a,var(--bg) 60%);
 }
@@ -25,7 +25,7 @@ body{
   position:sticky;top:0;z-index:20;
 }
 .nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
-.nav .t{color:var(--accent);letter-spacing:1px;font-size:14px;font-weight:700}
+.nav .t{color:var(--gold);letter-spacing:1px;font-size:14px;font-weight:700}
 .wrap{max-width:1200px;margin:0 auto;padding:22px 20px 56px}
 h1{font-size:1.5rem;margin-bottom:4px}
 .sub{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.45}
@@ -34,6 +34,7 @@ h1{font-size:1.5rem;margin-bottom:4px}
   background:rgba(0,243,255,.12);border:1px solid var(--accent);color:var(--accent);
   padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
 }
+.btn:hover{background:rgba(0,243,255,.2)}
 .btn:disabled{opacity:.5;cursor:wait}
 .btn.ghost{background:transparent;border-color:var(--border);color:var(--muted);text-decoration:none;display:inline-block}
 .status{
@@ -67,6 +68,7 @@ h1{font-size:1.5rem;margin-bottom:4px}
   border-radius:10px;padding:10px 12px;cursor:pointer;font:inherit;
 }
 .port:hover,.port.active{border-color:rgba(0,243,255,.45)}
+.port.active{box-shadow:0 0 0 1px var(--gold)}
 .port .name{font-size:13px;font-weight:700}
 .port .meta{font-size:11px;color:var(--muted);margin-top:3px}
 .detail{
@@ -88,8 +90,8 @@ h1{font-size:1.5rem;margin-bottom:4px}
 }
 .chip:hover{background:rgba(0,243,255,.1)}
 .assist{
-  border:1px solid rgba(167,139,250,.4);border-radius:14px;padding:16px;
-  background:linear-gradient(135deg,rgba(167,139,250,.1),var(--panel) 50%);margin-bottom:16px;
+  border:1px solid rgba(232,121,249,.45);border-radius:14px;padding:16px;
+  background:linear-gradient(135deg,rgba(232,121,249,.1),var(--panel) 50%);margin-bottom:16px;
 }
 .assist h2{font-size:1.05rem;margin:8px 0}
 .assist ol{margin:10px 0 10px 20px;font-size:13px;line-height:1.5}
@@ -97,6 +99,15 @@ h1{font-size:1.5rem;margin-bottom:4px}
 .callout{border-left:4px solid var(--info);background:var(--panel2);padding:12px 14px;border-radius:0 12px 12px 0;font-size:13px;line-height:1.45;margin-bottom:16px}
 .muted{color:var(--muted);font-size:12px}
 .dev-err{font-size:12px;padding:6px 0;border-bottom:1px solid rgba(36,48,73,.5)}
+.btn:focus-visible,.chip:focus-visible,.port:focus-visible,.nav a:focus-visible,a:focus-visible,input:focus-visible,button:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px;
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+@media (prefers-contrast:more){
+  :root{--text:#ffffff;--muted:#d5deea;--border:rgba(0,243,255,.45)}
+}
 </style>
 </head>
 <body>
@@ -180,55 +191,115 @@ h1{font-size:1.5rem;margin-bottom:4px}
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
-const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
-  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-}[c]));
+
+function el(id) {
+  try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+}
+function setText(id, text) {
+  const n = el(id);
+  if (n) n.textContent = text == null ? '' : String(text);
+}
+function bind(id, ev, fn) {
+  const n = el(id);
+  if (!n || !fn) return;
+  n.addEventListener(ev, fn);
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+}
+function escHtml(s) {
+  const u = UI()?.escapeHtml;
+  if (typeof u === 'function') return u(s);
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const esc = escHtml;
+let busy = false;
+let busyDepth = 0;
+const _blobUrls = [];
+function trackBlob(url) {
+  if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+  return url;
+}
+function revokeBlobs() {
+  while (_blobUrls.length) {
+    try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+  }
+}
+window.addEventListener('pagehide', revokeBlobs);
+async function withBusy(fn, btnId) {
+  if (busyDepth === 0 && busy) return;
+  if (busyDepth === 0) busy = true;
+  busyDepth++;
+  const b = btnId ? el(btnId) : null;
+  if (b) b.disabled = true;
+  try { return await fn(); }
+  finally {
+    busyDepth--;
+    if (b) b.disabled = false;
+    if (busyDepth === 0) busy = false;
+  }
+}
+
 const LABEL = { ok:'Fine', info:'FYI', warn:'Watch', error:'Act' };
 function badge(lv) {
   const c = lv === 'bad' ? 'error' : (lv || 'info');
-  return `<span class="badge ${c}">${LABEL[c] || c}</span>`;
+  return `<span class="badge ${esc(c)}">${esc(LABEL[c] || c)}</span>`;
 }
-function qs(n) { return new URLSearchParams(location.search).get(n); }
+function qs(n) {
+  try { return new URLSearchParams(location.search).get(n); } catch (_) { return null; }
+}
 
 let boardData = null;
 let portsById = {};
 let selectedPort = null;
 let allPorts = [];
+let portFilterTimer = null;
 
 function apiBase() {
   return (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
 }
 function serverOrigin() {
-  // API_BASE is like http://host:port/api → strip /api for static SVG path on same server
   return apiBase().replace(/\/api\/?$/, '');
 }
 
 function setPill(ok, text) {
-  const el = document.getElementById('pill');
-  el.className = 'status ' + (ok ? 'ok' : 'bad');
-  el.textContent = text;
+  const n = el('pill');
+  if (!n) return;
+  n.className = 'status ' + (ok ? 'ok' : 'bad');
+  n.textContent = text == null ? '' : String(text);
 }
 
 function renderIdentity(bundle, intel) {
-  const id = bundle.identity || {};
+  const box = el('identity');
+  if (!box) return;
+  const id = (bundle && bundle.identity) || {};
   const board = id.board || {};
   const bios = id.bios || {};
   const cpu = id.cpu || {};
   const gpus = id.gpus || [];
-  document.getElementById('identity').innerHTML = [
+  box.innerHTML = [
     { l: 'Motherboard', v: board.product || '—' },
     { l: 'BIOS', v: bios.version || '—' },
     { l: 'CPU', v: cpu.name || '—' },
     { l: 'GPU', v: (gpus[0] && gpus[0].name) || '—' },
-    { l: 'Pack', v: bundle.matched ? (bundle.board?.displayName || 'Matched') : 'Generic (no SVG pack)' },
+    { l: 'Pack', v: bundle && bundle.matched ? ((bundle.board && bundle.board.displayName) || 'Matched') : 'Generic (no SVG pack)' },
     { l: 'Computer', v: id.computer || '—' },
-  ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${esc(x.v)}</div></div>`).join('');
+  ].map(x => `<div class="stat"><div class="l">${esc(x.l)}</div><div class="v">${esc(x.v)}</div></div>`).join('');
 }
 
 function selectPort(id) {
   selectedPort = id;
-  document.querySelectorAll('.port').forEach(el => el.classList.toggle('active', el.dataset.id === id));
-  // SVG highlight via injected class if inline
+  document.querySelectorAll('.port').forEach(node => {
+    node.classList.toggle('active', node.dataset.id === id);
+  });
   const svgRoot = document.querySelector('#svgHost svg');
   if (svgRoot) {
     svgRoot.querySelectorAll('.port').forEach(g => {
@@ -236,7 +307,8 @@ function selectPort(id) {
     });
   }
   const p = portsById[id];
-  const box = document.getElementById('portDetail');
+  const box = el('portDetail');
+  if (!box) return;
   if (!p) {
     box.className = 'detail';
     box.innerHTML = '';
@@ -265,16 +337,16 @@ function wireSvgClicks() {
 }
 
 async function renderSvg(bundle) {
-  const host = document.getElementById('svgHost');
-  document.getElementById('boardTitle').textContent = bundle.board?.displayName || bundle.detectedProduct || 'Unknown';
-  const notes = (bundle.board?.notes || []).join(' ');
-  document.getElementById('boardNotes').textContent = notes;
+  const host = el('svgHost');
+  if (!host || !bundle) return;
+  setText('boardTitle', (bundle.board && bundle.board.displayName) || bundle.detectedProduct || 'Unknown');
+  const notes = ((bundle.board && bundle.board.notes) || []).join(' ');
+  setText('boardNotes', notes);
 
   if (!bundle.svgUrl) {
     host.innerHTML = '<p class="muted">No schematic pack for this board yet. Ports list may still be empty — identity above is still live.</p>';
     return;
   }
-  // Fetch SVG through API and inline so clicks work (object/iframe is harder)
   try {
     const url = serverOrigin() + bundle.svgUrl;
     const r = await fetch(url);
@@ -282,27 +354,35 @@ async function renderSvg(bundle) {
     host.innerHTML = text;
     wireSvgClicks();
   } catch (e) {
-    host.innerHTML = `<p class="muted">Could not load SVG: ${esc(e.message || e)}</p>`;
+    host.innerHTML = `<p class="muted">Could not load SVG: ${esc(e && e.message ? e.message : e)}</p>`;
   }
 }
 
 function renderPorts(bundle) {
-  const ports = bundle.ports || [];
+  const ports = (bundle && bundle.ports) || [];
   allPorts = ports;
   portsById = {};
-  ports.forEach(p => { portsById[p.id] = p; });
+  ports.forEach(p => {
+    if (p && p.id) portsById[p.id] = p;
+  });
   paintPorts();
 }
 
-function paintPorts() {
-  const box = document.getElementById('ports');
-  const q = (document.getElementById('portFilter')?.value || '').trim().toLowerCase();
+function visiblePortIds() {
+  const q = (el('portFilter') && el('portFilter').value || '').trim().toLowerCase();
   let ports = allPorts || [];
   if (q) {
     ports = ports.filter(p =>
       ((p.label || '') + ' ' + (p.id || '') + ' ' + (p.type || '') + ' ' + (p.group || '') + ' ' + (p.hint || '')).toLowerCase().includes(q)
     );
   }
+  return ports;
+}
+
+function paintPorts() {
+  const box = el('ports');
+  if (!box) return;
+  const ports = visiblePortIds();
   if (!allPorts.length) {
     box.innerHTML = '<p class="muted">No port catalog for this board.</p>';
     return;
@@ -321,21 +401,33 @@ function paintPorts() {
   });
 }
 
+function stepPort(delta) {
+  const ports = visiblePortIds();
+  if (!ports.length) return;
+  let idx = ports.findIndex(p => p.id === selectedPort);
+  if (idx < 0) idx = delta > 0 ? -1 : 0;
+  idx = (idx + delta + ports.length) % ports.length;
+  selectPort(ports[idx].id);
+  const active = document.querySelector('.port.active');
+  if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
+}
+
 function renderIntel(intel) {
-  const items = intel.items || [];
-  const box = document.getElementById('intelList');
+  const items = (intel && intel.items) || [];
+  const box = el('intelList');
+  if (!box) return;
   if (!items.length) {
     box.innerHTML = '<p class="muted">No curated notices matched this hardware yet.</p>';
     return;
   }
   box.innerHTML = items.map(it => `
-    <div class="card ${it.level || 'info'}">
+    <div class="card ${esc(it.level || 'info')}">
       ${badge(it.level)}
       <h3>${esc(it.title || '')}</h3>
       <p>${esc(it.plainEnglish || '')}</p>
       <div class="links">
         ${it.playbookId ? `<button type="button" class="chip" data-pb="${esc(it.playbookId)}">Fix ideas</button>` : ''}
-        ${(it.links || []).map(l => l.href ? `<a class="chip" href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label || 'Link')}</a>` : '').join('')}
+        ${(it.links || []).map(l => l && l.href ? `<a class="chip" href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label || 'Link')}</a>` : '').join('')}
       </div>
     </div>`).join('');
   box.querySelectorAll('[data-pb]').forEach(btn => {
@@ -344,8 +436,9 @@ function renderIntel(intel) {
 }
 
 function renderDevices(identity) {
-  const devs = identity.devices || [];
-  const box = document.getElementById('devices');
+  const devs = (identity && identity.devices) || [];
+  const box = el('devices');
+  if (!box) return;
   if (!devs.length) {
     box.innerHTML = '<p style="color:var(--ok);font-size:13px">No error/degraded PnP devices right now ✓</p>';
     return;
@@ -359,11 +452,12 @@ function renderDevices(identity) {
       <button type="button" class="chip" id="btnBtPlay" data-tip-title="Bluetooth assist" data-tip="Open Bluetooth pairing assist.">Bluetooth conflict playbook</button>
       <a class="chip" href="../GhostDeviceCleaner/Clear-GhostDevices.html">Ghost cleaner</a>
     </div>`;
-  document.getElementById('btnBtPlay')?.addEventListener('click', () => loadAssist({ playbook: 'usb-bt-conflict' }));
+  bind('btnBtPlay', 'click', () => loadAssist({ playbook: 'usb-bt-conflict' }));
 }
 
 function renderVendor(links) {
-  const box = document.getElementById('vendorLinks');
+  const box = el('vendorLinks');
+  if (!box) return;
   const entries = Object.entries(links || {});
   if (!entries.length) {
     box.innerHTML = '<p class="muted">No vendor links (unmatched board pack).</p>';
@@ -375,10 +469,15 @@ function renderVendor(links) {
 }
 
 function renderPlaybookList(list) {
-  const box = document.getElementById('playbooks');
-  const pbs = list.playbooks || [];
+  const box = el('playbooks');
+  if (!box) return;
+  const pbs = (list && list.playbooks) || [];
+  if (!pbs.length) {
+    box.innerHTML = '<p class="muted">No playbooks loaded.</p>';
+    return;
+  }
   box.innerHTML = pbs.map(p => `
-    <div class="card ${p.level || 'info'}">
+    <div class="card ${esc(p.level || 'info')}">
       ${badge(p.level)}
       <h3>${esc(p.title)}</h3>
       <p>${esc(p.summary || '')}</p>
@@ -389,128 +488,179 @@ function renderPlaybookList(list) {
   });
 }
 
-async function loadAssist(opts = {}) {
-  const params = new URLSearchParams();
-  if (opts.playbook) params.set('playbook', opts.playbook);
-  if (opts.theme) params.set('theme', opts.theme);
-  if (opts.alert) params.set('alert', opts.alert);
-  if (opts.process) params.set('process', opts.process);
-  const data = await UI().apiFetch('/hardware/assist?' + params.toString());
-  const panel = document.getElementById('assistPanel');
-  const pb = data.playbook;
-  if (!pb) {
+async function loadAssist(opts) {
+  opts = opts || {};
+  return withBusy(async () => {
+    const params = new URLSearchParams();
+    if (opts.playbook) params.set('playbook', opts.playbook);
+    if (opts.theme) params.set('theme', opts.theme);
+    if (opts.alert) params.set('alert', opts.alert);
+    if (opts.process) params.set('process', opts.process);
+    let data = {};
+    try {
+      data = await UI()?.apiFetch?.('/hardware/assist?' + params.toString()) || {};
+    } catch (e) {
+      data = { disclaimer: (e && e.message) || 'Assist failed' };
+    }
+    const panel = el('assistPanel');
+    if (!panel) return;
+    const pb = data.playbook;
+    if (!pb) {
+      panel.style.display = 'block';
+      panel.innerHTML = `
+        <div>${badge('info')} <strong>Assist</strong></div>
+        <p class="muted" style="margin-top:8px">No dedicated playbook for this item yet.</p>
+        <p style="margin-top:8px;font-size:13px">Guided search:</p>
+        ${data.searchUrl ? `<a class="chip" href="${esc(data.searchUrl)}" target="_blank" rel="noopener">Search: ${esc(data.searchQuery)}</a>` : '<p class="muted">Search unavailable.</p>'}
+        <p class="muted" style="margin-top:10px">${esc(data.disclaimer || '')}</p>
+        <button type="button" class="chip" id="btnCloseAssist" style="margin-top:8px">Dismiss</button>`;
+      bind('btnCloseAssist', 'click', () => { panel.style.display = 'none'; });
+      try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+      return;
+    }
     panel.style.display = 'block';
     panel.innerHTML = `
-      <div>${badge('info')} <strong>Assist</strong></div>
-      <p class="muted" style="margin-top:8px">No dedicated playbook for this item yet.</p>
-      <p style="margin-top:8px;font-size:13px">Guided search:</p>
-      <a class="chip" href="${esc(data.searchUrl)}" target="_blank" rel="noopener">Search: ${esc(data.searchQuery)}</a>
-      <p class="muted" style="margin-top:10px">${esc(data.disclaimer || '')}</p>`;
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    return;
-  }
-  panel.style.display = 'block';
-  panel.innerHTML = `
-    ${badge(pb.level)} <strong style="margin-left:6px">Fix ideas</strong>
-    <h2>${esc(pb.title)}</h2>
-    <p class="muted">${esc(pb.summary || '')}</p>
-    <ol>${(pb.steps || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
-    ${pb.whenToStop ? `<p><strong>When to stop:</strong> ${esc(pb.whenToStop)}</p>` : ''}
-    <div class="links">
-      ${(pb.links || []).map(l => `<a class="chip" href="${esc(l.href || '#')}">${esc(l.label || 'Open')}</a>`).join('')}
-      <a class="chip" href="${esc(data.searchUrl)}" target="_blank" rel="noopener">Web search (guided)</a>
-    </div>
-    <p class="muted" style="margin-top:12px">${esc(data.ai?.note || '')}</p>
-    <p class="muted">${esc(data.disclaimer || '')}</p>
-    <button type="button" class="chip" id="btnCloseAssist" data-tip-title="Close assist" data-tip="Close the assist panel." style="margin-top:8px">Dismiss</button>`;
-  document.getElementById('btnCloseAssist')?.addEventListener('click', () => {
-    panel.style.display = 'none';
+      ${badge(pb.level)} <strong style="margin-left:6px">Fix ideas</strong>
+      <h2>${esc(pb.title)}</h2>
+      <p class="muted">${esc(pb.summary || '')}</p>
+      <ol>${(pb.steps || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+      ${pb.whenToStop ? `<p><strong>When to stop:</strong> ${esc(pb.whenToStop)}</p>` : ''}
+      <div class="links">
+        ${(pb.links || []).map(l => `<a class="chip" href="${esc(l.href || '#')}">${esc(l.label || 'Open')}</a>`).join('')}
+        ${data.searchUrl ? `<a class="chip" href="${esc(data.searchUrl)}" target="_blank" rel="noopener">Web search (guided)</a>` : ''}
+      </div>
+      <p class="muted" style="margin-top:12px">${esc((data.ai && data.ai.note) || '')}</p>
+      <p class="muted">${esc(data.disclaimer || '')}</p>
+      <button type="button" class="chip" id="btnCloseAssist" data-tip-title="Close assist" data-tip="Close the assist panel." style="margin-top:8px">Dismiss</button>`;
+    bind('btnCloseAssist', 'click', () => { panel.style.display = 'none'; });
+    try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
   });
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function load() {
-  const btn = document.getElementById('btnRefresh');
-  btn.disabled = true;
-  try {
-    await UI().apiFetch('/health');
-    setPill(true, 'Connected');
-  } catch {
-    setPill(false, 'Server offline');
-    document.getElementById('svgHost').innerHTML =
-      '<p class="muted"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong>.</p>';
-    const lu = document.getElementById('lastUpdated');
-    if (lu) lu.textContent = '—';
-    btn.disabled = false;
-    return;
-  }
-  try {
-    const [bundle, intel, pbs] = await Promise.all([
-      UI().apiFetch('/hardware/board'),
-      UI().apiFetch('/hardware/intel'),
-      UI().apiFetch('/hardware/playbooks'),
-    ]);
-    boardData = { bundle, intel, pbs };
-    renderIdentity(bundle, intel);
-    await renderSvg(bundle);
-    renderPorts(bundle);
-    renderIntel(intel);
-    renderDevices(bundle.identity || {});
-    renderVendor(bundle.links || {});
-    renderPlaybookList(pbs);
-    const lu = document.getElementById('lastUpdated');
-    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
+  return withBusy(async () => {
+    try {
+      await UI()?.apiFetch?.('/health');
+      setPill(true, 'Connected');
+    } catch (_) {
+      setPill(false, 'Server offline');
+      const host = el('svgHost');
+      if (host) {
+        host.innerHTML =
+          '<p class="muted"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong>.</p>';
+      }
+      setText('lastUpdated', '—');
+      return;
+    }
+    try {
+      const api = UI()?.apiFetch;
+      if (!api) throw new Error('UI API unavailable');
+      const [bundle, intel, pbs] = await Promise.all([
+        api('/hardware/board'),
+        api('/hardware/intel'),
+        api('/hardware/playbooks'),
+      ]);
+      boardData = { bundle: bundle || {}, intel: intel || {}, pbs: pbs || {} };
+      renderIdentity(boardData.bundle, boardData.intel);
+      await renderSvg(boardData.bundle);
+      renderPorts(boardData.bundle);
+      renderIntel(boardData.intel);
+      renderDevices(boardData.bundle.identity || {});
+      renderVendor(boardData.bundle.links || {});
+      renderPlaybookList(boardData.pbs);
+      setText('lastUpdated', 'Updated ' + new Date().toLocaleTimeString());
 
-    // Deep link assist
-    const playbook = qs('playbook');
-    const theme = qs('theme');
-    const alert = qs('alert');
-    if (qs('assist') || playbook || theme || alert) {
-      await loadAssist({ playbook, theme, alert });
+      const playbook = qs('playbook');
+      const theme = qs('theme');
+      const alert = qs('alert');
+      if (qs('assist') || playbook || theme || alert) {
+        await loadAssist({ playbook, theme, alert });
+      }
+      if (location.hash === '#intel') {
+        el('intel')?.scrollIntoView({ behavior: 'smooth' });
+      }
+    } catch (e) {
+      const host = el('svgHost');
+      if (host) host.innerHTML = `<p style="color:var(--danger)">${esc(e && e.message ? e.message : e)}</p>`;
     }
-    if (location.hash === '#intel') {
-      document.getElementById('intel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  } catch (e) {
-    document.getElementById('svgHost').innerHTML = `<p style="color:var(--danger)">${esc(e.message || e)}</p>`;
-  }
-  btn.disabled = false;
+  }, 'btnRefresh');
 }
 
-document.getElementById('btnRefresh').onclick = load;
-document.getElementById('btnCopyHw').onclick = async () => {
-  if (!boardData?.bundle) { UI()?.toast?.('Refresh first', 'warn'); return; }
-  const id = boardData.bundle.identity || {};
-  const lines = [
-    'Hardware Board Map',
-    'Board: ' + ((id.board && id.board.product) || boardData.bundle.detectedProduct || '—'),
-    'BIOS: ' + ((id.bios && id.bios.version) || '—'),
-    'CPU: ' + ((id.cpu && id.cpu.name) || '—'),
-    'GPU: ' + ((id.gpus && id.gpus[0] && id.gpus[0].name) || '—'),
-    'Computer: ' + (id.computer || '—'),
-    'Pack: ' + (boardData.bundle.matched ? (boardData.bundle.board?.displayName || 'matched') : 'generic'),
-  ];
-  try { await navigator.clipboard.writeText(lines.join('\n')); UI()?.toast?.('Identity copied', 'ok'); }
-  catch { UI()?.toast?.('Clipboard blocked', 'warn'); }
-};
-document.getElementById('btnExportHw').onclick = () => {
-  if (!boardData) { UI()?.toast?.('Refresh first', 'warn'); return; }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(boardData, null, 2)], { type: 'application/json' }));
-  a.download = 'hardware-board-' + Date.now() + '.json';
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-};
-let portFilterTimer = null;
-document.getElementById('portFilter')?.addEventListener('input', () => {
+async function copyIdentity() {
+  return withBusy(async () => {
+    if (!boardData || !boardData.bundle) { UI()?.toast?.('Refresh first', 'warn'); return; }
+    const id = boardData.bundle.identity || {};
+    const lines = [
+      'Hardware Board Map',
+      'Board: ' + ((id.board && id.board.product) || boardData.bundle.detectedProduct || '—'),
+      'BIOS: ' + ((id.bios && id.bios.version) || '—'),
+      'CPU: ' + ((id.cpu && id.cpu.name) || '—'),
+      'GPU: ' + ((id.gpus && id.gpus[0] && id.gpus[0].name) || '—'),
+      'Computer: ' + (id.computer || '—'),
+      'Pack: ' + (boardData.bundle.matched ? ((boardData.bundle.board && boardData.bundle.board.displayName) || 'matched') : 'generic'),
+    ];
+    try { await navigator.clipboard.writeText(lines.join('\n')); UI()?.toast?.('Identity copied', 'ok'); }
+    catch (_) { UI()?.toast?.('Clipboard blocked', 'warn'); }
+  }, 'btnCopyHw');
+}
+
+function exportHw() {
+  return withBusy(async () => {
+    if (!boardData) { UI()?.toast?.('Refresh first', 'warn'); return; }
+    revokeBlobs();
+    const a = document.createElement('a');
+    const url = trackBlob(URL.createObjectURL(new Blob([JSON.stringify(boardData, null, 2)], { type: 'application/json' })));
+    a.href = url;
+    a.download = 'hardware-board-' + Date.now() + '.json';
+    a.click();
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      const i = _blobUrls.indexOf(url);
+      if (i >= 0) _blobUrls.splice(i, 1);
+    }, 2000);
+  }, 'btnExportHw');
+}
+
+bind('btnRefresh', 'click', load);
+bind('btnCopyHw', 'click', copyIdentity);
+bind('btnExportHw', 'click', exportHw);
+(function restoreFilter() {
+  const saved = lsGet('hbm_portFilter', '');
+  const inp = el('portFilter');
+  if (inp && saved) inp.value = saved;
+})();
+bind('portFilter', 'input', () => {
   clearTimeout(portFilterTimer);
-  portFilterTimer = setTimeout(paintPorts, 200);
+  portFilterTimer = setTimeout(() => {
+    const inp = el('portFilter');
+    lsSet('hbm_portFilter', inp ? inp.value : '');
+    paintPorts();
+  }, 200);
 });
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('portFilter')?.focus(); return; }
-  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
+  if (e.key === 'Escape') {
+    const panel = el('assistPanel');
+    if (panel && panel.style.display !== 'none' && panel.innerHTML) {
+      panel.style.display = 'none';
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (typing && t && t.id === 'portFilter') {
+      t.blur();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+  if (e.key === '/' && !typing) { e.preventDefault(); el('portFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); return; }
+  if (!typing && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault();
+    stepPort(e.key === 'ArrowDown' ? 1 : -1);
+  }
 });
 UI()?.mountServerBar?.({ onOnline: load });
 load();
@@ -539,7 +689,6 @@ load();
     if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
     location.href = launcherHref();
   }, true);
-  // One soft status toast so launch failures are visible
   window.addEventListener('load', function(){
     try {
       if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
@@ -547,7 +696,6 @@ load();
       if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
     } catch(_){}
   });
-  // Surface failed module loads
   window.addEventListener('error', function(ev){
     if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
     try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}

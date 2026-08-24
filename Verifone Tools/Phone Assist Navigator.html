@@ -8,7 +8,8 @@
   <style>
     :root {
       --bg: #05080c; --panel: #0c1218; --panel2: #101820; --line: rgba(56,189,248,.2);
-      --accent: #38bdf8; --accent2: #f59e0b; --good: #34d399; --warn: #fbbf24; --text: #e8eef4; --muted: #8b9bb0;
+      --accent: #38bdf8; --accent2: #f59e0b; --gold: #f59e0b; --magenta: #e879f9;
+      --good: #34d399; --warn: #fbbf24; --text: #e8eef4; --muted: #9aacbf;
       --reg: #0b3d2e; --reg-bezel: #14532d; --tls: #1e1b4b; --cmd: #0c4a6e;
     }
     * { box-sizing: border-box; }
@@ -121,6 +122,19 @@
     .kpi div { background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 11px; }
     .kpi .l { color: var(--muted); font-size: 9px; text-transform: uppercase; }
     .kpi .v { font-weight: 700; color: var(--accent); margin-top: 2px; word-break: break-all; }
+    .say-box h3 { color: var(--magenta); }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+    textarea:focus-visible, .btn:focus-visible, .tab:focus-visible, .menu-item:focus-visible,
+    .path-tree .node:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #d5deea; --line: rgba(56, 189, 248, 0.45); }
+    }
   </style>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
@@ -204,6 +218,63 @@
 
   <script src="phone-assist-tls-trees.js"></script>
   <script>
+
+    let actionBusy = false;
+    function el(id) {
+      try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+    }
+    function setText(id, text) {
+      const n = el(id);
+      if (n) n.textContent = text == null ? '' : String(text);
+    }
+    function setHtml(id, html) {
+      const n = el(id);
+      if (n) n.innerHTML = html == null ? '' : String(html);
+    }
+    function bind(id, ev, fn) {
+      const n = el(id);
+      if (!n || !fn) return;
+      n.addEventListener(ev, fn);
+    }
+    function lsGet(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? fallback : v;
+      } catch (_) { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+    }
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+    const escapeHtml = escHtml;
+    async function withBusy(fn, btnId) {
+      if (actionBusy) return;
+      actionBusy = true;
+      const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : [];
+      const btns = ids.map(el).filter(Boolean);
+      btns.forEach(function (b) { b.disabled = true; });
+      try { return await fn(); }
+      finally {
+        actionBusy = false;
+        btns.forEach(function (b) { b.disabled = false; });
+      }
+    }
+    function toast(msg, ms) {
+      const n = el('toast');
+      if (!n) return;
+      n.textContent = msg == null ? '' : String(msg);
+      n.classList.add('show');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(function () { n.classList.remove('show'); }, ms || 2800);
+    }
+    function revokeUrl(u) {
+      try { if (u) URL.revokeObjectURL(u); } catch (_) {}
+    }
+
     const TREES = {
       csr: {
         id: 'csr',
@@ -470,24 +541,18 @@
     let history = [];
     let fleetShell = null;
 
-    const el = (id) => document.getElementById(id);
-
-    function toast(msg) {
-      const t = el('toast');
-      t.textContent = msg;
-      t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2800);
+    function tree() { return TREES[device] || TREES.csr; }
+    function node() {
+      const tr = tree();
+      const nodes = (tr && tr.nodes) || {};
+      return nodes[nodeId] || nodes[tr.root] || { title: '', hint: '', say: '', tech: '', items: [] };
     }
 
-    function tree() { return TREES[device]; }
-    function node() { return tree().nodes[nodeId] || tree().nodes[tree().root]; }
-
     function ancestors(id) {
-      // BFS parent map
-      const nodes = tree().nodes;
+      const nodes = (tree() && tree().nodes) || {};
       const parent = {};
       Object.keys(nodes).forEach(pid => {
-        (nodes[pid].items || []).forEach(it => {
+        ((nodes[pid] || {}).items || []).forEach(it => {
           if (it.go) parent[it.go] = pid;
         });
       });
@@ -504,12 +569,16 @@
     }
 
     function renderTabs() {
-      el('deviceTabs').innerHTML = Object.values(TREES).map(t =>
-        `<button type="button" class="tab ${t.id === device ? 'active' : ''}" data-dev="${t.id}">${t.label}</button>`
-      ).join('');
-      el('deviceTabs').querySelectorAll('[data-dev]').forEach(b => {
-        b.addEventListener('click', () => {
-          device = b.getAttribute('data-dev');
+      const tabs = el('deviceTabs');
+      if (!tabs) return;
+      setHtml(tabs, Object.values(TREES).map(tr =>
+        `<button type="button" class="tab ${tr.id === device ? 'active' : ''}" data-dev="${escHtml(tr.id)}">${escHtml(tr.label)}</button>`
+      ).join(''));
+      tabs.querySelectorAll('[data-dev]').forEach(b => {
+        bind(b, 'click', () => {
+          const next = b.getAttribute('data-dev');
+          if (!next || !TREES[next]) return;
+          device = next;
           nodeId = TREES[device].root;
           history = [];
           renderAll();
@@ -519,72 +588,79 @@
 
     function renderJumps() {
       const sel = el('jumpSelect');
-      const jumps = tree().jumps || [];
-      sel.innerHTML = '<option value="">— pick a destination —</option>' +
-        jumps.map(j => `<option value="${j.id}">${j.label}</option>`).join('');
+      if (!sel) return;
+      const jumps = (tree().jumps || []);
+      setHtml(sel, '<option value="">— pick a destination —</option>' +
+        jumps.map(j => `<option value="${escHtml(j.id)}">${escHtml(j.label)}</option>`).join(''));
     }
 
     function renderPathTree() {
       const box = el('pathTree');
-      const nodes = tree().nodes;
+      if (!box) return;
+      const nodes = (tree().nodes) || {};
       const lines = [];
       function walk(id, depth, seen) {
-        if (seen.has(id) || !nodes[id]) return;
+        if (!id || seen.has(id) || !nodes[id]) return;
         seen.add(id);
         const n = nodes[id];
         const active = id === nodeId ? 'active' : '';
-        lines.push(`<div class="node depth${Math.min(depth,4)} ${active}" data-go="${id}">${'· '.repeat(depth)}${n.title}</div>`);
+        lines.push(`<div class="node depth${Math.min(depth,4)} ${active}" data-go="${escHtml(id)}" tabindex="0">${'· '.repeat(depth)}${escHtml(n.title)}</div>`);
         (n.items || []).forEach(it => { if (it.go) walk(it.go, depth + 1, seen); });
       }
       walk(tree().root, 0, new Set());
-      box.innerHTML = lines.join('');
+      setHtml(box, lines.join(''));
       box.querySelectorAll('[data-go]').forEach(n => {
-        n.addEventListener('click', () => {
+        const go = () => {
+          const dest = n.getAttribute('data-go');
+          if (!dest || !nodes[dest]) return;
           history.push(nodeId);
-          nodeId = n.getAttribute('data-go');
+          nodeId = dest;
           renderAll();
+        };
+        bind(n, 'click', go);
+        bind(n, 'keydown', (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); }
         });
       });
     }
 
     function renderScreen() {
       const n = node();
-      const skin = tree().skin || 'reg';
+      const skin = (tree() && tree().skin) || 'reg';
       const screen = el('screen');
-      screen.className = 'screen ' + skin;
-      el('screenTitle').textContent = n.title || '';
-      el('screenHint').textContent = n.hint || '';
-      el('menuList').innerHTML = (n.items || []).map((it, idx) => `
+      if (screen) screen.className = 'screen ' + skin;
+      setText('screenTitle', n.title || '');
+      setText('screenHint', n.hint || '');
+      const items = n.items || [];
+      const menu = el('menuList');
+      if (menu) {
+        setHtml(menu, items.map((it, idx) => `
         <button type="button" class="menu-item" data-idx="${idx}">
-          <span><span class="n">${it.n || (idx + 1)}</span> ${escapeHtml(it.label)}</span>
+          <span><span class="n">${escHtml(it.n || (idx + 1))}</span> ${escHtml(it.label)}</span>
           <span class="arrow">${it.go || it.action ? '→' : ''}</span>
-        </button>`).join('') || '<div class="screen-hint">No further steps — use Back.</div>';
-
-      el('menuList').querySelectorAll('.menu-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const it = (n.items || [])[parseInt(btn.getAttribute('data-idx'), 10)];
-          if (!it) return;
-          if (it.action === 'show_ssh') { showSsh(true); return; }
-          if (it.action === 'switch_csr_otp') {
-            device = 'csr'; nodeId = 'csr_otp'; history = []; renderAll(); return;
-          }
-          if (it.say) el('sayText').textContent = it.say;
-          if (it.go) {
-            history.push(nodeId);
-            nodeId = it.go;
-            renderAll();
-          }
+        </button>`).join('') || '<div class="screen-hint">No further steps — use Back.</div>');
+        menu.querySelectorAll('.menu-item').forEach(btn => {
+          bind(btn, 'click', () => {
+            const it = items[parseInt(btn.getAttribute('data-idx'), 10)];
+            if (!it) return;
+            if (it.action === 'show_ssh') { showSsh(true); return; }
+            if (it.action === 'switch_csr_otp') {
+              device = 'csr'; nodeId = 'csr_otp'; history = []; renderAll(); return;
+            }
+            if (it.say) setText('sayText', it.say);
+            if (it.go) {
+              history.push(nodeId);
+              nodeId = it.go;
+              renderAll();
+            }
+          });
         });
-      });
+      }
 
-      const chain = ancestors(nodeId).map(id => (tree().nodes[id] || {}).title || id);
-      el('crumb').innerHTML = '<b>' + escapeHtml(tree().label) + '</b> · ' + chain.map(escapeHtml).join(' → ');
-      el('sayText').textContent = n.say || '—';
-      el('techText').textContent = n.tech || '—';
-    }
-
-    function escapeHtml(s) {
-      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const chain = ancestors(nodeId).map(id => ((tree().nodes || {})[id] || {}).title || id);
+      setHtml('crumb', '<b>' + escHtml((tree() && tree().label) || device) + '</b> · ' + chain.map(escHtml).join(' → '));
+      setText('sayText', n.say || '—');
+      setText('techText', n.tech || '—');
     }
 
     function renderAll() {
@@ -608,9 +684,9 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         fleetShell = await r.json();
         const sh = fleetShell.commanderShell || {};
-        el('sshUser').textContent = sh.username || 'maint';
-        el('sshPort').textContent = String(sh.port || 22);
-        el('sshPass').textContent = sh.password || '(set in fleet defaults)';
+        setText('sshUser', sh.username || 'maint');
+        setText('sshPort', String(sh.port || 22));
+        setText('sshPass', sh.password || '(set in fleet defaults)');
         applyHostToPlaybook();
       } catch (e) {
         // Offline fallback with procedure only (password from user SOP if API down)
@@ -623,16 +699,17 @@
             playbookRendered: '',
           },
         };
-        el('sshUser').textContent = 'maint';
-        el('sshPort').textContent = '22';
-        el('sshPass').textContent = 'EsG2Com@nd3r';
+        setText('sshUser', 'maint');
+        setText('sshPort', '22');
+        setText('sshPass', 'EsG2Com@nd3r');
         applyHostToPlaybook();
       }
     }
 
     function applyHostToPlaybook() {
-      const host = (el('siteHost').value || '192.168.31.11').trim();
-      el('sshHost').textContent = host;
+      const hostEl = el('siteHost');
+      const host = ((hostEl && hostEl.value) || '192.168.31.11').trim();
+      setText('sshHost', host);
       const sh = (fleetShell && fleetShell.commanderShell) || {};
       const user = sh.username || 'maint';
       const pass = sh.password || 'EsG2Com@nd3r';
@@ -657,11 +734,12 @@ Note the printed temp password.
 Log into Config Client as Manager with that password —
 it will force a new Manager password (use next letter + site digit base).
 Update Liferaft: letter + last changed = today.`;
-      el('sshPlaybook').textContent = text;
+      setText('sshPlaybook', text);
     }
 
     function showSsh(on) {
-      el('sshPanel').style.display = on ? 'block' : 'none';
+      const pan = el('sshPanel');
+      if (pan) pan.style.display = on ? 'block' : 'none';
       if (on) {
         device = 'ssh';
         nodeId = 'ssh_resetpw';
@@ -671,57 +749,63 @@ Update Liferaft: letter + last changed = today.`;
       }
     }
 
-    el('btnHome').addEventListener('click', () => { nodeId = tree().root; history = []; renderAll(); });
-    el('btnBack').addEventListener('click', () => {
+    bind('btnHome', 'click', () => withBusy(async () => {
+      nodeId = tree().root; history = []; renderAll();
+    }, 'btnHome'));
+    bind('btnBack', 'click', () => withBusy(async () => {
       if (history.length) { nodeId = history.pop(); renderAll(); }
       else toast('Already at start of path');
-    });
-    el('btnSsh').addEventListener('click', () => showSsh(true));
-    el('btnHideSsh').addEventListener('click', () => showSsh(false));
-    el('siteHost').addEventListener('input', applyHostToPlaybook);
-    el('jumpSelect').addEventListener('change', () => {
-      const v = el('jumpSelect').value;
+    }, 'btnBack'));
+    bind('btnSsh', 'click', () => withBusy(async () => { showSsh(true); }, 'btnSsh'));
+    bind('btnHideSsh', 'click', () => showSsh(false));
+    bind('siteHost', 'input', applyHostToPlaybook);
+    bind('jumpSelect', 'change', () => {
+      const sel = el('jumpSelect');
+      const v = sel ? sel.value : '';
       if (!v) return;
-      if (!tree().nodes[v]) { toast('Destination not in this tree'); return; }
+      if (!(tree().nodes || {})[v]) { toast('Destination not in this tree'); return; }
       history.push(nodeId);
       nodeId = v;
-      el('jumpSelect').value = '';
+      if (sel) sel.value = '';
       renderAll();
     });
-    el('btnCopySay').addEventListener('click', async () => {
+    bind('btnCopySay', 'click', () => withBusy(async () => {
       try {
-        await navigator.clipboard.writeText(el('sayText').textContent);
+        const n = el('sayText');
+        await navigator.clipboard.writeText(n ? n.textContent : '');
         toast('Copied “say this”');
       } catch (_) { toast('Copy failed'); }
-    });
-    el('btnCopyPath').addEventListener('click', async () => {
+    }, 'btnCopySay'));
+    bind('btnCopyPath', 'click', () => withBusy(async () => {
       try {
-        await navigator.clipboard.writeText(el('crumb').innerText);
+        const n = el('crumb');
+        await navigator.clipboard.writeText(n ? n.innerText : '');
         toast('Copied path');
       } catch (_) { toast('Copy failed'); }
-    });
-    el('btnCopySsh').addEventListener('click', async () => {
+    }, 'btnCopyPath'));
+    bind('btnCopySsh', 'click', () => withBusy(async () => {
       try {
-        await navigator.clipboard.writeText(el('sshPlaybook').textContent);
+        const n = el('sshPlaybook');
+        await navigator.clipboard.writeText(n ? n.textContent : '');
         toast('Copied SSH SOP');
       } catch (_) { toast('Copy failed'); }
-    });
+    }, 'btnCopySsh'));
 
     const LS_PA = 'fafo_phone_assist_state';
     function savePaState() {
-      try {
-        localStorage.setItem(LS_PA, JSON.stringify({
-          device, nodeId, host: el('siteHost').value || '',
-        }));
-      } catch (_) {}
+      const hostEl = el('siteHost');
+      lsSet(LS_PA, JSON.stringify({
+        device, nodeId, host: (hostEl && hostEl.value) || '',
+      }));
     }
     function loadPaState() {
       try {
-        const raw = JSON.parse(localStorage.getItem(LS_PA) || 'null');
+        const raw = JSON.parse(lsGet(LS_PA, 'null') || 'null');
         if (!raw) return;
-        if (raw.host) el('siteHost').value = raw.host;
+        const hostEl = el('siteHost');
+        if (raw.host && hostEl) hostEl.value = raw.host;
         if (raw.device && TREES[raw.device]) device = raw.device;
-        if (raw.nodeId && tree().nodes[raw.nodeId]) nodeId = raw.nodeId;
+        if (raw.nodeId && (tree().nodes || {})[raw.nodeId]) nodeId = raw.nodeId;
       } catch (_) {}
     }
     async function copySessionSummary() {
@@ -742,17 +826,45 @@ Update Liferaft: letter + last changed = today.`;
         toast('Session summary copied');
       } catch (_) { toast('Copy failed'); }
     }
-    el('btnCopySession')?.addEventListener('click', copySessionSummary);
+    bind('btnCopySession', 'click', () => withBusy(copySessionSummary, 'btnCopySession'));
     const _renderAll = renderAll;
     renderAll = function () { _renderAll(); savePaState(); };
-    el('siteHost').addEventListener('change', savePaState);
+    bind('siteHost', 'change', savePaState);
     document.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!(e.target && e.target.isContentEditable);
       if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 'b' || e.key === 'B') el('btnBack')?.click();
-      else if (e.key === 'h' || e.key === 'H') el('btnHome')?.click();
-      else if (e.key === 's' || e.key === 'S') copySessionSummary();
+      if (e.key === 'Escape') {
+        const pan = el('sshPanel');
+        if (pan && pan.style.display === 'block') {
+          e.preventDefault();
+          e.stopPropagation();
+          showSsh(false);
+        }
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'b' || e.key === 'B') {
+        const b = el('btnBack'); if (b) b.click();
+      } else if (e.key === 'h' || e.key === 'H') {
+        const b = el('btnHome'); if (b) b.click();
+      } else if (e.key === 's' || e.key === 'S') {
+        copySessionSummary();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const items = Array.from((el('menuList') || document).querySelectorAll('.menu-item'));
+        if (!items.length) return;
+        e.preventDefault();
+        const i = items.indexOf(document.activeElement);
+        const next = e.key === 'ArrowDown'
+          ? (i < 0 ? 0 : Math.min(items.length - 1, i + 1))
+          : (i < 0 ? items.length - 1 : Math.max(0, i - 1));
+        items[next].focus();
+      } else if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('menu-item')) {
+        document.activeElement.click();
+      } else if (/^[1-9]$/.test(e.key)) {
+        const tabBtns = Array.from((el('deviceTabs') || document).querySelectorAll('.tab'));
+        const pick = tabBtns[parseInt(e.key, 10) - 1];
+        if (pick) { e.preventDefault(); pick.click(); }
+      }
     });
     try {
       window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {

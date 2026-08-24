@@ -8,16 +8,31 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
-      --bg: #050508; --panel: #0c0f16; --border: rgba(0,243,255,.2);
-      --accent: #00f3ff; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24;
-      --danger: #f87171; --text: #e2e8f0; --muted: #64748b;
+      --bg: #0b1220; --panel: #121a28; --border: rgba(0,229,255,.28);
+      --accent: #00e5ff; --accent2: #e879f9; --gold: #f5c84c;
+      --ok: #4ade80; --warn: #f5c84c; --danger: #f87171;
+      --text: #e8eef7; --muted: #8b9bb4;
       --legend-h: 78px;
+    }
+    :focus { outline: none; }
+    :focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 3px rgba(245,200,76,.28);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
-      background: radial-gradient(ellipse at 40% -10%, #0f1a2e, var(--bg) 55%);
+      background: radial-gradient(ellipse at 40% -10%, #152238, var(--bg) 55%);
       color: var(--text); min-height: 100vh;
       padding-bottom: var(--legend-h);
       overflow-x: hidden;
@@ -776,6 +791,44 @@
     const UI = () => window.AIToolboxUI;
     const STORAGE = 'fafo_guided_pair_match_v1';
 
+    function el(id) { return document.getElementById(id); }
+    function setText(id, v) {
+      const n = typeof id === 'string' ? el(id) : id;
+      if (n) n.textContent = v == null ? '' : String(v);
+    }
+    function bind(id, ev, fn, opts) {
+      const n = typeof id === 'string' ? el(id) : id;
+      if (!n) return null;
+      n.addEventListener(ev, fn, opts);
+      return n;
+    }
+    function lsGet(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw == null) return fallback;
+        return JSON.parse(raw);
+      } catch { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+      catch { return false; }
+    }
+    function prefersReducedMotion() {
+      try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+      catch { return false; }
+    }
+    function revokeIfBlob(url) {
+      if (url && String(url).startsWith('blob:')) {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+      }
+    }
+    async function withBusy(fn) {
+      if (busy) return;
+      busy = true;
+      try { return await fn(); }
+      finally { busy = false; }
+    }
+
     /** @type {any} */
     let state = {
       anchors: [],
@@ -892,41 +945,39 @@
     }
 
     function saveSession() {
-      try {
-        const fo = folderOpts();
-        localStorage.setItem(STORAGE, JSON.stringify({
-          rejected: state.rejected,
-          matched: state.matched,
-          skipped: state.skipped,
-          exhausted: state.exhausted,
-          anchorIndex: state.anchorIndex,
-          beforeDirId: fo.beforeDirId || '',
-          afterDirId: fo.afterDirId || '',
-          requireLarger: fo.requireLarger,
-          maxTries: document.getElementById('maxTries')?.value,
-          minPct: document.getElementById('minPct')?.value,
-          kindFilter: document.getElementById('kindFilter')?.value,
-          preferSources: document.getElementById('preferSources')?.checked,
-        }));
-      } catch { /* ignore */ }
+      const fo = folderOpts();
+      lsSet(STORAGE, {
+        rejected: state.rejected,
+        matched: state.matched,
+        skipped: state.skipped,
+        exhausted: state.exhausted,
+        anchorIndex: state.anchorIndex,
+        beforeDirId: fo.beforeDirId || '',
+        afterDirId: fo.afterDirId || '',
+        requireLarger: fo.requireLarger,
+        maxTries: el('maxTries')?.value,
+        minPct: el('minPct')?.value,
+        kindFilter: el('kindFilter')?.value,
+        preferSources: el('preferSources')?.checked,
+      });
     }
 
     function loadSession() {
+      const raw = lsGet(STORAGE, null);
+      if (!raw || typeof raw !== 'object') return;
       try {
-        const raw = JSON.parse(localStorage.getItem(STORAGE) || '{}');
         if (raw.rejected) state.rejected = raw.rejected;
         if (raw.matched) state.matched = raw.matched || 0;
         if (raw.skipped) state.skipped = raw.skipped || 0;
         if (raw.exhausted) state.exhausted = raw.exhausted || 0;
         state._savedBeforeDir = raw.beforeDirId || '';
         state._savedAfterDir = raw.afterDirId || '';
-        if (typeof raw.requireLarger === 'boolean' && document.getElementById('requireLarger')) {
-          document.getElementById('requireLarger').checked = raw.requireLarger;
-        }
-        if (raw.maxTries) document.getElementById('maxTries').value = raw.maxTries;
-        if (raw.minPct) document.getElementById('minPct').value = raw.minPct;
-        if (raw.kindFilter != null) document.getElementById('kindFilter').value = raw.kindFilter;
-        if (typeof raw.preferSources === 'boolean') document.getElementById('preferSources').checked = raw.preferSources;
+        const rl = el('requireLarger');
+        if (typeof raw.requireLarger === 'boolean' && rl) rl.checked = raw.requireLarger;
+        if (raw.maxTries && el('maxTries')) el('maxTries').value = raw.maxTries;
+        if (raw.minPct && el('minPct')) el('minPct').value = raw.minPct;
+        if (raw.kindFilter != null && el('kindFilter')) el('kindFilter').value = raw.kindFilter;
+        if (typeof raw.preferSources === 'boolean' && el('preferSources')) el('preferSources').checked = raw.preferSources;
       } catch { /* ignore */ }
     }
 
@@ -973,6 +1024,7 @@
     }
 
     async function pickAndRegisterFolder(which) {
+      return withBusy(async () => {
       try {
         let path = '';
         try {
@@ -994,8 +1046,8 @@
         }
         await refreshDirSelects();
         if (dirId) {
-          if (which === 'before') document.getElementById('beforeDir').value = dirId;
-          else document.getElementById('afterDir').value = dirId;
+          const sel = el(which === 'before' ? 'beforeDir' : 'afterDir');
+          if (sel) sel.value = dirId;
           updateFolderPathLabels();
           saveSession();
         }
@@ -1004,13 +1056,14 @@
       } catch (e) {
         toast(e.message || String(e), 'warn');
       }
+      });
     }
 
     function logLine(msg) {
       const ts = new Date().toLocaleTimeString();
       state.log.unshift(`[${ts}] ${msg}`);
       state.log = state.log.slice(0, 80);
-      document.getElementById('sessionLog').textContent = state.log.join('\n') || 'Session log…';
+      setText('sessionLog', state.log.join('\n') || 'Session log…');
     }
 
     function scoreClass(c) {
@@ -1026,11 +1079,11 @@
     }
 
     function maxTries() {
-      return Math.max(3, Math.min(30, parseInt(document.getElementById('maxTries').value, 10) || 10));
+      return Math.max(3, Math.min(30, parseInt(el('maxTries')?.value, 10) || 10));
     }
 
     function minRatio() {
-      return Math.max(0.2, Math.min(0.95, (parseInt(document.getElementById('minPct').value, 10) || 40) / 100));
+      return Math.max(0.2, Math.min(0.95, (parseInt(el('minPct')?.value, 10) || 40) / 100));
     }
 
     function currentAnchor() {
@@ -1394,7 +1447,7 @@
 
     function startSweepLoop() {
       stopSweepLoop();
-      if (viewState.mode !== 'overlay' || !viewState.autoSweep) return;
+      if (viewState.mode !== 'overlay' || !viewState.autoSweep || prefersReducedMotion()) return;
       let last = performance.now();
       const tick = (now) => {
         viewState.sweepRaf = 0;
@@ -1522,32 +1575,39 @@
       markMetaDiffs();
     }
 
-    function setMedia(el, mediaId, kind, name, side) {
+    function setMedia(box, mediaId, kind, name, side) {
+      if (!box) return;
+      if (side === 'anchor') revokeIfBlob(viewState.lastSrcA);
+      if (side === 'cand') revokeIfBlob(viewState.lastSrcB);
       if (!mediaId) {
-        el.innerHTML = '<div class="empty">No media</div>';
+        box.innerHTML = '<div class="empty">No media</div>';
         if (side === 'anchor') { viewState.lastSrcA = ''; viewState.dimA = null; viewState.mediaA = null; }
         if (side === 'cand') { viewState.lastSrcB = ''; viewState.dimB = null; viewState.mediaB = null; }
         schedulePip();
         return;
       }
-      const url = API().mediaFileUrl(mediaId);
+      const url = API()?.mediaFileUrl?.(mediaId);
+      if (!url) {
+        box.innerHTML = '<div class="empty">Preview unavailable</div>';
+        return;
+      }
       const isImage = kind === 'image' || /\.(png|jpe?g|webp|gif|bmp|tif{1,2})$/i.test(name || '');
       if (side === 'anchor') viewState.lastSrcA = url;
       if (side === 'cand') viewState.lastSrcB = url;
       // crossOrigin anonymous helps canvas PiP when page is served over http
-      el.innerHTML = isImage
+      box.innerHTML = isImage
         ? `<img alt="" src="${esc(url)}" draggable="false" crossorigin="anonymous">`
         : `<video controls muted playsinline preload="auto" src="${esc(url)}" crossorigin="anonymous"></video>`;
-      const m = el.querySelector('img,video');
+      const m = box.querySelector('img,video');
       if (!m) return;
       m.onerror = () => {
         // retry without crossorigin (some file:// / auth setups)
-        el.innerHTML = isImage
+        box.innerHTML = isImage
           ? `<img alt="" src="${esc(url)}" draggable="false">`
           : `<video controls muted playsinline preload="auto" src="${esc(url)}"></video>`;
-        const m2 = el.querySelector('img,video');
+        const m2 = box.querySelector('img,video');
         if (!m2) return;
-        m2.onerror = () => { el.innerHTML = '<div class="empty">Preview failed</div>'; };
+        m2.onerror = () => { box.innerHTML = '<div class="empty">Preview failed</div>'; };
         const ready2 = () => onMediaReady(side, m2);
         if (isImage) {
           if (m2.complete && m2.naturalWidth) ready2();
@@ -1601,10 +1661,10 @@
       setMetaCell('mC_role', cand ? (cand.anchor_role === 'before' ? 'After (upscale side)' : 'Before (source)') : '—');
       setMetaCell('mA_stem', nameStructure(aName));
       setMetaCell('mC_stem', nameStructure(cName));
-      document.getElementById('metaHeadA').textContent = 'Anchor · ' + (aName.length > 28 ? aName.slice(0, 28) + '…' : aName);
-      document.getElementById('metaHeadB').textContent = 'Candidate · ' + (cName.length > 28 ? cName.slice(0, 28) + '…' : cName);
-      document.getElementById('ovLabelL').textContent = 'Anchor · ' + aName;
-      document.getElementById('ovLabelR').textContent = 'Candidate · ' + cName;
+      setText('metaHeadA', 'Anchor · ' + (aName.length > 28 ? aName.slice(0, 28) + '…' : aName));
+      setText('metaHeadB', 'Candidate · ' + (cName.length > 28 ? cName.slice(0, 28) + '…' : cName));
+      setText('ovLabelL', 'Anchor · ' + aName);
+      setText('ovLabelR', 'Candidate · ' + cName);
       fillMetaDims();
       markMetaDiffs();
       // re-apply size row after markMetaDiffs
@@ -1775,21 +1835,24 @@
       const total = state.anchors.length;
       const aIdx = total ? state.anchorIndex + 1 : 0;
       const mt = maxTries();
-      document.getElementById('anchorIdx').textContent = String(aIdx);
-      document.getElementById('anchorTotal').textContent = String(total);
-      document.getElementById('tryIdx').textContent = String(Math.min(state.tryIndex + 1, state.candidates.length || 0));
-      document.getElementById('tryMax').textContent = String(mt);
-      document.getElementById('nMatched').textContent = state.matched + ' matched';
-      document.getElementById('nSkipped').textContent = state.skipped + ' skipped';
-      document.getElementById('nExhausted').textContent = state.exhausted + ' exhausted';
+      setText('anchorIdx', String(aIdx));
+      setText('anchorTotal', String(total));
+      setText('tryIdx', String(Math.min(state.tryIndex + 1, state.candidates.length || 0)));
+      setText('tryMax', String(mt));
+      setText('nMatched', state.matched + ' matched');
+      setText('nSkipped', state.skipped + ' skipped');
+      setText('nExhausted', state.exhausted + ' exhausted');
 
       const donePct = total ? (state.anchorIndex / total) * 100 : 0;
       const tryPct = total ? (1 / total) * ((state.tryIndex + 1) / Math.max(1, mt)) * 100 : 0;
-      document.getElementById('barDone').style.width = Math.min(100, donePct) + '%';
-      document.getElementById('barTry').style.width = Math.min(100 - donePct, tryPct) + '%';
+      const barDone = el('barDone');
+      const barTry = el('barTry');
+      if (barDone) barDone.style.width = Math.min(100, donePct) + '%';
+      if (barTry) barTry.style.width = Math.min(100 - donePct, tryPct) + '%';
 
-      const dots = document.getElementById('tryDots');
+      const dots = el('tryDots');
       const n = Math.max(state.candidates.length, mt);
+      if (!dots) return;
       dots.innerHTML = Array.from({ length: n }, (_, i) => {
         let cls = 'qdot';
         if (i === state.tryIndex) cls += ' cur';
@@ -1803,15 +1866,15 @@
       updateHistoryUi();
       const anchor = currentAnchor();
       const cand = currentCandidate();
-      const empty = document.getElementById('emptyState');
-      const active = document.getElementById('activeUI');
+      const empty = el('emptyState');
+      const active = el('activeUI');
 
       if (!anchor || !state.anchors.length) {
-        empty.style.display = '';
-        active.classList.remove('show');
+        if (empty) empty.style.display = '';
+        active?.classList.remove('show');
         document.body.classList.remove('is-matching');
         if (!state.anchors.length) {
-          empty.innerHTML =
+          if (empty) empty.innerHTML =
             '<strong style="color:var(--text)">No unpaired anchors</strong><br>' +
             'Scan folders in Media Library (or run VSR preview), then Start again.<br>' +
             '<span style="opacity:.8">Keys below always work once a queue is running.</span>' +
@@ -1824,7 +1887,7 @@
             '</div>';
           document.getElementById('btnEmptyRetry')?.addEventListener('click', () => startQueue(true));
         } else if (state.anchorIndex >= state.anchors.length) {
-          empty.innerHTML = `<strong style="color:var(--text)">Queue complete</strong><br>
+          if (empty) empty.innerHTML = `<strong style="color:var(--text)">Queue complete</strong><br>
             Matched ${state.matched} · Skipped ${state.skipped} · Exhausted ${state.exhausted}.<br>
             <div class="empty-cta">
             <button class="ui-btn primary" type="button" id="btnRestart">Run again</button>
@@ -1841,8 +1904,8 @@
         return;
       }
 
-      empty.style.display = 'none';
-      active.classList.add('show');
+      if (empty) empty.style.display = 'none';
+      active?.classList.add('show');
       document.body.classList.add('is-matching');
 
       // Reset focus softly when pair changes (keep zoom)
@@ -1857,40 +1920,40 @@
         viewState.mediaB = null;
       }
 
-      document.getElementById('anchorName').textContent = anchor.name || '—';
-      document.getElementById('anchorRoleTag').textContent =
-        cand?.anchor_role === 'after' ? 'Anchor · After' : 'Anchor · Before';
-      setMedia(document.getElementById('anchorMedia'), anchor.id, anchor.type, anchor.name, 'anchor');
+      setText('anchorName', anchor.name || '—');
+      setText('anchorRoleTag', cand?.anchor_role === 'after' ? 'Anchor · After' : 'Anchor · Before');
+      setMedia(el('anchorMedia'), anchor.id, anchor.type, anchor.name, 'anchor');
 
       if (!cand) {
-        document.getElementById('candName').textContent = 'No candidates';
-        document.getElementById('candRoleTag').textContent = 'Candidate';
-        document.getElementById('candMedia').innerHTML = '<div class="empty">No more candidates — exhausting this anchor</div>';
+        setText('candName', 'No candidates');
+        setText('candRoleTag', 'Candidate');
+        const cm = el('candMedia');
+        if (cm) cm.innerHTML = '<div class="empty">No more candidates — exhausting this anchor</div>';
         viewState.lastSrcB = '';
         viewState.dimB = null;
-        document.getElementById('pairTitle').textContent = 'No match candidates left for this file';
-        document.getElementById('scorePill').textContent = '—';
-        document.getElementById('scorePill').className = 'score';
-        document.getElementById('reasonVal').textContent = '—';
+        setText('pairTitle', 'No match candidates left for this file');
+        setText('scorePill', '—');
+        const pill0 = el('scorePill');
+        if (pill0) pill0.className = 'score';
+        setText('reasonVal', '—');
         fillUniformMeta(anchor, null);
         updatePips();
         return;
       }
 
-      document.getElementById('candName').textContent = cand.candidate_name || cand.after_name || '—';
-      document.getElementById('candRoleTag').textContent =
-        cand.anchor_role === 'before' ? 'Candidate · After' : 'Candidate · Before';
-      setMedia(document.getElementById('candMedia'), cand.candidate_id, cand.type, cand.candidate_name, 'cand');
+      setText('candName', cand.candidate_name || cand.after_name || '—');
+      setText('candRoleTag', cand.anchor_role === 'before' ? 'Candidate · After' : 'Candidate · Before');
+      setMedia(el('candMedia'), cand.candidate_id, cand.type, cand.candidate_name, 'cand');
 
-      document.getElementById('pairTitle').textContent =
-        `${cand.before_name || '?'}  →  ${cand.after_name || '?'}`;
-      const pill = document.getElementById('scorePill');
-      pill.textContent = scoreLabel(cand.confidence);
-      pill.className = 'score ' + scoreClass(cand.confidence);
-      document.getElementById('reasonVal').textContent = (cand.reason || '—') + ' · roles: before/after proposed';
-      document.getElementById('rolesVal').textContent =
-        `Before: ${cand.before_name} · After: ${cand.after_name}`;
-      document.getElementById('typeVal').textContent = cand.type || anchor.type || '—';
+      setText('pairTitle', `${cand.before_name || '?'}  →  ${cand.after_name || '?'}`);
+      const pill = el('scorePill');
+      if (pill) {
+        pill.textContent = scoreLabel(cand.confidence);
+        pill.className = 'score ' + scoreClass(cand.confidence);
+      }
+      setText('reasonVal', (cand.reason || '—') + ' · roles: before/after proposed');
+      setText('rolesVal', `Before: ${cand.before_name || '—'} · After: ${cand.after_name || '—'}`);
+      setText('typeVal', cand.type || anchor.type || '—');
       fillUniformMeta(anchor, cand);
       if (viewState.mode === 'overlay') rebuildOverlayMedia();
     }
@@ -1900,7 +1963,7 @@
       if (!anchor) return;
       const exclude = rejectedFor(anchor.id).slice();
       const fo = folderOpts();
-      const data = await API().pairCandidates(anchor.id, {
+      const data = await API()?.pairCandidates(anchor.id, {
         limit: maxTries(),
         minRatio: minRatio(),
         excludeIds: exclude,
@@ -1908,7 +1971,7 @@
         afterDirId: fo.afterDirId || undefined,
       });
       // Client-side safety: drop same-size / not-larger when option is on
-      let cands = data.candidates || [];
+      let cands = data?.candidates || [];
       if (fo.requireLarger) {
         cands = cands.filter((c) => {
           const a = Number(c.anchor_size || anchor.size || 0);
@@ -1924,8 +1987,7 @@
       if (data.skipped_not_larger) skipBits.push(data.skipped_not_larger + ' not-larger');
       if (data.skipped_intermediate) skipBits.push(data.skipped_intermediate + ' stage2/junk');
       const skipNote = skipBits.length ? ' · skipped ' + skipBits.join(' / ') : '';
-      document.getElementById('statusLine').textContent =
-        `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers${skipNote}`;
+      setText('statusLine', `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers${skipNote}`);
       if (!state.candidates.length) {
         logLine(`No candidates for ${anchor.name} — skip${skipNote}`);
         // Treat as exhaust without stacking undo of auto-advance noise unless user just acted
@@ -1961,22 +2023,25 @@
     }
 
     async function startQueue(forceReload) {
-      busy = true;
-      document.getElementById('btnStart').disabled = true;
-      document.getElementById('statusLine').textContent = 'Loading unpaired queue…';
+      return withBusy(async () => {
+      const btnStart = el('btnStart');
+      if (btnStart) btnStart.disabled = true;
+      setText('statusLine', 'Loading unpaired queue…');
       try {
-        if (!(await API().isOnline(true))) {
-          await API().startServer({ mode: 'tray', waitMs: 60000 });
+        const api = API();
+        if (!api) throw new Error('Toolbox API not loaded');
+        if (!(await api.isOnline(true))) {
+          await api.startServer({ mode: 'tray', waitMs: 60000 });
         }
-        if (!(await API().isOnline(true))) throw new Error('Server offline');
+        if (!(await api.isOnline(true))) throw new Error('Server offline');
 
-        const kind = document.getElementById('kindFilter').value || null;
-        const preferSources = document.getElementById('preferSources').checked;
+        const kind = el('kindFilter')?.value || null;
+        const preferSources = !!el('preferSources')?.checked;
         const fo = folderOpts();
         if (fo.beforeDirId && fo.afterDirId && fo.beforeDirId === fo.afterDirId) {
           toast('Before and After should be different folders for best results', 'warn');
         }
-        const res = await API().pairAnchors({
+        const res = await api.pairAnchors({
           limit: 400,
           kind: kind || undefined,
           preferSources,
@@ -2008,16 +2073,16 @@
         toast(e.message || String(e), 'warn');
         logLine('Start failed: ' + (e.message || e));
       } finally {
-        busy = false;
-        document.getElementById('btnStart').disabled = false;
+        if (btnStart) btnStart.disabled = false;
       }
+      });
     }
 
     async function acceptMatch() {
-      if (busy) return;
       const cand = currentCandidate();
       const anchor = currentAnchor();
       if (!cand || !anchor) return;
+      return withBusy(async () => {
 
       const before = snapshotCore();
       const pairPayload = {
@@ -2028,9 +2093,8 @@
         pinned: true,
         notes: 'guided-pair-match',
       };
-      busy = true;
       try {
-        const pair = await API().savePair(pairPayload);
+        const pair = await API()?.savePair(pairPayload);
         state.matched++;
         try {
           window.FAFOOpsStats?.record({
@@ -2082,8 +2146,9 @@
         toast(e.message || String(e), 'warn');
         logLine('Match failed: ' + (e.message || e));
       } finally {
-        busy = false;
+        /* withBusy */
       }
+      });
     }
 
     function rejectCandidate() {
@@ -2347,10 +2412,10 @@
     }
 
     // Wire buttons
-    document.getElementById('btnStart').onclick = () => startQueue(false);
-    document.getElementById('btnEmptyStart')?.addEventListener('click', () => startQueue(false));
-    document.getElementById('btnEmptyStartServer')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click());
-    document.getElementById('btnReset').onclick = () => {
+    bind('btnStart', 'click', () => startQueue(false));
+    bind('btnEmptyStart', 'click', () => startQueue(false));
+    bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
+    bind('btnReset', 'click', () => {
       if (!confirm('Clear session rejections, counters, and history?')) return;
       state.rejected = {};
       state.matched = state.skipped = state.exhausted = 0;
@@ -2361,13 +2426,13 @@
       saveSession();
       logLine('Session reset');
       render();
-    };
-    document.getElementById('btnYes').onclick = () => runAction('match');
-    document.getElementById('btnNo').onclick = () => runAction('reject');
-    document.getElementById('btnSkip').onclick = () => runAction('skip');
-    document.getElementById('btnPlay').onclick = () => runAction('play');
-    document.getElementById('btnUndo').onclick = () => requestBack();
-    document.getElementById('btnRedo').onclick = () => redoSteps(1);
+    });
+    bind('btnYes', 'click', () => runAction('match'));
+    bind('btnNo', 'click', () => runAction('reject'));
+    bind('btnSkip', 'click', () => runAction('skip'));
+    bind('btnPlay', 'click', () => runAction('play'));
+    bind('btnUndo', 'click', () => requestBack());
+    bind('btnRedo', 'click', () => redoSteps(1));
 
     async function exportSessionReport() {
       const text = [
@@ -2419,7 +2484,7 @@
     });
 
     // Legend chips clickable
-    document.getElementById('keyLegend').addEventListener('click', (e) => {
+    bind('keyLegend', 'click', (e) => {
       const chip = e.target.closest('.key-chip');
       if (!chip) return;
       runAction(chip.dataset.action);

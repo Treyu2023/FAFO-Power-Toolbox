@@ -11,15 +11,17 @@
             --bg: #04060d;
             --panel: #0a0f1a;
             --panel2: #111827;
-            --border: rgba(56, 189, 248, 0.18);
-            --accent: #38bdf8;
+            --border: rgba(0, 243, 255, 0.22);
+            --accent: #00f3ff;
             --accent2: #818cf8;
             --accent3: #34d399;
+            --gold: #f5c542;
+            --magenta: #e879f9;
             --warn: #fbbf24;
             --danger: #f87171;
-            --text: #e2e8f0;
-            --muted: #64748b;
-            --glow: 0 0 20px rgba(56, 189, 248, 0.25);
+            --text: #f1f5f9;
+            --muted: #b6c4d8;
+            --glow: 0 0 20px rgba(0, 243, 255, 0.28);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -35,7 +37,7 @@
             backdrop-filter: blur(12px);
         }
         .toolbox-nav a { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
-        .toolbox-nav .title { font-size: 15px; letter-spacing: 1px; color: var(--accent); }
+        .toolbox-nav .title { font-size: 15px; letter-spacing: 1px; color: var(--gold); }
         .status-pill {
             display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
             padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
@@ -219,6 +221,16 @@
         .overlay.show { display: block; }
         .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
             border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+
+        .btn:focus-visible, .inp:focus-visible, .sel:focus-visible, .nav-btn:focus-visible,
+        a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+            outline: 2px solid var(--gold); outline-offset: 2px;
+        }
+        .nav-btn.active { box-shadow: inset 3px 0 0 var(--magenta); }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+            .status-dot { animation: none !important; }
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -504,21 +516,100 @@
     <script>
     (function () {
         'use strict';
+
+        function el(id) {
+            try {
+                if (id == null || id === '') return null;
+                if (typeof id !== 'string') return id.nodeType ? id : null;
+                return document.getElementById(id);
+            } catch (_) { return null; }
+        }
+        function setText(id, text) {
+            const n = el(id);
+            if (n) n.textContent = text == null ? '' : String(text);
+        }
+        function bind(id, ev, fn) {
+            const n = el(id);
+            if (!n || !fn) return;
+            n.addEventListener(ev, fn);
+        }
+        function lsGet(key, fallback) {
+            try {
+                const v = localStorage.getItem(key);
+                return v == null ? fallback : v;
+            } catch (_) { return fallback; }
+        }
+        function lsSet(key, val) {
+            try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+        }
+        function escHtml(s) {
+            const u = window.AIToolboxUI && AIToolboxUI.escapeHtml;
+            if (typeof u === 'function') return u(s);
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function esc(s) { return escHtml(s); }
+        const _blobUrls = [];
+        function trackBlob(url) {
+            if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+            return url;
+        }
+        function revokeBlobs() {
+            while (_blobUrls.length) {
+                try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+            }
+        }
+        window.addEventListener('pagehide', revokeBlobs);
+        let actionBusy = false;
+        async function withBusy(fn, btnId) {
+            if (actionBusy) return;
+            actionBusy = true;
+            const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : [];
+            const btns = ids.map(el).filter(Boolean);
+            const prev = btns.map(b => b.disabled);
+            btns.forEach(b => { b.disabled = true; });
+            try { return await fn(); }
+            finally {
+                actionBusy = false;
+                btns.forEach((b, i) => { b.disabled = prev[i]; });
+            }
+        }
+        function debounce(fn, ms) {
+            let t;
+            return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+        }
+        function formatBytes(n) {
+            const u = ['B','KB','MB','GB','TB'];
+            let i = 0; n = Number(n) || 0;
+            while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+            return (i ? n.toFixed(1) : String(n)) + ' ' + u[i];
+        }
+        function barColor(pct) {
+            if (pct > 85) return 'var(--danger)';
+            if (pct > 60) return 'var(--warn)';
+            return 'var(--accent3)';
+        }
+
         const API = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
         let online = false;
         let pollTimer = null;
         let selectedPid = null;
-        const history = { netUp: [], netDown: [], cpu: [] };
+        const sparkHist = { netUp: [], netDown: [], cpu: [] };
         const MAX_HIST = 60;
+        const PREF_KEY = 'fafo_lan_task_prefs_v1';
+        const VALID_VIEWS = ['dashboard', 'processes', 'connections', 'lan', 'tools', 'diagnostics'];
+        const VALID_VIEW_SET = new Set(VALID_VIEWS);
 
-        async function api(path, opts = {}) {
+        async function api(path, opts) {
+            opts = opts || {};
             const r = await fetch(API + path, {
                 headers: { 'Content-Type': 'application/json' },
                 ...opts,
             });
             if (!r.ok) {
                 const e = await r.json().catch(() => ({}));
-                throw new Error(e.detail || r.statusText);
+                throw new Error((e && e.detail) || r.statusText || 'request failed');
             }
             return r.json();
         }
@@ -526,56 +617,55 @@
         async function checkServer() {
             try {
                 const r = await fetch(API + '/health', { signal: AbortSignal.timeout(2000) });
-                online = r.ok;
-            } catch { online = false; }
-            const pill = document.getElementById('serverStatus');
-            const banner = document.getElementById('serverBanner');
-            pill.className = 'status-pill ' + (online ? 'online' : 'offline');
-            pill.innerHTML = '<span class="status-dot"></span> ' + (online ? 'Server connected' : 'Server offline');
-            banner.style.display = online ? 'none' : 'block';
+                online = !!r.ok;
+            } catch (_) { online = false; }
+            const pill = el('serverStatus');
+            const banner = el('serverBanner');
+            if (pill) {
+                pill.className = 'status-pill ' + (online ? 'online' : 'offline');
+                pill.innerHTML = '<span class="status-dot"></span> ' + (online ? 'Server connected' : 'Server offline');
+            }
+            if (banner) banner.style.display = online ? 'none' : 'block';
             return online;
         }
 
-        function $(id) { return document.getElementById(id); }
-
-        // Navigation
-        const VALID_VIEWS = new Set(['dashboard', 'processes', 'connections', 'lan', 'tools', 'diagnostics']);
-
-        function selectView(view, { refresh = true } = {}) {
-            if (!VALID_VIEWS.has(view)) view = 'dashboard';
+        function selectView(view, opts) {
+            opts = opts || {};
+            const refresh = opts.refresh !== false;
+            if (!VALID_VIEW_SET.has(view)) view = 'dashboard';
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            const pane = $('view-' + view);
+            const pane = el('view-' + view);
             if (pane) pane.classList.add('active');
             if (refresh) refreshCurrentView();
         }
 
-        /** Deep links from Home Health Hub: #processes?sort=cpu&q=chrome */
         function applyRouteFromHash() {
             const raw = (location.hash || '').replace(/^#/, '');
             if (!raw) return;
             const qIdx = raw.indexOf('?');
-            const view = (qIdx >= 0 ? raw.slice(0, qIdx) : raw).toLowerCase() || 'dashboard';
+            const view = ((qIdx >= 0 ? raw.slice(0, qIdx) : raw).toLowerCase()) || 'dashboard';
             const qs = new URLSearchParams(qIdx >= 0 ? raw.slice(qIdx + 1) : '');
             if (view === 'processes') {
                 const sort = qs.get('sort');
-                if (sort && $('procSort')) {
-                    const opt = [...$('procSort').options].find(o => o.value === sort);
-                    if (opt) $('procSort').value = sort;
+                const sortEl = el('procSort');
+                if (sort && sortEl) {
+                    const opt = [...sortEl.options].find(o => o.value === sort);
+                    if (opt) sortEl.value = sort;
                 }
                 const q = qs.get('q');
-                if (q != null && $('procSearch')) $('procSearch').value = q;
+                const searchEl = el('procSearch');
+                if (q != null && searchEl) searchEl.value = q;
             }
-            selectView(VALID_VIEWS.has(view) ? view : 'dashboard');
+            selectView(VALID_VIEW_SET.has(view) ? view : 'dashboard');
         }
 
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 selectView(btn.dataset.view);
                 const view = btn.dataset.view;
-                // Keep URL shareable without wiping process filters unless leaving processes
-                if (view && location.hash.replace(/^#/, '').split('?')[0] !== view) {
-                    history.replaceState(null, '', '#' + view);
+                if (view && (location.hash || '').replace(/^#/, '').split('?')[0] !== view) {
+                    try { window.history.replaceState(null, '', '#' + view); } catch (_) {}
                 }
             });
         });
@@ -583,65 +673,66 @@
         window.addEventListener('hashchange', () => applyRouteFromHash());
 
         function refreshCurrentView() {
-            const active = document.querySelector('.nav-btn.active')?.dataset.view;
+            const active = document.querySelector('.nav-btn.active');
+            const view = active && active.dataset ? active.dataset.view : '';
             if (!online) return;
-            if (active === 'dashboard') loadDashboard();
-            else if (active === 'processes') loadProcesses();
-            else if (active === 'connections') loadConnections();
+            if (view === 'dashboard') loadDashboard().catch(() => {});
+            else if (view === 'processes') loadProcesses().catch(() => {});
+            else if (view === 'connections') loadConnections().catch(() => {});
         }
 
-        function barColor(pct) {
-            if (pct > 85) return 'var(--danger)';
-            if (pct > 60) return 'var(--warn)';
-            return 'var(--accent3)';
+        function num(v, d) {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : (d == null ? 0 : d);
         }
 
         function renderDashStats(o) {
-            const el = $('dashStats');
+            o = o || {};
+            const cpu = o.cpu || {};
+            const mem = o.memory || {};
+            const disk = o.disk || {};
+            const net = o.network || {};
+            const box = el('dashStats');
+            if (!box) return;
             const items = [
-                { label: 'CPU', value: o.cpu.percent.toFixed(1) + '%', sub: o.cpu.cores_logical + ' logical cores', pct: o.cpu.percent },
-                { label: 'Memory', value: o.memory.used_human, sub: o.memory.percent.toFixed(1) + '% of ' + o.memory.total_human, pct: o.memory.percent },
-                { label: 'Disk', value: o.disk.used_human, sub: o.disk.percent.toFixed(1) + '% used', pct: o.disk.percent },
-                { label: 'Network ↑', value: o.network.send_rate_human, sub: 'Total sent: ' + formatBytes(o.network.bytes_sent), pct: Math.min(100, o.network.send_rate_bps / 1e6 * 10) },
-                { label: 'Network ↓', value: o.network.recv_rate_human, sub: 'Total recv: ' + formatBytes(o.network.bytes_recv), pct: Math.min(100, o.network.recv_rate_bps / 1e6 * 10) },
-                { label: 'Processes', value: o.process_count, sub: o.hostname, pct: 0 },
+                { label: 'CPU', value: num(cpu.percent).toFixed(1) + '%', sub: (cpu.cores_logical != null ? cpu.cores_logical : '—') + ' logical cores', pct: num(cpu.percent) },
+                { label: 'Memory', value: mem.used_human || '—', sub: num(mem.percent).toFixed(1) + '% of ' + (mem.total_human || '—'), pct: num(mem.percent) },
+                { label: 'Disk', value: disk.used_human || '—', sub: num(disk.percent).toFixed(1) + '% used', pct: num(disk.percent) },
+                { label: 'Network ↑', value: net.send_rate_human || '—', sub: 'Total sent: ' + formatBytes(net.bytes_sent), pct: Math.min(100, num(net.send_rate_bps) / 1e6 * 10) },
+                { label: 'Network ↓', value: net.recv_rate_human || '—', sub: 'Total recv: ' + formatBytes(net.bytes_recv), pct: Math.min(100, num(net.recv_rate_bps) / 1e6 * 10) },
+                { label: 'Processes', value: o.process_count != null ? o.process_count : '—', sub: o.hostname || '—', pct: 0 },
             ];
-            el.innerHTML = items.map(it => `
+            box.innerHTML = items.map(it => `
                 <div class="stat-card">
-                    <div class="stat-label">${it.label}</div>
-                    <div class="stat-value">${it.value}</div>
-                    <div class="stat-sub">${it.sub}</div>
+                    <div class="stat-label">${escHtml(it.label)}</div>
+                    <div class="stat-value">${escHtml(it.value)}</div>
+                    <div class="stat-sub">${escHtml(it.sub)}</div>
                     ${it.pct ? `<div class="stat-bar"><span style="width:${Math.min(100,it.pct)}%;background:${barColor(it.pct)}"></span></div>` : ''}
                 </div>`).join('');
 
-            history.netUp.push(o.network.send_rate_bps);
-            history.netDown.push(o.network.recv_rate_bps);
-            history.cpu.push(o.cpu.percent);
-            [history.netUp, history.netDown, history.cpu].forEach(a => { while (a.length > MAX_HIST) a.shift(); });
-            drawSpark('chartNet', [history.netUp, history.netDown], ['#34d399', '#38bdf8']);
-            drawSpark('chartCpu', [history.cpu], ['#818cf8']);
-            $('netRateLabel').textContent = `↑ ${o.network.send_rate_human}  ↓ ${o.network.recv_rate_human}`;
-        }
-
-        function formatBytes(n) {
-            const u = ['B','KB','MB','GB','TB'];
-            let i = 0; n = Number(n);
-            while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-            return (i ? n.toFixed(1) : n) + ' ' + u[i];
+            sparkHist.netUp.push(num(net.send_rate_bps));
+            sparkHist.netDown.push(num(net.recv_rate_bps));
+            sparkHist.cpu.push(num(cpu.percent));
+            [sparkHist.netUp, sparkHist.netDown, sparkHist.cpu].forEach(a => { while (a.length > MAX_HIST) a.shift(); });
+            drawSpark('chartNet', [sparkHist.netUp, sparkHist.netDown], ['#34d399', '#38bdf8']);
+            drawSpark('chartCpu', [sparkHist.cpu], ['#818cf8']);
+            setText('netRateLabel', '↑ ' + (net.send_rate_human || '—') + '  ↓ ' + (net.recv_rate_human || '—'));
         }
 
         function drawSpark(id, series, colors) {
-            const c = $(id);
-            if (!c) return;
+            const c = el(id);
+            if (!c || !c.getContext) return;
             const ctx = c.getContext('2d');
-            const w = c.parentElement.clientWidth - 36;
+            if (!ctx) return;
+            const parent = c.parentElement;
+            const w = Math.max(40, (parent ? parent.clientWidth : 200) - 36);
             c.width = w; c.height = 80;
             ctx.clearRect(0, 0, w, 80);
-            series.forEach((data, si) => {
-                if (!data.length) return;
-                const max = Math.max(...data, 1);
+            (series || []).forEach((data, si) => {
+                if (!data || !data.length) return;
+                const max = Math.max.apply(null, data.concat([1]));
                 ctx.beginPath();
-                ctx.strokeStyle = colors[si];
+                ctx.strokeStyle = (colors && colors[si]) || '#38bdf8';
                 ctx.lineWidth = 2;
                 data.forEach((v, i) => {
                     const x = (i / (MAX_HIST - 1)) * w;
@@ -652,21 +743,34 @@
             });
         }
 
+        function markUpdated() {
+            setText('lastUpdated', 'Updated ' + new Date().toLocaleTimeString());
+        }
+
         async function loadDashboard() {
-            const o = await api('/network/overview');
-            renderDashStats(o);
-            const ifaces = await api('/network/interfaces');
-            const tb = $('ifaceTable').querySelector('tbody');
-            tb.innerHTML = ifaces.interfaces.map(i => `
+            try {
+                const o = await api('/network/overview');
+                renderDashStats(o);
+                const ifaces = await api('/network/interfaces');
+                const table = el('ifaceTable');
+                const tb = table && table.querySelector('tbody');
+                if (!tb) return;
+                const list = (ifaces && ifaces.interfaces) || [];
+                tb.innerHTML = list.length ? list.map(i => {
+                    i = i || {};
+                    return `
                 <tr>
-                    <td><strong>${esc(i.name)}</strong></td>
+                    <td><strong>${escHtml(i.name)}</strong></td>
                     <td><span class="tag ${i.is_up ? 'ok' : 'err'}">${i.is_up ? 'UP' : 'DOWN'}</span></td>
-                    <td class="mono">${esc((i.ipv4||[]).map(v=>v.addr).join(', ') || '—')}</td>
-                    <td class="mono">${esc(i.mac || '—')}</td>
-                    <td>${i.speed_mbps ? i.speed_mbps + ' Mbps' : '—'}</td>
+                    <td class="mono">${escHtml(((i.ipv4||[]).map(v => v && v.addr).filter(Boolean).join(', ')) || '—')}</td>
+                    <td class="mono">${escHtml(i.mac || '—')}</td>
+                    <td>${i.speed_mbps ? escHtml(i.speed_mbps + ' Mbps') : '—'}</td>
                     <td>${formatBytes(i.bytes_sent)}</td>
                     <td>${formatBytes(i.bytes_recv)}</td>
-                </tr>`).join('');
+                </tr>`;
+                }).join('') : '<tr><td colspan="7" class="empty">No interfaces</td></tr>';
+                markUpdated();
+            } catch (_) {}
         }
 
         let listScrollFrozen = false;
@@ -677,8 +781,8 @@
         function setListScrollFrozen(on) {
             listScrollFrozen = !!on;
             ['procTableWrap', 'connTableWrap'].forEach((id) => {
-                const el = $(id);
-                if (el) el.classList.toggle('is-frozen', listScrollFrozen);
+                const node = el(id);
+                if (node) node.classList.toggle('is-frozen', listScrollFrozen);
             });
             if (!listScrollFrozen) {
                 if (loadProcsPending) {
@@ -693,7 +797,7 @@
         }
 
         function wireListScrollFreeze(wrapId) {
-            const wrap = $(wrapId);
+            const wrap = el(wrapId);
             if (!wrap || wrap.dataset.freezeWired) return;
             wrap.dataset.freezeWired = '1';
             wrap.addEventListener('scroll', () => {
@@ -703,33 +807,54 @@
             }, { passive: true });
         }
 
+        function saveLanPrefs() {
+            lsSet(PREF_KEY, JSON.stringify({
+                procSearch: (el('procSearch') && el('procSearch').value) || '',
+                procSort: (el('procSort') && el('procSort').value) || 'cpu',
+                connSearch: (el('connSearch') && el('connSearch').value) || '',
+                connKind: (el('connKind') && el('connKind').value) || '',
+            }));
+        }
+
         async function loadProcesses() {
             if (listScrollFrozen) {
                 loadProcsPending = true;
                 return;
             }
-            const search = $('procSearch').value.trim();
-            const sort = $('procSort').value;
-            const data = await api(`/network/processes?sort_by=${sort}&search=${encodeURIComponent(search)}&limit=300`);
+            const searchEl = el('procSearch');
+            const sortEl = el('procSort');
+            const search = searchEl ? searchEl.value.trim() : '';
+            const sort = sortEl ? sortEl.value : 'cpu';
+            let data;
+            try {
+                data = await api('/network/processes?sort_by=' + encodeURIComponent(sort) + '&search=' + encodeURIComponent(search) + '&limit=300');
+            } catch (_) { return; }
             if (listScrollFrozen) {
                 loadProcsPending = true;
                 return;
             }
-            const wrap = $('procTableWrap');
+            const wrap = el('procTableWrap');
             const prevScroll = wrap ? wrap.scrollTop : 0;
-            const tb = $('procTable').querySelector('tbody');
-            tb.innerHTML = data.processes.map(p => `
-                <tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
-                    <td class="mono">${p.pid}</td>
-                    <td><strong>${esc(p.name)}</strong></td>
-                    <td>${p.cpu_percent.toFixed(1)}</td>
-                    <td>${esc(p.memory_human)} <span class="tag info">${p.memory_percent}%</span></td>
-                    <td>${p.threads}</td>
-                    <td>${p.connections ? `<span class="tag warn">${p.connections}</span>` : '0'}</td>
-                    <td class="mono" style="font-size:10px">${esc(p.username)}</td>
-                    <td><span class="tag ${p.status === 'running' ? 'ok' : 'info'}">${esc(p.status)}</span></td>
-                    <td><button class="btn sm btn-detail" data-pid="${p.pid}">Details</button></td>
-                </tr>`).join('');
+            const table = el('procTable');
+            const tb = table && table.querySelector('tbody');
+            if (!tb) return;
+            const procs = (data && data.processes) || [];
+            tb.innerHTML = procs.length ? procs.map(p => {
+                p = p || {};
+                const cpu = num(p.cpu_percent).toFixed(1);
+                return `
+                <tr data-pid="${escHtml(p.pid)}" class="${selectedPid === p.pid ? 'selected' : ''}">
+                    <td class="mono">${escHtml(p.pid)}</td>
+                    <td><strong>${escHtml(p.name)}</strong></td>
+                    <td>${cpu}</td>
+                    <td>${escHtml(p.memory_human)} <span class="tag info">${escHtml(p.memory_percent)}%</span></td>
+                    <td>${escHtml(p.threads)}</td>
+                    <td>${p.connections ? '<span class="tag warn">' + escHtml(p.connections) + '</span>' : '0'}</td>
+                    <td class="mono" style="font-size:10px">${escHtml(p.username)}</td>
+                    <td><span class="tag ${p.status === 'running' ? 'ok' : 'info'}">${escHtml(p.status)}</span></td>
+                    <td><button class="btn sm btn-detail" data-pid="${escHtml(p.pid)}">Details</button></td>
+                </tr>`;
+            }).join('') : '<tr><td colspan="9" class="empty">No processes</td></tr>';
             tb.querySelectorAll('.btn-detail').forEach(b => b.addEventListener('click', e => {
                 e.stopPropagation();
                 openProcessDetail(+b.dataset.pid);
@@ -737,39 +862,60 @@
             tb.querySelectorAll('tr[data-pid]').forEach(tr => tr.addEventListener('click', () => openProcessDetail(+tr.dataset.pid)));
             if (wrap) wrap.scrollTop = prevScroll;
             wireListScrollFreeze('procTableWrap');
+            saveLanPrefs();
+            markUpdated();
         }
 
         async function openProcessDetail(pid) {
             selectedPid = pid;
-            const d = await api('/network/processes/' + pid);
-            $('drawerTitle').textContent = d.name + ' (PID ' + pid + ')';
+            let d;
+            try { d = await api('/network/processes/' + pid); } catch (_) { return; }
+            d = d || {};
+            setText('drawerTitle', (d.name || 'Process') + ' (PID ' + pid + ')');
+            const mem = d.memory || {};
             const rows = [
-                ['Status', d.status], ['User', d.username], ['CPU', d.cpu_percent.toFixed(1) + '%'],
-                ['Memory', d.memory.rss_human], ['Threads', d.threads], ['Path', d.exe || '—'],
+                ['Status', d.status], ['User', d.username], ['CPU', num(d.cpu_percent).toFixed(1) + '%'],
+                ['Memory', mem.rss_human], ['Threads', d.threads], ['Path', d.exe || '—'],
                 ['CWD', d.cwd || '—'],
             ];
             if (d.io) rows.push(['Disk read', d.io.read_human], ['Disk write', d.io.write_human]);
-            $('drawerKv').innerHTML = rows.map(([k,v]) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`).join('');
-            $('drawerConns').innerHTML = d.connections.length
-                ? '<table class="data-table"><tr><th>Status</th><th>Local</th><th>Remote</th></tr>' +
-                  d.connections.map(c => `<tr><td>${esc(c.status)}</td><td class="mono">${esc(c.local)}</td><td class="mono">${esc(c.remote)}</td></tr>`).join('') + '</table>'
-                : '<div class="empty">No network connections</div>';
-            $('procDrawer').classList.add('open');
-            $('overlay').classList.add('show');
-            loadProcesses();
+            const kv = el('drawerKv');
+            if (kv) kv.innerHTML = rows.map(([k,v]) => '<dt>' + escHtml(k) + '</dt><dd>' + escHtml(v) + '</dd>').join('');
+            const dc = el('drawerConns');
+            const conns = d.connections || [];
+            if (dc) {
+                dc.innerHTML = conns.length
+                    ? '<table class="data-table"><tr><th>Status</th><th>Local</th><th>Remote</th></tr>' +
+                      conns.map(c => {
+                          c = c || {};
+                          return '<tr><td>' + escHtml(c.status) + '</td><td class="mono">' + escHtml(c.local) + '</td><td class="mono">' + escHtml(c.remote) + '</td></tr>';
+                      }).join('') + '</table>'
+                    : '<div class="empty">No network connections</div>';
+            }
+            const drawer = el('procDrawer');
+            const overlay = el('overlay');
+            if (drawer) drawer.classList.add('open');
+            if (overlay) overlay.classList.add('show');
+            loadProcesses().catch(() => {});
         }
 
         async function killProcess(force) {
             if (!selectedPid) return;
-            if (!confirm(`${force ? 'Force kill' : 'End'} process ${selectedPid}?`)) return;
-            await api('/network/processes/kill', { method: 'POST', body: JSON.stringify({ pid: selectedPid, force }) });
-            closeDrawer();
-            loadProcesses();
+            if (!confirm((force ? 'Force kill' : 'End') + ' process ' + selectedPid + '?')) return;
+            await withBusy(async () => {
+                try {
+                    await api('/network/processes/kill', { method: 'POST', body: JSON.stringify({ pid: selectedPid, force }) });
+                    closeDrawer();
+                    await loadProcesses();
+                } catch (_) {}
+            }, force ? 'btnForceKill' : 'btnKillProc');
         }
 
         function closeDrawer() {
-            $('procDrawer').classList.remove('open');
-            $('overlay').classList.remove('show');
+            const drawer = el('procDrawer');
+            const overlay = el('overlay');
+            if (drawer) drawer.classList.remove('open');
+            if (overlay) overlay.classList.remove('show');
             selectedPid = null;
         }
 
@@ -778,112 +924,182 @@
                 loadConnPending = true;
                 return;
             }
-            const search = $('connSearch').value.trim();
-            const kind = $('connKind').value;
-            const data = await api(`/network/connections?kind=${kind}&search=${encodeURIComponent(search)}&limit=500`);
+            const searchEl = el('connSearch');
+            const kindEl = el('connKind');
+            const search = searchEl ? searchEl.value.trim() : '';
+            const kind = kindEl ? kindEl.value : 'all';
+            let data;
+            try {
+                data = await api('/network/connections?kind=' + encodeURIComponent(kind) + '&search=' + encodeURIComponent(search) + '&limit=500');
+            } catch (_) { return; }
             if (listScrollFrozen) {
                 loadConnPending = true;
                 return;
             }
-            const wrap = $('connTableWrap');
+            const wrap = el('connTableWrap');
             const prevScroll = wrap ? wrap.scrollTop : 0;
-            const tb = $('connTable').querySelector('tbody');
-            tb.innerHTML = data.connections.map(c => `
+            const table = el('connTable');
+            const tb = table && table.querySelector('tbody');
+            if (tb) {
+                const conns = (data && data.connections) || [];
+                tb.innerHTML = conns.length ? conns.map(c => {
+                    c = c || {};
+                    return `
                 <tr>
-                    <td><strong>${esc(c.process || '—')}</strong></td>
-                    <td class="mono">${c.pid || '—'}</td>
-                    <td><span class="tag ${c.status === 'ESTABLISHED' ? 'ok' : 'info'}">${esc(c.status)}</span></td>
-                    <td class="mono">${esc(c.local)}</td>
-                    <td class="mono">${esc(c.remote || '—')}</td>
-                    <td>${esc(c.remote_host || '—')}</td>
-                    <td>${esc(c.type)}</td>
-                </tr>`).join('') || '<tr><td colspan="7" class="empty">No connections (try running as admin for full list)</td></tr>';
+                    <td><strong>${escHtml(c.process || '—')}</strong></td>
+                    <td class="mono">${escHtml(c.pid || '—')}</td>
+                    <td><span class="tag ${c.status === 'ESTABLISHED' ? 'ok' : 'info'}">${escHtml(c.status)}</span></td>
+                    <td class="mono">${escHtml(c.local)}</td>
+                    <td class="mono">${escHtml(c.remote || '—')}</td>
+                    <td>${escHtml(c.remote_host || '—')}</td>
+                    <td>${escHtml(c.type)}</td>
+                </tr>`;
+                }).join('') : '<tr><td colspan="7" class="empty">No connections (try running as admin for full list)</td></tr>';
+            }
             if (wrap) wrap.scrollTop = prevScroll;
             wireListScrollFreeze('connTableWrap');
-
-            const listen = await api('/network/listening');
-            $('listenTable').querySelector('tbody').innerHTML = listen.ports.map(p => `
+            try {
+                const listen = await api('/network/listening');
+                const lt = el('listenTable');
+                const ltb = lt && lt.querySelector('tbody');
+                if (ltb) {
+                    const ports = (listen && listen.ports) || [];
+                    ltb.innerHTML = ports.length ? ports.map(p => {
+                        p = p || {};
+                        return `
                 <tr>
-                    <td class="mono"><strong>${p.port}</strong></td>
-                    <td class="mono">${esc(p.address)}</td>
-                    <td>${esc(p.process || '—')}</td>
-                    <td class="mono">${p.pid || '—'}</td>
-                </tr>`).join('');
+                    <td class="mono"><strong>${escHtml(p.port)}</strong></td>
+                    <td class="mono">${escHtml(p.address)}</td>
+                    <td>${escHtml(p.process || '—')}</td>
+                    <td class="mono">${escHtml(p.pid || '—')}</td>
+                </tr>`;
+                    }).join('') : '<tr><td colspan="4" class="empty">No listening ports</td></tr>';
+                }
+            } catch (_) {}
+            saveLanPrefs();
+            markUpdated();
         }
 
         async function discoverLan() {
-            const subnet = $('subnetInp').value.trim();
-            $('lanGrid').innerHTML = '<div class="empty"><span class="loading"></span> Scanning… this may take a minute</div>';
-            const data = await api('/network/discover', { method: 'POST', body: JSON.stringify({ subnet, timeout_ms: 400 }) });
-            $('lanSummary').innerHTML = `Gateway: <strong>${esc(data.gateway || '—')}</strong> · Devices: <strong>${data.device_count}</strong> · Online: <strong>${data.online_count}</strong>`;
-            $('lanGrid').innerHTML = data.devices.length ? data.devices.map(d => `
+            await withBusy(async () => {
+                const grid = el('lanGrid');
+                const summary = el('lanSummary');
+                const subnetEl = el('subnetInp');
+                const subnet = subnetEl ? subnetEl.value.trim() : '';
+                if (grid) grid.innerHTML = '<div class="empty"><span class="loading"></span> Scanning… this may take a minute</div>';
+                try {
+                    const data = await api('/network/discover', { method: 'POST', body: JSON.stringify({ subnet, timeout_ms: 400 }) });
+                    if (summary) summary.innerHTML = 'Gateway: <strong>' + escHtml(data.gateway || '—') + '</strong> · Devices: <strong>' + escHtml(data.device_count) + '</strong> · Online: <strong>' + escHtml(data.online_count) + '</strong>';
+                    const devices = (data && data.devices) || [];
+                    if (grid) {
+                        grid.innerHTML = devices.length ? devices.map(d => {
+                            d = d || {};
+                            return `
                 <div class="lan-device">
-                    <div class="dev-ip">${esc(d.ip)}</div>
+                    <div class="dev-ip">${escHtml(d.ip)}</div>
                     <div class="dev-meta">
-                        ${d.host ? esc(d.host) + '<br>' : ''}
-                        ${d.mac ? 'MAC: ' + esc(d.mac) + '<br>' : ''}
-                        <span class="tag ${d.status === 'online' ? 'ok' : 'info'}">${esc(d.status)}</span>
-                        ${d.latency_ms != null ? ' · ' + d.latency_ms + ' ms' : ''}
+                        ${d.host ? escHtml(d.host) + '<br>' : ''}
+                        ${d.mac ? 'MAC: ' + escHtml(d.mac) + '<br>' : ''}
+                        <span class="tag ${d.status === 'online' ? 'ok' : 'info'}">${escHtml(d.status)}</span>
+                        ${d.latency_ms != null ? ' · ' + escHtml(d.latency_ms) + ' ms' : ''}
                     </div>
-                </div>`).join('') : '<div class="empty">No devices found</div>';
+                </div>`;
+                        }).join('') : '<div class="empty">No devices found</div>';
+                    }
+                } catch (e) {
+                    if (grid) grid.innerHTML = '<div class="empty">' + escHtml((e && e.message) || 'Scan failed') + '</div>';
+                }
+            }, 'btnDiscover');
         }
 
         async function runPing() {
-            const host = $('pingHost').value.trim();
-            $('pingResults').innerHTML = '<div class="empty"><span class="loading"></span> Pinging…</div>';
-            const r = await api('/network/ping', { method: 'POST', body: JSON.stringify({ host, count: +$('pingCount').value || 4, timeout_ms: 1500 }) });
-            const maxMs = Math.max(...r.replies.filter(x => x.ok && x.time_ms).map(x => x.time_ms), 100);
-            $('pingResults').innerHTML = `
+            await withBusy(async () => {
+                const hostEl = el('pingHost');
+                const countEl = el('pingCount');
+                const out = el('pingResults');
+                const host = hostEl ? hostEl.value.trim() : '';
+                if (out) out.innerHTML = '<div class="empty"><span class="loading"></span> Pinging…</div>';
+                try {
+                    const r = await api('/network/ping', { method: 'POST', body: JSON.stringify({ host, count: num(countEl && countEl.value, 4) || 4, timeout_ms: 1500 }) });
+                    const replies = (r && r.replies) || [];
+                    const maxMs = Math.max.apply(null, replies.filter(x => x && x.ok && x.time_ms).map(x => x.time_ms).concat([100]));
+                    if (out) out.innerHTML = `
                 <div class="stat-sub" style="margin-bottom:10px;">
                     ${r.success ? '<span class="tag ok">Reachable</span>' : '<span class="tag err">Unreachable</span>'}
-                    ${r.stats ? ` · min ${r.stats.min_ms}ms · avg ${r.stats.avg_ms}ms · max ${r.stats.max_ms}ms` : ''}
-                    · ${r.elapsed_sec}s
+                    ${r.stats ? ' · min ' + escHtml(r.stats.min_ms) + 'ms · avg ' + escHtml(r.stats.avg_ms) + 'ms · max ' + escHtml(r.stats.max_ms) + 'ms' : ''}
+                    · ${escHtml(r.elapsed_sec)}s
                 </div>` +
-                r.replies.map((p, i) => `
+                    replies.map((p, i) => `
                 <div class="ping-row">
                     <div class="ping-ico">${p.ok ? '✓' : '✗'}</div>
                     <div>
-                        <div class="mono">${esc(p.from || host)} — ${p.ok ? p.time_ms + ' ms' : esc(p.error || 'timeout')}</div>
+                        <div class="mono">${escHtml(p.from || host)} — ${p.ok ? escHtml(p.time_ms) + ' ms' : escHtml(p.error || 'timeout')}</div>
                         <div class="ping-bar-wrap"><div class="ping-bar" style="width:${p.ok ? Math.min(100, (p.time_ms/maxMs)*100) : 0}%"></div></div>
                     </div>
                     <div style="text-align:right;color:var(--muted)">#${i+1}</div>
                 </div>`).join('');
+                } catch (e) {
+                    if (out) out.innerHTML = '<span class="tag err">' + escHtml((e && e.message) || 'Ping failed') + '</span>';
+                }
+            }, 'btnPing');
         }
 
         async function runTrace() {
-            const host = $('traceHost').value.trim();
-            $('traceVisual').innerHTML = '<div class="empty"><span class="loading"></span> Tracing route to ' + esc(host) + '…</div>';
-            const r = await api('/network/traceroute', { method: 'POST', body: JSON.stringify({ host, max_hops: +$('traceHops').value || 30, timeout_ms: 3000 }) });
-            const maxLat = Math.max(...r.hops.flatMap(h => h.times_ms || []), 50);
-            $('traceVisual').innerHTML = r.hops.length ? r.hops.map(h => `
+            await withBusy(async () => {
+                const hostEl = el('traceHost');
+                const hopsEl = el('traceHops');
+                const out = el('traceVisual');
+                const host = hostEl ? hostEl.value.trim() : '';
+                if (out) out.innerHTML = '<div class="empty"><span class="loading"></span> Tracing route to ' + escHtml(host) + '…</div>';
+                try {
+                    const r = await api('/network/traceroute', { method: 'POST', body: JSON.stringify({ host, max_hops: num(hopsEl && hopsEl.value, 30) || 30, timeout_ms: 3000 }) });
+                    const hops = (r && r.hops) || [];
+                    const maxLat = Math.max.apply(null, hops.flatMap(h => (h && h.times_ms) || []).concat([50]));
+                    if (out) out.innerHTML = hops.length ? hops.map(h => {
+                        h = h || {};
+                        return `
                 <div class="trace-hop">
-                    <div class="hop-num ${h.timeout ? 'timeout' : ''}">${h.hop}</div>
+                    <div class="hop-num ${h.timeout ? 'timeout' : ''}">${escHtml(h.hop)}</div>
                     <div class="hop-info">
-                        <h4>${h.timeout ? 'Request timed out' : esc(h.host || h.ip || 'Unknown')}</h4>
-                        <div class="ip">${esc(h.ip || '—')}</div>
+                        <h4>${h.timeout ? 'Request timed out' : escHtml(h.host || h.ip || 'Unknown')}</h4>
+                        <div class="ip">${escHtml(h.ip || '—')}</div>
                     </div>
                     <div class="hop-latency">
-                        ${h.times_ms?.length ? h.times_ms.map(t => t + ' ms').join(' / ') : '—'}
+                        ${h.times_ms && h.times_ms.length ? h.times_ms.map(tt => escHtml(tt) + ' ms').join(' / ') : '—'}
                         <div class="latency-bars">
-                            ${(h.times_ms || []).map(t => `<div class="lat-bar"><span style="width:${Math.min(100,(t/maxLat)*100)}%"></span></div>`).join('')}
+                            ${(h.times_ms || []).map(tt => '<div class="lat-bar"><span style="width:' + Math.min(100,(tt/maxLat)*100) + '%"></span></div>').join('')}
                         </div>
                     </div>
-                </div>`).join('') : '<div class="empty">No hops returned</div>';
+                </div>`;
+                    }).join('') : '<div class="empty">No hops returned</div>';
+                } catch (e) {
+                    if (out) out.innerHTML = '<div class="empty">' + escHtml((e && e.message) || 'Trace failed') + '</div>';
+                }
+            }, 'btnTrace');
         }
 
         async function runTelnet() {
-            const host = $('telHost').value.trim();
-            const port = +$('telPort').value;
-            $('telResult').innerHTML = '<span class="loading"></span>';
-            const r = await api('/network/telnet', { method: 'POST', body: JSON.stringify({ host, port, timeout_sec: 5 }) });
-            $('telResult').innerHTML = `
+            await withBusy(async () => {
+                const hostEl = el('telHost');
+                const portEl = el('telPort');
+                const out = el('telResult');
+                const host = hostEl ? hostEl.value.trim() : '';
+                const port = num(portEl && portEl.value, 0);
+                if (out) out.innerHTML = '<span class="loading"></span>';
+                try {
+                    const r = await api('/network/telnet', { method: 'POST', body: JSON.stringify({ host, port, timeout_sec: 5 }) });
+                    if (out) out.innerHTML = `
                 <div class="kv" style="margin:0">
                     <dt>Status</dt><dd><span class="tag ${r.open ? 'ok' : 'err'}">${r.open ? 'OPEN' : 'CLOSED'}</span></dd>
-                    <dt>Resolved</dt><dd class="mono">${esc(r.resolved_ip || '—')}</dd>
-                    <dt>Latency</dt><dd>${r.latency_ms != null ? r.latency_ms + ' ms' : '—'}</dd>
-                    <dt>Service</dt><dd>${esc(r.service_hint || '—')}</dd>
-                    ${r.error ? `<dt>Error</dt><dd>${esc(r.error)}</dd>` : ''}
+                    <dt>Resolved</dt><dd class="mono">${escHtml(r.resolved_ip || '—')}</dd>
+                    <dt>Latency</dt><dd>${r.latency_ms != null ? escHtml(r.latency_ms) + ' ms' : '—'}</dd>
+                    <dt>Service</dt><dd>${escHtml(r.service_hint || '—')}</dd>
+                    ${r.error ? '<dt>Error</dt><dd>' + escHtml(r.error) + '</dd>' : ''}
                 </div>`;
+                } catch (e) {
+                    if (out) out.innerHTML = '<span class="tag err">' + escHtml((e && e.message) || 'Port test failed') + '</span>';
+                }
+            }, 'btnTelnet');
         }
 
         function isIpAddress(s) {
@@ -891,15 +1107,16 @@
             if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) {
                 return s.split('.').every(n => +n >= 0 && +n <= 255);
             }
-            return s.includes(':');
+            return s.indexOf(':') >= 0;
         }
 
         function syncDnsMode() {
-            const host = $('dnsHost').value.trim();
-            const sel = $('dnsType');
-            const hint = $('dnsModeHint');
+            const hostEl = el('dnsHost');
+            const sel = el('dnsType');
+            const hint = el('dnsModeHint');
+            const host = hostEl ? hostEl.value.trim() : '';
             if (isIpAddress(host)) {
-                if (sel.value !== 'REVERSE') sel.value = 'AUTO';
+                if (sel && sel.value !== 'REVERSE') sel.value = 'AUTO';
                 if (hint) hint.textContent = 'IP detected — reverse lookup';
             } else if (hint) {
                 hint.textContent = host ? 'Hostname — forward lookup' : '';
@@ -907,129 +1124,118 @@
         }
 
         function renderDnsRecord(rec) {
-            const label = rec.label ? `<span class="stat-sub" style="margin-right:6px">${esc(rec.label)}</span>` : '';
-            return `<div style="margin:6px 0">${label}<span class="tag info">${esc(rec.type)}</span> <span class="mono">${esc(rec.value)}</span></div>`;
+            rec = rec || {};
+            const label = rec.label ? '<span class="stat-sub" style="margin-right:6px">' + escHtml(rec.label) + '</span>' : '';
+            return '<div style="margin:6px 0">' + label + '<span class="tag info">' + escHtml(rec.type) + '</span> <span class="mono">' + escHtml(rec.value) + '</span></div>';
         }
 
         async function runDns() {
-            const host = $('dnsHost').value.trim();
-            if (!host) {
-                $('dnsResult').innerHTML = '<span class="tag warn">Enter a hostname or IP address</span>';
-                return;
-            }
-            if (!(await checkServer())) {
-                $('dnsResult').innerHTML = '<span class="tag err">Server offline — use ▶ Start Server in the Launcher/Media Library (or START SERVER.bat), then Retry.</span>';
-                return;
-            }
-            let record_type = $('dnsType').value;
-            if (isIpAddress(host)) record_type = 'AUTO';
-            $('dnsResult').innerHTML = '<span class="loading"></span> Looking up…';
-            try {
-                const r = await api('/network/dns', { method: 'POST', body: JSON.stringify({ host, record_type }) });
-                const hasData = (r.records?.length || r.reverse?.ptr || r.reverse?.mac);
-                if (r.error && !hasData) {
-                    $('dnsResult').innerHTML = `<span class="tag err">${esc(r.error)}</span>`;
+            await withBusy(async () => {
+                const hostEl = el('dnsHost');
+                const typeEl = el('dnsType');
+                const out = el('dnsResult');
+                const host = hostEl ? hostEl.value.trim() : '';
+                if (!host) {
+                    if (out) out.innerHTML = '<span class="tag warn">Enter a hostname or IP address</span>';
                     return;
                 }
-                const mode = r.query_mode === 'reverse'
-                    ? `<div class="stat-sub" style="margin-bottom:10px"><span class="tag ok">Reverse lookup</span> for <span class="mono">${esc(r.host)}</span>${r.reverse?.sources?.length ? ' · via ' + esc(r.reverse.sources.join(', ')) : ''}</div>`
-                    : `<div class="stat-sub" style="margin-bottom:10px"><span class="tag info">Forward lookup</span> for <span class="mono">${esc(r.host)}</span></div>`;
-                let html = mode;
-                if (r.note) html += `<div class="stat-sub" style="margin-bottom:10px;color:var(--warn)">${esc(r.note)}</div>`;
-                if (r.error && hasData) html += `<div class="stat-sub" style="margin-bottom:10px;color:var(--muted)">${esc(r.error)}</div>`;
-                if (r.reverse) {
-                    html += `<div class="kv" style="margin:12px 0">
-                        <dt>Hostname (PTR)</dt><dd class="mono">${esc(r.reverse.ptr || '—')}</dd>
-                        <dt>Aliases</dt><dd>${r.reverse.aliases?.length ? r.reverse.aliases.map(a => `<span class="mono">${esc(a)}</span>`).join('<br>') : '—'}</dd>
-                        <dt>MAC (ARP)</dt><dd class="mono">${esc(r.reverse.mac || '—')}</dd>
-                        <dt>IPs</dt><dd class="mono">${esc((r.reverse.ips || []).join(', ') || '—')}</dd>
-                    </div>`;
+                if (!(await checkServer())) {
+                    if (out) out.innerHTML = '<span class="tag err">Server offline — use ▶ Start Server in the Launcher/Media Library (or START SERVER.bat), then Retry.</span>';
+                    return;
                 }
-                html += (r.records || []).map(renderDnsRecord).join('');
-                if (r.forward_records?.length) {
-                    html += `<div class="stat-sub" style="margin:12px 0 6px">Forward records for resolved hostname</div>`;
-                    html += r.forward_records.map(renderDnsRecord).join('');
+                let record_type = typeEl ? typeEl.value : 'AUTO';
+                if (isIpAddress(host)) record_type = 'AUTO';
+                if (out) out.innerHTML = '<span class="loading"></span> Looking up…';
+                try {
+                    const r = await api('/network/dns', { method: 'POST', body: JSON.stringify({ host, record_type }) });
+                    const hasData = (r.records && r.records.length) || (r.reverse && (r.reverse.ptr || r.reverse.mac));
+                    if (r.error && !hasData) {
+                        if (out) out.innerHTML = '<span class="tag err">' + escHtml(r.error) + '</span>';
+                        return;
+                    }
+                    const mode = r.query_mode === 'reverse'
+                        ? '<div class="stat-sub" style="margin-bottom:10px"><span class="tag ok">Reverse lookup</span> for <span class="mono">' + escHtml(r.host) + '</span>' + (r.reverse && r.reverse.sources && r.reverse.sources.length ? ' · via ' + escHtml(r.reverse.sources.join(', ')) : '') + '</div>'
+                        : '<div class="stat-sub" style="margin-bottom:10px"><span class="tag info">Forward lookup</span> for <span class="mono">' + escHtml(r.host) + '</span></div>';
+                    let html = mode;
+                    if (r.note) html += '<div class="stat-sub" style="margin-bottom:10px;color:var(--warn)">' + escHtml(r.note) + '</div>';
+                    if (r.error && hasData) html += '<div class="stat-sub" style="margin-bottom:10px;color:var(--muted)">' + escHtml(r.error) + '</div>';
+                    if (r.reverse) {
+                        html += '<div class="kv" style="margin:12px 0">'
+                            + '<dt>Hostname (PTR)</dt><dd class="mono">' + escHtml(r.reverse.ptr || '—') + '</dd>'
+                            + '<dt>Aliases</dt><dd>' + (r.reverse.aliases && r.reverse.aliases.length ? r.reverse.aliases.map(a => '<span class="mono">' + escHtml(a) + '</span>').join('<br>') : '—') + '</dd>'
+                            + '<dt>MAC (ARP)</dt><dd class="mono">' + escHtml(r.reverse.mac || '—') + '</dd>'
+                            + '<dt>IPs</dt><dd class="mono">' + escHtml((r.reverse.ips || []).join(', ') || '—') + '</dd>'
+                            + '</div>';
+                    }
+                    html += (r.records || []).map(renderDnsRecord).join('');
+                    if (r.forward_records && r.forward_records.length) {
+                        html += '<div class="stat-sub" style="margin:12px 0 6px">Forward records for resolved hostname</div>';
+                        html += r.forward_records.map(renderDnsRecord).join('');
+                    }
+                    if (out) out.innerHTML = html || '<div class="empty">No records found</div>';
+                } catch (e) {
+                    if (out) out.innerHTML = '<span class="tag err">Lookup failed: ' + escHtml(e && e.message) + '</span>';
                 }
-                $('dnsResult').innerHTML = html || '<div class="empty">No records found</div>';
-            } catch (e) {
-                $('dnsResult').innerHTML = `<span class="tag err">Lookup failed: ${esc(e.message)}</span>`;
-            }
+            }, 'btnDns');
         }
 
         async function runScan() {
-            const host = $('scanHost').value.trim();
-            const portsStr = $('scanPorts').value.trim();
-            const ports = portsStr ? portsStr.split(/[,\s]+/).map(Number).filter(n => n > 0) : null;
-            $('scanResult').innerHTML = '<span class="loading"></span> Scanning…';
-            const r = await api('/network/portscan', { method: 'POST', body: JSON.stringify({ host, ports, timeout_sec: 1 }) });
-            $('scanResult').innerHTML = `
-                <div class="stat-sub" style="margin-bottom:10px;">Scanned ${r.scanned} ports · <strong>${r.open_count} open</strong></div>
-                ${r.open.length ? r.open.map(p => `<span class="tag ok" style="margin:4px">${p.port} ${esc(p.service)}</span>`).join('') : '<span class="tag info">No open ports in scan range</span>'}`;
+            await withBusy(async () => {
+                const hostEl = el('scanHost');
+                const portsEl = el('scanPorts');
+                const out = el('scanResult');
+                const host = hostEl ? hostEl.value.trim() : '';
+                const portsStr = portsEl ? portsEl.value.trim() : '';
+                const ports = portsStr ? portsStr.split(/[,\s]+/).map(Number).filter(n => n > 0) : null;
+                if (out) out.innerHTML = '<span class="loading"></span> Scanning…';
+                try {
+                    const r = await api('/network/portscan', { method: 'POST', body: JSON.stringify({ host, ports, timeout_sec: 1 }) });
+                    const open = (r && r.open) || [];
+                    if (out) out.innerHTML = `
+                <div class="stat-sub" style="margin-bottom:10px;">Scanned ${escHtml(r.scanned)} ports · <strong>${escHtml(r.open_count)} open</strong></div>
+                ${open.length ? open.map(p => '<span class="tag ok" style="margin:4px">' + escHtml(p.port) + ' ' + escHtml(p.service) + '</span>').join('') : '<span class="tag info">No open ports in scan range</span>'}`;
+                } catch (e) {
+                    if (out) out.innerHTML = '<span class="tag err">' + escHtml((e && e.message) || 'Scan failed') + '</span>';
+                }
+            }, 'btnScan');
         }
 
         async function runDiag() {
-            $('diagResult').innerHTML = '<div class="empty"><span class="loading"></span> Running diagnostics…</div>';
-            const r = await api('/network/diagnostics');
-            const issues = r.issues.map(i => `<div style="margin:6px 0"><span class="tag ${i.level === 'error' ? 'err' : i.level === 'warn' ? 'warn' : 'info'}">${i.level}</span> ${esc(i.message)}</div>`).join('');
-            $('diagResult').innerHTML = `
+            await withBusy(async () => {
+                const out = el('diagResult');
+                if (out) out.innerHTML = '<div class="empty"><span class="loading"></span> Running diagnostics…</div>';
+                try {
+                    const r = await api('/network/diagnostics');
+                    const issuesList = (r && r.issues) || [];
+                    const issues = issuesList.map(i => {
+                        i = i || {};
+                        return '<div style="margin:6px 0"><span class="tag ' + (i.level === 'error' ? 'err' : i.level === 'warn' ? 'warn' : 'info') + '">' + escHtml(i.level) + '</span> ' + escHtml(i.message) + '</div>';
+                    }).join('');
+                    const ov = (r && r.overview) || {};
+                    const cpu = ov.cpu || {};
+                    const mem = ov.memory || {};
+                    const dns = (r && r.dns_test) || {};
+                    const gp = r && r.gateway_ping;
+                    if (out) out.innerHTML = `
                 <div style="margin-bottom:14px">
                     <span class="tag ${r.healthy ? 'ok' : 'warn'}">${r.healthy ? 'HEALTHY' : 'ISSUES DETECTED'}</span>
-                    <span class="stat-sub" style="margin-left:10px">${esc(r.timestamp)}</span>
+                    <span class="stat-sub" style="margin-left:10px">${escHtml(r.timestamp)}</span>
                 </div>
                 <div class="kv">
-                    <dt>Gateway</dt><dd class="mono">${esc(r.gateway || '—')}</dd>
-                    <dt>Gateway ping</dt><dd>${r.gateway_ping ? (r.gateway_ping.success ? '<span class="tag ok">OK</span> ' + (r.gateway_ping.stats?.avg_ms || '') + ' ms avg' : '<span class="tag err">Failed</span>') : '—'}</dd>
-                    <dt>DNS test</dt><dd>${r.dns_test.records?.length ? '<span class="tag ok">Resolved</span> ' + r.dns_test.records.map(x=>x.value).join(', ') : '<span class="tag err">' + esc(r.dns_test.error || 'Failed') + '</span>'}</dd>
-                    <dt>CPU</dt><dd>${r.overview.cpu.percent}%</dd>
-                    <dt>Memory</dt><dd>${r.overview.memory.percent}%</dd>
+                    <dt>Gateway</dt><dd class="mono">${escHtml(r.gateway || '—')}</dd>
+                    <dt>Gateway ping</dt><dd>${gp ? (gp.success ? '<span class="tag ok">OK</span> ' + escHtml((gp.stats && gp.stats.avg_ms) || '') + ' ms avg' : '<span class="tag err">Failed</span>') : '—'}</dd>
+                    <dt>DNS test</dt><dd>${dns.records && dns.records.length ? '<span class="tag ok">Resolved</span> ' + escHtml(dns.records.map(x => x && x.value).filter(Boolean).join(', ')) : '<span class="tag err">' + escHtml(dns.error || 'Failed') + '</span>'}</dd>
+                    <dt>CPU</dt><dd>${escHtml(cpu.percent)}%</dd>
+                    <dt>Memory</dt><dd>${escHtml(mem.percent)}%</dd>
                 </div>
                 ${issues || '<div class="stat-sub">No issues flagged</div>'}`;
+                } catch (e) {
+                    if (out) out.innerHTML = '<div class="empty">' + escHtml((e && e.message) || 'Diagnostics failed') + '</div>';
+                }
+            }, 'btnDiag');
         }
 
-        function esc(s) {
-            if (!s) return '';
-            const d = document.createElement('div');
-            d.textContent = s;
-            return d.innerHTML;
-        }
-
-        // Prefs + export + keyboard QoL
-        const PREF_KEY = 'fafo_lan_task_prefs_v1';
-        try {
-            const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
-            if (p.procSearch && $('procSearch')) $('procSearch').value = p.procSearch;
-            if (p.procSort && $('procSort')) $('procSort').value = p.procSort;
-            if (p.connSearch && $('connSearch')) $('connSearch').value = p.connSearch;
-            if (p.connKind && $('connKind')) $('connKind').value = p.connKind;
-        } catch (_) {}
-        function saveLanPrefs() {
-            try {
-                localStorage.setItem(PREF_KEY, JSON.stringify({
-                    procSearch: $('procSearch')?.value || '',
-                    procSort: $('procSort')?.value || 'cpu',
-                    connSearch: $('connSearch')?.value || '',
-                    connKind: $('connKind')?.value || '',
-                }));
-            } catch (_) {}
-        }
-        function markUpdated() {
-            const el = document.getElementById('lastUpdated');
-            if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
-        }
-        const _loadProcesses = loadProcesses;
-        loadProcesses = async function () {
-            await _loadProcesses();
-            saveLanPrefs();
-            markUpdated();
-        };
-        const _loadDashboard = typeof loadDashboard === 'function' ? loadDashboard : null;
-        if (_loadDashboard) {
-            loadDashboard = async function () {
-                await _loadDashboard();
-                markUpdated();
-            };
-        }
-        $('btnExportProcs')?.addEventListener('click', () => {
+        function exportProcsCsv() {
             const rows = [...document.querySelectorAll('#procTable tbody tr')].filter(tr => !tr.querySelector('.empty'));
             if (!rows.length) return;
             const hdr = ['pid', 'name', 'cpu', 'memory', 'threads', 'net', 'user', 'status'];
@@ -1041,70 +1247,116 @@
                 });
                 if (cells.length) lines.push(cells.join(','));
             });
+            revokeBlobs();
+            const url = trackBlob(URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })));
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+            a.href = url;
             a.download = 'lan-processes-' + Date.now() + '.csv';
             a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-        });
+            setTimeout(() => {
+                try { URL.revokeObjectURL(url); } catch (_) {}
+                const i = _blobUrls.indexOf(url);
+                if (i >= 0) _blobUrls.splice(i, 1);
+            }, 2000);
+        }
+
+        try {
+            const raw = lsGet(PREF_KEY, '{}');
+            const pref = JSON.parse(raw || '{}') || {};
+            if (pref.procSearch && el('procSearch')) el('procSearch').value = pref.procSearch;
+            if (pref.procSort && el('procSort')) el('procSort').value = pref.procSort;
+            if (pref.connSearch && el('connSearch')) el('connSearch').value = pref.connSearch;
+            if (pref.connKind && el('connKind')) el('connKind').value = pref.connKind;
+        } catch (_) {}
+
         document.addEventListener('keydown', (e) => {
-            const t = e.target;
-            const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-            if (e.key === '/' && !typing) {
-                e.preventDefault();
-                const view = document.querySelector('.nav-btn.active')?.dataset.view;
-                if (view === 'connections') $('connSearch')?.focus();
-                else $('procSearch')?.focus();
+            const tgt = e.target;
+            const typing = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT' || tgt.isContentEditable);
+            if (e.key === 'Escape') {
+                const drawer = el('procDrawer');
+                if (drawer && drawer.classList.contains('open')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDrawer();
+                }
                 return;
             }
-            if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) {
+            if (typing) {
+                if (e.key === 'Escape' && tgt && tgt.blur) tgt.blur();
+                return;
+            }
+            if (e.key === '/') {
                 e.preventDefault();
-                refreshCurrentView?.();
+                const active = document.querySelector('.nav-btn.active');
+                const view = active && active.dataset ? active.dataset.view : '';
+                if (view === 'connections') { const n = el('connSearch'); if (n) n.focus(); }
+                else { const n = el('procSearch'); if (n) n.focus(); }
+                return;
+            }
+            if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                refreshCurrentView();
+                return;
+            }
+            if (e.key >= '1' && e.key <= '6' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const idx = +e.key - 1;
+                if (VALID_VIEWS[idx]) {
+                    e.preventDefault();
+                    selectView(VALID_VIEWS[idx]);
+                    try { window.history.replaceState(null, '', '#' + VALID_VIEWS[idx]); } catch (_) {}
+                }
+                return;
+            }
+            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey) {
+                const active = document.querySelector('.nav-btn.active');
+                const view = active && active.dataset ? active.dataset.view : 'dashboard';
+                let i = VALID_VIEWS.indexOf(view);
+                if (i < 0) i = 0;
+                i = e.key === 'ArrowRight' ? (i + 1) % VALID_VIEWS.length : (i - 1 + VALID_VIEWS.length) % VALID_VIEWS.length;
+                e.preventDefault();
+                selectView(VALID_VIEWS[i]);
+                try { window.history.replaceState(null, '', '#' + VALID_VIEWS[i]); } catch (_) {}
             }
         });
 
-        // Events
-        $('btnRefreshProcs').addEventListener('click', loadProcesses);
-        $('procSearch').addEventListener('input', debounce(loadProcesses, 300));
-        $('procSort').addEventListener('change', loadProcesses);
-        $('btnRefreshConn').addEventListener('click', loadConnections);
-        $('connSearch').addEventListener('input', debounce(loadConnections, 300));
-        $('connKind').addEventListener('change', loadConnections);
-        $('btnDiscover').addEventListener('click', discoverLan);
-        $('btnPing').addEventListener('click', runPing);
-        $('btnTrace').addEventListener('click', runTrace);
-        $('btnTelnet').addEventListener('click', runTelnet);
-        $('btnDns').addEventListener('click', runDns);
-        $('dnsHost').addEventListener('input', syncDnsMode);
-        $('dnsHost').addEventListener('keydown', e => { if (e.key === 'Enter') runDns(); });
+        bind('btnRefreshProcs', 'click', () => withBusy(() => loadProcesses(), 'btnRefreshProcs'));
+        bind('procSearch', 'input', debounce(() => loadProcesses().catch(() => {}), 300));
+        bind('procSort', 'change', () => loadProcesses().catch(() => {}));
+        bind('btnRefreshConn', 'click', () => withBusy(() => loadConnections(), 'btnRefreshConn'));
+        bind('connSearch', 'input', debounce(() => loadConnections().catch(() => {}), 300));
+        bind('connKind', 'change', () => loadConnections().catch(() => {}));
+        bind('btnDiscover', 'click', discoverLan);
+        bind('btnPing', 'click', runPing);
+        bind('btnTrace', 'click', runTrace);
+        bind('btnTelnet', 'click', runTelnet);
+        bind('btnDns', 'click', runDns);
+        bind('dnsHost', 'input', syncDnsMode);
+        bind('dnsHost', 'keydown', e => { if (e.key === 'Enter') runDns(); });
         syncDnsMode();
-        $('btnScan').addEventListener('click', runScan);
-        $('btnDiag').addEventListener('click', runDiag);
-        $('closeDrawer').addEventListener('click', closeDrawer);
-        $('overlay').addEventListener('click', closeDrawer);
-        $('btnKillProc').addEventListener('click', () => killProcess(false));
-        $('btnForceKill').addEventListener('click', () => killProcess(true));
-        $('retryServer').addEventListener('click', e => { e.preventDefault(); init(); });
-
-        function debounce(fn, ms) {
-            let t;
-            return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-        }
+        bind('btnScan', 'click', runScan);
+        bind('btnDiag', 'click', runDiag);
+        bind('closeDrawer', 'click', closeDrawer);
+        bind('overlay', 'click', closeDrawer);
+        bind('btnKillProc', 'click', () => killProcess(false));
+        bind('btnForceKill', 'click', () => killProcess(true));
+        bind('retryServer', 'click', e => { e.preventDefault(); init(); });
+        bind('btnExportProcs', 'click', () => { try { exportProcsCsv(); } catch (_) {} });
 
         function startPolling() {
             clearInterval(pollTimer);
             pollTimer = null;
-            // Pause when tab is hidden; 2.5s only for live dashboard; slower for other views
             function intervalForView() {
                 if (document.hidden) return 0;
-                const v = document.querySelector('.nav-btn.active')?.dataset.view;
-                if (v === 'dashboard') return 4000; // was 2.5s — slightly gentler
+                const active = document.querySelector('.nav-btn.active');
+                const v = active && active.dataset ? active.dataset.view : '';
+                if (v === 'dashboard') return 4000;
                 if (v === 'processes' || v === 'procs') return 5000;
                 return 15000;
             }
             function tick() {
                 if (document.hidden) return;
-                const v = document.querySelector('.nav-btn.active')?.dataset.view;
+                const active = document.querySelector('.nav-btn.active');
+                const v = active && active.dataset ? active.dataset.view : '';
                 if (v === 'dashboard') loadDashboard().catch(() => {});
             }
             function arm() {
@@ -1118,7 +1370,6 @@
                 arm();
                 if (!document.hidden) tick();
             });
-            // Re-arm when user switches sidebar views
             document.querySelectorAll('.nav-btn').forEach((b) => {
                 b.addEventListener('click', () => setTimeout(arm, 40));
             });
@@ -1126,11 +1377,11 @@
         }
 
         async function init() {
-            // Apply deep link before first data load so processes view can fetch correctly
             if (location.hash) applyRouteFromHash();
             if (await checkServer()) {
-                const active = document.querySelector('.nav-btn.active')?.dataset.view || 'dashboard';
-                if (active === 'dashboard') await loadDashboard();
+                const active = document.querySelector('.nav-btn.active');
+                const view = (active && active.dataset && active.dataset.view) || 'dashboard';
+                if (view === 'dashboard') await loadDashboard();
                 else refreshCurrentView();
                 startPolling();
             }
@@ -1210,8 +1461,10 @@
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
     const t = e.target;
+    const drawer = document.getElementById('procDrawer');
+    if (drawer && drawer.classList.contains('open')) return;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    if (t && t.closest && t.closest('[role="dialog"], .modal, .overlay, .ui-modal, .detail-drawer')) return;
     location.href = launcherHref();
   }, true);
   // One soft status toast so launch failures are visible

@@ -9,8 +9,15 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
-      --bg: #050508; --panel: #0c0c12; --accent: #a78bfa; --accent2: #00f3ff;
-      --text: #e8e8ec; --muted: #888; --ok: #00ff88;
+      --bg: #0b1220; --panel: #121820; --navy: #0b1220; --charcoal: #1a2230;
+      --accent: #e879f9; --accent2: #00e5ff; --gold: #f5c542; --magenta: #e879f9;
+      --text: #f2f4f8; --muted: #9aa3b2; --ok: #00ff88;
+    }
+    :focus-visible {
+      outline: 2px solid var(--gold); outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
@@ -39,7 +46,7 @@
       font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
       transition: 0.15s;
     }
-    .hub-tab:hover { color: #ddd; border-color: var(--accent); }
+    .hub-tab:hover { color: var(--gold); border-color: var(--gold); }
     .hub-tab.active {
       background: rgba(167, 139, 250, 0.2);
       color: #fff; border-color: var(--accent);
@@ -172,6 +179,44 @@
       let current = 'match';
       let loadTimer = null;
       let loadGen = 0;
+      let lastFrameSrc = '';
+
+      function el(id) {
+        try {
+          if (!id) return null;
+          return typeof id === 'string' ? document.getElementById(id) : id;
+        } catch (_) { return null; }
+      }
+      function setText(n, txt) {
+        const node = typeof n === 'string' ? el(n) : n;
+        if (!node) return null;
+        node.textContent = txt == null ? '' : String(txt);
+        return node;
+      }
+      function bind(n, ev, fn) {
+        const node = typeof n === 'string' ? el(n) : n;
+        if (!node || !ev || typeof fn !== 'function') return null;
+        node.addEventListener(ev, fn);
+        return node;
+      }
+      function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
+      function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
+      const _busy = new Set();
+      async function withBusy(key, fn, btn) {
+        if (!key || _busy.has(key)) return;
+        _busy.add(key);
+        const b = typeof btn === 'string' ? el(btn) : btn;
+        if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
+        try { return await fn(); }
+        finally {
+          _busy.delete(key);
+          if (b) { b.disabled = false; b.removeAttribute('aria-busy'); }
+        }
+      }
+      function revokeUrl(u) { try { if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u); } catch (_) {} }
+      function escapeHtml(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
 
       function normalizeTab(raw) {
         let h = String(raw || '').replace(/^#/, '').toLowerCase();
@@ -195,10 +240,8 @@
         const tab = normalizeTab(h);
         if (tab) return tab;
         if (!h || h === 'compare') {
-          try {
-            const last = localStorage.getItem(LS_TAB);
-            if (last && TABS[last]) return last;
-          } catch (_) {}
+          const last = lsGet(LS_TAB, '');
+          if (last && TABS[last]) return last;
         }
         return 'match';
       }
@@ -211,42 +254,41 @@
       }
 
       async function pingServer() {
-        const badge = document.getElementById('serverBadge');
+        const badge = el('serverBadge');
         if (!badge) return;
         try {
           const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
-          badge.textContent = on ? '● Online' : '○ Offline — click ▶ Start';
+          setText(badge, on ? '● Online' : '○ Offline — click ▶ Start');
           badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
           badge.title = on ? 'Toolbox server online' : 'Server offline — click to start from this page';
         } catch (_) {
-          badge.textContent = '○ Offline';
+          setText(badge, '○ Offline');
           badge.className = 'server-badge bad';
         }
       }
 
       async function startServerFromHub() {
-        const btn = document.getElementById('btnStartServer');
-        if (btn) btn.disabled = true;
-        try {
-          window.AIToolboxUI?.toast?.('Starting toolbox server…', 'ok');
-          if (window.AIToolboxAPI?.startServer) {
-            await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
-          } else {
-            location.href = launcherHref();
-            return;
+        return withBusy('start-server', async () => {
+          try {
+            window.AIToolboxUI?.toast?.('Starting toolbox server…', 'ok');
+            if (window.AIToolboxAPI?.startServer) {
+              await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+            } else {
+              location.href = launcherHref();
+              return;
+            }
+            await pingServer();
+            window.AIToolboxUI?.toast?.('Server ready — reloading workspace', 'ok');
+            await showTab(current, false);
+          } catch (e) {
+            window.AIToolboxUI?.toast?.(e?.message || 'Start failed — open Launcher', 'warn');
           }
-          await pingServer();
-          window.AIToolboxUI?.toast?.('Server ready — reloading workspace', 'ok');
-          showTab(current, false);
-        } catch (e) {
-          window.AIToolboxUI?.toast?.(e.message || 'Start failed — open Launcher', 'warn');
-        } finally {
-          if (btn) btn.disabled = false;
-        }
+        }, 'btnStartServer');
       }
 
       async function resolveSrc(tab) {
-        const t = TABS[tab];
+        const t = TABS[tab] || TABS.match;
+        if (!t) return '';
         let src = t.path;
         const qs = location.search || '';
         try {
@@ -262,104 +304,141 @@
       }
 
       function showLoadFail(title, src) {
+        if (!loading) return;
         loading.classList.remove('hide');
         loading.classList.add('fail');
+        const safeTitle = escapeHtml(title || 'Workspace');
+        const safeSrc = escapeHtml(src || '');
+        const safeLaunch = escapeHtml(launcherHref());
         loading.innerHTML =
-          '<div><strong style="color:#fff">' + title + ' didn’t load</strong></div>' +
+          '<div><strong style="color:#fff">' + safeTitle + ' didn’t load</strong></div>' +
           '<div style="max-width:420px;color:var(--muted);font-size:12px;line-height:1.45">' +
           'Workspace tab timed out or failed. Retry, open full-window, or return to the Launcher.</div>' +
           '<div class="actions">' +
           '<button type="button" id="hubRetry">↻ Retry</button>' +
-          '<a href="' + String(src).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">↗ Open full window</a>' +
-          '<a class="ghost" href="' + launcherHref() + '">← Launcher</a>' +
+          '<a href="' + safeSrc + '" target="_blank" rel="noopener">↗ Open full window</a>' +
+          '<a class="ghost" href="' + safeLaunch + '">← Launcher</a>' +
           '<button type="button" class="ghost" id="hubStartFromFail">▶ Start Server</button>' +
           '</div>';
-        document.getElementById('hubRetry')?.addEventListener('click', () => showTab(current, false));
-        document.getElementById('hubStartFromFail')?.addEventListener('click', startServerFromHub);
+        bind('hubRetry', 'click', () => showTab(current, false));
+        bind('hubStartFromFail', 'click', startServerFromHub);
       }
 
       async function showTab(id, pushHash) {
-        if (!TABS[id]) id = 'match';
-        current = id;
-        document.querySelectorAll('.hub-tab').forEach((b) => {
-          b.classList.toggle('active', b.dataset.tab === id);
+        return withBusy('show-tab', async () => {
+          if (!TABS[id]) id = 'match';
+          current = id;
+          document.querySelectorAll('.hub-tab').forEach((b) => {
+            const on = b.dataset.tab === id;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+          });
+          const t = TABS[id];
+          if (!t) return;
+          document.title = t.title + ' — Compare Hub';
+          setText(meta, t.meta);
+          lsSet(LS_TAB, id);
+          if (pushHash !== false) {
+            if (location.hash.replace(/^#/, '') !== id) {
+              try { history.replaceState(null, '', '#' + id); } catch (_) {}
+            }
+          }
+          const gen = ++loadGen;
+          if (loadTimer) clearTimeout(loadTimer);
+          if (loading) {
+            loading.classList.remove('hide', 'fail');
+            setText(loading, 'Loading ' + t.title + '…');
+          }
+          const src = await resolveSrc(id);
+          if (!frame) return;
+          frame.onload = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            if (loading) {
+              loading.classList.add('hide');
+              loading.classList.remove('fail');
+            }
+          };
+          frame.onerror = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            showLoadFail(t.title, src);
+          };
+          loadTimer = setTimeout(() => {
+            if (gen !== loadGen) return;
+            if (loading && loading.classList.contains('hide')) return;
+            try {
+              const doc = frame.contentDocument;
+              if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+                if (loading) loading.classList.add('hide');
+                return;
+              }
+            } catch (_) {
+              if (frame.getAttribute('src')) {
+                if (loading) loading.classList.add('hide');
+                return;
+              }
+            }
+            showLoadFail(t.title, src);
+          }, 25000);
+          revokeUrl(lastFrameSrc);
+          lastFrameSrc = src || '';
+          frame.src = src || 'about:blank';
         });
-        const t = TABS[id];
-        document.title = t.title + ' — Compare Hub';
-        meta.innerHTML = t.meta;
-        try { localStorage.setItem(LS_TAB, id); } catch (_) {}
-        if (pushHash !== false) {
-          if (location.hash.replace(/^#/, '') !== id) {
-            history.replaceState(null, '', '#' + id);
-          }
-        }
-        const gen = ++loadGen;
-        if (loadTimer) clearTimeout(loadTimer);
-        loading.classList.remove('hide', 'fail');
-        loading.textContent = 'Loading ' + t.title + '…';
-        const src = await resolveSrc(id);
-        frame.onload = () => {
-          if (gen !== loadGen) return;
-          if (loadTimer) clearTimeout(loadTimer);
-          loading.classList.add('hide');
-          loading.classList.remove('fail');
-        };
-        frame.onerror = () => {
-          if (gen !== loadGen) return;
-          if (loadTimer) clearTimeout(loadTimer);
-          showLoadFail(t.title, src);
-        };
-        loadTimer = setTimeout(() => {
-          if (gen !== loadGen) return;
-          if (loading.classList.contains('hide')) return;
-          try {
-            const doc = frame.contentDocument;
-            if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
-              loading.classList.add('hide');
-              return;
-            }
-          } catch (_) {
-            if (frame.getAttribute('src')) {
-              loading.classList.add('hide');
-              return;
-            }
-          }
-          showLoadFail(t.title, src);
-        }, 25000);
-        frame.src = src;
       }
 
       async function copyHubReport() {
-        const t = TABS[current] || TABS.match;
-        const text = [
-          'FAFO Compare Hub — session report',
-          'Time: ' + new Date().toISOString(),
-          'Active workspace: ' + (t.title || current),
-          'URL: ' + location.href,
-          'Server: ' + (document.getElementById('serverBadge')?.textContent || 'unknown'),
-          '',
-          'Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator',
-          'Counterparts: Media Hub · VSR · Pair Review · Guided Match',
-        ].join('\n');
-        try {
-          await navigator.clipboard.writeText(text);
-          window.AIToolboxUI?.toast?.('Compare report copied', 'ok');
-        } catch (_) { prompt('Copy report:', text); }
+        return withBusy('copy-report', async () => {
+          const t = TABS[current] || TABS.match || { title: current };
+          const text = [
+            'FAFO Compare Hub — session report',
+            'Time: ' + new Date().toISOString(),
+            'Active workspace: ' + (t.title || current),
+            'URL: ' + location.href,
+            'Server: ' + (el('serverBadge')?.textContent || 'unknown'),
+            '',
+            'Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator',
+            'Counterparts: Media Hub · VSR · Pair Review · Guided Match',
+          ].join('\n');
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              window.AIToolboxUI?.toast?.('Compare report copied', 'ok');
+            } else {
+              prompt('Copy report:', text);
+            }
+          } catch (_) { try { prompt('Copy report:', text); } catch (__) {} }
+        }, 'btnCopyReport');
       }
 
-      document.getElementById('hubTabs').addEventListener('click', (e) => {
-        const btn = e.target.closest('.hub-tab');
+      bind('hubTabs', 'click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('.hub-tab') : null;
         if (!btn) return;
         showTab(btn.dataset.tab, true);
       });
-
-      document.getElementById('btnPopout').addEventListener('click', async () => {
-        window.open(await resolveSrc(current), '_blank');
+      bind('hubTabs', 'keydown', (e) => {
+        const tabs = Array.from(document.querySelectorAll('.hub-tab'));
+        if (!tabs.length) return;
+        const i = tabs.indexOf(document.activeElement);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          const next = tabs[(Math.max(i, 0) + dir + tabs.length) % tabs.length];
+          if (next) next.focus();
+          if (next && next.dataset && next.dataset.tab) showTab(next.dataset.tab, true);
+        }
       });
-      document.getElementById('btnCopyReport').addEventListener('click', copyHubReport);
-      document.getElementById('btnStartServer')?.addEventListener('click', startServerFromHub);
-      document.getElementById('serverBadge')?.addEventListener('click', () => {
-        if (document.getElementById('serverBadge').classList.contains('bad')) startServerFromHub();
+
+      bind('btnPopout', 'click', async () => {
+        const src = await resolveSrc(current);
+        if (src) window.open(src, '_blank', 'noopener');
+      });
+      bind('btnCopyReport', 'click', copyHubReport);
+      bind('btnStartServer', 'click', startServerFromHub);
+      bind('serverBadge', 'click', () => {
+        const badge = el('serverBadge');
+        if (badge && badge.classList.contains('bad')) startServerFromHub();
         else pingServer();
       });
 
@@ -426,8 +505,7 @@
   // One soft status toast so launch failures are visible
   window.addEventListener('load', function(){
     try {
-      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
-      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      try { if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return; sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1'); } catch(_) { return; }
       if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
     } catch(_){}
   });

@@ -8,9 +8,10 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root {
-  --bg: #050508; --panel: #0c0f16; --border: rgba(0, 243, 255, 0.2);
-  --accent: #00f3ff; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
-  --text: #e8e8ec; --muted: #7a8499;
+  --bg: #070b12; --panel: #0c1220; --panel2: #141c2c; --border: rgba(0, 243, 255, 0.24);
+  --accent: #00f3ff; --gold: #f5c542; --magenta: #e879f9;
+  --ok: #34d399; --warn: #fbbf24; --bad: #f43f5e;
+  --text: #f1f5f9; --muted: #b6c4d8;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -126,6 +127,17 @@ fieldset.box {
 fieldset.box legend {
   padding: 0 8px; color: var(--accent); font-size: 11px;
   text-transform: uppercase; letter-spacing: .06em;
+}
+
+.btn:focus-visible,.inp:focus-visible,.sel:focus-visible,.ta:focus-visible,.adapter-pill:focus-visible,.nav a:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px;
+}
+.adapter-pill.active{box-shadow:inset 3px 0 0 var(--magenta)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+@media (prefers-contrast:more){
+  :root{--text:#ffffff;--muted:#d5deea;--border:rgba(0,243,255,.45)}
 }
 </style>
 </head>
@@ -310,18 +322,72 @@ let ipApiOnline = false; // new /api/ip/* routes
 let useManualAdapter = false;
 let userPickedAdapter = false; // don't fight manual choice until refresh/auto on
 
+const UI = () => window.AIToolboxUI;
+function el(id) {
+  try { return typeof id === 'string' ? el(id) : id; } catch (_) { return null; }
+}
+function setText(id, text) {
+  const n = el(id);
+  if (n) n.textContent = text == null ? '' : String(text);
+}
+function bind(id, ev, fn) {
+  const n = el(id);
+  if (!n || !fn) return;
+  n.addEventListener(ev, fn);
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+}
+function escHtml(s) {
+  const u = UI()?.escapeHtml;
+  if (typeof u === 'function') return u(s);
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const _blobUrls = [];
+function trackBlob(url) {
+  if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+  return url;
+}
+function revokeBlobs() {
+  while (_blobUrls.length) {
+    try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+  }
+}
+window.addEventListener('pagehide', revokeBlobs);
+let actionBusy = false;
+async function withBusy(fn, btnId) {
+  if (actionBusy) return;
+  actionBusy = true;
+  const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : ['btnSave','btnApplyForm','btnCapture','btnExport','btnImport','btnRefresh','btnRefreshAdapters','btnStartServer'];
+  const btns = ids.map(el).filter(Boolean);
+  const prev = btns.map(b => b.disabled);
+  btns.forEach(b => { b.disabled = true; });
+  try { return await fn(); }
+  finally {
+    actionBusy = false;
+    btns.forEach((b, i) => { b.disabled = prev[i]; });
+  }
+}
+
+
+
 function toast(msg, ok) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.style.borderColor = ok === false ? 'rgba(248,113,113,.5)' : 'rgba(0,243,255,.35)';
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 3500);
+  const n = el('toast');
+  if (!n) { try { UI()?.toast?.(String(msg||''), ok === false ? 'warn' : 'ok'); } catch (_) {} return; }
+  n.textContent = msg == null ? '' : String(msg);
+  n.style.borderColor = ok === false ? 'rgba(248,113,113,.5)' : 'rgba(0,243,255,.35)';
+  n.classList.add('show');
+  setTimeout(() => n.classList.remove('show'), 3500);
 }
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
-}
+const esc = escHtml;
 function uid() {
   return 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
@@ -334,18 +400,20 @@ function prefixToMask(p) {
 }
 function maskToPrefix(mask) {
   try {
-    const bits = mask.split('.').map(n => parseInt(n, 10)).map(n => n.toString(2).padStart(8, '0')).join('');
+    const bits = String(mask || '').split('.').map(n => parseInt(n, 10)).map(n => n.toString(2).padStart(8, '0')).join('');
     if (!/^1*0*$/.test(bits)) return 24;
     return bits.split('1').length - 1;
   } catch { return 24; }
 }
 function showBanner(msg, kind) {
-  const b = document.getElementById('statusBanner');
-  b.innerHTML = msg;
+  const b = el('statusBanner');
+  if (!b) return;
+  b.innerHTML = msg == null ? '' : String(msg);
   b.className = 'banner show' + (kind ? ' ' + kind : '');
 }
 function hideBanner() {
-  const b = document.getElementById('statusBanner');
+  const b = el('statusBanner');
+  if (!b) return;
   b.className = 'banner';
   b.textContent = '';
 }
@@ -379,15 +447,17 @@ async function api(path, opts = {}) {
 /* ---------- localStorage profiles (always works) ---------- */
 function loadLocalProfiles() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = lsGet(LS_KEY, null);
     if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
   } catch { return []; }
 }
 function saveLocalProfiles(list) {
-  profiles = list;
-  localStorage.setItem(LS_KEY, JSON.stringify(list));
+  profiles = Array.isArray(list) ? list : [];
+  if (!lsSet(LS_KEY, JSON.stringify(profiles))) {
+    try { toast('Could not persist profiles (storage blocked)', false); } catch (_) {}
+  }
 }
 function upsertLocal(p) {
   const list = loadLocalProfiles();
@@ -402,7 +472,7 @@ function deleteLocal(id) {
 
 /* ---------- normalize adapters from either API ---------- */
 function normalizeAdapters(rawList) {
-  return (rawList || []).map(a => {
+  return (rawList || []).filter(Boolean).map(a => {
     // /api/ip/adapters shape
     if (a.ipv4 && Array.isArray(a.ipv4) && a.ipv4[0] && a.ipv4[0].address !== undefined) {
       return {
@@ -438,13 +508,15 @@ function adapterLabel(a) {
 
 function loadOpts() {
   try {
-    return JSON.parse(localStorage.getItem(LS_OPTS) || '{}') || {};
+    return JSON.parse(lsGet(LS_OPTS, '{}') || '{}') || {};
   } catch { return {}; }
 }
 function saveOpts() {
-  localStorage.setItem(LS_OPTS, JSON.stringify({
-    autoSelect: !!document.getElementById('optAutoSelect').checked,
-    preferEthernet: !!document.getElementById('optPreferEthernet').checked,
+  const a = el('optAutoSelect');
+  const e = el('optPreferEthernet');
+  lsSet(LS_OPTS, JSON.stringify({
+    autoSelect: !!(a && a.checked),
+    preferEthernet: !!(e && e.checked),
   }));
 }
 function isEthernetName(name) {
@@ -457,6 +529,7 @@ function isEthernetName(name) {
 }
 /** Score higher = better "active" candidate */
 function scoreAdapter(a, preferEthernet) {
+  if (!a) return 0;
   let s = 0;
   if (a.is_up) s += 100;
   const ip = a.ipv4 && a.ipv4[0] && a.ipv4[0].address;
@@ -480,13 +553,13 @@ function pickActiveAdapter(preferEthernet) {
   return best;
 }
 function applyActiveSelection(force) {
-  const auto = document.getElementById('optAutoSelect').checked;
-  const preferEth = document.getElementById('optPreferEthernet').checked;
+  const auto = !!(el('optAutoSelect') && el('optAutoSelect').checked);
+  const preferEth = !!(el('optPreferEthernet') && el('optPreferEthernet').checked);
   const active = pickActiveAdapter(preferEth);
-  const hint = document.getElementById('activeHint');
+  const hint = el('activeHint');
 
   if (!active) {
-    hint.textContent = 'No active adapter detected yet.';
+    if (hint) hint.textContent = 'No active adapter detected yet.';
     return null;
   }
 
@@ -500,13 +573,14 @@ function applyActiveSelection(force) {
   if (userPickedAdapter && !force) return active;
   if (useManualAdapter && !force) return active;
 
-  const selA = document.getElementById('profAdapter');
-  const selC = document.getElementById('captureAdapter');
-  if ([...selA.options].some(o => o.value === active.name)) {
+  const selA = el('profAdapter');
+  const selC = el('captureAdapter');
+  if (selA && [...selA.options].some(o => o.value === active.name)) {
     selA.value = active.name;
-    selC.value = active.name;
+    if (selC) selC.value = active.name;
   }
-  document.getElementById('profAdapterCustom').value = active.name;
+  const custom = el('profAdapterCustom');
+  if (custom) custom.value = active.name;
 
   // highlight in list
   document.querySelectorAll('.adapter-pill').forEach(b => {
@@ -516,12 +590,13 @@ function applyActiveSelection(force) {
 }
 
 function fillAdapterSelects() {
-  const selA = document.getElementById('profAdapter');
-  const selC = document.getElementById('captureAdapter');
+  const selA = el('profAdapter');
+  const selC = el('captureAdapter');
+  if (!selA || !selC) return;
   const prevA = selA.value;
   const prevC = selC.value;
-  const preferEth = document.getElementById('optPreferEthernet').checked;
-  const auto = document.getElementById('optAutoSelect').checked;
+  const preferEth = !!(el('optPreferEthernet') && el('optPreferEthernet').checked);
+  const auto = !!(el('optAutoSelect') && el('optAutoSelect').checked);
 
   if (!adapters.length) {
     selA.innerHTML = '<option value="">— no adapters loaded —</option>';
@@ -547,7 +622,8 @@ function fillAdapterSelects() {
 }
 
 function renderAdapters() {
-  const box = document.getElementById('adapters');
+  const box = el('adapters');
+  if (!box) return;
   if (!adapters.length) {
     box.innerHTML = `<div class="empty">
       No adapters listed yet.<br><br>
@@ -561,20 +637,20 @@ function renderAdapters() {
         <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
       </div>
     </div>`;
-    document.getElementById('btnEmptyStartSrv')?.addEventListener('click', () => document.getElementById('btnStartServer')?.click() || document.getElementById('tbBtnStartServer')?.click());
-    document.getElementById('btnEmptyRefreshAdp')?.addEventListener('click', () => document.getElementById('btnRefreshAdapters')?.click() || document.getElementById('btnRefresh')?.click());
+    el('btnEmptyStartSrv')?.addEventListener('click', () => el('btnStartServer')?.click() || el('tbBtnStartServer')?.click());
+    el('btnEmptyRefreshAdp')?.addEventListener('click', () => el('btnRefreshAdapters')?.click() || el('btnRefresh')?.click());
     return;
   }
   box.innerHTML = adapters.map(a => {
     const ips = (a.ipv4 || []).map(x => x.address + (x.prefix != null ? '/' + x.prefix : '')).join(', ') || '—';
-    return `<button type="button" class="adapter-pill" data-name="${esc(a.name)}">
+    return `<button type="button" class="adapter-pill" tabindex="0" data-name="${esc(a.name)}">
       <strong>${esc(a.name)} ${a.is_up ? '🟢' : '⚪'}</strong>
       <span class="mono">${esc(ips)}</span>
       ${a.mac ? `<span>MAC ${esc(a.mac)}</span>` : ''}
     </button>`;
   }).join('');
   // mark likely-active
-  const preferEth = document.getElementById('optPreferEthernet').checked;
+  const preferEth = !!(el('optPreferEthernet') && el('optPreferEthernet').checked);
   const active = pickActiveAdapter(preferEth);
   box.querySelectorAll('.adapter-pill').forEach(btn => {
     if (active && btn.dataset.name === active.name) {
@@ -583,9 +659,9 @@ function renderAdapters() {
     }
     btn.onclick = () => {
       userPickedAdapter = true;
-      document.getElementById('profAdapter').value = btn.dataset.name;
-      document.getElementById('captureAdapter').value = btn.dataset.name;
-      document.getElementById('profAdapterCustom').value = btn.dataset.name;
+      if (el('profAdapter')) el('profAdapter').value = btn.dataset.name;
+      if (el('captureAdapter')) el('captureAdapter').value = btn.dataset.name;
+      if (el('profAdapterCustom')) el('profAdapterCustom').value = btn.dataset.name;
       box.querySelectorAll('.adapter-pill').forEach(b => {
         b.classList.remove('active');
         b.style.borderColor = '';
@@ -598,21 +674,22 @@ function renderAdapters() {
 }
 
 function getSelectedAdapter() {
-  // Profile flag: always resolve active at read/apply time
-  if (document.getElementById('profUseActiveOnApply').checked) {
-    const active = pickActiveAdapter(document.getElementById('optPreferEthernet').checked);
+  const useActiveEl = el('profUseActiveOnApply');
+  if (useActiveEl && useActiveEl.checked) {
+    const active = pickActiveAdapter(!!(el('optPreferEthernet') && el('optPreferEthernet').checked));
     if (active) return active.name;
   }
   if (useManualAdapter) {
-    return document.getElementById('profAdapterCustom').value.trim();
+    return (el('profAdapterCustom')?.value || '').trim();
   }
-  return document.getElementById('profAdapter').value.trim();
+  return (el('profAdapter')?.value || '').trim();
 }
 
 /** Resolve adapter for apply — honors profile.useActiveOnApply / ACTIVE_TOKEN */
 function resolveAdapterForApply(p) {
+  p = p || {};
   if (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN) {
-    const active = pickActiveAdapter(document.getElementById('optPreferEthernet').checked);
+    const active = pickActiveAdapter(!!(el('optPreferEthernet') && el('optPreferEthernet').checked));
     if (!active) throw new Error('No active adapter to apply to');
     return active.name;
   }
@@ -620,17 +697,20 @@ function resolveAdapterForApply(p) {
 }
 
 function formFromProfile(p) {
-  document.getElementById('profId').value = p.id || '';
-  document.getElementById('profName').value = p.name || '';
-  document.getElementById('profMode').value = p.mode || 'static';
-  document.getElementById('profIp').value = p.ip || '';
-  document.getElementById('profPrefix').value = p.prefix != null ? p.prefix : 24;
-  document.getElementById('profMask').value = p.netmask || prefixToMask(p.prefix || 24);
-  document.getElementById('profGw').value = p.gateway || '';
-  document.getElementById('profDns').value = Array.isArray(p.dns) ? p.dns.join(', ') : (p.dns || '');
-  document.getElementById('profColor').value = p.color || '#00f3ff';
-  document.getElementById('profNotes').value = p.notes || '';
-  document.getElementById('profUseActiveOnApply').checked = !!(p.useActiveOnApply || p.adapter === ACTIVE_TOKEN);
+  p = p || {};
+  const setVal = (id, v) => { const n = el(id); if (n) n.value = v; };
+  const setChk = (id, v) => { const n = el(id); if (n) n.checked = !!v; };
+  setVal('profId', p.id || '');
+  setVal('profName', p.name || '');
+  setVal('profMode', p.mode || 'static');
+  setVal('profIp', p.ip || '');
+  setVal('profPrefix', p.prefix != null ? p.prefix : 24);
+  setVal('profMask', p.netmask || prefixToMask(p.prefix || 24));
+  setVal('profGw', p.gateway || '');
+  setVal('profDns', Array.isArray(p.dns) ? p.dns.join(', ') : (p.dns || ''));
+  setVal('profColor', p.color || '#00f3ff');
+  setVal('profNotes', p.notes || '');
+  setChk('profUseActiveOnApply', !!(p.useActiveOnApply || p.adapter === ACTIVE_TOKEN));
 
   const name = (p.adapter === ACTIVE_TOKEN ? '' : p.adapter) || '';
   if (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN) {
@@ -640,52 +720,52 @@ function formFromProfile(p) {
   const has = adapters.some(a => a.name === name);
   if (name && !has) {
     useManualAdapter = true;
-    document.getElementById('profAdapter').style.display = 'none';
-    document.getElementById('profAdapterCustom').style.display = 'block';
-    document.getElementById('profAdapterCustom').value = name;
-    document.getElementById('btnToggleAdapterType').textContent = 'Pick from adapter list';
+    if (el('profAdapter')) el('profAdapter').style.display = 'none';
+    if (el('profAdapterCustom')) { el('profAdapterCustom').style.display = 'block'; el('profAdapterCustom').value = name; }
+    if (el('btnToggleAdapterType')) el('btnToggleAdapterType').textContent = 'Pick from adapter list';
   } else {
     useManualAdapter = false;
-    document.getElementById('profAdapter').style.display = 'block';
-    document.getElementById('profAdapterCustom').style.display = 'none';
-    if (name) document.getElementById('profAdapter').value = name;
-    document.getElementById('btnToggleAdapterType').textContent = 'Type adapter name manually';
+    if (el('profAdapter')) el('profAdapter').style.display = 'block';
+    if (el('profAdapterCustom')) el('profAdapterCustom').style.display = 'none';
+    if (name && el('profAdapter')) el('profAdapter').value = name;
+    if (el('btnToggleAdapterType')) el('btnToggleAdapterType').textContent = 'Type adapter name manually';
   }
   toggleStatic();
 }
 
 function readForm() {
-  const mode = document.getElementById('profMode').value;
-  const dnsRaw = document.getElementById('profDns').value.trim();
+  const v = (id, d) => { const n = el(id); return n ? n.value : (d == null ? '' : d); };
+  const mode = v('profMode', 'static');
+  const dnsRaw = v('profDns').trim();
   const dns = dnsRaw ? dnsRaw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean) : [];
-  const prefix = parseInt(document.getElementById('profPrefix').value, 10) || 24;
-  let mask = document.getElementById('profMask').value.trim() || prefixToMask(prefix);
-  const id = document.getElementById('profId').value || uid();
-  const useActive = document.getElementById('profUseActiveOnApply').checked;
+  const prefix = parseInt(v('profPrefix', '24'), 10) || 24;
+  let mask = v('profMask').trim() || prefixToMask(prefix);
+  const id = v('profId') || uid();
+  const useActive = !!(el('profUseActiveOnApply') && el('profUseActiveOnApply').checked);
   const adapter = useActive ? ACTIVE_TOKEN : getSelectedAdapter();
-  // When useActive, still store last known concrete name for display
-  const active = pickActiveAdapter(document.getElementById('optPreferEthernet').checked);
+  const active = pickActiveAdapter(!!(el('optPreferEthernet') && el('optPreferEthernet').checked));
   return {
     id,
-    name: document.getElementById('profName').value.trim(),
+    name: v('profName').trim(),
     adapter: useActive ? ACTIVE_TOKEN : adapter,
     adapterLabel: useActive ? (active ? active.name : 'Active adapter') : adapter,
     useActiveOnApply: useActive,
     mode,
-    ip: document.getElementById('profIp').value.trim(),
+    ip: v('profIp').trim(),
     prefix,
     netmask: mask,
-    gateway: document.getElementById('profGw').value.trim(),
+    gateway: v('profGw').trim(),
     dns,
-    color: document.getElementById('profColor').value,
-    notes: document.getElementById('profNotes').value.trim(),
+    color: v('profColor', '#00f3ff'),
+    notes: v('profNotes').trim(),
     updated_at: new Date().toISOString(),
   };
 }
 
 function toggleStatic() {
-  const mode = document.getElementById('profMode').value;
-  document.getElementById('staticFields').style.display = mode === 'static' ? 'block' : 'none';
+  const mode = el('profMode') ? el('profMode').value : 'static';
+  const sf = el('staticFields');
+  if (sf) sf.style.display = mode === 'static' ? 'block' : 'none';
 }
 
 function validateProfile(p) {
@@ -740,19 +820,22 @@ function buildNetshScript(p) {
 }
 
 function downloadScript(p) {
+  p = p || {};
   const text = buildNetshScript(p);
   const blob = new Blob([text], { type: 'application/octet-stream' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  const url = trackBlob(URL.createObjectURL(blob));
+  a.href = url;
   a.download = 'Apply_' + (p.name || 'IP').replace(/[^\w\-]+/g, '_') + '.bat';
   a.click();
-  URL.revokeObjectURL(a.href);
+  try { URL.revokeObjectURL(url); } catch (_) {}
   toast('Downloaded apply script — right-click → Run as administrator', true);
 }
 
 function renderProfiles() {
-  const box = document.getElementById('profiles');
-  const q = (document.getElementById('profileFilter')?.value || '').trim().toLowerCase();
+  const box = el('profiles');
+  if (!box) return;
+  const q = (el('profileFilter')?.value || '').trim().toLowerCase();
   let list = profiles;
   if (q) {
     list = profiles.filter(p =>
@@ -768,8 +851,8 @@ function renderProfiles() {
         <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
       </div>
     </div>`;
-    document.getElementById('btnEmptyCapture')?.addEventListener('click', () => document.getElementById('btnCapture')?.click() || document.getElementById('btnCaptureCurrent')?.click());
-    document.getElementById('btnEmptyFocusForm')?.addEventListener('click', () => document.getElementById('profName')?.focus() || document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' }));
+    el('btnEmptyCapture')?.addEventListener('click', () => el('btnCapture')?.click() || el('btnCaptureCurrent')?.click());
+    el('btnEmptyFocusForm')?.addEventListener('click', () => el('profName')?.focus() || document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' }));
     return;
   }
   if (!list.length) {
@@ -779,8 +862,8 @@ function renderProfiles() {
         <a class="btn" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
       </div>
     </div>`;
-    document.getElementById('btnEmptyClearFilter')?.addEventListener('click', () => {
-      const f = document.getElementById('profileFilter');
+    el('btnEmptyClearFilter')?.addEventListener('click', () => {
+      const f = el('profileFilter');
       if (f) { f.value = ''; f.dispatchEvent(new Event('input')); }
       renderProfiles();
     });
@@ -824,13 +907,14 @@ function renderProfiles() {
         return;
       }
       if (btn.dataset.act === 'apply') {
-        await applyProfile(p, btn);
+        await withBusy(() => applyProfile(p, btn), null);
       }
     };
   });
 }
 
 async function applyProfile(p, btn) {
+  if (!p) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
   try {
     // Resolve active adapter at apply time if requested
@@ -848,7 +932,7 @@ async function applyProfile(p, btn) {
         method: 'POST',
         body: JSON.stringify({ profile_id: payload.id, profile: payload }),
       });
-      document.getElementById('adminWarn').classList.remove('show');
+      el('adminWarn')?.classList.remove('show');
       const via = (p.useActiveOnApply || p.adapter === ACTIVE_TOKEN)
         ? ' via active adapter <strong class="mono">' + esc(payload.adapter) + '</strong>'
         : '';
@@ -858,7 +942,7 @@ async function applyProfile(p, btn) {
       await loadAdapters();
       return;
     }
-    document.getElementById('adminWarn').classList.add('show');
+    el('adminWarn')?.classList.add('show');
     downloadScript(payload);
     showBanner(
       'Server IP-apply API not ready. Downloaded <strong>.bat</strong> for <span class="mono">' +
@@ -866,7 +950,7 @@ async function applyProfile(p, btn) {
       ''
     );
   } catch (e) {
-    if (e.status === 403) document.getElementById('adminWarn').classList.add('show');
+    if (e.status === 403) el('adminWarn')?.classList.add('show');
     try { downloadScript(p); } catch (_) {}
     showBanner((e.message || 'Apply failed') + ' — downloaded .bat as backup.', 'err');
     toast(e.message || 'Apply failed', false);
@@ -902,7 +986,7 @@ async function loadAdapters() {
   fillAdapterSelects();
   renderAdapters();
   updateStatusBar();
-  const lu = document.getElementById('lastUpdated');
+  const lu = el('lastUpdated');
   if (lu) lu.textContent = serverOnline ? ('Adapters ' + new Date().toLocaleTimeString()) : 'Server offline';
 }
 
@@ -914,7 +998,7 @@ async function syncProfilesFromServer() {
   }
   try {
     const p = await api('/ip/profiles');
-    const remote = p.profiles || [];
+    const remote = Array.isArray(p && p.profiles) ? p.profiles : [];
     // Merge: local wins on same id if newer
     const local = loadLocalProfiles();
     const map = new Map();
@@ -943,7 +1027,7 @@ function updateStatusBar() {
   parts.push(`<span class="stat"><b>Setups</b> ${profiles.length}</span>`);
   parts.push(`<span class="stat"><b>API</b> ${esc(API)}</span>`);
   parts.push(`<span class="stat"><b>Portable file</b> data\\ip_profiles.json</span>`);
-  document.getElementById('statusBar').innerHTML = parts.join('');
+  if (el('statusBar')) el('statusBar').innerHTML = parts.join('');
 }
 
 async function refresh() {
@@ -951,8 +1035,8 @@ async function refresh() {
   await syncProfilesFromServer();
   if (serverOnline && adapters.length) {
     // soft clear error banner if we recovered
-    const b = document.getElementById('statusBanner');
-    if (b.classList.contains('err') && b.textContent.includes('Cannot reach')) hideBanner();
+    const b = el('statusBanner');
+    if (b && b.classList.contains('err') && (b.textContent||'').includes('Cannot reach')) hideBanner();
   }
   if (serverOnline && !ipApiOnline) {
     showBanner(
@@ -964,33 +1048,28 @@ async function refresh() {
 }
 
 // --- events ---
-document.getElementById('profMode').onchange = toggleStatic;
-document.getElementById('profPrefix').oninput = () => {
-  document.getElementById('profMask').value = prefixToMask(document.getElementById('profPrefix').value);
+if (el('profMode')) el('profMode').onchange = toggleStatic;
+if (el('profPrefix')) el('profPrefix').oninput = () => {
+  if (el('profMask')) el('profMask').value = prefixToMask(el('profPrefix').value);
 };
-document.getElementById('btnToggleAdapterType').onclick = () => {
+if (el('btnToggleAdapterType')) el('btnToggleAdapterType').onclick = () => {
   useManualAdapter = !useManualAdapter;
-  document.getElementById('profAdapter').style.display = useManualAdapter ? 'none' : 'block';
-  document.getElementById('profAdapterCustom').style.display = useManualAdapter ? 'block' : 'none';
-  document.getElementById('btnToggleAdapterType').textContent = useManualAdapter
+  if (el('profAdapter')) el('profAdapter').style.display = useManualAdapter ? 'none' : 'block';
+  if (el('profAdapterCustom')) el('profAdapterCustom').style.display = useManualAdapter ? 'block' : 'none';
+  if (el('btnToggleAdapterType')) el('btnToggleAdapterType').textContent = useManualAdapter
     ? 'Pick from adapter list' : 'Type adapter name manually';
-  if (useManualAdapter && !document.getElementById('profAdapterCustom').value) {
-    document.getElementById('profAdapterCustom').value = document.getElementById('profAdapter').value || 'ETH_CABLE_CONNECTION';
+  if (useManualAdapter && el('profAdapterCustom') && !el('profAdapterCustom').value) {
+    el('profAdapterCustom').value = (el('profAdapter') && el('profAdapter').value) || 'ETH_CABLE_CONNECTION';
   }
 };
-document.getElementById('btnNew').onclick = () => {
-  document.getElementById('profId').value = '';
-  document.getElementById('profName').value = '';
-  document.getElementById('profIp').value = '';
-  document.getElementById('profGw').value = '';
-  document.getElementById('profDns').value = '';
-  document.getElementById('profNotes').value = '';
-  document.getElementById('profPrefix').value = 24;
-  document.getElementById('profMask').value = '255.255.255.0';
-  document.getElementById('profMode').value = 'static';
+if (el('btnNew')) el('btnNew').onclick = () => {
+  const setVal = (id, v) => { const n = el(id); if (n) n.value = v; };
+  setVal('profId', ''); setVal('profName', ''); setVal('profIp', '');
+  setVal('profGw', ''); setVal('profDns', ''); setVal('profNotes', '');
+  setVal('profPrefix', 24); setVal('profMask', '255.255.255.0'); setVal('profMode', 'static');
   toggleStatic();
 };
-document.getElementById('btnSave').onclick = async () => {
+if (el('btnSave')) el('btnSave').onclick = async () => withBusy(async () => {
   const body = readForm();
   const err = validateProfile(body);
   if (err) { toast(err, false); showBanner(err, 'err'); return; }
@@ -1003,34 +1082,34 @@ document.getElementById('btnSave').onclick = async () => {
       return;
     }
   }
-  document.getElementById('profId').value = body.id;
+  el('profId').value = body.id;
   profiles = loadLocalProfiles();
   renderProfiles();
   hideBanner();
   toast('Saved “' + body.name + '”', true);
-};
-document.getElementById('btnApplyForm').onclick = async () => {
+}, 'btnSave');
+if (el('btnApplyForm')) el('btnApplyForm').onclick = async () => withBusy(async () => {
   const body = readForm();
   const err = validateProfile(body);
   if (err) { toast(err, false); return; }
   upsertLocal(body);
-  document.getElementById('profId').value = body.id;
+  if (el('profId')) el('profId').value = body.id;
   profiles = loadLocalProfiles();
   renderProfiles();
-  await applyProfile(body, null);
-};
-document.getElementById('btnDownloadForm').onclick = () => {
+  await applyProfile(body, el('btnApplyForm'));
+}, 'btnApplyForm');
+if (el('btnDownloadForm')) el('btnDownloadForm').onclick = () => {
   const body = readForm();
   const err = validateProfile(body);
   if (err) { toast(err, false); return; }
   downloadScript(body);
 };
-document.getElementById('btnCapture').onclick = async () => {
-  const adapter = document.getElementById('captureAdapter').value || getSelectedAdapter();
+if (el('btnCapture')) el('btnCapture').onclick = async () => withBusy(async () => {
+  const adapter = (el('captureAdapter') && el('captureAdapter').value) || getSelectedAdapter();
   if (!adapter) { toast('Pick an adapter first', false); return; }
   const a = adapters.find(x => x.name === adapter);
   const ip0 = a && a.ipv4 && a.ipv4[0];
-  const name = document.getElementById('captureName').value.trim() ||
+  const name = (el('captureName')?.value || '').trim() ||
     (ip0 ? `${adapter} · ${ip0.address}` : `${adapter} snapshot`);
   let body;
   if (ipApiOnline) {
@@ -1064,11 +1143,11 @@ document.getElementById('btnCapture').onclick = async () => {
   profiles = loadLocalProfiles();
   renderProfiles();
   toast('Captured as “' + body.name + '”', true);
-};
-document.getElementById('btnRefresh').onclick = () => {
-  userPickedAdapter = false; // allow auto-select again after refresh
-  refresh();
-};
+}, 'btnCapture');
+if (el('btnRefresh')) el('btnRefresh').onclick = () => withBusy(async () => {
+  userPickedAdapter = false;
+  await refresh();
+}, 'btnRefresh');
 
 // --- Portable export / import / backup ---
 function buildExportBlob() {
@@ -1087,15 +1166,16 @@ function buildExportBlob() {
 }
 
 function downloadJson(obj, filename) {
-  const text = JSON.stringify(obj, null, 2);
+  const text = JSON.stringify(obj == null ? {} : obj, null, 2);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  a.download = filename;
+  const url = trackBlob(URL.createObjectURL(new Blob([text], { type: 'application/json' })));
+  a.href = url;
+  a.download = filename || 'ip_profiles.json';
   a.click();
-  URL.revokeObjectURL(a.href);
+  try { URL.revokeObjectURL(url); } catch (_) {}
 }
 
-document.getElementById('btnExport').onclick = async () => {
+if (el('btnExport')) el('btnExport').onclick = async () => withBusy(async () => {
   try {
     let blob;
     if (ipApiOnline) {
@@ -1115,8 +1195,8 @@ document.getElementById('btnExport').onclick = async () => {
   } catch (e) {
     toast(e.message || 'Export failed', false);
   }
-};
-document.getElementById('btnBackupStamp').onclick = () => {
+}, 'btnExport');
+if (el('btnBackupStamp')) el('btnBackupStamp').onclick = () => {
   try {
     const blob = buildExportBlob();
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -1126,7 +1206,7 @@ document.getElementById('btnBackupStamp').onclick = () => {
     toast(e.message || 'Backup failed', false);
   }
 };
-document.getElementById('btnCopyBackupHint').onclick = async () => {
+if (el('btnCopyBackupHint')) el('btnCopyBackupHint').onclick = async () => {
   const tip =
     'IP Profile Switcher backup tips:\n' +
     '1) Click Export / backup (or Timestamped backup)\n' +
@@ -1140,8 +1220,8 @@ document.getElementById('btnCopyBackupHint').onclick = async () => {
     toast(tip, true);
   }
 };
-document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
-document.getElementById('importFile').onchange = async (ev) => {
+if (el('btnImport')) el('btnImport').onclick = () => el('importFile')?.click();
+if (el('importFile')) el('importFile').onchange = async (ev) => withBusy(async () => {
   const file = ev.target.files && ev.target.files[0];
   ev.target.value = '';
   if (!file) return;
@@ -1184,16 +1264,16 @@ document.getElementById('importFile').onchange = async (ev) => {
   } catch (e) {
     toast(e.message || 'Import failed', false);
   }
-};
+}, 'btnImport');
 
 // Profile filter + keyboard QoL
 let profileFilterTimer = null;
-document.getElementById('profileFilter')?.addEventListener('input', () => {
+el('profileFilter')?.addEventListener('input', () => {
   clearTimeout(profileFilterTimer);
   profileFilterTimer = setTimeout(renderProfiles, 200);
 });
-document.getElementById('btnRefreshAdapters')?.addEventListener('click', () => loadAdapters());
-document.getElementById('btnStartServer')?.addEventListener('click', async () => {
+el('btnRefreshAdapters')?.addEventListener('click', () => withBusy(() => loadAdapters(), 'btnRefreshAdapters'));
+el('btnStartServer')?.addEventListener('click', async () => withBusy(async () => {
   try {
     toast('Starting toolbox server…', true);
     if (window.AIToolboxAPI?.startServer) {
@@ -1202,34 +1282,42 @@ document.getElementById('btnStartServer')?.addEventListener('click', async () =>
       loadAdapters();
     } else location.href = '../Toolbox Launcher.html';
   } catch (e) { toast(e.message || 'Start failed', false); }
-});
+}, 'btnStartServer'));
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('profileFilter')?.focus(); return; }
-  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); loadAdapters(); }
+  if (e.key === '/' && !typing) { e.preventDefault(); el('profileFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); withBusy(() => loadAdapters(), 'btnRefreshAdapters'); return; }
+  if (!typing && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && t && t.classList && t.classList.contains('adapter-pill')) {
+    e.preventDefault();
+    const pills = Array.from(document.querySelectorAll('.adapter-pill'));
+    let i = pills.indexOf(t);
+    if (i < 0) return;
+    i = (i + (e.key === 'ArrowDown' ? 1 : -1) + pills.length) % pills.length;
+    pills[i]?.focus();
+  }
 });
 
 // Persist auto-select options + re-apply when toggled
 (function initOpts() {
   const o = loadOpts();
-  document.getElementById('optAutoSelect').checked = o.autoSelect !== false; // default ON
-  document.getElementById('optPreferEthernet').checked = o.preferEthernet !== false; // default ON
+  if (el('optAutoSelect')) el('optAutoSelect').checked = o.autoSelect !== false;
+  if (el('optPreferEthernet')) el('optPreferEthernet').checked = o.preferEthernet !== false;
 })();
-document.getElementById('optAutoSelect').onchange = () => {
+if (el('optAutoSelect')) el('optAutoSelect').onchange = () => {
   saveOpts();
-  if (document.getElementById('optAutoSelect').checked) {
+  if (el('optAutoSelect').checked) {
     userPickedAdapter = false;
     applyActiveSelection(true);
   }
 };
-document.getElementById('optPreferEthernet').onchange = () => {
+if (el('optPreferEthernet')) el('optPreferEthernet').onchange = () => {
   saveOpts();
   fillAdapterSelects();
 };
-document.getElementById('profAdapter').onchange = () => { userPickedAdapter = true; };
-document.getElementById('captureAdapter').onchange = () => { userPickedAdapter = true; };
-document.getElementById('btnSelectActive').onclick = () => {
+if (el('profAdapter')) el('profAdapter').onchange = () => { userPickedAdapter = true; };
+if (el('captureAdapter')) el('captureAdapter').onchange = () => { userPickedAdapter = true; };
+if (el('btnSelectActive')) el('btnSelectActive').onclick = () => {
   userPickedAdapter = false;
   const a = applyActiveSelection(true);
   if (a) toast('Selected active: ' + a.name, true);
@@ -1237,10 +1325,6 @@ document.getElementById('btnSelectActive').onclick = () => {
 };
 
 toggleStatic();
-// Ensure fields are not accidentally disabled
-document.querySelectorAll('input, select, textarea, button').forEach(el => {
-  el.disabled = false;
-});
 refresh();
 setInterval(() => { loadAdapters().catch(() => {}); }, 20000);
 </script>

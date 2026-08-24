@@ -6,25 +6,35 @@
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
-:root{--bg:#050508;--panel:#0c0f16;--border:rgba(52,211,153,.2);--accent:#34d399;--warn:#fbbf24;--text:#e2e8f0;--muted:#64748b}
+:root{
+  --bg:#070b12;--panel:#0c1420;--border:rgba(0,243,255,.22);
+  --accent:#00f3ff;--accent2:#e879f9;--gold:#f5d76e;
+  --ok:#4ade80;--warn:#fbbf24;--text:#e8eef8;--muted:#94a3b8
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#0a1f1a,var(--bg) 60%);color:var(--text);min-height:100vh}
-.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border)}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#102033,var(--bg) 60%);color:var(--text);min-height:100vh}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(7,11,18,.95);position:sticky;top:0;z-index:10}
 .nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
 .wrap{max-width:1200px;margin:0 auto;padding:24px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.card:hover{border-color:var(--accent2)}
 .bar{height:8px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden}
 .bar span{display:block;height:100%;background:var(--accent);border-radius:4px}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
-.ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--accent);font-size:12px;text-transform:uppercase;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
-.inp{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;min-width:220px;flex:1}
-.btn{padding:8px 14px;border:1px solid var(--accent);background:rgba(52,211,153,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--gold);font-size:12px;text-transform:uppercase;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.inp{background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;min-width:220px;flex:1}
+.btn{padding:8px 14px;border:1px solid var(--accent);background:rgba(0,243,255,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
 .btn:disabled{opacity:.45;cursor:wait}
 .btn.ghost{border-color:rgba(255,255,255,.15);color:var(--muted);background:transparent}
+.btn.ghost:hover{color:var(--gold);border-color:var(--gold)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
-th:hover{color:var(--accent)}
+th:hover{color:var(--gold)}
 td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 .mono{font-family:Consolas,monospace;font-size:11px}
 .tw{max-height:400px;overflow:auto}
@@ -73,76 +83,163 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
-const esc = (s) => UI()?.escapeHtml ? UI().escapeHtml(s) : String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function el(id) {
+  try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+}
+function setText(id, text) {
+  const n = el(id);
+  if (n) n.textContent = text == null ? '' : String(text);
+}
+function bind(id, ev, fn) {
+  const n = el(id);
+  if (!n || !fn) return;
+  n.addEventListener(ev, fn);
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+}
+function escHtml(s) {
+  const u = UI()?.escapeHtml;
+  if (typeof u === 'function') return u(s);
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const esc = escHtml;
+
+const LS_PATH = 'fafo_disk_scan_path_v1';
+const LS_MIN = 'fafo_disk_min_mb_v1';
 let lastResult = null;
 let scanEs = null;
 let fileSort = { key: 'size', dir: -1 };
+let busy = false;
+let lastBlobUrl = '';
+
+function revokeBlob() {
+  if (lastBlobUrl) {
+    try { URL.revokeObjectURL(lastBlobUrl); } catch (_) {}
+    lastBlobUrl = '';
+  }
+}
+
+async function withBusy(fn, btnId) {
+  if (busy) return;
+  busy = true;
+  const b = btnId ? el(btnId) : null;
+  if (b) b.disabled = true;
+  try { return await fn(); }
+  finally {
+    busy = false;
+    if (b && b.id !== 'btnScan') b.disabled = false;
+  }
+}
 
 function apiBase() {
   return UI()?.getApiBase?.() || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
 }
 
 function log(msg, isErr) {
-  const el = document.getElementById('log');
-  el.textContent = msg || '';
-  el.className = 'log' + (isErr ? ' err' : '');
+  const n = el('log');
+  if (!n) return;
+  n.textContent = msg || '';
+  n.className = 'log' + (isErr ? ' err' : '');
+}
+
+function persistPrefs() {
+  const p = el('scanPath');
+  const m = el('minMb');
+  if (p) lsSet(LS_PATH, p.value || '');
+  if (m) lsSet(LS_MIN, String(m.value || '5'));
+}
+
+function restorePrefs() {
+  const p = el('scanPath');
+  const m = el('minMb');
+  const savedP = lsGet(LS_PATH, '');
+  const savedM = lsGet(LS_MIN, '');
+  if (p && savedP && !p.value) p.value = savedP;
+  if (m && savedM) m.value = savedM;
 }
 
 async function loadOverview() {
+  const host = el('drives');
   try {
-    const d = await UI().apiFetch('/disk/overview');
-    document.getElementById('drives').innerHTML = (d.drives || []).map(dr =>
-      `<div class="card" style="cursor:pointer" data-mount="${esc(dr.mount)}" title="Scan this drive root">
-        <div style="font-size:11px;color:var(--muted)">${esc(dr.mount)}</div>
-        <div style="font-size:20px;font-weight:700;margin:4px 0">${esc(dr.used_human)} / ${esc(dr.total_human)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(dr.free_human)} free</div>
-        <div class="bar"><span style="width:${Math.min(100, dr.percent||0)}%;background:${(dr.percent||0)>85?'#f87171':'var(--accent)'}"></span></div>
-      </div>`
-    ).join('') || '<div style="color:var(--muted)">No drive data</div>';
-    document.querySelectorAll('.card[data-mount]').forEach(c => {
-      c.onclick = () => {
-        document.getElementById('scanPath').value = c.dataset.mount;
-        log('Path set to ' + c.dataset.mount + ' — click Scan (or double-click drive card)');
-      };
-      c.ondblclick = () => {
-        document.getElementById('scanPath').value = c.dataset.mount;
-        document.getElementById('btnScan')?.click();
-      };
-      c.title = 'Click to select · double-click to scan this root';
-    });
-    const folders = d.user_folders || [];
-    if (folders.length && !document.getElementById('scanPath').value) {
-      document.getElementById('scanPath').value =
-        folders.find(f => f.name === 'Downloads')?.path || folders[0].path || '';
+    const api = UI()?.apiFetch;
+    if (!api) throw new Error('UI API not loaded');
+    const d = await api('/disk/overview');
+    const cards = (d && d.drives) || [];
+    if (host) {
+      host.innerHTML = cards.length
+        ? cards.map(dr =>
+          `<div class="card" style="cursor:pointer" data-mount="${esc(dr.mount)}" title="Scan this drive root" tabindex="0">
+            <div style="font-size:11px;color:var(--muted)">${esc(dr.mount)}</div>
+            <div style="font-size:20px;font-weight:700;margin:4px 0">${esc(dr.used_human)} / ${esc(dr.total_human)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(dr.free_human)} free</div>
+            <div class="bar"><span style="width:${Math.min(100, dr.percent||0)}%;background:${(dr.percent||0)>85?'#f87171':'var(--accent)'}"></span></div>
+          </div>`
+        ).join('')
+        : '<div style="color:var(--muted)">No drive data</div>';
+      host.querySelectorAll('.card[data-mount]').forEach(c => {
+        const apply = () => {
+          const pathEl = el('scanPath');
+          if (pathEl) pathEl.value = c.dataset.mount || '';
+          persistPrefs();
+          log('Path set to ' + (c.dataset.mount || '') + ' — click Scan (or double-click drive card)');
+        };
+        c.onclick = apply;
+        c.ondblclick = () => { apply(); startScan(); };
+        c.onkeydown = (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); apply(); startScan(); }
+          if (ev.key === ' ') { ev.preventDefault(); apply(); }
+        };
+        c.title = 'Click to select · double-click / Enter to scan this root';
+      });
     }
-    const lu = document.getElementById('lastUpdated');
+    const folders = (d && d.user_folders) || [];
+    const pathEl = el('scanPath');
+    if (folders.length && pathEl && !pathEl.value) {
+      pathEl.value = folders.find(f => f && f.name === 'Downloads')?.path || folders[0].path || '';
+      persistPrefs();
+    }
+    const lu = el('lastUpdated');
     if (lu) lu.textContent = 'Drives ' + new Date().toLocaleTimeString();
   } catch (e) {
-    document.getElementById('drives').innerHTML =
-      `<div class="card" style="grid-column:1/-1;color:var(--warn)"><strong>Server offline</strong> — ${esc(e.message || e)}<br>` +
-      `<span style="font-size:12px">Needs S1 · 127.0.0.87:18765</span>` +
-      `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">` +
-      `<button class="btn" type="button" id="btnDiskStartServer">▶ Start Server</button>` +
-      `<button class="btn ghost" type="button" id="btnDiskRetry">↻ Retry</button>` +
-      `<a class="btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>` +
-      `<a class="btn ghost" href="PC Diagnostics HUD.html" style="text-decoration:none">PC Diagnostics</a>` +
-      `</div></div>`;
-    document.getElementById('btnDiskRetry')?.addEventListener('click', () => loadDrives());
-    document.getElementById('btnDiskStartServer')?.addEventListener('click', async () => {
-      try {
-        if (window.AIToolboxAPI?.startServer) {
-          await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
-          loadDrives();
-        } else location.href = '../Toolbox Launcher.html';
-      } catch (err) {
-        window.AIToolboxUI?.toast?.(err.message || 'Start failed', 'warn');
-      }
+    if (host) {
+      host.innerHTML =
+        `<div class="card" style="grid-column:1/-1;color:var(--warn)"><strong>Server offline</strong> — ${esc(e && e.message ? e.message : e)}<br>` +
+        `<span style="font-size:12px">Needs S1 · 127.0.0.87:18765</span>` +
+        `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">` +
+        `<button class="btn" type="button" id="btnDiskStartServer">▶ Start Server</button>` +
+        `<button class="btn ghost" type="button" id="btnDiskRetry">↻ Retry</button>` +
+        `<a class="btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>` +
+        `<a class="btn ghost" href="PC Diagnostics HUD.html" style="text-decoration:none">PC Diagnostics</a>` +
+        `</div></div>`;
+    }
+    bind('btnDiskRetry', 'click', () => { withBusy(loadOverview, 'btnDiskRetry'); });
+    bind('btnDiskStartServer', 'click', async () => {
+      await withBusy(async () => {
+        try {
+          if (window.AIToolboxAPI?.startServer) {
+            await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+            await loadOverview();
+          } else location.href = '../Toolbox Launcher.html';
+        } catch (err) {
+          window.AIToolboxUI?.toast?.(err.message || 'Start failed', 'warn');
+        }
+      }, 'btnDiskStartServer');
     });
   }
 }
 
 function renderLargeFiles() {
-  const host = document.getElementById('largeFiles');
+  const host = el('largeFiles');
+  if (!host) return;
   if (!lastResult) {
     host.innerHTML =
       '<div style="padding:24px;text-align:center;color:var(--muted)">' +
@@ -152,18 +249,18 @@ function renderLargeFiles() {
       '<button class="btn ghost" type="button" id="btnEmptyScan">Scan path</button>' +
       '<a class="btn ghost" href="../File Tools/Duplicate File Manager.html" style="text-decoration:none">Duplicates →</a>' +
       '</div></div>';
-    document.getElementById('btnEmptyPick')?.addEventListener('click', () => document.getElementById('btnPick')?.click());
-    document.getElementById('btnEmptyScan')?.addEventListener('click', () => document.getElementById('btnScan')?.click());
+    bind('btnEmptyPick', 'click', () => el('btnPick')?.click());
+    bind('btnEmptyScan', 'click', () => startScan());
     return;
   }
-  const q = (document.getElementById('fileFilter').value || '').toLowerCase();
+  const q = ((el('fileFilter') && el('fileFilter').value) || '').toLowerCase();
   let rows = (lastResult.large_files || []).slice();
-  if (q) rows = rows.filter(f => (f.name + ' ' + f.folder).toLowerCase().includes(q));
+  if (q) rows = rows.filter(f => f && ((f.name || '') + ' ' + (f.folder || '')).toLowerCase().includes(q));
   rows.sort((a, b) => {
     const k = fileSort.key;
-    let av = k === 'size' ? (a.size || 0) : (a[k] || '');
-    let bv = k === 'size' ? (b.size || 0) : (b[k] || '');
-    if (typeof av === 'string') return av.localeCompare(bv) * fileSort.dir;
+    let av = k === 'size' ? (a && a.size || 0) : ((a && a[k]) || '');
+    let bv = k === 'size' ? (b && b.size || 0) : ((b && b[k]) || '');
+    if (typeof av === 'string') return av.localeCompare(String(bv)) * fileSort.dir;
     return (av - bv) * fileSort.dir;
   });
   if (!rows.length) {
@@ -171,51 +268,75 @@ function renderLargeFiles() {
     return;
   }
   host.innerHTML = '<table><thead><tr>'
-    + '<th data-k="size">Size</th><th data-k="name">File</th><th data-k="folder">Folder</th>'
+    + '<th data-k="size" tabindex="0">Size</th><th data-k="name" tabindex="0">File</th><th data-k="folder" tabindex="0">Folder</th>'
     + '</tr></thead><tbody>'
     + rows.map(f => `<tr><td><strong>${esc(f.size_human)}</strong></td><td>${esc(f.name)}</td><td class="mono">${esc(f.folder)}</td></tr>`).join('')
     + '</tbody></table>';
   host.querySelectorAll('th[data-k]').forEach(th => {
-    th.onclick = () => {
+    const sortBy = () => {
       const k = th.dataset.k;
       if (fileSort.key === k) fileSort.dir *= -1;
       else { fileSort.key = k; fileSort.dir = k === 'size' ? -1 : 1; }
       renderLargeFiles();
+    };
+    th.onclick = sortBy;
+    th.onkeydown = (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); sortBy(); }
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+        ev.preventDefault();
+        const all = [...host.querySelectorAll('th[data-k]')];
+        const i = all.indexOf(th);
+        const n = ev.key === 'ArrowRight' ? all[i + 1] : all[i - 1];
+        n?.focus();
+      }
     };
   });
 }
 
 function renderFolders() {
   if (!lastResult) return;
-  document.getElementById('junkInfo').textContent =
-    lastResult.junk_size_human ? `(${lastResult.junk_size_human} reclaimable)` : '';
+  setText('junkInfo', lastResult.junk_size_human ? `(${lastResult.junk_size_human} reclaimable)` : '');
   const folders = lastResult.top_folders || [];
-  document.getElementById('folders').innerHTML = folders.length
+  const host = el('folders');
+  if (!host) return;
+  host.innerHTML = folders.length
     ? '<table><thead><tr><th>Folder</th><th>Size</th></tr></thead><tbody>'
-      + folders.map(f => `<tr><td class="mono">${esc(f.path)}</td><td>${esc(f.size_human)}</td></tr>`).join('')
+      + folders.map(f => `<tr><td class="mono">${esc(f && f.path)}</td><td>${esc(f && f.size_human)}</td></tr>`).join('')
       + '</tbody></table>'
     : '<div style="padding:16px;color:var(--muted)">No folder summary</div>';
 }
 
 function stopScan() {
-  if (scanEs) { try { scanEs.close(); } catch {} scanEs = null; }
-  document.getElementById('btnScan').disabled = false;
-  document.getElementById('btnStop').disabled = true;
+  if (scanEs) { try { scanEs.close(); } catch (_) {} scanEs = null; }
+  const scanBtn = el('btnScan');
+  const stopBtn = el('btnStop');
+  if (scanBtn) scanBtn.disabled = false;
+  if (stopBtn) stopBtn.disabled = true;
+  busy = false;
 }
 
-document.getElementById('btnScan').onclick = () => {
-  const path = document.getElementById('scanPath').value.trim();
+function startScan() {
+  if (busy && scanEs) return;
+  const pathEl = el('scanPath');
+  const path = ((pathEl && pathEl.value) || '').trim();
   if (!path) { log('Enter a folder path first', true); return; }
-  const minMb = Math.max(1, parseInt(document.getElementById('minMb').value, 10) || 5);
+  const minEl = el('minMb');
+  const minMb = Math.max(1, parseInt(minEl && minEl.value, 10) || 5);
+  persistPrefs();
   stopScan();
-  document.getElementById('btnScan').disabled = true;
-  document.getElementById('btnStop').disabled = false;
+  busy = true;
+  const scanBtn = el('btnScan');
+  const stopBtn = el('btnStop');
+  if (scanBtn) scanBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = false;
   log('Scanning…');
   const url = apiBase() + '/disk/scan/stream?path=' + encodeURIComponent(path) + '&min_size_mb=' + minMb;
-  scanEs = new EventSource(url);
+  try { scanEs = new EventSource(url); }
+  catch (e) { log((e && e.message) || 'Could not start scan stream', true); stopScan(); return; }
   scanEs.onmessage = ev => {
     let d;
-    try { d = JSON.parse(ev.data); } catch { return; }
+    try { d = JSON.parse(ev.data); } catch (_) { return; }
+    if (!d) return;
     if (d.error) { log('Error: ' + d.error, true); stopScan(); return; }
     if (d.done) {
       lastResult = d.result || {};
@@ -231,55 +352,69 @@ document.getElementById('btnScan').onclick = () => {
     log('Scan stream failed — is the server online?', true);
     stopScan();
   };
-};
+}
 
-document.getElementById('btnStop').onclick = () => { stopScan(); log('Scan stopped'); };
+function exportCsv() {
+  return withBusy(() => {
+    if (!lastResult?.large_files?.length) { log('Run a scan first', true); return; }
+    const q = ((el('fileFilter') && el('fileFilter').value) || '').toLowerCase();
+    let rows = (lastResult.large_files || []).slice();
+    if (q) rows = rows.filter(f => f && ((f.name || '') + ' ' + (f.folder || '')).toLowerCase().includes(q));
+    const escCsv = (v) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const lines = ['size,size_bytes,name,folder'].concat(rows.map(f =>
+      [f.size_human, f.size, f.name, f.folder].map(escCsv).join(',')
+    ));
+    revokeBlob();
+    lastBlobUrl = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = lastBlobUrl;
+    a.download = 'disk-large-files-' + Date.now() + '.csv';
+    a.click();
+    setTimeout(revokeBlob, 2000);
+    log('Exported ' + rows.length + ' file row(s)');
+  }, 'btnExportFiles');
+}
+
+bind('btnScan', 'click', startScan);
+bind('btnStop', 'click', () => { stopScan(); log('Scan stopped'); });
 let fileFilterTimer = null;
-document.getElementById('fileFilter').oninput = () => {
+bind('fileFilter', 'input', () => {
   clearTimeout(fileFilterTimer);
   fileFilterTimer = setTimeout(renderLargeFiles, 200);
-};
-document.getElementById('btnExportFiles')?.addEventListener('click', () => {
-  if (!lastResult?.large_files?.length) { log('Run a scan first', true); return; }
-  const q = (document.getElementById('fileFilter').value || '').toLowerCase();
-  let rows = (lastResult.large_files || []).slice();
-  if (q) rows = rows.filter(f => (f.name + ' ' + f.folder).toLowerCase().includes(q));
-  const escCsv = (v) => {
-    const s = String(v ?? '');
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  const lines = ['size,size_bytes,name,folder'].concat(rows.map(f =>
-    [f.size_human, f.size, f.name, f.folder].map(escCsv).join(',')
-  ));
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-  a.download = 'disk-large-files-' + Date.now() + '.csv';
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  log('Exported ' + rows.length + ' file row(s)');
 });
-document.getElementById('btnRefreshDrives')?.addEventListener('click', loadOverview);
+bind('btnExportFiles', 'click', exportCsv);
+bind('btnRefreshDrives', 'click', () => withBusy(loadOverview, 'btnRefreshDrives'));
+bind('minMb', 'change', persistPrefs);
+bind('scanPath', 'change', persistPrefs);
+
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('fileFilter')?.focus(); return; }
-  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); loadOverview(); }
+  if (e.key === '/' && !typing) { e.preventDefault(); el('fileFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); withBusy(loadOverview, 'btnRefreshDrives'); }
 });
 
-document.getElementById('btnPick').onclick = async () => {
-  try {
-    if (!window.AIToolboxAPI) throw new Error('API not loaded');
-    const online = await AIToolboxAPI.isOnline(true);
-    if (!online) throw new Error('Start the server first for native folder picker');
-    const r = await AIToolboxAPI.pickFolderOnly();
-    const p = r?.path || r?.folder || r;
-    if (typeof p === 'string' && p) document.getElementById('scanPath').value = p;
-  } catch (e) {
-    log(e.message || String(e), true);
-    UI()?.toast?.(e.message || String(e), 'warn');
-  }
-};
+bind('btnPick', 'click', async () => {
+  await withBusy(async () => {
+    try {
+      if (!window.AIToolboxAPI) throw new Error('API not loaded');
+      const online = await AIToolboxAPI.isOnline(true);
+      if (!online) throw new Error('Start the server first for native folder picker');
+      const r = await AIToolboxAPI.pickFolderOnly();
+      const p = r?.path || r?.folder || r;
+      const pathEl = el('scanPath');
+      if (typeof p === 'string' && p && pathEl) { pathEl.value = p; persistPrefs(); }
+    } catch (e) {
+      log(e.message || String(e), true);
+      UI()?.toast?.(e.message || String(e), 'warn');
+    }
+  }, 'btnPick');
+});
 
+restorePrefs();
 UI()?.mountServerBar?.({ onOnline: () => loadOverview() });
 loadOverview();
 </script>

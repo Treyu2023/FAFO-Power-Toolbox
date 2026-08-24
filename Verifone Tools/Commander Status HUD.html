@@ -21,6 +21,8 @@
       --text: #e8eef4;
       --muted: #7b8fa6;
       --glow: 0 0 28px rgba(56, 189, 248, 0.28);
+      --gold: #f5d76e;
+      --magenta: #e879f9;
     }
     * { box-sizing: border-box; }
     body {
@@ -179,6 +181,19 @@
     .detail-block { font-size: 12px; line-height: 1.45; }
     .detail-block .rowk { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; margin-top: 8px; }
     .line-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 6px; background: rgba(0,0,0,.22); font-size: 11px; }
+    .chip.amber { background: rgba(232,121,249,.12); color: var(--magenta); border-color: rgba(232,121,249,.4); }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+    textarea:focus-visible, .btn:focus-visible, [role="button"]:focus-visible,
+    .profile-item:focus-visible, .period-item:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #d5deea; --line: rgba(56, 189, 248, 0.45); }
+    }
   </style>
 </head>
 <body>
@@ -436,7 +451,49 @@
     const SS_PASS = 'fafo_commander_pass'; // session only — not localStorage
 
     const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
-    const el = (id) => document.getElementById(id);
+    let actionBusy = false;
+    function el(id) {
+      try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+    }
+    function setText(id, text) {
+      const n = el(id);
+      if (n) n.textContent = text == null ? '' : String(text);
+    }
+    function setHtml(id, html) {
+      const n = el(id);
+      if (n) n.innerHTML = html == null ? '' : String(html);
+    }
+    function bind(id, ev, fn) {
+      const n = el(id);
+      if (!n || !fn) return;
+      n.addEventListener(ev, fn);
+    }
+    function lsGet(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? fallback : v;
+      } catch (_) { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+    }
+    function escHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    const esc = escHtml;
+    async function withBusy(fn, btnId) {
+      if (actionBusy) return;
+      actionBusy = true;
+      const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : [];
+      const btns = ids.map(el).filter(Boolean);
+      btns.forEach(function (b) { b.disabled = true; });
+      try { return await fn(); }
+      finally {
+        actionBusy = false;
+        btns.forEach(function (b) { b.disabled = false; });
+      }
+    }
+
     let profiles = [];
     let targets = [];
     let lastResult = null;
@@ -481,11 +538,9 @@
       return sales.length ? sales : rows;
     }
 
-    function esc(s) {
-      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
     function toast(msg, ms = 3200) {
       const t = el('toast');
+      if (!t) return;
       t.textContent = msg;
       t.classList.add('show');
       clearTimeout(toast._tm);
@@ -497,21 +552,21 @@
         const host = (el('host') && el('host').value || '').trim();
         const user = (el('username') && el('username').value || '').trim();
         const pass = el('password') ? el('password').value : '';
-        if (host) localStorage.setItem(LS_HOST, host);
-        if (user) localStorage.setItem(LS_USER, user);
+        if (host) lsSet(LS_HOST, host);
+        if (user) lsSet(LS_USER, user);
         // Password only for this browser tab session (still use DPAPI profiles for durable store)
         if (pass) sessionStorage.setItem(SS_PASS, pass);
       } catch (_) {}
     }
     function restoreLoginFields() {
       try {
-        const host = localStorage.getItem(LS_HOST) || DEFAULT_SITE_HOST;
-        const user = localStorage.getItem(LS_USER) || DEFAULT_SITE_USER;
+        const host = lsGet(LS_HOST, '') || DEFAULT_SITE_HOST;
+        const user = lsGet(LS_USER, '') || DEFAULT_SITE_USER;
         const pass = sessionStorage.getItem(SS_PASS) || '';
         if (el('host') && !el('host').value.trim()) el('host').value = host;
         else if (el('host') && (el('host').value === DEFAULT_SITE_HOST || !el('host').dataset.userTouched)) {
           // prefer saved over bare default when present
-          if (localStorage.getItem(LS_HOST)) el('host').value = localStorage.getItem(LS_HOST);
+          if (lsGet(LS_HOST, '')) el('host').value = lsGet(LS_HOST, '');
         }
         if (el('username')) {
           if (!el('username').value.trim() || el('username').value === DEFAULT_SITE_USER) {
@@ -627,7 +682,7 @@
 
     function renderOverview(res) {
       if (!res) {
-        el('overview').innerHTML = '<div class="empty">No probe yet.</div>';
+        setHtml('overview', '<div class="empty">No probe yet.</div>');
         return;
       }
       const h = res.health || {};
@@ -636,8 +691,8 @@
       const openN = (res.ports && res.ports.openCount) || 0;
       const httpN = (res.httpServices || []).length;
       const auth = res.login && res.login.authenticated;
-      el('gatheredAt').textContent = res.gatheredAt ? ('gathered ' + new Date(res.gatheredAt).toLocaleString()) : '';
-      el('overview').innerHTML = `
+      setText('gatheredAt', res.gatheredAt ? ('gathered ' + new Date(res.gatheredAt).toLocaleString()) : '');
+      setHtml('overview', `
         <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:14px">
           <div class="health-ring" style="--pct:${pct}">
             <span>${pct}</span>
@@ -668,10 +723,10 @@
     function renderPorts(res) {
       const all = (res && res.ports && res.ports.all) || [];
       if (!all.length) {
-        el('portsPane').innerHTML = '<div class="empty">No port data</div>';
+        setHtml('portsPane', '<div class="empty">No port data</div>');
         return;
       }
-      el('portsPane').innerHTML = `
+      setHtml('portsPane', `
         <table>
           <thead><tr><th>Port</th><th>Label</th><th>State</th><th>ms</th></tr></thead>
           <tbody>
@@ -688,9 +743,10 @@
 
     function updateOpenCcLink(res) {
       const a = el('btnOpenCc');
-      const url = (res && res.configClientUrl) || (el('host').value.trim() ? `http://${el('host').value.trim()}/ConfigClient.html` : '#');
-      a.href = url;
-      a.title = url;
+      const hostEl = el('host');
+      const host = hostEl && hostEl.value ? hostEl.value.trim() : '';
+      const url = (res && res.configClientUrl) || (host ? (`http://${host}/ConfigClient.html`) : '#');
+      if (a) { a.href = url; a.title = url; }
     }
 
     function renderCommanderUi(res) {
@@ -698,11 +754,11 @@
       const ui = (res && res.commanderUi) || {};
       const surfaces = ui.surfaces || [];
       if (!surfaces.length) {
-        el('uiPane').innerHTML = `<div class="empty">No Config Client / Journal Browser surface detected yet.
+        setHtml('uiPane', `<div class="empty">No Config Client / Journal Browser surface detected yet.
           <div class="hint-box" style="text-align:left;margin-top:10px">Expected: <span class="mono">http://HOST/ConfigClient.html</span></div></div>`;
         return;
       }
-      el('uiPane').innerHTML = `
+      setHtml('uiPane', `
         <div style="margin-bottom:8px">
           ${res.configClientUrl ? `<a class="btn primary" href="${esc(res.configClientUrl)}" target="_blank" rel="noopener">Open Config Client</a>` : ''}
           ${res.journalBrowserUrl ? `<a class="btn" href="${esc(res.journalBrowserUrl)}" target="_blank" rel="noopener" style="margin-left:6px">Journal Browser</a>` : ''}
@@ -723,16 +779,18 @@
     function showOtpBanner(res) {
       const ban = el('otpBanner');
       const need = !!(res && (res.otpRequired || (res.login && res.login.otpRequired)));
+      if (!ban) return;
       if (!need) {
         ban.style.display = 'none';
         return;
       }
       ban.style.display = 'block';
-      el('otpBannerText').textContent =
+      setText('otpBannerText',
         (res.login && res.login.message) ||
         res.message ||
-        'Generate Config OTP on the register (CSR → Maintenance → Generate/Config OTP), enter it above, probe again.';
-      el('otp').focus();
+        'Generate Config OTP on the register (CSR → Maintenance → Generate/Config OTP), enter it above, probe again.');
+      const otp = el('otp');
+      if (otp) otp.focus();
     }
 
     function renderOtpGuidance(res) {
@@ -787,7 +845,7 @@
       }
       if (!services.length) {
         html += '<div class="empty">No HTTP(S) services discovered on common ports</div>';
-        el('httpPane').innerHTML = html;
+        setHtml('httpPane', html);
         return;
       }
       html += services.map(s => `
@@ -811,21 +869,21 @@
             </tbody>
           </table>
         </div>`).join('');
-      el('httpPane').innerHTML = html;
+      setHtml('httpPane', html);
     }
 
     function renderBackup(res) {
       const b = res && res.backup;
       if (!b) {
-        el('backupPane').innerHTML = '<div class="empty">No library export linked.</div>';
+        setHtml('backupPane', '<div class="empty">No library export linked.</div>');
         return;
       }
       if (b.error) {
-        el('backupPane').innerHTML = `<div class="empty">${esc(b.error)}</div>`;
+        setHtml('backupPane', `<div class="empty">${esc(b.error)}</div>`);
         return;
       }
       const eq = b.equipment || {};
-      el('backupPane').innerHTML = `
+      setHtml('backupPane', `
         <div class="kpi-grid">
           <div class="kpi"><div class="lbl">Customer</div><div class="val" style="font-size:14px">${esc(b.customer || '—')}</div></div>
           <div class="kpi"><div class="lbl">Site</div><div class="val" style="font-size:14px">${esc(b.displayName || '—')}</div></div>
@@ -908,12 +966,13 @@
         renderImportExport(info);
         return info;
       } catch (e) {
-        el('iePane').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+        setHtml('iePane', `<div class="empty">${esc(e.message || e)}</div>`);
         return null;
       }
     }
 
     async function launchImportExport(toolId) {
+      return withBusy(async function () {
       try {
         toast('Launching Import-Export Utility…');
         const res = await api('/verifone/live/import-export/launch', {
@@ -928,6 +987,7 @@
       } catch (e) {
         toast(String(e.message || e));
       }
+      }, 'btnImportExport');
     }
 
     function renderAll(res) {
@@ -944,12 +1004,13 @@
 
     function renderProfileList() {
       const box = el('profileList');
+      if (!box) return;
       if (!profiles.length) {
         box.innerHTML = '<div class="empty">No saved profiles — probe a site then Save profile.</div>';
         return;
       }
       box.innerHTML = profiles.map(p => `
-        <div class="profile-item ${p.id === selectedProfileId ? 'active' : ''}" data-id="${esc(p.id)}">
+        <div class="profile-item ${p.id === selectedProfileId ? 'active' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button">
           <div class="n">${esc(p.name || p.host)}</div>
           <div class="m">${esc(p.host)} ${p.username ? '· ' + esc(p.username) : ''}
             ${p.hasPassword ? '· 🔑' : ''}
@@ -957,12 +1018,17 @@
           </div>
         </div>`).join('');
       box.querySelectorAll('.profile-item').forEach(node => {
-        node.addEventListener('click', () => applyProfile(node.getAttribute('data-id')));
+        const go = () => applyProfile(node.getAttribute('data-id'));
+        node.addEventListener('click', go);
+        node.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); }
+        });
       });
     }
 
     function fillProfileSelect() {
       const sel = el('profileSelect');
+      if (!sel) return;
       const cur = sel.value;
       sel.innerHTML = '<option value="">— new / manual —</option>' +
         profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name || p.host)} (${esc(p.host)})</option>`).join('');
@@ -971,6 +1037,7 @@
 
     function fillExportSelect() {
       const sel = el('exportSelect');
+      if (!sel) return;
       const cur = sel.value;
       sel.innerHTML = '<option value="">— none —</option>' +
         targets.map(t => {
@@ -982,7 +1049,7 @@
 
     async function loadProfiles() {
       const data = await api('/verifone/live/profiles');
-      profiles = data.profiles || [];
+      profiles = (data && data.profiles) || [];
       fillProfileSelect();
       renderProfileList();
     }
@@ -990,7 +1057,7 @@
     async function loadTargets() {
       try {
         const data = await api('/verifone/live/targets?limit=80');
-        targets = data.targets || [];
+        targets = (data && data.targets) || [];
         fillExportSelect();
       } catch {
         targets = [];
@@ -999,7 +1066,7 @@
 
     async function applyProfile(id) {
       selectedProfileId = id || '';
-      el('profileSelect').value = id || '';
+      const ps = el('profileSelect'); if (ps) ps.value = id || '';
       renderProfileList();
       if (!id) return;
       try {
@@ -1018,23 +1085,23 @@
     }
 
     async function probe() {
-      const host = el('host').value.trim() || DEFAULT_SITE_HOST;
-      const username = el('username').value.trim() || DEFAULT_SITE_USER;
-      const password = el('password').value;
-      el('host').value = host;
-      el('username').value = username;
+      return withBusy(async function () {
+      const hostEl = el('host'), userEl = el('username'), passEl = el('password');
+      const host = ((hostEl && hostEl.value) || '').trim() || DEFAULT_SITE_HOST;
+      const username = ((userEl && userEl.value) || '').trim() || DEFAULT_SITE_USER;
+      const password = passEl ? passEl.value : '';
+      if (hostEl) hostEl.value = host;
+      if (userEl) userEl.value = username;
       saveLoginFields();
       if (!host) { toast('Enter a Commander host / IP'); return; }
-      const btn = el('btnProbe');
-      btn.disabled = true;
-      el('overview').innerHTML = '<div class="empty">Probing Commander ' + esc(host) + '… DNS · ping · ports · HTTP · login</div>';
+      setHtml('overview', '<div class="empty">Probing Commander ' + esc(host) + '… DNS · ping · ports · HTTP · login</div>');
       try {
         toast('Probing site ' + host + '…');
         const body = {
           host,
           username,
           password,
-          otp: el('otp').value.trim() || null,
+          otp: ((el('otp') && el('otp').value) || '').trim() || null,
           export_id: el('exportSelect').value || null,
           profile_id: el('profileSelect').value || selectedProfileId || null,
           do_login: el('doLogin').checked,
@@ -1051,25 +1118,26 @@
         saveLoginFields();
         lastResult = res;
         try {
-          localStorage.setItem('fafo_hud_do_login', el('doLogin').checked ? '1' : '0');
-          localStorage.setItem('fafo_hud_do_http', el('doHttp').checked ? '1' : '0');
+          lsSet('fafo_hud_do_login', el('doLogin') && el('doLogin').checked ? '1' : '0');
+          lsSet('fafo_hud_do_http', el('doHttp') && el('doHttp').checked ? '1' : '0');
         } catch (_) {}
         renderAll(res);
-        toast(`Health ${res.health.level} (${res.health.score}) · ${res.elapsedMs} ms · ${host}`);
+        const hh = (res && res.health) || {};
+        toast('Health ' + (hh.level || 'unknown') + ' (' + (hh.score != null ? hh.score : '—') + ') · ' + (res.elapsedMs != null ? res.elapsedMs : '—') + ' ms · ' + host);
         await loadProfiles();
       } catch (e) {
-        el('host').value = host;
-        el('username').value = username;
-        if (password) el('password').value = password;
-        el('overview').innerHTML = `<div class="empty">${esc(e.message || e)}</div>`;
+        if (hostEl) hostEl.value = host;
+        if (userEl) userEl.value = username;
+        if (password && passEl) passEl.value = password;
+        setHtml('overview', `<div class="empty">${esc(e.message || e)}</div>`);
         toast(String(e.message || e));
-      } finally {
-        btn.disabled = false;
       }
+      }, 'btnProbe');
     }
 
     async function saveProfile() {
-      const host = el('host').value.trim();
+      return withBusy(async function () {
+      const host = ((el('host') && el('host').value) || '').trim();
       if (!host) { toast('Host required to save profile'); return; }
       const name = prompt('Profile name:', host) || host;
       try {
@@ -1092,10 +1160,12 @@
       } catch (e) {
         toast(String(e.message || e));
       }
+      }, 'btnSaveProfile');
     }
 
     async function deleteProfile() {
-      const id = el('profileSelect').value || selectedProfileId;
+      return withBusy(async function () {
+      const id = (el('profileSelect') && el('profileSelect').value) || selectedProfileId;
       if (!id) { toast('Select a profile to delete'); return; }
       if (!confirm('Delete this connection profile and its stored password?')) return;
       try {
@@ -1107,6 +1177,7 @@
       } catch (e) {
         toast(String(e.message || e));
       }
+      }, 'btnDelProfile');
     }
 
     // --- Journal Browser ---
@@ -1117,25 +1188,28 @@
       s.style.color = ok ? 'var(--good)' : 'var(--muted)';
     }
     function jCriteria() {
+      const val = (id) => { const n = el(id); return n ? String(n.value || '') : ''; };
+      const chk = (id) => { const n = el(id); return !!(n && n.checked); };
       return {
-        register: el('jfReg').value || '',
-        employee: el('jfEmp').value || '',
-        mop: el('jfMop').value || '',
-        department: el('jfDept').value || '',
-        fuelPosition: el('jfFuel').value || '',
-        dispenser: el('jfDisp').value || '',
-        transNum: el('jfTrans').value.trim() || '',
-        barcode: el('jfBarcode').value.trim() || '',
-        amountMin: el('jfAmtMin').value !== '' ? el('jfAmtMin').value : '',
-        amountMax: el('jfAmtMax').value !== '' ? el('jfAmtMax').value : '',
-        timeFrom: el('jfTimeFrom').value.trim() || '',
-        timeTo: el('jfTimeTo').value.trim() || '',
-        text: el('jfText').value.trim() || '',
-        code: el('jfCode').value || '',
-        hasFuel: el('jfHasFuel').checked ? true : '',
+        register: val('jfReg') || '',
+        employee: val('jfEmp') || '',
+        mop: val('jfMop') || '',
+        department: val('jfDept') || '',
+        fuelPosition: val('jfFuel') || '',
+        dispenser: val('jfDisp') || '',
+        transNum: val('jfTrans').trim() || '',
+        barcode: val('jfBarcode').trim() || '',
+        amountMin: val('jfAmtMin') !== '' ? val('jfAmtMin') : '',
+        amountMax: val('jfAmtMax') !== '' ? val('jfAmtMax') : '',
+        timeFrom: val('jfTimeFrom').trim() || '',
+        timeTo: val('jfTimeTo').trim() || '',
+        text: val('jfText').trim() || '',
+        code: val('jfCode') || '',
+        hasFuel: chk('jfHasFuel') ? true : '',
       };
     }
     function fillSelect(sel, values, keepAny = true) {
+      if (!sel) return;
       const cur = sel.value;
       sel.innerHTML = keepAny ? '<option value="">Any</option>' : '';
       (values || []).forEach(v => {
@@ -1147,6 +1221,7 @@
     }
     function renderPeriods() {
       const box = el('jPeriods');
+      if (!box) return;
       if (!journalPeriods.length) {
         box.innerHTML = '<div class="empty" style="padding:16px">No periods — login or check site connection</div>';
         return;
@@ -1154,18 +1229,22 @@
       box.innerHTML = journalPeriods.map(p => {
         const cur = isCurrentPeriod(p);
         return `
-        <div class="period-item ${p.key === journalPeriodKey ? 'active' : ''}" data-key="${esc(p.key)}"
+        <div class="period-item ${p.key === journalPeriodKey ? 'active' : ''}" data-key="${esc(p.key)}" tabindex="0" role="button"
              title="${cur ? 'Current = mostly journal events, often no $ amounts' : 'Dated shift — best for sales'}">
           <div>${esc(p.label || p.filename || p.key)}${cur ? ' · open' : ''}</div>
           <div class="meta">${esc([p.date, p.shift ? ('shift ' + p.shift) : '', p.filename].filter(Boolean).join(' · '))}${cur ? ' · may lack $' : ''}</div>
         </div>`;
       }).join('');
       box.querySelectorAll('.period-item').forEach(node => {
-        node.addEventListener('click', () => {
+        const pick = () => {
           journalPeriodKey = node.getAttribute('data-key');
           renderPeriods();
-          el('btnJGetData').disabled = !journalPeriodKey || journalSessionId === 'offline';
-          if (el('btnJForce')) el('btnJForce').disabled = !journalPeriodKey || !journalSessionId || journalSessionId === 'offline';
+          const g = el('btnJGetData'); if (g) g.disabled = !journalPeriodKey || journalSessionId === 'offline';
+          const f = el('btnJForce'); if (f) f.disabled = !journalPeriodKey || !journalSessionId || journalSessionId === 'offline';
+        };
+        node.addEventListener('click', pick);
+        node.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); }
         });
       });
     }
@@ -1184,6 +1263,7 @@
       journalViewTx = rows || [];
       const matchSet = new Set(matchIds || []);
       const body = el('jTxBody');
+      if (!body) return;
       if (!journalViewTx.length) {
         body.innerHTML = '<tr><td colspan="10" class="empty">No sales in this view — uncheck Sales only or pick a dated shift</td></tr>';
         return;
@@ -1218,6 +1298,7 @@
       const t = journalViewTx[i];
       renderTxTable(journalViewTx);
       const box = el('jDetail');
+      if (!box) return;
       if (!t) {
         box.innerHTML = '<div class="empty">Select a transaction</div>';
         return;
@@ -1445,18 +1526,17 @@
       box.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
     }
     async function journalLogin() {
+      return withBusy(async function () {
       // Snapshot credentials BEFORE any async work so nothing clears them
-      const host = el('host').value.trim() || DEFAULT_SITE_HOST;
-      const username = el('username').value.trim() || DEFAULT_SITE_USER;
-      const password = el('password').value;
+      const host = ((el('host') && el('host').value) || '').trim() || DEFAULT_SITE_HOST;
+      const username = ((el('username') && el('username').value) || '').trim() || DEFAULT_SITE_USER;
+      const password = el('password') ? el('password').value : '';
       const otp = el('otp').value.trim() || null;
       const profile_id = el('profileSelect').value || selectedProfileId || null;
       el('host').value = host;
       el('username').value = username;
       saveLoginFields();
       if (!host) { toast('Enter Commander host/IP first (store controller LAN IP)'); return; }
-      el('btnJLogin').disabled = true;
-      el('btnJournalLogin').disabled = true;
       showJournalDiag(null);
       try {
         toast('Journal login to ' + host + ' (via local toolbox API)…');
@@ -1521,7 +1601,7 @@
           });
         }
         toast(res.message || ('Journal open on ' + res.host));
-        el('journalPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el('journalPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (e) {
         // Keep credentials filled on error
         el('host').value = host;
@@ -1531,14 +1611,12 @@
         setJournalStatus('Error (check local server + site IP)', false);
         showJournalDiag(String(e.message || e));
       } finally {
-        el('btnJLogin').disabled = false;
-        el('btnJournalLogin').disabled = false;
       }
+      }, ['btnJLogin', 'btnJournalLogin']);
     }
     async function journalGetData(force) {
+      return withBusy(async function () {
       if (!journalSessionId || !journalPeriodKey) { toast('Select a period'); return; }
-      el('btnJGetData').disabled = true;
-      if (el('btnJForce')) el('btnJForce').disabled = true;
       showJournalDiag(null);
       try {
         toast(force ? 'Force re-fetching T-log…' : 'Fetching T-log for period…');
@@ -1598,14 +1676,15 @@
         toast(String(e.message || e));
         showJournalDiag(String(e.message || e));
       } finally {
-        el('btnJGetData').disabled = !journalPeriodKey;
-        if (el('btnJForce')) el('btnJForce').disabled = !journalPeriodKey;
+        const g = el('btnJGetData'); if (g) g.disabled = !journalPeriodKey;
+        const f = el('btnJForce'); if (f) f.disabled = !journalPeriodKey;
       }
+      }, force ? 'btnJForce' : 'btnJGetData');
     }
     async function journalLoadXml() {
+      return withBusy(async function () {
       const path = (el('jXmlPath') && el('jXmlPath').value || '').trim();
       if (!path) { toast('Enter a full path to a saved T-log / period XML'); return; }
-      el('btnJXml').disabled = true;
       showJournalDiag(null);
       try {
         const res = await api('/verifone/journal/load-xml', {
@@ -1654,8 +1733,8 @@
         toast(String(e.message || e));
         showJournalDiag(String(e.message || e));
       } finally {
-        el('btnJXml').disabled = false;
       }
+      }, 'btnJXml');
     }
     async function journalSearch(mode, opts) {
       const silent = !!(opts && opts.silent);
@@ -1764,11 +1843,12 @@
         }).join(','));
       });
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
       a.download = 'journal-transactions.csv';
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 1500);
       toast('CSV exported');
     }
 
@@ -1794,39 +1874,46 @@
         toast('HUD summary copied');
       } catch (_) { toast('Copy failed'); }
     }
-    el('btnCopyHudSummary')?.addEventListener('click', copyHudSummary);
+    bind('btnCopyHudSummary', 'click', copyHudSummary);
     document.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
-      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 's' || e.key === 'S') copyHudSummary();
-      else if (e.key === 'g' || e.key === 'G') el('btnProbe')?.click();
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!typing && (e.key === 's' || e.key === 'S')) { e.preventDefault(); copyHudSummary(); return; }
+      if (!typing && (e.key === 'g' || e.key === 'G')) { const b = el('btnProbe'); if (b) b.click(); return; }
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && journalViewTx.length && !typing) {
+        e.preventDefault();
+        const dir = e.key === 'ArrowDown' ? 1 : -1;
+        const cur = journalSelectedRow == null ? (dir > 0 ? -1 : journalViewTx.length) : journalSelectedRow;
+        const next = Math.max(0, Math.min(journalViewTx.length - 1, cur + dir));
+        selectTx(next);
+      }
     });
     try {
       window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
         toolId: 'commander-hud',
         helpLines: ['S — copy probe summary', 'G — Probe & gather'],
       });
-      const dl = localStorage.getItem('fafo_hud_do_login');
-      const dh = localStorage.getItem('fafo_hud_do_http');
+      const dl = lsGet('fafo_hud_do_login', null);
+      const dh = lsGet('fafo_hud_do_http', null);
       if (dl != null && el('doLogin')) el('doLogin').checked = dl === '1';
       if (dh != null && el('doHttp')) el('doHttp').checked = dh === '1';
     } catch (_) {}
 
-    el('btnProbe').addEventListener('click', probe);
-    el('btnSaveProfile').addEventListener('click', saveProfile);
-    el('btnDelProfile').addEventListener('click', deleteProfile);
-    el('btnImportExport').addEventListener('click', () => launchImportExport(null));
-    el('btnJournalLogin').addEventListener('click', journalLogin);
-    el('btnJLogin').addEventListener('click', journalLogin);
-    el('btnJGetData').addEventListener('click', () => journalGetData(false));
+    bind('btnProbe', 'click', probe);
+    bind('btnSaveProfile', 'click', saveProfile);
+    bind('btnDelProfile', 'click', deleteProfile);
+    bind('btnImportExport', 'click', () => launchImportExport(null));
+    bind('btnJournalLogin', 'click', journalLogin);
+    bind('btnJLogin', 'click', journalLogin);
+    bind('btnJGetData', 'click', () => journalGetData(false));
     if (el('btnJForce')) el('btnJForce').addEventListener('click', () => journalGetData(true));
     if (el('btnJXml')) el('btnJXml').addEventListener('click', journalLoadXml);
-    el('btnJSearch').addEventListener('click', () => journalSearch('search'));
-    el('btnJFilter').addEventListener('click', () => journalSearch('filter'));
+    bind('btnJSearch', 'click', () => journalSearch('search'));
+    bind('btnJFilter', 'click', () => journalSearch('filter'));
     if (el('btnJClearFilters')) el('btnJClearFilters').addEventListener('click', clearJournalFilters);
-    el('btnJPrev').addEventListener('click', () => journalMove(-1));
-    el('btnJNext').addEventListener('click', () => journalMove(1));
+    bind('btnJPrev', 'click', () => journalMove(-1));
+    bind('btnJNext', 'click', () => journalMove(1));
     // Live drill-down on already-loaded data (same behavior as Site Console)
     const jFiltersBox = el('jFilters');
     if (jFiltersBox) {
@@ -1865,7 +1952,7 @@
       el('jResultMeta').textContent = 'No period loaded.';
       toast('Journal session closed');
     });
-    el('btnJExport').addEventListener('click', journalExportCsv);
+    bind('btnJExport', 'click', journalExportCsv);
     if (el('jfSalesOnly')) {
       el('jfSalesOnly').checked = journalShowSalesOnly;
       el('jfSalesOnly').addEventListener('change', () => {
@@ -1924,7 +2011,7 @@
 
       const online = await refreshServer();
       if (!online) {
-        el('overview').innerHTML =
+        setHtml('overview',
           '<div class="empty">Local toolbox server offline at <code>127.0.0.87:18765</code>. ' +
           'That is the FAFO API on this PC (not the Commander).<br><br>' +
           'Click <strong>▶ Start Server</strong> above (or the status pill), then retry. ' +

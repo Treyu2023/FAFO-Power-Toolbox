@@ -6,11 +6,7 @@
 <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
-:root{
-  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
-  --accent:#00f3ff;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;
-  --text:#e2e8f0;--muted:#8b9bb4;
-}
+:root{--bg:#070b12;--panel:#0c1220;--panel2:#141c2c;--border:rgba(0,243,255,.24);--accent:#00f3ff;--gold:#f5c542;--magenta:#e879f9;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#7dd3fc;--text:#f1f5f9;--muted:#b6c4d8;}
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;
@@ -100,6 +96,20 @@ tr:hover td{background:rgba(255,255,255,.03)}
 .nav-chip.primary{border-color:rgba(167,139,250,.5);color:#c4b5fd;background:rgba(167,139,250,.1)}
 .meta-line{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .stats{position:sticky;top:48px;z-index:15;background:rgba(5,5,8,.92);padding:8px 0;backdrop-filter:blur(8px)}
+
+.btn:hover{background:rgba(0,243,255,.2)}
+.btn:focus-visible,.sel:focus-visible,.inp:focus-visible,.tab:focus-visible,.card:focus-visible,.nav-chip:focus-visible,.nav a:focus-visible,a:focus-visible,input:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px;
+}
+.card:hover{border-color:var(--gold)}
+.nav .t{color:var(--gold)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+@media (prefers-contrast:more){
+  :root{--text:#ffffff;--muted:#d5deea;--border:rgba(0,243,255,.45)}
+}
+
 </style>
 </head>
 <body>
@@ -174,9 +184,9 @@ tr:hover td{background:rgba(255,255,255,.03)}
   <div class="stats" id="stats"></div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="themes">Themes</button>
-    <button class="tab" data-tab="timeline">Timeline</button>
-    <button class="tab" data-tab="providers">By provider</button>
+    <button class="tab active" data-tab="themes" type="button">1 Themes</button>
+    <button class="tab" data-tab="timeline" type="button">2 Timeline</button>
+    <button class="tab" data-tab="providers" type="button">3 By provider</button>
   </div>
 
   <div id="view-themes"></div>
@@ -200,9 +210,61 @@ tr:hover td{background:rgba(255,255,255,.03)}
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
-const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
-  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-}[c]));
+
+function el(id) {
+  try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+}
+function setText(id, text) {
+  const n = el(id);
+  if (n) n.textContent = text == null ? '' : String(text);
+}
+function bind(id, ev, fn) {
+  const n = el(id);
+  if (!n || !fn) return;
+  n.addEventListener(ev, fn);
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+}
+function escHtml(s) {
+  const u = UI()?.escapeHtml;
+  if (typeof u === 'function') return u(s);
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const esc = escHtml;
+let busy = false;
+const _blobUrls = [];
+function trackBlob(url) {
+  if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+  return url;
+}
+function revokeBlobs() {
+  while (_blobUrls.length) {
+    try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+  }
+}
+window.addEventListener('pagehide', revokeBlobs);
+async function withBusy(fn, btnId) {
+  if (busy) return;
+  busy = true;
+  const b = btnId ? el(btnId) : null;
+  if (b) b.disabled = true;
+  try { return await fn(); }
+  finally {
+    busy = false;
+    if (b) b.disabled = false;
+  }
+}
+
+
 
 const LABEL = { ok: 'Fine', info: 'FYI', warn: 'Watch', error: 'Act' };
 function badge(lv) {
@@ -224,55 +286,69 @@ function qs(name) {
 
 function loadPrefs() {
   try {
-    const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
-    if (p.hours && document.getElementById('hours').querySelector(`option[value="${p.hours}"]`))
-      document.getElementById('hours').value = p.hours;
-    if (p.sample && document.getElementById('sampleSize').querySelector(`option[value="${p.sample}"]`))
-      document.getElementById('sampleSize').value = p.sample;
-    if (p.log) document.getElementById('logFilter').value = p.log;
-    if (p.auto) document.getElementById('autoRefresh').checked = !!p.auto;
-    if (p.interval && document.getElementById('autoInterval').querySelector(`option[value="${p.interval}"]`))
-      document.getElementById('autoInterval').value = p.interval;
+    const p = JSON.parse(lsGet(PREF_KEY, '{}') || '{}') || {};
+    const hours = el('hours');
+    const sample = el('sampleSize');
+    const logF = el('logFilter');
+    const auto = el('autoRefresh');
+    const interval = el('autoInterval');
+    const hv = String(p.hours ?? '').replace(/[^0-9]/g, '');
+    const sv = String(p.sample ?? '').replace(/[^0-9]/g, '');
+    const iv = String(p.interval ?? '').replace(/[^0-9]/g, '');
+    if (hv && hours && hours.querySelector('option[value="' + hv + '"]')) hours.value = hv;
+    if (sv && sample && sample.querySelector('option[value="' + sv + '"]')) sample.value = sv;
+    if (p.log && logF) logF.value = p.log;
+    if (p.auto && auto) auto.checked = !!p.auto;
+    if (iv && interval && interval.querySelector('option[value="' + iv + '"]')) interval.value = iv;
   } catch (_) {}
 }
 
 function savePrefs() {
   try {
-    localStorage.setItem(PREF_KEY, JSON.stringify({
-      hours: document.getElementById('hours').value,
-      sample: document.getElementById('sampleSize').value,
-      log: document.getElementById('logFilter').value,
-      auto: document.getElementById('autoRefresh').checked,
-      interval: document.getElementById('autoInterval').value,
+    lsSet(PREF_KEY, JSON.stringify({
+      hours: el('hours')?.value,
+      sample: el('sampleSize')?.value,
+      log: el('logFilter')?.value,
+      auto: !!el('autoRefresh')?.checked,
+      interval: el('autoInterval')?.value,
     }));
   } catch (_) {}
 }
 
 function syncDeepDiveLinks() {
-  const hours = document.getElementById('hours').value;
-  // Map viewer sample sizes toward deep-dive options
-  const sm = Number(document.getElementById('sampleSize').value || 150);
+  const hours = el('hours')?.value || '6';
+  const sm = Number(el('sampleSize')?.value || 150);
   const sample = sm <= 150 ? '250' : (sm <= 300 ? '450' : '700');
   const h = hours === '6' ? '24' : hours;
   const href = `Event Deep Dive.html?hours=${encodeURIComponent(h)}&sample=${encodeURIComponent(sample)}`;
-  const chip = document.getElementById('chipDeepDive');
-  const btn = document.getElementById('btnDeepDiveCtx');
+  const chip = el('chipDeepDive');
+  const btn = el('btnDeepDiveCtx');
   if (chip) chip.href = href;
   if (btn) btn.href = href;
 }
 
 function setLastUpdated(ok) {
-  const el = document.getElementById('lastUpdated');
-  if (!el) return;
-  el.textContent = ok ? ('Updated ' + new Date().toLocaleTimeString()) : '—';
+  setText('lastUpdated', ok ? ('Updated ' + new Date().toLocaleTimeString()) : '—');
 }
 
 function downloadBlob(filename, text, mime) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: mime || 'application/json' }));
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  try {
+    revokeBlobs();
+    const a = document.createElement('a');
+    const url = trackBlob(URL.createObjectURL(new Blob([text], { type: mime || 'application/json' })));
+    a.href = url;
+    a.download = filename || 'export.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      const i = _blobUrls.indexOf(url);
+      if (i >= 0) _blobUrls.splice(i, 1);
+    }, 2000);
+  } catch (e) {
+    UI()?.toast?.('Export failed', 'warn');
+  }
 }
 
 function exportJson() {
@@ -282,8 +358,8 @@ function exportJson() {
     timeline,
     activeTheme,
     tab,
-    hours: document.getElementById('hours').value,
-    sample: document.getElementById('sampleSize').value,
+    hours: el('hours')?.value,
+    sample: el('sampleSize')?.value,
   };
   downloadBlob(`event-viewer-${Date.now()}.json`, JSON.stringify(payload, null, 2), 'application/json');
   UI()?.toast?.('Exported JSON', 'ok');
@@ -324,25 +400,29 @@ function sampleMax() {
 }
 
 function setLoadHint(msg) {
-  const el = document.getElementById('loadHint');
-  if (!el) return;
+  const n = el('loadHint');
+  if (!n) return;
   if (!msg) {
-    el.style.display = 'none';
-    el.textContent = '';
+    n.style.display = 'none';
+    n.textContent = '';
     return;
   }
-  el.style.display = 'block';
-  el.textContent = msg;
+  n.style.display = 'block';
+  n.textContent = msg;
 }
 
 function setPill(ok, text) {
-  const el = document.getElementById('pill');
-  el.className = 'status ' + (ok ? 'ok' : 'bad');
-  el.textContent = text;
+  const n = el('pill');
+  if (!n) return;
+  n.className = 'status ' + (ok ? 'ok' : 'bad');
+  n.textContent = text == null ? '' : String(text);
 }
 
 function renderStats(s) {
-  document.getElementById('stats').innerHTML = [
+  const box = el('stats');
+  if (!box) return;
+  s = s || {};
+  box.innerHTML = [
     { l: 'Sampled', v: s.sampled ?? '—' },
     { l: 'Errors', v: s.errorCount ?? '—' },
     { l: 'Warnings', v: s.warningCount ?? '—' },
@@ -353,8 +433,9 @@ function renderStats(s) {
 }
 
 function renderThemes(s) {
-  const themes = s.themes || [];
-  const box = document.getElementById('view-themes');
+  const themes = (s && s.themes) || [];
+  const box = el('view-themes');
+  if (!box) return;
   if (!themes.length) {
     box.innerHTML = '<div class="panel"><div class="pb" style="color:var(--ok)">No error/warning themes in this window ✓</div></div>';
     return;
@@ -379,7 +460,8 @@ function renderThemes(s) {
 }
 
 function renderTimeline(data) {
-  const box = document.getElementById('view-timeline');
+  const box = el('view-timeline');
+  if (!box) return;
   const rows = data?.events || [];
   const filterNote = activeTheme
     ? `<div style="margin-bottom:10px;font-size:12px;color:var(--muted)">Filtered to theme <strong>${esc(activeTheme)}</strong>
@@ -432,7 +514,8 @@ function renderProviders(s) {
     }
   }
   const rows = [...map.values()].sort((a, b) => b.count - a.count);
-  const box = document.getElementById('view-providers');
+  const box = el('view-providers');
+  if (!box) return;
   if (!rows.length) {
     box.innerHTML = '<div class="panel"><div class="pb" style="color:var(--muted)">No providers in sample.</div></div>';
     return;
@@ -452,22 +535,26 @@ function renderProviders(s) {
   </div></div>`;
 }
 
+const TAB_ORDER = ['themes', 'timeline', 'providers'];
 function switchTab(name) {
+  if (!TAB_ORDER.includes(name)) return;
   tab = name;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.getElementById('view-themes').classList.toggle('hidden', name !== 'themes');
-  document.getElementById('view-timeline').classList.toggle('hidden', name !== 'timeline');
-  document.getElementById('view-providers').classList.toggle('hidden', name !== 'providers');
+  el('view-themes')?.classList.toggle('hidden', name !== 'themes');
+  el('view-timeline')?.classList.toggle('hidden', name !== 'timeline');
+  el('view-providers')?.classList.toggle('hidden', name !== 'providers');
 }
 
 async function loadSummary(gen) {
-  const hours = document.getElementById('hours').value;
+  const hours = el('hours')?.value || '6';
   const max = sampleMax();
   setLoadHint(`Sampling themes (last ${hours}h · up to ${max} events)…`);
-  const s = await UI().apiFetch(`/events/summary?hours=${hours}&max_events=${max}`);
+  const api = UI()?.apiFetch;
+  if (!api) throw new Error('Toolbox UI not loaded');
+  const s = await api(`/events/summary?hours=${hours}&max_events=${max}`);
   if (gen !== loadGen) return;
-  summary = s;
-  renderStats(s);
+  summary = s || {};
+  renderStats(summary);
   renderThemes(s);
   renderProviders(s);
   setLoadHint(
@@ -476,9 +563,9 @@ async function loadSummary(gen) {
 }
 
 async function loadTimeline(gen) {
-  const hours = document.getElementById('hours').value;
-  const q = document.getElementById('search').value.trim();
-  const log = document.getElementById('logFilter').value;
+  const hours = el('hours')?.value || '6';
+  const q = (el('search')?.value || '').trim();
+  const log = el('logFilter')?.value || '';
   // Timeline stays smaller than summary — list view only needs recent hits
   const max = Math.min(200, Math.max(80, Math.floor(sampleMax() * 0.6)));
   const params = new URLSearchParams({ hours, max_events: String(max) });
@@ -486,7 +573,9 @@ async function loadTimeline(gen) {
   if (log) params.set('log', log);
   if (activeTheme) params.set('theme', activeTheme);
   setLoadHint(`Loading timeline (up to ${max} rows)…`);
-  const data = await UI().apiFetch('/events/query?' + params.toString());
+  const api = UI()?.apiFetch;
+  if (!api) throw new Error('Toolbox UI not loaded');
+  const data = await api('/events/query?' + params.toString());
   if (gen !== loadGen) return;
   timeline = data;
   renderTimeline(data);
@@ -495,13 +584,14 @@ async function loadTimeline(gen) {
 }
 
 async function load() {
-  const btn = document.getElementById('btnRefresh');
+  return withBusy(async () => {
   const gen = ++loadGen;
-  btn.disabled = true;
   syncDeepDiveLinks();
   savePrefs();
+  const api = UI()?.apiFetch;
   try {
-    await UI().apiFetch('/health');
+    if (!api) throw new Error('offline');
+    await api('/health');
     if (gen !== loadGen) return;
     setPill(true, 'Connected');
   } catch {
@@ -509,13 +599,12 @@ async function load() {
     setPill(false, 'Server offline');
     setLoadHint('');
     setLastUpdated(false);
-    document.getElementById('view-themes').innerHTML =
+    const box = el('view-themes');
+    if (box) box.innerHTML =
       '<div class="panel"><div class="pb"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong> or Refresh.</div></div>';
-    btn.disabled = false;
     return;
   }
   try {
-    // Themes first (cheap enough for hub). Timeline only when user asks or deep-link.
     await loadSummary(gen);
     if (gen !== loadGen) return;
     if (tab === 'timeline' || activeTheme) await loadTimeline(gen);
@@ -524,10 +613,11 @@ async function load() {
     if (gen !== loadGen) return;
     setLoadHint('');
     setLastUpdated(false);
-    document.getElementById('view-themes').innerHTML =
+    const box = el('view-themes');
+    if (box) box.innerHTML =
       `<div class="panel"><div class="pb" style="color:var(--danger)">${esc(e.message || e)}</div></div>`;
   }
-  if (gen === loadGen) btn.disabled = false;
+  }, 'btnRefresh');
 }
 
 document.querySelectorAll('.tab').forEach(t => {
@@ -539,51 +629,79 @@ document.querySelectorAll('.tab').forEach(t => {
     }
   });
 });
-document.getElementById('btnRefresh').onclick = load;
-document.getElementById('btnExportJson').onclick = exportJson;
-document.getElementById('btnExportCsv').onclick = exportCsv;
-document.getElementById('autoRefresh').onchange = () => { savePrefs(); setupAuto(); };
-document.getElementById('autoInterval').onchange = () => { savePrefs(); setupAuto(); };
-document.getElementById('hours').onchange = () => {
+bind('btnRefresh', 'click', () => { load().catch(() => {}); });
+bind('btnExportJson', 'click', () => { withBusy(async () => exportJson(), 'btnExportJson'); });
+bind('btnExportCsv', 'click', () => { withBusy(async () => exportCsv(), 'btnExportCsv'); });
+bind('autoRefresh', 'change', () => { savePrefs(); setupAuto(); });
+bind('autoInterval', 'change', () => { savePrefs(); setupAuto(); });
+bind('hours', 'change', () => {
   timeline = null;
   syncDeepDiveLinks();
   savePrefs();
-  load();
-};
-document.getElementById('sampleSize').onchange = () => {
+  load().catch(() => {});
+});
+bind('sampleSize', 'change', () => {
   timeline = null;
   syncDeepDiveLinks();
   savePrefs();
-  load();
-};
-document.getElementById('logFilter').onchange = () => {
+  load().catch(() => {});
+});
+bind('logFilter', 'change', () => {
   savePrefs();
   if (tab === 'timeline') {
     const gen = ++loadGen;
-    loadTimeline(gen).catch(console.error);
+    loadTimeline(gen).catch(() => {});
   }
-};
+});
 let searchTimer = null;
-document.getElementById('search').addEventListener('input', () => {
+bind('search', 'input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     if (tab !== 'timeline') switchTab('timeline');
     const gen = ++loadGen;
-    loadTimeline(gen).catch(console.error);
+    loadTimeline(gen).catch(() => {});
   }, 450);
 });
 
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === 'Escape') {
+    if (typing) { e.preventDefault(); t.blur?.(); return; }
+    if (activeTheme) {
+      e.preventDefault();
+      e.stopPropagation();
+      activeTheme = null;
+      if (tab === 'timeline') loadTimeline(loadGen).catch(() => {});
+      return;
+    }
+  }
   if (e.key === '/' && !typing) {
     e.preventDefault();
-    document.getElementById('search')?.focus();
+    el('search')?.focus();
     return;
+  }
+  if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && ['1','2','3'].includes(e.key)) {
+    e.preventDefault();
+    const name = TAB_ORDER[Number(e.key) - 1];
+    switchTab(name);
+    if (name === 'timeline' && !timeline) loadTimeline(loadGen).catch(() => {});
+    return;
+  }
+  if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (t?.classList?.contains('tab') || true)) {
+    if (t?.classList?.contains('tab') || e.target === document.body) {
+      const i = TAB_ORDER.indexOf(tab);
+      const next = e.key === 'ArrowRight' ? TAB_ORDER[(i + 1) % TAB_ORDER.length] : TAB_ORDER[(i - 1 + TAB_ORDER.length) % TAB_ORDER.length];
+      e.preventDefault();
+      switchTab(next);
+      document.querySelector('.tab.active')?.focus();
+      if (next === 'timeline' && !timeline) loadTimeline(loadGen).catch(() => {});
+      return;
+    }
   }
   if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
     e.preventDefault();
-    load();
+    load().catch(() => {});
   }
 });
 document.addEventListener('visibilitychange', () => {
@@ -597,9 +715,9 @@ const q0 = qs('q');
 const h0 = qs('hours');
 const s0 = qs('sample');
 if (t0) activeTheme = t0;
-if (q0) document.getElementById('search').value = q0;
-if (h0 && ['6', '24', '72', '168'].includes(h0)) document.getElementById('hours').value = h0;
-if (s0 && ['150', '300', '500'].includes(s0)) document.getElementById('sampleSize').value = s0;
+if (q0 && el('search')) el('search').value = q0;
+if (h0 && ['6', '24', '72', '168'].includes(h0) && el('hours')) el('hours').value = h0;
+if (s0 && ['150', '300', '500'].includes(s0) && el('sampleSize')) el('sampleSize').value = s0;
 if (t0 || q0) tab = 'timeline';
 syncDeepDiveLinks();
 

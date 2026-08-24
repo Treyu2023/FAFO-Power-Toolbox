@@ -10,12 +10,12 @@
     <style>
         :root {
             --accent-glow: #00e5ff;
-            --accent-extra: #ff007f;
-            --accent-escrow: #ffd700;
-            --text-main: #ececec;
-            --text-muted: #a0a0b8;
-            --glass-bg: rgba(25, 25, 38, 0.55);
-            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent-extra: #ff5aaa;
+            --accent-escrow: #ffe066;
+            --text-main: #f5f5fb;
+            --text-muted: #c9c9dc;
+            --glass-bg: rgba(12, 12, 20, 0.82);
+            --glass-border: rgba(255, 255, 255, 0.16);
         }
 
         body { 
@@ -126,8 +126,24 @@
 
         .metric-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 5px; font-weight: 700;}
         .metric-value { font-size: 32px; font-weight: 800; color: #fff; letter-spacing: -0.5px;}
-        .metric-subtext { font-size: 11px; color: #888; margin-top: 5px; font-family: monospace; }
+        .metric-subtext { font-size: 11px; color: #d0d0e0; margin-top: 5px; font-family: monospace; }
         .savings-value { color: var(--accent-extra); text-shadow: 0 0 20px rgba(255,0,127,0.3); }
+
+
+        .loan-status { max-width:1100px; margin:8px auto 0; padding:8px 14px; min-height:1.2em;
+            color:#f5f5fb; font-size:12px; font-family:monospace; }
+        .loan-status.warn { color:#ffe066; }
+        .loan-status.err { color:#ff8a8a; }
+        .schedule-wrap { margin-top:24px; overflow:auto; max-height:360px; border:1px solid var(--glass-border);
+            border-radius:12px; background:rgba(0,0,0,0.45); }
+        .schedule-wrap table { width:100%; border-collapse:collapse; font-size:12px; color:var(--text-main); }
+        .schedule-wrap th { position:sticky; top:0; background:#10101a; color:#e8e8f4; text-align:right;
+            padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.18); letter-spacing:0.04em; }
+        .schedule-wrap td { text-align:right; padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);
+            color:#f0f0f8; font-family:ui-monospace,monospace; }
+        .schedule-wrap th:first-child, .schedule-wrap td:first-child { text-align:left; }
+        .schedule-wrap tbody tr:nth-child(even) { background:rgba(255,255,255,0.04); }
+        button:disabled { opacity:0.55; cursor:wait; }
 
         .chart-container { position: relative; height: 400px; width: 100%; margin-top: 30px; padding: 20px; box-sizing: border-box; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid var(--glass-border); }
     </style>
@@ -142,6 +158,7 @@
           <a href="Universal Converter.html" style="color:#00e5ff;text-decoration:none;font-size:11px;font-weight:700;border:1px solid rgba(0,229,255,.35);padding:5px 10px;border-radius:999px" title="Counterpart">🧮 Universal Converter</a>
           <a href="../Business Tax Preparedness/TaxForge Hub.html" style="color:#94a3b8;text-decoration:none;font-size:11px;font-weight:700;border:1px solid rgba(148,163,184,.3);padding:5px 10px;border-radius:999px" title="TaxForge suite">🧾 TaxForge</a>
           <a href="../Business Tax Preparedness/Quarterly Tracker.html" style="color:#94a3b8;text-decoration:none;font-size:11px;font-weight:700;border:1px solid rgba(148,163,184,.3);padding:5px 10px;border-radius:999px" title="Quarterly">📅 Quarterly</a>
+          <button type="button" id="btnLoanCalc" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(0,229,255,.55);padding:5px 10px;border-radius:999px;background:#062028;color:#7ef6ff">Calculate</button>
           <button type="button" id="btnLoanCsv" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(0,229,255,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#00e5ff">📋 CSV schedule</button>
           <button type="button" id="btnLoanSaveA" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(255,215,0,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#ffd700" title="Save scenario A">A snapshot</button>
           <button type="button" id="btnLoanSaveB" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(255,0,127,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#ff007f" title="Save scenario B">B snapshot</button>
@@ -277,11 +294,390 @@
             <div class="chart-container">
                 <canvas id="projectionChart"></canvas>
             </div>
+            <p id="loanStatus" class="loan-status" role="status" aria-live="polite"></p>
+            <h3>Amortization schedule</h3>
+            <div class="schedule-wrap">
+                <table id="loanSchedule">
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th>Payment</th>
+                            <th>Principal</th>
+                            <th>Interest</th>
+                            <th>Extra</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <script>
-        // --- 1. Sync Logic for All Inputs ---
+        /* ——— helpers ——— */
+        const $ = (id) => { try { return id ? document.getElementById(id) : null; } catch { return null; } };
+        const lsGet = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : v; } catch { return fallback; } };
+        const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
+        const lsDel = (k) => { try { localStorage.removeItem(k); } catch {} };
+        const withBusy = async (btn, fn) => {
+            if (btn && btn.dataset && btn.dataset.busy === '1') return;
+            if (btn && btn.dataset) btn.dataset.busy = '1';
+            const prevDis = btn ? btn.disabled : false;
+            try {
+                if (btn) btn.disabled = true;
+                await fn();
+            } catch (err) {
+                console.error('[Loan Calculator] busy action', err);
+                setStatus('Action failed', 'err');
+            } finally {
+                if (btn) { btn.disabled = prevDis; if (btn.dataset) delete btn.dataset.busy; }
+            }
+        };
+        const num = (elOrId, fallback = 0) => {
+            const el = typeof elOrId === 'string' ? $(elOrId) : elOrId;
+            const v = parseFloat(el && el.value);
+            return Number.isFinite(v) ? v : fallback;
+        };
+        const formatCur = (n) => {
+            if (!Number.isFinite(n)) return '$—';
+            return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        };
+        const formatMoney2 = (n) => {
+            if (!Number.isFinite(n)) return '—';
+            return n.toFixed(2);
+        };
+        const setStatus = (msg, kind) => {
+            const el = $('loanStatus');
+            if (!el) return;
+            el.textContent = msg || '';
+            el.className = 'loan-status' + (kind ? ' ' + kind : '');
+        };
+        const toastOk = (msg) => {
+            try {
+                if (window.AIToolboxUI && AIToolboxUI.toast) AIToolboxUI.toast(msg, 'ok');
+                else setStatus(msg);
+            } catch { setStatus(msg); }
+        };
+
+        const LS_LOAN = 'fafo_loan_calc_inputs';
+        const DEFAULTS = { principal: 250000, rate: 6.5, years: 30, tax: 2400, ins: 1200, hoa: 0, extra: 200 };
+        let chartInstance = null;
+        let scenarioA = null, scenarioB = null, lastSchedule = null;
+
+        function readInputs() {
+            return {
+                principal: num('num-principal'),
+                rate: num('num-rate'),
+                years: num('num-years'),
+                tax: num('num-tax'),
+                ins: num('num-ins'),
+                hoa: num('num-hoa'),
+                extra: num('num-extra'),
+            };
+        }
+
+        function loanValid(i) {
+            if (!i) return { ok: false, reason: 'No loan inputs' };
+            if (!Number.isFinite(i.principal) || i.principal <= 0) return { ok: false, reason: 'Enter a principal greater than 0' };
+            if (!Number.isFinite(i.years) || i.years <= 0) return { ok: false, reason: 'Enter a term greater than 0 years' };
+            const n = Math.round(i.years * 12);
+            if (!Number.isFinite(n) || n <= 0) return { ok: false, reason: 'Term is too short to amortize' };
+            if (!Number.isFinite(i.rate) || i.rate < 0) return { ok: false, reason: 'Rate cannot be negative' };
+            return { ok: true, n };
+        }
+
+        function emptyAmort() {
+            return { pmt: 0, totalInterest: 0, months: 0, dataPoints: [{ year: 0, balance: 0 }] };
+        }
+
+        function calcAmort(P, annualRate, years, extra) {
+            try {
+                const check = loanValid({ principal: P, rate: annualRate, years: years, extra: extra });
+                if (!check.ok) return emptyAmort();
+                if (!Number.isFinite(annualRate) || annualRate < 0) annualRate = 0;
+                extra = Number.isFinite(extra) ? extra : 0;
+
+                const r = (annualRate / 100) / 12;
+                const n = check.n;
+                const denom = Math.pow(1 + r, n) - 1;
+                const pmt = (r === 0 || !Number.isFinite(denom) || denom === 0)
+                    ? P / n
+                    : P * (r * Math.pow(1 + r, n)) / denom;
+                if (!Number.isFinite(pmt)) return emptyAmort();
+
+                let balance = P;
+                let totalInterest = 0;
+                let months = 0;
+                const dataPoints = [{ year: 0, balance: P }];
+                const safetyCap = Math.max(n * 3, n + 12);
+
+                while (balance > 0.01 && months < safetyCap) {
+                    const interestThisMonth = balance * r;
+                    let principalPaid = pmt - interestThisMonth + extra;
+                    if (!(principalPaid > 0) && r > 0) {
+                        principalPaid = Math.min(balance, Math.max(pmt * 0.01, 1));
+                    }
+                    if (!Number.isFinite(principalPaid) || principalPaid <= 0) break;
+                    if (balance < principalPaid) principalPaid = balance;
+
+                    totalInterest += Number.isFinite(interestThisMonth) ? interestThisMonth : 0;
+                    balance -= principalPaid;
+                    months++;
+
+                    if (months % 12 === 0 || balance <= 0.01) {
+                        dataPoints.push({
+                            year: +(months / 12).toFixed(2),
+                            balance: Math.max(0, balance)
+                        });
+                    }
+                }
+                return {
+                    pmt: Number.isFinite(pmt) ? pmt : 0,
+                    totalInterest: Number.isFinite(totalInterest) ? totalInterest : 0,
+                    months: months || 0,
+                    dataPoints
+                };
+            } catch (err) {
+                console.error('[Loan Calculator] calcAmort', err);
+                return emptyAmort();
+            }
+        }
+
+        function fillScheduleTable(rows) {
+            const table = $('loanSchedule');
+            const tbody = table && table.tBodies && table.tBodies[0] ? table.tBodies[0] : (table && table.querySelector('tbody'));
+            if (!tbody) return;
+            tbody.textContent = '';
+            if (!rows || !rows.length) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 6;
+                td.textContent = 'No schedule — enter a valid loan and calculate.';
+                td.style.textAlign = 'left';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            rows.forEach((r) => {
+                const tr = document.createElement('tr');
+                r.forEach((cell) => {
+                    const td = document.createElement('td');
+                    td.textContent = cell;
+                    tr.appendChild(td);
+                });
+                frag.appendChild(tr);
+            });
+            tbody.appendChild(frag);
+        }
+
+        function buildScheduleRows(i) {
+            const check = loanValid(i);
+            if (!check.ok) return { csv: 'month,payment,principal,interest,extra,balance\n', rows: [], reason: check.reason };
+            const r = Math.max(0, i.rate) / 100 / 12;
+            const n = check.n;
+            const denom = Math.pow(1 + r, n) - 1;
+            const pmt = (r === 0 || !Number.isFinite(denom) || denom === 0)
+                ? i.principal / n
+                : i.principal * (r * Math.pow(1 + r, n)) / denom;
+            if (!Number.isFinite(pmt)) return { csv: 'month,payment,principal,interest,extra,balance\n', rows: [], reason: 'Payment is not a number' };
+
+            let balance = i.principal;
+            const csv = ['month,payment,principal,interest,extra,balance'];
+            const rows = [];
+            let months = 0;
+            const extra = Number.isFinite(i.extra) ? i.extra : 0;
+            const safety = Math.max(n * 3, n + 12);
+            while (balance > 0.01 && months < safety) {
+                const interest = Number.isFinite(balance * r) ? balance * r : 0;
+                let principalPaid = pmt - interest + extra;
+                if (!(principalPaid > 0)) principalPaid = Math.min(balance, Math.max(pmt * 0.01, 1));
+                if (balance < principalPaid) principalPaid = balance;
+                const payment = interest + principalPaid;
+                const extraUsed = Math.max(0, extra);
+                const princOnly = Math.max(0, principalPaid - extraUsed);
+                balance = Math.max(0, balance - principalPaid);
+                months++;
+                csv.push([months, formatMoney2(payment), formatMoney2(princOnly), formatMoney2(interest), formatMoney2(extraUsed), formatMoney2(balance)].join(','));
+                rows.push([String(months), formatCur(payment), formatCur(princOnly), formatCur(interest), formatCur(extraUsed), formatCur(balance)]);
+            }
+            lastSchedule = csv.join('\n');
+            return { csv: lastSchedule, rows, reason: null };
+        }
+
+        function persistInputs() {
+            lsSet(LS_LOAN, JSON.stringify(readInputs()));
+        }
+
+        function updateEngine() {
+            try {
+                const i = readInputs();
+                const check = loanValid(i);
+                const monthlyEscrow = (i.tax / 12) + (i.ins / 12) + i.hoa;
+                const escrowOk = Number.isFinite(monthlyEscrow) ? monthlyEscrow : 0;
+
+                const standard = calcAmort(i.principal, i.rate, i.years, 0);
+                const accelerated = calcAmort(i.principal, i.rate, i.years, i.extra);
+
+                const totalOutofPocket = (standard.pmt || 0) + escrowOk;
+                const tp = $('total-payment');
+                const pb = $('payment-breakdown');
+                if (tp) tp.innerText = formatCur(totalOutofPocket);
+                if (pb) pb.innerText = 'P&I: ' + formatCur(standard.pmt) + ' | Escrow/Fees: ' + formatCur(escrowOk);
+
+                const interestSaved = (standard.totalInterest || 0) - (accelerated.totalInterest || 0);
+                const isEl = $('interest-saved');
+                if (isEl) isEl.innerText = formatCur(Math.max(0, interestSaved));
+
+                const monthsSaved = (standard.months || 0) - (accelerated.months || 0);
+                const yearsS = Number.isFinite(monthsSaved) ? Math.floor(Math.max(0, monthsSaved) / 12) : 0;
+                const monthsS = Number.isFinite(monthsSaved) ? (Math.max(0, monthsSaved) % 12) : 0;
+                const ts = $('time-saved');
+                if (ts) ts.innerText = yearsS + ' Yrs, ' + monthsS + ' Mos';
+
+                const sched = check.ok ? buildScheduleRows(i) : { rows: [], reason: check.reason };
+                fillScheduleTable(sched.rows);
+                if (!check.ok) setStatus(check.reason, 'warn');
+                else setStatus((sched.rows.length || 0) + ' months · PITI ' + formatCur(totalOutofPocket));
+
+                if (typeof Chart === 'undefined') return;
+
+                const lastYear = standard.dataPoints && standard.dataPoints.length
+                    ? standard.dataPoints[standard.dataPoints.length - 1].year
+                    : i.years;
+                const maxYears = Math.max(0, Math.ceil(Number.isFinite(lastYear) ? lastYear : 0) || 0);
+                const labels = [];
+                const standardData = [];
+                const acceleratedData = [];
+                for (let y = 0; y <= maxYears; y++) {
+                    labels.push('Year ' + y);
+                    const sPoint = (standard.dataPoints || []).find((d) => Math.ceil(d.year) === y || d.year === y);
+                    standardData.push(sPoint && Number.isFinite(sPoint.balance) ? sPoint.balance : 0);
+                    const aPoint = (accelerated.dataPoints || []).find((d) => Math.ceil(d.year) === y || d.year === y);
+                    if (aPoint && Number.isFinite(aPoint.balance)) acceleratedData.push(aPoint.balance);
+                    else if (y > ((accelerated.months || 0) / 12)) acceleratedData.push(0);
+                    else acceleratedData.push(null);
+                }
+
+                const canvas = $('projectionChart');
+                if (!canvas || typeof canvas.getContext !== 'function') return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+
+                if (chartInstance) {
+                    try { chartInstance.destroy(); } catch (_) {}
+                    chartInstance = null;
+                }
+
+                const gradStd = ctx.createLinearGradient(0, 0, 0, 400);
+                gradStd.addColorStop(0, 'rgba(0, 229, 255, 0.2)');
+                gradStd.addColorStop(1, 'rgba(0, 229, 255, 0)');
+                const gradAcc = ctx.createLinearGradient(0, 0, 0, 400);
+                gradAcc.addColorStop(0, 'rgba(255, 0, 127, 0.4)');
+                gradAcc.addColorStop(1, 'rgba(255, 0, 127, 0)');
+
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Standard Balance', data: standardData, borderColor: '#00e5ff', backgroundColor: gradStd, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
+                            { label: 'Balance w/ Extra Payments', data: acceleratedData, borderColor: '#ff5aaa', backgroundColor: gradAcc, fill: true, tension: 0.4, borderWidth: 3, pointRadius: 0, pointHitRadius: 10 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { labels: { color: '#f5f5fb', usePointStyle: true, boxWidth: 8 } },
+                            tooltip: {
+                                backgroundColor: 'rgba(10, 10, 16, 0.95)', titleColor: '#7ef6ff', padding: 12,
+                                borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1,
+                                callbacks: { label: (c) => c.dataset.label + ': ' + formatCur(c.parsed && c.parsed.y) }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#d8d8ea' } },
+                            y: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#d8d8ea', callback: (v) => formatCur(v) } }
+                        }
+                    }
+                });
+                persistInputs();
+            } catch (err) {
+                console.error('[Loan Calculator] updateEngine', err);
+                setStatus('Could not calculate this loan', 'err');
+                fillScheduleTable([]);
+            }
+        }
+
+        function applyInputs(o) {
+            if (!o) return;
+            const map = [
+                ['num-principal', 'slide-principal', 'principal'],
+                ['num-rate', 'slide-rate', 'rate'],
+                ['num-years', 'slide-years', 'years'],
+                ['num-tax', 'slide-tax', 'tax'],
+                ['num-ins', 'slide-ins', 'ins'],
+                ['num-hoa', 'slide-hoa', 'hoa'],
+                ['num-extra', 'slide-extra', 'extra'],
+            ];
+            map.forEach(([n, s, k]) => {
+                if (o[k] == null) return;
+                const numEl = $(n), slide = $(s);
+                if (numEl) numEl.value = o[k];
+                if (slide) {
+                    const v = +o[k];
+                    if (Number.isFinite(v) && v > +slide.max) slide.max = v;
+                    if (Number.isFinite(v)) slide.value = v;
+                }
+            });
+            updateEngine();
+        }
+
+        function snapshotMetrics() {
+            const i = readInputs();
+            const monthlyEscrow = Number.isFinite((i.tax / 12) + (i.ins / 12) + i.hoa) ? (i.tax / 12) + (i.ins / 12) + i.hoa : 0;
+            const standard = calcAmort(i.principal, i.rate, i.years, 0);
+            const accelerated = calcAmort(i.principal, i.rate, i.years, i.extra);
+            return {
+                ...i,
+                piti: (standard.pmt || 0) + monthlyEscrow,
+                pi: standard.pmt || 0,
+                interestStd: standard.totalInterest || 0,
+                interestAcc: accelerated.totalInterest || 0,
+                monthsStd: standard.months || 0,
+                monthsAcc: accelerated.months || 0,
+                interestSaved: Math.max(0, (standard.totalInterest || 0) - (accelerated.totalInterest || 0)),
+            };
+        }
+
+        async function exportCsv() {
+            const built = buildScheduleRows(readInputs());
+            const csv = built.csv || 'month,payment,principal,interest,extra,balance\n';
+            if (!built.rows.length) {
+                setStatus(built.reason || 'Nothing to export', 'warn');
+                return;
+            }
+            try {
+                if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+                await navigator.clipboard.writeText(csv);
+                toastOk('Amortization CSV copied (' + built.rows.length + ' rows)');
+            } catch {
+                try {
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'amortization-schedule.csv';
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                    toastOk('CSV downloaded (' + built.rows.length + ' rows)');
+                } catch (err) {
+                    console.error('[Loan Calculator] export', err);
+                    setStatus('Export failed', 'err');
+                }
+            }
+        }
+
         const configMap = [
             { slide: 'slide-principal', num: 'num-principal' },
             { slide: 'slide-rate', num: 'num-rate' },
@@ -292,280 +688,63 @@
             { slide: 'slide-extra', num: 'num-extra' }
         ];
 
-        configMap.forEach(pair => {
-            const slider = document.getElementById(pair.slide);
-            const number = document.getElementById(pair.num);
-
-            slider.addEventListener('input', (e) => {
-                number.value = e.target.value;
+        configMap.forEach((pair) => {
+            const slider = $(pair.slide);
+            const number = $(pair.num);
+            if (slider) slider.addEventListener('input', (e) => {
+                if (number) number.value = e.target.value;
                 updateEngine();
             });
-
-            number.addEventListener('input', (e) => {
-                let val = parseFloat(e.target.value);
-                if (!isNaN(val)) {
-                    if(val > slider.max) slider.max = val;
+            if (number) number.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                if (Number.isFinite(val) && slider) {
+                    if (val > slider.max) slider.max = val;
                     slider.value = val;
-                    updateEngine();
                 }
+                updateEngine();
             });
         });
 
-        // --- 2. Chart Glow Plugin ---
-        Chart.register({
-            id: 'neonGlow',
-            beforeDatasetsDraw: (chart) => {
-                const ctx = chart.ctx;
-                ctx.save();
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-                ctx.shadowBlur = 10;
-                ctx.shadowOffsetY = 10;
-            },
-            afterDatasetsDraw: (chart) => { chart.ctx.restore(); }
-        });
-
-        // --- 3. Core Math ---
-        let chartInstance = null;
-        const formatCur = (num) => '$' + num.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
-        
-        function calcAmort(P, annualRate, years, extra) {
-            if (P <= 0 || years <= 0) return { pmt: 0, totalInterest: 0, months: 0, dataPoints: [] };
-            if (annualRate < 0) annualRate = 0;
-
-            const r = (annualRate / 100) / 12;
-            const n = Math.round(years * 12);
-            // Zero-rate loans: payment is principal / months (avoid divide-by-zero on (1+r)^n - 1)
-            const pmt = r === 0
-                ? P / n
-                : P * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-
-            let balance = P;
-            let totalInterest = 0;
-            let months = 0;
-            const dataPoints = [{ year: 0, balance: P }];
-            const safetyCap = Math.max(n * 3, n + 12);
-
-            while (balance > 0.01 && months < safetyCap) {
-                const interestThisMonth = balance * r;
-                let principalPaid = pmt - interestThisMonth + (extra || 0);
-                if (principalPaid <= 0 && r > 0) {
-                    // Extra payment too small / negative edge: force minimum principal progress
-                    principalPaid = Math.min(balance, Math.max(pmt * 0.01, 1));
-                }
-                if (balance < principalPaid) principalPaid = balance;
-
-                totalInterest += interestThisMonth;
-                balance -= principalPaid;
-                months++;
-
-                if (months % 12 === 0 || balance <= 0.01) {
-                    dataPoints.push({
-                        year: +(months / 12).toFixed(2),
-                        balance: Math.max(0, balance)
-                    });
-                }
-            }
-            return { pmt, totalInterest, months, dataPoints };
-        }
-
-        // --- 4. Render Engine ---
-        function updateEngine() {
-            // Get Terms
-            const P = parseFloat(document.getElementById('num-principal').value) || 0;
-            const rate = parseFloat(document.getElementById('num-rate').value) || 0;
-            const years = parseFloat(document.getElementById('num-years').value) || 0;
-            const extra = parseFloat(document.getElementById('num-extra').value) || 0;
-
-            // Get Escrow
-            const annualTax = parseFloat(document.getElementById('num-tax').value) || 0;
-            const annualIns = parseFloat(document.getElementById('num-ins').value) || 0;
-            const monthlyHOA = parseFloat(document.getElementById('num-hoa').value) || 0;
-
-            const monthlyEscrow = (annualTax / 12) + (annualIns / 12) + monthlyHOA;
-
-            const standard = calcAmort(P, rate, years, 0);
-            const accelerated = calcAmort(P, rate, years, extra);
-
-            // Update Payment Card (P&I + Escrow)
-            const totalOutofPocket = standard.pmt + monthlyEscrow;
-            document.getElementById('total-payment').innerText = formatCur(totalOutofPocket);
-            document.getElementById('payment-breakdown').innerText = 
-                `P&I: ${formatCur(standard.pmt)} | Escrow/Fees: ${formatCur(monthlyEscrow)}`;
-            
-            // Update Savings Metrics
-            const interestSaved = standard.totalInterest - accelerated.totalInterest;
-            document.getElementById('interest-saved').innerText = formatCur(Math.max(0, interestSaved));
-
-            const monthsSaved = standard.months - accelerated.months;
-            const yearsS = Math.floor(monthsSaved / 12);
-            const monthsS = monthsSaved % 12;
-            document.getElementById('time-saved').innerText = `${yearsS} Yrs, ${monthsS} Mos`;
-
-            // Chart Logic
-            const maxYears = Math.ceil(standard.dataPoints[standard.dataPoints.length - 1]?.year || years);
-            const labels = [];
-            const standardData = [];
-            const acceleratedData = [];
-
-            for(let i=0; i<=maxYears; i++) {
-                labels.push(`Year ${i}`);
-                const sPoint = standard.dataPoints.find(d => Math.ceil(d.year) === i || d.year === i);
-                standardData.push(sPoint ? sPoint.balance : 0);
-
-                const aPoint = accelerated.dataPoints.find(d => Math.ceil(d.year) === i || d.year === i);
-                if (aPoint) acceleratedData.push(aPoint.balance);
-                else if (i > (accelerated.months / 12)) acceleratedData.push(0);
-                else acceleratedData.push(null);
-            }
-
-            if (chartInstance) chartInstance.destroy();
-            const ctx = document.getElementById('projectionChart').getContext('2d');
-            
-            const gradStd = ctx.createLinearGradient(0, 0, 0, 400);
-            gradStd.addColorStop(0, 'rgba(0, 229, 255, 0.2)'); gradStd.addColorStop(1, 'rgba(0, 229, 255, 0)');
-
-            const gradAcc = ctx.createLinearGradient(0, 0, 0, 400);
-            gradAcc.addColorStop(0, 'rgba(255, 0, 127, 0.4)'); gradAcc.addColorStop(1, 'rgba(255, 0, 127, 0)');
-
-            chartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: 'Standard Balance', data: standardData, borderColor: '#00e5ff', backgroundColor: gradStd, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
-                        { label: 'Balance w/ Extra Payments', data: acceleratedData, borderColor: '#ff007f', backgroundColor: gradAcc, fill: true, tension: 0.4, borderWidth: 3, pointRadius: 0, pointHitRadius: 10 }
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { labels: { color: '#ececec', usePointStyle: true, boxWidth: 8 } },
-                        tooltip: { backgroundColor: 'rgba(20, 20, 30, 0.9)', titleColor: '#00e5ff', padding: 12, borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1, callbacks: { label: (c) => c.dataset.label + ': ' + formatCur(c.parsed.y) } }
+        try {
+            if (typeof Chart !== 'undefined' && Chart.register) {
+                Chart.register({
+                    id: 'neonGlow',
+                    beforeDatasetsDraw: (chart) => {
+                        const ctx = chart.ctx;
+                        ctx.save();
+                        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowOffsetY = 10;
                     },
-                    scales: {
-                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0b8' } },
-                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0b8', callback: (v) => formatCur(v) } }
-                    }
-                }
-            });
-        }
-
-        // --- QoL: persist · CSV schedule · A/B compare · reset confirm ---
-        const LS_LOAN = 'fafo_loan_calc_inputs';
-        const DEFAULTS = { principal:250000, rate:6.5, years:30, tax:2400, ins:1200, hoa:0, extra:200 };
-        let scenarioA = null, scenarioB = null, lastSchedule = null;
-
-        function readInputs() {
-            return {
-                principal: parseFloat(document.getElementById('num-principal').value) || 0,
-                rate: parseFloat(document.getElementById('num-rate').value) || 0,
-                years: parseFloat(document.getElementById('num-years').value) || 0,
-                tax: parseFloat(document.getElementById('num-tax').value) || 0,
-                ins: parseFloat(document.getElementById('num-ins').value) || 0,
-                hoa: parseFloat(document.getElementById('num-hoa').value) || 0,
-                extra: parseFloat(document.getElementById('num-extra').value) || 0,
-            };
-        }
-        function applyInputs(o) {
-            if (!o) return;
-            const map = [
-                ['num-principal','slide-principal','principal'],
-                ['num-rate','slide-rate','rate'],
-                ['num-years','slide-years','years'],
-                ['num-tax','slide-tax','tax'],
-                ['num-ins','slide-ins','ins'],
-                ['num-hoa','slide-hoa','hoa'],
-                ['num-extra','slide-extra','extra'],
-            ];
-            map.forEach(([n,s,k]) => {
-                if (o[k] == null) return;
-                const num = document.getElementById(n), slide = document.getElementById(s);
-                if (num) num.value = o[k];
-                if (slide) { if (+o[k] > +slide.max) slide.max = o[k]; slide.value = o[k]; }
-            });
-            updateEngine();
-        }
-        function snapshotMetrics() {
-            const i = readInputs();
-            const monthlyEscrow = (i.tax / 12) + (i.ins / 12) + i.hoa;
-            const standard = calcAmort(i.principal, i.rate, i.years, 0);
-            const accelerated = calcAmort(i.principal, i.rate, i.years, i.extra);
-            return {
-                ...i,
-                piti: standard.pmt + monthlyEscrow,
-                pi: standard.pmt,
-                interestStd: standard.totalInterest,
-                interestAcc: accelerated.totalInterest,
-                monthsStd: standard.months,
-                monthsAcc: accelerated.months,
-                interestSaved: Math.max(0, standard.totalInterest - accelerated.totalInterest),
-            };
-        }
-        function buildScheduleCsv() {
-            const i = readInputs();
-            const r = (i.rate / 100) / 12;
-            const n = Math.round(i.years * 12);
-            const pmt = r === 0 ? i.principal / n : i.principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-            let balance = i.principal;
-            const rows = ['month,payment,principal,interest,extra,balance'];
-            let months = 0;
-            const safety = Math.max(n * 3, n + 12);
-            while (balance > 0.01 && months < safety) {
-                const interest = balance * r;
-                let principalPaid = pmt - interest + (i.extra || 0);
-                if (balance < principalPaid) principalPaid = balance;
-                const payment = interest + principalPaid;
-                balance = Math.max(0, balance - principalPaid);
-                months++;
-                rows.push([months, payment.toFixed(2), (principalPaid - (i.extra||0) > 0 ? (principalPaid - (i.extra||0)) : principalPaid).toFixed(2), interest.toFixed(2), (i.extra||0).toFixed(2), balance.toFixed(2)].join(','));
+                    afterDatasetsDraw: (chart) => { chart.ctx.restore(); }
+                });
             }
-            lastSchedule = rows.join('\n');
-            return lastSchedule;
-        }
-        function persistInputs() {
-            try { localStorage.setItem(LS_LOAN, JSON.stringify(readInputs())); } catch (_) {}
-        }
-        const _updateEngine = updateEngine;
-        updateEngine = function () {
-            _updateEngine();
-            persistInputs();
-        };
+        } catch (_) {}
 
-        document.getElementById('btnLoanCsv')?.addEventListener('click', async () => {
-            const csv = buildScheduleCsv();
-            try {
-                await navigator.clipboard.writeText(csv);
-                if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Amortization CSV copied (' + (csv.split('\n').length - 1) + ' rows)', 'ok');
-                else alert('CSV copied to clipboard');
-            } catch {
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = 'amortization-schedule.csv';
-                a.click();
-                URL.revokeObjectURL(a.href);
-            }
-        });
-        document.getElementById('btnLoanSaveA')?.addEventListener('click', () => {
+        const onCalc = (ev) => withBusy(ev && ev.currentTarget, async () => { updateEngine(); });
+        $('btnLoanCalc') && $('btnLoanCalc').addEventListener('click', onCalc);
+        $('btnLoanCsv') && $('btnLoanCsv').addEventListener('click', (ev) => withBusy(ev.currentTarget, exportCsv));
+        $('btnLoanSaveA') && $('btnLoanSaveA').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
             scenarioA = snapshotMetrics();
-            if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Scenario A saved', 'ok');
-        });
-        document.getElementById('btnLoanSaveB')?.addEventListener('click', () => {
+            toastOk('Scenario A saved');
+        }));
+        $('btnLoanSaveB') && $('btnLoanSaveB').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
             scenarioB = snapshotMetrics();
-            if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Scenario B saved', 'ok');
-        });
-        document.getElementById('btnLoanCompare')?.addEventListener('click', () => {
-            const box = document.getElementById('loanCompareOut');
+            toastOk('Scenario B saved');
+        }));
+        $('btnLoanCompare') && $('btnLoanCompare').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
+            const box = $('loanCompareOut');
+            if (!box) return;
             if (!scenarioA || !scenarioB) {
                 box.style.display = 'block';
                 box.textContent = 'Save both A and B snapshots first, then compare.';
                 return;
             }
-            const fmt = (n) => '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+            const fmt = (n) => formatCur(n);
             const line = (label, a, b, money) => {
                 const da = money ? fmt(a) : a;
                 const db = money ? fmt(b) : b;
-                const diff = (typeof a === 'number' && typeof b === 'number') ? (b - a) : null;
+                const diff = (typeof a === 'number' && typeof b === 'number' && Number.isFinite(a) && Number.isFinite(b)) ? (b - a) : null;
                 const dstr = diff == null ? '' : (money ? '  Δ ' + fmt(diff) : '  Δ ' + diff);
                 return label.padEnd(18) + 'A ' + String(da).padStart(12) + '  B ' + String(db).padStart(12) + dstr;
             };
@@ -582,18 +761,20 @@
                 line('Interest saved', scenarioA.interestSaved, scenarioB.interestSaved, true),
                 line('Months (acc)', scenarioA.monthsAcc, scenarioB.monthsAcc, false),
             ].join('\n');
-        });
-        document.getElementById('btnLoanReset')?.addEventListener('click', () => {
+        }));
+        $('btnLoanReset') && $('btnLoanReset').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
             if (!confirm('Reset loan inputs to defaults?')) return;
             applyInputs(DEFAULTS);
-            try { localStorage.removeItem(LS_LOAN); } catch (_) {}
+            lsDel(LS_LOAN);
             scenarioA = scenarioB = null;
-            const box = document.getElementById('loanCompareOut');
+            const box = $('loanCompareOut');
             if (box) { box.style.display = 'none'; box.textContent = ''; }
-        });
+        }));
+
         try {
-            const saved = JSON.parse(localStorage.getItem(LS_LOAN) || 'null');
-            if (saved) applyInputs(saved);
+            const raw = lsGet(LS_LOAN, null);
+            const saved = raw ? JSON.parse(raw) : null;
+            if (saved && typeof saved === 'object') applyInputs(saved);
         } catch (_) {}
         try {
             window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
@@ -602,8 +783,11 @@
             });
         } catch (_) {}
 
-        // --- Init ---
-        VanillaTilt.init(document.querySelectorAll(".metric-card"), { max: 15, speed: 400, glare: true, "max-glare": 0.2 });
+        try {
+            if (window.VanillaTilt && VanillaTilt.init) {
+                VanillaTilt.init(document.querySelectorAll('.metric-card'), { max: 15, speed: 400, glare: true, 'max-glare': 0.2 });
+            }
+        } catch (_) {}
         updateEngine();
     </script>
 

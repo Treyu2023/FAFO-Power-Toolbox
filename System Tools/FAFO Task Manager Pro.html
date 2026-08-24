@@ -10,7 +10,7 @@
     :root {
       --bg: #05060c; --panel: #0c101c; --panel2: #121826;
       --border: rgba(0, 243, 255, 0.16);
-      --accent: #00f3ff; --accent2: #a78bfa; --ok: #34d399;
+      --accent: #00f3ff; --accent2: #a78bfa; --magenta: #ff2bd6; --gold: #f5c542; --ok: #34d399;
       --warn: #fbbf24; --danger: #f87171; --text: #e8eaf0; --muted: #7b849c;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -197,6 +197,19 @@
     }
     .chip-list .chip button {
       border: none; background: none; color: var(--danger); cursor: pointer; margin-left: 4px; font-weight: 800;
+    }
+
+    .nav-btn:focus-visible, .btn:focus-visible, .inp:focus-visible, .sel:focus-visible,
+    .nav a:focus-visible, a:focus-visible, input:focus-visible, button:focus-visible, select:focus-visible {
+      outline: 2px solid var(--gold); outline-offset: 2px;
+    }
+    .nav .t { color: var(--gold); }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #d5deea; --border: rgba(0,243,255,.45); }
+      body { color: #fff; }
     }
   </style>
 </head>
@@ -447,8 +460,61 @@
   (() => {
     'use strict';
     const API = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
-    const $ = (id) => document.getElementById(id);
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const UI = () => window.AIToolboxUI;
+    function el(id) {
+      try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+    }
+    const $ = el;
+    function setText(id, text) {
+      const n = el(id);
+      if (n) n.textContent = text == null ? '' : String(text);
+    }
+    function bind(id, ev, fn) {
+      const n = el(id);
+      if (!n || !fn) return;
+      n.addEventListener(ev, fn);
+    }
+    function lsGet(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? fallback : v;
+      } catch (_) { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+    }
+    function escHtml(s) {
+      const u = UI()?.escapeHtml;
+      if (typeof u === 'function') return u(s);
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    const esc = escHtml;
+    let busy = false;
+    const _blobUrls = [];
+    function trackBlob(url) {
+      if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+      return url;
+    }
+    function revokeBlobs() {
+      while (_blobUrls.length) {
+        try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+      }
+    }
+    window.addEventListener('pagehide', revokeBlobs);
+    async function withBusy(fn, btnId) {
+      if (busy) return;
+      busy = true;
+      const b = btnId ? el(btnId) : null;
+      if (b) b.disabled = true;
+      try { return await fn(); }
+      finally {
+        busy = false;
+        if (b) b.disabled = false;
+      }
+    }
+
     let online = false;
     let selectedPid = null;
     let lastProcs = [];
@@ -474,7 +540,7 @@
 
     function loadModesState() {
       try {
-        const raw = JSON.parse(localStorage.getItem(MODES_KEY) || 'null');
+        const raw = JSON.parse(lsGet(MODES_KEY, 'null'));
         if (!raw || !raw.names || !raw.members) return defaultModesState();
         return {
           names: { ...defaultModesState().names, ...raw.names },
@@ -488,7 +554,7 @@
     }
 
     function saveModesState(st) {
-      localStorage.setItem(MODES_KEY, JSON.stringify(st));
+      lsSet(MODES_KEY, JSON.stringify(st));
     }
 
     let modesState = loadModesState();
@@ -627,10 +693,11 @@
 
     function isNeverKill(name) {
       const k = procKey(name);
-      return NEVER_KILL.has(k) || NEVER_KILL.has(k + '.exe') || NEVER_KILL.has(name.toLowerCase());
+      return NEVER_KILL.has(k) || NEVER_KILL.has(k + '.exe') || NEVER_KILL.has(String(name || '').toLowerCase());
     }
 
     async function runEfficiencyMode(modeId) {
+      return withBusy(async () => {
       if (!online) {
         AIToolboxUI?.toast?.('Start server first', 'warn');
         return;
@@ -704,6 +771,7 @@
       AIToolboxUI?.toast?.(`${label}: ended ${killed} process(es)` + (failed ? `, ${failed} failed` : ''), failed ? 'warn' : 'ok');
       loadProcs();
       loadDash();
+      });
     }
 
     function seedCommonHogs() {
@@ -738,10 +806,12 @@
         const r = await fetch(API() + '/health', { signal: AbortSignal.timeout(2000) });
         online = r.ok;
       } catch { online = false; }
-      const pill = $('serverPill');
-      pill.className = 'pill ' + (online ? 'on' : 'off');
-      pill.textContent = online ? '● Server online' : '○ Server offline';
-      $('offlineBanner').classList.toggle('show', !online);
+      const pill = el('serverPill');
+      if (pill) {
+        pill.className = 'pill ' + (online ? 'on' : 'off');
+        pill.textContent = online ? '● Server online' : '○ Server offline';
+      }
+      el('offlineBanner')?.classList.toggle('show', !online);
       return online;
     }
 
@@ -777,11 +847,12 @@
     document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => selectView(b.dataset.go)));
 
     async function loadDash() {
+      try {
       const o = await api('/tmpro/overview');
       const s = o.system || {};
       const r = o.ratings_summary || {};
       const k = o.knowledge || {};
-      $('dashStats').innerHTML = [
+      (el('dashStats')||{}).innerHTML = [
         { l: 'CPU', v: (s.cpu?.percent ?? 0).toFixed(1) + '%' },
         { l: 'Memory', v: (s.memory?.percent ?? 0).toFixed(1) + '%' },
         { l: 'Processes', v: s.process_count ?? '—' },
@@ -792,6 +863,7 @@
         { l: 'Heavy/critical', v: (r.heavy || 0) + (r.critical || 0) },
       ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
       renderModeBars();
+      } catch (e) { console.warn('loadDash', e); }
     }
 
     let listScrollFrozen = false;
@@ -821,12 +893,13 @@
     }
 
     async function loadProcs() {
+      try {
       if (listScrollFrozen) {
         loadProcsPending = true;
         return;
       }
-      const search = $('procSearch').value.trim();
-      const sort = $('procSort').value;
+      const search = (el('procSearch')?.value || '').trim();
+      const sort = el('procSort')?.value || 'cpu';
       const data = await api(`/tmpro/processes?sort_by=${encodeURIComponent(sort)}&search=${encodeURIComponent(search)}&limit=300`);
       if (listScrollFrozen) {
         loadProcsPending = true;
@@ -836,9 +909,10 @@
       const lu = document.getElementById('lastUpdated');
       if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
       try {
-        localStorage.setItem('fafo_tmpro_filter_v1', JSON.stringify({ search: search, sort: sort }));
+        lsSet('fafo_tmpro_filter_v1', JSON.stringify({ search: search, sort: sort }));
       } catch (_) {}
-      const tb = $('procBody');
+      const tb = el('procBody');
+      if (!tb) return;
       if (!lastProcs.length) {
         tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No processes</td></tr>';
         return;
@@ -877,6 +951,7 @@
       renderModeBars();
       if (wrap) wrap.scrollTop = prevScroll;
       wireProcScrollFreeze();
+      } catch (e) { console.warn('loadProcs', e); const tb2 = el('procBody'); if (tb2 && !tb2.innerHTML) tb2.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">Could not load processes</td></tr>'; }
     }
 
     async function openDrawer(pid) {
@@ -908,11 +983,12 @@
       }
     }
 
-    $('btnCloseDrawer').onclick = () => $('drawer').classList.remove('open');
-    $('btnKill').onclick = () => killSel(false);
-    $('btnForce').onclick = () => killSel(true);
+        bind('btnCloseDrawer', 'click', () => el('drawer')?.classList.remove('open'));
+    bind('btnKill', 'click', () => killSel(false));
+    bind('btnForce', 'click', () => killSel(true));
 
     async function killSel(force) {
+      return withBusy(async () => {
       if (!selectedPid) return;
       if (!confirm((force ? 'Force kill' : 'End') + ' PID ' + selectedPid + '?')) return;
       try {
@@ -924,14 +1000,16 @@
         $('drawer').classList.remove('open');
         loadProcs();
       } catch (e) {
-        AIToolboxUI?.toast?.(e.message || String(e), 'warn');
+        UI()?.toast?.(e.message || String(e), 'warn');
       }
+      }, force ? 'btnForce' : 'btnKill');
     }
 
     async function loadRatings() {
+      try {
       const data = await api('/tmpro/ratings?limit=120');
       const s = data.summary || {};
-      $('rateStats').innerHTML = [
+      (el('rateStats')||{}).innerHTML = [
         { l: 'Good', v: s.good ?? 0 },
         { l: 'OK', v: s.ok ?? 0 },
         { l: 'Heavy', v: s.heavy ?? 0 },
@@ -939,7 +1017,7 @@
         { l: 'Hogs', v: s.hogs ?? 0 },
         { l: 'CVE flagged', v: s.vuln_flagged ?? 0 },
       ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
-      $('rateBody').innerHTML = (data.ratings || []).map(r => `
+      (el('rateBody')||{}).innerHTML = (data.ratings || []).map(r => `
         <tr data-pid="${r.pid}" style="cursor:pointer">
           <td><span class="tag ${bandClass(r.band)}">${r.score ?? '—'}</span></td>
           <td><strong>${esc(r.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(r.title || '')}</div></td>
@@ -952,17 +1030,19 @@
       $('rateBody').querySelectorAll('tr[data-pid]').forEach(tr => {
         tr.onclick = () => openDrawer(+tr.dataset.pid);
       });
+      } catch (e) { console.warn('loadRatings', e); }
     }
 
     async function loadStartup() {
+      try {
       const data = await api('/tmpro/startup');
-      $('startStats').innerHTML = [
+      (el('startStats')||{}).innerHTML = [
         { l: 'Startup items', v: data.startup_count ?? 0 },
         { l: 'Services', v: data.service_count ?? 0 },
         { l: 'Running svcs', v: data.running_services ?? 0 },
         { l: 'Sched. tasks', v: data.task_count ?? 0 },
       ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
-      $('startBody').innerHTML = (data.startup || []).slice(0, 80).map(it => {
+      (el('startBody')||{}).innerHTML = (data.startup || []).slice(0, 80).map(it => {
         const i = it.intel || {};
         return `<tr>
           <td><strong>${esc(it.name)}</strong></td>
@@ -976,7 +1056,7 @@
         const ar = a.running ? 0 : 1, br = b.running ? 0 : 1;
         return ar - br || String(a.name).localeCompare(String(b.name));
       }).slice(0, 120);
-      $('svcBody').innerHTML = svcs.map(s => {
+      (el('svcBody')||{}).innerHTML = svcs.map(s => {
         const i = s.intel || {};
         return `<tr>
           <td><strong>${esc(s.display_name || s.name)}</strong><div class="mono" style="color:var(--muted)">${esc(s.name)}</div></td>
@@ -985,23 +1065,25 @@
           <td style="font-size:11px">${esc((i.purpose || '').slice(0, 140))}</td>
           <td>${i.safe_to_disable ? '<span class="tag ok">maybe</span>' : '<span class="tag critical">no</span>'}</td>
         </tr>`;
-      }).join('');
+      }).join('') || '<tr><td colspan="5">None</td></tr>';
+      } catch (e) { console.warn('loadStartup', e); }
     }
 
     async function loadIntel() {
+      try {
       const k = await api('/tmpro/knowledge');
       const seen = await api('/tmpro/seen');
-      $('strategyBox').innerHTML = Object.entries(k.strategy || {}).map(([key, val]) =>
+      (el('strategyBox')||{}).innerHTML = Object.entries(k.strategy || {}).map(([key, val]) =>
         `<div><strong>${esc(key)}:</strong> ${esc(val)}</div>`
       ).join('');
-      $('intelStats').innerHTML = [
+      (el('intelStats')||{}).innerHTML = [
         { l: 'KB processes', v: k.process_entries },
         { l: 'KB services', v: k.service_entries },
         { l: 'Seen on PC', v: k.seen_apps },
         { l: 'CVE keys cached', v: k.vuln_keys_cached },
         { l: 'Last NVD run', v: (k.vuln_meta?.last_refresh || '—').toString().slice(0, 19) },
       ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v" style="font-size:16px">${esc(x.v)}</div></div>`).join('');
-      $('seenBody').innerHTML = (seen.apps || []).slice(0, 80).map(a => `
+      (el('seenBody')||{}).innerHTML = (seen.apps || []).slice(0, 80).map(a => `
         <tr>
           <td>${esc(a.name)}</td>
           <td>${a.run_count ?? 0}</td>
@@ -1009,11 +1091,12 @@
           <td class="mono" style="font-size:10px">${esc((a.last_vuln_check || 'never').toString().slice(0, 19))}</td>
         </tr>
       `).join('') || '<tr><td colspan="4">Open Processes once to populate.</td></tr>';
+      } catch (e) { console.warn('loadIntel', e); }
     }
 
     async function doRefresh() {
-      if (!online) { AIToolboxUI?.toast?.('Start server first', 'warn'); return; }
-      $('btnDoRefresh').disabled = true;
+      return withBusy(async () => {
+      if (!online) { UI()?.toast?.('Start server first', 'warn'); return; }
       $('refreshLog').textContent = 'Refreshing NVD intel (rate-limited)…';
       try {
         const body = {
@@ -1028,17 +1111,16 @@
       } catch (e) {
         $('refreshLog').textContent = e.message || String(e);
         AIToolboxUI?.toast?.(e.message || String(e), 'warn');
-      } finally {
-        $('btnDoRefresh').disabled = false;
       }
+      }, 'btnDoRefresh');
     }
 
     try {
-      const pf = JSON.parse(localStorage.getItem('fafo_tmpro_filter_v1') || '{}');
+      const pf = JSON.parse(lsGet('fafo_tmpro_filter_v1', '{}') || '{}');
       if (pf.search && $('procSearch')) $('procSearch').value = pf.search;
       if (pf.sort && $('procSort')) $('procSort').value = pf.sort;
     } catch (_) {}
-    $('btnReloadProcs').onclick = () => loadProcs();
+    bind('btnReloadProcs', 'click', () => withBusy(() => loadProcs(), 'btnReloadProcs'));
     $('btnExportProcsCsv')?.addEventListener('click', () => {
       if (!lastProcs?.length) { AIToolboxUI?.toast?.('No process rows', 'warn'); return; }
       const hdr = ['pid', 'name', 'cpu_percent', 'memory_human', 'memory_percent', 'efficiency_score', 'title'];
@@ -1051,31 +1133,61 @@
         p.intel?.efficiency?.score ?? '', p.intel?.title || ''
       ].map(escCsv).join(',')));
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+      a.href = trackBlob(URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })));
       a.download = 'tmpro-processes-' + Date.now() + '.csv';
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch (_) {} }, 2000);
       AIToolboxUI?.toast?.('Exported CSV', 'ok');
     });
+    const VIEW_ORDER = ['dash', 'procs', 'modes', 'ratings', 'startup', 'intel'];
     document.addEventListener('keydown', (e) => {
-      const t = e.target;
-      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-      if (e.key === '/' && !typing) { e.preventDefault(); $('procSearch')?.focus(); return; }
+      const tgt = e.target;
+      const typing = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT' || tgt.isContentEditable);
+      if (e.key === 'Escape') {
+        const dr = el('drawer');
+        if (dr && dr.classList.contains('open')) {
+          e.preventDefault(); e.stopPropagation();
+          dr.classList.remove('open');
+          return;
+        }
+      }
+      if (e.key === '/' && !typing) { e.preventDefault(); el('procSearch')?.focus(); return; }
+      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '1' && e.key <= '6') {
+        e.preventDefault();
+        selectView(VIEW_ORDER[Number(e.key) - 1]);
+        return;
+      }
+      const vNow = document.querySelector('.nav-btn.active')?.dataset.view;
+      if (!typing && vNow === 'procs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        const rows = [...document.querySelectorAll('#procBody tr[data-pid]')];
+        if (rows.length) {
+          e.preventDefault();
+          let i = rows.findIndex(r => r.classList.contains('sel'));
+          if (i < 0) i = e.key === 'ArrowDown' ? -1 : 0;
+          i = e.key === 'ArrowDown' ? Math.min(rows.length - 1, i + 1) : Math.max(0, i - 1);
+          const pid = +rows[i].dataset.pid;
+          rows[i].scrollIntoView({ block: 'nearest' });
+          openDrawer(pid);
+        }
+        return;
+      }
       if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         const v = document.querySelector('.nav-btn.active')?.dataset.view;
         if (v === 'procs') loadProcs();
         else if (v === 'startup') loadStartup?.();
         else if (v === 'ratings') loadRatings?.();
+        else if (v === 'dash') loadDash();
+        else if (v === 'intel') loadIntel();
         else loadProcs();
       }
     });
-    $('btnReloadRates').onclick = () => loadRatings();
-    $('btnReloadStart').onclick = () => loadStartup();
-    $('btnDoRefresh').onclick = doRefresh;
-    $('btnRefreshIntelDash').onclick = () => { selectView('intel'); setTimeout(doRefresh, 200); };
-    $('procSearch').addEventListener('input', () => { clearTimeout(window._ps); window._ps = setTimeout(loadProcs, 280); });
-    $('procSort').addEventListener('change', loadProcs);
+    bind('btnReloadRates', 'click', () => withBusy(() => loadRatings(), 'btnReloadRates'));
+    bind('btnReloadStart', 'click', () => withBusy(() => loadStartup(), 'btnReloadStart'));
+    bind('btnDoRefresh', 'click', doRefresh);
+    bind('btnRefreshIntelDash', 'click', () => { selectView('intel'); setTimeout(doRefresh, 200); });
+    bind('procSearch', 'input', () => { clearTimeout(window._ps); window._ps = setTimeout(loadProcs, 280); });
+    bind('procSort', 'change', loadProcs);
 
     // Efficiency mode chrome
     document.querySelectorAll('#navModeRun [data-run-mode]').forEach(b => {
@@ -1101,16 +1213,18 @@
     renderModeBars();
 
     async function startServer() {
+      return withBusy(async () => {
       if (window.AIToolboxAPI?.startServer) {
         await AIToolboxAPI.startServer({ mode: 'tray', onStatus: (m) => AIToolboxUI?.toast?.(m, '') });
         await checkServer();
         if (online) selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash');
       } else {
-        AIToolboxUI?.toast?.('Use Launcher ▶ Start Server', 'warn');
+        UI()?.toast?.('Use Launcher ▶ Start Server', 'warn');
       }
+      }, 'btnStart');
     }
-    $('btnStart').onclick = startServer;
-    $('btnStart2').onclick = startServer;
+    bind('btnStart', 'click', startServer);
+    bind('btnStart2', 'click', startServer);
 
     if (window.AIToolboxUI?.bindServerControls) {
       AIToolboxUI.bindServerControls({
@@ -1184,6 +1298,7 @@
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    if (document.getElementById('drawer')?.classList.contains('open')) return;
     location.href = launcherHref();
   }, true);
   // One soft status toast so launch failures are visible

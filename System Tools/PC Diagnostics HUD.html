@@ -37,6 +37,8 @@
   --bad-dim:rgba(251,113,133,.12);
   --info:#60a5fa;
   --info-dim:rgba(96,165,250,.12);
+  --gold:#f5c542;
+  --magenta:#e879f9;
   --glow-cyan:0 0 40px rgba(34,211,238,.18);
   --glow-violet:0 0 48px rgba(167,139,250,.2);
   --radius:18px;
@@ -137,6 +139,11 @@ body{
 }
 .btn.primary:hover{box-shadow:0 8px 32px rgba(34,211,238,.35);filter:brightness(1.05)}
 .btn:disabled{opacity:.55;cursor:wait;transform:none!important}
+.btn:focus-visible, .chip:focus-visible, a:focus-visible, input:focus-visible,
+button:focus-visible, select:focus-visible, textarea:focus-visible, .navlink:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px;
+}
+
 .btn.ghost{background:transparent}
 .btn.sm{padding:6px 11px;font-size:12px;border-radius:9px}
 .btn .ico{font-size:14px;line-height:1}
@@ -556,6 +563,12 @@ details.tech pre{
   background:rgba(0,0,0,.45)!important;
   backdrop-filter:blur(8px);
 }
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+@media (prefers-contrast: more){
+  :root{ --text:#ffffff; --muted:#d5deea; --faint:#c4d0e4; --line:rgba(34,211,238,.45); }
+}
 </style>
 </head>
 <body>
@@ -788,11 +801,68 @@ details.tech pre{
   let selectedId = null;
   let currentView = 'hud';
 
-  const $ = (id) => document.getElementById(id);
+
+  function el(id) {
+    try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+  }
+  function setText(id, text) {
+    const n = el(id);
+    if (n) n.textContent = text == null ? '' : String(text);
+  }
+  function bind(id, ev, fn) {
+    const n = el(id);
+    if (!n || !fn) return;
+    n.addEventListener(ev, fn);
+  }
+  function lsGet(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v == null ? fallback : v;
+    } catch (_) { return fallback; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+  }
+  function escHtml(str) {
+    const u = window.AIToolboxUI && AIToolboxUI.escapeHtml;
+    if (typeof u === 'function') return u(str);
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  const escapeHtml = escHtml;
+  const escapeAttr = escHtml;
+  const $ = el;
+  let actionBusy = false;
+  const _blobUrls = [];
+  function trackBlob(url) {
+    if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+    return url;
+  }
+  function revokeBlobs() {
+    while (_blobUrls.length) {
+      try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+    }
+  }
+  window.addEventListener('pagehide', revokeBlobs);
+  async function withBusy(fn, btnId) {
+    if (actionBusy) return;
+    actionBusy = true;
+    const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : ['btnRun', 'btnRunTop', 'btnRescan', 'btnLoad', 'btnReloadLatest', 'btnExportJson'];
+    const btns = ids.map(el).filter(Boolean);
+    btns.forEach((b) => { b.disabled = true; });
+    try { return await fn(); }
+    finally {
+      actionBusy = false;
+      btns.forEach((b) => { b.disabled = false; });
+    }
+  }
+
 
   function toast(msg) {
-    const t = $('toast');
-    t.textContent = msg;
+    const t = el('toast');
+    if (!t) return;
+    t.textContent = msg == null ? '' : String(msg);
     t.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => t.classList.remove('show'), 3800);
@@ -802,12 +872,6 @@ details.tech pre{
     return ({ ok: 'Healthy', warn: 'Attention', bad: 'Critical', info: 'Info' })[s] || s || 'Info';
   }
 
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-  const escapeAttr = escapeHtml;
 
   async function api(path, opts) {
     const r = await fetch(API() + path, {
@@ -822,45 +886,55 @@ details.tech pre{
   }
 
   async function refreshPill() {
-    const pill = $('pill');
+    const pill = el('pill');
     try {
       const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true, 1500) : false;
-      pill.innerHTML = on
-        ? '<span class="dot"></span> ONLINE · 127.0.0.87:18765'
-        : '<span class="dot"></span> OFFLINE';
-      pill.className = 'live-pill' + (on ? ' on' : '');
+      if (pill) {
+        pill.innerHTML = on
+          ? '<span class="dot"></span> ONLINE · 127.0.0.87:18765'
+          : '<span class="dot"></span> OFFLINE';
+        pill.className = 'live-pill' + (on ? ' on' : '');
+      }
       return on;
     } catch {
-      pill.innerHTML = '<span class="dot"></span> OFFLINE';
-      pill.className = 'live-pill';
+      if (pill) {
+        pill.innerHTML = '<span class="dot"></span> OFFLINE';
+        pill.className = 'live-pill';
+      }
       return false;
     }
   }
 
   function setLoading(on, title, sub) {
-    const el = $('loading');
-    el.classList.toggle('on', on);
-    if (title) $('loadTitle').textContent = title;
-    if (sub) $('loadSub').textContent = sub;
+    const node = el('loading');
+    if (node) node.classList.toggle('on', !!on);
+    if (title) setText('loadTitle', title);
+    if (sub) setText('loadSub', sub);
   }
 
   function renderOptions(schema) {
+    schema = schema || {};
     const defaults = schema.defaults || {};
-    const box = $('optList');
-    box.innerHTML = (schema.options || []).map((o) => `
+    const box = el('optList');
+    if (!box) return;
+    box.innerHTML = (schema.options || []).map((o) => {
+      const oid = escapeAttr(o && o.id);
+      return `
       <div class="opt">
-        <input type="checkbox" id="opt_${o.id}" data-opt="${o.id}" ${defaults[o.id] !== false ? 'checked' : ''}>
-        <label for="opt_${o.id}">${escapeHtml(o.label)}<small>${escapeHtml(o.desc || '')}</small></label>
-      </div>`).join('');
-    box.querySelectorAll('[data-opt]').forEach((el) => el.addEventListener('change', updateOptCount));
-    if (schema.eventLogDaysDefault) $('eventDays').value = schema.eventLogDaysDefault;
+        <input type="checkbox" id="opt_${oid}" data-opt="${oid}" ${defaults[o && o.id] !== false ? 'checked' : ''}>
+        <label for="opt_${oid}">${escapeHtml(o && o.label)}<small>${escapeHtml((o && o.desc) || '')}</small></label>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-opt]').forEach((node) => node.addEventListener('change', updateOptCount));
+    const days = el('eventDays');
+    if (schema.eventLogDaysDefault && days) days.value = schema.eventLogDaysDefault;
     updateOptCount();
   }
 
   function updateOptCount() {
     const all = document.querySelectorAll('[data-opt]');
     const n = [...all].filter((e) => e.checked).length;
-    $('optCount').textContent = n + '/' + all.length;
+    setText('optCount', n + '/' + all.length);
   }
 
   function gatherOptions() {
@@ -895,8 +969,8 @@ details.tech pre{
     setAll(true);
     if ($('eventDays')) $('eventDays').value = 7;
     updateOptCount();
-    $('runHint').textContent =
-      'Full pack selected — includes event log, startup, and security (slower, more thorough).';
+    setText('runHint',
+      'Full pack selected — includes event log, startup, and security (slower, more thorough).');
   }
 
   function showQuickPackBanner(show) {
@@ -908,15 +982,18 @@ details.tech pre{
   function setScoreRing(score, severity) {
     const circ = 2 * Math.PI * 54; // ~339.3
     const pct = Math.max(0, Math.min(100, Number(score) || 0)) / 100;
-    const arc = $('scoreArc');
-    arc.style.strokeDasharray = String(circ);
-    // allow reflow then animate
-    requestAnimationFrame(() => {
-      arc.style.strokeDashoffset = String(circ * (1 - pct));
-    });
-    const num = $('scoreNum');
-    num.textContent = score != null ? score : '—';
-    num.style.color = severity === 'ok' ? 'var(--ok)' : severity === 'warn' ? 'var(--warn)' : severity === 'bad' ? 'var(--bad)' : 'var(--cyan)';
+    const arc = el('scoreArc');
+    if (arc) {
+      arc.style.strokeDasharray = String(circ);
+      requestAnimationFrame(() => {
+        arc.style.strokeDashoffset = String(circ * (1 - pct));
+      });
+    }
+    const num = el('scoreNum');
+    if (num) {
+      num.textContent = score != null ? score : '—';
+      num.style.color = severity === 'ok' ? 'var(--ok)' : severity === 'warn' ? 'var(--warn)' : severity === 'bad' ? 'var(--bad)' : 'var(--cyan)';
+    }
   }
 
   function kpiFromReport(r) {
@@ -961,29 +1038,34 @@ details.tech pre{
 
   function renderReport(r) {
     report = r;
+    const empty = el('emptyState');
+    const results = el('results');
     if (!r) {
-      $('emptyState').style.display = '';
-      $('results').style.display = 'none';
+      if (empty) empty.style.display = '';
+      if (results) results.style.display = 'none';
       return;
     }
-    $('emptyState').style.display = 'none';
-    $('results').style.display = '';
-    const lu = $('lastUpdated');
+    if (empty) empty.style.display = 'none';
+    if (results) results.style.display = '';
+    const lu = el('lastUpdated');
     if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
     const o = r.overall || {};
     const sev = o.severity || 'info';
     setScoreRing(o.score, sev);
 
-    const line = $('statusLine');
-    line.className = 'status-line ' + sev;
-    line.textContent = o.label || 'Report ready';
+    const line = el('statusLine');
+    if (line) {
+      line.className = 'status-line ' + sev;
+      line.textContent = o.label || 'Report ready';
+    }
 
-    $('headline').textContent = (r.meta && r.meta.deviceId) ? r.meta.deviceId : 'System health';
-    $('friendlyBlurb').textContent = (r.summary && r.summary.friendly) || '';
+    setText('headline', (r.meta && r.meta.deviceId) ? r.meta.deviceId : 'System health');
+    setText('friendlyBlurb', (r.summary && r.summary.friendly) || '');
 
     const m = r.meta || {};
-    $('heroMeta').innerHTML = [
+    const heroMeta = el('heroMeta');
+    if (heroMeta) heroMeta.innerHTML = [
       m.collectedAt && `<span>⏱ ${escapeHtml(m.collectedAt)}</span>`,
       m.durationMs != null && `<span>⚡ ${escapeHtml(String(m.durationMs))} ms</span>`,
       m.toolboxVersion && `<span>v${escapeHtml(m.toolboxVersion)}</span>`,
@@ -993,7 +1075,8 @@ details.tech pre{
 
     // KPIs
     const kpis = kpiFromReport(r);
-    $('kpiStrip').innerHTML = kpis.map((k) => `
+    const kpiStrip = el('kpiStrip');
+    if (kpiStrip) kpiStrip.innerHTML = kpis.map((k) => `
       <div class="kpi" style="--kpi-glow:${k.glow}">
         <div class="k">${escapeHtml(k.k)}</div>
         <div class="v">${escapeHtml(k.v)}</div>
@@ -1011,7 +1094,8 @@ details.tech pre{
 
     // Component tiles
     const comps = r.components || [];
-    $('hudGrid').innerHTML = comps.map((c, i) => `
+    const hudGrid = el('hudGrid');
+    if (hudGrid) hudGrid.innerHTML = comps.map((c, i) => `
       <button type="button" class="tile ${escapeAttr(c.status || 'info')}${selectedId === c.id ? ' active' : ''}"
         data-id="${escapeAttr(c.id)}" style="animation-delay:${0.03 * i}s">
         <span class="shine"></span>
@@ -1024,7 +1108,7 @@ details.tech pre{
         <p>${escapeHtml(c.friendlyName || c.simple || '')}</p>
       </button>`).join('');
 
-    $('hudGrid').querySelectorAll('.tile').forEach((btn) => {
+    if (hudGrid) hudGrid.querySelectorAll('.tile').forEach((btn) => {
       btn.addEventListener('click', () => selectComponent(btn.getAttribute('data-id')));
     });
 
@@ -1040,8 +1124,11 @@ details.tech pre{
   }
 
   function renderSuggestions(sugs) {
-    $('sugCount').textContent = sugs.length ? sugs.length + ' items' : 'Clear';
-    $('suggestions').innerHTML = sugs.length
+    sugs = sugs || [];
+    setText('sugCount', sugs.length ? sugs.length + ' items' : 'Clear');
+    const sugHost = el('suggestions');
+    if (!sugHost) return;
+    sugHost.innerHTML = sugs.length
       ? sugs.map((s, i) => `
         <div class="sug" style="animation-delay:${0.04 * i}s">
           <h4>
@@ -1057,13 +1144,13 @@ details.tech pre{
         </div>`).join('')
       : '<div class="empty" style="grid-column:1/-1;border-style:solid;border-color:rgba(52,211,153,.25);color:var(--ok)">No urgent actions — system looks solid. Re-scan if something feels off.</div>';
 
-    $('suggestions').querySelectorAll('[data-goto]').forEach((b) => {
+    sugHost.querySelectorAll('[data-goto]').forEach((b) => {
       b.addEventListener('click', () => {
         setView('hud');
         selectComponent(b.getAttribute('data-goto'));
       });
     });
-    $('suggestions').querySelectorAll('[data-dismiss-sug]').forEach((b) => {
+    sugHost.querySelectorAll('[data-dismiss-sug]').forEach((b) => {
       b.addEventListener('click', () => dismissSuggestion(b.getAttribute('data-dismiss-sug'), b.getAttribute('data-dismiss-cid')));
     });
   }
@@ -1237,7 +1324,9 @@ details.tech pre{
   }
 
   function renderSimple(comps, sugs) {
-    $('simpleBody').innerHTML =
+    const simpleBody = el('simpleBody');
+    if (!simpleBody) return;
+    simpleBody.innerHTML =
       `<article style="border-color:rgba(34,211,238,.25)">
         <h3>Executive summary</h3>
         <p>${escapeHtml((report.summary && report.summary.friendly) || '')}</p>
@@ -1264,10 +1353,13 @@ details.tech pre{
     const order = { high: 0, medium: 1, low: 2 };
     const sorted = [...sugs].sort((a, b) => (order[a.priority] ?? 9) - (order[b.priority] ?? 9));
     if (!sorted.length) {
-      $('actionsBody').innerHTML = '<div class="empty" style="color:var(--ok)">Action plan clear — no remediation items from this scan.</div>';
+      const actionsEmpty = el('actionsBody');
+      if (actionsEmpty) actionsEmpty.innerHTML = '<div class="empty" style="color:var(--ok)">Action plan clear — no remediation items from this scan.</div>';
       return;
     }
-    $('actionsBody').innerHTML = `
+    const actionsBody = el('actionsBody');
+    if (!actionsBody) return;
+    actionsBody.innerHTML = `
       <article style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px">
         <h3 style="margin-bottom:14px;font-size:16px">Prioritized action plan</h3>
         <div class="sug-grid" style="padding:0">
@@ -1280,7 +1372,7 @@ details.tech pre{
             </div>`).join('')}
         </div>
       </article>`;
-    $('actionsBody').querySelectorAll('[data-goto]').forEach((b) => {
+    actionsBody.querySelectorAll('[data-goto]').forEach((b) => {
       b.addEventListener('click', () => {
         setView('hud');
         selectComponent(b.getAttribute('data-goto'));
@@ -1322,7 +1414,9 @@ details.tech pre{
   }
 
   function _renderDetail(c) {
-    const panel = $('detailPanel');
+    if (!c) return;
+    const panel = el('detailPanel');
+    if (!panel) return;
     panel.classList.add('open');
     let stats = '';
     let listHtml = '';
@@ -1342,11 +1436,11 @@ details.tech pre{
       ]);
     } else if (c.id === 'storage' && d.volumes) {
       listHtml = `<div class="section-label">Volumes</div><ul class="device-list">${d.volumes.map((v) =>
-        `<li><span class="kind">${escapeHtml(v.mount)}</span><span class="nm">${v.freePercent}% free · ${v.freeGb} GB / ${v.totalGb} GB</span></li>`
+        `<li><span class="kind">${escapeHtml(v.mount)}</span><span class="nm">${escapeHtml(v.freePercent)}% free · ${escapeHtml(v.freeGb)} GB / ${escapeHtml(v.totalGb)} GB</span></li>`
       ).join('')}</ul>`;
       if (d.disks && d.disks.length) {
         listHtml += `<div class="section-label">Physical disks</div><ul class="device-list">${d.disks.map((disk) =>
-          `<li><span class="kind">${escapeHtml(disk.media || disk.bus || 'Disk')}</span><span class="nm">${escapeHtml(disk.name)} · ${disk.sizeGb} GB · ${escapeHtml(disk.health || '')}</span></li>`
+          `<li><span class="kind">${escapeHtml(disk.media || disk.bus || 'Disk')}</span><span class="nm">${escapeHtml(disk.name)} · ${escapeHtml(disk.sizeGb)} GB · ${escapeHtml(disk.health || '')}</span></li>`
         ).join('')}</ul>`;
       }
     } else if (c.id === 'gpu' && d.adapters) {
@@ -1355,7 +1449,7 @@ details.tech pre{
       ).join('')}</ul>`;
     } else if (c.id === 'network' && d.adapters) {
       listHtml = `<ul class="device-list">${d.adapters.map((a) =>
-        `<li><span class="kind">${escapeHtml(a.kind || 'Link')}</span><span class="nm">${escapeHtml(a.name)}${a.speedMbps ? ' · ~' + a.speedMbps + ' Mbps' : ''}${a.ipv4 ? ' · ' + a.ipv4 : ''}</span></li>`
+        `<li><span class="kind">${escapeHtml(a.kind || 'Link')}</span><span class="nm">${escapeHtml(a.name)}${a.speedMbps ? ' · ~' + escapeHtml(a.speedMbps) + ' Mbps' : ''}${a.ipv4 ? ' · ' + escapeHtml(a.ipv4) : ''}</span></li>`
       ).join('')}</ul>`;
     } else if (c.id === 'problem_devices' && (d.devices || d.devicesMuted)) {
       const active = d.devices || [];
@@ -1450,8 +1544,11 @@ details.tech pre{
       return `<button type="button" class="chip" data-goto="${escapeAttr(l)}">${escapeHtml(target ? target.name : l)}</button>`;
     }).join('');
 
-    $('detailTitle').innerHTML = `${ICONS[c.id] || '◆'} ${escapeHtml(c.name)} <span class="badge ${escapeAttr(c.status || 'info')}">${sevLabel(c.status)}</span>`;
-    $('detailBody').innerHTML = `
+    const detailTitle = el('detailTitle');
+    if (detailTitle) detailTitle.innerHTML = `${ICONS[c.id] || '◆'} ${escapeHtml(c.name)} <span class="badge ${escapeAttr(c.status || 'info')}">${sevLabel(c.status)}</span>`;
+    const detailBody = el('detailBody');
+    if (!detailBody) return;
+    detailBody.innerHTML = `
       <div>
         <p class="simple">${escapeHtml(c.simple || c.summary || '')}</p>
         ${links.length ? `<div class="section-label">Related components</div><div class="chips">${chips}</div>` : ''}
@@ -1469,21 +1566,21 @@ details.tech pre{
         <div style="display:flex;flex-direction:column;gap:6px">${toolLinksFor(c.id)}</div>
       </div>`;
 
-    $('detailBody').querySelectorAll('[data-goto]').forEach((b) => {
+    detailBody.querySelectorAll('[data-goto]').forEach((b) => {
       b.addEventListener('click', () => selectComponent(b.getAttribute('data-goto')));
     });
 
     // Problem-device ignore actions
     if (c.id === 'problem_devices') {
       const devices = (c.details && c.details.devices) || [];
-      $('detailBody').querySelectorAll('[data-ignore-idx]').forEach((b) => {
+      detailBody.querySelectorAll('[data-ignore-idx]').forEach((b) => {
         b.addEventListener('click', () => {
           const idx = parseInt(b.getAttribute('data-ignore-idx'), 10);
           const dev = devices[idx];
           if (dev) ignoreDevice(dev);
         });
       });
-      $('detailBody').querySelectorAll('[data-unignore-id],[data-unignore-name]').forEach((b) => {
+      detailBody.querySelectorAll('[data-unignore-id],[data-unignore-name]').forEach((b) => {
         b.addEventListener('click', () => unignoreDevice(b.getAttribute('data-unignore-id'), b.getAttribute('data-unignore-name')));
       });
       const usbBtn = $('btnIgnoreUsbInDetail');
@@ -1502,88 +1599,94 @@ details.tech pre{
   function setView(mode) {
     currentView = mode;
     ['btnHudView', 'btnSimpleView', 'btnActionsView'].forEach((id) => {
-      const el = $(id);
-      el.classList.toggle('active', el.getAttribute('data-view') === mode);
+      const node = el(id);
+      if (node) node.classList.toggle('active', node.getAttribute('data-view') === mode);
     });
-    $('viewHud').style.display = mode === 'hud' ? '' : 'none';
-    $('viewSimple').classList.toggle('on', mode === 'simple');
-    $('viewActions').classList.toggle('on', mode === 'actions');
+    const vh = el('viewHud');
+    if (vh) vh.style.display = mode === 'hud' ? '' : 'none';
+    const vs = el('viewSimple');
+    if (vs) vs.classList.toggle('on', mode === 'simple');
+    const va = el('viewActions');
+    if (va) va.classList.toggle('on', mode === 'actions');
   }
 
   async function runScan() {
-    const on = await refreshPill();
-    if (!on) {
-      toast('Server offline — start it from the bar above, then scan.');
-      return;
-    }
-    setLoading(true, 'Scanning your system', 'Identity, compute, storage, devices, analysis…');
-    $('btnRun').disabled = true;
-    $('btnRunTop').disabled = true;
-    try {
-      const days = Math.max(1, Math.min(30, parseInt($('eventDays').value, 10) || 7));
-      const data = await api('/pc-diagnostics/run', {
-        method: 'POST',
-        body: JSON.stringify({ options: gatherOptions(), eventLogDays: days, persist: true }),
-      });
-      renderReport(data.report);
-      toast('Scan complete — explore the component map.');
-      $('runHint').textContent = 'Saved on this PC under FAFO Devices. Click any tile for deep detail.';
-    } catch (e) {
-      toast('Scan failed: ' + (e.message || e));
-      $('runHint').textContent = 'Error: ' + (e.message || e);
-    } finally {
-      setLoading(false);
-      $('btnRun').disabled = false;
-      $('btnRunTop').disabled = false;
-    }
+    return withBusy(async () => {
+      const on = await refreshPill();
+      if (!on) {
+        toast('Server offline — start it from the bar above, then scan.');
+        return;
+      }
+      setLoading(true, 'Scanning your system', 'Identity, compute, storage, devices, analysis…');
+      try {
+        const daysEl = el('eventDays');
+        const days = Math.max(1, Math.min(30, parseInt(daysEl && daysEl.value, 10) || 7));
+        const data = await api('/pc-diagnostics/run', {
+          method: 'POST',
+          body: JSON.stringify({ options: gatherOptions(), eventLogDays: days, persist: true }),
+        });
+        renderReport(data && data.report);
+        toast('Scan complete — explore the component map.');
+        setText('runHint', 'Saved on this PC under FAFO Devices. Click any tile for deep detail.');
+      } catch (e) {
+        toast('Scan failed: ' + (e.message || e));
+        setText('runHint', 'Error: ' + (e.message || e));
+      } finally {
+        setLoading(false);
+      }
+    });
   }
 
   async function loadLatest() {
-    const on = await refreshPill();
-    if (!on) { toast('Server offline'); return; }
-    try {
-      const data = await api('/pc-diagnostics/latest');
-      if (!data.ok || !data.report) {
-        toast(data.message || 'No saved report yet');
-        return;
+    return withBusy(async () => {
+      const on = await refreshPill();
+      if (!on) { toast('Server offline'); return; }
+      try {
+        const data = await api('/pc-diagnostics/latest');
+        if (!data || !data.ok || !data.report) {
+          toast((data && data.message) || 'No saved report yet');
+          return;
+        }
+        renderReport(data.report);
+        toast('Loaded last report for this PC');
+      } catch (e) {
+        toast('Load failed: ' + (e.message || e));
       }
-      renderReport(data.report);
-      toast('Loaded last report for this PC');
-    } catch (e) {
-      toast('Load failed: ' + (e.message || e));
-    }
+    });
   }
 
   // Events
-  $('btnRun').onclick = runScan;
-  $('btnRunTop').onclick = runScan;
-  $('btnRescan').onclick = runScan;
-  $('btnLoad').onclick = loadLatest;
-  $('btnReloadLatest').onclick = loadLatest;
-  $('btnAll').onclick = () => setAll(true);
-  $('btnMin').onclick = quickScan;
-  $('btnFull').onclick = fullScan;
-  $('btnNone').onclick = () => setAll(false);
-  $('btnHudView').onclick = () => setView('hud');
-  $('btnSimpleView').onclick = () => setView('simple');
-  $('btnActionsView').onclick = () => setView('actions');
-  $('btnDismissPower')?.addEventListener('click', () => dismissPowerOutages());
-  $('btnIgnoreAllUsb')?.addEventListener('click', () => ignoreAllUsbErrors());
-  $('btnRefreshMutes')?.addEventListener('click', async () => {
+  function closeDetail() {
+    const panel = el('detailPanel');
+    if (panel) panel.classList.remove('open');
+    selectedId = null;
+    document.querySelectorAll('.tile').forEach((t) => t.classList.remove('active'));
+  }
+  bind('btnRun', 'click', runScan);
+  bind('btnRunTop', 'click', runScan);
+  bind('btnRescan', 'click', runScan);
+  bind('btnLoad', 'click', loadLatest);
+  bind('btnReloadLatest', 'click', loadLatest);
+  bind('btnAll', 'click', () => setAll(true));
+  bind('btnMin', 'click', quickScan);
+  bind('btnFull', 'click', fullScan);
+  bind('btnNone', 'click', () => setAll(false));
+  bind('btnHudView', 'click', () => setView('hud'));
+  bind('btnSimpleView', 'click', () => setView('simple'));
+  bind('btnActionsView', 'click', () => setView('actions'));
+  bind('btnDismissPower', 'click', () => dismissPowerOutages());
+  bind('btnIgnoreAllUsb', 'click', () => ignoreAllUsbErrors());
+  bind('btnRefreshMutes', 'click', async () => {
     try {
       if (report) renderMutedPanel(report);
       const data = await api('/pc-diagnostics/latest');
-      if (data.ok && data.report) renderReport(data.report);
+      if (data && data.ok && data.report) renderReport(data.report);
       toast('Muted list refreshed');
     } catch (e) {
       toast('Refresh failed: ' + (e.message || e));
     }
   });
-  $('btnCloseDetail').onclick = () => {
-    $('detailPanel').classList.remove('open');
-    selectedId = null;
-    document.querySelectorAll('.tile').forEach((t) => t.classList.remove('active'));
-  };
+  bind('btnCloseDetail', 'click', closeDetail);
 
   async function copyDiagSummary() {
     if (!report) { toast('No report loaded yet'); return; }
@@ -1604,27 +1707,49 @@ details.tech pre{
       toast('Clipboard blocked by browser');
     }
   }
-  $('btnCopySummary').onclick = copyDiagSummary;
-  const btnCopyTop = $('btnCopySummaryTop');
-  if (btnCopyTop) btnCopyTop.onclick = copyDiagSummary;
+  bind('btnCopySummary', 'click', copyDiagSummary);
+  bind('btnCopySummaryTop', 'click', copyDiagSummary);
   document.addEventListener('keydown', (e) => {
     const t = e.target;
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    if (e.key === 'Escape') {
+      const panel = el('detailPanel');
+      if (panel && panel.classList.contains('open')) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDetail();
+        return;
+      }
+    }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); $('btnRunTop')?.click(); }
-    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); $('btnReloadLatest')?.click(); }
-  });
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); const b = el('btnRunTop'); if (b) b.click(); }
+    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); const b = el('btnReloadLatest'); if (b) b.click(); }
+    if (e.key === '1') { e.preventDefault(); setView('hud'); }
+    if (e.key === '2') { e.preventDefault(); setView('simple'); }
+    if (e.key === '3') { e.preventDefault(); setView('actions'); }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const tiles = [...document.querySelectorAll('.tile[data-id]')];
+      if (!tiles.length) return;
+      e.preventDefault();
+      const idx = Math.max(0, tiles.findIndex((n) => n.getAttribute('data-id') === selectedId));
+      const next = e.key === 'ArrowRight' ? (idx + 1) % tiles.length : (idx - 1 + tiles.length) % tiles.length;
+      const nid = tiles[next].getAttribute('data-id');
+      selectComponent(nid);
+      tiles[next].focus();
+    }
+  }, true);
 
-  $('btnExportJson').onclick = () => {
+  bind('btnExportJson', 'click', () => {
     if (!report) return;
+    revokeBlobs();
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = trackBlob(URL.createObjectURL(blob));
     a.download = 'pc-diagnostics-' + ((report.meta && report.meta.deviceId) || 'report') + '.json';
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(revokeBlobs, 2000);
     toast('JSON download started');
-  };
+  });
 
   // Server start bar
   (function ensureBar() {
@@ -1639,14 +1764,16 @@ details.tech pre{
     if (top && top.parentNode) top.parentNode.insertBefore(bar, top.nextSibling);
     const btn = document.getElementById('tbBtnStartServer');
     const hint = document.getElementById('tbServerHint');
+    if (!btn) return;
     btn.onclick = async () => {
       if (!window.AIToolboxAPI) return;
+      if (actionBusy) return;
       btn.disabled = true;
       btn.textContent = 'Starting…';
       const r = await AIToolboxAPI.startServer({
         mode: 'tray',
         waitMs: 90000,
-        onStatus: (m) => { hint.textContent = m; },
+        onStatus: (m) => { if (hint) hint.textContent = m; },
       });
       btn.disabled = false;
       btn.textContent = '▶ Start Server';
@@ -1700,7 +1827,7 @@ details.tech pre{
         } else {
           // First visit / no report: pre-select recommended quick pack
           quickScan();
-          const seen = (() => { try { return localStorage.getItem(LS_QUICK) === '1'; } catch { return false; } })();
+          const seen = lsGet(LS_QUICK, '') === '1';
           showQuickPackBanner(!seen);
         }
       } else {
@@ -1716,18 +1843,18 @@ details.tech pre{
     }
     $('btnRunQuick')?.addEventListener('click', () => {
       quickScan();
-      try { localStorage.setItem(LS_QUICK, '1'); } catch (_) {}
+      lsSet(LS_QUICK, '1');
       showQuickPackBanner(false);
       runScan();
     });
     $('btnRunFullFromBanner')?.addEventListener('click', () => {
       fullScan();
-      try { localStorage.setItem(LS_QUICK, '1'); } catch (_) {}
+      lsSet(LS_QUICK, '1');
       showQuickPackBanner(false);
       runScan();
     });
     $('btnDismissQuick')?.addEventListener('click', () => {
-      try { localStorage.setItem(LS_QUICK, '1'); } catch (_) {}
+      lsSet(LS_QUICK, '1');
       showQuickPackBanner(false);
     });
     $('btnMin')?.addEventListener('click', () => {

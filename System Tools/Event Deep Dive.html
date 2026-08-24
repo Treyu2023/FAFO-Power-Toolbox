@@ -7,9 +7,10 @@
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{
-  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
-  --accent:#00f3ff;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;--purple:#a78bfa;
-  --text:#e2e8f0;--muted:#8b9bb4;
+  --bg:#070b12;--panel:#0c1220;--panel2:#141c2c;--border:rgba(0,243,255,.24);
+  --accent:#00f3ff;--gold:#f5c542;--magenta:#e879f9;
+  --ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#7dd3fc;--purple:#e879f9;
+  --text:#f1f5f9;--muted:#b6c4d8;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
@@ -115,6 +116,20 @@ h1{font-size:1.5rem;margin-bottom:4px}
 .meta-line{font-size:11px;color:var(--muted)}
 .stats{position:sticky;top:48px;z-index:15;background:rgba(5,5,8,.9);padding:8px 0;backdrop-filter:blur(8px)}
 .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin:0 0 12px}
+
+.btn:hover{background:rgba(0,243,255,.2)}
+.btn:focus-visible,.sel:focus-visible,.inp:focus-visible,.chip:focus-visible,
+.nav-chip:focus-visible,.toolbox-back:focus-visible,.finding-h:focus-visible,a:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px;
+}
+.finding-h:focus-visible{background:rgba(245,197,66,.08)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+@media (prefers-contrast:more){
+  :root{--text:#ffffff;--muted:#d5deea;--border:rgba(0,243,255,.45)}
+}
+
 </style>
 </head>
 <body>
@@ -184,57 +199,129 @@ h1{font-size:1.5rem;margin-bottom:4px}
   <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
-const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
-  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-}[c]));
+
+function el(id) {
+  try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+}
+function setText(id, text) {
+  const n = el(id);
+  if (n) n.textContent = text == null ? '' : String(text);
+}
+function bind(id, ev, fn) {
+  const n = el(id);
+  if (!n || !fn) return;
+  n.addEventListener(ev, fn);
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+}
+function escHtml(s) {
+  const u = UI()?.escapeHtml;
+  if (typeof u === 'function') return u(s);
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const esc = escHtml;
+
 const LABEL = { ok:'Fine', info:'FYI', warn:'Watch', error:'Act' };
 const PREF_KEY = 'fafo_event_deep_dive_prefs_v1';
 let lastData = null;
 let filterQ = '';
+let busy = false;
+let runGen = 0;
+let filterTimer = null;
+const _blobUrls = [];
+
+function trackBlob(url) {
+  if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+  return url;
+}
+function revokeBlobs() {
+  while (_blobUrls.length) {
+    try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+  }
+}
+window.addEventListener('pagehide', revokeBlobs);
+
+async function withBusy(fn, btnId) {
+  if (busy) return;
+  busy = true;
+  const b = btnId ? el(btnId) : null;
+  if (b) b.disabled = true;
+  try { return await fn(); }
+  finally {
+    busy = false;
+    if (b) b.disabled = false;
+  }
+}
 
 function badge(lv, extra) {
   const c = lv === 'bad' ? 'error' : (lv || 'info');
   return `<span class="badge ${extra || c}">${extra === 'noise' ? 'Noise' : (LABEL[c] || c)}</span>`;
 }
 function setPill(ok, t) {
-  const el = document.getElementById('pill');
-  el.className = 'status ' + (ok ? 'ok' : 'bad');
-  el.textContent = t;
+  const n = el('pill');
+  if (!n) return;
+  n.className = 'status ' + (ok ? 'ok' : 'bad');
+  n.textContent = t == null ? '' : String(t);
 }
 
 function loadPrefs() {
   try {
-    const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
-    if (p.hours && document.querySelector(`#hours option[value="${p.hours}"]`)) document.getElementById('hours').value = p.hours;
-    if (p.sample && document.querySelector(`#sampleSize option[value="${p.sample}"]`)) document.getElementById('sampleSize').value = p.sample;
-    if (p.noise) document.getElementById('includeNoise').checked = !!p.noise;
+    const raw = lsGet(PREF_KEY, '{}');
+    const p = JSON.parse(raw || '{}') || {};
+    const hours = el('hours');
+    const sample = el('sampleSize');
+    const noise = el('includeNoise');
+    if (p.hours && hours && document.querySelector('#hours option[value="' + String(p.hours).replace(/[^0-9]/g,'') + '"]')) hours.value = p.hours;
+    if (p.sample && sample && document.querySelector('#sampleSize option[value="' + String(p.sample).replace(/[^0-9]/g,'') + '"]')) sample.value = p.sample;
+    if (p.noise && noise) noise.checked = !!p.noise;
   } catch (_) {}
 }
 function savePrefs() {
   try {
-    localStorage.setItem(PREF_KEY, JSON.stringify({
-      hours: document.getElementById('hours').value,
-      sample: document.getElementById('sampleSize').value,
-      noise: document.getElementById('includeNoise').checked,
+    lsSet(PREF_KEY, JSON.stringify({
+      hours: el('hours')?.value,
+      sample: el('sampleSize')?.value,
+      noise: !!el('includeNoise')?.checked,
     }));
   } catch (_) {}
 }
 function syncViewerLinks() {
-  const hours = document.getElementById('hours').value;
-  const sm = Number(document.getElementById('sampleSize').value || 250);
+  const hours = el('hours')?.value || '24';
+  const sm = Number(el('sampleSize')?.value || 250);
   const sample = sm <= 250 ? '150' : (sm <= 450 ? '300' : '500');
   const href = `Event Viewer.html?hours=${encodeURIComponent(hours)}&sample=${encodeURIComponent(sample)}`;
-  const chip = document.getElementById('chipEventViewer');
-  const link = document.getElementById('linkViewer');
+  const chip = el('chipEventViewer');
+  const link = el('linkViewer');
   if (chip) chip.href = href;
   if (link) link.href = href;
 }
 function downloadBlob(filename, text, mime) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: mime || 'application/json' }));
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  try {
+    revokeBlobs();
+    const a = document.createElement('a');
+    const url = trackBlob(URL.createObjectURL(new Blob([text], { type: mime || 'application/json' })));
+    a.href = url;
+    a.download = filename || 'export.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      const i = _blobUrls.indexOf(url);
+      if (i >= 0) _blobUrls.splice(i, 1);
+    }, 2000);
+  } catch (e) {
+    UI()?.toast?.('Export failed', 'warn');
+  }
 }
 
 function rankClass(rank, tier) {
@@ -244,10 +331,42 @@ function rankClass(rank, tier) {
   return '';
 }
 
+function wireFindingKeys() {
+  const heads = Array.from(document.querySelectorAll('.finding-h'));
+  heads.forEach((h, i) => {
+    h.tabIndex = 0;
+    h.setAttribute('role', 'button');
+    h.setAttribute('aria-expanded', h.parentElement?.classList.contains('open') ? 'true' : 'false');
+    bind(h, 'click', () => {
+      h.parentElement?.classList.toggle('open');
+      h.setAttribute('aria-expanded', h.parentElement?.classList.contains('open') ? 'true' : 'false');
+    });
+    bind(h, 'keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        h.click();
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const next = e.key === 'ArrowDown' ? heads[i + 1] : heads[i - 1];
+        next?.focus();
+      }
+    });
+  });
+}
+
 function render(data) {
+  if (!data || typeof data !== 'object') {
+    const list = el('list');
+    if (list) list.innerHTML = '<div class="callout">No findings data.</div>';
+    return;
+  }
   lastData = data;
-  document.getElementById('hero').style.display = 'block';
-  document.getElementById('hero').innerHTML = `
+  const hero = el('hero');
+  if (hero) {
+    hero.style.display = 'block';
+    hero.innerHTML = `
     ${badge(data.actionableCount ? 'warn' : 'ok')}
     <h2>${esc(data.headline || '')}</h2>
     <p style="margin-top:8px;color:var(--muted)">${esc(data.summary || '')}</p>
@@ -256,32 +375,38 @@ function render(data) {
       · CPU: ${esc(data.hardware?.cpu || '—')}
       · GPU: ${esc((data.hardware?.gpus || [])[0] || '—')}
     </p>`;
+  }
 
-  document.getElementById('stats').innerHTML = [
-    { l: 'Sampled', v: data.sampled ?? '—' },
-    { l: 'Errors', v: data.errorCount ?? '—' },
-    { l: 'Warnings', v: data.warningCount ?? '—' },
-    { l: 'Window', v: (data.windowHours || 72) + 'h' },
-    { l: 'Investigate', v: data.actionableCount ?? 0 },
-    { l: 'Noise themes', v: data.noiseCount ?? 0 },
-  ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${esc(String(x.v))}</div></div>`).join('');
+  const stats = el('stats');
+  if (stats) {
+    stats.innerHTML = [
+      { l: 'Sampled', v: data.sampled ?? '—' },
+      { l: 'Errors', v: data.errorCount ?? '—' },
+      { l: 'Warnings', v: data.warningCount ?? '—' },
+      { l: 'Window', v: (data.windowHours || 72) + 'h' },
+      { l: 'Investigate', v: data.actionableCount ?? 0 },
+      { l: 'Noise themes', v: data.noiseCount ?? 0 },
+    ].map(x => `<div class="stat"><div class="l">${esc(x.l)}</div><div class="v">${esc(String(x.v))}</div></div>`).join('');
+  }
 
-  document.getElementById('method').textContent = data.methodology || '';
-  document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  setText('method', data.methodology || '');
+  setText('lastUpdated', 'Updated ' + new Date().toLocaleTimeString());
 
-  let findings = data.findings || [];
+  let findings = Array.isArray(data.findings) ? data.findings : [];
   if (filterQ) {
     const q = filterQ.toLowerCase();
     findings = findings.filter(f =>
       ((f.title || '') + ' ' + (f.plainEnglish || '') + ' ' + (f.themeId || '') + ' ' + (f.topFixSummary || '')).toLowerCase().includes(q)
     );
   }
+  const list = el('list');
+  if (!list) return;
   if (!findings.length) {
-    document.getElementById('list').innerHTML = '<div class="callout">' + (filterQ ? 'No findings match filter.' : 'No findings in this window.') + '</div>';
+    list.innerHTML = '<div class="callout">' + (filterQ ? 'No findings match filter.' : 'No findings in this window.') + '</div>';
     return;
   }
 
-  document.getElementById('list').innerHTML = findings.map((f, idx) => {
+  list.innerHTML = findings.map((f, idx) => {
     const open = idx === 0 && f.tier !== 'noise' ? ' open' : '';
     const noise = f.tier === 'noise' ? ' noise' : '';
     const fixes = (f.advice?.fixes || []);
@@ -289,18 +414,18 @@ function render(data) {
     const br = f.scoreBreakdown || {};
     return `<article class="finding${noise}${open}" data-i="${idx}">
       <div class="finding-h">
-        <div class="rank ${rankClass(f.rank, f.tier)}">#${f.rank}</div>
+        <div class="rank ${rankClass(f.rank, f.tier)}">#${esc(String(f.rank ?? idx + 1))}</div>
         <div class="body">
           <div>${badge(f.level)}${f.tier === 'noise' ? ' ' + badge('info','noise') : ''}
-            <span style="margin-left:8px;font-size:11px;color:var(--muted)">${f.count} events · relative ${f.relativeLikelihoodPercent ?? 0}%</span>
+            <span style="margin-left:8px;font-size:11px;color:var(--muted)">${esc(String(f.count ?? 0))} events · relative ${esc(String(f.relativeLikelihoodPercent ?? 0))}%</span>
           </div>
           <h3>${esc(f.title || f.themeId)}</h3>
           <p>${esc(f.plainEnglish || '')}</p>
           <div class="meter" title="Relative problem score vs top finding">
-            <span style="width:${Math.max(4, f.relativeLikelihoodPercent || 0)}%"></span>
+            <span style="width:${Math.max(4, Number(f.relativeLikelihoodPercent) || 0)}%"></span>
           </div>
           ${f.topFixSummary ? `<p style="margin-top:8px;color:var(--text)">Top fix guess: <strong>${esc(f.topFixSummary)}</strong>
-            ${f.topFixLikelihoodPercent != null ? `(~${f.topFixLikelihoodPercent}% among alternatives)` : ''}</p>` : ''}
+            ${f.topFixLikelihoodPercent != null ? `(~${esc(String(f.topFixLikelihoodPercent))}% among alternatives)` : ''}</p>` : ''}
         </div>
       </div>
       <div class="finding-b">
@@ -309,16 +434,16 @@ function render(data) {
           <span>Providers: ${esc((f.providers || []).slice(0,5).join(', ') || '—')}</span>
           ${f.hoursSinceLatest != null ? `<span>Latest ~${esc(String(f.hoursSinceLatest))}h ago</span>` : ''}
         </div>
-        ${(f.hardwareReasons || []).length ? `<p class="breakdown">Hardware match: ${esc(f.hardwareReasons.join('; '))}</p>` : ''}
-        <p class="breakdown">Score parts — severity ${br.severity ?? 0}, freq ${br.frequency ?? 0}, errors ${br.errors ?? 0}, share ${br.shareOfSample ?? 0}, recency ${br.recency ?? 0}, hardware ${br.hardware ?? 0}, noise ${br.noisePenalty ?? 0}</p>
+        ${(f.hardwareReasons || []).length ? `<p class="breakdown">Hardware match: ${esc((f.hardwareReasons || []).join('; '))}</p>` : ''}
+        <p class="breakdown">Score parts — severity ${esc(String(br.severity ?? 0))}, freq ${esc(String(br.frequency ?? 0))}, errors ${esc(String(br.errors ?? 0))}, share ${esc(String(br.shareOfSample ?? 0))}, recency ${esc(String(br.recency ?? 0))}, hardware ${esc(String(br.hardware ?? 0))}, noise ${esc(String(br.noisePenalty ?? 0))}</p>
 
         <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin:12px 0 8px">
           Fix alternatives (most → least likely)
         </h4>
         ${fixes.map((fx, fi) => `
           <div class="fix ${fi === 0 ? 'best' : ''}">
-            <div class="pct">~${fx.likelihoodPercent ?? 0}%</div>
-            <h4>#${fx.rank || fi + 1} · ${esc(fx.title || '')}</h4>
+            <div class="pct">~${esc(String(fx.likelihoodPercent ?? 0))}%</div>
+            <h4>#${esc(String(fx.rank || fi + 1))} · ${esc(fx.title || '')}</h4>
             <p>${esc(fx.why || '')}</p>
             ${(fx.steps || []).length ? `<ol>${fx.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
             <div class="meta-row">
@@ -345,60 +470,57 @@ function render(data) {
     </article>`;
   }).join('');
 
-  document.querySelectorAll('.finding-h').forEach(h => {
-    h.addEventListener('click', () => {
-      h.parentElement.classList.toggle('open');
-    });
-  });
+  wireFindingKeys();
 }
-
-let runGen = 0;
 
 async function run() {
-  const btn = document.getElementById('btnRun');
-  const gen = ++runGen;
-  btn.disabled = true;
-  savePrefs();
-  syncViewerLinks();
-  const hours = document.getElementById('hours').value;
-  const max = Number(document.getElementById('sampleSize')?.value || 250);
-  const maxEvents = Number.isFinite(max) ? Math.max(100, Math.min(max, 900)) : 250;
-  document.getElementById('list').innerHTML =
-    `<p style="color:var(--muted)">Sampling event logs and scoring issues… last ${hours}h · up to ${maxEvents} events` +
-    ` (usually 5–20s on lite; longer windows take more)</p>`;
-  try {
-    await UI().apiFetch('/health');
-    if (gen !== runGen) return;
-    setPill(true, 'Connected');
-  } catch {
-    if (gen !== runGen) return;
-    setPill(false, 'Server offline');
-    document.getElementById('list').innerHTML =
-      '<div class="callout" style="border-color:var(--danger)"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong>.</div>';
-    btn.disabled = false;
-    return;
-  }
-  try {
-    const includeNoise = document.getElementById('includeNoise').checked;
-    const data = await UI().apiFetch(
-      `/events/deep-dive?hours=${hours}&max_events=${maxEvents}&include_noise=${includeNoise}`
-    );
-    if (gen !== runGen) return;
-    render(data);
-  } catch (e) {
-    if (gen !== runGen) return;
-    document.getElementById('list').innerHTML = `<p style="color:var(--danger)">${esc(e.message || e)}</p>`;
-  }
-  if (gen === runGen) btn.disabled = false;
+  return withBusy(async () => {
+    const gen = ++runGen;
+    savePrefs();
+    syncViewerLinks();
+    const hours = el('hours')?.value || '24';
+    const max = Number(el('sampleSize')?.value || 250);
+    const maxEvents = Number.isFinite(max) ? Math.max(100, Math.min(max, 900)) : 250;
+    const list = el('list');
+    if (list) {
+      list.innerHTML =
+        `<p style="color:var(--muted)">Sampling event logs and scoring issues… last ${esc(hours)}h · up to ${esc(String(maxEvents))} events` +
+        ` (usually 5–20s on lite; longer windows take more)</p>`;
+    }
+    try {
+      await UI()?.apiFetch?.('/health');
+      if (gen !== runGen) return;
+      setPill(true, 'Connected');
+    } catch {
+      if (gen !== runGen) return;
+      setPill(false, 'Server offline');
+      if (list) {
+        list.innerHTML =
+          '<div class="callout" style="border-color:var(--danger)"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong>.</div>';
+      }
+      return;
+    }
+    try {
+      const includeNoise = !!el('includeNoise')?.checked;
+      const data = await UI()?.apiFetch?.(
+        `/events/deep-dive?hours=${encodeURIComponent(hours)}&max_events=${maxEvents}&include_noise=${includeNoise}`
+      );
+      if (gen !== runGen) return;
+      render(data || { findings: [], headline: 'No data', summary: '' });
+    } catch (e) {
+      if (gen !== runGen) return;
+      if (list) list.innerHTML = `<p style="color:var(--danger)">${esc(e.message || e)}</p>`;
+    }
+  }, 'btnRun');
 }
 
-document.getElementById('btnRun').onclick = run;
-document.getElementById('btnExport').onclick = () => {
+bind('btnRun', 'click', () => { run(); });
+bind('btnExport', 'click', () => withBusy(async () => {
   if (!lastData) { UI()?.toast?.('Run deep dive first', 'warn'); return; }
   downloadBlob(`event-deep-dive-${Date.now()}.json`, JSON.stringify(lastData, null, 2));
   UI()?.toast?.('Exported findings JSON', 'ok');
-};
-document.getElementById('btnCopy').onclick = async () => {
+}, 'btnExport'));
+bind('btnCopy', 'click', () => withBusy(async () => {
   if (!lastData) { UI()?.toast?.('Run deep dive first', 'warn'); return; }
   const lines = [
     lastData.headline || 'Event Deep Dive',
@@ -415,39 +537,49 @@ document.getElementById('btnCopy').onclick = async () => {
   } catch {
     UI()?.toast?.('Clipboard blocked', 'warn');
   }
-};
-let filterTimer = null;
-document.getElementById('findFilter').addEventListener('input', () => {
+}, 'btnCopy'));
+bind('findFilter', 'input', () => {
   clearTimeout(filterTimer);
   filterTimer = setTimeout(() => {
-    filterQ = document.getElementById('findFilter').value.trim();
+    filterQ = (el('findFilter')?.value || '').trim();
     if (lastData) render(lastData);
   }, 250);
 });
 ['hours', 'sampleSize', 'includeNoise'].forEach(id => {
-  document.getElementById(id).addEventListener('change', () => { savePrefs(); syncViewerLinks(); });
+  bind(id, 'change', () => { savePrefs(); syncViewerLinks(); });
 });
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('findFilter')?.focus(); return; }
+  if (e.key === 'Escape') {
+    const filt = el('findFilter');
+    if (filt && (document.activeElement === filt || (filt.value || '').trim())) {
+      e.preventDefault();
+      e.stopPropagation();
+      filt.value = '';
+      filterQ = '';
+      filt.blur();
+      if (lastData) render(lastData);
+    }
+    return;
+  }
+  if (e.key === '/' && !typing) { e.preventDefault(); el('findFilter')?.focus(); return; }
   if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); run(); }
 });
 
 UI()?.mountServerBar?.({ onOnline: () => {} });
 loadPrefs();
-// Auto-run only when explicitly requested (?run=1). Prefer manual Run for lighter UX.
 const params = new URLSearchParams(location.search);
-if (params.get('hours') && ['24', '72', '168'].includes(params.get('hours'))) {
-  document.getElementById('hours').value = params.get('hours');
+if (params.get('hours') && ['24', '72', '168'].includes(params.get('hours')) && el('hours')) {
+  el('hours').value = params.get('hours');
 }
-if (params.get('sample') && ['250', '450', '700'].includes(params.get('sample'))) {
-  document.getElementById('sampleSize').value = params.get('sample');
+if (params.get('sample') && ['250', '450', '700'].includes(params.get('sample')) && el('sampleSize')) {
+  el('sampleSize').value = params.get('sample');
 }
 syncViewerLinks();
 if (params.get('run') === '1') run();
 else {
-  UI().apiFetch('/health').then(() => setPill(true, 'Connected')).catch(() => setPill(false, 'Offline'));
+  UI()?.apiFetch?.('/health').then(() => setPill(true, 'Connected')).catch(() => setPill(false, 'Offline'));
 }
 </script>
 
@@ -471,6 +603,8 @@ else {
     if (e.key !== 'Escape') return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    const filt = document.getElementById('findFilter');
+    if (filt && (filt.value || '').trim()) return;
     if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
     location.href = launcherHref();
   }, true);

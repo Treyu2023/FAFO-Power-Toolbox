@@ -94,8 +94,8 @@
         .drop-zone:hover, .drop-zone.dragover { background: rgba(255, 255, 255, 0.05); box-shadow: var(--neon-glow); }
         .drop-zone p { margin: 0 0 6px 0; font-size: 14px; font-weight: bold; }
         .drop-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-        .status-text { margin-top: 5px; font-size: 11px; color: #888; word-break: break-all; }
-        .folder-hint { font-size: 10px; color: #666; margin-top: 3px; }
+        .status-text { margin-top: 5px; font-size: 11px; color: #c8c8c8; word-break: break-all; }
+        .folder-hint { font-size: 10px; color: #9a9a9a; margin-top: 3px; }
         .recent-row { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 5px; min-height: 20px; }
         .recent-chip {
             font-size: 10px; padding: 2px 8px; border-radius: 10px;
@@ -157,10 +157,10 @@
             display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none;
             filter: brightness(var(--vid-brightness)%) contrast(var(--vid-contrast)%) saturate(var(--vid-saturate)%);
         }
-        #box-before { clip-path: inset(0 50% 0 0); will-change: clip-path, opacity; z-index: 2; }
+        #box-before { will-change: clip-path, opacity; z-index: 2; }
         #box-after { z-index: 1; }
 
-        .viewer-container[data-orient="vertical"] #box-before { clip-path: inset(0 0 50% 0); }
+        .viewer-container[data-orient="vertical"] #box-before { /* JS owns clip */ }
         .viewer-container[data-mode="blend"] #box-before { clip-path: none; }
         .viewer-container[data-mode="difference"] #box-before { clip-path: none; mix-blend-mode: difference; }
 
@@ -221,11 +221,11 @@
         .pair-item .pair-name { font-weight: bold; color: var(--neon-accent); margin-bottom: 3px; }
         .pair-item .pair-code { font-size: 10px; color: #ffb347; font-family: Consolas, monospace; margin-bottom: 4px; }
         .pair-item.pinned { border-color: rgba(255,179,71,0.45); }
-        .pair-item .pair-files { color: #888; font-size: 10px; line-height: 1.3; }
+        .pair-item .pair-files { color: #b0b0b0; font-size: 10px; line-height: 1.3; }
         .pair-quick { display: flex; gap: 6px; margin-bottom: 8px; }
         .pair-quick input {
             flex: 1; background: #000; border: 1px solid rgba(0,243,255,0.3);
-            color: var(--text); padding: 6px 8px; border-radius: 5px; font-size: 11px;
+            color: var(--text-color); padding: 6px 8px; border-radius: 5px; font-size: 11px;
             font-family: Consolas, monospace;
         }
         .pair-actions { display: flex; gap: 4px; margin-top: 6px; }
@@ -277,7 +277,13 @@
             transition: opacity 0.3s; box-shadow: var(--neon-glow);
         }
 
-        .kbd-hint { font-size: 10px; color: #666; margin-top: 4px; }
+        .kbd-hint { font-size: 10px; color: #9a9a9a; margin-top: 4px; }
+        .btn:focus-visible, .drop-zone:focus-visible, .collapse-tab:focus-visible, select:focus-visible, input:focus-visible {
+            outline: 2px solid var(--neon-accent); outline-offset: 2px;
+        }
+        .toast.warn { background: #fbbf24; }
+        .slider-line { width: 2px; }
+        .collapse-tab { font-family: inherit; }
     </style>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
@@ -304,11 +310,11 @@
             <h2>Pro AI Video Comparator</h2>
 
             <div class="drop-zones-container">
-                <div id="dz-before" class="drop-zone fx-border">
+                <div id="dz-before" class="drop-zone fx-border" tabindex="0" role="button" aria-label="Load original before video">
                     <p>1. Original (Before)</p>
                     <div class="drop-actions">
-                        <button class="btn" data-browse="before">Browse</button>
-                        <button class="btn btn-sm" data-pin="before">📁 Pin Folder</button>
+                        <button type="button" class="btn" data-browse="before">Browse</button>
+                        <button type="button" class="btn btn-sm" data-pin="before">📁 Pin Folder</button>
                     </div>
                     <input type="file" id="file-before" accept="video/*" hidden>
                     <div class="status-text" id="status-before">Awaiting file...</div>
@@ -316,11 +322,11 @@
                     <div class="recent-row" id="recent-before"></div>
                 </div>
 
-                <div id="dz-after" class="drop-zone fx-border">
+                <div id="dz-after" class="drop-zone fx-border" tabindex="0" role="button" aria-label="Load upscaled after video">
                     <p>2. Upscaled (After)</p>
                     <div class="drop-actions">
-                        <button class="btn" data-browse="after">Browse</button>
-                        <button class="btn btn-sm" data-pin="after">📁 Pin Folder</button>
+                        <button type="button" class="btn" data-browse="after">Browse</button>
+                        <button type="button" class="btn btn-sm" data-pin="after">📁 Pin Folder</button>
                     </div>
                     <input type="file" id="file-after" accept="video/*" hidden>
                     <div class="status-text" id="status-after">Awaiting file...</div>
@@ -330,15 +336,15 @@
             </div>
 
             <div class="toolbar">
-                <button class="btn" id="btn-settings" data-tip="Compare settings (sync, quality, HUD).">⚙ Settings</button>
-                <button class="btn" id="btn-pairs" data-tip="Browse locked pairs in the catalog.">📋 Pairs</button>
-                <button class="btn" id="btn-save-pair" data-tip-title="Save pair" data-tip="Lock this before/after as a catalog pair.">💾 Save Pair</button>
+                <button type="button" class="btn" id="btn-settings" data-tip="Compare settings (sync, quality, HUD).">⚙ Settings</button>
+                <button type="button" class="btn" id="btn-pairs" data-tip="Browse locked pairs in the catalog.">📋 Pairs</button>
+                <button type="button" class="btn" id="btn-save-pair" data-tip-title="Save pair" data-tip="Lock this before/after as a catalog pair.">💾 Save Pair</button>
                 <div class="toolbar-divider"></div>
-                <button class="btn" id="btn-swap" data-tip="Swap left and right sources.">Swap</button>
-                <button class="btn" id="btn-fit" data-tip="Fit both videos in the window.">Fit</button>
-                <button class="btn" id="btn-100" data-tip="Show true 1:1 pixels (best for sharpness).">1:1</button>
-                <button class="btn" id="btn-fullscreen" data-tip="Fullscreen compare stage (Esc exits).">⛶ Full</button>
-                <button class="btn" id="btn-screenshot" data-tip="Capture the current compare frame.">📷</button>
+                <button type="button" class="btn" id="btn-swap" data-tip="Swap left and right sources.">Swap</button>
+                <button type="button" class="btn" id="btn-fit" data-tip="Fit both videos in the window.">Fit</button>
+                <button type="button" class="btn" id="btn-100" data-tip="Show true 1:1 pixels (best for sharpness).">1:1</button>
+                <button type="button" class="btn" id="btn-fullscreen" data-tip="Fullscreen compare stage (Esc exits).">⛶ Full</button>
+                <button type="button" class="btn" id="btn-screenshot" data-tip="Capture the current compare frame.">📷</button>
                 <div class="toolbar-divider"></div>
                 <div class="toolbar-group">
                     <label>View:</label>
@@ -353,18 +359,18 @@
                     </select>
                 </div>
                 <div class="sweep-container">
-                    <button class="btn" id="btn-sweep" data-tip-title="Sweep" data-tip="Animate the compare slider back and forth to spot differences.">Sweep</button>
+                    <button type="button" class="btn" id="btn-sweep" data-tip-title="Sweep" data-tip="Animate the compare slider back and forth to spot differences.">Sweep</button>
                     <select id="sweep-mode"><option value="pong">Pong</option><option value="loop">Loop</option></select>
                     <input type="range" id="sweep-speed" style="width:60px;" min="0.001" max="0.03" step="0.001" value="0.005">
                 </div>
             </div>
-            <div class="kbd-hint">Space: Play/Pause · ←/→: Frame · F: Fullscreen · S: Save Pair · P: Pairs · W: Swap · M: Mirror/sync · R: Report · 1/2: A-B Loop</div>
+            <div class="kbd-hint">[ / ]: Slider · Space: Play/Pause · ←/→: Frame · F: Fullscreen · S: Save Pair · P: Pairs · W: Swap · M: Mirror/sync · R: Report · 1/2: A-B Loop</div>
         </div>
-        <div class="collapse-tab" id="btn-collapse">▲ Collapse</div>
+        <button type="button" class="collapse-tab" id="btn-collapse" aria-expanded="true" aria-controls="panelWrapper">▲ Collapse</button>
     </div>
 
     <div class="viewer-container" id="viewerContainer" data-mode="slider" data-orient="horizontal">
-        <div class="toast" id="toastMsg">Synced!</div>
+        <div class="toast" id="toastMsg" role="status" aria-live="polite">Synced</div>
         <div class="zoom-badge" id="zoomBadge">100%</div>
 
         <div class="res-badge res-left fx-border"><span class="res-label" id="lbl-left">Before</span><span id="res-text-left">-- x --</span></div>
@@ -373,16 +379,16 @@
         <div class="pair-library collapsed" id="pairLibrary">
             <div class="pair-header">
                 <h3>Locked Pairs</h3>
-                <button class="btn btn-sm" id="btn-close-pairs">✕</button>
+                <button type="button" class="btn btn-sm" id="btn-close-pairs">✕</button>
             </div>
             <div style="padding:8px 8px 0;">
                 <div class="pair-quick">
                     <input type="text" id="pairCodeInput" placeholder="UP-0001" title="Type pair code and press Enter">
-                    <button class="btn btn-sm" id="btn-load-code">Load</button>
+                    <button type="button" class="btn btn-sm" id="btn-load-code">Load</button>
                 </div>
                 <div class="pair-quick" style="margin-top:6px;">
-                    <button class="btn btn-sm" id="btn-prev-pair" title="Previous locked pair">◀ Prev</button>
-                    <button class="btn btn-sm" id="btn-next-pair" title="Next locked pair + play">Next ▶</button>
+                    <button type="button" class="btn btn-sm" id="btn-prev-pair" title="Previous locked pair">◀ Prev</button>
+                    <button type="button" class="btn btn-sm" id="btn-next-pair" title="Next locked pair + play">Next ▶</button>
                 </div>
                 <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:#888;margin:6px 0;cursor:pointer;">
                     <input type="checkbox" id="chkAutoNextPair" checked> Auto-next when After video ends
@@ -398,7 +404,7 @@
                 <label style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:8px;cursor:pointer;">
                     <input type="checkbox" id="chkLockPair" checked> 🔒 Lock pair (pin for quick access)
                 </label>
-                <button class="btn" id="btn-save-pair-side" style="width:100%;">💾 Save & Lock Current Pair</button>
+                <button type="button" class="btn" id="btn-save-pair-side" style="width:100%;">💾 Save & Lock Current Pair</button>
             </div>
         </div>
 
@@ -414,7 +420,7 @@
         <div class="video-deck fx-border" id="videoDeck">
             <div class="deck-row">
                 <div class="timeline-wrap">
-                    <input type="range" id="timeline" class="timeline-slider" min="0" max="100" value="0" step="0.01">
+                    <input type="range" id="timeline" class="timeline-slider" min="0" max="100" value="0" step="0.01" aria-label="Timeline">
                 </div>
                 <div class="time-stamp" id="timeDisplay">00:00 / 00:00</div>
             </div>
@@ -422,7 +428,7 @@
                 <div class="deck-controls">
                     <button class="btn fs-hide" id="btn-rev-play">◀◀</button>
                     <button class="btn fs-hide" id="btn-prev-frame">◁</button>
-                    <button class="btn" id="btn-play" style="width:65px;" data-tip="Play or pause both sides together.">Play</button>
+                    <button type="button" class="btn" id="btn-play" style="width:65px;" data-tip="Play or pause both sides together.">Play</button>
                     <button class="btn fs-hide" id="btn-next-frame">▷</button>
                     <select id="sel-speed" class="fs-hide">
                         <option value="0.1">0.1x</option>
@@ -437,7 +443,7 @@
                     <input type="range" id="blend-opacity" min="0" max="100" value="50" style="width:60px;display:none;" title="Blend opacity">
                 </div>
                 <div class="vol-container">
-                    <button class="btn" id="btn-mute">Mute</button>
+                    <button type="button" class="btn" id="btn-mute">Mute</button>
                     <input type="range" id="vol-slider" class="vol-slider" min="0" max="1" step="0.05" value="1">
                 </div>
             </div>
@@ -465,7 +471,7 @@
         <div class="settings-row"><span>Effect:</span><select id="set-audio-mode"><option value="none">Off</option><option value="pulse">Pulse</option><option value="chase">Chase</option><option value="rainbow">Rainbow</option></select></div>
         <div class="settings-row"><span>Sensitivity:</span><input type="range" id="set-audio-sens" min="0" max="3" step="0.1" value="1.2" style="width:100px;"></div>
 
-        <button class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
+        <button type="button" class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
 
     <script src="../shared/aitoolbox-config.js"></script>
@@ -475,7 +481,6 @@
 <script src="../shared/aitoolbox-ui.js"></script>
 <script src="../shared/aitoolbox-layout.js"></script>
     <script src="../shared/aitoolbox-core.js"></script>
-    <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const DB_NAME = 'AIVideoComparator';
@@ -508,6 +513,61 @@
         let knownAfterPath = null;
         const LAST_PAIR_KEY = 'video-comparator-last-pair';
         let fsSupported = 'showOpenFilePicker' in window;
+        let blobUrls = [];
+        const timeDisplay = document.getElementById('timeDisplay');
+
+        function escHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* quota / private */ } }
+        function revokeBlobs() {
+            blobUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch { /* ignore */ } });
+            blobUrls = [];
+        }
+        function attachBlob(video, file) {
+            const u = URL.createObjectURL(file);
+            blobUrls.push(u);
+            video.src = u;
+        }
+        function cancelSyncLoop() {
+            if (rvfcId == null) return;
+            try {
+                if (elAfter && typeof elAfter.cancelVideoFrameCallback === 'function') {
+                    elAfter.cancelVideoFrameCallback(rvfcId);
+                } else {
+                    cancelAnimationFrame(rvfcId);
+                }
+            } catch {
+                try { cancelAnimationFrame(rvfcId); } catch { /* ignore */ }
+            }
+            rvfcId = null;
+        }
+        function tearDownVideos() {
+            stopReversePlay();
+            cancelSyncLoop();
+            if (isSweeping) {
+                isSweeping = false;
+                document.getElementById('btn-sweep')?.classList.remove('active');
+                if (sweepAnimFrame) cancelAnimationFrame(sweepAnimFrame);
+                sweepAnimFrame = null;
+            }
+            [elBefore, elAfter].forEach(v => {
+                if (!v) return;
+                try { v.pause(); } catch { /* ignore */ }
+                v.removeAttribute('src');
+                try { v.load(); } catch { /* ignore */ }
+            });
+            boxBefore.innerHTML = '';
+            boxAfter.innerHTML = '';
+            elBefore = elAfter = null;
+            revokeBlobs();
+            if (audioCtx) {
+                try { audioCtx.close(); } catch { /* ignore */ }
+                audioCtx = null;
+                isAudioInit = false;
+            }
+        }
 
         function normalizePair(p) {
             return AIToolboxAPI.normalizePair ? AIToolboxAPI.normalizePair(p) : p;
@@ -522,13 +582,16 @@
         function rememberPair(pair) {
             if (!pair?.id) return;
             activePairId = pair.id;
-            localStorage.setItem(LAST_PAIR_KEY, pair.id);
+            lsSet(LAST_PAIR_KEY, pair.id);
             if (pair.pairCode || pair.pair_code) {
-                localStorage.setItem(LAST_PAIR_KEY + '-code', pair.pairCode || pair.pair_code);
+                lsSet(LAST_PAIR_KEY + '-code', pair.pairCode || pair.pair_code);
             }
         }
 
-        function getFrameStep() { return 1 / parseFloat(document.getElementById('set-fps').value); }
+        function getFrameStep() {
+            const fps = parseFloat(document.getElementById('set-fps')?.value);
+            return 1 / (Number.isFinite(fps) && fps > 0 ? fps : 30);
+        }
 
         // --- IndexedDB ---
         function openDB() {
@@ -793,7 +856,7 @@
         function isUpdateFilesOnNext() {
             const el = document.getElementById('chkUpdateFiles');
             if (el) return !!el.checked;
-            return localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+            return lsGet(UPDATE_FILES_KEY) !== '0';
         }
 
         async function flushActivePairFilesToDisk() {
@@ -881,11 +944,11 @@
                 const p = normalizePair(pair);
                 const div = document.createElement('div');
                 div.className = 'pair-item' + (p.id === activePairId ? ' active' : '') + (p.pinned ? ' pinned' : '');
-                const code = p.pairCode ? `<div class="pair-code">${p.pinned ? '★ ' : ''}${p.pairCode}</div>` : '';
+                const code = p.pairCode ? `<div class="pair-code">${p.pinned ? '★ ' : ''}${escHtml(p.pairCode)}</div>` : '';
                 div.innerHTML = `
                     ${code}
-                    <div class="pair-name">${p.name}</div>
-                    <div class="pair-files">B: ${p.beforeName || '—'}<br>A: ${p.afterName || '—'}</div>
+                    <div class="pair-name">${escHtml(p.name)}</div>
+                    <div class="pair-files">B: ${escHtml(p.beforeName || '—')}<br>A: ${escHtml(p.afterName || '—')}</div>
                     <div class="pair-actions">
                         <button class="btn load-btn">Load</button>
                         <button class="btn pin-btn">${p.pinned ? 'Unpin' : 'Pin'}</button>
@@ -927,7 +990,7 @@
                 if (pair && pair.kind !== 'image') { await loadPair(pair); return; }
             }
 
-            const last = localStorage.getItem(LAST_PAIR_KEY);
+            const last = lsGet(LAST_PAIR_KEY);
             if (last && await AIToolboxAPI.isOnline()) {
                 try {
                     const pair = await AIToolboxAPI.getPair(last);
@@ -945,9 +1008,9 @@
         (() => {
             const el = document.getElementById('chkUpdateFiles');
             if (!el) return;
-            el.checked = localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+            el.checked = lsGet(UPDATE_FILES_KEY) !== '0';
             el.addEventListener('change', () => {
-                localStorage.setItem(UPDATE_FILES_KEY, el.checked ? '1' : '0');
+                lsSet(UPDATE_FILES_KEY, el.checked ? '1' : '0');
             });
         })();
         document.getElementById('pairCodeInput').addEventListener('keydown', e => {
@@ -965,13 +1028,22 @@
 
         document.getElementById('btn-collapse').addEventListener('click', () => {
             panelWrapper.classList.toggle('collapsed');
-            document.getElementById('btn-collapse').innerText = panelWrapper.classList.contains('collapsed') ? '▼ Expand' : '▲ Collapse';
+            const collapsed = panelWrapper.classList.contains('collapsed');
+            const tab = document.getElementById('btn-collapse');
+            tab.innerText = collapsed ? '▼ Expand' : '▼ Collapse';
+            tab.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
             setTimeout(fitToScreen, 400);
         });
 
         const settingsModal = document.getElementById('settingsModal');
         document.getElementById('btn-settings').addEventListener('click', () => settingsModal.classList.add('active'));
         document.getElementById('btn-close-settings').addEventListener('click', () => { settingsModal.classList.remove('active'); saveSettings(); });
+        settingsModal.addEventListener('click', ev => ev.stopPropagation());
+        document.addEventListener('mousedown', ev => {
+            if (settingsModal.classList.contains('active') && !settingsModal.contains(ev.target) && ev.target.id !== 'btn-settings') {
+                settingsModal.classList.remove('active'); saveSettings();
+            }
+        });
 
         function applySettings(s) {
             if (!s) return;
@@ -1012,7 +1084,7 @@
                 audioMode: document.getElementById('set-audio-mode').value,
                 audioSens: document.getElementById('set-audio-sens').value
             };
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+            lsSet(SETTINGS_KEY, JSON.stringify(s));
         }
 
         document.getElementById('set-color').addEventListener('input', e => document.documentElement.style.setProperty('--neon-accent', e.target.value));
@@ -1103,15 +1175,18 @@
 
         setupDropZone('dz-before', 'before', document.getElementById('file-before'), f => ingestFile('before', f, f.name));
         setupDropZone('dz-after', 'after', document.getElementById('file-after'), f => ingestFile('after', f, f.name));
+        ['dz-before', 'dz-after'].forEach((id, i) => {
+            const dz = document.getElementById(id);
+            dz.addEventListener('keydown', ev => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickFile(i ? 'after' : 'before'); }
+            });
+        });
+        window.addEventListener('pagehide', tearDownVideos);
 
         function checkReady() { if (fileCacheBefore && fileCacheAfter) loadVideos(fileCacheBefore, fileCacheAfter); }
 
         function loadVideosFromUrls(urlB, urlA, nameB, nameA) {
-            stopReversePlay();
-            if (isSweeping) document.getElementById('btn-sweep').click();
-            if (rvfcId) cancelAnimationFrame(rvfcId);
-            boxBefore.innerHTML = '';
-            boxAfter.innerHTML = '';
+            tearDownVideos();
             fileCacheBefore = fileCacheAfter = null;
             handleBefore = handleAfter = null;
 
@@ -1136,15 +1211,10 @@
             boxAfter.appendChild(elAfter);
             document.getElementById('status-before').innerText = `Loaded: ${nameB || 'Before'}`;
             document.getElementById('status-after').innerText = `Loaded: ${nameA || 'After'}`;
-            if (audioCtx) { audioCtx.close(); isAudioInit = false; }
         }
 
         function loadVideos(fileB, fileA) {
-            stopReversePlay();
-            if (isSweeping) document.getElementById('btn-sweep').click();
-            if (rvfcId) cancelAnimationFrame(rvfcId);
-            boxBefore.innerHTML = '';
-            boxAfter.innerHTML = '';
+            tearDownVideos();
 
             elBefore = document.createElement('video');
             elAfter = document.createElement('video');
@@ -1159,12 +1229,11 @@
             elBefore.onloadedmetadata = onMeta;
             elAfter.onloadedmetadata = onMeta;
 
-            elBefore.src = URL.createObjectURL(fileB);
-            elAfter.src = URL.createObjectURL(fileA);
+            attachBlob(elBefore, fileB);
+            attachBlob(elAfter, fileA);
             boxBefore.appendChild(elBefore);
             boxAfter.appendChild(elAfter);
 
-            if (audioCtx) { audioCtx.close(); isAudioInit = false; }
         }
 
         function initDisplay() {
@@ -1178,7 +1247,7 @@
             viewerContainer.style.display = 'block';
             applyCompareMode();
             fitToScreen();
-            setSliderPosition(0.5);
+            setSliderPosition(currentSliderPercent || 0.5);
             setupVideoSync();
         }
 
@@ -1249,7 +1318,7 @@
             elAfter.addEventListener('pause', () => {
                 elBefore.pause();
                 document.getElementById('btn-play').innerText = 'Play';
-                if (rvfcId) cancelAnimationFrame(rvfcId);
+                cancelSyncLoop();
             });
 
             elAfter.addEventListener('waiting', () => elBefore.pause());
@@ -1258,7 +1327,8 @@
 
         function startRVFCSync() {
             if (!elAfter || elAfter.paused) return;
-            const tol = parseFloat(document.getElementById('set-sync-tol').value);
+            cancelSyncLoop();
+            const tol = parseFloat(document.getElementById('set-sync-tol')?.value) || 0.1;
             const sync = () => {
                 if (!elAfter || elAfter.paused) return;
                 if (Math.abs(elBefore.currentTime - elAfter.currentTime) > tol) {
@@ -1296,14 +1366,18 @@
             if (wasPlaying) Promise.all([elAfter.play(), elBefore.play()]).catch(console.warn);
         });
 
-        function showToast(msg) {
+        function showToast(msg, kind) {
+            if (!toastMsg) return;
             toastMsg.innerText = msg;
+            toastMsg.classList.toggle('warn', kind === 'warn');
             toastMsg.style.opacity = '1';
-            setTimeout(() => toastMsg.style.opacity = '0', 1800);
+            clearTimeout(showToast._t);
+            showToast._t = setTimeout(() => { toastMsg.style.opacity = '0'; }, 1800);
         }
 
         const timeline = document.getElementById('timeline');
         document.getElementById('btn-play').addEventListener('click', () => {
+            if (!elAfter || !elBefore) { showToast('Load both videos first', 'warn'); return; }
             initAudioEngine();
             stopReversePlay();
             if (elAfter.paused) Promise.all([elAfter.play(), elBefore.play()]).catch(console.warn);
@@ -1311,6 +1385,7 @@
         });
 
         timeline.addEventListener('input', () => {
+            if (!elAfter || !elBefore || !elAfter.duration) return;
             isTimelineDragging = true;
             stopReversePlay();
             const t = (timeline.value / 100) * elAfter.duration;
@@ -1321,12 +1396,14 @@
         timeline.addEventListener('change', () => isTimelineDragging = false);
 
         function formatTime() {
+            if (!elAfter || !timeDisplay) return;
             const pad = n => String(Math.floor(n)).padStart(2, '0');
             const frac = n => String(Math.floor((n % 1) * 100)).padStart(2, '0');
             timeDisplay.innerText = `${pad(elAfter.currentTime / 60)}:${pad(elAfter.currentTime % 60)}.${frac(elAfter.currentTime)} / ${pad(elAfter.duration / 60 || 0)}:${pad(elAfter.duration % 60 || 0)}`;
         }
 
         document.getElementById('btn-next-frame').addEventListener('click', () => {
+            if (!elAfter || !elBefore) return;
             stopReversePlay();
             elAfter.pause();
             const step = getFrameStep();
@@ -1334,6 +1411,7 @@
             elBefore.currentTime += step;
         });
         document.getElementById('btn-prev-frame').addEventListener('click', () => {
+            if (!elAfter || !elBefore) return;
             stopReversePlay();
             elAfter.pause();
             const step = getFrameStep();
@@ -1370,15 +1448,19 @@
         }
 
         document.getElementById('sel-speed').addEventListener('change', e => {
+            if (!elAfter || !elBefore) return;
             elAfter.playbackRate = elBefore.playbackRate = parseFloat(e.target.value);
         });
 
         document.getElementById('btn-mute').addEventListener('click', e => {
+            if (!elAfter) return;
             elAfter.muted = !elAfter.muted;
             e.target.classList.toggle('active', elAfter.muted);
+            e.target.textContent = elAfter.muted ? 'Unmute' : 'Mute';
         });
 
         document.getElementById('vol-slider').addEventListener('input', e => {
+            if (!elAfter) return;
             elAfter.volume = e.target.value;
             if (elAfter.muted && e.target.value > 0) document.getElementById('btn-mute').click();
         });
@@ -1429,13 +1511,17 @@
             currentSliderPercent = Math.max(0, Math.min(1, percent));
             const mode = viewerContainer.dataset.mode;
             const orient = viewerContainer.dataset.orient;
+            const fg = isSwapped ? boxAfter : boxBefore;
+            const bg = isSwapped ? boxBefore : boxAfter;
+            if (bg) { bg.style.clipPath = 'none'; bg.style.zIndex = 1; }
+            if (fg) fg.style.zIndex = 2;
             if (mode !== 'slider') return;
             if (orient === 'vertical') {
-                boxBefore.style.clipPath = `inset(0 0 ${(1 - currentSliderPercent) * 100}% 0)`;
+                if (fg) fg.style.clipPath = `inset(0 0 ${(1 - currentSliderPercent) * 100}% 0)`;
                 sliderLine.style.top = `${currentSliderPercent * 100}%`;
                 sliderLine.style.left = '0';
             } else {
-                boxBefore.style.clipPath = `inset(0 ${(1 - currentSliderPercent) * 100}% 0 0)`;
+                if (fg) fg.style.clipPath = `inset(0 ${(1 - currentSliderPercent) * 100}% 0 0)`;
                 sliderLine.style.left = `${currentSliderPercent * 100}%`;
                 sliderLine.style.top = '0';
             }
@@ -1477,14 +1563,16 @@
                 viewerContainer.style.cursor = 'grabbing';
             }
         });
-        window.addEventListener('mousemove', e => {
+        window.addEventListener('pointermove', e => {
             if (isDraggingSlider) updateSliderFromEvent(e);
             else if (isPanning) { translateX = e.clientX - panStartX; translateY = e.clientY - panStartY; applyTransform(); }
         });
-        window.addEventListener('mouseup', e => {
-            if (e.button === 0) isDraggingSlider = false;
-            if (e.button === 2) { isPanning = false; viewerContainer.style.cursor = 'crosshair'; }
-        });
+        function endPointer(e) {
+            if (e.button === 2 || isPanning) { isPanning = false; viewerContainer.style.cursor = 'crosshair'; }
+            isDraggingSlider = false;
+        }
+        window.addEventListener('pointerup', endPointer);
+        window.addEventListener('pointercancel', endPointer);
 
         function updateSliderFromEvent(e) {
             const rect = transformLayer.getBoundingClientRect();
@@ -1516,19 +1604,16 @@
         });
 
         document.getElementById('btn-swap').addEventListener('click', () => {
-            if (!nativeWidth) return;
-            const temp = elBefore.src;
-            elBefore.src = elAfter.src;
-            elAfter.src = temp;
+            if (!nativeWidth || !elBefore || !elAfter) return;
             isSwapped = !isSwapped;
             updateUI();
             const sB = document.getElementById('status-before');
             const sA = document.getElementById('status-after');
-            const t = sB.innerText;
-            sB.innerText = sA.innerText;
-            sA.innerText = t;
+            if (sB && sA) { const tmp = sB.innerText; sB.innerText = sA.innerText; sA.innerText = tmp; }
             [fileCacheBefore, fileCacheAfter] = [fileCacheAfter, fileCacheBefore];
             [handleBefore, handleAfter] = [handleAfter, handleBefore];
+            [knownBeforePath, knownAfterPath] = [knownAfterPath, knownBeforePath];
+            setSliderPosition(currentSliderPercent);
         });
 
         function mirrorSyncAB() {
@@ -1573,12 +1658,14 @@
         document.getElementById('btn-copy-pair-report')?.addEventListener('click', copyPairReport);
 
         document.getElementById('btn-screenshot').addEventListener('click', () => {
-            if (!nativeWidth) return;
+            if (!nativeWidth || !elAfter || !elBefore) return;
             const cvs = document.createElement('canvas');
             cvs.width = nativeWidth;
             cvs.height = nativeHeight;
             const ctx = cvs.getContext('2d');
-            ctx.drawImage(elAfter, 0, 0);
+            const bg = isSwapped ? elBefore : elAfter;
+            const fg = isSwapped ? elAfter : elBefore;
+            ctx.drawImage(bg, 0, 0);
             if (viewerContainer.dataset.mode === 'slider') {
                 ctx.save();
                 const orient = viewerContainer.dataset.orient;
@@ -1591,7 +1678,7 @@
                     ctx.rect(0, 0, cvs.width * currentSliderPercent, cvs.height);
                     ctx.clip();
                 }
-                ctx.drawImage(elBefore, 0, 0);
+                ctx.drawImage(fg, 0, 0);
                 ctx.restore();
             }
             const a = document.createElement('a');
@@ -1603,7 +1690,15 @@
 
         // --- Keyboard shortcuts ---
         document.addEventListener('keydown', e => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            const tag = (e.target.tagName || '').toUpperCase();
+            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+            if (e.code === 'Escape') {
+                if (settingsModal.classList.contains('active')) { settingsModal.classList.remove('active'); saveSettings(); return; }
+                if (!pairLibrary.classList.contains('collapsed')) { pairLibrary.classList.add('collapsed'); return; }
+                return;
+            }
+            if (e.code === 'BracketLeft') { e.preventDefault(); setSliderPosition(currentSliderPercent - 0.02); return; }
+            if (e.code === 'BracketRight') { e.preventDefault(); setSliderPosition(currentSliderPercent + 0.02); return; }
             if (!elAfter && e.code !== 'KeyR') return;
             switch (e.code) {
                 case 'Space': e.preventDefault(); document.getElementById('btn-play')?.click(); break;
@@ -1616,13 +1711,13 @@
                 case 'KeyW': e.preventDefault(); document.getElementById('btn-swap')?.click(); break;
                 case 'KeyM': e.preventDefault(); mirrorSyncAB(); break;
                 case 'KeyR': e.preventDefault(); copyPairReport(); break;
-                case 'Digit1': if (abLoopActive) { abPointA = elAfter.currentTime; updateABMarkers(); showToast(`A = ${abPointA.toFixed(2)}s`); } break;
-                case 'Digit2': if (abLoopActive) { abPointB = elAfter.currentTime; updateABMarkers(); showToast(`B = ${abPointB.toFixed(2)}s`); } break;
+                case 'Digit1': if (abLoopActive && elAfter) { abPointA = elAfter.currentTime; if (abPointB != null && abPointA > abPointB) [abPointA, abPointB] = [abPointB, abPointA]; updateABMarkers(); showToast('A = ' + abPointA.toFixed(2) + 's'); } break;
+                case 'Digit2': if (abLoopActive && elAfter) { abPointB = elAfter.currentTime; if (abPointA != null && abPointA > abPointB) [abPointA, abPointB] = [abPointB, abPointA]; updateABMarkers(); showToast('B = ' + abPointB.toFixed(2) + 's'); } break;
             }
         });
 
         // --- Init ---
-        try { applySettings(JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) {}
+        try { const raw = lsGet(SETTINGS_KEY); if (raw) applySettings(JSON.parse(raw)); } catch (e) {}
         ['before', 'after'].forEach(async slot => { await updateFolderHint(slot); await renderRecents(slot); });
         loadPairFromUrl();
     </script>

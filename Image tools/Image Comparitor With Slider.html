@@ -6,12 +6,14 @@
     <title>Pro AI Image Comparator</title>
     <style>
         :root {
-            --bg-color: #050505;
-            --text-color: #e0e0e0;
+            --bg-color: #0b1220;
+            --text-color: #e8eef6;
             --neon-accent: #00f3ff;
+            --accent2: #ffd166;
+            --magenta: #ff2bd6;
             --neon-glow: 0 0 8px rgba(0, 243, 255, 0.6), 0 0 16px rgba(0, 243, 255, 0.4);
-            --dark-panel: #0a0a0a;
-            --border-color: rgba(0, 243, 255, 0.3);
+            --dark-panel: #111827;
+            --border-color: rgba(0, 243, 255, 0.28);
         }
 
         * { box-sizing: border-box; }
@@ -398,6 +400,22 @@
         .pair-actions { display: flex; gap: 4px; margin-top: 6px; }
         .pair-actions .btn { flex: 1; font-size: 9px; padding: 3px 6px; }
         .pair-footer { padding: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
+
+        :focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+        button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible {
+            outline: 2px solid var(--accent2); outline-offset: 2px;
+            box-shadow: 0 0 0 3px rgba(255, 43, 214, 0.22);
+        }
+        .btn:disabled, button:disabled { opacity: 0.55; cursor: not-allowed; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
         .toast {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
             background: var(--neon-accent); color: #000; padding: 8px 16px; border-radius: 20px;
@@ -608,6 +626,55 @@
     <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
+
+        function el(id) {
+            try {
+                if (!id) return null;
+                return typeof id === 'string' ? document.getElementById(id) : id;
+            } catch (_) { return null; }
+        }
+        function setText(n, txt) {
+            const node = typeof n === 'string' ? el(n) : n;
+            if (!node) return null;
+            node.textContent = txt == null ? '' : String(txt);
+            return node;
+        }
+        function bind(n, ev, fn) {
+            const node = typeof n === 'string' ? el(n) : n;
+            if (!node || !ev || typeof fn !== 'function') return null;
+            node.addEventListener(ev, fn);
+            return node;
+        }
+        function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
+        function ssGet(k, fb) { try { const v = sessionStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
+        function ssSet(k, v) { try { sessionStorage.setItem(k, v); return true; } catch (_) { return false; } }
+        const _busy = new Set();
+        async function withBusy(key, fn, btn) {
+            if (!key || _busy.has(key)) return;
+            _busy.add(key);
+            const b = typeof btn === 'string' ? el(btn) : btn;
+            if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
+            try { return await fn(); }
+            finally {
+                _busy.delete(key);
+                if (b) { b.disabled = false; b.removeAttribute('aria-busy'); }
+            }
+        }
+        function revokeUrl(u) { try { if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u); } catch (_) {} }
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        let liveBlobUrls = [];
+        function trackBlob(u) {
+            if (u && String(u).startsWith('blob:')) liveBlobUrls.push(u);
+            return u;
+        }
+        function revokeLiveBlobs() {
+            liveBlobUrls.forEach(revokeUrl);
+            liveBlobUrls = [];
+        }
+
         const DB_NAME = 'AIImageComparator';
         const DB_VER = 1;
 
@@ -621,7 +688,7 @@
         const radioMode = document.getElementsByName('mode');
         const loupe = document.getElementById('loupe');
         const loupeCanvas = document.getElementById('loupeCanvas');
-        const loupeCtx = loupeCanvas.getContext('2d');
+        const loupeCtx = loupeCanvas ? loupeCanvas.getContext('2d') : null;
         const zoomBadge = document.getElementById('zoomBadge');
 
         let scale = 1, translateX = 0, translateY = 0;
@@ -642,17 +709,18 @@
         }
 
         function showToast(msg) {
-            toastMsg.innerText = msg;
+            if (!toastMsg) return;
+            toastMsg.textContent = msg == null ? '' : String(msg);
             toastMsg.style.opacity = '1';
-            setTimeout(() => toastMsg.style.opacity = '0', 1800);
+            setTimeout(() => { if (toastMsg) toastMsg.style.opacity = '0'; }, 1800);
         }
 
         function rememberPair(pair) {
             if (!pair?.id) return;
             activePairId = pair.id;
-            localStorage.setItem(LAST_PAIR_KEY, pair.id);
+            lsSet(LAST_PAIR_KEY, pair.id);
             if (pair.pairCode || pair.pair_code) {
-                localStorage.setItem(LAST_PAIR_KEY + '-code', pair.pairCode || pair.pair_code);
+                lsSet(LAST_PAIR_KEY + '-code', pair.pairCode || pair.pair_code);
             }
         }
 
@@ -696,6 +764,7 @@
         }
 
         async function pinFolder(slot) {
+            return withBusy('pin-' + slot, async () => {
             if (!('showDirectoryPicker' in window)) {
                 alert('Folder pinning requires Chrome or Edge. Files will still open from your last browser location.');
                 return;
@@ -704,15 +773,21 @@
                 const dir = await window.showDirectoryPicker({ mode: 'read' });
                 await idbSet('handles', `dir-${slot}`, dir);
                 updateFolderHint(slot, dir.name);
-            } catch (e) { if (e.name !== 'AbortError') console.warn(e); }
+            } catch (e) { if (e && e.name !== 'AbortError') console.warn(e); }
+            });
         }
 
         async function updateFolderHint(slot, name) {
-            const el = document.getElementById(`folder-${slot}`);
-            if (name) el.textContent = `Pinned: ${name}`;
+            const hint = el(`folder-${slot}`);
+            if (!hint) return;
+            if (name) hint.textContent = `Pinned: ${name}`;
             else {
-                const h = await idbGet('handles', `dir-${slot}`);
-                el.textContent = h ? `Pinned: ${h.name}` : 'No pinned folder';
+                try {
+                    const h = await idbGet('handles', `dir-${slot}`);
+                    hint.textContent = h ? `Pinned: ${h.name}` : 'No pinned folder';
+                } catch (_) {
+                    hint.textContent = 'No pinned folder';
+                }
             }
         }
 
@@ -728,7 +803,8 @@
         }
 
         async function renderRecents(slot, list) {
-            const row = document.getElementById(`recent-${slot}`);
+            const row = el(`recent-${slot}`);
+            if (!row) return;
             row.innerHTML = '';
             if (!list) list = (await idbGet('recents', `recent-${slot}`)) || [];
             list.forEach((item, i) => {
@@ -751,6 +827,7 @@
         }
 
         async function pickFile(slot) {
+            return withBusy('pick-' + slot, async () => {
             const accept = { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.tiff'] };
             if (fsSupported) {
                 try {
@@ -764,13 +841,16 @@
                     return;
                 } catch (e) { if (e.name !== 'AbortError') console.warn(e); return; }
             }
-            document.getElementById(slot === 'before' ? 'file-before' : slot === 'after' ? 'file-after' : 'file-sbs').click();
+            const fi = el(slot === 'before' ? 'file-before' : slot === 'after' ? 'file-after' : 'file-sbs');
+            if (fi) fi.click();
+            });
         }
 
         function ingestFile(slot, file, name) {
-            const st = document.getElementById(`status-${slot}`);
-            st.innerText = `Loaded: ${name || file.name}`;
-            st.style.color = 'var(--neon-accent)';
+            if (!file) return;
+            const st = el(`status-${slot}`);
+            setText(st, `Loaded: ${name || file.name}`);
+            if (st) st.style.color = 'var(--neon-accent)';
 
             if (slot === 'before') { fileCacheBefore = file; checkSeparateReady(); }
             else if (slot === 'after') { fileCacheAfter = file; checkSeparateReady(); }
@@ -778,16 +858,17 @@
         }
 
         // --- UI toggles ---
-        radioMode.forEach(radio => {
+        Array.from(radioMode || []).forEach(radio => {
             radio.addEventListener('change', e => {
                 const isSep = e.target.value === 'separate';
                 document.querySelectorAll('.mode-sep').forEach(el => el.style.display = isSep ? 'block' : 'none');
                 document.querySelectorAll('.mode-sbs').forEach(el => el.style.display = isSep ? 'none' : 'block');
                 viewerContainer.style.display = 'none';
                 fileCacheBefore = null; fileCacheAfter = null;
-                ['before', 'after', 'sbs'].forEach(s => {
-                    document.getElementById(`status-${s}`).innerText = 'Awaiting file...';
-                });
+                ['before', 'after', 'sbs'].forEach(s => setText(`status-${s}`, 'Awaiting file...'));
+                revokeLiveBlobs();
+                if (imgBefore) imgBefore.removeAttribute('src');
+                if (imgAfter) imgAfter.removeAttribute('src');
                 isSwapped = false;
                 updateLabels();
             });
@@ -801,8 +882,9 @@
         });
 
         function setupDropZone(dzId, slot, fileInputId, callback) {
-            const dz = document.getElementById(dzId);
-            const fi = document.getElementById(fileInputId);
+            const dz = el(dzId);
+            const fi = el(fileInputId);
+            if (!dz || !fi) return;
             dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
             dz.addEventListener('dragleave', e => { e.preventDefault(); dz.classList.remove('dragover'); });
             dz.addEventListener('drop', e => {
@@ -821,8 +903,9 @@
 
         function checkSeparateReady() {
             if (fileCacheBefore && fileCacheAfter) {
-                const urlB = URL.createObjectURL(fileCacheBefore);
-                const urlA = URL.createObjectURL(fileCacheAfter);
+                revokeLiveBlobs();
+                const urlB = trackBlob(URL.createObjectURL(fileCacheBefore));
+                const urlA = trackBlob(URL.createObjectURL(fileCacheAfter));
                 const iB = new Image(), iA = new Image();
                 let loaded = 0;
                 iB.onload = () => { loaded++; if (loaded === 2) finalizeLoad(urlB, urlA, iB.width, iB.height, iA.width, iA.height); };
@@ -832,6 +915,7 @@
         }
 
         function processSbsFile(file) {
+            if (!file) return;
             const imgUrl = URL.createObjectURL(file);
             const rawImg = new Image();
             rawImg.onload = () => {
@@ -844,7 +928,9 @@
                 cvsRight.getContext('2d').drawImage(rawImg, halfW, 0, halfW, h, 0, 0, halfW, h);
                 cvsLeft.toBlob(bLeft => {
                     cvsRight.toBlob(bRight => {
-                        finalizeLoad(URL.createObjectURL(bLeft), URL.createObjectURL(bRight), halfW, h, halfW, h);
+                        if (!bLeft || !bRight) { URL.revokeObjectURL(imgUrl); return; }
+                        revokeLiveBlobs();
+                        finalizeLoad(trackBlob(URL.createObjectURL(bLeft)), trackBlob(URL.createObjectURL(bRight)), halfW, h, halfW, h);
                         URL.revokeObjectURL(imgUrl);
                     }, 'image/png');
                 }, 'image/png');
@@ -854,6 +940,9 @@
         }
 
         function finalizeLoad(urlB, urlA, wB, hB, wA, hA) {
+            if (!imgBefore || !imgAfter) return;
+            revokeUrl(imgBefore.src);
+            revokeUrl(imgAfter.src);
             imgBefore.src = urlB;
             imgAfter.src = urlA;
             imgBefore.dataset.res = `${wB} x ${hB}`;
@@ -868,17 +957,20 @@
         }
 
         function updateResolutionUI() {
-            document.getElementById('res-text-left').innerText = isSwapped ? imgAfter.dataset.res : imgBefore.dataset.res;
-            document.getElementById('res-text-right').innerText = isSwapped ? imgBefore.dataset.res : imgAfter.dataset.res;
+            const leftRes = (imgAfter && imgBefore) ? (isSwapped ? imgAfter.dataset.res : imgBefore.dataset.res) : '-- x --';
+            const rightRes = (imgAfter && imgBefore) ? (isSwapped ? imgBefore.dataset.res : imgAfter.dataset.res) : '-- x --';
+            setText('res-text-left', leftRes || '-- x --');
+            setText('res-text-right', rightRes || '-- x --');
         }
 
         function updateLabels() {
-            document.getElementById('lbl-left').innerText = isSwapped ? 'After' : 'Before';
-            document.getElementById('lbl-right').innerText = isSwapped ? 'Before' : 'After';
+            setText('lbl-left', isSwapped ? 'After' : 'Before');
+            setText('lbl-right', isSwapped ? 'Before' : 'After');
         }
 
         function setSliderPosition(percent) {
-            sliderPercent = Math.max(0, Math.min(1, percent));
+            sliderPercent = Math.max(0, Math.min(1, Number(percent) || 0));
+            if (!viewerContainer || !imgBefore || !sliderLine) return;
             const mode = viewerContainer.dataset.mode;
             const orient = viewerContainer.dataset.orient;
             if (mode === 'slider') {
@@ -897,9 +989,12 @@
         }
 
         function applyCompareMode() {
-            const mode = document.getElementById('compare-mode').value;
+            const modeEl = el('compare-mode');
+            if (!modeEl || !viewerContainer) return;
+            const mode = modeEl.value;
             viewerContainer.dataset.mode = mode;
-            document.getElementById('blend-controls').style.display = mode === 'blend' ? 'flex' : 'none';
+            const blendCtl = el('blend-controls');
+            if (blendCtl) blendCtl.style.display = mode === 'blend' ? 'flex' : 'none';
             sliderLine.style.display = mode === 'slider' ? 'block' : 'none';
             if (mode === 'blend') {
                 imgBefore.style.opacity = document.getElementById('blend-opacity').value / 100;
@@ -915,9 +1010,11 @@
         }
 
         function applyImageFilters() {
-            const sharpen = document.getElementById('set-sharpen').value;
-            const contrast = document.getElementById('set-contrast').value;
-            const saturate = document.getElementById('set-saturate').value;
+            const sharpenEl = el('set-sharpen'), contrastEl = el('set-contrast'), saturateEl = el('set-saturate');
+            if (!sharpenEl || !contrastEl || !saturateEl) return;
+            const sharpen = sharpenEl.value;
+            const contrast = contrastEl.value;
+            const saturate = saturateEl.value;
             const filter = `contrast(${contrast}%) saturate(${saturate}%)`;
             const sharpFilter = sharpen > 0 ? ` drop-shadow(0 0 0 rgba(0,0,0,${sharpen * 0.3}))` : '';
             imgBefore.style.filter = filter;
@@ -934,12 +1031,15 @@
         });
 
         function applyTransform() {
+            if (!transformLayer) return;
             transformLayer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
             const invScale = 1 / scale;
-            sliderButton.style.transform = `translate(-50%, -50%) scale(${invScale})`;
-            sliderLine.style.width = viewerContainer.dataset.orient === 'vertical' ? '100%' : `${Math.max(1, 2 * invScale)}px`;
-            if (viewerContainer.dataset.orient === 'vertical') sliderLine.style.height = `${Math.max(1, 2 * invScale)}px`;
-            zoomBadge.textContent = `${Math.round(scale * 100)}%`;
+            if (sliderButton) sliderButton.style.transform = `translate(-50%, -50%) scale(${invScale})`;
+            if (sliderLine && viewerContainer) {
+                sliderLine.style.width = viewerContainer.dataset.orient === 'vertical' ? '100%' : `${Math.max(1, 2 * invScale)}px`;
+                if (viewerContainer.dataset.orient === 'vertical') sliderLine.style.height = `${Math.max(1, 2 * invScale)}px`;
+            }
+            if (zoomBadge) zoomBadge.textContent = `${Math.round(scale * 100)}%`;
         }
 
         function fitToScreen() {
@@ -1008,6 +1108,7 @@
         }, { passive: false });
 
         function updateLoupe(e) {
+            if (!transformLayer || !loupe || !loupeCtx || !viewerContainer) return;
             const rect = transformLayer.getBoundingClientRect();
             const x = (e.clientX - rect.left) / scale;
             const y = (e.clientY - rect.top) / scale;
@@ -1059,12 +1160,7 @@
                 if (typeof setSliderPosition === 'function') setSliderPosition(0.5);
                 else sliderPercent = 0.5;
             } catch (_) { sliderPercent = 0.5; }
-            const t = document.getElementById('toastMsg');
-            if (t) {
-                t.textContent = 'Slider centered 50%';
-                t.classList.add('show');
-                setTimeout(() => t.classList.remove('show'), 1200);
-            }
+            showToast('Slider centered 50%');
         }
         document.getElementById('btn-mirror-ab')?.addEventListener('click', mirrorImageAB);
 
@@ -1102,10 +1198,14 @@
                 document.getElementById('btn-export')?.click();
             }
             if (e.key === 'p' || e.key === 'P') { e.preventDefault(); document.getElementById('btn-pairs')?.click(); }
+            if (e.key === 'Escape') {
+                el('settingsModal')?.classList.remove('active');
+                el('pairLibrary')?.classList.add('collapsed');
+            }
         });
 
-        document.getElementById('btn-export').addEventListener('click', () => {
-            if (!imgAfter.naturalWidth) return;
+        bind('btn-export', 'click', () => withBusy('export', async () => {
+            if (!imgAfter || !imgAfter.naturalWidth) return;
             const cvs = document.createElement('canvas');
             cvs.width = imgAfter.naturalWidth;
             cvs.height = imgAfter.naturalHeight;
@@ -1138,7 +1238,8 @@
             a.download = `comparison-${Date.now()}.png`;
             a.href = cvs.toDataURL('image/png');
             a.click();
-        });
+            setTimeout(() => { try { if (a.href && a.href.startsWith('blob:')) URL.revokeObjectURL(a.href); } catch (_) {} }, 2000);
+        }));
 
         // Settings
         const settingsModal = document.getElementById('settingsModal');
@@ -1152,7 +1253,7 @@
         document.getElementById('set-theme').addEventListener('change', e => {
             const root = document.documentElement.style;
             if (e.target.value === 'oled') { root.setProperty('--bg-color', '#050505'); root.setProperty('--dark-panel', '#0a0a0a'); }
-            else if (e.target.value === 'dark') { root.setProperty('--bg-color', '#1a1a1a'); root.setProperty('--dark-panel', '#242424'); }
+            else if (e.target.value === 'dark') { root.setProperty('--bg-color', '#0b1220'); root.setProperty('--dark-panel', '#111827'); }
             else { root.setProperty('--bg-color', '#0b0c10'); root.setProperty('--dark-panel', '#1f2833'); }
         });
         ['set-sharpen', 'set-contrast', 'set-saturate'].forEach(id => {
@@ -1185,11 +1286,14 @@
         }
 
         function loadImagesFromUrls(urlB, urlA, nameB, nameA) {
-            document.getElementById('status-before').innerText = `Loaded: ${nameB || 'Before'}`;
-            document.getElementById('status-after').innerText = `Loaded: ${nameA || 'After'}`;
-            document.getElementById('status-before').style.color = 'var(--neon-accent)';
-            document.getElementById('status-after').style.color = 'var(--neon-accent)';
-            document.querySelector('input[name="mode"][value="separate"]').checked = true;
+            if (!urlB || !urlA) { showToast('Pair URLs missing'); return; }
+            setText('status-before', `Loaded: ${nameB || 'Before'}`);
+            setText('status-after', `Loaded: ${nameA || 'After'}`);
+            const sb = el('status-before'), sa = el('status-after');
+            if (sb) sb.style.color = 'var(--neon-accent)';
+            if (sa) sa.style.color = 'var(--neon-accent)';
+            const sep = document.querySelector('input[name="mode"][value="separate"]');
+            if (sep) sep.checked = true;
             document.querySelectorAll('.mode-sep').forEach(el => el.style.display = 'block');
             document.querySelectorAll('.mode-sbs').forEach(el => el.style.display = 'none');
             const iB = new Image(), iA = new Image();
@@ -1206,6 +1310,7 @@
         }
 
         async function saveCurrentPair() {
+            return withBusy('save-pair', async () => {
             if (!fileCacheBefore || !fileCacheAfter) {
                 showToast('Load both images first!');
                 return;
@@ -1245,10 +1350,12 @@
                 showToast('Server save failed: ' + e.message);
             }
             showToast('Start server first (▶ Start Server in Media Library / Launcher) to save pairs.');
+            });
         }
 
         async function loadPair(pair) {
-            const p = normalizePair(pair);
+            return withBusy('load-pair', async () => {
+            const p = normalizePair(pair || {});
             try {
                 if (await AIToolboxAPI.isOnline() && (p.beforeMediaId || p.beforePath)) {
                     const urls = await resolvePairUrls(p);
@@ -1273,6 +1380,7 @@
                 showToast('Could not load pair — ' + e.message);
                 console.warn(e);
             }
+            });
         }
 
         async function togglePairPin(pair, e) {
@@ -1294,12 +1402,15 @@
         }
 
         async function renderPairList() {
+            if (!pairList) return;
             let pairs = [];
-            if (await AIToolboxAPI.isOnline()) {
-                pairs = await AIToolboxAPI.listPairs('image');
-            } else {
-                pairs = (await AIToolbox.listPairs()).filter(p => p.kind === 'image');
-            }
+            try {
+                if (window.AIToolboxAPI && await AIToolboxAPI.isOnline()) {
+                    pairs = await AIToolboxAPI.listPairs('image') || [];
+                } else if (window.AIToolbox) {
+                    pairs = ((await AIToolbox.listPairs()) || []).filter(p => p.kind === 'image');
+                }
+            } catch (e) { console.warn(e); pairs = []; }
             pairList.innerHTML = '';
             if (!pairs.length) {
                 pairList.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:20px;">No locked pairs yet.<br>Pair files in Media Library or save here with server online.</div>';
@@ -1323,7 +1434,7 @@
                 div.querySelector('.pin-btn').addEventListener('click', e => togglePairPin(p, e));
                 div.querySelector('.del-btn').addEventListener('click', e => {
                     e.stopPropagation();
-                    if (confirm(`Delete "${p.name}"?`)) deletePair(p.id);
+                    if (confirm('Delete "' + String(p.name || '') + '"?')) deletePair(p.id);
                 });
                 div.addEventListener('click', () => loadPair(p));
                 pairList.appendChild(div);
@@ -1358,7 +1469,7 @@
                 if (pair && pair.kind === 'image') { await loadPair(pair); return; }
             }
 
-            const last = localStorage.getItem(LAST_PAIR_KEY);
+            const last = lsGet(LAST_PAIR_KEY, null);
             if (last && await AIToolboxAPI.isOnline()) {
                 try {
                     const pair = await AIToolboxAPI.getPair(last);
@@ -1367,17 +1478,18 @@
             }
         }
 
-        document.getElementById('btn-save-pair').addEventListener('click', saveCurrentPair);
-        document.getElementById('btn-save-pair-side').addEventListener('click', saveCurrentPair);
-        document.getElementById('btn-load-code').addEventListener('click', () => loadPairByCode(document.getElementById('pairCodeInput').value));
-        document.getElementById('pairCodeInput').addEventListener('keydown', e => {
+        bind('btn-save-pair', 'click', saveCurrentPair);
+        bind('btn-save-pair-side', 'click', saveCurrentPair);
+        bind('btn-load-code', 'click', () => loadPairByCode((el('pairCodeInput') || {}).value));
+        bind('pairCodeInput', 'keydown', e => {
             if (e.key === 'Enter') loadPairByCode(e.target.value);
         });
-        document.getElementById('btn-pairs').addEventListener('click', () => {
+        bind('btn-pairs', 'click', () => {
+            if (!pairLibrary) return;
             pairLibrary.classList.toggle('collapsed');
             if (!pairLibrary.classList.contains('collapsed')) renderPairList();
         });
-        document.getElementById('btn-close-pairs').addEventListener('click', () => pairLibrary.classList.add('collapsed'));
+        bind('btn-close-pairs', 'click', () => pairLibrary && pairLibrary.classList.add('collapsed'));
 
         // Init pinned folders & recents
         ['before', 'after', 'sbs'].forEach(async slot => {
