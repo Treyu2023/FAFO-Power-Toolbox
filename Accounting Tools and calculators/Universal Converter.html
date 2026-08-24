@@ -9,14 +9,14 @@
       --bg: #050508;
       --panel: rgba(16, 16, 28, 0.72);
       --panel-solid: #0e0e18;
-      --border: rgba(255, 255, 255, 0.08);
+      --border: rgba(220, 230, 255, 0.18);
       --accent: #00e5ff;
       --accent2: #ff6b35;
       --accent3: #a78bfa;
       --ok: #00ff88;
       --warn: #ffc800;
-      --text: #ececf4;
-      --muted: #8b8ba0;
+      --text: #f7f7fc;
+      --muted: #c8c8dc;
       --glow: 0 0 18px rgba(0, 229, 255, 0.35);
       --radius: 14px;
       --font: "Segoe UI", system-ui, sans-serif;
@@ -174,7 +174,7 @@
     .field label {
       display: block;
       font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
-      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+      text-transform: uppercase; color: #d8d8ec; margin-bottom: 8px;
     }
     .field .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .field input[type="number"],
@@ -248,6 +248,7 @@
     }
     .btn:hover { background: var(--accent); color: #000; box-shadow: var(--glow); }
     .btn.ghost { border-color: var(--border); color: var(--muted); }
+    .btn[disabled], button[disabled] { opacity: 0.55; cursor: wait; }
     .btn.ghost:hover { border-color: var(--accent); color: var(--accent); background: transparent; box-shadow: none; }
     .btn.ok { border-color: var(--ok); color: var(--ok); }
     .btn.ok:hover { background: var(--ok); color: #000; }
@@ -929,17 +930,39 @@
     'use strict';
 
     /* ───────────────── helpers ───────────────── */
-    const $ = (id) => document.getElementById(id);
+    const $ = (id) => { try { return id ? document.getElementById(id) : null; } catch { return null; } };
+    const lsGet = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : v; } catch { return fallback; } };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
+    const lsDel = (k) => { try { localStorage.removeItem(k); } catch {} };
+    const withBusy = async (btn, fn) => {
+      if (btn && btn.dataset && btn.dataset.busy === '1') return;
+      if (btn && btn.dataset) btn.dataset.busy = '1';
+      const prevDis = btn ? btn.disabled : false;
+      try {
+        if (btn) btn.disabled = true;
+        await fn();
+      } catch (err) {
+        console.error('[Universal Converter] busy action', err);
+        toast('Action failed');
+      } finally {
+        if (btn) { btn.disabled = prevDis; if (btn.dataset) delete btn.dataset.busy; }
+      }
+    };
     const toast = (msg) => {
       const t = $('toast');
-      t.textContent = msg;
+      if (!t) return;
+      t.textContent = msg == null ? '' : String(msg);
       t.classList.add('show');
       clearTimeout(toast._tm);
       toast._tm = setTimeout(() => t.classList.remove('show'), 1600);
     };
     const copyText = async (s) => {
-      try { await navigator.clipboard.writeText(s); toast('Copied'); }
-      catch { toast('Copy failed'); }
+      const text = s == null ? '' : String(s);
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+        await navigator.clipboard.writeText(text);
+        toast('Copied');
+      } catch { toast('Copy failed'); }
     };
     const fmt = (n, digits = 6) => {
       if (!Number.isFinite(n)) return '—';
@@ -955,10 +978,13 @@
       return `${Math.round(w / g)}:${Math.round(h / g)}`;
     };
     const num = (el) => {
+      if (!el || el.value == null || el.value === '') return NaN;
       const v = parseFloat(el.value);
       return Number.isFinite(v) ? v : NaN;
     };
-    const isFilled = (el) => el.value !== '' && Number.isFinite(parseFloat(el.value));
+    const isFilled = (el) => !!(el && el.value !== '' && Number.isFinite(parseFloat(el.value)));
+    const setText = (el, s) => { if (el) el.textContent = s == null ? '' : String(s); };
+    const setHTML = (el, s) => { if (el) el.innerHTML = s == null ? '' : String(s); };
 
     /* ───────────────── mode registry ───────────────── */
     const MODES = [
@@ -1282,8 +1308,9 @@
 
     /* ───────────────── UI: modes ───────────────── */
     function renderModeList(filter = '') {
-      const q = filter.trim().toLowerCase();
+      const q = String(filter || '').trim().toLowerCase();
       const list = $('modeList');
+      if (!list) return;
       list.innerHTML = '';
       MODES.filter(m => {
         if (!q) return true;
@@ -1304,10 +1331,11 @@
       if (!m) return;
       currentMode = id;
       document.querySelectorAll('.mode-panel').forEach(p => p.classList.add('hidden'));
-      $(m.panel).classList.remove('hidden');
-      $('pageTitle').textContent = m.name;
-      $('pageDesc').textContent = m.desc;
-      renderModeList($('modeSearch').value);
+      const panel = $(m.panel);
+      if (panel) panel.classList.remove('hidden');
+      setText($('pageTitle'), m.name);
+      setText($('pageDesc'), m.desc);
+      renderModeList(($('modeSearch') && $('modeSearch').value) || '');
       if (m.panel === 'mode-convert') {
         currentFamily = m.family;
         setupConvertFamily(m.family);
@@ -1317,7 +1345,7 @@
       if (id === 'percent') refreshPercent();
       if (id === 'memory') refreshMemory();
       if (id === 'resolution') refreshResolution();
-      try { localStorage.setItem('uc-mode', id); } catch {}
+      lsSet('uc-mode', id);
     }
 
     /* ───────────────── resolution logic ───────────────── */
@@ -1413,34 +1441,39 @@
       $('resDiagUnit').addEventListener('change', refreshResolution);
       $('resLock').addEventListener('change', refreshResolution);
 
-      $('applyFrac').addEventListener('click', () => {
+      $('applyFrac').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         const n = num($('fracNum')) || 1;
         const d = num($('fracDen')) || 1;
+        if (!d) return;
         applyScale(n / d);
-      });
-      $('copyRes').addEventListener('click', () => {
+      }));
+      $('copyRes').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         const w = Math.round(num($('resW')));
         const h = Math.round(num($('resH')));
         copyText(`${w}×${h} (${ratioStr(w, h)})`);
-      });
-      $('copyResFfmpeg').addEventListener('click', () => {
+      }));
+      $('copyResFfmpeg').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         const w = Math.round(num($('resW')));
         const h = Math.round(num($('resH')));
-        copyText(`${w}x${h}`);
-      });
-      $('swapWH').addEventListener('click', () => {
+        if (!Number.isFinite(w) || !Number.isFinite(h)) { toast('Nothing to copy'); return; }
+        await copyText(`${w}x${h}`);
+      }));
+      $('swapWH').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
+        const rw = $('resW'), rh = $('resH');
+        if (!rw || !rh) return;
         resUpdating = true;
-        const w = $('resW').value, h = $('resH').value;
-        $('resW').value = h; $('resH').value = w;
-        resBase = { w: parseFloat(h), h: parseFloat(w) };
-        $('resScale').value = 100;
-        $('resScaleLbl').textContent = '100%';
+        const w = rw.value, h = rh.value;
+        rw.value = h; rh.value = w;
+        const nw = parseFloat(h), nh = parseFloat(w);
+        resBase = { w: Number.isFinite(nw) ? nw : 1, h: Number.isFinite(nh) ? nh : 1 };
+        if ($('resScale')) $('resScale').value = 100;
+        setText($('resScaleLbl'), '100%');
         resUpdating = false;
         activeAspectId = 'custom';
         syncAspectUI();
         refreshResolution();
-      });
-      $('roundEven').addEventListener('click', () => {
+      }));
+      $('roundEven').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         resUpdating = true;
         let w = Math.round(num($('resW')));
         let h = Math.round(num($('resH')));
@@ -1451,7 +1484,7 @@
         resUpdating = false;
         refreshResolution();
         toast('Rounded to even');
-      });
+      }));
     }
 
     function markPreset(id) {
@@ -1523,7 +1556,11 @@
     function refreshResolution() {
       const w = Math.round(num($('resW')));
       const h = Math.round(num($('resH')));
-      if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return;
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) {
+        const metrics = $('resMetrics');
+        if (metrics) metrics.innerHTML = '<div class="muted">Enter width and height to compute. Empty dims are safe.</div>';
+        return;
+      }
 
       $('resBaseLabel').value = `${Math.round(resBase.w)} × ${Math.round(resBase.h)}`;
       const aspect = ratioStr(w, h);
@@ -1562,14 +1599,17 @@
       if (w / h > maxW / maxH) { fw = maxW; fh = maxW * h / w; }
       else { fh = maxH; fw = maxH * w / h; }
       const frame = $('resFrame');
-      frame.style.width = fw + 'px';
-      frame.style.height = fh + 'px';
+      if (frame) {
+        frame.style.width = fw + 'px';
+        frame.style.height = fh + 'px';
+      }
       $('resFrameLbl').textContent = `${w}×${h}\n${aspect}`;
 
       // variants table
       const scales = [0.125, 0.25, 1 / 3, 0.5, 0.75, 1, 1.5, 2, 4];
-      const tbody = $('resTable').querySelector('tbody');
-      const curScale = w / resBase.w;
+      const tbody = $('resTable') && $('resTable').querySelector('tbody');
+      const curScale = (resBase.w && Number.isFinite(resBase.w)) ? (w / resBase.w) : NaN;
+      if (!tbody) return;
       tbody.innerHTML = scales.map(s => {
         const ww = Math.max(1, Math.round(resBase.w * s));
         const hh = Math.max(1, Math.round(resBase.h * s));
@@ -1591,6 +1631,7 @@
       currentFamily = familyId;
       const from = $('convFrom');
       const to = $('convTo');
+      if (!from || !to) return;
       from.innerHTML = '';
       to.innerHTML = '';
       fam.units.forEach(u => {
@@ -1606,10 +1647,30 @@
     function refreshConvert() {
       const fam = FAMILIES[currentFamily];
       if (!fam) return;
-      const value = num($('convValue'));
-      const fromId = $('convFrom').value;
-      const toId = $('convTo').value;
+      const convValueEl = $('convValue');
+      const fromEl = $('convFrom');
+      const toEl = $('convTo');
+      const resultEl = $('convResult');
+      if (!fromEl || !toEl) return;
+      const value = num(convValueEl);
+      const fromId = fromEl.value;
+      const toId = toEl.value;
       const result = convertFamily(currentFamily, value, fromId, toId);
+      if (resultEl) resultEl.value = Number.isFinite(result) ? fmt(result, 8) : '';
+      if (!Number.isFinite(value)) {
+        setHTML($('convFromDual'), '');
+        setHTML($('convToDual'), '');
+        setText($('convFormula'), 'Enter a value to convert. Empty input is safe — nothing throws.');
+        const banner = $('compareBanner');
+        if (banner) banner.innerHTML = '<div class="muted">Enter a value to compare dual systems.</div>';
+        const tbodyEmpty = $('convTable') && $('convTable').querySelector('tbody');
+        if (tbodyEmpty) {
+          tbodyEmpty.innerHTML = fam.units.map(u =>
+            `<tr><td>${u.label}</td><td class="num">—</td><td class="metric-col"></td></tr>`
+          ).join('');
+        }
+        return;
+      }
       $('convResult').value = Number.isFinite(result) ? fmt(result, 8) : '—';
 
       // dual under from/to
@@ -1686,7 +1747,8 @@
       }
 
       // full table
-      const tbody = $('convTable').querySelector('tbody');
+      const tbody = $('convTable') && $('convTable').querySelector('tbody');
+      if (!tbody) return;
       tbody.innerHTML = fam.units.map(u => {
         const v = convertFamily(currentFamily, value, fromId, u.id);
         const pair = (fam.dualPairs || []).find(p => p.includes(u.id));
@@ -1788,23 +1850,27 @@
         el.addEventListener('change', () => scheduleLive(refreshConvert));
       });
       const swap = $('swapUnits');
-      if (swap) swap.addEventListener('click', () => {
-        const f = $('convFrom').value;
-        $('convFrom').value = $('convTo').value;
-        $('convTo').value = f;
+      if (swap) swap.addEventListener('click', () => withBusy(swap, async () => {
+        const fromEl = $('convFrom');
+        const toEl = $('convTo');
+        if (!fromEl || !toEl) return;
+        const f = fromEl.value;
+        fromEl.value = toEl.value;
+        toEl.value = f;
         const prev = num($('convResult'));
-        if (Number.isFinite(prev)) $('convValue').value = prev;
+        if (Number.isFinite(prev) && $('convValue')) $('convValue').value = prev;
         refreshConvert();
-      });
+      }));
       const copy = $('copyConv');
-      if (copy) copy.addEventListener('click', () => {
-        copyText(`${$('convValue').value} ${$('convFrom').value} = ${$('convResult').value} ${$('convTo').value}`);
-      });
+      if (copy) copy.addEventListener('click', () => withBusy(copy, async () => {
+        const a = $('convValue'); const b = $('convFrom'); const c = $('convResult'); const d = $('convTo');
+        await copyText(`${a ? a.value : ''} ${b ? b.value : ''} = ${c ? c.value : ''} ${d ? d.value : ''}`);
+      }));
       const setOne = $('setOne');
-      if (setOne) setOne.addEventListener('click', () => {
-        $('convValue').value = 1;
+      if (setOne) setOne.addEventListener('click', () => withBusy(setOne, async () => {
+        if ($('convValue')) $('convValue').value = 1;
         refreshConvert();
-      });
+      }));
     }
 
     /* ───────────────── electrical ───────────────── */
@@ -1835,32 +1901,39 @@
         el.addEventListener('change', () => solveFromUserFields());
       });
       const solveBtn = $('elSolve');
-      if (solveBtn) solveBtn.addEventListener('click', () => solveFromUserFields());
+      if (solveBtn) solveBtn.addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => solveFromUserFields()));
       const clearBtn = $('elClear');
-      if (clearBtn) clearBtn.addEventListener('click', () => {
+      if (clearBtn) clearBtn.addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         ['elV', 'elI', 'elR', 'elP'].forEach(id => {
-          $(id).value = '';
-          delete $(id).dataset.user;
+          const el = $(id);
+          if (!el) return;
+          el.value = '';
+          delete el.dataset.user;
         });
         solveFromUserFields();
-      });
+      }));
       const copyBtn = $('elCopy');
-      if (copyBtn) copyBtn.addEventListener('click', () => {
-        copyText(`V=${$('elV').value} I=${$('elI').value} R=${$('elR').value} P=${$('elP').value}`);
-      });
+      if (copyBtn) copyBtn.addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
+        const parts = ['elV','elI','elR','elP'].map(id => {
+          const el = $(id);
+          return id.slice(2) + '=' + (el ? el.value : '');
+        });
+        await copyText(parts.join(' '));
+      }));
     }
 
     function solveFromUserFields() {
       let V = null, I = null, R = null, P = null;
       const take = (id) => {
         const el = $(id);
+        if (!el) return null;
         if (el.dataset.user === '1' && isFilled(el)) return num(el);
         // also accept filled if at least something — for presets set user on all filled
         if (isFilled(el) && el.dataset.user === '1') return num(el);
         return null;
       };
       // Prefer user fields; if preset filled without user flags, treat all filled as known
-      const userCount = ['elV', 'elI', 'elR', 'elP'].filter(id => $(id).dataset.user === '1' && isFilled($(id))).length;
+      const userCount = ['elV', 'elI', 'elR', 'elP'].filter(id => { const el = $(id); return el && el.dataset.user === '1' && isFilled(el); }).length;
       if (userCount >= 1) {
         V = take('elV'); I = take('elI'); R = take('elR'); P = take('elP');
       } else {
@@ -1889,6 +1962,7 @@
       // Write solved into non-user fields only
       const put = (id, val, known) => {
         const el = $(id);
+        if (!el) return;
         if (known != null) return; // user owns it
         if (val != null && Number.isFinite(val)) {
           el.value = fmt(val, 8);
@@ -1912,7 +1986,8 @@
         cards.push({ t: 'kWh @ 1 hour', v: fmt(sP / 1000, 4) + ' kWh', s: 'energy if run 1h', cls: '' });
         cards.push({ t: '30 days × 1h', v: fmt(sP / 1000 * 30, 3) + ' kWh', s: 'rough monthly energy', cls: 'alt' });
       }
-      $('elMetrics').innerHTML = cards.map(m =>
+      const elMetrics = $('elMetrics');
+      if (elMetrics) elMetrics.innerHTML = cards.map(m =>
         `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
       ).join('');
 
@@ -1921,7 +1996,8 @@
       const sv = num($('elSysV'));
       const safeA = br * lf;
       const safeW = safeA * sv;
-      $('elLoadMetrics').innerHTML = [
+      const elLoadMetrics = $('elLoadMetrics');
+      if (elLoadMetrics) elLoadMetrics.innerHTML = [
         { t: 'Safe continuous A', v: fmtFixed(safeA, 2) + ' A', s: `${fmtFixed(lf * 100, 0)}% of ${br}A`, cls: 'ok' },
         { t: 'Safe continuous W', v: fmtFixed(safeW, 1) + ' W', s: `at ${sv} V`, cls: '' },
         { t: 'Headroom vs load', v: (sI != null ? fmtFixed(safeA - sI, 2) + ' A' : '—'), s: sI != null ? (sI > safeA ? '⚠ over continuous budget' : 'within budget') : 'set current', cls: sI != null && sI > safeA ? 'alt' : 'violet' },
@@ -1946,6 +2022,7 @@
         { label: 'LED 12V 2Ω', vals: { elV: 12, elR: 2 } },
       ];
       const box = $('elPresets');
+      if (!box) return;
       presets.forEach(p => {
         const c = document.createElement('button');
         c.type = 'button';
@@ -1966,9 +2043,150 @@
       });
     }
 
+
+    function convertFx(amount, from, to) {
+      if (!Number.isFinite(amount)) return NaN;
+      if (!from || !to) return NaN;
+      if (from === to) return amount;
+      if (fxManual && fxManual.from === from && fxManual.to === to && Number.isFinite(fxManual.rate)) {
+        return amount * fxManual.rate;
+      }
+      const rf = fxRates[from];
+      const rt = fxRates[to];
+      if (!Number.isFinite(rf) || !Number.isFinite(rt) || rf === 0) return NaN;
+      return amount / rf * rt;
+    }
+
+    function refreshCurrency() {
+      const fromEl = $('curFrom');
+      const toEl = $('curTo');
+      const amtEl = $('curAmount');
+      if (!fromEl || !toEl) return;
+      const from = fromEl.value || 'USD';
+      const to = toEl.value || 'EUR';
+      const amt = num(amtEl);
+      const converted = convertFx(amt, from, to);
+      const out = $('curResult');
+      if (out) out.value = Number.isFinite(converted) ? fmt(converted, 8) : '';
+      const per = convertFx(1, from, to);
+      setHTML($('curRateLbl'), Number.isFinite(per) ? ('<span>rate</span>1 ' + from + ' = ' + fmt(per, 8) + ' ' + to) : '');
+      setText($('curBaseLbl'), from);
+      setText($('curQuoteLbl'), to);
+      const status = $('curStatus');
+      if (status && !status.dataset.locked) {
+        status.textContent = (fxManual ? 'Manual rate override. ' : '') + 'Rates: ' + (fxDate || 'offline seed') + '. Empty amount is safe.';
+      }
+      const tbody = $('curTable') && $('curTable').querySelector('tbody');
+      if (tbody) {
+        const baseAmt = Number.isFinite(amt) ? amt : 0;
+        tbody.innerHTML = CURRENCIES.map(c => {
+          const v = convertFx(baseAmt, from, c);
+          const one = convertFx(1, from, c);
+          return '<tr class="' + (c === to ? 'active' : '') + '"><td>' + c + '</td><td class="num">' + (Number.isFinite(amt) ? fmt(v, 6) : '—') + '</td><td class="metric-col">' + fmt(one, 6) + '</td></tr>';
+        }).join('');
+      }
+    }
+
+    function buildCurrency() {
+      const from = $('curFrom');
+      const to = $('curTo');
+      if (!from || !to) return;
+      if (!from.options.length) {
+        CURRENCIES.forEach(c => {
+          from.add(new Option(c, c));
+          to.add(new Option(c, c));
+        });
+        from.value = 'USD';
+        to.value = 'EUR';
+      }
+      ['curAmount', 'curFrom', 'curTo'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('input', () => scheduleLive(refreshCurrency));
+        el.addEventListener('change', () => scheduleLive(refreshCurrency));
+      });
+      const swap = $('curSwap');
+      if (swap) swap.addEventListener('click', () => withBusy(swap, async () => {
+        const a = from.value; from.value = to.value; to.value = a;
+        const prev = parseFloat(($('curResult') || {}).value);
+        if (Number.isFinite(prev) && $('curAmount')) $('curAmount').value = prev;
+        refreshCurrency();
+      }));
+      const copy = $('curCopy');
+      if (copy) copy.addEventListener('click', () => withBusy(copy, async () => {
+        const amt = $('curAmount'); const res = $('curResult');
+        await copyText((amt ? amt.value : '') + ' ' + from.value + ' = ' + (res ? res.value : '') + ' ' + to.value);
+      }));
+      const fetchBtn = $('curFetch');
+      if (fetchBtn) fetchBtn.addEventListener('click', () => withBusy(fetchBtn, async () => {
+        try {
+          const r = await fetch('https://api.frankfurter.app/latest?from=USD');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const data = await r.json();
+          if (!data || !data.rates) throw new Error('empty rates');
+          fxRates = Object.assign({ USD: 1 }, data.rates);
+          fxDate = data.date || 'live';
+          const st = $('curStatus');
+          if (st) { st.dataset.locked = '1'; st.textContent = 'Live ECB/Frankfurter rates ' + fxDate; }
+          refreshCurrency();
+          toast('Live rates loaded');
+        } catch (err) {
+          console.error('[Universal Converter] fx fetch', err);
+          toast('Live rates unavailable — using seed');
+        }
+      }));
+      const apply = $('curApplyManual');
+      if (apply) apply.addEventListener('click', () => withBusy(apply, async () => {
+        const rate = num($('curManualRate'));
+        if (!Number.isFinite(rate) || rate <= 0) { toast('Enter a positive rate'); return; }
+        fxManual = { from: from.value, to: to.value, rate };
+        refreshCurrency();
+        toast('Manual rate on');
+      }));
+      const clear = $('curClearManual');
+      if (clear) clear.addEventListener('click', () => withBusy(clear, async () => {
+        fxManual = null;
+        if ($('curManualRate')) $('curManualRate').value = '';
+        refreshCurrency();
+        toast('Using table rates');
+      }));
+      refreshCurrency();
+    }
+
+    function refreshPercent() {
+      const part = num($('pctPart'));
+      const whole = num($('pctWhole'));
+      const pctIn = num($('pctPct'));
+      const cards = [];
+      if (Number.isFinite(part) && Number.isFinite(whole) && whole !== 0) {
+        const pct = part / whole * 100;
+        cards.push({ t: 'Part of whole', v: fmt(pct, 6) + '%', s: fmt(part, 6) + ' is this % of ' + fmt(whole, 6), cls: '' });
+        cards.push({ t: 'Remainder', v: fmt(whole - part, 6), s: fmt((1 - part / whole) * 100, 4) + '% left', cls: 'alt' });
+        const change = (part - whole) / whole * 100;
+        cards.push({ t: 'Change (part vs whole)', v: fmt(change, 6) + '%', s: 'positive = increase', cls: 'violet' });
+      }
+      if (Number.isFinite(pctIn) && Number.isFinite(whole)) {
+        cards.push({ t: 'Percent of whole', v: fmt(whole * pctIn / 100, 6), s: fmt(pctIn, 4) + '% of ' + fmt(whole, 6), cls: 'ok' });
+      }
+      if (Number.isFinite(pctIn) && Number.isFinite(part) && pctIn !== 0) {
+        cards.push({ t: 'Implied whole', v: fmt(part / (pctIn / 100), 6), s: fmt(part, 6) + ' is ' + fmt(pctIn, 4) + '% of this', cls: '' });
+      }
+      const box = $('pctMetrics');
+      if (box) {
+        box.innerHTML = cards.length
+          ? cards.map(m => '<div class="metric ' + m.cls + '"><div class="t">' + m.t + '</div><div class="v">' + m.v + '</div><div class="s">' + m.s + '</div></div>').join('')
+          : '<div class="muted">Enter part and whole (and optional %). Empty fields are safe.</div>';
+      }
+      const bits = [];
+      if (Number.isFinite(part) && Number.isFinite(whole) && whole !== 0) bits.push(fmt(part, 6) + ' / ' + fmt(whole, 6) + ' = ' + fmt(part / whole * 100, 6) + '%');
+      if (Number.isFinite(pctIn) && Number.isFinite(whole)) bits.push(fmt(pctIn, 4) + '% of ' + fmt(whole, 6) + ' = ' + fmt(whole * pctIn / 100, 6));
+      setText($('pctFormula'), bits.join('  ·  ') || 'Fill any two-ish fields — empty data does not throw.');
+    }
+
     function wirePercent() {
       ['pctPart', 'pctWhole', 'pctPct'].forEach(id => {
-        $(id).addEventListener('input', refreshPercent);
+        const el = $(id);
+        if (el) el.addEventListener('input', () => scheduleLive(refreshPercent));
       });
     }
 
@@ -2146,10 +2364,11 @@
         $(id).addEventListener('change', refreshMemory);
       });
 
-      $('memCopyCap').addEventListener('click', () => {
+      $('memCopyCap').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         const bytes = capacityToBytes();
-        copyText(`${$('memAmt').value} ${$('memUnit').value} = ${fmtBytesHuman(bytes)} (${fmtFixed(bytes, 0)} bytes)`);
-      });
+        const amt = $('memAmt'); const unit = $('memUnit');
+        await copyText(`${amt ? amt.value : ''} ${unit ? unit.value : ''} = ${fmtBytesHuman(bytes)} (${fmtFixed(bytes, 0)} bytes)`);
+      }));
       $('memSet16').addEventListener('click', () => {
         $('memAmt').value = 16; $('memUnit').value = 'GiB';
         $('memSticks').value = 2; $('memStickGiB').value = 8;
@@ -2160,17 +2379,18 @@
         $('memSticks').value = 2; $('memStickGiB').value = 16;
         refreshMemory();
       });
-      $('memCopyDdr').addEventListener('click', () => {
+      $('memCopyDdr').addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
         const mts = num($('memMTs'));
         const cl = num($('memCL'));
-        const gen = $('memGen').value;
+        const genEl = $('memGen');
+        const gen = genEl ? genEl.value : '';
         const mhz = mts / 2;
         const lat = cl / mhz * 1000;
         const bus = num($('memBus'));
         const ch = num($('memCh'));
         const GBs = mts * 1e6 * bus * ch / 8 / 1e9;
         copyText(`${gen}-${mts} · CL${cl} (${fmtFixed(lat, 2)} ns) · ${fmtFixed(GBs, 2)} GB/s peak · ${ch}×${bus}-bit`);
-      });
+      }));;
 
       $('memGlossarySearch').addEventListener('input', renderMemGlossary);
       renderMemGlossary();
@@ -2324,7 +2544,8 @@
 
     function init() {
       renderModeList();
-      $('modeSearch').addEventListener('input', () => renderModeList($('modeSearch').value));
+      const modeSearch = $('modeSearch');
+      if (modeSearch) modeSearch.addEventListener('input', () => renderModeList(modeSearch.value));
 
       // Delegated live bus first so typing works even if a wire* helper fails
       safe('wireLiveUpdates', wireLiveUpdates);
@@ -2356,6 +2577,8 @@
 
     // --- QoL: copy result summary · persist mode already · reset · keyboard ---
     function copyUcResult() {
+      // summary copy; empty panels still produce a header
+
       const title = ($('pageTitle') && $('pageTitle').textContent) || document.title;
       const mode = (() => { try { return localStorage.getItem('uc-mode') || 'resolution'; } catch { return 'resolution'; } })();
       const panel = document.querySelector('.mode-panel:not([hidden],.hidden)') || document.querySelector('.mode-panel.active') || document.getElementById('mode-' + mode) || document.querySelector('main');
@@ -2373,24 +2596,24 @@
         'Time: ' + new Date().toISOString(),
       ];
       const text = lines.join('\n');
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).then(() => {
-          if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Result summary copied', 'ok');
-        }).catch(() => {});
-      }
+      copyText(text);
     }
-    document.getElementById('btnUcCopy')?.addEventListener('click', copyUcResult);
-    document.getElementById('btnUcReset')?.addEventListener('click', () => {
+    document.getElementById('btnUcCopy')?.addEventListener('click', (ev) => withBusy(ev.currentTarget, copyUcResult));
+    document.getElementById('btnUcReset')?.addEventListener('click', (ev) => withBusy(ev.currentTarget, async () => {
       if (!confirm('Reset current mode fields to defaults?')) return;
-      try { localStorage.removeItem('uc-mode'); } catch {}
+      lsDel('uc-mode');
       location.reload();
-    });
+    }));
     document.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
       if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 's' || e.key === 'S') copyUcResult();
+      if (e.key === 's' || e.key === 'S') { e.preventDefault(); copyUcResult(); }
       if (e.key === '/') { e.preventDefault(); $('modeSearch')?.focus(); }
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'modeSearch') {
+        const first = document.querySelector('#modeList .mode-btn');
+        if (first && first.dataset.mode) { e.preventDefault(); setMode(first.dataset.mode); }
+      }
     });
     try {
       window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
