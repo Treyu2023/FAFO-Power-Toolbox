@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FAFO Progress Map & Mythos</title>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css" />
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+  <style>
+    :root {
+      --bg: #050508;
+      --panel: #0c0c12;
+      --line: rgba(0, 243, 255, 0.22);
+      --accent: #00f3ff;
+      --accent2: #7c5cff;
+      --gold: #ffd700;
+      --ok: #00ff88;
+      --warn: #ffc800;
+      --bad: #ff4466;
+      --muted: #7a8494;
+      --text: #e8eef4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 system-ui, Segoe UI, sans-serif;
+      background: radial-gradient(ellipse at 20% 0%, #0a1520 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 16px 18px 48px; }
+    h1 {
+      font-size: 1.35rem;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin: 0 0 6px;
+    }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+    }
+    .tabs button {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--line);
+      color: var(--accent);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .tabs button.active {
+      background: rgba(0, 243, 255, 0.15);
+      box-shadow: 0 0 16px rgba(0, 243, 255, 0.2);
+    }
+    .tabs button.mythos-tab { border-color: rgba(124, 92, 255, 0.45); color: #c4b5ff; }
+    .tabs button.chamber-tab { border-color: rgba(255, 215, 0, 0.4); color: var(--gold); }
+    .tabs a.tabs-link {
+      display: inline-flex; align-items: center;
+      background: rgba(255, 215, 0, 0.08);
+      border: 1px solid rgba(255, 215, 0, 0.4);
+      color: var(--gold);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .tabs a.tabs-link:hover { background: rgba(255, 215, 0, 0.18); }
+    .view { display: none; }
+    .view.active { display: block; animation: fade 0.25s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .grid-apps {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: linear-gradient(160deg, rgba(16,16,24,0.95), rgba(8,8,12,0.98));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.5;
+    }
+    .card h3 { margin: 0 0 6px; font-size: 14px; color: var(--accent); }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid;
+      margin-bottom: 8px;
+    }
+    .badge.production { color: var(--ok); border-color: rgba(0,255,136,0.4); }
+    .badge.beta { color: var(--warn); border-color: rgba(255,200,0,0.4); }
+    .badge.alpha { color: var(--accent2); border-color: rgba(124,92,255,0.45); }
+    .badge.planned { color: var(--muted); border-color: rgba(122,132,148,0.4); }
+    .bar {
+      height: 8px; border-radius: 99px; background: rgba(255,255,255,0.06);
+      overflow: hidden; margin: 8px 0;
+    }
+    .bar > i {
+      display: block; height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 99px;
+    }
+    .meta { font-size: 11px; color: var(--muted); }
+    .next { margin-top: 8px; font-size: 12px; color: #c8d4e0; }
+    .ms { list-style: none; padding: 0; margin: 10px 0 0; font-size: 11px; }
+    .ms li { padding: 3px 0; color: var(--muted); }
+    .ms li.done { color: var(--ok); }
+    .ms li.done::before { content: '✓ '; }
+    .ms li:not(.done)::before { content: '○ '; color: var(--muted); }
+
+    .feat-cols {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .feat-cols h3 { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 8px; }
+    .feat-cols ul { list-style: none; padding: 0; margin: 0; }
+    .feat-cols li {
+      padding: 8px 10px; margin-bottom: 6px;
+      border-radius: 8px; background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+    }
+    .feat-cols li strong { display: block; color: var(--text); margin-bottom: 2px; }
+    .col-in h3 { color: var(--ok); }
+    .col-build h3 { color: var(--warn); }
+    .col-plan h3 { color: var(--accent2); }
+
+    .timeline { border-left: 2px solid var(--line); margin: 12px 0 0 8px; padding-left: 16px; }
+    .timeline .ev { margin-bottom: 14px; position: relative; }
+    .timeline .ev::before {
+      content: '';
+      position: absolute; left: -21px; top: 4px;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 10px var(--accent);
+    }
+    .timeline .when { font-size: 10px; color: var(--accent); letter-spacing: 0.1em; }
+    .timeline .title { font-weight: 700; }
+    .timeline .detail { font-size: 12px; color: var(--muted); }
+
+    /* Mythos canvases */
+    .mythos-stage {
+      position: relative;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: #020208;
+      min-height: 420px;
+    }
+    .mythos-stage canvas { display: block; width: 100%; height: 420px; cursor: pointer; }
+    .mythos-hint {
+      position: absolute; left: 12px; bottom: 12px; right: 12px;
+      font-size: 11px; color: rgba(200,210,220,0.55);
+      pointer-events: none;
+    }
+    .state-pills {
+      display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0;
+      font-size: 11px; color: var(--muted);
+    }
+    .state-pills span {
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 4px 10px; border-radius: 999px;
+    }
+    .state-pills span em { color: var(--accent); font-style: normal; font-weight: 700; }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(5,5,12,0.95); border: 1px solid var(--accent);
+      color: var(--text); padding: 10px 16px; border-radius: 10px;
+      z-index: 50; display: none; max-width: 90vw;
+    }
+    .toast.show { display: block; animation: fade 0.2s ease; }
+
+    /* Chamber */
+    .chamber {
+      position: relative;
+      min-height: 560px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 215, 0, 0.35);
+      background:
+        radial-gradient(ellipse at 50% 100%, rgba(255,180,0,0.12), transparent 50%),
+        radial-gradient(ellipse at 20% 30%, rgba(0,243,255,0.08), transparent 40%),
+        linear-gradient(180deg, #0a0810 0%, #050308 100%);
+      overflow: hidden;
+      padding: 20px;
+    }
+    .chamber.locked {
+      filter: grayscale(0.3);
+    }
+    .chamber-bg {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        radial-gradient(circle at 10% 80%, rgba(255,200,0,0.25) 0 2px, transparent 3px),
+        radial-gradient(circle at 30% 70%, rgba(255,220,80,0.3) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 50% 85%, rgba(255,180,0,0.35) 0 2px, transparent 3px),
+        radial-gradient(circle at 70% 75%, rgba(255,215,0,0.25) 0 1px, transparent 2px),
+        radial-gradient(circle at 85% 90%, rgba(255,200,50,0.3) 0 2px, transparent 3px);
+      background-size: 100% 100%;
+      opacity: 0.9;
+      animation: coins 8s linear infinite;
+    }
+    @keyframes coins {
+      from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0; }
+      to { background-position: 20px 40px, -15px 30px, 10px 50px, -20px 25px, 5px 45px; }
+    }
+    .chamber-inner { position: relative; z-index: 2; }
+    .chamber h2 {
+      color: var(--gold);
+      text-shadow: 0 0 20px rgba(255,215,0,0.4);
+      letter-spacing: 0.12em;
+      font-size: 1.1rem;
+      margin: 0 0 8px;
+    }
+    .dragon {
+      position: absolute; right: 8%; bottom: 18%;
+      width: 120px; height: 90px;
+      cursor: pointer;
+      z-index: 3;
+      filter: drop-shadow(0 0 16px rgba(0, 243, 255, 0.45));
+      transition: transform 0.2s;
+    }
+    .dragon:hover { transform: scale(1.05); }
+    .dragon svg { width: 100%; height: 100%; }
+    .dragon.awake {
+      filter: drop-shadow(0 0 24px #ff4466) drop-shadow(0 0 40px #ff8800);
+      animation: roar 0.4s ease infinite alternate;
+    }
+    @keyframes roar { from { transform: scale(1) rotate(-2deg); } to { transform: scale(1.08) rotate(2deg); } }
+
+    .entrance {
+      position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+      width: min(280px, 70%);
+      height: 140px;
+      z-index: 1;
+    }
+    .entrance .mouth {
+      position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+      width: 90px; height: 110px;
+      background: radial-gradient(ellipse at 50% 100%, #1a1008 0%, #050308 70%);
+      border-radius: 50px 50px 0 0;
+      border: 2px solid rgba(255, 180, 80, 0.35);
+      box-shadow: inset 0 -20px 40px rgba(0,0,0,0.8);
+    }
+    .entrance.sealed .mouth {
+      background: linear-gradient(180deg, #0c1820, #050810);
+      border-color: rgba(0,243,255,0.3);
+    }
+    .entrance .smoke {
+      display: none;
+      position: absolute; left: 50%; bottom: 100px; transform: translateX(-50%);
+      width: 80px; height: 60px;
+      background: radial-gradient(ellipse, rgba(255,100,0,0.5), transparent 70%);
+      filter: blur(8px);
+      animation: smoke 2s ease-in-out infinite;
+    }
+    .entrance.guarded .smoke { display: block; }
+    @keyframes smoke {
+      0%, 100% { opacity: 0.5; transform: translateX(-50%) translateY(0); }
+      50% { opacity: 0.9; transform: translateX(-50%) translateY(-12px); }
+    }
+
+    .chests {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .chest {
+      background: linear-gradient(160deg, rgba(40, 28, 8, 0.9), rgba(12, 8, 4, 0.95));
+      border: 1px solid rgba(255, 200, 80, 0.35);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .chest h4 { margin: 0 0 8px; color: var(--gold); font-size: 13px; }
+    .chest textarea, .chest input, .chest select {
+      width: 100%;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,215,0,0.2);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px;
+      font: 12px/1.4 ui-monospace, Consolas, monospace;
+    }
+    .chest table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .chest th, .chest td {
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 6px 4px; text-align: left; vertical-align: top;
+    }
+    .chest th { color: var(--gold); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .btn-row button {
+      background: rgba(255, 215, 0, 0.1);
+      border: 1px solid rgba(255, 215, 0, 0.4);
+      color: var(--gold);
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .scroll-box {
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font: 11px/1.5 ui-monospace, Consolas, monospace;
+      color: #e8dcc8;
+      background: rgba(0,0,0,0.4);
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid rgba(255,180,80,0.25);
+    }
+    .legend-block {
+      font-size: 12px;
+      color: #d0d8e0;
+      line-height: 1.55;
+    }
+    .legend-block h4 { color: var(--accent); margin: 12px 0 4px; }
+    .gate-msg {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+    .gate-msg strong { color: var(--bad); }
+    .warn-banner {
+      background: rgba(255, 68, 102, 0.12);
+      border: 1px solid rgba(255, 68, 102, 0.35);
+      color: #ffb0bc;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .ok-banner {
+      background: rgba(0, 255, 136, 0.08);
+      border: 1px solid rgba(0, 255, 136, 0.3);
+      color: #b0ffd0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+
+    /* Adventure props */
+    .lodge {
+      position: relative;
+      min-height: 280px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, #12101a 0%, #0a0810 100%);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .lodge-floor {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 28%;
+      background: linear-gradient(180deg, #1a1410, #0c0a08);
+      border-top: 1px solid rgba(255,200,100,0.15);
+    }
+    .mantle {
+      position: absolute; left: 12%; right: 12%; bottom: 28%;
+      height: 14px;
+      background: linear-gradient(180deg, #3a2a18, #1a1208);
+      border-radius: 3px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .candle {
+      position: absolute;
+      width: 18px; height: 48px;
+      left: 22%;
+      bottom: calc(28% + 14px);
+      cursor: pointer;
+      transform-origin: 50% 100%;
+      transition: transform 0.35s ease;
+      z-index: 4;
+    }
+    .candle.tilted { transform: rotate(-28deg) translateX(6px); }
+    .candle .stick {
+      position: absolute; left: 5px; bottom: 0; width: 8px; height: 36px;
+      background: linear-gradient(90deg, #c8b080, #f0e0b0 40%, #a89060);
+      border-radius: 2px;
+    }
+    .candle .flame {
+      position: absolute; left: 4px; top: 0; width: 10px; height: 16px;
+      background: radial-gradient(ellipse at 50% 80%, #fff 0%, #ff0 20%, #f80 60%, transparent 70%);
+      border-radius: 50% 50% 40% 40%;
+      animation: flicker 0.8s ease-in-out infinite alternate;
+      filter: drop-shadow(0 0 8px #f80);
+    }
+    .candle.tilted .flame { opacity: 0.85; }
+    @keyframes flicker {
+      from { transform: scaleY(1) translateX(0); }
+      to { transform: scaleY(1.1) translateX(1px); }
+    }
+    .rune {
+      position: absolute;
+      width: 52px; height: 52px;
+      border-radius: 12px;
+      background: radial-gradient(circle at 30% 30%, #1a3040, #050810);
+      border: 2px solid var(--accent);
+      color: var(--accent);
+      font-size: 26px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      z-index: 5;
+      box-shadow: 0 0 18px rgba(0,243,255,0.35);
+      transition: left 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.35s ease;
+      transform-origin: center center;
+    }
+    .rune:hover { box-shadow: 0 0 28px rgba(0,243,255,0.55); }
+    .rune-hint {
+      position: absolute; left: 12px; top: 10px; font-size: 11px; color: var(--muted); z-index: 2;
+      max-width: 55%;
+    }
+    .bookshelf {
+      display: none;
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(180, 120, 60, 0.4);
+      background: linear-gradient(180deg, #1a120c, #0c0806);
+    }
+    .bookshelf.visible { display: block; animation: fade 0.4s ease; }
+    .bookshelf h3 { color: #e0a060; margin: 0 0 10px; font-size: 13px; letter-spacing: 0.08em; }
+    .shelf-row {
+      display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;
+      padding: 12px 8px 4px;
+      border-bottom: 10px solid #2a1a10;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,0.3));
+    }
+    .book {
+      width: 28px; height: 90px;
+      border-radius: 2px 2px 0 0;
+      cursor: default;
+      box-shadow: inset -3px 0 0 rgba(0,0,0,0.25);
+      transition: transform 0.2s;
+    }
+    .book.green {
+      width: 34px; height: 100px;
+      background: linear-gradient(90deg, #0a4a28, #1a8a48 40%, #0d6030);
+      border: 1px solid #2fca6e;
+      cursor: pointer;
+      box-shadow: 0 0 12px rgba(0, 255, 120, 0.25), inset -3px 0 0 rgba(0,0,0,0.25);
+    }
+    .book.green:hover { transform: translateY(-6px); }
+    .book.green.active { outline: 2px solid #00ff88; }
+    .book.red { background: linear-gradient(90deg, #4a1010, #8a2020); height: 80px; }
+    .book.blue { background: linear-gradient(90deg, #102040, #204080); height: 95px; }
+    .book.brown { background: linear-gradient(90deg, #3a2810, #6a4820); height: 85px; width: 22px; }
+    .book.purple { background: linear-gradient(90deg, #2a1040, #502080); height: 88px; }
+
+    .garden-wrap {
+      position: relative;
+      min-height: 440px;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 200, 100, 0.3);
+      overflow: hidden;
+      background: linear-gradient(180deg, #0a1a12 0%, #050a08 60%, #0a0806 100%);
+    }
+    .garden-wrap.locked {
+      filter: grayscale(0.8) brightness(0.5);
+      pointer-events: none;
+    }
+    .garden-wrap canvas { width: 100%; height: 420px; display: block; cursor: pointer; }
+    .path-soft {
+      font-size: 11px; color: var(--muted); margin: 8px 0;
+    }
+    .path-soft .ok { color: var(--ok); }
+    .path-soft .no { color: var(--muted); opacity: 0.7; }
+  </style>
+</head>
+<body data-tb-chrome="on">
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="progress-map-progress-map" data-fafo-layout-type="rows">
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
+      <a class="toolbox-back" href="../Toolbox Launcher.html" style="color:var(--accent);text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.85);border:1px solid rgba(0,243,255,.28)">← Toolbox</a>
+      <span style="font-size:11px;color:var(--muted)">Esc returns to launcher · track app maturity here</span>
+      <span data-fafo-layout-toolbar style="margin-left:auto"></span>
+    </div>
+    <h1>◈ FAFO PROGRESS MAP</h1>
+    <p class="sub" id="missionLine">Loading roadmap…</p>
+
+    <div class="tabs" id="tabs">
+      <button type="button" data-view="dashboard" class="active">📊 Dashboard</button>
+      <button type="button" data-view="features">🧩 Features</button>
+      <button type="button" data-view="history">📜 History</button>
+      <button type="button" data-view="garden" class="mythos-tab" id="tabGarden">🌿 Garden</button>
+      <button type="button" data-view="rings" class="mythos-tab">🌲 Tree Rings</button>
+      <button type="button" data-view="map" class="mythos-tab">🗺️ Coverage Map</button>
+      <button type="button" data-view="skyline" class="mythos-tab">🌃 Night Skyline</button>
+      <button type="button" data-view="chamber" class="chamber-tab">🏆 Chamber</button>
+      <a href="../Tech Quest/Tech Quest.html" class="tabs-link" title="Field-tech TBS mini-game — adventure + Treasure Room (not on public pages)">🔨 TECH QUEST</a>
+      <a href="../Toolbox Launcher.html" class="tabs-link" title="Return to FAFO Toolbox Launcher" style="border-color:rgba(0,243,255,.35);color:var(--accent)">← Toolbox</a>
+      <a href="../Startup Command Board.html" class="tabs-link" title="Server control board" style="border-color:rgba(148,163,184,.35);color:var(--muted)">🖥 Startup board</a>
+    </div>
+
+    <!-- DASHBOARD + LODGE -->
+    <section class="view active" id="view-dashboard" data-fafo-panel="section" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <p class="meta" style="margin-bottom:12px;">Where to spend build time — apps, progress, open goals, next focus.</p>
+
+      <div class="lodge" id="lodge">
+        <div class="rune-hint">
+          A strange mark rests in the room.<br>
+          <strong>Click</strong> = rotate 90° · <strong>Double-click</strong> = it moves to another place.<br>
+          Some days it wants to hang differently before other rooms change…
+        </div>
+        <div class="lodge-floor"></div>
+        <div class="mantle"></div>
+        <div class="candle" id="candle" title="Candle on the mantle">
+          <div class="flame"></div>
+          <div class="stick"></div>
+        </div>
+        <div class="rune" id="rune" title="Click rotate · Double-click move">◈</div>
+      </div>
+      <div class="path-soft" id="pathSoft"></div>
+
+      <div class="grid-apps" id="appGrid"></div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="view" id="view-features" data-fafo-panel="section-1" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="feat-cols">
+        <div class="card col-in">
+          <h3>Installed</h3>
+          <ul id="featIn"></ul>
+        </div>
+        <div class="card col-build">
+          <h3>Building now</h3>
+          <ul id="featBuild"></ul>
+        </div>
+        <div class="card col-plan">
+          <h3>Planned</h3>
+          <ul id="featPlan"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY + BOOKSHELF -->
+    <section class="view" id="view-history" data-fafo-panel="section-2" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="card">
+        <h3 style="color:var(--accent);margin:0 0 8px;">Milestone history</h3>
+        <div class="timeline" id="timeline"></div>
+      </div>
+      <div class="bookshelf" id="bookshelf">
+        <h3>A shelf that was not here before…</h3>
+        <p class="meta" style="margin:0 0 8px;">A candle sits on the mantle. Tilt it, then try the green volume.</p>
+        <div style="position:relative;min-height:56px;margin-bottom:4px;">
+          <div class="candle" id="candleShelf" title="Mantle candle" style="position:relative;left:24px;bottom:0;display:inline-block;">
+            <div class="flame"></div>
+            <div class="stick"></div>
+          </div>
+        </div>
+        <div class="shelf-row" id="shelfRow">
+          <div class="book brown"></div>
+          <div class="book red"></div>
+          <div class="book blue"></div>
+          <div class="book green" id="greenBook" title="A green book"></div>
+          <div class="book purple"></div>
+          <div class="book brown" style="height:70px;width:20px;"></div>
+          <div class="book red" style="height:92px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GARDEN -->
+    <section class="view" id="view-garden" data-fafo-panel="section-3" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div id="gardenGate"></div>
+      <div class="garden-wrap" id="gardenRoom">
+        <canvas id="canvasGarden" width="1100" height="420"></canvas>
+        <div class="mythos-hint" style="position:absolute;left:12px;bottom:12px;color:rgba(180,220,190,0.6);font-size:11px;">
+          Stairs lead into the heart of the tree · rings thicken with monthly volume · click the trunk when the path is ready
+        </div>
+      </div>
+    </section>
+
+    <!-- TREE RINGS (data art) -->
+    <section class="view" id="view-rings" data-fafo-panel="section-4" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="ok-banner">
+        Each ring = a month of volume (demo data). <strong>Thickness</strong> = relative billings.
+        On some days the skyline/map still matter for the path — explore freely.
+      </div>
+      <div class="state-pills" id="pills"></div>
+      <div class="mythos-stage">
+        <canvas id="canvasRings" width="1100" height="420"></canvas>
+        <div class="mythos-hint">Click heartwood to shift season tint · data art for the mythos</div>
+      </div>
+    </section>
+
+    <!-- MAP -->
+    <section class="view" id="view-map" data-fafo-panel="section-5" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="ok-banner">
+        Every pin is a site (demo). Color = customer first letter. Size ≈ volume.
+        Some days the cartographer’s path wants the map humming <strong>cyan</strong>.
+      </div>
+      <div class="state-pills" id="pillsMap"></div>
+      <div class="mythos-stage">
+        <canvas id="canvasMap" width="1100" height="420"></canvas>
+        <div class="mythos-hint">Click pins to cycle glow modes</div>
+      </div>
+    </section>
+
+    <!-- SKYLINE -->
+    <section class="view" id="view-skyline" data-fafo-panel="section-6" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="ok-banner">
+        Night city: tower = customer · 2 floors/site · windows ≈ tanks+dispensers.
+        Some days the architect’s path wants a <strong>landmark</strong> tower stance.
+      </div>
+      <div class="state-pills" id="pillsSky"></div>
+      <div class="mythos-stage">
+        <canvas id="canvasSky" width="1100" height="420"></canvas>
+        <div class="mythos-hint">Click towers to cycle height modes</div>
+      </div>
+    </section>
+
+    <!-- CHAMBER -->
+    <section class="view" id="view-chamber" data-fafo-panel="section-7" data-fafo-panel-title="Section" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div id="chamberGate"></div>
+      <div class="chamber locked" id="chamberRoom" style="display:none;">
+        <div class="chamber-bg"></div>
+        <div class="entrance" id="entrance"><div class="mouth"></div><div class="smoke"></div></div>
+        <div class="dragon" id="dragon" title="…sleeping?">
+          <svg viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="58" cy="58" rx="40" ry="22" fill="#0a2030" stroke="#00f3ff" stroke-width="1.5"/>
+            <path d="M20 50 Q8 40 14 28 Q28 32 30 44" fill="#0a2030" stroke="#00f3ff" stroke-width="1.2"/>
+            <circle cx="78" cy="48" r="14" fill="#0c2838" stroke="#00f3ff"/>
+            <circle cx="82" cy="46" r="3" fill="#00f3ff" opacity="0.35"/>
+            <path d="M90 48 L110 40 L108 52 Z" fill="#00f3ff" opacity="0.5"/>
+            <path d="M40 40 Q50 20 70 28" fill="none" stroke="#7c5cff" stroke-width="2"/>
+            <text x="48" y="64" fill="#00f3ff" font-size="8" font-family="sans-serif" opacity="0.6">Zzz</text>
+          </svg>
+        </div>
+        <div class="chamber-inner">
+          <h2>LEGENDARY CHAMBER</h2>
+          <p class="meta" style="color:#c8b070;margin-bottom:12px;">Boss loot room · do not wake the neon dragon · local secrets only</p>
+          <div class="warn-banner">
+            Passwords and logins here are stored <strong>only in this browser’s localStorage</strong> on this PC.
+            Never commit real credentials to git. Export a backup to an encrypted USB if needed.
+          </div>
+          <div class="chests">
+            <div class="chest">
+              <h4>📜 Legend of the Hidden Gems</h4>
+              <div class="legend-block" id="legendText"></div>
+            </div>
+            <div class="chest">
+              <h4>🗝️ Site logins quick ref</h4>
+              <div class="btn-row">
+                <button type="button" id="btnAddSite">+ Add site row</button>
+                <button type="button" id="btnSaveVault">💾 Save vault</button>
+                <button type="button" id="btnExportVault">⬇ Export JSON</button>
+                <button type="button" id="btnImportVault">⬆ Import JSON</button>
+              </div>
+              <div style="max-height:240px;overflow:auto;margin-top:8px;">
+                <table>
+                  <thead>
+                    <tr><th>Site</th><th>Role</th><th>User</th><th>Pass / note</th></tr>
+                  </thead>
+                  <tbody id="vaultBody"></tbody>
+                </table>
+              </div>
+              <input type="file" id="importFile" accept="application/json,.json" style="display:none" />
+            </div>
+            <div class="chest">
+              <h4>🔐 Verifone backdoor / tech-menu cheat sheet</h4>
+              <p class="meta" style="margin:0 0 8px;">Field reference — fill blanks from <em>your</em> OEM packets &amp; site notes. Local only.</p>
+              <div class="btn-row">
+                <button type="button" id="btnAddBackdoor">+ Row</button>
+                <button type="button" id="btnSaveBackdoors">💾 Save sheet</button>
+                <button type="button" id="btnResetBackdoors">↺ Reset template rows</button>
+              </div>
+              <div style="max-height:280px;overflow:auto;margin-top:8px;">
+                <table>
+                  <thead>
+                    <tr><th>System</th><th>Model</th><th>Role</th><th>User</th><th>Secret</th><th>Notes</th></tr>
+                  </thead>
+                  <tbody id="backdoorBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="chest">
+              <h4>🕵️ Customer / scraped passwords</h4>
+              <p class="meta" style="margin:0 0 8px;">
+                Built from sticky-note scans, JSON DB imports, and (later) OCR image text.
+                Review before trusting — scrapers make mistakes.
+              </p>
+              <div class="btn-row">
+                <button type="button" id="btnScrapeSticky">📄 Scan sticky export…</button>
+                <button type="button" id="btnScrapeText">📝 Paste / scan text…</button>
+                <button type="button" id="btnScrapeJson">🗄 Import DB JSON…</button>
+                <button type="button" id="btnScrapeOcr">🖼 OCR dump text…</button>
+                <button type="button" id="btnClearScraped">🗑 Clear scraped list</button>
+              </div>
+              <input type="file" id="stickyScanFile" accept=".txt,.md,.json,text/plain" style="display:none" />
+              <input type="file" id="dbScanFile" accept="application/json,.json" style="display:none" />
+              <div id="scrapeStats" class="meta" style="margin-top:8px;"></div>
+              <div style="max-height:280px;overflow:auto;margin-top:8px;">
+                <table>
+                  <thead>
+                    <tr><th>Site / customer</th><th>Role</th><th>User</th><th>Secret</th><th>Source</th><th></th></tr>
+                  </thead>
+                  <tbody id="scrapedBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="chest">
+              <h4>📜 Verifone PuTTY scroll</h4>
+              <textarea id="puttyScroll" rows="12" spellcheck="false"></textarea>
+              <div class="btn-row">
+                <button type="button" id="btnSavePutty">💾 Save scroll</button>
+                <button type="button" id="btnResetPutty">↺ Reset template</button>
+              </div>
+            </div>
+            <div class="chest">
+              <h4>💎 Treasures (build notes)</h4>
+              <div class="scroll-box" id="treasureNotes"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+  <script src="roadmap-data.js"></script>
+  <script src="mythos-engine.js"></script>
+  <script src="mythos-audio.js"></script>
+  <script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const R = window.FAFO_ROADMAP;
+  const M = window.FAFOMythos;
+  const A = window.FAFOMythosAudio;
+
+  function sfx(name) {
+    try { if (A) A.play(name); } catch (_) { /* ignore */ }
+  }
+
+  /** Sync ambient intensity to day-path progress (builds toward chamber). */
+  function syncAmbience() {
+    try {
+      if (!A || !M) return;
+      if (M.isUnlocked() && !M.isDragonBanning()) {
+        A.setUnlockProgress(1);
+        return;
+      }
+      A.syncFromHint(M.pathProgressHint());
+    } catch (_) { /* ignore */ }
+  }
+
+  /** Unlock AudioContext on first gesture (browser autoplay policy). */
+  function armAudioOnce() {
+    if (armAudioOnce._done) return;
+    armAudioOnce._done = true;
+    try { if (A) A.ensure(); } catch (_) { /* ignore */ }
+    syncAmbience();
+  }
+  document.addEventListener('pointerdown', armAudioOnce, { once: true, capture: true });
+  document.addEventListener('keydown', armAudioOnce, { once: true, capture: true });
+
+  function toast(msg, ms) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._tm);
+    t._tm = setTimeout(() => t.classList.remove('show'), ms || 2800);
+  }
+
+  function renderPills() {
+    const s = M.getStates();
+    const a = M.getAdventure();
+    const p = M.activePath();
+    const html = `
+      <span>Day path: <em>${p.name}</em></span>
+      <span>Rune: <em>pos ${a.runePos} · ${a.runeRot}°</em></span>
+      <span>Candle: <em>${a.candleTilt ? 'tilted' : 'upright'}</em></span>
+      <span>Garden: <em>${a.gardenUnlocked ? 'open' : 'hidden'}</em></span>
+      <span>Map: <em>${s.pin}</em> · Tower: <em>${s.tower}</em></span>
+      <span>Chamber: <em>${M.isDragonBanning() ? 'dragon (' + Math.ceil(M.banRemainingMs()/1000) + 's)' : (M.isUnlocked() ? 'OPEN' : 'sealed')}</em></span>
+    `;
+    ['pills', 'pillsMap', 'pillsSky'].forEach((id) => {
+      const el = $(id);
+      if (el) el.innerHTML = html;
+    });
+    renderPathSoft();
+    placeRune();
+    updateBookshelf();
+    updateGardenTab();
+  }
+
+  function renderPathSoft() {
+    const el = $('pathSoft');
+    if (!el) return;
+    const h = M.pathProgressHint();
+    el.innerHTML = `Today’s hidden road feels like <em>${h.pathName}</em> · ` +
+      h.steps.map((s) => `<span class="${s.ok ? 'ok' : 'no'}">${s.ok ? '✓' : '·'} ${s.label}</span>`).join(' · ');
+    syncAmbience();
+  }
+
+  /** Rune positions inside lodge: 0 top-right, 1 mid-left, 2 near mantle right */
+  function placeRune() {
+    const rune = $('rune');
+    const lodge = $('lodge');
+    if (!rune || !lodge) return;
+    const a = M.getAdventure();
+    const positions = [
+      { left: '78%', top: '12%' },
+      { left: '10%', top: '38%' },
+      { left: '68%', top: '48%' },
+    ];
+    const pos = positions[a.runePos % 3];
+    rune.style.left = pos.left;
+    rune.style.top = pos.top;
+    rune.style.transform = `rotate(${a.runeRot}deg)`;
+    rune.dataset.rot = String(a.runeRot);
+    // upside-down cue (subtle)
+    rune.style.borderColor = a.runeRot === 180 ? '#ffd700' : 'var(--accent)';
+  }
+
+  function updateBookshelf() {
+    const shelf = $('bookshelf');
+    if (!shelf) return;
+    const show = M.isBookshelfVisible();
+    const was = shelf.classList.contains('visible');
+    shelf.classList.toggle('visible', show);
+    if (show && !was) sfx('shelf');
+    const gb = $('greenBook');
+    if (gb) {
+      gb.classList.toggle('active', !!M.getAdventure().candleTilt);
+    }
+  }
+
+  function updateGardenTab() {
+    const tab = $('tabGarden');
+    const a = M.getAdventure();
+    if (tab) {
+      tab.style.opacity = a.gardenUnlocked ? '1' : '0.55';
+      tab.title = a.gardenUnlocked ? 'Garden open' : 'Garden locked — find the green book after the shelf appears';
+    }
+  }
+
+  function wireAdventure() {
+    const rune = $('rune');
+    if (rune && !rune._wired) {
+      rune._wired = true;
+      rune.addEventListener('click', (e) => {
+        e.stopPropagation();
+        M.rotateRune();
+        sfx('runeRotate');
+        placeRune();
+        renderPills();
+        toast('The mark turns… ' + M.getAdventure().runeRot + '°');
+        if (M.isBookshelfVisible()) toast('Something shifted in History…');
+      });
+      rune.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        M.moveRune();
+        sfx('runeMove');
+        placeRune();
+        renderPills();
+        toast('The mark relocates…');
+        if (M.isBookshelfVisible()) toast('A shelf that was not there before… check History.');
+      });
+    }
+    function wireCandle(el) {
+      if (!el || el._wired) return;
+      el._wired = true;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        M.toggleCandle();
+        sfx('candle');
+        const tilted = M.getAdventure().candleTilt;
+        document.querySelectorAll('.candle').forEach((c) => c.classList.toggle('tilted', tilted));
+        renderPills();
+        toast(tilted ? 'The candle leans…' : 'The candle stands upright.');
+      });
+    }
+    wireCandle($('candle'));
+    wireCandle($('candleShelf'));
+    const gb = $('greenBook');
+    if (gb && !gb._wired) {
+      gb._wired = true;
+      gb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const r = M.openGreenBook();
+        if (!r.ok) {
+          sfx('no');
+          if (r.reason === 'no-shelf') toast('No shelf here yet… the mark is wrong for this day.');
+          else if (r.reason === 'candle') toast('The green book resists. The candle is still upright.');
+          else toast('Nothing happens.');
+          return;
+        }
+        sfx('book');
+        setTimeout(() => sfx('garden'), 220);
+        gb.classList.add('active');
+        renderPills();
+        toast('A garden path unfurls… open the Garden tab.');
+        showView('garden');
+      });
+    }
+    document.querySelectorAll('.candle').forEach((c) => {
+      c.classList.toggle('tilted', !!M.getAdventure().candleTilt);
+    });
+  }
+
+  /* ── Dashboard ── */
+  function renderDashboard() {
+    $('missionLine').textContent = R.mission + ' · Updated ' + R.updated;
+    const grid = $('appGrid');
+    grid.innerHTML = R.apps.map((a) => {
+      const open = a.goalsTotal - a.goalsDone;
+      return `
+        <div class="card">
+          <span class="badge ${a.status}">${a.status}</span>
+          <h3>${a.name}</h3>
+          <p class="meta">${a.summary}</p>
+          <div class="bar"><i style="width:${a.progress}%"></i></div>
+          <div class="meta">${a.progress}% · goals ${a.goalsDone}/${a.goalsTotal} · <strong style="color:var(--warn)">${open} open</strong></div>
+          <div class="next"><strong>Next:</strong> ${a.nextFocus}</div>
+          <ul class="ms">
+            ${a.milestones.map((m) => `<li class="${m.done ? 'done' : ''}">${m.title}${m.when ? ' · ' + m.when : ''}</li>`).join('')}
+          </ul>
+        </div>`;
+    }).join('');
+  }
+
+  function renderFeatures() {
+    const mk = (arr) => arr.map((f) =>
+      `<li><strong>${f.name}</strong><span class="meta">${f.blurb} · <em>${f.app}</em></span></li>`
+    ).join('');
+    $('featIn').innerHTML = mk(R.features.installed);
+    $('featBuild').innerHTML = mk(R.features.building);
+    $('featPlan').innerHTML = mk(R.features.planned);
+  }
+
+  function renderHistory() {
+    $('timeline').innerHTML = R.history.map((h) => `
+      <div class="ev">
+        <div class="when">${h.when}</div>
+        <div class="title">${h.title}</div>
+        <div class="detail">${h.detail}</div>
+      </div>`).join('');
+  }
+
+  /* ── Tree rings ── */
+  function drawRings() {
+    const canvas = $('canvasRings');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 1100;
+    const h = 420;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const months = [12, 18, 22, 15, 28, 35, 40, 32, 26, 30, 38, 45, 42, 50, 48, 55];
+    const max = Math.max(...months);
+    const cx = w / 2, cy = h / 2;
+    const s = M.getStates().ring;
+    const seasonTint = { spring: '#40c070', summer: '#e8c040', fall: '#e07030', winter: '#80c8ff' }[s] || '#00f3ff';
+
+    ctx.fillStyle = '#030308';
+    ctx.fillRect(0, 0, w, h);
+
+    // ground glow
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.min(w, h) * 0.48);
+    g.addColorStop(0, 'rgba(0,40,30,0.4)');
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    let r = 28;
+    months.forEach((v, i) => {
+      const thick = 4 + (v / max) * 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + thick / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(180, 80%, ${40 + (i % 5) * 6}%, ${0.25 + v / max * 0.55})`;
+      ctx.lineWidth = thick;
+      ctx.stroke();
+      r += thick + 1.5;
+    });
+
+    // heartwood (click target)
+    ctx.beginPath();
+    ctx.arc(cx, cy, 26, 0, Math.PI * 2);
+    ctx.fillStyle = seasonTint;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#050508';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(s.toUpperCase(), cx, cy);
+
+    canvas.onclick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (w / rect.width);
+      const y = (e.clientY - rect.top) * (h / rect.height);
+      const dist = Math.hypot(x - cx, y - cy);
+      if (dist < 36) {
+        M.cycle('ring');
+        sfx('tick');
+        renderPills();
+        drawRings();
+        toast('Heartwood shifts… season → ' + M.getStates().ring);
+        maybeHintUnlock();
+      }
+    };
+  }
+
+  /* ── Map ── */
+  function drawMap() {
+    const canvas = $('canvasMap');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 1100;
+    const h = 420;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const sites = M.demoSites();
+    const lats = sites.map((s) => s.lat);
+    const lngs = sites.map((s) => s.lng);
+    const minLat = Math.min(...lats) - 0.15, maxLat = Math.max(...lats) + 0.15;
+    const minLng = Math.min(...lngs) - 0.2, maxLng = Math.max(...lngs) + 0.2;
+    const maxB = Math.max(...sites.map((s) => s.billed));
+
+    ctx.fillStyle = '#04060c';
+    ctx.fillRect(0, 0, w, h);
+    // grid
+    ctx.strokeStyle = 'rgba(0,243,255,0.06)';
+    for (let i = 0; i < 12; i++) {
+      ctx.beginPath();
+      ctx.moveTo((w / 12) * i, 0);
+      ctx.lineTo((w / 12) * i, h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, (h / 8) * i);
+      ctx.lineTo(w, (h / 8) * i);
+      ctx.stroke();
+    }
+
+    const pinMode = M.getStates().pin;
+    const modeBoost = { amber: 0, cyan: 1, violet: 2, ember: 3 }[pinMode] || 0;
+
+    const projected = sites.map((s) => {
+      const x = ((s.lng - minLng) / (maxLng - minLng)) * (w - 80) + 40;
+      const y = (1 - (s.lat - minLat) / (maxLat - minLat)) * (h - 80) + 40;
+      const hue = pinMode === 'cyan' ? 185 : pinMode === 'violet' ? 270 : pinMode === 'ember' ? 15 : M.letterHue(s.letter);
+      const r = 5 + (s.billed / maxB) * 16 + modeBoost;
+      return { s, x, y, hue, r };
+    });
+
+    projected.forEach(({ s, x, y, hue, r }) => {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${hue}, 90%, 55%, 0.15)`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${hue}, 90%, 55%, 0.9)`;
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = '9px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(s.letter, x, y + 3);
+    });
+
+    // home pulse
+    const home = projected.find((p) => p.s.customer.includes('FAFO'));
+    if (home) {
+      ctx.strokeStyle = 'rgba(0,243,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(home.x, home.y, home.r + 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    canvas.onclick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (w / rect.width);
+      const y = (e.clientY - rect.top) * (h / rect.height);
+      const hit = projected.some((p) => Math.hypot(p.x - x, p.y - y) < p.r + 8);
+      if (hit) {
+        M.cycle('pin');
+        sfx('tick');
+        renderPills();
+        drawMap();
+        toast('Pins retune… mode → ' + M.getStates().pin);
+        maybeHintUnlock();
+      }
+    };
+  }
+
+  /* ── Skyline ── */
+  function drawSkyline() {
+    const canvas = $('canvasSky');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 1100;
+    const h = 420;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const sites = M.demoSites();
+    // group by customer
+    const byC = {};
+    sites.forEach((s) => {
+      if (!byC[s.customer]) byC[s.customer] = { ...s, siteCount: s.sites };
+    });
+    const customers = Object.values(byC).sort((a, b) => b.billed - a.billed);
+    const towerMode = M.getStates().tower;
+    const modeMul = { short: 0.7, mid: 1, landmark: 1.25 }[towerMode] || 1;
+
+    // night sky
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#050510');
+    sky.addColorStop(0.55, '#0a1020');
+    sky.addColorStop(1, '#0c0814');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    // stars
+    for (let i = 0; i < 80; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + Math.random() * 0.5})`;
+      ctx.fillRect(Math.random() * w, Math.random() * h * 0.55, 1.2, 1.2);
+    }
+    // moon
+    ctx.beginPath();
+    ctx.arc(w * 0.85, 60, 22, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(220,230,255,0.85)';
+    ctx.fill();
+
+    const groundY = h - 48;
+    ctx.fillStyle = '#06040a';
+    ctx.fillRect(0, groundY, w, h - groundY);
+    ctx.strokeStyle = 'rgba(0,243,255,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(0, groundY);
+    ctx.lineTo(w, groundY);
+    ctx.stroke();
+
+    const maxBill = Math.max(...customers.map((c) => c.billed));
+    const gap = 12;
+    const totalW = w - 40;
+    const n = customers.length;
+    const bw = Math.min(70, (totalW - gap * (n - 1)) / n);
+    let x = 20;
+    const hitBoxes = [];
+
+    customers.forEach((c, idx) => {
+      const floors = Math.max(2, c.siteCount * 2);
+      const floorH = 10;
+      const baseH = floors * floorH * modeMul + (c.billed / maxBill) * 40;
+      const hue = M.letterHue(c.letter);
+      const windowsPerFloor = Math.max(2, Math.min(12, Math.round(c.tanks + c.dispensers)));
+      const buildingH = baseH;
+      const bx = x;
+      const by = groundY - buildingH;
+
+      // building body
+      ctx.fillStyle = `hsla(${hue}, 25%, 12%, 0.95)`;
+      ctx.fillRect(bx, by, bw, buildingH);
+      ctx.strokeStyle = `hsla(${hue}, 70%, 50%, 0.35)`;
+      ctx.strokeRect(bx, by, bw, buildingH);
+
+      // windows grid
+      const rows = Math.max(2, Math.floor(buildingH / floorH));
+      const cols = Math.min(windowsPerFloor, Math.max(2, Math.floor(bw / 7)));
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const wx = bx + 4 + col * ((bw - 8) / cols);
+          const wy = by + 4 + row * floorH;
+          const on = (row + col + idx) % 5 !== 0;
+          ctx.fillStyle = on
+            ? `hsla(${hue}, 90%, ${55 + (row % 3) * 5}%, ${0.55 + (c.billed / maxBill) * 0.4})`
+            : 'rgba(0,0,0,0.35)';
+          ctx.fillRect(wx, wy, Math.max(2, (bw - 8) / cols - 2), 5);
+        }
+      }
+
+      // accent lighting for big customers
+      const tier = c.billed / maxBill;
+      if (tier > 0.45 || towerMode === 'landmark') {
+        ctx.strokeStyle = `hsla(${hue}, 100%, 60%, 0.8)`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + bw, by);
+        ctx.stroke();
+        // edge neon
+        ctx.beginPath();
+        ctx.moveTo(bx + 1, by);
+        ctx.lineTo(bx + 1, groundY);
+        ctx.strokeStyle = `hsla(${hue}, 100%, 55%, 0.35)`;
+        ctx.stroke();
+      }
+      if (tier > 0.75 && towerMode === 'landmark') {
+        // crown glow
+        ctx.fillStyle = `hsla(${hue}, 100%, 60%, 0.25)`;
+        ctx.fillRect(bx - 4, by - 10, bw + 8, 10);
+      }
+
+      hitBoxes.push({ x: bx, y: by, w: bw, h: buildingH, c, isLandmark: idx === 0 });
+      x += bw + gap;
+    });
+
+    canvas.onclick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (w / rect.width);
+      const my = (e.clientY - rect.top) * (h / rect.height);
+      // prefer landmark (first) if clicked, else any building
+      const hit = hitBoxes.find((b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
+      if (hit) {
+        M.cycle('tower');
+        sfx('tick');
+        renderPills();
+        drawSkyline();
+        toast('Towers reconfigure… mode → ' + M.getStates().tower);
+        maybeHintUnlock();
+      }
+    };
+  }
+
+  function maybeHintUnlock() {
+    if (M.checkCombo() && !M.isDragonBanning()) {
+      toast('Something in the mountain shifts… try the Chamber tab.');
+    }
+  }
+
+  /* ── Chamber ── */
+  function drawGarden() {
+    const canvas = $('canvasGarden');
+    const room = $('gardenRoom');
+    const gate = $('gardenGate');
+    if (!canvas) return;
+    const a = M.getAdventure();
+    if (!a.gardenUnlocked) {
+      if (gate) {
+        gate.innerHTML = `<div class="gate-msg">The garden is sealed behind green pages and tilted flame.<br>
+          Find the shelf (when the mark hangs right for <em>this day</em>), lean the candle, open the green book.</div>`;
+      }
+      if (room) room.classList.add('locked');
+      return;
+    }
+    if (gate) gate.innerHTML = '';
+    if (room) room.classList.remove('locked');
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 1100;
+    const h = 420;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // night garden sky
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#060a12');
+    sky.addColorStop(1, '#0a120c');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    // stairs into trunk
+    const cx = w * 0.5, base = h - 40;
+    ctx.fillStyle = '#1a1208';
+    ctx.beginPath();
+    ctx.moveTo(cx - 40, base);
+    ctx.lineTo(cx - 18, base - 80);
+    ctx.lineTo(cx + 18, base - 80);
+    ctx.lineTo(cx + 40, base);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,200,100,0.25)';
+    ctx.stroke();
+
+    // tree rings (volume months) drawn as concentric on trunk face
+    const months = [12, 18, 22, 15, 28, 35, 40, 32, 26, 30, 38, 45];
+    const max = Math.max(...months);
+    let r = 16;
+    months.forEach((v) => {
+      const thick = 3 + (v / max) * 10;
+      ctx.beginPath();
+      ctx.arc(cx, base - 120, r + thick / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(140, 50%, ${30 + v / max * 30}%, 0.55)`;
+      ctx.lineWidth = thick;
+      ctx.stroke();
+      r += thick + 1;
+    });
+
+    // canopy
+    ctx.beginPath();
+    ctx.ellipse(cx, base - 200, 120, 70, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 80, 40, 0.55)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx - 50, base - 170, 70, 50, -0.3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 100, 50, 0.4)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 55, base - 175, 75, 55, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // trunk
+    ctx.fillStyle = '#2a1a0c';
+    ctx.fillRect(cx - 22, base - 160, 44, 90);
+    ctx.strokeStyle = 'rgba(0,243,255,0.2)';
+    ctx.strokeRect(cx - 22, base - 160, 44, 90);
+
+    // glow door in trunk
+    ctx.fillStyle = 'rgba(255, 180, 40, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, base - 100, 14, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,215,0,0.5)';
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(180,220,190,0.7)';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click the trunk / heartwood to seek the treasure stair', cx, 28);
+
+    canvas.onclick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (w / rect.width);
+      const y = (e.clientY - rect.top) * (h / rect.height);
+      // hit trunk / rings area
+      if (Math.hypot(x - cx, y - (base - 120)) < 90 || (x > cx - 30 && x < cx + 30 && y > base - 170 && y < base - 40)) {
+        const r = M.touchTree();
+        if (!r.ok) {
+          sfx('no');
+          if (r.reason === 'need-pin-cyan') toast('The tree whispers: the map must hum cyan today…');
+          else if (r.reason === 'need-tower') toast('The tree whispers: a landmark tower must stand…');
+          else if (r.reason === 'no-garden') toast('The garden is not open.');
+          else toast('The tree does not yield.');
+          return;
+        }
+        sfx('tree');
+        if (r.unlocked) {
+          sfx('chamber');
+          try { if (A) A.celebrateThenSettle(); } catch (_) { /* ignore */ }
+          toast('Roots part. The treasure stair opens — enter the Chamber.');
+          showView('chamber');
+        } else {
+          sfx('ok');
+          toast('The tree remembers you… but the day-path is incomplete.');
+        }
+        renderPills();
+      }
+    };
+  }
+
+  function renderChamber() {
+    const gate = $('chamberGate');
+    const room = $('chamberRoom');
+    renderPills();
+
+    if (M.isDragonBanning()) {
+      const sec = Math.ceil(M.banRemainingMs() / 1000);
+      gate.innerHTML = `
+        <div class="gate-msg">
+          <div class="entrance guarded" style="position:relative;height:160px;margin:0 auto 16px;">
+            <div class="mouth"></div><div class="smoke"></div>
+          </div>
+          <strong>The neon dragon guards the entrance.</strong><br>
+          Smoke and light pour from the hobbit-hole in the mountainside.<br>
+          Return in ~${sec}s. The day’s path has been muddied.
+        </div>`;
+      room.style.display = 'none';
+      return;
+    }
+
+    if (!M.isUnlocked()) {
+      const attempt = M.tryUnlock();
+      if (!attempt.ok) {
+        const h = M.pathProgressHint();
+        gate.innerHTML = `
+          <div class="gate-msg">
+            <div class="entrance sealed" style="position:relative;height:140px;margin:0 auto 16px;">
+              <div class="mouth" style="display:flex;align-items:center;justify-content:center;">
+                <span style="color:#00f3ff;font-size:28px;opacity:0.5;">◈</span>
+              </div>
+            </div>
+            Only a logo on the rock — until the day-path is walked.<br>
+            <span class="meta">Today’s road: <em>${h.pathName}</em></span>
+            <div class="path-soft" style="margin-top:12px;text-align:left;max-width:420px;margin-left:auto;margin-right:auto;">
+              ${h.steps.map((s) => `<div class="${s.ok ? 'ok' : 'no'}">${s.ok ? '✓' : '○'} ${s.label}</div>`).join('')}
+            </div>
+            <div class="btn-row" style="justify-content:center;margin-top:16px;">
+              <button type="button" id="btnTryUnlock">Knock on the stone</button>
+            </div>
+          </div>`;
+        room.style.display = 'none';
+        const b = $('btnTryUnlock');
+        if (b) {
+          b.onclick = () => {
+            const r = M.tryUnlock();
+            if (r.ok) {
+              sfx('chamber');
+              try { if (A) A.celebrateThenSettle(); } catch (_) { /* ignore */ }
+              toast('Stone becomes stair. Welcome to the chamber.');
+              renderChamber();
+            } else {
+              sfx('no');
+              toast('The mountain ignores you. Walk the lodge → shelf → garden → tree.');
+            }
+          };
+        }
+        return;
+      }
+    }
+
+    gate.innerHTML = '';
+    room.style.display = 'block';
+    room.classList.remove('locked');
+    $('entrance').classList.remove('guarded', 'sealed');
+    try { if (A) A.setUnlockProgress(1); } catch (_) { /* ignore */ }
+
+    $('legendText').innerHTML = `
+      <h4>Adventure locks (rotate by day)</h4>
+      The entrance path changes with the calendar so it never feels like a padlock dial.
+      <strong>Lodge path:</strong> mark position + upside-down rotation → shelf → tilt candle → green book → garden tree.
+      <strong>Cartographer:</strong> different mark placement/rotation + map pins humming cyan before the tree yields.
+      <strong>Architect:</strong> another mark pose + landmark skyline stance.
+      <h4>The mark (◈)</h4>
+      Click rotates 90°. Double-click moves among three resting places.
+      When it hangs as the day requires, a bookshelf appears on History.
+      <h4>Candle &amp; green book</h4>
+      Tilt the mantle candle, then pull the green volume to open the garden.
+      <h4>Tree rings / map / skyline</h4>
+      Public-facing growth art: rings = monthly volume thickness; pins = sites by letter color;
+      towers = customers (2 floors/site, windows ≈ tanks+dispensers). Always night so lights matter.
+      <h4>Dragon</h4>
+      Sleeping neon guardian. Wake it and you are cast out for 5 minutes; smoke marks the tunnel.
+      <h4>Vault</h4>
+      Site logins, Verifone cheat sheet, scraped passwords, PuTTY scroll — localStorage only.
+    `;
+
+    $('treasureNotes').textContent = [
+      'Loot checklist for builders:',
+      '• Real sites.json will replace demoSites()',
+      '• Xero billed totals feed tower tier + pin size',
+      '• POS OCR fills tanks/dispensers → window density',
+      '• Public site: hide chamber tab; keep only mythos art',
+      '• This vault never syncs to git by design',
+    ].join('\n');
+
+    renderVaultTable();
+    renderBackdoorTable();
+    renderScrapedTable();
+    const vault = M.getVault();
+    $('puttyScroll').value = vault.puttyNotes || '';
+
+    const dragon = $('dragon');
+    dragon.classList.remove('awake');
+    dragon.onclick = () => {
+      if (!confirm('Poke the neon dragon? It will seal the chamber for 5 minutes.')) return;
+      dragon.classList.add('awake');
+      sfx('dragon');
+      M.banDragon();
+      try { if (A) A.setUnlockProgress(0); } catch (_) { /* ignore */ }
+      toast('The dragon awakens! You are cast out…');
+      setTimeout(() => renderChamber(), 600);
+    };
+  }
+
+  function renderVaultTable() {
+    const v = M.getVault();
+    const body = $('vaultBody');
+    if (!body) return;
+    if (!v.sites.length) {
+      v.sites.push({ site: '', role: 'manager', user: '', secret: '' });
+    }
+    body.innerHTML = v.sites.map((row, i) => `
+      <tr>
+        <td><input data-i="${i}" data-f="site" value="${esc(row.site)}" placeholder="Site code / name" /></td>
+        <td>
+          <select data-i="${i}" data-f="role">
+            ${['manager', 'cashier', 'backdoor', 'tech', 'other'].map((r) =>
+              `<option value="${r}" ${row.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+        </td>
+        <td><input data-i="${i}" data-f="user" value="${esc(row.user)}" placeholder="user" /></td>
+        <td><input data-i="${i}" data-f="secret" value="${esc(row.secret)}" placeholder="pass / note" /></td>
+      </tr>`).join('');
+
+    body.querySelectorAll('input,select').forEach((el) => {
+      el.onchange = el.oninput = () => {
+        const i = +el.getAttribute('data-i');
+        const f = el.getAttribute('data-f');
+        const vault = M.getVault();
+        if (!vault.sites[i]) vault.sites[i] = { site: '', role: 'manager', user: '', secret: '' };
+        vault.sites[i][f] = el.value;
+        M.saveVault(vault);
+      };
+    });
+  }
+
+  function renderBackdoorTable() {
+    const v = M.getVault();
+    const body = $('backdoorBody');
+    if (!body) return;
+    if (!v.verifoneBackdoors || !v.verifoneBackdoors.length) {
+      v.verifoneBackdoors = M.defaultVerifoneBackdoorSheet();
+    }
+    const fields = ['system', 'model', 'role', 'user', 'secret', 'notes'];
+    body.innerHTML = v.verifoneBackdoors.map((row, i) => `
+      <tr>
+        ${fields.map((f) =>
+          `<td><input data-bi="${i}" data-f="${f}" value="${esc(row[f] || '')}" placeholder="${f}" style="min-width:70px;" /></td>`
+        ).join('')}
+      </tr>`).join('');
+    body.querySelectorAll('input').forEach((el) => {
+      el.oninput = () => {
+        const i = +el.getAttribute('data-bi');
+        const f = el.getAttribute('data-f');
+        const vault = M.getVault();
+        if (!vault.verifoneBackdoors[i]) vault.verifoneBackdoors[i] = {};
+        vault.verifoneBackdoors[i][f] = el.value;
+        M.saveVault(vault);
+      };
+    });
+  }
+
+  function renderScrapedTable() {
+    const v = M.getVault();
+    const body = $('scrapedBody');
+    const stats = $('scrapeStats');
+    if (!body) return;
+    const rows = v.customerPasswords || [];
+    if (stats) {
+      const log = (v.scrapeLog && v.scrapeLog[0]) ? v.scrapeLog[0] : null;
+      stats.textContent = rows.length
+        ? `${rows.length} entries in vault` + (log ? ` · last scan: ${log.found} found, ${log.added} new (${log.source})` : '')
+        : 'No scraped entries yet — scan sticky notes or import JSON.';
+    }
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="6" class="meta">Empty — run a scan or add via import.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((row, i) => `
+      <tr>
+        <td>${esc(row.site || row.customer || '—')}<div class="meta">${esc(row.customer || '')}</div></td>
+        <td>${esc(row.role || '')}</td>
+        <td>${esc(row.user || '')}</td>
+        <td><code style="color:#ffd700;">${esc(row.secret || '')}</code></td>
+        <td class="meta">${esc(row.source || '')}<br>${esc(row.confidence || '')}</td>
+        <td><button type="button" data-del="${i}" style="font-size:10px;cursor:pointer;">✕</button></td>
+      </tr>`).join('');
+    body.querySelectorAll('button[data-del]').forEach((btn) => {
+      btn.onclick = () => {
+        const vault = M.getVault();
+        vault.customerPasswords.splice(+btn.getAttribute('data-del'), 1);
+        M.saveVault(vault);
+        renderScrapedTable();
+      };
+    });
+  }
+
+  async function runTextScrape(text, sourceLabel) {
+    const hits = M.scrapePasswordsFromText(text, sourceLabel);
+    if (!hits.length) {
+      toast('No password-like patterns found in that text.');
+      return;
+    }
+    const r = M.mergeScrapedPasswords(hits, sourceLabel);
+    renderScrapedTable();
+    toast(`Scan: ${r.found} hits, ${r.added} new (total ${r.total}). Review for false positives.`);
+  }
+
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  }
+
+  function wireVaultButtons() {
+    $('btnAddSite').onclick = () => {
+      const v = M.getVault();
+      v.sites.push({ site: '', role: 'cashier', user: '', secret: '' });
+      M.saveVault(v);
+      renderVaultTable();
+    };
+    $('btnSaveVault').onclick = () => {
+      toast('Vault saved on this PC (localStorage).');
+    };
+    $('btnExportVault').onclick = () => {
+      const blob = new Blob([JSON.stringify(M.getVault(), null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'fafo-chamber-vault-local.json';
+      a.click();
+    };
+    $('btnImportVault').onclick = () => $('importFile').click();
+    $('importFile').onchange = async () => {
+      const f = $('importFile').files && $('importFile').files[0];
+      if (!f) return;
+      try {
+        const data = JSON.parse(await f.text());
+        // Merge carefully if partial
+        const cur = M.getVault();
+        const merged = {
+          ...cur,
+          ...data,
+          sites: data.sites || cur.sites,
+          customerPasswords: data.customerPasswords || cur.customerPasswords,
+          verifoneBackdoors: data.verifoneBackdoors || cur.verifoneBackdoors,
+          puttyNotes: data.puttyNotes || cur.puttyNotes,
+        };
+        M.saveVault(merged);
+        renderVaultTable();
+        renderBackdoorTable();
+        renderScrapedTable();
+        $('puttyScroll').value = merged.puttyNotes || '';
+        toast('Vault imported.');
+      } catch (e) {
+        toast('Import failed: ' + e.message);
+      }
+    };
+
+    // Verifone backdoor sheet
+    if ($('btnAddBackdoor')) {
+      $('btnAddBackdoor').onclick = () => {
+        const v = M.getVault();
+        v.verifoneBackdoors.push({ system: '', model: '', role: '', user: '', secret: '', notes: '' });
+        M.saveVault(v);
+        renderBackdoorTable();
+      };
+      $('btnSaveBackdoors').onclick = () => toast('Backdoor sheet saved locally.');
+      $('btnResetBackdoors').onclick = () => {
+        if (!confirm('Reset Verifone cheat sheet rows to template? (Your filled secrets in those rows will be replaced.)')) return;
+        const v = M.getVault();
+        v.verifoneBackdoors = M.defaultVerifoneBackdoorSheet();
+        M.saveVault(v);
+        renderBackdoorTable();
+        toast('Backdoor template restored.');
+      };
+    }
+
+    // Scrapers
+    if ($('btnScrapeSticky')) {
+      $('btnScrapeSticky').onclick = () => $('stickyScanFile').click();
+      $('stickyScanFile').onchange = async () => {
+        const f = $('stickyScanFile').files && $('stickyScanFile').files[0];
+        if (!f) return;
+        const text = await f.text();
+        // If JSON sticky export, try to flatten
+        let body = text;
+        try {
+          const j = JSON.parse(text);
+          if (j.active && Array.isArray(j.active)) {
+            body = j.active.map((n) => n.text || '').join('\n');
+          } else if (Array.isArray(j)) {
+            body = j.map((n) => (typeof n === 'string' ? n : (n.text || JSON.stringify(n)))).join('\n');
+          }
+        } catch (_) { /* plain text */ }
+        await runTextScrape(body, 'sticky:' + f.name);
+      };
+      $('btnScrapeText').onclick = async () => {
+        const text = prompt('Paste sticky notes / ticket text / OCR dump to scan for passwords:');
+        if (text) await runTextScrape(text, 'paste');
+      };
+      $('btnScrapeOcr').onclick = async () => {
+        const text = prompt('Paste OCR text from POS / config screenshots:');
+        if (text) await runTextScrape(text, 'ocr-paste');
+      };
+      $('btnScrapeJson').onclick = () => $('dbScanFile').click();
+      $('dbScanFile').onchange = async () => {
+        const f = $('dbScanFile').files && $('dbScanFile').files[0];
+        if (!f) return;
+        try {
+          const data = JSON.parse(await f.text());
+          // Accept several shapes
+          let hits = [];
+          if (Array.isArray(data.customerPasswords)) {
+            hits = data.customerPasswords;
+          } else if (Array.isArray(data.passwords)) {
+            hits = data.passwords;
+          } else if (Array.isArray(data.sites)) {
+            data.sites.forEach((s) => {
+              if (s.password || s.secret) {
+                hits.push({
+                  site: s.site || s.name || s.code || '',
+                  customer: s.customer || '',
+                  role: s.role || 'unknown',
+                  user: s.user || s.username || '',
+                  secret: s.password || s.secret || '',
+                  source: 'db:' + f.name,
+                  confidence: 'high',
+                });
+              }
+              (s.logins || s.credentials || []).forEach((c) => {
+                hits.push({
+                  site: s.site || s.name || '',
+                  customer: s.customer || '',
+                  role: c.role || 'unknown',
+                  user: c.user || c.username || '',
+                  secret: c.password || c.secret || '',
+                  source: 'db:' + f.name,
+                  confidence: 'high',
+                });
+              });
+            });
+          } else if (Array.isArray(data)) {
+            hits = data;
+          } else {
+            // deep string scrape of whole JSON
+            const r = M.mergeScrapedPasswords(
+              M.scrapePasswordsFromText(JSON.stringify(data, null, 2), 'db-json:' + f.name),
+              'db-json:' + f.name
+            );
+            renderScrapedTable();
+            toast(`JSON string-scan: ${r.found} hits, ${r.added} new.`);
+            return;
+          }
+          // normalize
+          hits = hits.map((h) => ({
+            source: h.source || ('db:' + f.name),
+            site: h.site || '',
+            customer: h.customer || '',
+            role: h.role || 'unknown',
+            user: h.user || h.username || '',
+            secret: h.secret || h.password || '',
+            notes: h.notes || '',
+            confidence: h.confidence || 'high',
+            scrapedAt: new Date().toISOString(),
+          })).filter((h) => h.secret);
+          const r = M.mergeScrapedPasswords(hits, 'db:' + f.name);
+          renderScrapedTable();
+          toast(`DB import: ${r.found} rows, ${r.added} new.`);
+        } catch (e) {
+          toast('DB import failed: ' + e.message);
+        }
+      };
+      $('btnClearScraped').onclick = () => {
+        if (!confirm('Clear all scraped customer passwords from local vault?')) return;
+        const v = M.getVault();
+        v.customerPasswords = [];
+        M.saveVault(v);
+        renderScrapedTable();
+        toast('Scraped list cleared.');
+      };
+    }
+
+    $('btnSavePutty').onclick = () => {
+      const v = M.getVault();
+      v.puttyNotes = $('puttyScroll').value;
+      M.saveVault(v);
+      toast('PuTTY scroll saved locally.');
+    };
+    $('btnResetPutty').onclick = () => {
+      const v = M.getVault();
+      v.puttyNotes = M.defaultPuttyScroll();
+      M.saveVault(v);
+      $('puttyScroll').value = v.puttyNotes;
+      toast('Scroll reset to template (logins kept).');
+    };
+  }
+
+  /* ── Tabs ── */
+  function showView(name) {
+    document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.getAttribute('data-view') === name));
+    const el = $('view-' + name);
+    if (el) el.classList.add('active');
+    if (name === 'dashboard') {
+      placeRune();
+      wireAdventure();
+    }
+    if (name === 'history') updateBookshelf();
+    if (name === 'garden') drawGarden();
+    if (name === 'rings') drawRings();
+    if (name === 'map') drawMap();
+    if (name === 'skyline') drawSkyline();
+    if (name === 'chamber') renderChamber();
+    renderPills();
+  }
+
+  document.getElementById('tabs').onclick = (e) => {
+    const b = e.target.closest('button[data-view]');
+    if (!b) return;
+    showView(b.getAttribute('data-view'));
+  };
+
+  window.addEventListener('resize', () => {
+    if ($('view-rings').classList.contains('active')) drawRings();
+    if ($('view-map').classList.contains('active')) drawMap();
+    if ($('view-skyline').classList.contains('active')) drawSkyline();
+    if ($('view-garden').classList.contains('active')) drawGarden();
+  });
+
+  // Mark progress map milestone done in UI data for this session display
+  const prog = R.apps.find((a) => a.id === 'toolbox');
+  if (prog) {
+    const m = prog.milestones.find((x) => x.id === 'tb-progress');
+    if (m) { m.done = true; m.when = '2026-07'; }
+    prog.goalsDone = Math.min(prog.goalsTotal, prog.goalsDone + 1);
+    prog.progress = Math.min(100, prog.progress + 4);
+  }
+  const myth = R.features.building.find((f) => f.id === 'progress-map');
+  if (myth) {
+    R.features.installed.push(myth);
+    R.features.building = R.features.building.filter((f) => f.id !== 'progress-map');
+  }
+
+  renderDashboard();
+  renderFeatures();
+  renderHistory();
+  wireAdventure();
+  wireVaultButtons();
+  renderPills();
+  showView('dashboard');
+})();
+  </script>
+</body>
+</html>

@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TECH QUEST · ANY Key Chronicles</title>
+  <style>
+    :root {
+      --bg: #05080f;
+      --panel: rgba(10, 16, 28, 0.95);
+      --line: rgba(0, 243, 255, 0.25);
+      --accent: #00f3ff;
+      --gold: #ffd700;
+      --ok: #00ff88;
+      --bad: #ff4466;
+      --warn: #ffc800;
+      --muted: #7a8494;
+      --text: #e8eef4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse at 15% 0%, #0c2a40 0%, transparent 45%),
+        radial-gradient(ellipse at 90% 80%, #2a1040 0%, transparent 40%),
+        radial-gradient(ellipse at 50% 100%, #0a2018 0%, transparent 35%),
+        var(--bg);
+    }
+    a.back {
+      position: fixed; top: 10px; left: 12px; z-index: 60;
+      color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 700;
+      padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,.55);
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 16px 48px; }
+    .screen { display: none; }
+    .screen.active { display: block; animation: fade .28s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    .hero-title { text-align: center; margin-bottom: 20px; }
+    .hero-title h1 {
+      margin: 0; font-size: clamp(2rem, 6vw, 3.4rem); letter-spacing: .14em;
+      background: linear-gradient(180deg, #fff 0%, var(--accent) 45%, #3b82f6 100%);
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 30px rgba(0,243,255,.35));
+    }
+    .hero-title .sub { color: var(--gold); letter-spacing: .12em; font-size: 12px; margin-top: 8px; text-transform: uppercase; }
+    .hero-title .tag { color: var(--muted); max-width: 560px; margin: 14px auto 0; font-size: 13px; }
+
+    .menu-btns { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 22px; }
+    .btn {
+      font: inherit; font-weight: 700; letter-spacing: .04em; cursor: pointer;
+      padding: 12px 26px; min-width: 280px; border-radius: 12px;
+      border: 1px solid var(--line); color: var(--accent);
+      background: linear-gradient(145deg, rgba(0,243,255,.14), rgba(0,0,0,.45));
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 0 24px rgba(0,243,255,.2); }
+    .btn.gold { border-color: rgba(255,215,0,.45); color: var(--gold); background: linear-gradient(145deg, rgba(255,215,0,.12), rgba(0,0,0,.45)); }
+    .btn.danger { border-color: rgba(255,68,102,.5); color: #ff8a9a; }
+    .btn.small { min-width: 0; padding: 8px 12px; font-size: 12px; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .panel {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px 18px; margin: 10px auto; max-width: 720px;
+    }
+    .panel h2 { margin: 0 0 8px; font-size: 14px; color: var(--gold); letter-spacing: .08em; }
+    .panel p, .panel li { color: #c5ced8; font-size: 13px; }
+    .panel pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, Consolas, monospace; color: #b8c4d0; background: rgba(0,0,0,.35); padding: 12px; border-radius: 8px; }
+
+    .class-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px; max-width: 960px; margin: 0 auto;
+    }
+    .class-card {
+      border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 14px;
+      background: rgba(0,0,0,.35); cursor: pointer; transition: .2s;
+      min-height: 180px;
+    }
+    .class-card:hover, .class-card.sel {
+      border-color: var(--card, var(--accent));
+      box-shadow: 0 0 24px color-mix(in srgb, var(--card, var(--accent)) 35%, transparent);
+      transform: translateY(-3px);
+    }
+    .class-card .em { font-size: 2rem; }
+    .class-card h3 { margin: 6px 0 2px; font-size: 15px; }
+    .class-card .role { font-size: 11px; color: var(--card, var(--accent)); letter-spacing: .06em; text-transform: uppercase; }
+    .class-card p { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+
+    .battle { display: grid; grid-template-columns: 1fr 300px; gap: 12px; }
+    @media (max-width: 920px) { .battle { grid-template-columns: 1fr; } }
+    .canvas-wrap {
+      border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+      background: #070c14; box-shadow: 0 0 50px rgba(0,243,255,.1);
+    }
+    canvas#board { display: block; width: 100%; height: auto; cursor: pointer; image-rendering: pixelated; }
+    .hud-top { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+    .pill {
+      font-size: 11px; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted); background: rgba(0,0,0,.4);
+    }
+    .pill strong { color: var(--accent); }
+    .side {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px; max-height: 740px; overflow: auto;
+    }
+    .side h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+    .unit-card {
+      border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 8px; margin-bottom: 8px; font-size: 12px;
+    }
+    .unit-card.player { border-color: rgba(94,234,212,.35); }
+    .unit-card.enemy { border-color: rgba(255,107,107,.35); }
+    .unit-card.sel { outline: 1px solid var(--accent); }
+    .hpbar { height: 6px; background: #222; border-radius: 3px; margin-top: 4px; overflow: hidden; }
+    .hpbar > i { display: block; height: 100%; background: linear-gradient(90deg, #0a6, var(--ok)); }
+    .unit-card.enemy .hpbar > i { background: linear-gradient(90deg, #800, var(--bad)); }
+    .log { font-size: 11px; color: var(--muted); max-height: 160px; overflow: auto; border-top: 1px solid rgba(255,255,255,.06); margin-top: 8px; padding-top: 8px; }
+    .log div { margin-bottom: 4px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .story-box {
+      max-width: 680px; margin: 0 auto 16px; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+    }
+    .story-box .ch { color: var(--accent); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+    .story-box h2 { margin: 4px 0 8px; color: var(--gold); }
+    .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+    .roster-card {
+      border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 10px; cursor: pointer;
+      background: rgba(0,0,0,.3); font-size: 12px;
+    }
+    .roster-card.on { border-color: var(--ok); box-shadow: 0 0 12px rgba(0,255,136,.2); }
+    .shop-item {
+      display: flex; justify-content: space-between; gap: 10px; align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,.06); padding: 8px 0; font-size: 12px;
+    }
+    .toggle-row { display: flex; gap: 12px; justify-content: center; margin-top: 12px; color: var(--muted); font-size: 12px; }
+    .note { font-size: 12px; color: var(--muted); text-align: center; margin-top: 14px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 900px; margin: 0 auto; }
+    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+  </style>
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+</head>
+<body data-tb-esc="off">
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+  <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="tech-quest-tech-quest" data-fafo-layout-type="columns">
+
+    <!-- TITLE -->
+    <div id="screen-title" class="screen active" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+      <div class="hero-title">
+        <h1>TECH QUEST</h1>
+        <div class="sub">Warhammer of MASTER RESET · ANY Key Chronicles</div>
+        <p class="tag">
+          Shining Force × Final Fantasy Tactics energy for C-store &amp; fuel techs.
+          Pick a class. Recruit the damned. Loot aftermarket glory. Laugh through the tickets.
+        </p>
+      </div>
+      <div class="menu-btns">
+        <button type="button" class="btn" id="btnNew">New Chronicle</button>
+        <button type="button" class="btn" id="btnContinue">Continue</button>
+        <button type="button" class="btn gold" id="btnTreasure">🏆 Hidden Treasure Room</button>
+        <button type="button" class="btn" id="btnHow">How to play</button>
+        <button type="button" class="btn" id="btnLore">Hammer Lore</button>
+        <a class="btn small" href="../Toolbox Launcher.html" style="text-decoration:none;text-align:center">← Toolbox</a>
+        <a class="btn small" href="../Progress Map/Progress Map.html" style="text-decoration:none;text-align:center">◈ Progress Map</a>
+      </div>
+      <div class="toggle-row"><label><input type="checkbox" id="sfxOn" /> In-game SFX (off by default)</label></div>
+      <p class="note">Adventure lives here — Progress Map stays professional. Treasure Room opens anytime from this menu. Esc = back one screen · title Esc = Toolbox.</p>
+    </div>
+
+    <!-- CLASS SELECT -->
+    <div id="screen-class" class="screen">
+      <div class="hero-title">
+        <h1 style="font-size:1.8rem;">Choose Your Class</h1>
+        <div class="sub">You are the seed of the party · recruits join later</div>
+      </div>
+      <div class="class-grid" id="classGrid"></div>
+      <div class="menu-btns">
+        <button type="button" class="btn" id="btnConfirmClass" disabled>Clock In With This Class</button>
+        <button type="button" class="btn small" data-go="title">Back</button>
+      </div>
+      <div class="panel" id="classDetail" style="display:none;"></div>
+    </div>
+
+    <!-- HOW / LORE / TREASURE / STORY / RESULT shared patterns -->
+    <div id="screen-how" class="screen">
+      <div class="panel">
+        <h2>How to play</h2>
+        <ul>
+          <li><strong>Class</strong> sets your kit; <strong>recruit</strong> along the route (up to 5 deploy)</li>
+          <li><strong>Shops</strong> between tickets — equip weapons/armor (class restrictions; Leads wear anything)</li>
+          <li>Battle: click unit → blue move → Attack / skills / Wait → <strong>End turn</strong></li>
+          <li><strong>Rolls</strong> (d20): Field Tech −2 when On-Call (every 4th battle); Per Diem +2 party</li>
+          <li><strong>Valkyrie Jump</strong> leaves the board, then <strong>Javelin of PTO</strong> rains down</li>
+          <li><strong>Because I Said So</strong> scrambles enemy aggro · <strong>Shadowstep</strong> warps tiles</li>
+          <li>Boss tips: Quick E &lt;10% → One More Ting; Methen → Reach for the Ceiling; Gilbest → Unbootstrap</li>
+        </ul>
+        <button type="button" class="btn small" data-go="title">Back</button>
+      </div>
+    </div>
+
+    <div id="screen-lore" class="screen">
+      <div class="panel"><h2 id="loreTitle"></h2><pre id="loreBody"></pre>
+        <button type="button" class="btn small" data-go="title">Back</button></div>
+    </div>
+
+    <div id="screen-treasure" class="screen">
+      <div class="hero-title">
+        <h1 style="font-size:1.6rem;">Hidden Treasure Room</h1>
+        <div class="sub">Menu access · no ticket required</div>
+      </div>
+      <div class="panel"><h2>Vault</h2><p id="treasureStatus"></p>
+        <div class="actions">
+          <button type="button" class="btn small gold" id="btnOpenChamber">Progress Map Chamber</button>
+        </div>
+      </div>
+      <div class="panel"><h2>Warhammer</h2><pre id="treasureHammer"></pre></div>
+      <div class="panel"><h2>Roster of Legends</h2>
+        <ul>
+          <li>💧 Smurf Operator — water truck warrior</li>
+          <li>⚡ Field Technician — glass cannon, on-call curse</li>
+          <li>📋 Service Manager — Lie Cheat Steal · Voluntold · Per Diem</li>
+          <li>🧱 Construction Paladin — low-pay tanks</li>
+          <li>🪽 Valkyrie — Javelin of PTO</li>
+          <li>🏴‍☠️ Pirate Merc — rock the boat</li>
+          <li>👑 Lead/POS — any gear · Shadowstep · Because I Said So</li>
+        </ul>
+      </div>
+      <div class="menu-btns"><button type="button" class="btn" data-go="title">Leave vault</button></div>
+    </div>
+
+    <div id="screen-story" class="screen">
+      <div class="story-box">
+        <div class="ch" id="storyChapter"></div>
+        <h2 id="storyName"></h2>
+        <p style="color:var(--muted);font-size:12px;" id="storyMap"></p>
+        <div id="storyText"></div>
+        <div id="deployBox" style="display:none;margin-top:14px;">
+          <h3 style="font-size:12px;color:var(--muted);">Deploy (tap to toggle)</h3>
+          <div class="roster-grid" id="deployGrid"></div>
+        </div>
+        <div class="menu-btns" style="margin-top:16px;">
+          <button type="button" class="btn" id="btnPrimary"></button>
+          <button type="button" class="btn small" id="btnRoster">Roster / Gear</button>
+          <button type="button" class="btn small" data-go="title">Main menu</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-shop" class="screen">
+      <div class="story-box">
+        <div class="ch" id="shopChapter"></div>
+        <h2 id="shopName"></h2>
+        <div id="shopStory"></div>
+        <p class="pill" style="display:inline-block;margin:10px 0;">Gold <strong id="shopGold">0</strong> · Discount <strong id="shopDisc">0%</strong></p>
+        <div id="shopList"></div>
+        <div class="menu-btns">
+          <button type="button" class="btn" id="btnLeaveShop">Leave shop</button>
+          <button type="button" class="btn small" id="btnShopRoster">Roster / Gear</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-roster" class="screen">
+      <div class="hero-title"><h1 style="font-size:1.4rem;">Roster &amp; Gear</h1>
+        <div class="sub">Gold <span id="rosterGold">0</span></div></div>
+      <div class="two-col">
+        <div class="panel"><h2>Party</h2><div id="rosterList"></div></div>
+        <div class="panel"><h2>Inventory</h2><div id="invList"></div>
+          <p style="font-size:11px;color:var(--muted);">Select a party member, then an item to equip (if class allows).</p></div>
+      </div>
+      <div class="menu-btns"><button type="button" class="btn" id="btnRosterBack">Back to route</button></div>
+    </div>
+
+    <div id="screen-battle" class="screen">
+      <div class="hud-top">
+        <span class="pill" id="hudChapter"></span>
+        <span class="pill">R <strong id="hudRound">1</strong></span>
+        <span class="pill">Gold Δ <strong id="hudGold">0</strong></span>
+        <span class="pill" id="hudPhase">Your turn</span>
+        <span class="pill" id="hudHint">Select unit</span>
+        <button type="button" class="btn small" id="btnEndTurn">End turn</button>
+        <button type="button" class="btn small danger" id="btnFlee">Flee</button>
+      </div>
+      <div class="battle">
+        <div class="canvas-wrap"><canvas id="board" width="640" height="512"></canvas></div>
+        <div class="side">
+          <h3>Selected</h3>
+          <div id="selPanel"></div>
+          <div class="actions" id="actBar"></div>
+          <h3 style="margin-top:12px;">Units</h3>
+          <div id="rosterBattle"></div>
+          <div class="log" id="battleLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-result" class="screen">
+      <div class="panel" style="text-align:center;">
+        <h2 id="resultTitle">Ticket closed</h2>
+        <p id="resultBody"></p>
+        <div class="menu-btns">
+          <button type="button" class="btn" id="btnNext">Continue route</button>
+          <button type="button" class="btn gold" id="btnResultTreasure">Treasure Room</button>
+          <button type="button" class="btn small" data-go="title">Main menu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="techquest-data.js"></script>
+  <script src="techquest-engine.js"></script>
+  <script>
+(function () {
+  const D = window.TECHQUEST_DATA;
+  const E = window.TECHQUEST;
+  const $ = (id) => document.getElementById(id);
+
+  let campaign = null;
+  let battle = null;
+  let hover = null;
+  let sfx = false;
+  let selectedClass = null;
+  let deploySet = new Set();
+  let rosterFocusMid = null;
+  let returnScreen = 'story';
+  let audioCtx = null;
+
+  function beep(f, d, t) {
+    if (!sfx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const t0 = audioCtx.currentTime;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = t || 'square'; o.frequency.value = f; g.gain.value = 0.035;
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0 + d + 0.02);
+    } catch (_) {}
+  }
+
+  function show(name) {
+    document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+    const el = $('screen-' + name);
+    if (el) el.classList.add('active');
+    try { window.__tqScreen = name; } catch (_) {}
+  }
+
+  document.querySelectorAll('[data-go]').forEach((b) => {
+    b.addEventListener('click', () => show(b.getAttribute('data-go')));
+  });
+
+  // Esc: pop one screen (battle/story → title), title → Toolbox. Never dead-end.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const active = document.querySelector('.screen.active')?.id?.replace('screen-', '') || 'title';
+    const backMap = {
+      class: 'title', how: 'title', lore: 'title', treasure: 'title',
+      story: 'title', shop: 'story', roster: 'story', battle: 'story', result: 'story',
+    };
+    if (active === 'title' || active === 'battle') {
+      // In battle Esc does not abandon mid-fight accidentally — go result/story only via UI
+      if (active === 'battle') return;
+      location.href = '../Toolbox Launcher.html';
+      return;
+    }
+    const dest = backMap[active] || 'title';
+    show(dest);
+    e.preventDefault();
+  });
+
+  const saved = E.loadSave();
+  sfx = !!saved.sfx;
+  $('sfxOn').checked = sfx;
+  $('sfxOn').onchange = () => { sfx = $('sfxOn').checked; E.saveSave({ sfx, campaign }); };
+
+  function refreshContinue() {
+    const c = saved.campaign || E.loadSave().campaign;
+    $('btnContinue').disabled = !c || !c.roster;
+  }
+  refreshContinue();
+
+  $('btnNew').onclick = () => {
+    selectedClass = null;
+    $('btnConfirmClass').disabled = true;
+    renderClasses();
+    show('class');
+  };
+
+  $('btnContinue').onclick = () => {
+    const c = E.loadSave().campaign;
+    if (!c || !c.roster) return alert('No save.');
+    campaign = c;
+    openNode();
+  };
+
+  $('btnHow').onclick = () => show('how');
+  $('btnLore').onclick = () => {
+    $('loreTitle').textContent = D.LORE.hammer.title;
+    $('loreBody').textContent = D.LORE.hammer.body;
+    show('lore');
+  };
+  $('btnTreasure').onclick = openTreasure;
+  $('btnResultTreasure').onclick = openTreasure;
+  $('btnOpenChamber').onclick = () => { location.href = '../Progress Map/Progress Map.html'; };
+
+  function openTreasure() {
+    $('treasureHammer').textContent = D.LORE.hammer.body;
+    const c = campaign || E.loadSave().campaign;
+    const champ = localStorage.getItem('fafo.techquest.champion') === '1' || c?.champion;
+    $('treasureStatus').innerHTML =
+      `<strong>Champion:</strong> ${champ ? 'YES — ANY Key legend' : 'Not yet'}<br>` +
+      `<strong>Gold:</strong> ${c?.gold ?? '—'} · <strong>Node:</strong> ${c?.node ?? 0}<br>` +
+      `<strong>Recruited:</strong> ${(c?.recruited || []).join(', ') || '—'}<br><br>` +
+      D.LORE.treasure.body.replace(/\n/g, '<br>');
+    show('treasure');
+    beep(520, 0.08, 'triangle');
+  }
+
+  function renderClasses() {
+    const g = $('classGrid');
+    g.innerHTML = Object.values(D.CLASSES).map((c) => `
+      <div class="class-card" data-id="${c.id}" style="--card:${c.color}">
+        <div class="em">${c.emoji}</div>
+        <div class="role">${c.role}</div>
+        <h3>${c.name}</h3>
+        <p>${c.blurb}</p>
+      </div>`).join('');
+    g.querySelectorAll('.class-card').forEach((el) => {
+      el.onclick = () => {
+        selectedClass = el.dataset.id;
+        g.querySelectorAll('.class-card').forEach((x) => x.classList.toggle('sel', x === el));
+        $('btnConfirmClass').disabled = false;
+        const c = D.CLASSES[selectedClass];
+        $('classDetail').style.display = 'block';
+        $('classDetail').innerHTML = `<h2>${c.emoji} ${c.name}</h2>
+          <p><em>${c.flavor}</em></p>
+          <p>Skills: ${c.skills.map((s) => D.SKILLS[s]?.name || s).join(' · ')}</p>
+          <p style="font-size:11px;color:var(--muted)">HP ${c.base.maxHp} · ATK ${c.base.atk} · DEF ${c.base.def} · MAG ${c.base.mag} · MOV ${c.base.move}</p>`;
+      };
+    });
+  }
+
+  $('btnConfirmClass').onclick = () => {
+    if (!selectedClass) return;
+    campaign = E.defaultCampaign(selectedClass);
+    E.saveSave({ campaign, sfx });
+    openNode();
+  };
+
+  function currentNode() {
+    return D.CAMPAIGN[campaign.node] || null;
+  }
+
+  function openNode() {
+    const node = currentNode();
+    if (!node) {
+      show('result');
+      $('resultTitle').textContent = 'Chronicle complete';
+      $('resultBody').textContent = 'All tickets closed. Champion energy. Treasure Room awaits.';
+      return;
+    }
+    if (node.type === 'shop') return openShop(node);
+    if (node.type === 'recruit') return openRecruit(node);
+    if (node.type === 'ending') return openEnding(node);
+    // battle / story
+    $('storyChapter').textContent = node.chapter;
+    $('storyName').textContent = node.name;
+    $('storyMap').textContent = node.mapHint || '';
+    $('storyText').innerHTML = (node.story || []).map((p) => `<p>${p}</p>`).join('');
+    const isBattle = node.type === 'battle';
+    $('deployBox').style.display = isBattle ? 'block' : 'none';
+    if (isBattle) {
+      const cap = node.partyCap || 4;
+      deploySet = new Set(campaign.roster.slice(0, cap).map((m) => m.mid));
+      renderDeploy(cap);
+      $('btnPrimary').textContent = 'Deploy to site';
+      $('btnPrimary').onclick = () => startBattle(node);
+    } else {
+      $('btnPrimary').textContent = 'Continue';
+      $('btnPrimary').onclick = () => { E.advanceNode(campaign); campaign = E.loadSave().campaign; openNode(); };
+    }
+    show('story');
+  }
+
+  function renderDeploy(cap) {
+    const grid = $('deployGrid');
+    grid.innerHTML = campaign.roster.map((m) => {
+      const on = deploySet.has(m.mid);
+      const st = E.computeStats(m);
+      return `<div class="roster-card ${on ? 'on' : ''}" data-mid="${m.mid}">
+        ${m.emoji} <strong>${m.name}</strong><br>Lv${m.level} ${D.CLASSES[m.classId]?.role || ''}
+        <br>HP ${m.hp}/${st.maxHp}
+      </div>`;
+    }).join('');
+    grid.querySelectorAll('.roster-card').forEach((el) => {
+      el.onclick = () => {
+        const mid = el.dataset.mid;
+        if (deploySet.has(mid)) deploySet.delete(mid);
+        else {
+          if (deploySet.size >= cap) {
+            // replace first
+            deploySet.delete([...deploySet][0]);
+          }
+          deploySet.add(mid);
+        }
+        renderDeploy(cap);
+      };
+    });
+  }
+
+  function openRecruit(node) {
+    $('storyChapter').textContent = node.chapter;
+    $('storyName').textContent = node.name;
+    $('storyMap').textContent = '';
+    $('storyText').innerHTML = (node.story || []).map((p) => `<p>${p}</p>`).join('');
+    $('deployBox').style.display = 'none';
+    $('btnPrimary').textContent = 'Recruit';
+    $('btnPrimary').onclick = () => {
+      const r = E.recruit(campaign, node.recruitId);
+      campaign = E.loadSave().campaign;
+      if (r.ok) alert(`${r.member.emoji} ${r.member.name} joined the van!`);
+      else { E.advanceNode(campaign); campaign = E.loadSave().campaign; }
+      openNode();
+    };
+    show('story');
+  }
+
+  function openEnding(node) {
+    show('result');
+    $('resultTitle').textContent = '🏆 ' + node.name;
+    $('resultBody').textContent = (node.story || []).join(' ');
+    campaign.champion = true;
+    E.saveSave({ campaign });
+    try { localStorage.setItem('fafo.techquest.champion', '1'); } catch (_) {}
+  }
+
+  function openShop(node) {
+    const { stock, discount } = E.shopStock(campaign, node);
+    $('shopChapter').textContent = node.chapter;
+    $('shopName').textContent = node.name;
+    $('shopStory').innerHTML = (node.story || []).map((p) => `<p>${p}</p>`).join('');
+    $('shopGold').textContent = campaign.gold;
+    $('shopDisc').textContent = Math.round(discount * 100) + '%';
+    $('shopList').innerHTML = stock.map((id) => {
+      const it = E.itemById(id);
+      if (!it) return '';
+      const price = Math.max(1, Math.floor(it.price * (1 - discount)));
+      const col = D.RARITY_COLOR[it.rarity] || '#aaa';
+      return `<div class="shop-item">
+        <div><strong style="color:${col}">${it.name}</strong><br><span style="color:var(--muted)">${it.desc}</span></div>
+        <button type="button" class="btn small" data-buy="${id}">${price}g</button>
+      </div>`;
+    }).join('') || '<p>Shelf is empty. Bard tax was real.</p>';
+    $('shopList').querySelectorAll('[data-buy]').forEach((b) => {
+      b.onclick = () => {
+        const r = E.buyItem(campaign, b.dataset.buy, discount);
+        campaign = E.loadSave().campaign;
+        if (!r.ok) return alert(r.reason === 'gold' ? 'Not enough gold.' : 'Nope.');
+        beep(480, 0.06, 'triangle');
+        openShop(node);
+      };
+    });
+    show('shop');
+  }
+
+  $('btnLeaveShop').onclick = () => {
+    E.consumeShopBuff(campaign);
+    campaign = E.loadSave().campaign;
+    openNode();
+  };
+
+  function openRoster() {
+    returnScreen = document.querySelector('.screen.active')?.id?.replace('screen-', '') || 'story';
+    $('rosterGold').textContent = campaign.gold;
+    rosterFocusMid = campaign.roster[0]?.mid;
+    renderRoster();
+    show('roster');
+  }
+  $('btnRoster').onclick = openRoster;
+  $('btnShopRoster').onclick = openRoster;
+  $('btnRosterBack').onclick = () => {
+    if (returnScreen === 'shop') openShop(currentNode());
+    else openNode();
+  };
+
+  function renderRoster() {
+    $('rosterList').innerHTML = campaign.roster.map((m) => {
+      const st = E.computeStats(m);
+      const c = D.CLASSES[m.classId];
+      const eq = Object.entries(m.equip || {}).map(([k, v]) => `${k}: ${E.itemById(v)?.name || v}`).join('<br>');
+      return `<div class="unit-card player ${m.mid === rosterFocusMid ? 'sel' : ''}" data-mid="${m.mid}" style="cursor:pointer">
+        ${m.emoji} <strong>${m.name}</strong> · Lv${m.level}<br>
+        <span style="color:${c?.color}">${c?.role}</span><br>
+        HP ${m.hp}/${st.maxHp} · ATK ${st.atk} · DEF ${st.def} · MAG ${st.mag}<br>
+        <span style="font-size:10px;color:var(--muted)">${eq}</span>
+      </div>`;
+    }).join('');
+    $('rosterList').querySelectorAll('[data-mid]').forEach((el) => {
+      el.onclick = () => { rosterFocusMid = el.dataset.mid; renderRoster(); };
+    });
+    $('invList').innerHTML = (campaign.inventory || []).map((id, i) => {
+      const it = E.itemById(id);
+      if (!it) return '';
+      return `<div class="shop-item">
+        <div>${it.name} <span style="color:var(--muted)">(${it.slot})</span></div>
+        <button type="button" class="btn small" data-eq="${id}" data-i="${i}">Equip</button>
+      </div>`;
+    }).join('') || '<p style="color:var(--muted)">Empty pockets.</p>';
+    $('invList').querySelectorAll('[data-eq]').forEach((b) => {
+      b.onclick = () => {
+        if (!rosterFocusMid) return;
+        const r = E.equipItem(campaign, rosterFocusMid, b.dataset.eq);
+        campaign = E.loadSave().campaign;
+        if (!r.ok) return alert(r.reason === 'class' ? 'Class cannot wear that.' : 'Equip failed.');
+        beep(400, 0.05, 'triangle');
+        renderRoster();
+      };
+    });
+  }
+
+  // ——— BATTLE ———
+  function startBattle(node) {
+    if (!deploySet.size) return alert('Deploy at least one tech.');
+    battle = E.createBattle(node, campaign, [...deploySet]);
+    E.pushLog(battle, 'On site. Boots down. Class fantasy engaged.');
+    battle.units.filter((u) => u.onCall).forEach((u) => {
+      E.pushLog(battle, `⚠️ ${u.name} is ON-CALL (−2 rolls this ticket).`);
+    });
+    show('battle');
+    beep(200, 0.1);
+    draw();
+    renderSide();
+  }
+
+  const canvas = $('board');
+  const ctx = canvas.getContext('2d');
+  const CELL = 52;
+  const PAD = 20;
+
+  function cellAt(mx, my) {
+    if (!battle) return null;
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    const x = Math.floor(((mx - rect.left) * sx - PAD) / CELL);
+    const y = Math.floor(((my - rect.top) * sy - PAD) / CELL);
+    if (y < 0 || x < 0 || y >= battle.grid.length || x >= battle.grid[0].length) return null;
+    return { x, y };
+  }
+
+  function draw() {
+    if (!battle) return;
+    const g = battle.grid, h = g.length, w = g[0].length;
+    canvas.width = PAD * 2 + w * CELL;
+    canvas.height = PAD * 2 + h * CELL;
+    ctx.fillStyle = '#050a12';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const sel = battle.units.find((u) => u.iid === battle.selected);
+    const moveSet = new Set();
+    const atkSet = new Set();
+    if (sel && sel.team === 'player' && battle.phase === 'player' && !sel.acted && !sel.airborne) {
+      if (!sel.moved && sel.stun <= 0 && sel.bind <= 0) {
+        E.moveTiles(battle.grid, sel, battle.units).forEach((t) => moveSet.add(t.x + ',' + t.y));
+      }
+      battle.units.forEach((u) => {
+        if (u.team === 'enemy' && u.hp > 0 && !u.airborne && E.dist(sel, u) <= sel.range) atkSet.add(u.x + ',' + u.y);
+      });
+    }
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const px = PAD + x * CELL, py = PAD + y * CELL;
+        ctx.fillStyle = D.TILE_STYLE[g[y][x]] || '#1a2430';
+        ctx.fillRect(px, py, CELL - 1, CELL - 1);
+        if ((x + y) % 2 === 0 && g[y][x] === 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.03)';
+          ctx.fillRect(px, py, CELL - 1, CELL - 1);
+        }
+        const key = x + ',' + y;
+        if (moveSet.has(key)) { ctx.fillStyle = 'rgba(0,243,255,0.22)'; ctx.fillRect(px, py, CELL - 1, CELL - 1); }
+        if (atkSet.has(key)) { ctx.fillStyle = 'rgba(255,68,102,0.28)'; ctx.fillRect(px, py, CELL - 1, CELL - 1); }
+        if (hover && hover.x === x && hover.y === y) {
+          ctx.strokeStyle = 'rgba(255,215,0,0.75)'; ctx.lineWidth = 2;
+          ctx.strokeRect(px + 1, py + 1, CELL - 3, CELL - 3);
+        }
+      }
+    }
+
+    battle.units.filter((u) => u.hp > 0 && !u.airborne).forEach((u) => {
+      const px = PAD + u.x * CELL + CELL / 2;
+      const py = PAD + u.y * CELL + CELL / 2;
+      ctx.beginPath();
+      ctx.arc(px, py, 17, 0, Math.PI * 2);
+      ctx.fillStyle = u.team === 'player' ? 'rgba(0,70,65,0.95)' : 'rgba(70,15,25,0.95)';
+      ctx.fill();
+      ctx.strokeStyle = u.iid === battle.selected ? '#ffd700' : (u.team === 'player' ? '#5eead4' : '#ff6b6b');
+      ctx.lineWidth = u.iid === battle.selected ? 3 : 2;
+      ctx.stroke();
+      ctx.font = '18px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(u.emoji, px, py + 1);
+      const pct = u.hp / u.maxHp;
+      ctx.fillStyle = '#111';
+      ctx.fillRect(px - 15, py + 18, 30, 4);
+      ctx.fillStyle = pct < 0.3 ? '#ff4466' : '#00ff88';
+      ctx.fillRect(px - 15, py + 18, 30 * pct, 4);
+      if (u.stun > 0) { ctx.fillStyle = '#ffc800'; ctx.font = '9px sans-serif'; ctx.fillText('STUN' + u.stun, px, py - 22); }
+      if (u.bind > 0) { ctx.fillStyle = '#a78bfa'; ctx.font = '9px sans-serif'; ctx.fillText('BIND', px, py - 22); }
+      if (u.onCall) { ctx.fillStyle = '#f472b6'; ctx.font = '8px sans-serif'; ctx.fillText('ON-CALL', px, py - 32); }
+    });
+
+    // airborne indicator
+    const air = battle.units.filter((u) => u.airborne && u.hp > 0);
+    if (air.length) {
+      ctx.fillStyle = 'rgba(236,72,153,0.9)';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('🪽 Airborne: ' + air.map((a) => a.name).join(', '), PAD, 14);
+    }
+
+    $('hudChapter').textContent = battle.node.name;
+    $('hudRound').textContent = String(battle.turn + 1);
+    $('hudGold').textContent = String(battle.goldDelta);
+    $('hudPhase').textContent =
+      battle.phase === 'player' ? 'Your turn' :
+      battle.phase === 'enemy' ? 'Enemy' :
+      battle.phase === 'won' ? 'Victory' : 'Defeat';
+  }
+
+  function renderSide() {
+    if (!battle) return;
+    const sel = battle.units.find((u) => u.iid === battle.selected);
+    const sp = $('selPanel');
+    const ab = $('actBar');
+    ab.innerHTML = '';
+    if (!sel) {
+      sp.innerHTML = '<p style="color:var(--muted);font-size:12px;">Click a unit.</p>';
+    } else {
+      const st = [];
+      if (sel.stun) st.push('Stun ' + sel.stun);
+      if (sel.bind) st.push('Bind ' + sel.bind);
+      if (sel.slow) st.push('Slow');
+      if (sel.airborne) st.push('AIRBORNE');
+      if (sel.onCall) st.push('ON-CALL −2');
+      sp.innerHTML = `<div class="unit-card ${sel.team} sel">
+        <strong>${sel.emoji} ${sel.name}</strong>
+        <div>HP ${sel.hp}/${sel.maxHp} · ATK ${sel.atk} · MAG ${sel.mag || 0} · MOV ${sel.move}</div>
+        <div class="hpbar"><i style="width:${100 * sel.hp / sel.maxHp}%"></i></div>
+        ${st.length ? '<div style="color:var(--warn);margin-top:4px">' + st.join(' · ') + '</div>' : ''}
+      </div>`;
+
+      if (sel.team === 'player' && battle.phase === 'player' && !sel.acted && sel.stun <= 0) {
+        if (!sel.airborne) {
+          const atk = document.createElement('button');
+          atk.className = 'btn small'; atk.textContent = 'Attack';
+          atk.onclick = () => { battle.mode = 'attack'; $('hudHint').textContent = 'Click enemy'; draw(); };
+          ab.appendChild(atk);
+        }
+        (sel.skills || []).forEach((sid) => {
+          const sk = D.SKILLS[sid];
+          if (!sk) return;
+          if (sel.airborne && sid !== 'javelin_pto') return;
+          const b = document.createElement('button');
+          b.className = 'btn small';
+          const cd = sel.skillCd[sid] || 0;
+          b.textContent = (sk.name || sid) + (cd ? ` (${cd})` : '');
+          b.disabled = cd > 0;
+          b.title = sk.desc || '';
+          b.onclick = () => {
+            if (sk.kind === 'aura' || sk.kind === 'self' || sid === 'reach_ceiling' || sid === 'per_diem' ||
+                sid === 'because_i_said_so' || sid === 'valk_jump' || sid === 'hydrate' ||
+                sid === 'low_pay_grit' || sid === 'when_it_counts' || sid === 'thick_hull' || sid === 'tank_rush' ||
+                sid === 'config_storm' || sid === 'rock_the_boat') {
+              const r = E.useSkill(battle, sel, sid, null);
+              if (!r.ok) return alert(fail(r.reason));
+              beep(600, 0.08, 'triangle');
+              afterAction();
+              return;
+            }
+            if (sid === 'unbootstrap' || sid === 'hardhat_blessing') {
+              const r = E.useSkill(battle, sel, sid, sel);
+              if (r.ok) { beep(400, 0.08, 'sine'); afterAction(); }
+              return;
+            }
+            if (sid === 'shadowstep') {
+              battle.mode = 'skill:shadowstep';
+              $('hudHint').textContent = 'Click empty tile within 5';
+              draw();
+              return;
+            }
+            battle.mode = 'skill:' + sid;
+            $('hudHint').textContent = 'Target for ' + sk.name;
+            draw();
+          };
+          ab.appendChild(b);
+        });
+        const wait = document.createElement('button');
+        wait.className = 'btn small'; wait.textContent = 'Wait';
+        wait.onclick = () => { E.waitUnit(battle, sel); afterAction(); };
+        ab.appendChild(wait);
+      }
+    }
+
+    $('rosterBattle').innerHTML = battle.units
+      .filter((u) => u.hp > 0)
+      .sort((a, b) => (a.team === b.team ? b.spd - a.spd : a.team === 'player' ? -1 : 1))
+      .map((u) => `<div class="unit-card ${u.team}${u.iid === battle.selected ? ' sel' : ''}" data-iid="${u.iid}">
+        ${u.emoji} ${u.name}${u.airborne ? ' 🪽' : ''} · ${u.hp}/${u.maxHp}
+        <div class="hpbar"><i style="width:${100 * u.hp / u.maxHp}%"></i></div>
+      </div>`).join('');
+    $('rosterBattle').querySelectorAll('[data-iid]').forEach((el) => {
+      el.onclick = () => {
+        battle.selected = el.dataset.iid;
+        battle.mode = 'select';
+        draw(); renderSide();
+      };
+    });
+    $('battleLog').innerHTML = battle.log.map((l) => `<div>${l.msg}</div>`).join('');
+  }
+
+  function fail(r) {
+    return ({
+      range: 'Out of range', cd: 'Cool-down', hp: 'Too healthy for BAN', 'hp-gate': 'Not low enough',
+      once: 'Already used', target: 'Bad target', stun: 'Stunned', acted: 'Already acted',
+      airborne: 'Must Javelin or Wait to land', tile: 'Need a tile', blocked: 'Occupied',
+      'no-line': 'No rush line',
+    })[r] || 'Cannot';
+  }
+
+  function afterAction() {
+    battle.mode = 'select';
+    if (battle.phase === 'won') return onWin();
+    if (battle.phase === 'lost') return onLose();
+    draw(); renderSide();
+  }
+
+  function onWin() {
+    beep(523, 0.1, 'triangle');
+    setTimeout(() => beep(784, 0.15, 'triangle'), 100);
+    const { campaign: c, reward } = E.applyVictory(campaign, battle);
+    campaign = c;
+    // auto recruit flag handled by next nodes
+    if (battle.node.recruitAfter && !campaign.recruited.includes(battle.node.recruitAfter)) {
+      // node already advanced; insert handled by separate recruit nodes in campaign
+    }
+    show('result');
+    $('resultTitle').textContent = battle.node.final ? '🏆 CHAMPION OF THE ANY KEY' : 'Ticket closed';
+    $('resultBody').textContent = `+${reward.xp} XP · +${reward.gold} gold. Route continues…`;
+    $('btnNext').textContent = 'Continue route';
+    battle = null;
+  }
+
+  function onLose() {
+    beep(110, 0.25, 'sawtooth');
+    show('result');
+    $('resultTitle').textContent = 'Ticket failed';
+    $('resultBody').textContent = 'Retry from story — same node, more humility.';
+    $('btnNext').textContent = 'Retry';
+    // don't advance node on loss
+    battle = null;
+  }
+
+  $('btnNext').onclick = () => {
+    if ($('btnNext').textContent === 'Retry') {
+      openNode();
+      return;
+    }
+    openNode();
+  };
+
+  $('btnEndTurn').onclick = () => {
+    if (!battle || battle.phase !== 'player') return;
+    E.endPlayerTurn(battle);
+    beep(160, 0.05);
+    if (battle.phase === 'won') return onWin();
+    if (battle.phase === 'lost') return onLose();
+    draw(); renderSide();
+  };
+
+  $('btnFlee').onclick = () => {
+    if (!confirm('Flee? No loot. Mild shame.')) return;
+    battle = null;
+    show('title');
+  };
+
+  canvas.addEventListener('mousemove', (e) => {
+    hover = cellAt(e.clientX, e.clientY);
+    if (battle) draw();
+  });
+
+  canvas.addEventListener('click', (e) => {
+    if (!battle || battle.phase !== 'player') return;
+    const c = cellAt(e.clientX, e.clientY);
+    if (!c) return;
+    const unitThere = battle.units.find((u) => u.hp > 0 && !u.airborne && u.x === c.x && u.y === c.y);
+    const sel = battle.units.find((u) => u.iid === battle.selected);
+
+    if (battle.mode === 'skill:shadowstep') {
+      if (!sel) return;
+      const r = E.useSkill(battle, sel, 'shadowstep', null, c);
+      if (!r.ok) return alert(fail(r.reason));
+      beep(300, 0.08);
+      afterAction();
+      return;
+    }
+
+    if (battle.mode && String(battle.mode).startsWith('skill:')) {
+      const sid = battle.mode.split(':')[1];
+      if (!sel) return;
+      const r = E.useSkill(battle, sel, sid, unitThere || null);
+      if (!r.ok) return alert(fail(r.reason));
+      beep(280, 0.07);
+      afterAction();
+      return;
+    }
+
+    if (battle.mode === 'attack') {
+      if (!sel || !unitThere || unitThere.team !== 'enemy') return;
+      const r = E.basicAttack(battle, sel, unitThere);
+      if (!r.ok) return;
+      beep(220, 0.06);
+      afterAction();
+      return;
+    }
+
+    if (sel && sel.team === 'player' && !sel.moved && !sel.acted && !sel.airborne && sel.stun <= 0) {
+      if (!unitThere || unitThere.iid === sel.iid) {
+        const r = E.tryMove(battle, sel, c.x, c.y);
+        if (r.ok) { beep(440, 0.04, 'triangle'); draw(); renderSide(); return; }
+      }
+    }
+
+    if (unitThere) {
+      battle.selected = unitThere.iid;
+      battle.mode = 'select';
+      $('hudHint').textContent = unitThere.team === 'player' ? (unitThere.acted ? 'Done' : 'Move / act') : unitThere.name;
+      beep(560, 0.03, 'triangle');
+      draw(); renderSide();
+    }
+  });
+
+  refreshContinue();
+})();
+  </script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+</body>
+</html>

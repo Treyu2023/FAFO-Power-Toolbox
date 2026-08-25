@@ -1,6 +1,6 @@
 # FAFO.Toolbox.psm1
 # Paths, logging, safe file ops, health, device profiles, and report helpers
-# Version: 1.4.0
+# Version: 1.4.2
 
 #region Paths & configuration
 
@@ -83,6 +83,7 @@ function Get-FAFOCommonPaths {
         LogsDataJs      = Join-Path $viewer 'logs-data.js'
         Server          = Join-Path $ToolboxRoot 'server'
         Shared          = Join-Path $ToolboxRoot 'shared'
+        Snapshots       = Join-Path $ToolboxRoot 'snapshots'
         SecretsStore    = Join-Path $env:LOCALAPPDATA 'FAFO\Secrets'
         GrokHome        = Join-Path $env:USERPROFILE '.grok'
         InspectScript   = Join-Path $ToolboxRoot 'Scripts\Inspect-GrokInstall.ps1'
@@ -338,6 +339,7 @@ function Initialize-FAFOPaths {
             $paths.PcReports,
             $paths.Logs,
             $paths.Backups,
+            $paths.Snapshots,
             $local.VerifoneSitesRoot
         )) {
         if ($dir -and -not (Test-Path -LiteralPath $dir)) {
@@ -604,6 +606,201 @@ function Copy-FAFOItem {
     [PSCustomObject]@{
         Source      = $Path
         Destination = $Destination
+    }
+}
+
+function Move-FAFOHtmlEditBackups {
+    <#
+    .SYNOPSIS
+      Move sidecar .bak* copies into in-repo snapshots/<app>/ folders.
+    .DESCRIPTION
+      Keep is PER APP (each live HTML/JS/CSS file has its own stack).
+      Pruning Typing Trainer never drops Event Viewer, etc.
+      Destination is toolbox-root\snapshots\ so agents can see the files.
+      Snapshot files are renamed off *.bak so gitignore does not hide them.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [ValidateRange(1, 50)]
+        [int]$Keep = 5,
+
+        [string]$ToolboxRoot = (Get-FAFOToolboxRoot)
+    )
+
+    $init = Initialize-FAFOPaths -ToolboxRoot $ToolboxRoot
+    $common = Get-FAFOCommonPaths -ToolboxRoot $ToolboxRoot
+    $root = (Resolve-Path -LiteralPath $ToolboxRoot).Path
+    $destRoot = $common.Snapshots
+    if (-not $destRoot) { $destRoot = Join-Path $root 'snapshots' }
+    if (-not (Test-Path -LiteralPath $destRoot)) {
+        New-Item -Path $destRoot -ItemType Directory -Force | Out-Null
+    }
+    $legacyRoot = Join-Path $init.BackupsDir 'html-edits'
+
+    $skipDir = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($n in @(
+            '.git', '.venv', '.venv312', 'node_modules', '__pycache__',
+            'thumbnails', 'quarantine', 'Reports', 'Logs', 'Backups',
+            'backups', 'terminals', 'snapshots'
+        )) { [void]$skipDir.Add($n) }
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+
+    $parseBak = {
+        param([string]$Name)
+        if ($Name -match '^(?<orig>.+)\.bak-(?<stamp>.+)$') {
+            return @{ Orig = $Matches.orig; Stamp = $Matches.stamp }
+        }
+        if ($Name -match '^(?<orig>.+)\.bak$') {
+            return @{ Orig = $Matches.orig; Stamp = 'backup' }
+        }
+        return $null
+    }
+
+    $addEntry = {
+        param($File, [string]$RelDir, [string]$OrigName, [string]$Stamp, [bool]$InDest)
+        if ([string]::IsNullOrWhiteSpace($RelDir) -or $RelDir -eq '.') { $RelDir = '' }
+        $ext = [IO.Path]::GetExtension($OrigName)
+        if (-not $ext) { $ext = $File.Extension }
+        $safeStamp = ($Stamp -replace '[<>:"/\\|?*]', '_')
+        $destDir = if ($RelDir) { Join-Path (Join-Path $destRoot $RelDir) $OrigName } else { Join-Path $destRoot $OrigName }
+        $dest = Join-Path $destDir ($safeStamp + $ext)
+        $groupKey = $RelDir.ToLowerInvariant() + '|' + $OrigName.ToLowerInvariant()
+        $entries.Add([PSCustomObject]@{
+                File     = $File
+                RelDir   = $RelDir
+                OrigName = $OrigName
+                Stamp    = $safeStamp
+                Dest     = $dest
+                DestDir  = $destDir
+                InDest   = $InDest
+                Key      = $groupKey
+            })
+    }
+
+    $walker = {
+        param([string]$Dir)
+        foreach ($item in Get-ChildItem -LiteralPath $Dir -Force -ErrorAction SilentlyContinue) {
+            if ($item.PSIsContainer) {
+                if ($skipDir.Contains($item.Name)) { continue }
+                & $walker $item.FullName
+                continue
+            }
+            $parsed = & $parseBak $item.Name
+            if (-not $parsed) { continue }
+            $relFromRoot = $item.FullName.Substring($root.Length).TrimStart('\', '/')
+            $relDir = Split-Path -Parent $relFromRoot
+            & $addEntry $item $relDir $parsed.Orig $parsed.Stamp $false
+        }
+    }
+    & $walker $root
+
+    foreach ($legacyBase in @($legacyRoot)) {
+        if (-not (Test-Path -LiteralPath $legacyBase)) { continue }
+        Get-ChildItem -LiteralPath $legacyBase -Recurse -File -Force -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $parsed = & $parseBak $_.Name
+                if (-not $parsed) { return }
+                $relFromLegacy = $_.FullName.Substring($legacyBase.Length).TrimStart('\', '/')
+                $relDir = Split-Path -Parent $relFromLegacy
+                & $addEntry $_ $relDir $parsed.Orig $parsed.Stamp $false
+            }
+    }
+
+    Get-ChildItem -LiteralPath $destRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch '^(README|INDEX)\.(md|txt)$' } |
+        ForEach-Object {
+            $relFromDest = $_.DirectoryName.Substring($destRoot.Length).TrimStart('\', '/')
+            if ([string]::IsNullOrWhiteSpace($relFromDest)) { return }
+            $origName = Split-Path -Leaf $relFromDest
+            $relDir = Split-Path -Parent $relFromDest
+            $stamp = [IO.Path]::GetFileNameWithoutExtension($_.Name)
+            & $addEntry $_ $relDir $origName $stamp $true
+        }
+
+    $groups = @{}
+    foreach ($entry in $entries) {
+        if (-not $groups.ContainsKey($entry.Key)) {
+            $groups[$entry.Key] = [System.Collections.Generic.List[object]]::new()
+        }
+        $groups[$entry.Key].Add($entry)
+    }
+
+    $moved = 0
+    $kept = 0
+    $removed = 0
+    $skipped = 0
+
+    foreach ($key in $groups.Keys) {
+        # Newest N per app only — never a global pool across tools.
+        $items = @($groups[$key] | Sort-Object { $_.File.LastWriteTimeUtc } -Descending)
+        $rank = 0
+        foreach ($entry in $items) {
+            $rank++
+            $src = $entry.File.FullName
+
+            if ($rank -gt $Keep) {
+                if ($PSCmdlet.ShouldProcess($src, "Remove extra snapshot for $($entry.OrigName)")) {
+                    Remove-Item -LiteralPath $src -Force
+                    $removed++
+                    Write-FAFOLog -Level Info -Message "Removed extra per-app snapshot: $src" -ToolboxRoot $ToolboxRoot
+                }
+                continue
+            }
+
+            $kept++
+            $srcFull = (Get-Item -LiteralPath $src).FullName
+            $destFull = $entry.Dest
+            if ($entry.InDest -and ($srcFull -eq $destFull)) { continue }
+
+            if (-not (Test-Path -LiteralPath $entry.DestDir)) {
+                New-Item -Path $entry.DestDir -ItemType Directory -Force | Out-Null
+            }
+
+            if ((Test-Path -LiteralPath $entry.Dest) -and (
+                    (Get-Item -LiteralPath $entry.Dest).FullName -ne $srcFull
+                )) {
+                if ($PSCmdlet.ShouldProcess($src, "Remove leftover; already in $($entry.Dest)")) {
+                    Remove-Item -LiteralPath $src -Force
+                    $skipped++
+                }
+                continue
+            }
+
+            if ($PSCmdlet.ShouldProcess($src, "Move snapshot to $($entry.Dest)")) {
+                Move-Item -LiteralPath $src -Destination $entry.Dest -Force
+                $moved++
+                Write-FAFOLog -Level Info -Message "Snapshot moved: $src -> $($entry.Dest)" -ToolboxRoot $ToolboxRoot
+            }
+        }
+    }
+
+    if (Test-Path -LiteralPath $legacyRoot) {
+        Get-ChildItem -LiteralPath $legacyRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^(README|INDEX)\.(md|txt)$' } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -LiteralPath $legacyRoot -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+            Sort-Object { $_.FullName.Length } -Descending |
+            ForEach-Object {
+                $kids = @(Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue)
+                if ($kids.Count -eq 0) {
+                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+            }
+        $left = @(Get-ChildItem -LiteralPath $legacyRoot -Force -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) {
+            Remove-Item -LiteralPath $legacyRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    [PSCustomObject]@{
+        Destination = $destRoot
+        KeepPerApp  = $Keep
+        Apps        = $groups.Count
+        Moved       = $moved
+        Kept        = $kept
+        Removed     = $removed
+        Skipped     = $skipped
     }
 }
 
@@ -1484,6 +1681,7 @@ Export-ModuleMember -Function @(
     'Backup-FAFOItem',
     'Move-FAFOItem',
     'Copy-FAFOItem',
+    'Move-FAFOHtmlEditBackups',
     # Diagnostics
     'Get-FAFOStatus',
     'Test-FAFOHealth',

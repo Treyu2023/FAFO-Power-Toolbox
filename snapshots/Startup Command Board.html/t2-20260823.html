@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAFO Startup Command Board</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥</text></svg>">
+  <script src="shared/aitoolbox-config.js"></script>
+  <script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
+  <style>
+    :root {
+      --bg: #070a10; --panel: #0e1520; --line: rgba(56,189,248,.22);
+      --accent: #38bdf8; --good: #34d399; --warn: #fbbf24; --bad: #f87171;
+      --text: #e8eef4; --muted: #8b9bb0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh; color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: radial-gradient(ellipse 70% 45% at 80% 0%, rgba(52,211,153,.12), transparent 45%),
+        radial-gradient(ellipse 60% 40% at 10% 0%, rgba(14,116,144,.3), transparent 50%), var(--bg);
+      padding: 20px 16px 48px;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    .nav {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center;
+    }
+    .nav a, .nav .tab {
+      text-decoration: none; font-size: 12px; font-weight: 600;
+      padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+    }
+    .nav a:hover { color: var(--accent); border-color: var(--accent); }
+    .nav .tab.active { background: rgba(56,189,248,.15); color: var(--accent); border-color: var(--accent); }
+    h1 { font-size: 22px; color: var(--accent); font-weight: 600; }
+    .sub { color: var(--muted); font-size: 13px; margin: 6px 0 16px; line-height: 1.45; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 14px 16px; margin-bottom: 14px;
+    }
+    .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .srv {
+      border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+      background: rgba(0,0,0,.28);
+    }
+    .srv.up { border-color: rgba(52,211,153,.45); box-shadow: 0 0 20px rgba(52,211,153,.08); }
+    .srv.down { border-color: rgba(248,113,113,.35); }
+    .srv.blocked { border-color: rgba(251,191,36,.5); }
+    .srv-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+    .srv-head strong { font-size: 14px; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px;
+      background: #64748b; box-shadow: 0 0 8px currentColor;
+    }
+    .dot.on { background: var(--good); color: var(--good); }
+    .dot.off { background: var(--bad); color: var(--bad); }
+    .dot.blk { background: var(--warn); color: var(--warn); }
+    .meta { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+    .meta code { color: var(--accent); font-size: 11px; }
+    .flags { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; font-size: 12px; }
+    .flags label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .flags input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    button {
+      background: transparent; border: 1px solid var(--accent); color: var(--accent);
+      padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #041018; }
+    button.danger { border-color: var(--bad); color: var(--bad); }
+    button.amber { border-color: var(--warn); color: var(--warn); }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    .global-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .pill { font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+    .pill.ok { color: var(--good); border-color: rgba(52,211,153,.4); }
+    .pill.bad { color: var(--bad); border-color: rgba(248,113,113,.4); }
+    .pill.warn { color: var(--warn); border-color: rgba(251,191,36,.4); }
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      background: #122; color: var(--good); border: 1px solid var(--good);
+      padding: 10px 16px; border-radius: 10px; opacity: 0; transition: .2s; z-index: 30;
+      max-width: 90vw; font-size: 13px;
+    }
+    .toast.show { opacity: 1; }
+    .toast.err { color: #fecaca; border-color: var(--bad); }
+    .note { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
+    pre {
+      font-size: 10px; background: rgba(0,0,0,.4); padding: 10px; border-radius: 8px;
+      overflow: auto; max-height: 160px; margin-top: 10px; color: #94a3b8;
+    }
+  </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
+</head>
+<body>
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="startup-command-board" data-fafo-layout-type="rows">
+    <div class="nav" style="position:sticky;top:0;z-index:20;background:rgba(7,10,16,.92);padding:8px 0;backdrop-filter:blur(8px)" data-fafo-panel="nav" data-fafo-panel-title="Nav" data-fafo-panel-min="40" data-fafo-panel-default="56">
+      <a href="Setup Configurator.html" title="Counterpart · build install packs">⚙ Setup packs</a>
+      <span class="tab active">🖥 Startup board</span>
+      <a href="System Tools/System Health Desk.html" title="Counterpart · system health">🩺 Health Desk</a>
+      <a href="Toolbox Launcher.html">🧰 Launcher</a>
+      <button type="button" id="btnCopyFleet" data-tip-title="Copy fleet" data-tip="Copy a text summary of all services and their up/down state." style="font-size:12px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--accent);background:transparent;cursor:pointer">📋 Copy fleet</button>
+      <span class="pill" id="pollPill">…</span>
+      <span data-fafo-layout-toolbar></span>
+    </div>
+
+    <h1>Startup Command Board</h1>
+    <p class="sub">
+      Live status for companion servers. Block auto-start when you don’t want a stack connecting,
+      or force start/stop any server manually. Linked with <strong>Setup packs</strong> (what you installed)
+      vs this board (what is running).
+    </p>
+
+    <div class="card" data-fafo-panel="fleet-actions" data-fafo-panel-title="Fleet actions" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <h2>Fleet actions</h2>
+      <div class="global-actions">
+        <button type="button" class="primary" id="btnStartAll" data-tip-title="Start allowed" data-tip="Start services allowed by Windows-startup policy (respects checkboxes).">▶ Start allowed</button>
+        <button type="button" class="amber" id="btnForceAll" data-tip-title="Force start all" data-tip="Force-start every service regardless of Windows-startup flags. Use carefully.">⚡ Force start all</button>
+        <button type="button" class="danger" id="btnStopAll" data-tip-title="Stop all" data-tip="Stop all managed FAFO services on this board.">⏹ Stop all</button>
+        <button type="button" id="btnRestartAll" data-tip-title="Restart allowed" data-tip="Restart services that are allowed to auto-start.">↺ Restart allowed</button>
+        <button type="button" id="btnRefresh" data-tip-title="Refresh" data-tip="Re-probe which services are up or down.">↻ Refresh</button>
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;margin-left:8px;cursor:pointer">
+          <input type="checkbox" id="chkWinServers" data-tip-title="Win startup · servers" data-tip="Register/unregister server processes for Windows startup."> Windows startup · servers
+        </label>
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="chkWinApp" data-tip-title="Win startup · app" data-tip="Register/unregister the app launcher for Windows startup."> Windows startup · app
+        </label>
+      </div>
+      <p class="note">
+        <strong>Block auto-start</strong> stops one-click / tray auto / Windows login from bringing that server up.
+        <strong>Force start</strong> still works from this board so you keep full manual control.
+      </p>
+    </div>
+
+    <div class="grid" id="serverGrid"></div>
+
+    <div class="card" data-fafo-panel="raw-status" data-fafo-flex="1" data-fafo-panel-title="Raw status" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <h2>Raw status</h2>
+      <pre id="rawStatus">Loading…</pre>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+    let lastStatus = null;
+    let pollTimer = null;
+
+    const el = (id) => document.getElementById(id);
+    function toast(msg, err) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (err ? ' err' : '');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(() => t.classList.remove('show'), 3200);
+    }
+
+    async function api(path, opts = {}) {
+      const headers = { ...(opts.headers || {}) };
+      if (opts.body != null && !headers['Content-Type'] && !(opts.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+      }
+      let r;
+      try {
+        r = await fetch(apiBase() + path, { ...opts, headers });
+      } catch (e) {
+        throw new Error('Cannot reach S1 API — start HTML Toolbox Server first (or use Force if blocked).');
+      }
+      const text = await r.text();
+      let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) throw new Error((data.detail && (data.detail.msg || data.detail)) || data.message || r.statusText);
+      return data;
+    }
+
+    function renderServers(st) {
+      const tb = st.toolbox || {};
+      const meta = st.fafoMeta || {};
+      const prefs = st.prefs || {};
+      const cards = [
+        { key: 'toolbox', code: 'S1', data: tb, prefKey: 'toolboxServer', apiFlag: 'toolbox' },
+        { key: 'fafoMeta', code: 'S2', data: meta, prefKey: 'fafoMetaServer', apiFlag: 'fafoMeta' },
+      ];
+      el('serverGrid').innerHTML = cards.map(c => {
+        const d = c.data;
+        const up = !!(d.healthy || d.listening);
+        const blocked = !!d.blockAutoStart;
+        const auto = !!d.autoStart;
+        let cls = up ? 'up' : 'down';
+        if (blocked) cls += ' blocked';
+        const dot = blocked ? 'blk' : (up ? 'on' : 'off');
+        const state = blocked ? 'BLOCKED' : (up ? 'ONLINE' : 'OFFLINE');
+        return `
+          <div class="srv ${cls}" data-server="${c.key}">
+            <div class="srv-head">
+              <strong><span class="dot ${dot}"></span>${esc(d.name || c.code)}</strong>
+              <span class="pill ${blocked ? 'warn' : (up ? 'ok' : 'bad')}">${state}</span>
+            </div>
+            <div class="meta">
+              <code>${esc(d.endpoint || '')}</code><br>
+              ${esc(d.role || '')}<br>
+              ${(d.serves || []).slice(0, 3).map(s => '· ' + esc(s)).join('<br>')}
+            </div>
+            <div class="flags">
+              <label title="Include this server when Start All / one-click runs (if not blocked)">
+                <input type="checkbox" data-auto="${c.prefKey}" ${auto ? 'checked' : ''}>
+                Auto-start with one-click / pack
+              </label>
+              <label title="Hard block — auto paths will not start this server until cleared">
+                <input type="checkbox" data-block="${c.prefKey}" ${blocked ? 'checked' : ''}>
+                <strong>Block auto-connect</strong> (manual override)
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="primary" data-act="start" data-flag="${c.apiFlag}">▶ Start</button>
+              <button type="button" class="amber" data-act="force" data-flag="${c.apiFlag}">⚡ Force</button>
+              <button type="button" class="danger" data-act="stop" data-flag="${c.apiFlag}">⏹ Stop</button>
+              <button type="button" data-act="restart" data-flag="${c.apiFlag}">↺ Restart</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      // wire checkboxes
+      el('serverGrid').querySelectorAll('[data-auto]').forEach(cb => {
+        cb.addEventListener('change', () => savePrefsFromUi());
+      });
+      el('serverGrid').querySelectorAll('[data-block]').forEach(cb => {
+        cb.addEventListener('change', () => savePrefsFromUi());
+      });
+      el('serverGrid').querySelectorAll('[data-act]').forEach(btn => {
+        btn.addEventListener('click', () => runAction(btn.getAttribute('data-act'), btn.getAttribute('data-flag')));
+      });
+
+      const win = st.windowsStartup || {};
+      el('chkWinServers').checked = !!(win.servers || (prefs.windowsStartup && prefs.windowsStartup.servers));
+      el('chkWinApp').checked = !!(win.app || (prefs.windowsStartup && prefs.windowsStartup.app));
+
+      el('rawStatus').textContent = JSON.stringify({
+        toolbox: { listening: tb.listening, healthy: tb.healthy, block: tb.blockAutoStart },
+        fafoMeta: { listening: meta.listening, healthy: meta.healthy, block: meta.blockAutoStart },
+        prefs: prefs.blockAutoStart,
+        windowsStartup: win,
+      }, null, 2);
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function bodyFlags(flag, force) {
+      const o = { waitSec: 14, force: !!force };
+      if (flag === 'toolbox') { o.toolbox = true; o.fafoMeta = false; }
+      else if (flag === 'fafoMeta') { o.toolbox = false; o.fafoMeta = true; }
+      else { o.toolbox = true; o.fafoMeta = true; }
+      return o;
+    }
+
+    async function runAction(act, flag) {
+      try {
+        if (act === 'start') {
+          const r = await api('/launch/companions/start', { method: 'POST', body: JSON.stringify(bodyFlags(flag, false)) });
+          toast(r.blocked && r.blocked.length ? 'Blocked: ' + r.blocked.join(', ') + ' (use Force)' : 'Start requested');
+        } else if (act === 'force') {
+          await api('/launch/companions/start', { method: 'POST', body: JSON.stringify(bodyFlags(flag, true)) });
+          toast('Force start sent');
+        } else if (act === 'stop') {
+          const o = bodyFlags(flag, false);
+          await api('/launch/companions/stop', { method: 'POST', body: JSON.stringify({ toolbox: o.toolbox, fafoMeta: o.fafoMeta }) });
+          toast('Stop sent');
+        } else if (act === 'restart') {
+          await api('/launch/companions/restart', { method: 'POST', body: JSON.stringify(bodyFlags(flag, true)) });
+          toast('Restart sent');
+        }
+        await refresh();
+      } catch (e) {
+        toast(String(e.message || e), true);
+      }
+    }
+
+    async function savePrefsFromUi() {
+      const startWithOneClick = {
+        toolboxServer: !!el('serverGrid').querySelector('[data-auto="toolboxServer"]')?.checked,
+        fafoMetaServer: !!el('serverGrid').querySelector('[data-auto="fafoMetaServer"]')?.checked,
+      };
+      const blockAutoStart = {
+        toolboxServer: !!el('serverGrid').querySelector('[data-block="toolboxServer"]')?.checked,
+        fafoMetaServer: !!el('serverGrid').querySelector('[data-block="fafoMetaServer"]')?.checked,
+      };
+      try {
+        await api('/launch/prefs', {
+          method: 'PUT',
+          body: JSON.stringify({
+            startWithOneClick,
+            blockAutoStart,
+            windowsStartup: {
+              servers: el('chkWinServers').checked,
+              app: el('chkWinApp').checked,
+            },
+          }),
+        });
+        toast('Prefs saved');
+        await refresh();
+      } catch (e) {
+        toast(String(e.message || e), true);
+      }
+    }
+
+    async function refresh() {
+      try {
+        const st = await api('/launch/status');
+        lastStatus = st;
+        renderServers(st);
+        el('pollPill').textContent = 'Live · ' + new Date().toLocaleTimeString();
+        el('pollPill').className = 'pill ok';
+      } catch (e) {
+        el('pollPill').textContent = 'S1 offline';
+        el('pollPill').className = 'pill bad';
+        el('serverGrid').innerHTML = `<div class="card"><p class="note">${esc(e.message || e)}</p>
+          <p class="note">If S1 is blocked or stopped, run <code>1-Start-HTML-Toolbox-Server.bat</code> or your personal pack’s start bat.</p></div>`;
+      }
+    }
+
+    el('btnRefresh').onclick = () => refresh();
+    el('btnStartAll').onclick = () => runAction('start', 'all');
+    el('btnForceAll').onclick = () => runAction('force', 'all');
+    el('btnStopAll').onclick = () => runAction('stop', 'all');
+    el('btnRestartAll').onclick = () => runAction('restart', 'all');
+    el('chkWinServers').onchange = () => savePrefsFromUi();
+    el('chkWinApp').onchange = () => savePrefsFromUi();
+
+    el('btnCopyFleet')?.addEventListener('click', async () => {
+      const raw = el('rawStatus')?.textContent || '';
+      const lines = [
+        'Startup Command Board — fleet status',
+        '====================================',
+        'Poll: ' + (el('pollPill')?.textContent || '—'),
+        'Time: ' + new Date().toISOString(),
+        '',
+        raw || (lastStatus ? JSON.stringify(lastStatus, null, 2) : '(no status yet)'),
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        toast('Fleet status copied');
+      } catch (_) { toast('Copy failed', true); }
+    });
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'r' || e.key === 'R') refresh();
+      // Pro shell also uses R for report — ok both fire
+      if (e.key === 's' || e.key === 'S') el('btnCopyFleet')?.click();
+    });
+    // Remember last empty-state CTA visit tip
+    try {
+      const seen = localStorage.getItem('fafo_startup_board_seen');
+      if (!seen) localStorage.setItem('fafo_startup_board_seen', '1');
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'startup-command-board',
+        helpLines: ['S — copy fleet status', 'R — refresh', 'Counterparts: Setup packs · Health Desk'],
+      });
+    } catch (_) {}
+
+    refresh();
+    pollTimer = setInterval(refresh, 4000);
+  </script>
+
+<script data-tool-polish="startup-command-board">
+/* Tool polish: startup-command-board — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "startup-command-board";
+  const TOOL_NAME = "Startup Command Board";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="scb">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('Command Board needs S1 for live server control', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

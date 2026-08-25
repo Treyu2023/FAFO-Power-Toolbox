@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Disk Space Analyzer — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(52,211,153,.2);--accent:#34d399;--warn:#fbbf24;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#0a1f1a,var(--bg) 60%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border)}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.wrap{max-width:1200px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.bar{height:8px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent);border-radius:4px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--accent);font-size:12px;text-transform:uppercase;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.inp{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;min-width:220px;flex:1}
+.btn{padding:8px 14px;border:1px solid var(--accent);background:rgba(52,211,153,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.btn:disabled{opacity:.45;cursor:wait}
+.btn.ghost{border-color:rgba(255,255,255,.15);color:var(--muted);background:transparent}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+th:hover{color:var(--accent)}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.mono{font-family:Consolas,monospace;font-size:11px}
+.tw{max-height:400px;overflow:auto}
+.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;margin-top:8px;min-height:18px}
+.err{color:#f87171}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">PC Diagnostics</a>
+    <a href="System Health Dashboard.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Hub</a>
+    <a href="Startup Service Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(52,211,153,.08)">Startup Manager</a>
+    <a href="../File Tools/Duplicate File Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Duplicate Finder →</a>
+  </div>
+  <span style="color:var(--accent)">DISK SPACE ANALYZER</span>
+  <span data-fafo-layout-toolbar></span>
+</nav>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="disk-space-analyzer" data-fafo-layout-type="rows">
+<h1 style="font-size:22px">Disk Space Analyzer</h1>
+<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">Find what's eating your drives — large files, heavy folders, and junk candidates. <strong>Click</strong> a drive to select it · <strong>double-click</strong> to start a scan.</p>
+<div class="grid" id="drives"></div>
+<div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph"><span>Deep scan</span>
+<span class="toolbar">
+<input class="inp" id="scanPath" placeholder="Folder path e.g. C:\Users\You\Downloads">
+<button class="btn ghost" id="btnPick" type="button" data-tip-title="Browse" data-tip="Pick a folder or drive path to analyze.">Browse…</button>
+<label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">Min MB <input class="inp" id="minMb" type="number" min="1" value="5" style="min-width:70px;width:80px"></label>
+<button class="btn" id="btnScan" data-tip-title="Scan" data-tip-basic="Measure what is using space under this path." data-tip-pro="Tree size walk — large roots take time." data-tip-efficient="Start one level down from the drive root when possible.">Scan</button>
+<button class="btn ghost" id="btnStop" type="button" disabled data-tip-title="Stop" data-tip="Cancel the running space scan.">Stop</button>
+<button class="btn ghost" id="btnExportFiles" type="button" data-tip-title="Export CSV" data-tip="Download the large-file list as CSV.">↓ CSV</button>
+<button class="btn ghost" id="btnRefreshDrives" type="button" data-tip-title="Refresh drives" data-tip="Reload free space for all volumes.">↻ Drives</button>
+<span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+</span></div>
+<div style="padding:16px 18px"><div class="log" id="log"></div></div></div>
+<div class="panel" data-fafo-panel="block-1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Largest files <input class="inp" id="fileFilter" placeholder="Filter files… (/)" style="min-width:160px;max-width:220px"></div><div class="tw" id="largeFiles"><div style="padding:24px;text-align:center;color:var(--muted)">Run a scan</div></div></div>
+<div class="panel" data-fafo-panel="block-2" data-fafo-flex="1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Top folders · Junk candidates <span id="junkInfo" style="color:var(--muted);font-weight:400"></span></div><div class="tw" id="folders"></div></div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml ? UI().escapeHtml(s) : String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let lastResult = null;
+let scanEs = null;
+let fileSort = { key: 'size', dir: -1 };
+
+function apiBase() {
+  return UI()?.getApiBase?.() || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+}
+
+function log(msg, isErr) {
+  const el = document.getElementById('log');
+  el.textContent = msg || '';
+  el.className = 'log' + (isErr ? ' err' : '');
+}
+
+async function loadOverview() {
+  try {
+    const d = await UI().apiFetch('/disk/overview');
+    document.getElementById('drives').innerHTML = (d.drives || []).map(dr =>
+      `<div class="card" style="cursor:pointer" data-mount="${esc(dr.mount)}" title="Scan this drive root">
+        <div style="font-size:11px;color:var(--muted)">${esc(dr.mount)}</div>
+        <div style="font-size:20px;font-weight:700;margin:4px 0">${esc(dr.used_human)} / ${esc(dr.total_human)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(dr.free_human)} free</div>
+        <div class="bar"><span style="width:${Math.min(100, dr.percent||0)}%;background:${(dr.percent||0)>85?'#f87171':'var(--accent)'}"></span></div>
+      </div>`
+    ).join('') || '<div style="color:var(--muted)">No drive data</div>';
+    document.querySelectorAll('.card[data-mount]').forEach(c => {
+      c.onclick = () => {
+        document.getElementById('scanPath').value = c.dataset.mount;
+        log('Path set to ' + c.dataset.mount + ' — click Scan (or double-click drive card)');
+      };
+      c.ondblclick = () => {
+        document.getElementById('scanPath').value = c.dataset.mount;
+        document.getElementById('btnScan')?.click();
+      };
+      c.title = 'Click to select · double-click to scan this root';
+    });
+    const folders = d.user_folders || [];
+    if (folders.length && !document.getElementById('scanPath').value) {
+      document.getElementById('scanPath').value =
+        folders.find(f => f.name === 'Downloads')?.path || folders[0].path || '';
+    }
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Drives ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById('drives').innerHTML =
+      `<div class="card" style="grid-column:1/-1;color:var(--warn)"><strong>Server offline</strong> — ${esc(e.message || e)}<br>` +
+      `<span style="font-size:12px">Needs S1 · 127.0.0.87:18765</span>` +
+      `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">` +
+      `<button class="btn" type="button" id="btnDiskStartServer">▶ Start Server</button>` +
+      `<button class="btn ghost" type="button" id="btnDiskRetry">↻ Retry</button>` +
+      `<a class="btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>` +
+      `<a class="btn ghost" href="PC Diagnostics HUD.html" style="text-decoration:none">PC Diagnostics</a>` +
+      `</div></div>`;
+    document.getElementById('btnDiskRetry')?.addEventListener('click', () => loadDrives());
+    document.getElementById('btnDiskStartServer')?.addEventListener('click', async () => {
+      try {
+        if (window.AIToolboxAPI?.startServer) {
+          await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+          loadDrives();
+        } else location.href = '../Toolbox Launcher.html';
+      } catch (err) {
+        window.AIToolboxUI?.toast?.(err.message || 'Start failed', 'warn');
+      }
+    });
+  }
+}
+
+function renderLargeFiles() {
+  const host = document.getElementById('largeFiles');
+  if (!lastResult) {
+    host.innerHTML =
+      '<div style="padding:24px;text-align:center;color:var(--muted)">' +
+      'Run a scan — double-click a drive above, or pick a folder.<br>' +
+      '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' +
+      '<button class="btn" type="button" id="btnEmptyPick">Browse…</button>' +
+      '<button class="btn ghost" type="button" id="btnEmptyScan">Scan path</button>' +
+      '<a class="btn ghost" href="../File Tools/Duplicate File Manager.html" style="text-decoration:none">Duplicates →</a>' +
+      '</div></div>';
+    document.getElementById('btnEmptyPick')?.addEventListener('click', () => document.getElementById('btnPick')?.click());
+    document.getElementById('btnEmptyScan')?.addEventListener('click', () => document.getElementById('btnScan')?.click());
+    return;
+  }
+  const q = (document.getElementById('fileFilter').value || '').toLowerCase();
+  let rows = (lastResult.large_files || []).slice();
+  if (q) rows = rows.filter(f => (f.name + ' ' + f.folder).toLowerCase().includes(q));
+  rows.sort((a, b) => {
+    const k = fileSort.key;
+    let av = k === 'size' ? (a.size || 0) : (a[k] || '');
+    let bv = k === 'size' ? (b.size || 0) : (b[k] || '');
+    if (typeof av === 'string') return av.localeCompare(bv) * fileSort.dir;
+    return (av - bv) * fileSort.dir;
+  });
+  if (!rows.length) {
+    host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No files match</div>';
+    return;
+  }
+  host.innerHTML = '<table><thead><tr>'
+    + '<th data-k="size">Size</th><th data-k="name">File</th><th data-k="folder">Folder</th>'
+    + '</tr></thead><tbody>'
+    + rows.map(f => `<tr><td><strong>${esc(f.size_human)}</strong></td><td>${esc(f.name)}</td><td class="mono">${esc(f.folder)}</td></tr>`).join('')
+    + '</tbody></table>';
+  host.querySelectorAll('th[data-k]').forEach(th => {
+    th.onclick = () => {
+      const k = th.dataset.k;
+      if (fileSort.key === k) fileSort.dir *= -1;
+      else { fileSort.key = k; fileSort.dir = k === 'size' ? -1 : 1; }
+      renderLargeFiles();
+    };
+  });
+}
+
+function renderFolders() {
+  if (!lastResult) return;
+  document.getElementById('junkInfo').textContent =
+    lastResult.junk_size_human ? `(${lastResult.junk_size_human} reclaimable)` : '';
+  const folders = lastResult.top_folders || [];
+  document.getElementById('folders').innerHTML = folders.length
+    ? '<table><thead><tr><th>Folder</th><th>Size</th></tr></thead><tbody>'
+      + folders.map(f => `<tr><td class="mono">${esc(f.path)}</td><td>${esc(f.size_human)}</td></tr>`).join('')
+      + '</tbody></table>'
+    : '<div style="padding:16px;color:var(--muted)">No folder summary</div>';
+}
+
+function stopScan() {
+  if (scanEs) { try { scanEs.close(); } catch {} scanEs = null; }
+  document.getElementById('btnScan').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+}
+
+document.getElementById('btnScan').onclick = () => {
+  const path = document.getElementById('scanPath').value.trim();
+  if (!path) { log('Enter a folder path first', true); return; }
+  const minMb = Math.max(1, parseInt(document.getElementById('minMb').value, 10) || 5);
+  stopScan();
+  document.getElementById('btnScan').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  log('Scanning…');
+  const url = apiBase() + '/disk/scan/stream?path=' + encodeURIComponent(path) + '&min_size_mb=' + minMb;
+  scanEs = new EventSource(url);
+  scanEs.onmessage = ev => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.error) { log('Error: ' + d.error, true); stopScan(); return; }
+    if (d.done) {
+      lastResult = d.result || {};
+      log(`Scanned ${lastResult.scanned_files || 0} files — ${lastResult.large_count || 0} large, ${lastResult.junk_count || 0} junk`);
+      renderLargeFiles();
+      renderFolders();
+      stopScan();
+      return;
+    }
+    if (d.message) log(d.message);
+  };
+  scanEs.onerror = () => {
+    log('Scan stream failed — is the server online?', true);
+    stopScan();
+  };
+};
+
+document.getElementById('btnStop').onclick = () => { stopScan(); log('Scan stopped'); };
+let fileFilterTimer = null;
+document.getElementById('fileFilter').oninput = () => {
+  clearTimeout(fileFilterTimer);
+  fileFilterTimer = setTimeout(renderLargeFiles, 200);
+};
+document.getElementById('btnExportFiles')?.addEventListener('click', () => {
+  if (!lastResult?.large_files?.length) { log('Run a scan first', true); return; }
+  const q = (document.getElementById('fileFilter').value || '').toLowerCase();
+  let rows = (lastResult.large_files || []).slice();
+  if (q) rows = rows.filter(f => (f.name + ' ' + f.folder).toLowerCase().includes(q));
+  const escCsv = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = ['size,size_bytes,name,folder'].concat(rows.map(f =>
+    [f.size_human, f.size, f.name, f.folder].map(escCsv).join(',')
+  ));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = 'disk-large-files-' + Date.now() + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  log('Exported ' + rows.length + ' file row(s)');
+});
+document.getElementById('btnRefreshDrives')?.addEventListener('click', loadOverview);
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('fileFilter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); loadOverview(); }
+});
+
+document.getElementById('btnPick').onclick = async () => {
+  try {
+    if (!window.AIToolboxAPI) throw new Error('API not loaded');
+    const online = await AIToolboxAPI.isOnline(true);
+    if (!online) throw new Error('Start the server first for native folder picker');
+    const r = await AIToolboxAPI.pickFolderOnly();
+    const p = r?.path || r?.folder || r;
+    if (typeof p === 'string' && p) document.getElementById('scanPath').value = p;
+  } catch (e) {
+    log(e.message || String(e), true);
+    UI()?.toast?.(e.message || String(e), 'warn');
+  }
+};
+
+UI()?.mountServerBar?.({ onOnline: () => loadOverview() });
+loadOverview();
+</script>
+
+<script data-tool-polish="disk-analyzer">
+/* Tool polish: disk-analyzer — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "disk-analyzer";
+  const TOOL_NAME = "Disk Space Analyzer";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="disk">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('Disk Analyzer needs S1 — Start Server for live scan', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

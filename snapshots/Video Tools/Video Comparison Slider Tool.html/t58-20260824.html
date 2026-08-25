@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro AI Video Comparator</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --text-color: #e0e0e0;
+            --neon-accent: #00f3ff;
+            --dark-panel: #0a0a0a;
+            --border-style: solid;
+            --glow-mult: 1;
+            --audio-mult: 1;
+            --chase-angle: 0deg;
+            --rainbow-hue: 180;
+            --vid-brightness: 100;
+            --vid-contrast: 100;
+            --vid-saturate: 100;
+            --active-glow: calc(var(--glow-mult) * var(--audio-mult));
+            --neon-glow: 0 0 calc(8px * var(--active-glow)) var(--neon-accent), 0 0 calc(18px * var(--active-glow)) var(--neon-accent);
+            --border-color: var(--neon-accent);
+        }
+
+        body[data-fx="rainbow"] { --neon-accent: hsl(var(--rainbow-hue), 100%, 50%); }
+        body[data-fx="chase"] .fx-border {
+            border: 2px solid transparent !important;
+            border-image: linear-gradient(var(--chase-angle), var(--neon-accent), transparent, var(--neon-accent), transparent) 1 !important;
+        }
+
+        * { box-sizing: border-box; }
+
+        a.toolbox-back {
+            position: fixed; top: 10px; left: 12px; z-index: 50;
+            color: var(--neon-accent); text-decoration: none; font: 600 12px system-ui, sans-serif;
+            padding: 6px 10px; border-radius: 8px;
+            background: rgba(5,5,12,.9); border: 1px solid rgba(0,243,255,.3);
+        }
+        a.toolbox-back:hover { box-shadow: var(--neon-glow); }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            height: 100vh;
+            overflow: auto;
+            min-width: 720px;
+        }
+
+        .control-panel-wrapper { position: relative; z-index: 40; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .control-panel-wrapper.collapsed { transform: translateY(-100%); }
+
+        .control-panel {
+            padding: 12px 20px;
+            background: var(--dark-panel);
+            border-bottom: 2px var(--border-style) var(--border-color);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8), var(--neon-glow);
+            text-align: center;
+        }
+
+        .collapse-tab {
+            position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%);
+            background: var(--dark-panel);
+            border: 1px var(--border-style) var(--border-color); border-top: none;
+            color: var(--neon-accent); padding: 2px 15px; border-radius: 0 0 8px 8px;
+            cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: var(--neon-glow);
+            z-index: 41;
+        }
+
+        h2 {
+            color: var(--neon-accent);
+            text-shadow: 0 0 calc(10px * var(--active-glow)) var(--neon-accent);
+            margin: 0 0 10px 0;
+            font-weight: 400;
+            letter-spacing: 1px;
+            font-size: 20px;
+        }
+
+        .drop-zones-container { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
+        .drop-zone {
+            border: 2px var(--border-style) var(--border-color);
+            padding: 12px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(0,0,0,0.4);
+            width: 100%;
+            max-width: 380px;
+        }
+        .drop-zone:hover, .drop-zone.dragover { background: rgba(255, 255, 255, 0.05); box-shadow: var(--neon-glow); }
+        .drop-zone p { margin: 0 0 6px 0; font-size: 14px; font-weight: bold; }
+        .drop-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .status-text { margin-top: 5px; font-size: 11px; color: #888; word-break: break-all; }
+        .folder-hint { font-size: 10px; color: #666; margin-top: 3px; }
+        .recent-row { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 5px; min-height: 20px; }
+        .recent-chip {
+            font-size: 10px; padding: 2px 8px; border-radius: 10px;
+            border: 1px solid rgba(0,243,255,0.3); background: rgba(0,0,0,0.5);
+            cursor: pointer; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .recent-chip:hover { border-color: var(--neon-accent); color: var(--neon-accent); }
+
+        .btn {
+            background: transparent; border: 1px solid var(--neon-accent); color: var(--neon-accent);
+            padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s;
+            text-transform: uppercase; font-size: 11px;
+        }
+        .btn:hover, .btn.active { background: var(--neon-accent); color: #000; box-shadow: var(--neon-glow); }
+        .btn-sm { padding: 4px 10px; font-size: 10px; }
+
+        .toolbar { display: flex; justify-content: center; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .toolbar-divider { width: 1px; height: 20px; background: rgba(100,100,100,0.5); }
+        .toolbar-group {
+            display: flex; gap: 6px; align-items: center;
+            background: rgba(255,255,255,0.04); padding: 4px 10px; border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .toolbar-group label { font-size: 10px; color: #aaa; }
+
+        .sweep-container {
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255, 0.05); padding: 4px 10px; border-radius: 4px;
+            border: 1px var(--border-style) var(--border-color);
+        }
+
+        input[type="range"] { accent-color: var(--neon-accent); cursor: pointer; }
+        select {
+            background: transparent; color: var(--neon-accent); border: 1px solid var(--neon-accent);
+            padding: 4px; border-radius: 4px; outline: none; cursor: pointer; font-size: 11px; font-weight: bold;
+        }
+        select option { background: var(--dark-panel); color: var(--text-color); }
+
+        .viewer-container { flex: 1 1 auto; position: relative; background: #020202; cursor: crosshair; overflow: hidden; display: none; }
+
+        .res-badge {
+            position: absolute; top: 15px; background: rgba(0, 0, 0, 0.85); color: var(--neon-accent);
+            padding: 5px 10px; border-radius: 4px; font-family: monospace; font-size: 13px; font-weight: bold;
+            border: 1px var(--border-style) var(--border-color); z-index: 20; pointer-events: none;
+        }
+        .res-left { left: 15px; } .res-right { right: 15px; }
+        .res-label { color: #888; font-size: 10px; display: block; margin-bottom: 2px; text-transform: uppercase; }
+
+        .zoom-badge {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: var(--neon-accent); padding: 4px 12px;
+            border-radius: 12px; font-family: monospace; font-size: 11px;
+            border: 1px solid rgba(0,243,255,0.3); z-index: 20; pointer-events: none;
+        }
+
+        .transform-layer { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+        .media-box { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
+        .media-box video {
+            display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none;
+            filter: brightness(var(--vid-brightness)%) contrast(var(--vid-contrast)%) saturate(var(--vid-saturate)%);
+        }
+        #box-before { clip-path: inset(0 50% 0 0); will-change: clip-path, opacity; z-index: 2; }
+        #box-after { z-index: 1; }
+
+        .viewer-container[data-orient="vertical"] #box-before { clip-path: inset(0 0 50% 0); }
+        .viewer-container[data-mode="blend"] #box-before { clip-path: none; }
+        .viewer-container[data-mode="difference"] #box-before { clip-path: none; mix-blend-mode: difference; }
+
+        .slider-line {
+            position: absolute; top: 0; height: 100%; background: var(--neon-accent); box-shadow: var(--neon-glow);
+            pointer-events: none; transform: translateX(-50%); z-index: 5;
+        }
+        .viewer-container[data-orient="vertical"] .slider-line {
+            width: 100%; height: auto; left: 0 !important; top: 50%; transform: translateY(-50%);
+        }
+        .viewer-container[data-mode="blend"] .slider-line,
+        .viewer-container[data-mode="difference"] .slider-line { display: none; }
+
+        .slider-button {
+            position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; background: var(--bg-color);
+            border: 2px solid var(--neon-accent); border-radius: 50%; box-shadow: var(--neon-glow);
+            display: flex; align-items: center; justify-content: center; transform-origin: center center;
+        }
+        .slider-button::before, .slider-button::after {
+            content: ''; border: solid var(--neon-accent); border-width: 0 2px 2px 0;
+            display: inline-block; padding: 3px;
+        }
+        .slider-button::before { transform: rotate(135deg); margin-right: 3px; }
+        .slider-button::after { transform: rotate(-45deg); margin-left: 3px; }
+
+        .ab-marker {
+            position: absolute; top: 0; width: 2px; height: 100%;
+            background: #ff6b00; z-index: 4; pointer-events: none; opacity: 0.8;
+        }
+        .ab-marker.b { background: #00ff88; }
+        .ab-region {
+            position: absolute; top: 0; height: 100%;
+            background: rgba(0, 243, 255, 0.08);
+            z-index: 3; pointer-events: none;
+        }
+
+        .pair-library {
+            position: absolute; top: 60px; right: 15px; width: 260px; max-height: calc(100% - 200px);
+            background: rgba(10,10,10,0.95); border: 2px var(--border-style) var(--border-color);
+            border-radius: 8px; z-index: 35; display: flex; flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8), var(--neon-glow);
+            transition: transform 0.3s, opacity 0.3s;
+        }
+        .pair-library.collapsed { transform: translateX(calc(100% + 20px)); opacity: 0; pointer-events: none; }
+
+        .pair-header {
+            padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .pair-header h3 { margin: 0; font-size: 13px; color: var(--neon-accent); }
+        .pair-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .pair-item {
+            padding: 8px 10px; margin-bottom: 6px; border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1); cursor: pointer;
+            transition: all 0.15s; font-size: 11px;
+        }
+        .pair-item:hover, .pair-item.active { border-color: var(--neon-accent); background: rgba(0,243,255,0.08); }
+        .pair-item .pair-name { font-weight: bold; color: var(--neon-accent); margin-bottom: 3px; }
+        .pair-item .pair-code { font-size: 10px; color: #ffb347; font-family: Consolas, monospace; margin-bottom: 4px; }
+        .pair-item.pinned { border-color: rgba(255,179,71,0.45); }
+        .pair-item .pair-files { color: #888; font-size: 10px; line-height: 1.3; }
+        .pair-quick { display: flex; gap: 6px; margin-bottom: 8px; }
+        .pair-quick input {
+            flex: 1; background: #000; border: 1px solid rgba(0,243,255,0.3);
+            color: var(--text); padding: 6px 8px; border-radius: 5px; font-size: 11px;
+            font-family: Consolas, monospace;
+        }
+        .pair-actions { display: flex; gap: 4px; margin-top: 6px; }
+        .pair-actions .btn { flex: 1; font-size: 9px; padding: 3px 6px; }
+        .pair-footer { padding: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
+
+        .video-deck {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 95%; max-width: 950px; background: var(--dark-panel);
+            border: 2px var(--border-style) var(--border-color); border-radius: 6px;
+            padding: 10px 15px; display: flex; flex-direction: column; gap: 8px;
+            z-index: 30; box-shadow: 0 4px 15px rgba(0,0,0,0.8), var(--neon-glow);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .deck-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .deck-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .timeline-wrap { flex: 1; position: relative; min-width: 200px; }
+        .timeline-slider { width: 100%; height: 6px; }
+        .time-stamp { font-family: monospace; font-size: 12px; color: var(--neon-accent); min-width: 110px; text-align: right; }
+        .vol-container { display: flex; align-items: center; gap: 8px; border-left: 1px solid rgba(100,100,100,0.5); padding-left: 12px; }
+        .vol-slider { width: 80px; }
+
+        .settings-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.95);
+            background: var(--dark-panel); border: 2px solid var(--neon-accent);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9), var(--neon-glow); padding: 20px 25px;
+            border-radius: 8px; z-index: 100; width: 400px; max-height: 85vh; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 10px;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+        }
+        .settings-modal.active { opacity: 1; pointer-events: all; transform: translate(-50%, -50%) scale(1); }
+        .settings-modal h3 { margin: 0; color: var(--neon-accent); text-align: center; font-size: 14px; }
+        .settings-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0; }
+        .settings-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: bold; }
+        .color-picker { width: 40px; height: 25px; padding: 0; border: none; background: transparent; cursor: pointer; }
+
+        body.is-fullscreen .control-panel-wrapper { display: none; }
+        body.is-fullscreen .res-badge { opacity: 0.5; }
+        body.is-fullscreen .video-deck .fs-hide { display: none !important; }
+        body.is-fullscreen .video-deck { max-width: 750px; background: rgba(5,5,5,0.75); backdrop-filter: blur(8px); }
+        body.is-fullscreen.idle .video-deck { opacity: 0; transform: translate(-50%, 40px); pointer-events: none; }
+        body.is-fullscreen.idle .pair-library { opacity: 0; pointer-events: none; }
+        body.is-fullscreen.idle { cursor: none; }
+
+        .toast {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--neon-accent); color: #000; padding: 8px 16px; border-radius: 20px;
+            font-weight: bold; font-size: 14px; z-index: 50; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s; box-shadow: var(--neon-glow);
+        }
+
+        .kbd-hint { font-size: 10px; color: #666; margin-top: 4px; }
+    </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+</head>
+<body data-fx="none">
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+<div data-fafo-layout-root data-fafo-layout-app="video-tools-video-comparison-slider-tool" data-fafo-layout-type="columns" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
+<a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+<div class="counterpart-bar" id="vidCompareNav" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 16px 0 120px;font-size:11px" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+  <a href="../Image tools/Image Comparitor With Slider.html" style="color:var(--neon-accent);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(0,243,255,.3);border-radius:6px">🖼️ Image Compare</a>
+  <a href="../Movie File Manager/Compare Hub.html#video" style="color:var(--neon-accent);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(0,243,255,.3);border-radius:6px">⇄ Compare Hub</a>
+  <a href="../Movie File Manager/Media Hub.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px">🗂️ Media Hub</a>
+  <a href="../Movie File Manager/VSR Pipeline Manager.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px">⚡ VSR</a>
+  <a href="../Movie File Manager/Pair Review Queue.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px">🔎 Pair Review</a>
+  <a href="FAFO_VID_TRIM.html" style="color:#aaa;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px">🎬 VID ŦRIM</a>
+  <button type="button" id="btn-mirror-ab" class="btn" style="font-size:11px;padding:4px 10px"
+          data-tip-title="Mirror / Sync" data-tip="Reset slider to 50% and re-sync A/B timelines.">🪞 Mirror / Sync A-B</button>
+  <button type="button" id="btn-copy-pair-report" class="btn" style="font-size:11px;padding:4px 10px"
+          data-tip-title="Report" data-tip="Copy the current pair report to the clipboard.">📋 Report</button>
+</div>
+
+    <div class="control-panel-wrapper fx-border" id="panelWrapper">
+        <div class="control-panel fx-border">
+            <h2>Pro AI Video Comparator</h2>
+
+            <div class="drop-zones-container">
+                <div id="dz-before" class="drop-zone fx-border">
+                    <p>1. Original (Before)</p>
+                    <div class="drop-actions">
+                        <button class="btn" data-browse="before">Browse</button>
+                        <button class="btn btn-sm" data-pin="before">📁 Pin Folder</button>
+                    </div>
+                    <input type="file" id="file-before" accept="video/*" hidden>
+                    <div class="status-text" id="status-before">Awaiting file...</div>
+                    <div class="folder-hint" id="folder-before">No pinned folder</div>
+                    <div class="recent-row" id="recent-before"></div>
+                </div>
+
+                <div id="dz-after" class="drop-zone fx-border">
+                    <p>2. Upscaled (After)</p>
+                    <div class="drop-actions">
+                        <button class="btn" data-browse="after">Browse</button>
+                        <button class="btn btn-sm" data-pin="after">📁 Pin Folder</button>
+                    </div>
+                    <input type="file" id="file-after" accept="video/*" hidden>
+                    <div class="status-text" id="status-after">Awaiting file...</div>
+                    <div class="folder-hint" id="folder-after">No pinned folder</div>
+                    <div class="recent-row" id="recent-after"></div>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <button class="btn" id="btn-settings" data-tip="Compare settings (sync, quality, HUD).">⚙ Settings</button>
+                <button class="btn" id="btn-pairs" data-tip="Browse locked pairs in the catalog.">📋 Pairs</button>
+                <button class="btn" id="btn-save-pair" data-tip-title="Save pair" data-tip="Lock this before/after as a catalog pair.">💾 Save Pair</button>
+                <div class="toolbar-divider"></div>
+                <button class="btn" id="btn-swap" data-tip="Swap left and right sources.">Swap</button>
+                <button class="btn" id="btn-fit" data-tip="Fit both videos in the window.">Fit</button>
+                <button class="btn" id="btn-100" data-tip="Show true 1:1 pixels (best for sharpness).">1:1</button>
+                <button class="btn" id="btn-fullscreen" data-tip="Fullscreen compare stage (Esc exits).">⛶ Full</button>
+                <button class="btn" id="btn-screenshot" data-tip="Capture the current compare frame.">📷</button>
+                <div class="toolbar-divider"></div>
+                <div class="toolbar-group">
+                    <label>View:</label>
+                    <select id="compare-mode">
+                        <option value="slider">Slider</option>
+                        <option value="blend">Blend</option>
+                        <option value="difference">Difference</option>
+                    </select>
+                    <select id="split-orient">
+                        <option value="horizontal">↔</option>
+                        <option value="vertical">↕</option>
+                    </select>
+                </div>
+                <div class="sweep-container">
+                    <button class="btn" id="btn-sweep" data-tip-title="Sweep" data-tip="Animate the compare slider back and forth to spot differences.">Sweep</button>
+                    <select id="sweep-mode"><option value="pong">Pong</option><option value="loop">Loop</option></select>
+                    <input type="range" id="sweep-speed" style="width:60px;" min="0.001" max="0.03" step="0.001" value="0.005">
+                </div>
+            </div>
+            <div class="kbd-hint">Space: Play/Pause · ←/→: Frame · F: Fullscreen · S: Save Pair · P: Pairs · W: Swap · M: Mirror/sync · R: Report · 1/2: A-B Loop</div>
+        </div>
+        <div class="collapse-tab" id="btn-collapse">▲ Collapse</div>
+    </div>
+
+    <div class="viewer-container" id="viewerContainer" data-mode="slider" data-orient="horizontal">
+        <div class="toast" id="toastMsg">Synced!</div>
+        <div class="zoom-badge" id="zoomBadge">100%</div>
+
+        <div class="res-badge res-left fx-border"><span class="res-label" id="lbl-left">Before</span><span id="res-text-left">-- x --</span></div>
+        <div class="res-badge res-right fx-border"><span class="res-label" id="lbl-right">After</span><span id="res-text-right">-- x --</span></div>
+
+        <div class="pair-library collapsed" id="pairLibrary">
+            <div class="pair-header">
+                <h3>Locked Pairs</h3>
+                <button class="btn btn-sm" id="btn-close-pairs">✕</button>
+            </div>
+            <div style="padding:8px 8px 0;">
+                <div class="pair-quick">
+                    <input type="text" id="pairCodeInput" placeholder="UP-0001" title="Type pair code and press Enter">
+                    <button class="btn btn-sm" id="btn-load-code">Load</button>
+                </div>
+                <div class="pair-quick" style="margin-top:6px;">
+                    <button class="btn btn-sm" id="btn-prev-pair" title="Previous locked pair">◀ Prev</button>
+                    <button class="btn btn-sm" id="btn-next-pair" title="Next locked pair + play">Next ▶</button>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:#888;margin:6px 0;cursor:pointer;">
+                    <input type="checkbox" id="chkAutoNextPair" checked> Auto-next when After video ends
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:#888;margin:0 0 6px;cursor:pointer;"
+                    title="When advancing pairs, write previous Before/After tags + star rating into the real files">
+                    <input type="checkbox" id="chkUpdateFiles" checked> 💾 Update files on next (tags + rating)
+                </label>
+                <p style="font-size:9px;color:#666;margin-bottom:6px;">Pinned pairs persist in the server database. <kbd>N</kbd> = next pair + play.</p>
+            </div>
+            <div class="pair-list" id="pairList"></div>
+            <div class="pair-footer">
+                <label style="display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" id="chkLockPair" checked> 🔒 Lock pair (pin for quick access)
+                </label>
+                <button class="btn" id="btn-save-pair-side" style="width:100%;">💾 Save & Lock Current Pair</button>
+            </div>
+        </div>
+
+        <div class="transform-layer" id="transformLayer">
+            <div class="media-box" id="box-after"></div>
+            <div class="media-box" id="box-before"></div>
+            <div class="ab-region" id="abRegion" style="display:none;"></div>
+            <div class="ab-marker a" id="abMarkerA" style="display:none; left:0;"></div>
+            <div class="ab-marker b" id="abMarkerB" style="display:none; left:100%;"></div>
+            <div class="slider-line" id="sliderLine"><div class="slider-button"></div></div>
+        </div>
+
+        <div class="video-deck fx-border" id="videoDeck">
+            <div class="deck-row">
+                <div class="timeline-wrap">
+                    <input type="range" id="timeline" class="timeline-slider" min="0" max="100" value="0" step="0.01">
+                </div>
+                <div class="time-stamp" id="timeDisplay">00:00 / 00:00</div>
+            </div>
+            <div class="deck-row">
+                <div class="deck-controls">
+                    <button class="btn fs-hide" id="btn-rev-play">◀◀</button>
+                    <button class="btn fs-hide" id="btn-prev-frame">◁</button>
+                    <button class="btn" id="btn-play" style="width:65px;" data-tip="Play or pause both sides together.">Play</button>
+                    <button class="btn fs-hide" id="btn-next-frame">▷</button>
+                    <select id="sel-speed" class="fs-hide">
+                        <option value="0.1">0.1x</option>
+                        <option value="0.25">0.25x</option>
+                        <option value="0.5">0.5x</option>
+                        <option value="1" selected>1.0x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2.0x</option>
+                        <option value="4">4.0x</option>
+                    </select>
+                    <button class="btn fs-hide" id="btn-ab-loop">A-B Loop</button>
+                    <input type="range" id="blend-opacity" min="0" max="100" value="50" style="width:60px;display:none;" title="Blend opacity">
+                </div>
+                <div class="vol-container">
+                    <button class="btn" id="btn-mute">Mute</button>
+                    <input type="range" id="vol-slider" class="vol-slider" min="0" max="1" step="0.05" value="1">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-modal fx-border" id="settingsModal">
+        <h3>UI & Playback</h3>
+        <div class="settings-row"><span>Theme:</span><select id="set-theme"><option value="oled">OLED Black</option><option value="dark">Studio Dark</option><option value="cyber">Cyber Forge</option></select></div>
+        <div class="settings-row"><span>Accent Color:</span><input type="color" id="set-color" class="color-picker" value="#00f3ff"></div>
+        <div class="settings-row"><span>Border Style:</span><select id="set-border"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select></div>
+        <div class="settings-row"><span>Glow Level:</span><input type="range" id="set-glow" min="0" max="2" step="0.1" value="1" style="width:100px;"></div>
+
+        <div class="settings-divider"></div>
+        <h3 style="font-size:13px;">Video Enhancement</h3>
+        <div class="settings-row"><span>Brightness:</span><input type="range" id="set-brightness" min="50" max="150" step="1" value="100" style="width:100px;"></div>
+        <div class="settings-row"><span>Contrast:</span><input type="range" id="set-contrast" min="50" max="200" step="1" value="100" style="width:100px;"></div>
+        <div class="settings-row"><span>Saturation:</span><input type="range" id="set-saturate" min="0" max="200" step="1" value="100" style="width:100px;"></div>
+        <div class="settings-row"><span>Sync Tolerance:</span><input type="range" id="set-sync-tol" min="0.02" max="0.5" step="0.01" value="0.1" style="width:100px;"></div>
+        <div class="settings-row"><span>Preload:</span><select id="set-preload"><option value="auto" selected>Auto</option><option value="metadata">Metadata</option></select></div>
+        <div class="settings-row"><span>Frame Step (fps):</span><select id="set-fps"><option value="24">24</option><option value="30" selected>30</option><option value="60">60</option></select></div>
+
+        <div class="settings-divider"></div>
+        <h3 style="font-size:13px;">Audio Reactive FX</h3>
+        <div class="settings-row"><span>Effect:</span><select id="set-audio-mode"><option value="none">Off</option><option value="pulse">Pulse</option><option value="chase">Chase</option><option value="rainbow">Rainbow</option></select></div>
+        <div class="settings-row"><span>Sensitivity:</span><input type="range" id="set-audio-sens" min="0" max="3" step="0.1" value="1.2" style="width:100px;"></div>
+
+        <button class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+    <script>
+        const DB_NAME = 'AIVideoComparator';
+        const DB_VER = 1;
+        const SETTINGS_KEY = 'video-comparator-settings';
+
+        const viewerContainer = document.getElementById('viewerContainer');
+        const transformLayer = document.getElementById('transformLayer');
+        const boxBefore = document.getElementById('box-before');
+        const boxAfter = document.getElementById('box-after');
+        const sliderLine = document.getElementById('sliderLine');
+        const sliderButton = document.querySelector('.slider-button');
+        const toastMsg = document.getElementById('toastMsg');
+        const panelWrapper = document.getElementById('panelWrapper');
+        const pairLibrary = document.getElementById('pairLibrary');
+        const pairList = document.getElementById('pairList');
+        const zoomBadge = document.getElementById('zoomBadge');
+
+        let scale = 1, translateX = 0, translateY = 0;
+        let isDraggingSlider = false, isPanning = false, panStartX = 0, panStartY = 0;
+        let currentSliderPercent = 0.5, isSwapped = false, isTimelineDragging = false;
+        let elBefore = null, elAfter = null;
+        let nativeWidth = 0, nativeHeight = 0;
+        let fileCacheBefore = null, fileCacheAfter = null;
+        let handleBefore = null, handleAfter = null;
+        let reverseInterval = null, isSweeping = false, sweepAnimFrame = null, sweepDirection = 1;
+        let rvfcId = null, abLoopActive = false, abPointA = null, abPointB = null;
+        let activePairId = null;
+        let knownBeforePath = null;
+        let knownAfterPath = null;
+        const LAST_PAIR_KEY = 'video-comparator-last-pair';
+        let fsSupported = 'showOpenFilePicker' in window;
+
+        function normalizePair(p) {
+            return AIToolboxAPI.normalizePair ? AIToolboxAPI.normalizePair(p) : p;
+        }
+
+        function pairComparatorUrl(pair) {
+            const code = pair.pairCode || pair.pair_code;
+            const id = pair.id;
+            return `${location.pathname}?pair=${encodeURIComponent(code || id)}&server=1`;
+        }
+
+        function rememberPair(pair) {
+            if (!pair?.id) return;
+            activePairId = pair.id;
+            localStorage.setItem(LAST_PAIR_KEY, pair.id);
+            if (pair.pairCode || pair.pair_code) {
+                localStorage.setItem(LAST_PAIR_KEY + '-code', pair.pairCode || pair.pair_code);
+            }
+        }
+
+        function getFrameStep() { return 1 / parseFloat(document.getElementById('set-fps').value); }
+
+        // --- IndexedDB ---
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, DB_VER);
+                req.onupgradeneeded = e => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+                    if (!db.objectStoreNames.contains('recents')) db.createObjectStore('recents');
+                    if (!db.objectStoreNames.contains('pairs')) db.createObjectStore('pairs', { keyPath: 'id' });
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function idbGet(store, key) {
+            const db = await openDB();
+            return new Promise((res, rej) => {
+                const r = db.transaction(store).objectStore(store).get(key);
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => rej(r.error);
+            });
+        }
+
+        async function idbSet(store, key, val) {
+            const db = await openDB();
+            return new Promise((res, rej) => {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).put(val, key);
+                tx.oncomplete = res;
+                tx.onerror = () => rej(tx.error);
+            });
+        }
+
+        async function idbGetAll(store) {
+            const db = await openDB();
+            return new Promise((res, rej) => {
+                const r = db.transaction(store).objectStore(store).getAll();
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => rej(r.error);
+            });
+        }
+
+        async function idbDelete(store, key) {
+            const db = await openDB();
+            return new Promise((res, rej) => {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).delete(key);
+                tx.oncomplete = res;
+                tx.onerror = () => rej(tx.error);
+            });
+        }
+
+        async function ensurePermission(handle) {
+            if (!handle) return false;
+            if (await handle.queryPermission({ mode: 'read' }) === 'granted') return true;
+            return (await handle.requestPermission({ mode: 'read' })) === 'granted';
+        }
+
+        async function pinFolder(slot) {
+            if (!('showDirectoryPicker' in window)) {
+                alert('Folder pinning requires Chrome or Edge.');
+                return;
+            }
+            try {
+                const dir = await window.showDirectoryPicker({ mode: 'read' });
+                await idbSet('handles', `dir-${slot}`, dir);
+                updateFolderHint(slot, dir.name);
+            } catch (e) { if (e.name !== 'AbortError') console.warn(e); }
+        }
+
+        async function updateFolderHint(slot, name) {
+            const el = document.getElementById(`folder-${slot}`);
+            if (name) el.textContent = `Pinned: ${name}`;
+            else {
+                const h = await idbGet('handles', `dir-${slot}`);
+                el.textContent = h ? `Pinned: ${h.name}` : 'No pinned folder';
+            }
+        }
+
+        async function addRecent(slot, handle, name) {
+            const key = `recent-${slot}`;
+            let list = (await idbGet('recents', key)) || [];
+            list = list.filter(r => r.name !== name);
+            if (handle) list.unshift({ name, handle });
+            list = list.slice(0, 8);
+            await idbSet('recents', key, list);
+            renderRecents(slot, list);
+        }
+
+        async function renderRecents(slot, list) {
+            const row = document.getElementById(`recent-${slot}`);
+            row.innerHTML = '';
+            if (!list) list = (await idbGet('recents', `recent-${slot}`)) || [];
+            list.forEach(item => {
+                const chip = document.createElement('span');
+                chip.className = 'recent-chip';
+                chip.title = item.name;
+                chip.textContent = item.name;
+                chip.addEventListener('click', async () => {
+                    if (item.handle && await ensurePermission(item.handle)) {
+                        const file = await item.handle.getFile();
+                        ingestFile(slot, file, item.name, item.handle);
+                    }
+                });
+                row.appendChild(chip);
+            });
+        }
+
+        async function pickFile(slot) {
+            const accept = { 'video/*': ['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v'] };
+            if (fsSupported) {
+                try {
+                    const opts = { types: [{ accept }], multiple: false };
+                    const dir = await idbGet('handles', `dir-${slot}`);
+                    if (dir && await ensurePermission(dir)) opts.startIn = dir;
+                    const [handle] = await window.showOpenFilePicker(opts);
+                    const file = await handle.getFile();
+                    ingestFile(slot, file, file.name, handle);
+                    await addRecent(slot, handle, file.name);
+                    return;
+                } catch (e) { if (e.name !== 'AbortError') console.warn(e); return; }
+            }
+            document.getElementById(slot === 'before' ? 'file-before' : 'file-after').click();
+        }
+
+        function ingestFile(slot, file, name, handle) {
+            const st = document.getElementById(`status-${slot}`);
+            st.innerText = `Loaded: ${name || file.name}`;
+            st.style.color = 'var(--neon-accent)';
+            if (slot === 'before') { fileCacheBefore = file; handleBefore = handle || null; checkReady(); }
+            else { fileCacheAfter = file; handleAfter = handle || null; checkReady(); }
+        }
+
+        // --- Pair Library (persisted on server when online) ---
+        async function resolvePairUrls(pair) {
+            const p = normalizePair(pair);
+            if (p.beforeMediaId && p.afterMediaId) {
+                return {
+                    before: AIToolboxAPI.mediaFileUrl(p.beforeMediaId),
+                    after: AIToolboxAPI.mediaFileUrl(p.afterMediaId),
+                    beforeName: p.beforeName,
+                    afterName: p.afterName,
+                    beforePath: p.beforePath,
+                    afterPath: p.afterPath,
+                };
+            }
+            if (p.beforePath && p.afterPath) {
+                return {
+                    before: AIToolboxAPI.fileServeUrl(p.beforePath),
+                    after: AIToolboxAPI.fileServeUrl(p.afterPath),
+                    beforeName: p.beforeName,
+                    afterName: p.afterName,
+                    beforePath: p.beforePath,
+                    afterPath: p.afterPath,
+                };
+            }
+            throw new Error('Pair has no resolvable file paths');
+        }
+
+        async function saveCurrentPair() {
+            if (!fileCacheBefore || !fileCacheAfter) {
+                showToast('Load both videos first!');
+                return;
+            }
+            const defaultName = `${fileCacheBefore.name} ↔ ${fileCacheAfter.name}`;
+            const name = prompt('Name this pair:', defaultName.slice(0, 80));
+            if (!name) return;
+            const pinned = document.getElementById('chkLockPair')?.checked !== false;
+
+            try {
+                if (await AIToolboxAPI.isOnline()) {
+                    const bq = await AIToolboxAPI.queryMedia({ search: fileCacheBefore.name, limit: 10 });
+                    const aq = await AIToolboxAPI.queryMedia({ search: fileCacheAfter.name, limit: 10 });
+                    const bm = (bq.items || []).find(m => m.name === fileCacheBefore.name);
+                    const am = (aq.items || []).find(m => m.name === fileCacheAfter.name);
+                    let pair;
+                    if (bm && am) {
+                        pair = await AIToolboxAPI.savePair({
+                            name, kind: 'video', beforeMediaId: bm.id, afterMediaId: am.id, pinned,
+                        });
+                    } else if (knownBeforePath && knownAfterPath) {
+                        pair = await AIToolboxAPI.savePairFromPaths({
+                            beforePath: knownBeforePath, afterPath: knownAfterPath, name, kind: 'video', pinned,
+                        });
+                    } else {
+                        showToast('Add files to Media Library first, or load a server pair to save by path.', 'warn');
+                        return;
+                    }
+                    rememberPair(pair);
+                    knownBeforePath = pair.beforePath || knownBeforePath;
+                    knownAfterPath = pair.afterPath || knownAfterPath;
+                    renderPairList();
+                    showToast(`Locked ${pair.pairCode || pair.id}: ${name}`);
+                    return;
+                }
+            } catch (e) {
+                console.warn(e);
+                showToast('Server save failed: ' + e.message, 'warn');
+            }
+
+            if (!handleBefore || !handleAfter) {
+                showToast('Offline: re-browse files in Chrome/Edge to save locally.');
+                return;
+            }
+            const pair = await AIToolbox.savePair({
+                name, kind: 'video', pinned,
+                beforeHandle: handleBefore, afterHandle: handleAfter,
+                beforeName: fileCacheBefore.name, afterName: fileCacheAfter.name,
+            });
+            rememberPair(pair);
+            renderPairList();
+            showToast(`Saved locally: ${name}`);
+        }
+
+        let cachedPairList = [];
+
+        async function loadPair(pair, opts = {}) {
+            const p = normalizePair(pair);
+            try {
+                if (await AIToolboxAPI.isOnline() && (p.beforeMediaId || p.beforePath)) {
+                    const urls = await resolvePairUrls(p);
+                    knownBeforePath = urls.beforePath;
+                    knownAfterPath = urls.afterPath;
+                    loadVideosFromUrls(urls.before, urls.after, urls.beforeName, urls.afterName);
+                    rememberPair(p);
+                    renderPairList();
+                    showToast(`Loaded ${p.pairCode || p.name}`);
+                    if (opts.play) setTimeout(() => playBothVideos(), 150);
+                    wirePairEndedAdvance();
+                    return;
+                }
+                const files = await AIToolbox.resolvePairFiles(p);
+                handleBefore = files.beforeHandle;
+                handleAfter = files.afterHandle;
+                fileCacheBefore = files.beforeFile;
+                fileCacheAfter = files.afterFile;
+                document.getElementById('status-before').innerText = `Loaded: ${files.beforeFile.name}`;
+                document.getElementById('status-after').innerText = `Loaded: ${files.afterFile.name}`;
+                rememberPair(p);
+                loadVideos(files.beforeFile, files.afterFile);
+                renderPairList();
+                showToast(`Loaded: ${p.name}`);
+                if (opts.play) setTimeout(() => playBothVideos(), 150);
+                wirePairEndedAdvance();
+            } catch (e) {
+                showToast('Could not load pair — ' + e.message);
+                console.warn(e);
+            }
+        }
+
+        function playBothVideos() {
+            document.querySelectorAll('video').forEach(v => {
+                try { v.currentTime = 0; } catch { /* ignore */ }
+                v.play?.().catch?.(() => {});
+            });
+        }
+
+        const UPDATE_FILES_KEY = 'aitoolbox_update_files_on_next';
+
+        function isUpdateFilesOnNext() {
+            const el = document.getElementById('chkUpdateFiles');
+            if (el) return !!el.checked;
+            return localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+        }
+
+        async function flushActivePairFilesToDisk() {
+            if (!isUpdateFilesOnNext() || !activePairId) return;
+            if (!(await AIToolboxAPI.isOnline?.().catch(() => false))) return;
+            try {
+                const p = cachedPairList.find(x => x.id === activePairId)
+                    || normalizePair(await AIToolboxAPI.getPair(activePairId));
+                if (!p) return;
+                const beforeId = p.beforeMediaId || p.before_media_id;
+                const afterId = p.afterMediaId || p.after_media_id;
+                if (!beforeId && !afterId) return;
+                if (AIToolboxAPI.flushPairMediaToFiles) {
+                    const r = await AIToolboxAPI.flushPairMediaToFiles(beforeId, afterId);
+                    if (r.errors?.length) showToast('File write: ' + r.errors.join('; '), 'warn');
+                    else if (r.before || r.after) showToast('Updated previous pair tags/rating on disk', 'ok');
+                } else if (AIToolboxAPI.flushMediaTagsToFile) {
+                    if (beforeId) await AIToolboxAPI.flushMediaTagsToFile(beforeId);
+                    if (afterId) await AIToolboxAPI.flushMediaTagsToFile(afterId);
+                    showToast('Updated previous pair tags/rating on disk', 'ok');
+                }
+            } catch (e) {
+                console.warn(e);
+                showToast('File tag write failed: ' + (e.message || e), 'warn');
+            }
+        }
+
+        async function stepPair(delta, play) {
+            if (!cachedPairList.length) await renderPairList();
+            if (!cachedPairList.length) {
+                showToast('No locked pairs');
+                return;
+            }
+            // Write previous pair's tags + rating before leaving
+            await flushActivePairFilesToDisk();
+            let i = cachedPairList.findIndex(p => p.id === activePairId);
+            if (i < 0) i = 0;
+            else i = (i + delta + cachedPairList.length) % cachedPairList.length;
+            await loadPair(cachedPairList[i], { play: !!play });
+        }
+
+        function wirePairEndedAdvance() {
+            const vids = [...document.querySelectorAll('#box-after video, .media-box video')];
+            vids.forEach(v => { v.onended = null; });
+            if (!document.getElementById('chkAutoNextPair')?.checked) return;
+            // Prefer the "after" video if present
+            const afterV = document.querySelector('#box-after video') || vids[0];
+            if (afterV) {
+                afterV.onended = () => stepPair(1, true);
+            }
+        }
+
+        async function togglePairPin(pair, e) {
+            e?.stopPropagation();
+            if (!(await AIToolboxAPI.isOnline())) {
+                showToast('Start server first (▶ Start Server in Media Library / Launcher)');
+                return;
+            }
+            const p = normalizePair(pair);
+            await AIToolboxAPI.updatePair(p.id, { pinned: !p.pinned });
+            renderPairList();
+        }
+
+        async function deletePair(id) {
+            if (await AIToolboxAPI.isOnline()) await AIToolboxAPI.deletePair(id);
+            else await AIToolbox.deletePair(id);
+            if (activePairId === id) activePairId = null;
+            renderPairList();
+        }
+
+        async function renderPairList() {
+            let pairs = [];
+            if (await AIToolboxAPI.isOnline()) {
+                pairs = await AIToolboxAPI.listPairs('video');
+            } else {
+                pairs = (await AIToolbox.listPairs()).filter(p => p.kind !== 'image');
+            }
+            cachedPairList = (pairs || []).map(normalizePair);
+            pairList.innerHTML = '';
+            if (!pairs.length) {
+                pairList.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:20px;">No locked pairs yet.<br>Pair files in Media Library or save here with server online.</div>';
+                return;
+            }
+            pairs.forEach(pair => {
+                const p = normalizePair(pair);
+                const div = document.createElement('div');
+                div.className = 'pair-item' + (p.id === activePairId ? ' active' : '') + (p.pinned ? ' pinned' : '');
+                const code = p.pairCode ? `<div class="pair-code">${p.pinned ? '★ ' : ''}${p.pairCode}</div>` : '';
+                div.innerHTML = `
+                    ${code}
+                    <div class="pair-name">${p.name}</div>
+                    <div class="pair-files">B: ${p.beforeName || '—'}<br>A: ${p.afterName || '—'}</div>
+                    <div class="pair-actions">
+                        <button class="btn load-btn">Load</button>
+                        <button class="btn pin-btn">${p.pinned ? 'Unpin' : 'Pin'}</button>
+                        <button class="btn del-btn">Delete</button>
+                    </div>`;
+                div.querySelector('.load-btn').addEventListener('click', e => { e.stopPropagation(); loadPair(p); });
+                div.querySelector('.pin-btn').addEventListener('click', e => togglePairPin(p, e));
+                div.querySelector('.del-btn').addEventListener('click', e => { e.stopPropagation(); if (confirm(`Delete "${p.name}"?`)) deletePair(p.id); });
+                div.addEventListener('click', () => loadPair(p));
+                pairList.appendChild(div);
+            });
+        }
+
+        async function loadPairByCode(code) {
+            const c = (code || '').trim().toUpperCase();
+            if (!c) return;
+            if (!(await AIToolboxAPI.isOnline())) {
+                showToast('Start server first (▶ Start Server in Media Library / Launcher)');
+                return;
+            }
+            const pair = await AIToolboxAPI.getPair(c);
+            if (!pair) { showToast('Pair not found: ' + c); return; }
+            await loadPair(pair);
+            pairLibrary.classList.remove('collapsed');
+        }
+
+        async function loadPairFromUrl() {
+            const params = new URLSearchParams(location.search);
+            const pairRef = params.get('pair');
+            if (pairRef) {
+                if (params.get('server') === '1' && await AIToolboxAPI.isOnline()) {
+                    const pair = await AIToolboxAPI.getPair(pairRef);
+                    if (pair && pair.kind !== 'image') {
+                        await loadPair(pair);
+                        return;
+                    }
+                }
+                const pair = await AIToolbox.getPair(pairRef);
+                if (pair && pair.kind !== 'image') { await loadPair(pair); return; }
+            }
+
+            const last = localStorage.getItem(LAST_PAIR_KEY);
+            if (last && await AIToolboxAPI.isOnline()) {
+                try {
+                    const pair = await AIToolboxAPI.getPair(last);
+                    if (pair) await loadPair(pair);
+                } catch (e) { /* ignore */ }
+            }
+        }
+
+        document.getElementById('btn-save-pair').addEventListener('click', saveCurrentPair);
+        document.getElementById('btn-save-pair-side').addEventListener('click', saveCurrentPair);
+        document.getElementById('btn-load-code').addEventListener('click', () => loadPairByCode(document.getElementById('pairCodeInput').value));
+        document.getElementById('btn-prev-pair')?.addEventListener('click', () => stepPair(-1, true));
+        document.getElementById('btn-next-pair')?.addEventListener('click', () => stepPair(1, true));
+        document.getElementById('chkAutoNextPair')?.addEventListener('change', wirePairEndedAdvance);
+        (() => {
+            const el = document.getElementById('chkUpdateFiles');
+            if (!el) return;
+            el.checked = localStorage.getItem(UPDATE_FILES_KEY) !== '0';
+            el.addEventListener('change', () => {
+                localStorage.setItem(UPDATE_FILES_KEY, el.checked ? '1' : '0');
+            });
+        })();
+        document.getElementById('pairCodeInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') loadPairByCode(e.target.value);
+        });
+        document.getElementById('btn-pairs').addEventListener('click', () => {
+            pairLibrary.classList.toggle('collapsed');
+            if (!pairLibrary.classList.contains('collapsed')) renderPairList();
+        });
+        document.getElementById('btn-close-pairs').addEventListener('click', () => pairLibrary.classList.add('collapsed'));
+
+        // --- UI ---
+        document.querySelectorAll('[data-browse]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); pickFile(b.dataset.browse); }));
+        document.querySelectorAll('[data-pin]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); pinFolder(b.dataset.pin); }));
+
+        document.getElementById('btn-collapse').addEventListener('click', () => {
+            panelWrapper.classList.toggle('collapsed');
+            document.getElementById('btn-collapse').innerText = panelWrapper.classList.contains('collapsed') ? '▼ Expand' : '▲ Collapse';
+            setTimeout(fitToScreen, 400);
+        });
+
+        const settingsModal = document.getElementById('settingsModal');
+        document.getElementById('btn-settings').addEventListener('click', () => settingsModal.classList.add('active'));
+        document.getElementById('btn-close-settings').addEventListener('click', () => { settingsModal.classList.remove('active'); saveSettings(); });
+
+        function applySettings(s) {
+            if (!s) return;
+            document.documentElement.style.setProperty('--neon-accent', s.color || '#00f3ff');
+            document.getElementById('set-color').value = s.color || '#00f3ff';
+            document.documentElement.style.setProperty('--glow-mult', s.glow ?? 1);
+            document.getElementById('set-glow').value = s.glow ?? 1;
+            document.documentElement.style.setProperty('--border-style', s.border || 'solid');
+            document.getElementById('set-border').value = s.border || 'solid';
+            document.getElementById('set-theme').value = s.theme || 'oled';
+            document.getElementById('set-theme').dispatchEvent(new Event('change'));
+            document.documentElement.style.setProperty('--vid-brightness', s.brightness ?? 100);
+            document.documentElement.style.setProperty('--vid-contrast', s.contrast ?? 100);
+            document.documentElement.style.setProperty('--vid-saturate', s.saturate ?? 100);
+            document.getElementById('set-brightness').value = s.brightness ?? 100;
+            document.getElementById('set-contrast').value = s.contrast ?? 100;
+            document.getElementById('set-saturate').value = s.saturate ?? 100;
+            document.getElementById('set-sync-tol').value = s.syncTol ?? 0.1;
+            document.getElementById('set-preload').value = s.preload || 'auto';
+            document.getElementById('set-fps').value = s.fps || '30';
+            document.getElementById('set-audio-mode').value = s.audioMode || 'none';
+            document.body.setAttribute('data-fx', s.audioMode || 'none');
+            document.getElementById('set-audio-sens').value = s.audioSens ?? 1.2;
+        }
+
+        function saveSettings() {
+            const s = {
+                color: document.getElementById('set-color').value,
+                glow: document.getElementById('set-glow').value,
+                border: document.getElementById('set-border').value,
+                theme: document.getElementById('set-theme').value,
+                brightness: document.getElementById('set-brightness').value,
+                contrast: document.getElementById('set-contrast').value,
+                saturate: document.getElementById('set-saturate').value,
+                syncTol: document.getElementById('set-sync-tol').value,
+                preload: document.getElementById('set-preload').value,
+                fps: document.getElementById('set-fps').value,
+                audioMode: document.getElementById('set-audio-mode').value,
+                audioSens: document.getElementById('set-audio-sens').value
+            };
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+        }
+
+        document.getElementById('set-color').addEventListener('input', e => document.documentElement.style.setProperty('--neon-accent', e.target.value));
+        document.getElementById('set-glow').addEventListener('input', e => document.documentElement.style.setProperty('--glow-mult', e.target.value));
+        document.getElementById('set-border').addEventListener('change', e => document.documentElement.style.setProperty('--border-style', e.target.value));
+        document.getElementById('set-theme').addEventListener('change', e => {
+            const root = document.documentElement.style;
+            if (e.target.value === 'oled') { root.setProperty('--bg-color', '#050505'); root.setProperty('--dark-panel', '#0a0a0a'); }
+            else if (e.target.value === 'dark') { root.setProperty('--bg-color', '#1a1a1a'); root.setProperty('--dark-panel', '#242424'); }
+            else { root.setProperty('--bg-color', '#0b0c10'); root.setProperty('--dark-panel', '#1f2833'); }
+        });
+        ['set-brightness', 'set-contrast', 'set-saturate'].forEach(id => {
+            document.getElementById(id).addEventListener('input', e => {
+                const prop = id.replace('set-', 'vid-');
+                document.documentElement.style.setProperty(`--${prop}`, e.target.value);
+            });
+        });
+        document.getElementById('set-audio-mode').addEventListener('change', e => document.body.setAttribute('data-fx', e.target.value));
+
+        // --- Fullscreen ---
+        let idleTimeout;
+        document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(console.warn);
+            else document.exitFullscreen();
+        }
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) { document.body.classList.add('is-fullscreen'); fitToScreen(); startIdleTimer(); }
+            else { document.body.classList.remove('is-fullscreen', 'idle'); clearTimeout(idleTimeout); fitToScreen(); }
+        });
+        document.addEventListener('mousemove', () => {
+            if (document.body.classList.contains('is-fullscreen')) { document.body.classList.remove('idle'); startIdleTimer(); }
+        });
+        function startIdleTimer() {
+            clearTimeout(idleTimeout);
+            idleTimeout = setTimeout(() => { if (document.fullscreenElement) document.body.classList.add('idle'); }, 3000);
+        }
+
+        // --- Audio FX ---
+        let audioCtx, analyser, dataArray, isAudioInit = false, chaseAngle = 0;
+
+        function initAudioEngine() {
+            if (isAudioInit || !elAfter) return;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                const source = audioCtx.createMediaElementSource(elAfter);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioInit = true;
+                audioFXLoop();
+            } catch (e) { console.warn(e); }
+        }
+
+        function audioFXLoop() {
+            requestAnimationFrame(audioFXLoop);
+            const mode = document.body.getAttribute('data-fx');
+            if (!audioCtx || !elAfter || elAfter.paused || mode === 'none') {
+                document.documentElement.style.setProperty('--audio-mult', 1);
+                return;
+            }
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            const sens = parseFloat(document.getElementById('set-audio-sens').value);
+            const norm = (sum / dataArray.length / 255) * sens;
+            if (mode === 'pulse') document.documentElement.style.setProperty('--audio-mult', 1 + norm * 2);
+            else if (mode === 'chase') {
+                chaseAngle += 1 + norm * 15;
+                document.documentElement.style.setProperty('--chase-angle', `${chaseAngle}deg`);
+                document.documentElement.style.setProperty('--audio-mult', 1 + norm * 0.5);
+            } else if (mode === 'rainbow') {
+                document.documentElement.style.setProperty('--rainbow-hue', (performance.now() / 15) + norm * 100);
+                document.documentElement.style.setProperty('--audio-mult', 1 + norm * 1.5);
+            }
+        }
+
+        // --- File loading ---
+        function setupDropZone(dzId, slot, fileInput, callback) {
+            const dz = document.getElementById(dzId);
+            dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+            dz.addEventListener('dragleave', e => { e.preventDefault(); dz.classList.remove('dragover'); });
+            dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); if (e.dataTransfer.files.length) callback(e.dataTransfer.files[0]); });
+            fileInput.addEventListener('change', e => { if (e.target.files.length) callback(e.target.files[0]); fileInput.value = ''; });
+        }
+
+        setupDropZone('dz-before', 'before', document.getElementById('file-before'), f => ingestFile('before', f, f.name));
+        setupDropZone('dz-after', 'after', document.getElementById('file-after'), f => ingestFile('after', f, f.name));
+
+        function checkReady() { if (fileCacheBefore && fileCacheAfter) loadVideos(fileCacheBefore, fileCacheAfter); }
+
+        function loadVideosFromUrls(urlB, urlA, nameB, nameA) {
+            stopReversePlay();
+            if (isSweeping) document.getElementById('btn-sweep').click();
+            if (rvfcId) cancelAnimationFrame(rvfcId);
+            boxBefore.innerHTML = '';
+            boxAfter.innerHTML = '';
+            fileCacheBefore = fileCacheAfter = null;
+            handleBefore = handleAfter = null;
+
+            elBefore = document.createElement('video');
+            elAfter = document.createElement('video');
+            elBefore.muted = true;
+            elAfter.muted = document.getElementById('btn-mute').classList.contains('active');
+            elAfter.volume = document.getElementById('vol-slider').value;
+            const preload = document.getElementById('set-preload').value;
+            [elBefore, elAfter].forEach(v => {
+                v.loop = !abLoopActive; v.playsInline = true; v.preload = preload;
+                v.onerror = () => showToast('Video failed to load — check server & file path');
+            });
+
+            let count = 0;
+            const onMeta = () => { count++; if (count === 2) initDisplay(); };
+            elBefore.onloadedmetadata = onMeta;
+            elAfter.onloadedmetadata = onMeta;
+            elBefore.src = urlB;
+            elAfter.src = urlA;
+            boxBefore.appendChild(elBefore);
+            boxAfter.appendChild(elAfter);
+            document.getElementById('status-before').innerText = `Loaded: ${nameB || 'Before'}`;
+            document.getElementById('status-after').innerText = `Loaded: ${nameA || 'After'}`;
+            if (audioCtx) { audioCtx.close(); isAudioInit = false; }
+        }
+
+        function loadVideos(fileB, fileA) {
+            stopReversePlay();
+            if (isSweeping) document.getElementById('btn-sweep').click();
+            if (rvfcId) cancelAnimationFrame(rvfcId);
+            boxBefore.innerHTML = '';
+            boxAfter.innerHTML = '';
+
+            elBefore = document.createElement('video');
+            elAfter = document.createElement('video');
+            elBefore.muted = true;
+            elAfter.muted = document.getElementById('btn-mute').classList.contains('active');
+            elAfter.volume = document.getElementById('vol-slider').value;
+            const preload = document.getElementById('set-preload').value;
+            [elBefore, elAfter].forEach(v => { v.loop = !abLoopActive; v.playsInline = true; v.preload = preload; });
+
+            let count = 0;
+            const onMeta = () => { count++; if (count === 2) initDisplay(); };
+            elBefore.onloadedmetadata = onMeta;
+            elAfter.onloadedmetadata = onMeta;
+
+            elBefore.src = URL.createObjectURL(fileB);
+            elAfter.src = URL.createObjectURL(fileA);
+            boxBefore.appendChild(elBefore);
+            boxAfter.appendChild(elAfter);
+
+            if (audioCtx) { audioCtx.close(); isAudioInit = false; }
+        }
+
+        function initDisplay() {
+            nativeWidth = elAfter.videoWidth;
+            nativeHeight = elAfter.videoHeight;
+            elBefore.dataset.res = `${elBefore.videoWidth} x ${elBefore.videoHeight}`;
+            elAfter.dataset.res = `${nativeWidth} x ${nativeHeight}`;
+            transformLayer.style.width = `${nativeWidth}px`;
+            transformLayer.style.height = `${nativeHeight}px`;
+            updateUI();
+            viewerContainer.style.display = 'block';
+            applyCompareMode();
+            fitToScreen();
+            setSliderPosition(0.5);
+            setupVideoSync();
+        }
+
+        // --- Compare modes ---
+        function applyCompareMode() {
+            const mode = document.getElementById('compare-mode').value;
+            viewerContainer.dataset.mode = mode;
+            const blendSlider = document.getElementById('blend-opacity');
+            blendSlider.style.display = mode === 'blend' ? 'inline-block' : 'none';
+            if (elBefore) {
+                if (mode === 'blend') {
+                    elBefore.parentElement.style.opacity = blendSlider.value / 100;
+                    boxBefore.style.clipPath = 'none';
+                } else {
+                    elBefore.parentElement.style.opacity = 1;
+                    setSliderPosition(currentSliderPercent);
+                }
+            }
+        }
+
+        document.getElementById('compare-mode').addEventListener('change', applyCompareMode);
+        document.getElementById('blend-opacity').addEventListener('input', e => {
+            if (viewerContainer.dataset.mode === 'blend' && elBefore) elBefore.parentElement.style.opacity = e.target.value / 100;
+        });
+        document.getElementById('split-orient').addEventListener('change', e => {
+            viewerContainer.dataset.orient = e.target.value;
+            setSliderPosition(currentSliderPercent);
+        });
+
+        // --- Sweep ---
+        document.getElementById('btn-sweep').addEventListener('click', e => {
+            if (!nativeWidth) return;
+            isSweeping = !isSweeping;
+            e.target.classList.toggle('active', isSweeping);
+            if (isSweeping) { sweepDirection = 1; runSweepLoop(); } else cancelAnimationFrame(sweepAnimFrame);
+        });
+
+        function runSweepLoop() {
+            if (!isSweeping) return;
+            const speed = parseFloat(document.getElementById('sweep-speed').value);
+            if (document.getElementById('sweep-mode').value === 'pong') {
+                currentSliderPercent += speed * sweepDirection;
+                if (currentSliderPercent >= 1) { currentSliderPercent = 1; sweepDirection = -1; }
+                if (currentSliderPercent <= 0) { currentSliderPercent = 0; sweepDirection = 1; }
+            } else {
+                currentSliderPercent += speed;
+                if (currentSliderPercent >= 1) { currentSliderPercent = 0; document.getElementById('btn-swap').click(); }
+            }
+            setSliderPosition(currentSliderPercent);
+            sweepAnimFrame = requestAnimationFrame(runSweepLoop);
+        }
+
+        // --- Sync engine with requestVideoFrameCallback ---
+        function setupVideoSync() {
+            elAfter.addEventListener('timeupdate', () => {
+                if (isTimelineDragging || reverseInterval) return;
+                timeline.value = (elAfter.currentTime / elAfter.duration) * 100 || 0;
+                formatTime();
+                checkABLoop();
+            });
+
+            elAfter.addEventListener('play', () => {
+                stopReversePlay();
+                elBefore.play().catch(console.warn);
+                document.getElementById('btn-play').innerText = 'Pause';
+                startRVFCSync();
+            });
+            elAfter.addEventListener('pause', () => {
+                elBefore.pause();
+                document.getElementById('btn-play').innerText = 'Play';
+                if (rvfcId) cancelAnimationFrame(rvfcId);
+            });
+
+            elAfter.addEventListener('waiting', () => elBefore.pause());
+            elAfter.addEventListener('playing', () => { if (elBefore.paused) elBefore.play(); startRVFCSync(); });
+        }
+
+        function startRVFCSync() {
+            if (!elAfter || elAfter.paused) return;
+            const tol = parseFloat(document.getElementById('set-sync-tol').value);
+            const sync = () => {
+                if (!elAfter || elAfter.paused) return;
+                if (Math.abs(elBefore.currentTime - elAfter.currentTime) > tol) {
+                    elBefore.currentTime = elAfter.currentTime;
+                }
+                if ('requestVideoFrameCallback' in elAfter) {
+                    rvfcId = elAfter.requestVideoFrameCallback(sync);
+                } else {
+                    rvfcId = requestAnimationFrame(sync);
+                }
+            };
+            sync();
+        }
+
+        function checkABLoop() {
+            if (!abLoopActive || abPointA === null || abPointB === null || !elAfter) return;
+            if (elAfter.currentTime >= abPointB) {
+                elAfter.currentTime = abPointA;
+                elBefore.currentTime = abPointA;
+            }
+        }
+
+        viewerContainer.addEventListener('dblclick', e => {
+            if (!nativeWidth) return;
+            const wasPlaying = !elAfter.paused;
+            elAfter.pause(); elBefore.pause();
+            const rect = transformLayer.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const orient = viewerContainer.dataset.orient;
+            const onBeforeSide = orient === 'vertical'
+                ? (e.clientY - rect.top) < currentSliderPercent * rect.height
+                : clickX < currentSliderPercent * rect.width;
+            if (onBeforeSide) { elAfter.currentTime = elBefore.currentTime; showToast('Synced to Before'); }
+            else { elBefore.currentTime = elAfter.currentTime; showToast('Synced to After'); }
+            if (wasPlaying) Promise.all([elAfter.play(), elBefore.play()]).catch(console.warn);
+        });
+
+        function showToast(msg) {
+            toastMsg.innerText = msg;
+            toastMsg.style.opacity = '1';
+            setTimeout(() => toastMsg.style.opacity = '0', 1800);
+        }
+
+        const timeline = document.getElementById('timeline');
+        document.getElementById('btn-play').addEventListener('click', () => {
+            initAudioEngine();
+            stopReversePlay();
+            if (elAfter.paused) Promise.all([elAfter.play(), elBefore.play()]).catch(console.warn);
+            else { elAfter.pause(); elBefore.pause(); }
+        });
+
+        timeline.addEventListener('input', () => {
+            isTimelineDragging = true;
+            stopReversePlay();
+            const t = (timeline.value / 100) * elAfter.duration;
+            elAfter.currentTime = t;
+            elBefore.currentTime = t;
+            formatTime();
+        });
+        timeline.addEventListener('change', () => isTimelineDragging = false);
+
+        function formatTime() {
+            const pad = n => String(Math.floor(n)).padStart(2, '0');
+            const frac = n => String(Math.floor((n % 1) * 100)).padStart(2, '0');
+            timeDisplay.innerText = `${pad(elAfter.currentTime / 60)}:${pad(elAfter.currentTime % 60)}.${frac(elAfter.currentTime)} / ${pad(elAfter.duration / 60 || 0)}:${pad(elAfter.duration % 60 || 0)}`;
+        }
+
+        document.getElementById('btn-next-frame').addEventListener('click', () => {
+            stopReversePlay();
+            elAfter.pause();
+            const step = getFrameStep();
+            elAfter.currentTime += step;
+            elBefore.currentTime += step;
+        });
+        document.getElementById('btn-prev-frame').addEventListener('click', () => {
+            stopReversePlay();
+            elAfter.pause();
+            const step = getFrameStep();
+            elAfter.currentTime = Math.max(0, elAfter.currentTime - step);
+            elBefore.currentTime = Math.max(0, elBefore.currentTime - step);
+        });
+
+        document.getElementById('btn-rev-play').addEventListener('click', e => {
+            if (reverseInterval) stopReversePlay();
+            else {
+                elAfter.pause(); elBefore.pause();
+                e.target.classList.add('active');
+                document.getElementById('btn-play').innerText = 'Play';
+                let last = performance.now();
+                reverseInterval = setInterval(() => {
+                    const dt = (performance.now() - last) / 1000;
+                    last = performance.now();
+                    let t = elAfter.currentTime - dt * parseFloat(document.getElementById('sel-speed').value);
+                    if (t <= 0) t = elAfter.duration;
+                    elAfter.currentTime = t;
+                    elBefore.currentTime = t;
+                    timeline.value = (t / elAfter.duration) * 100;
+                    formatTime();
+                }, 1000 / 60);
+            }
+        });
+
+        function stopReversePlay() {
+            if (reverseInterval) {
+                clearInterval(reverseInterval);
+                reverseInterval = null;
+                document.getElementById('btn-rev-play').classList.remove('active');
+            }
+        }
+
+        document.getElementById('sel-speed').addEventListener('change', e => {
+            elAfter.playbackRate = elBefore.playbackRate = parseFloat(e.target.value);
+        });
+
+        document.getElementById('btn-mute').addEventListener('click', e => {
+            elAfter.muted = !elAfter.muted;
+            e.target.classList.toggle('active', elAfter.muted);
+        });
+
+        document.getElementById('vol-slider').addEventListener('input', e => {
+            elAfter.volume = e.target.value;
+            if (elAfter.muted && e.target.value > 0) document.getElementById('btn-mute').click();
+        });
+
+        // --- A-B Loop ---
+        document.getElementById('btn-ab-loop').addEventListener('click', () => {
+            if (!elAfter) return;
+            abLoopActive = !abLoopActive;
+            document.getElementById('btn-ab-loop').classList.toggle('active', abLoopActive);
+            if (abLoopActive) {
+                abPointA = elAfter.currentTime;
+                abPointB = Math.min(elAfter.duration, abPointA + 5);
+                updateABMarkers();
+                elBefore.loop = elAfter.loop = false;
+                showToast(`A-B Loop: ${abPointA.toFixed(1)}s → ${abPointB.toFixed(1)}s (press 1/2 to adjust)`);
+            } else {
+                abPointA = abPointB = null;
+                document.getElementById('abMarkerA').style.display = 'none';
+                document.getElementById('abMarkerB').style.display = 'none';
+                document.getElementById('abRegion').style.display = 'none';
+                elBefore.loop = elAfter.loop = true;
+            }
+        });
+
+        function updateABMarkers() {
+            if (!elAfter || abPointA === null) return;
+            const dur = elAfter.duration || 1;
+            const pctA = (abPointA / dur) * 100;
+            const pctB = (abPointB / dur) * 100;
+            document.getElementById('abMarkerA').style.display = 'block';
+            document.getElementById('abMarkerB').style.display = 'block';
+            document.getElementById('abRegion').style.display = 'block';
+            document.getElementById('abMarkerA').style.left = `${pctA}%`;
+            document.getElementById('abMarkerB').style.left = `${pctB}%`;
+            document.getElementById('abRegion').style.left = `${pctA}%`;
+            document.getElementById('abRegion').style.width = `${pctB - pctA}%`;
+        }
+
+        // --- Layout ---
+        function updateUI() {
+            document.getElementById('res-text-left').innerText = isSwapped ? elAfter.dataset.res : elBefore.dataset.res;
+            document.getElementById('res-text-right').innerText = isSwapped ? elBefore.dataset.res : elAfter.dataset.res;
+            document.getElementById('lbl-left').innerText = isSwapped ? 'After' : 'Before';
+            document.getElementById('lbl-right').innerText = isSwapped ? 'Before' : 'After';
+        }
+
+        function setSliderPosition(percent) {
+            currentSliderPercent = Math.max(0, Math.min(1, percent));
+            const mode = viewerContainer.dataset.mode;
+            const orient = viewerContainer.dataset.orient;
+            if (mode !== 'slider') return;
+            if (orient === 'vertical') {
+                boxBefore.style.clipPath = `inset(0 0 ${(1 - currentSliderPercent) * 100}% 0)`;
+                sliderLine.style.top = `${currentSliderPercent * 100}%`;
+                sliderLine.style.left = '0';
+            } else {
+                boxBefore.style.clipPath = `inset(0 ${(1 - currentSliderPercent) * 100}% 0 0)`;
+                sliderLine.style.left = `${currentSliderPercent * 100}%`;
+                sliderLine.style.top = '0';
+            }
+        }
+
+        function applyTransform() {
+            transformLayer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            sliderButton.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
+            const orient = viewerContainer.dataset.orient;
+            if (orient === 'vertical') sliderLine.style.height = `${Math.max(1, 2 / scale)}px`;
+            else sliderLine.style.width = `${Math.max(1, 2 / scale)}px`;
+            zoomBadge.textContent = `${Math.round(scale * 100)}%`;
+        }
+
+        function fitToScreen() {
+            if (!nativeWidth) return;
+            const rect = viewerContainer.getBoundingClientRect();
+            const padding = document.fullscreenElement ? 20 : 110;
+            const sX = rect.width / nativeWidth;
+            const sY = (rect.height - padding) / nativeHeight;
+            scale = Math.min(sX, sY) * 0.95;
+            translateX = (rect.width - nativeWidth * scale) / 2;
+            translateY = ((rect.height - padding) - nativeHeight * scale) / 2;
+            applyTransform();
+        }
+
+        viewerContainer.addEventListener('contextmenu', e => e.preventDefault());
+        viewerContainer.addEventListener('mousedown', e => {
+            if (e.target.closest('.video-deck') || e.target.closest('.pair-library') || e.target.closest('.toast')) return;
+            e.preventDefault();
+            if (e.button === 0 && viewerContainer.dataset.mode === 'slider') {
+                if (isSweeping) document.getElementById('btn-sweep').click();
+                isDraggingSlider = true;
+                updateSliderFromEvent(e);
+            } else if (e.button === 2) {
+                isPanning = true;
+                panStartX = e.clientX - translateX;
+                panStartY = e.clientY - translateY;
+                viewerContainer.style.cursor = 'grabbing';
+            }
+        });
+        window.addEventListener('mousemove', e => {
+            if (isDraggingSlider) updateSliderFromEvent(e);
+            else if (isPanning) { translateX = e.clientX - panStartX; translateY = e.clientY - panStartY; applyTransform(); }
+        });
+        window.addEventListener('mouseup', e => {
+            if (e.button === 0) isDraggingSlider = false;
+            if (e.button === 2) { isPanning = false; viewerContainer.style.cursor = 'crosshair'; }
+        });
+
+        function updateSliderFromEvent(e) {
+            const rect = transformLayer.getBoundingClientRect();
+            if (viewerContainer.dataset.orient === 'vertical') setSliderPosition((e.clientY - rect.top) / rect.height);
+            else setSliderPosition((e.clientX - rect.left) / rect.width);
+        }
+
+        viewerContainer.addEventListener('wheel', e => {
+            if (e.target.closest('.video-deck') || e.target.closest('.pair-library')) return;
+            e.preventDefault();
+            if (!nativeWidth) return;
+            const oldScale = scale;
+            scale *= Math.exp((e.deltaY < 0 ? 1 : -1) * 0.1);
+            scale = Math.max(0.1, Math.min(scale, 50));
+            const rect = transformLayer.getBoundingClientRect();
+            translateX -= (e.clientX - rect.left) * (scale / oldScale - 1);
+            translateY -= (e.clientY - rect.top) * (scale / oldScale - 1);
+            applyTransform();
+        }, { passive: false });
+
+        document.getElementById('btn-fit').addEventListener('click', fitToScreen);
+        document.getElementById('btn-100').addEventListener('click', () => {
+            if (!nativeWidth) return;
+            scale = 1;
+            const rect = viewerContainer.getBoundingClientRect();
+            translateX = (rect.width - nativeWidth) / 2;
+            translateY = ((rect.height - 110) - nativeHeight) / 2;
+            applyTransform();
+        });
+
+        document.getElementById('btn-swap').addEventListener('click', () => {
+            if (!nativeWidth) return;
+            const temp = elBefore.src;
+            elBefore.src = elAfter.src;
+            elAfter.src = temp;
+            isSwapped = !isSwapped;
+            updateUI();
+            const sB = document.getElementById('status-before');
+            const sA = document.getElementById('status-after');
+            const t = sB.innerText;
+            sB.innerText = sA.innerText;
+            sA.innerText = t;
+            [fileCacheBefore, fileCacheAfter] = [fileCacheAfter, fileCacheBefore];
+            [handleBefore, handleAfter] = [handleAfter, handleBefore];
+        });
+
+        function mirrorSyncAB() {
+            try {
+                if (typeof setSliderPosition === 'function') setSliderPosition(0.5);
+                else currentSliderPercent = 0.5;
+            } catch (_) { currentSliderPercent = 0.5; }
+            try {
+                if (elBefore && elAfter && elAfter.currentTime != null) {
+                    elBefore.currentTime = elAfter.currentTime;
+                }
+            } catch (_) {}
+            try {
+                if (elBefore && elAfter) {
+                    if (elAfter.paused) elBefore.pause();
+                    else elBefore.play().catch(() => {});
+                }
+            } catch (_) {}
+            showToast('A/B mirrored · slider 50% · times synced');
+        }
+        document.getElementById('btn-mirror-ab')?.addEventListener('click', mirrorSyncAB);
+
+        async function copyPairReport() {
+            const left = document.getElementById('status-before')?.innerText || '—';
+            const right = document.getElementById('status-after')?.innerText || '—';
+            const text = [
+                'FAFO Video Comparator — pair report',
+                'Time: ' + new Date().toISOString(),
+                'Before: ' + left,
+                'After: ' + right,
+                'Swapped: ' + !!isSwapped,
+                'Slider %: ' + Math.round((currentSliderPercent || 0) * 100),
+                'Mode: ' + (document.getElementById('compare-mode')?.value || ''),
+                'Orient: ' + (document.getElementById('split-orient')?.value || ''),
+                'URL: ' + location.href,
+            ].join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast('Pair report copied');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btn-copy-pair-report')?.addEventListener('click', copyPairReport);
+
+        document.getElementById('btn-screenshot').addEventListener('click', () => {
+            if (!nativeWidth) return;
+            const cvs = document.createElement('canvas');
+            cvs.width = nativeWidth;
+            cvs.height = nativeHeight;
+            const ctx = cvs.getContext('2d');
+            ctx.drawImage(elAfter, 0, 0);
+            if (viewerContainer.dataset.mode === 'slider') {
+                ctx.save();
+                const orient = viewerContainer.dataset.orient;
+                if (orient === 'vertical') {
+                    ctx.beginPath();
+                    ctx.rect(0, 0, cvs.width, cvs.height * currentSliderPercent);
+                    ctx.clip();
+                } else {
+                    ctx.beginPath();
+                    ctx.rect(0, 0, cvs.width * currentSliderPercent, cvs.height);
+                    ctx.clip();
+                }
+                ctx.drawImage(elBefore, 0, 0);
+                ctx.restore();
+            }
+            const a = document.createElement('a');
+            a.download = `video-compare-${Date.now()}.png`;
+            a.href = cvs.toDataURL('image/png');
+            a.click();
+            showToast('Screenshot saved!');
+        });
+
+        // --- Keyboard shortcuts ---
+        document.addEventListener('keydown', e => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            if (!elAfter && e.code !== 'KeyR') return;
+            switch (e.code) {
+                case 'Space': e.preventDefault(); document.getElementById('btn-play')?.click(); break;
+                case 'ArrowRight': e.preventDefault(); document.getElementById('btn-next-frame')?.click(); break;
+                case 'ArrowLeft': e.preventDefault(); document.getElementById('btn-prev-frame')?.click(); break;
+                case 'KeyF': e.preventDefault(); toggleFullscreen(); break;
+                case 'KeyS': if (e.ctrlKey) break; e.preventDefault(); saveCurrentPair(); break;
+                case 'KeyP': e.preventDefault(); document.getElementById('btn-pairs').click(); break;
+                case 'KeyN': e.preventDefault(); stepPair(1, true); break;
+                case 'KeyW': e.preventDefault(); document.getElementById('btn-swap')?.click(); break;
+                case 'KeyM': e.preventDefault(); mirrorSyncAB(); break;
+                case 'KeyR': e.preventDefault(); copyPairReport(); break;
+                case 'Digit1': if (abLoopActive) { abPointA = elAfter.currentTime; updateABMarkers(); showToast(`A = ${abPointA.toFixed(2)}s`); } break;
+                case 'Digit2': if (abLoopActive) { abPointB = elAfter.currentTime; updateABMarkers(); showToast(`B = ${abPointB.toFixed(2)}s`); } break;
+            }
+        });
+
+        // --- Init ---
+        try { applySettings(JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) {}
+        ['before', 'after'].forEach(async slot => { await updateFolderHint(slot); await renderRecents(slot); });
+        loadPairFromUrl();
+    </script>
+<script>
+
+// Shared server start (injected polish)
+(function(){
+  const ep = () => (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.ENDPOINT_LABEL) || '127.0.0.87:18765';
+  function ensureBar(){
+    if (document.getElementById('tbSharedServerBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'tbSharedServerBar';
+    bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
+    bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
+      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
+      + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
+    const nav = document.querySelector('nav, .nav, .nav-bar, header');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+    if (window.AITOOLBOX_VERSION) document.getElementById('tbVer').textContent = 'v' + window.AITOOLBOX_VERSION;
+    if (window.AIToolboxUI && AIToolboxUI.bindServerControls) {
+      AIToolboxUI.bindServerControls({ statusEl: '#tbServerPill', startBtn: '#tbBtnStartServer', hintEl: '#tbServerHint' });
+      if (AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+    } else {
+      const pill = document.getElementById('tbServerPill');
+      const btn = document.getElementById('tbBtnStartServer');
+      const hint = document.getElementById('tbServerHint');
+      async function refresh(){
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
+        pill.style.color = on ? '#4ade80' : '#fbbf24';
+        btn.style.display = on ? 'none' : '';
+        hint.textContent = on ? '' : ('Backend ' + ep() + ' (not FAFO :8765)');
+      }
+      btn.onclick = async () => {
+        if (!window.AIToolboxAPI) return;
+        btn.disabled = true; btn.textContent = 'Starting…';
+        const r = await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+        btn.disabled = false; btn.textContent = '▶ Start Server';
+        await refresh();
+        if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
+      };
+      pill.onclick = () => btn.click();
+      refresh(); setInterval(refresh, 8000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
+  else ensureBar();
+})();
+
+</script>
+<script data-extra-polish="vc">
+(function(){
+  try {
+    if (!sessionStorage.getItem('vc_hub_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('vc_hub_tip','1');
+      AIToolboxUI.toast('Video Comparator · also in Compare Hub', 'ok');
+    }
+  } catch(_){}
+})();
+</script>
+</div>
+</body>
+</html>

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Batch Media Converter — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(251,146,60,.2);--accent:#fb923c;--ok:#4ade80;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#1f1208,var(--bg) 60%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border)}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.wrap{max-width:1100px;margin:0 auto;padding:24px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--accent);font-size:12px;text-transform:uppercase;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.pb{padding:16px 18px}
+.inp,.sel{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px}
+.btn{padding:8px 16px;border:1px solid var(--accent);background:rgba(251,146,60,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:rgba(255,255,255,.15);color:var(--muted);background:transparent}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.tw{max-height:360px;overflow:auto}
+.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;min-height:40px;margin-top:10px;white-space:pre-wrap}
+.tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(251,146,60,.15);color:var(--accent)}
+.progress{height:6px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:10px;overflow:hidden;display:none}
+.progress span{display:block;height:100%;background:var(--accent);width:0%;transition:width .2s}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <a href="../Movie File Manager/Media Hub.html" style="color:var(--accent);text-decoration:none;font-size:12px;font-weight:600">🗂️ Media Hub</a>
+    <a href="../Movie File Manager/VSR Pipeline Manager.html" style="color:var(--accent);text-decoration:none;font-size:12px;font-weight:600">⚡ VSR</a>
+    <a href="../Video Tools/GEMPlayHTML.html" style="color:var(--muted);text-decoration:none;font-size:12px;font-weight:600">📺 Video Wall</a>
+    <span style="color:var(--accent);font-weight:700;letter-spacing:.04em">BATCH MEDIA CONVERTER</span>
+  </div>
+  <span data-fafo-layout-toolbar></span>
+</nav>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-tools-batch-media-converter" data-fafo-layout-type="rows">
+<h1 style="font-size:22px">Batch Media Converter</h1>
+<p style="color:var(--muted);font-size:13px;margin:8px 0 16px">FFmpeg-powered batch convert — video, audio, and short GIF exports. Requires toolbox server + <code>ffmpeg</code> on PATH. Prefer a dedicated output folder so sources stay untouched.
+  <span style="display:inline-block;margin-left:8px;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px"><kbd style="font:11px Consolas;color:var(--accent)">Enter</kbd> scan · <kbd style="font:11px Consolas;color:var(--accent)">C</kbd> convert · <kbd style="font:11px Consolas;color:var(--accent)">E</kbd> copy log</span>
+</p>
+<div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Source folder
+  <span id="serverBadge" style="font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,200,0,.4);color:#ffc800">Server …</span>
+</div><div class="pb toolbar">
+<input class="inp" id="folder" placeholder="C:\path\to\media" style="flex:1;min-width:240px">
+<button class="btn ghost" id="btnPick" type="button" data-tip-title="Browse" data-tip="Pick a source folder of media files.">Browse…</button>
+<select class="sel" id="preset" data-tip-title="Preset" data-tip-basic="Output style: quality vs file size." data-tip-pro="FFmpeg preset from /convert/presets." data-tip-efficient="Start with a smaller/faster preset to test."></select>
+<input class="inp" id="outDir" placeholder="Output folder (optional, same as source)" style="flex:1;min-width:200px"
+  data-tip-title="Output folder" data-tip="Where new files are written. Use a separate folder so originals stay safe.">
+<button class="btn" id="btnScan" data-tip-title="Scan" data-tip="List convertible files in the source folder.">Scan folder</button>
+<button class="btn" id="btnConvert" disabled
+  data-tip-title="Convert"
+  data-tip-basic="Convert the checked files with the selected preset."
+  data-tip-pro="FFmpeg batch stream via S1 — needs ffmpeg on PATH."
+  data-tip-efficient="Convert a couple of files first to check quality and disk use."
+  data-tip-perf="On a strong PC you can convert larger batches; watch disk free space.">Convert selected</button>
+<button class="btn ghost" id="btnStop" type="button" disabled data-tip-title="Stop" data-tip="Cancel the running conversion job.">Stop</button>
+<button class="btn ghost" id="btnCopyLog" type="button" data-tip-title="Report" data-tip="Copy the session log to the clipboard.">📋 Report</button>
+</div>
+<div class="pb" style="padding-top:0">
+  <div id="etaLine" style="font-size:11px;color:var(--muted);min-height:16px"></div>
+  <div id="emptyConvert" style="display:none;text-align:center;padding:18px;color:var(--muted);font-size:12px;line-height:1.5">
+    <strong style="color:var(--text)">No files yet</strong> — pick a folder then Scan, or jump to Media Hub / VSR.<br>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+      <button class="btn" type="button" id="btnEmptyScan">Scan folder</button>
+      <button class="btn ghost" type="button" id="btnEmptyStartSrv">▶ Start Server</button>
+      <a class="btn ghost" href="../Movie File Manager/Media Hub.html" style="text-decoration:none">🗂️ Media Hub</a>
+      <a class="btn ghost" href="../Movie File Manager/VSR Pipeline Manager.html" style="text-decoration:none">⚡ VSR</a>
+      <a class="btn ghost" href="../Video Tools/FAFO_VID_TRIM.html" style="text-decoration:none">🎬 VID ŦRIM</a>
+      <a class="btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Toolbox</a>
+    </div>
+  </div>
+</div>
+</div>
+<div class="panel" data-fafo-panel="block-1" data-fafo-flex="1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Media files <span id="fileCount" style="color:var(--muted)"></span>
+<input class="inp" id="filter" placeholder="Filter…" style="min-width:140px;max-width:200px">
+</div>
+<div class="tw"><table><thead><tr><th><input type="checkbox" id="chkAll" title="Select all"></th><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody id="fileBody"></tbody></table></div>
+<div class="pb">
+<div class="progress" id="progress"><span id="progressBar"></span></div>
+<div class="log" id="log"></div>
+</div></div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
+const fmtB = (n) => UI()?.formatBytes?.(n) ?? (n + ' B');
+function apiBase() {
+  return UI()?.getApiBase?.() || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+}
+
+let files = [];
+let sel = new Set();
+let es = null;
+let convertStartedAt = 0;
+const LS_BCONV = 'fafo_batch_convert_settings_v1';
+const sessionLog = [];
+
+function log(msg) {
+  document.getElementById('log').textContent = msg || '';
+  if (msg) sessionLog.push('[' + new Date().toISOString().slice(11, 19) + '] ' + msg);
+}
+
+function saveBconvSettings() {
+  try {
+    localStorage.setItem(LS_BCONV, JSON.stringify({
+      folder: document.getElementById('folder').value,
+      outDir: document.getElementById('outDir').value,
+      preset: document.getElementById('preset').value,
+    }));
+  } catch (_) {}
+}
+function restoreBconvSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_BCONV) || 'null');
+    if (!raw) return;
+    if (raw.folder) document.getElementById('folder').value = raw.folder;
+    if (raw.outDir) document.getElementById('outDir').value = raw.outDir;
+    if (raw.preset) document.getElementById('preset').dataset.prefer = raw.preset;
+  } catch (_) {}
+}
+
+async function pingServerBadge() {
+  const b = document.getElementById('serverBadge');
+  if (!b) return;
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
+    b.textContent = on ? '● Online' : '○ Offline';
+    b.style.color = on ? 'var(--ok)' : '#f87171';
+    b.style.borderColor = on ? 'rgba(74,222,128,.45)' : 'rgba(248,113,113,.45)';
+  } catch (_) {
+    b.textContent = '○ Offline';
+  }
+}
+
+async function init() {
+  restoreBconvSettings();
+  pingServerBadge();
+  try {
+    const p = await UI().apiFetch('/convert/presets');
+    document.getElementById('preset').innerHTML = (p.presets || [])
+      .map(x => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join('')
+      || '<option value="">No presets</option>';
+    const prefer = document.getElementById('preset').dataset.prefer;
+    if (prefer) document.getElementById('preset').value = prefer;
+  } catch (e) {
+    document.getElementById('preset').innerHTML = '<option value="">Server offline</option>';
+    log(e.message || String(e));
+  }
+  document.getElementById('emptyConvert').style.display = files.length ? 'none' : 'block';
+}
+
+function filteredIndexes() {
+  const q = (document.getElementById('filter').value || '').toLowerCase();
+  return files.map((f, i) => i).filter(i => {
+    if (!q) return true;
+    return (files[i].name || '').toLowerCase().includes(q);
+  });
+}
+
+function render() {
+  const idxs = filteredIndexes();
+  document.getElementById('fileCount').textContent = files.length
+    ? `(${sel.size} selected · ${idxs.length}/${files.length} shown)`
+    : '';
+  document.getElementById('emptyConvert').style.display = files.length ? 'none' : 'block';
+  document.getElementById('fileBody').innerHTML = idxs.map(i => {
+    const f = files[i];
+    return `<tr>
+      <td><input type="checkbox" data-i="${i}" ${sel.has(i) ? 'checked' : ''}></td>
+      <td>${esc(f.name)}</td>
+      <td><span class="tag">${esc(f.type)}</span></td>
+      <td>${fmtB(f.size)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No files — scan a folder</td></tr>';
+  document.querySelectorAll('[data-i]').forEach(c => {
+    c.onchange = () => {
+      const i = +c.dataset.i;
+      if (c.checked) sel.add(i); else sel.delete(i);
+      document.getElementById('btnConvert').disabled = sel.size === 0;
+      document.getElementById('fileCount').textContent =
+        `(${sel.size} selected · ${idxs.length}/${files.length} shown)`;
+    };
+  });
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+}
+
+document.getElementById('chkAll').onchange = e => {
+  const idxs = filteredIndexes();
+  if (e.target.checked) idxs.forEach(i => sel.add(i));
+  else idxs.forEach(i => sel.delete(i));
+  render();
+};
+
+document.getElementById('filter').oninput = render;
+
+document.getElementById('btnScan').onclick = async () => {
+  const folder = document.getElementById('folder').value.trim();
+  if (!folder) { log('Enter a folder path'); return; }
+  saveBconvSettings();
+  log('Scanning…');
+  try {
+    const d = await UI().apiFetch('/convert/scan?folder=' + encodeURIComponent(folder));
+    files = d.files || [];
+    sel = new Set(files.map((_, i) => i));
+    document.getElementById('chkAll').checked = true;
+    render();
+    log(`Found ${files.length} media file(s)`);
+  } catch (e) {
+    log(e.message || String(e));
+    UI()?.toast?.(e.message || String(e), 'warn');
+  }
+};
+document.getElementById('btnEmptyScan')?.addEventListener('click', () => document.getElementById('btnScan').click());
+document.getElementById('btnEmptyStartSrv')?.addEventListener('click', async () => {
+  try {
+    if (window.AIToolboxAPI?.startServer) {
+      await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+      UI()?.toast?.('Server ready', 'ok');
+    } else location.href = '../Toolbox Launcher.html';
+  } catch (e) { UI()?.toast?.(e.message || 'Start failed', 'warn'); }
+});
+['folder', 'outDir', 'preset'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', saveBconvSettings);
+});
+
+function stopConvert() {
+  if (es) { try { es.close(); } catch {} es = null; }
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('progress').style.display = 'none';
+}
+
+document.getElementById('btnStop').onclick = () => { stopConvert(); log('Conversion stopped'); };
+
+document.getElementById('btnConvert').onclick = () => {
+  const chosen = [...sel].map(i => files[i]?.path).filter(Boolean);
+  if (!chosen.length) return;
+  const preset = document.getElementById('preset').value;
+  if (!preset) { log('No preset selected'); return; }
+  const outDir = document.getElementById('outDir').value.trim() || null;
+  saveBconvSettings();
+  log('Starting…');
+  convertStartedAt = Date.now();
+  document.getElementById('btnConvert').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  const prog = document.getElementById('progress');
+  const bar = document.getElementById('progressBar');
+  const eta = document.getElementById('etaLine');
+  prog.style.display = 'block';
+  bar.style.width = '0%';
+  if (eta) eta.textContent = 'ETA: calculating…';
+
+  let url = apiBase() + '/convert/stream?files=' + encodeURIComponent(chosen.join('|')) + '&preset=' + encodeURIComponent(preset);
+  if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
+  if (es) try { es.close(); } catch {}
+  es = new EventSource(url);
+  es.onmessage = ev => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.error) { log('Error: ' + d.error); stopConvert(); return; }
+    if (d.done) {
+      const r = d.result || {};
+      const elapsed = ((Date.now() - convertStartedAt) / 1000).toFixed(1);
+      log(`Done: ${r.succeeded || 0}/${r.total || chosen.length} succeeded`
+        + (r.failed ? ` · ${r.failed} failed` : '') + ` · ${elapsed}s`);
+      bar.style.width = '100%';
+      if (eta) eta.textContent = 'Finished in ' + elapsed + 's';
+      try {
+        const n = Math.max(0, Number(r.succeeded) || 0);
+        if (n) {
+          window.FAFOOpsStats?.record({
+            tool: 'batch-media-converter',
+            action: 'convert',
+            metrics: { conversions: n },
+            extra: { failed: r.failed || 0, total: r.total || chosen.length },
+          });
+        }
+      } catch (_) { /* stats optional */ }
+      stopConvert();
+      return;
+    }
+    if (d.current != null && d.total) {
+      const pct = Math.round((d.current / d.total) * 100);
+      bar.style.width = pct + '%';
+      const elapsedMs = Date.now() - convertStartedAt;
+      if (d.current > 0 && eta) {
+        const per = elapsedMs / d.current;
+        const remain = Math.max(0, Math.round((per * (d.total - d.current)) / 1000));
+        const m = Math.floor(remain / 60), s = remain % 60;
+        eta.textContent = `${d.current}/${d.total} · ${pct}% · ETA ~${m}m ${s}s`;
+      }
+    }
+    if (d.message) log(d.message);
+  };
+  es.onerror = () => {
+    log('Convert stream failed — is the server online and ffmpeg installed?');
+    stopConvert();
+  };
+};
+
+document.getElementById('btnCopyLog')?.addEventListener('click', async () => {
+  const text = [
+    'FAFO Batch Media Converter — session report',
+    'Time: ' + new Date().toISOString(),
+    'Folder: ' + document.getElementById('folder').value,
+    'Output: ' + (document.getElementById('outDir').value || '(same as source)'),
+    'Preset: ' + document.getElementById('preset').value,
+    'Files: ' + files.length + ' · Selected: ' + sel.size,
+    'Server: ' + (document.getElementById('serverBadge')?.textContent || ''),
+    '',
+    '— Log —',
+    ...sessionLog.slice(-100),
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    UI()?.toast?.('Convert report copied', 'ok');
+  } catch (_) { prompt('Copy report:', text); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+    if (e.key === 'Enter' && e.target.id === 'folder') {
+      e.preventDefault();
+      document.getElementById('btnScan').click();
+    }
+    return;
+  }
+  if (e.key === 'c' || e.key === 'C') {
+    if (!document.getElementById('btnConvert').disabled) {
+      e.preventDefault();
+      document.getElementById('btnConvert').click();
+    }
+  }
+  if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault();
+    document.getElementById('btnCopyLog')?.click();
+  }
+});
+
+document.getElementById('btnPick').onclick = async () => {
+  try {
+    if (!window.AIToolboxAPI) throw new Error('API not loaded');
+    if (!(await AIToolboxAPI.isOnline(true))) throw new Error('Start the server first');
+    const r = await AIToolboxAPI.pickFolderOnly();
+    const p = r?.path || r?.folder || r;
+    if (typeof p === 'string' && p) document.getElementById('folder').value = p;
+  } catch (e) {
+    log(e.message || String(e));
+  }
+};
+
+UI()?.mountServerBar?.({ onOnline: init });
+init();
+</script>
+
+<script data-tool-polish="media-converter">
+/* Tool polish: media-converter — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "media-converter";
+  const TOOL_NAME = "Batch Media Converter";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="bconv">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('Batch convert needs S1 + ffmpeg', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

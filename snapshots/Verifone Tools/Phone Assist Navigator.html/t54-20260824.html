@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone Assist Navigator · FAFO</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ“ž</text></svg>">
+  <style>
+    :root {
+      --bg: #05080c; --panel: #0c1218; --panel2: #101820; --line: rgba(56,189,248,.2);
+      --accent: #38bdf8; --accent2: #f59e0b; --good: #34d399; --warn: #fbbf24; --text: #e8eef4; --muted: #8b9bb0;
+      --reg: #0b3d2e; --reg-bezel: #14532d; --tls: #1e1b4b; --cmd: #0c4a6e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(ellipse 70% 40% at 20% -10%, rgba(14,116,144,.35), transparent 50%), var(--bg);
+    }
+    header {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(8,12,18,.9); position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { margin: 0; font-size: 16px; color: var(--accent); }
+    header .sub { font-size: 11px; color: var(--muted); max-width: 520px; }
+    .model-pill {
+      display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+      background: rgba(167,139,250,.2); color: #c4b5fd; border: 1px solid rgba(167,139,250,.4); margin-left: 6px;
+    }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tab {
+      border: 1px solid var(--line); background: transparent; color: var(--muted);
+      padding: 7px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; cursor: pointer; text-transform: uppercase;
+    }
+    .tab.active { background: var(--accent); color: #041018; border-color: var(--accent); }
+    .btn {
+      border: 1px solid var(--accent); background: transparent; color: var(--accent);
+      padding: 7px 11px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+    .btn:hover { background: rgba(56,189,248,.15); }
+    .btn.primary { background: rgba(56,189,248,.18); }
+    .btn.amber { border-color: var(--accent2); color: var(--accent2); }
+    .layout {
+      display: grid; grid-template-columns: 280px 1fr 320px; gap: 0; min-height: calc(100vh - 62px);
+    }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+    .col { border-right: 1px solid var(--line); padding: 12px; overflow: auto; max-height: calc(100vh - 62px); }
+    .col:last-child { border-right: none; }
+    .crumb {
+      font-size: 11px; color: var(--muted); margin-bottom: 10px; line-height: 1.5;
+      word-break: break-word;
+    }
+    .crumb b { color: var(--accent2); }
+    .screen {
+      border: 3px solid #334155; border-radius: 14px; background: #0a0f14;
+      min-height: 340px; padding: 14px; position: relative; box-shadow: 0 0 40px rgba(0,0,0,.4);
+    }
+    .screen.reg { border-color: #16a34a; background: linear-gradient(180deg, #052e1a, #0a1620); }
+    .screen.cmd { border-color: #0284c7; background: linear-gradient(180deg, #0c4a6e22, #0a1620); }
+    .screen.tls { border-color: #7c3aed; background: linear-gradient(180deg, #1e1b4b55, #0a1620); }
+    .screen.ssh { border-color: #f59e0b; background: #020617; font-family: ui-monospace, Consolas, monospace; }
+    .screen-title {
+      font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 6px;
+    }
+    .screen.reg .screen-title { color: #4ade80; }
+    .screen.tls .screen-title { color: #c4b5fd; }
+    .screen.ssh .screen-title { color: #fcd34d; }
+    .screen-hint { font-size: 12px; color: var(--muted); margin-bottom: 12px; min-height: 2.4em; }
+    .menu-list { display: flex; flex-direction: column; gap: 6px; }
+    .menu-item {
+      text-align: left; border: 1px solid var(--line); background: rgba(0,0,0,.35);
+      color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 13px;
+      display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    }
+    .menu-item:hover, .menu-item:focus { border-color: var(--accent); background: rgba(56,189,248,.12); outline: none; }
+    .menu-item .n { color: var(--accent2); font-weight: 800; min-width: 1.4em; }
+    .menu-item .arrow { color: var(--muted); font-size: 11px; }
+    .say-box, .tech-box {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px;
+      background: var(--panel);
+    }
+    .say-box h3, .tech-box h3 {
+      margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent2);
+    }
+    .say-box { border-color: rgba(52,211,153,.35); }
+    .say-box .body { font-size: 14px; line-height: 1.45; color: #bbf7d0; }
+    .tech-box .body { font-size: 12px; line-height: 1.45; color: var(--muted); white-space: pre-wrap; }
+    .nav-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+    .path-tree { font-size: 11px; color: var(--muted); }
+    .path-tree .node {
+      padding: 4px 6px; border-radius: 6px; cursor: pointer; margin: 2px 0;
+    }
+    .path-tree .node:hover { background: rgba(56,189,248,.1); color: var(--accent); }
+    .path-tree .node.active { color: var(--good); font-weight: 700; }
+    .path-tree .depth0 { padding-left: 0; }
+    .path-tree .depth1 { padding-left: 10px; }
+    .path-tree .depth2 { padding-left: 20px; }
+    .path-tree .depth3 { padding-left: 30px; }
+    .path-tree .depth4 { padding-left: 40px; }
+    .field label { display: block; font-size: 10px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+    .field input, .field select {
+      width: 100%; background: #070b10; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 7px 8px; font-size: 12px; margin-bottom: 8px;
+    }
+    pre.ssh {
+      background: #000; color: #4ade80; padding: 12px; border-radius: 10px; font-size: 12px;
+      overflow: auto; white-space: pre-wrap; border: 1px solid #334155; max-height: 280px;
+    }
+    .toast {
+      position: fixed; bottom: 16px; right: 16px; background: #0f1720; border: 1px solid var(--accent);
+      padding: 10px 14px; border-radius: 10px; font-size: 12px; opacity: 0; transition: opacity .2s; z-index: 50;
+      max-width: 360px;
+    }
+    .toast.show { opacity: 1; }
+    .warn {
+      background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); color: #fcd34d;
+      border-radius: 10px; padding: 10px; font-size: 12px; margin-bottom: 10px;
+    }
+    .kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .kpi div { background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 11px; }
+    .kpi .l { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .kpi .v { font-weight: 700; color: var(--accent); margin-top: 2px; word-break: break-all; }
+  </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+</head>
+<body>
+  <a class="toolbox-back" href="../Toolbox Launcher.html" style="position:fixed;top:10px;left:12px;z-index:9999;color:#38bdf8;text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(56,189,248,.35)">← Toolbox</a>
+  <header>
+    <div>
+      <h1>📞 Phone Assist Navigator</h1>
+      <div class="sub">Walk CSR / Commander / TLS menus with the person on the phone — same path they see</div>
+    </div>
+    <div class="tabs" id="deviceTabs"></div>
+    <div class="nav-row" style="margin:0">
+      <a class="btn" href="Commander Site Console.html" title="Counterpart · site dossiers">⛽ Console</a>
+      <a class="btn" href="Pre-Reload Punch List.html" title="Counterpart · pre-reload punch list">✅ Pre-Reload</a>
+      <button type="button" class="btn" id="btnHome" data-tip-title="Root" data-tip="Jump to the top of the call tree for a new call.">🏠 Root</button>
+      <button type="button" class="btn" id="btnBack" data-tip-title="Back" data-tip="Go up one step in the tree.">← Back</button>
+      <button type="button" class="btn amber" id="btnSsh" data-tip-title="SSH / resetpw" data-tip="Show password-reset / SSH SOP helpers.">🔑 SSH / resetpw</button>
+      <button type="button" class="btn" id="btnCopySession" data-tip-title="Session" data-tip="Copy a summary of this call session.">📋 Session</button>
+      <a class="btn" href="http://127.0.0.87:18765/toolbox/docs/Commander-FAFO-User-Guide.md" target="_blank" title="Full FAFO Commander user manual">📖 Guide</a>
+    </div>
+    <span data-fafo-layout-toolbar></span>
+</header>
+
+  <div class="layout" data-fafo-layout-root data-fafo-layout-app="verifone-tools-phone-assist-navigator" data-fafo-layout-type="columns">
+    <div class="col" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+      <div class="field">
+        <label>Site host (for SSH script)</label>
+        <input id="siteHost" placeholder="192.168.31.11" value="192.168.31.11">
+      </div>
+      <div class="field">
+        <label>Jump to…</label>
+        <select id="jumpSelect"><option value="">— pick a destination —</option></select>
+      </div>
+      <h3 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Path tree</h3>
+      <div class="path-tree" id="pathTree"></div>
+    </div>
+
+    <div class="col">
+      <div class="crumb" id="crumb">—</div>
+      <div class="screen reg" id="screen">
+        <div class="screen-title" id="screenTitle">Screen</div>
+        <div class="screen-hint" id="screenHint"></div>
+        <div class="menu-list" id="menuList"></div>
+      </div>
+      <div class="nav-row">
+        <button type="button" class="btn primary" id="btnCopySay" data-tip-title="Copy say-this" data-tip="Copy the suggested agent script for this step.">Copy “say this”</button>
+        <button type="button" class="btn" id="btnCopyPath" data-tip-title="Copy path" data-tip="Copy where you are in the call tree.">Copy path</button>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="say-box">
+        <h3>Say to the person on the phone</h3>
+        <div class="body" id="sayText">—</div>
+      </div>
+      <div class="tech-box">
+        <h3>Tech notes (don’t read all of this)</h3>
+        <div class="body" id="techText">—</div>
+      </div>
+      <div class="tech-box" id="sshPanel" style="display:none">
+        <h3>SSH recovery (PuTTY)</h3>
+        <div class="kpi">
+          <div><div class="l">User</div><div class="v" id="sshUser">maint</div></div>
+          <div><div class="l">Port</div><div class="v" id="sshPort">22</div></div>
+          <div><div class="l">Password</div><div class="v" id="sshPass">—</div></div>
+          <div><div class="l">Host</div><div class="v" id="sshHost">—</div></div>
+        </div>
+        <pre class="ssh" id="sshPlaybook"></pre>
+        <div class="nav-row">
+          <button type="button" class="btn primary" id="btnCopySsh">Copy full SOP</button>
+          <button type="button" class="btn" id="btnHideSsh">Hide</button>
+        </div>
+        <div class="warn" style="margin-top:8px">
+          Fleet shell account — local tech use only. After <code>resetpw manager</code>, set Manager to next letter+base and update Liferaft.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="phone-assist-tls-trees.js"></script>
+  <script>
+    const TREES = {
+      csr: {
+        id: 'csr',
+        label: 'Register / CSR',
+        skin: 'reg',
+        root: 'csr_root',
+        jumps: [
+          { id: 'csr_otp', label: 'Generate Config OTP' },
+          { id: 'csr_price', label: 'Price change / price check' },
+          { id: 'csr_maint', label: 'Maintenance menu' },
+          { id: 'csr_no_sale', label: 'No sale / open drawer' },
+        ],
+        nodes: {
+          csr_root: {
+            title: 'Sales / idle screen',
+            hint: 'Register is on the normal sales screen (ready for a sale).',
+            say: 'Stay on the sales screen — don’t start a sale. We’re going into CSR Functions.',
+            tech: 'Phone assist starts at idle/sales. Avoid asking them to “read the whole screen.”',
+            items: [
+              { n: '1', label: 'CSR Functions', go: 'csr_functions', say: 'Press the CSR Functions key (or the key that opens cashier functions).' },
+            ],
+          },
+          csr_functions: {
+            title: 'CSR Functions',
+            hint: 'List of cashier/manager functions.',
+            say: 'You should see a list of functions. Tell me if you see Maintenance or Price Check.',
+            tech: 'Common: Maintenance, Price Check, No Sale, Loan, Pickup, Clock, etc. Labels vary slightly by softkey map.',
+            items: [
+              { n: '1', label: 'Maintenance Menu', go: 'csr_maint', say: 'Choose Maintenance Menu (or Maintenance).' },
+              { n: '2', label: 'Price Check', go: 'csr_price', say: 'Choose Price Check.' },
+              { n: '3', label: 'No Sale', go: 'csr_no_sale', say: 'Choose No Sale if we need the drawer open.' },
+              { n: '4', label: 'Price Override / Change', go: 'csr_price_override', say: 'Choose Price Override or the price-change function if you see it.' },
+            ],
+          },
+          csr_maint: {
+            title: 'Maintenance Menu',
+            hint: 'Site maintenance options (OTP, diagnostics, etc.).',
+            say: 'You should be in Maintenance. Look for Generate OTP or Config OTP — often option 10 or 11.',
+            tech: 'Config OTP is usually under Maintenance. Exact option numbers vary by base/WEB package.',
+            items: [
+              { n: '10/11', label: 'Generate / Config OTP', go: 'csr_otp', say: 'Select Generate OTP or Config OTP. If it asks Yes/No, choose Yes.' },
+              { n: '…', label: 'Other maintenance items', go: 'csr_maint_other', say: 'If you don’t see OTP, read me only the numbers and short names of the options on the list.' },
+            ],
+          },
+          csr_otp: {
+            title: 'Config OTP',
+            hint: '4-digit code on register and/or Commander face.',
+            say: 'Select Yes if it asks to generate. Read me the 4-digit code only — don’t leave that screen until I say so.',
+            tech: 'Use OTP immediately in Config Client / Journal / Import-Export. Codes expire. C-Site OTP is different (email/cloud).',
+            items: [
+              { n: '✓', label: 'Done — I have the code', go: 'csr_root', say: 'You can press Cancel or Exit back to the sales screen. Thanks.' },
+            ],
+          },
+          csr_price: {
+            title: 'Price Check',
+            hint: 'Scan or enter UPC to see price.',
+            say: 'Scan the item barcode, or type the UPC and press Enter. Read me the price and description only.',
+            tech: 'For changes: may need Price Override / Manager-level function, not Price Check.',
+            items: [
+              { n: '→', label: 'Need to change the price', go: 'csr_price_override', say: 'Exit Price Check. We’ll go to price override or manager price change.' },
+              { n: '←', label: 'Back to sales', go: 'csr_root', say: 'Press Clear or Cancel until you’re back on the sales screen.' },
+            ],
+          },
+          csr_price_override: {
+            title: 'Price override / change',
+            hint: 'Manager-authorized price change paths vary by site softkeys.',
+            say: 'If it asks for a manager password or swipe, use the manager credentials for that store. Then follow the on-screen prompts for the new price.',
+            tech: 'Softkey map dependent. Prefer walking item-by-item prompts rather than free navigation. Confirm tax/dept after change.',
+            items: [
+              { n: '←', label: 'Back to CSR Functions', go: 'csr_functions', say: 'Cancel out to CSR Functions.' },
+            ],
+          },
+          csr_no_sale: {
+            title: 'No Sale',
+            hint: 'Opens cash drawer without a sale.',
+            say: 'Choose No Sale. If it asks for a password, use the cashier or manager code for that store. Drawer should open.',
+            tech: 'Security level may block cashiers.',
+            items: [
+              { n: '←', label: 'Back to sales', go: 'csr_root', say: 'Close the drawer when ready. You should be back on sales.' },
+            ],
+          },
+          csr_maint_other: {
+            title: 'Maintenance (other)',
+            hint: 'Have them read option numbers only.',
+            say: 'Read me just the option number and the first few words of each line, starting from the top. Stop after five options.',
+            tech: 'Keeps them from getting lost. Match OTP wording: Generate, Config OTP, One Time Password.',
+            items: [
+              { n: '←', label: 'Back to Maintenance', go: 'csr_maint', say: 'Stay on that list.' },
+            ],
+          },
+        },
+      },
+
+      commander: {
+        id: 'commander',
+        label: 'Commander / Config',
+        skin: 'cmd',
+        root: 'cmd_root',
+        jumps: [
+          { id: 'cmd_login', label: 'Config Client login' },
+          { id: 'cmd_otp', label: 'OTP required' },
+          { id: 'cmd_users', label: 'Security / users' },
+          { id: 'cmd_network', label: 'Network (view only on phone)' },
+        ],
+        nodes: {
+          cmd_root: {
+            title: 'Commander desktop / face',
+            hint: 'Physical Commander or remote desktop session.',
+            say: 'On the Commander screen, open Config Client — the program used for store configuration (not Journal Browser unless I say so).',
+            tech: 'Web Config Client is often http://{host}/ConfigClient.html from a laptop on LAN.',
+            items: [
+              { n: '1', label: 'Open Config Client (on box)', go: 'cmd_login', say: 'Double-click Config Client or open it from the menu.' },
+              { n: '2', label: 'Open from laptop browser', go: 'cmd_web', say: 'On the laptop, open a browser to the Commander IP Config Client page if that’s how you usually connect.' },
+              { n: '3', label: 'SSH / shell recovery instead', go: 'cmd_ssh_bridge', say: 'We’re not using the screen for this — tech will use PuTTY. You can stand by.' },
+            ],
+          },
+          cmd_web: {
+            title: 'Web Config Client',
+            hint: 'Browser → Commander IP /ConfigClient.html',
+            say: 'When the login page appears, stop and wait for me.',
+            tech: 'http://IP/ConfigClient.html — same Manager credentials as Import-Export.',
+            items: [
+              { n: '→', label: 'Login page showing', go: 'cmd_login', say: 'Good. Leave the login page up.' },
+            ],
+          },
+          cmd_login: {
+            title: 'Config Client login',
+            hint: 'User + password (+ OTP if required).',
+            say: 'Username is usually Manager. Type the Manager password for this store carefully. Don’t press OK yet if I still need an OTP.',
+            tech: 'Fleet Manager scheme: letter A–E + digit base. OTP from register CSR → Maintenance → Config OTP.',
+            items: [
+              { n: '1', label: 'Login OK — main menu', go: 'cmd_main', say: 'Press login / OK.' },
+              { n: '2', label: 'It asks for OTP', go: 'cmd_otp', say: 'Leave that OTP box empty for a second — we need a code from the register.' },
+              { n: '3', label: 'Password wrong / locked', go: 'cmd_ssh_bridge', say: 'Stop trying passwords. We’ll use the shell reset path instead.' },
+            ],
+          },
+          cmd_otp: {
+            title: 'OTP required',
+            hint: '4-digit Config OTP from register.',
+            say: 'Stay on the login screen. Someone at the register will generate a 4-digit OTP. You’ll type only those four numbers.',
+            tech: 'Switch device tab to Register/CSR → Generate Config OTP, then come back.',
+            items: [
+              { n: '→', label: 'I entered OTP and got in', go: 'cmd_main', say: 'Press OK after the four digits.' },
+              { n: 'ðŸ“ž', label: 'Walk register for OTP', go: null, say: 'I’ll switch to the register instructions — stay on the OTP box.', action: 'switch_csr_otp' },
+            ],
+          },
+          cmd_main: {
+            title: 'Config Client home',
+            hint: 'Tree / forms navigation.',
+            say: 'You’re in. Don’t change anything until I say the exact menu name. Tell me if you see Security or Store Operations on the left.',
+            tech: 'Guide by exact menu names. Network changes: view/copy only on phone unless authorized on site.',
+            items: [
+              { n: '1', label: 'Security → users / roles', go: 'cmd_users', say: 'Open Security, then the users or POS security area I name next.' },
+              { n: '2', label: 'Network / system properties', go: 'cmd_network', say: 'Open the network or system properties section — view only until I confirm.' },
+              { n: '3', label: 'Store Operations / PLUs', go: 'cmd_plu', say: 'Open Store Operations, then PLUs if you see it.' },
+            ],
+          },
+          cmd_users: {
+            title: 'Security / users',
+            hint: 'Manage users — careful.',
+            say: 'Don’t delete users. If we’re resetting a cashier password, select that user only and wait for my next instruction.',
+            tech: 'Manager password better via letter cycle or resetpw manager over SSH.',
+            items: [
+              { n: '←', label: 'Back to home', go: 'cmd_main', say: 'Go back to the main Config Client screen.' },
+            ],
+          },
+          cmd_network: {
+            title: 'Network (reference)',
+            hint: 'Do not apply changes over the phone unless on-site.',
+            say: 'Read me the LAN IP and gateway only if they are already on the screen. Do not press Save or Apply.',
+            tech: 'Network/fuel/DCR not safely pushable remotely. Use SITE-INFO.md.',
+            items: [
+              { n: '←', label: 'Back', go: 'cmd_main', say: 'Cancel out without saving.' },
+            ],
+          },
+          cmd_plu: {
+            title: 'PLUs',
+            hint: 'Item maintenance.',
+            say: 'Search by UPC or description. Don’t change price until I confirm the item description matches.',
+            tech: 'Bulk edits better via FAFO PLU Editor + Import-Export on laptop.',
+            items: [
+              { n: '←', label: 'Back', go: 'cmd_main', say: 'Exit PLUs without saving if you’re unsure.' },
+            ],
+          },
+          cmd_ssh_bridge: {
+            title: 'Use SSH recovery',
+            hint: 'PuTTY maint shell + resetpw manager',
+            say: 'You can leave the Config Client login screen. The tech will connect with a cable and PuTTY.',
+            tech: 'Open SSH panel in this app. Enable Help Desk login + token on Commander, then resetpw manager.',
+            items: [
+              { n: 'ðŸ”‘', label: 'Show SSH playbook', go: null, say: 'Standing by.', action: 'show_ssh' },
+            ],
+          },
+        },
+      },
+
+      // TLS trees loaded from phone-assist-tls-trees.js (Veeder-Root 250/300/350 + 400/450)
+      tls: (window.PHONE_ASSIST_TLS || { id: 'tls', label: 'Veeder TLS', skin: 'tls', root: 'tls_pick', jumps: [], nodes: { tls_pick: { title: 'Load TLS data', hint: 'Missing phone-assist-tls-trees.js', say: 'TLS guide file missing — refresh or reinstall toolbox.', tech: '', items: [] } } }),
+
+      ssh: {
+        id: 'ssh',
+        label: 'SSH / PuTTY',
+        skin: 'ssh',
+        root: 'ssh_root',
+        jumps: [
+          { id: 'ssh_resetpw', label: 'resetpw manager' },
+          { id: 'ssh_helpdesk', label: 'Help desk login + token' },
+        ],
+        nodes: {
+          ssh_root: {
+            title: 'PuTTY → SSH',
+            hint: 'LAN cable on store switch (same as SMS load).',
+            say: 'If someone is with you at the Commander, they only need to enable Help Desk login when you say. You’ll run PuTTY on the laptop.',
+            tech: 'Host = site Commander IP (often 192.168.31.11). Port 22. User maint.',
+            items: [
+              { n: '1', label: 'Connection settings', go: 'ssh_conn', say: 'Standing by while tech opens PuTTY.' },
+              { n: '2', label: 'Help Desk login on Commander', go: 'ssh_helpdesk', say: 'On the Commander, open the maintenance / help desk login area when the tech says.' },
+              { n: '3', label: 'Reset Manager password', go: 'ssh_resetpw', say: 'We’ll reset Manager only after the shell login works.' },
+            ],
+          },
+          ssh_conn: {
+            title: 'SSH connection',
+            hint: 'SSH · host · 22 · maint',
+            say: 'No action for store staff unless enabling help desk.',
+            tech: 'PuTTY → SSH → Host IP → Port 22 → Open. Login as maint. Host key warning → Yes on known rebuilds.',
+            items: [
+              { n: '→', label: 'Logged in as maint', go: 'ssh_shell', say: 'Shell is open.' },
+              { n: '→', label: 'Need help desk token first', go: 'ssh_helpdesk', say: 'Enable help desk on the box first.' },
+            ],
+          },
+          ssh_helpdesk: {
+            title: 'Enable Help Desk login',
+            hint: 'Commander local maint UI + token',
+            say: 'On the Commander, go to the maintenance area and enable Help Desk login. Enter the token the tech gives you, then confirm.',
+            tech: 'Required on many sites before maint SSH is accepted. Token from Verifone/helpdesk process for that visit.',
+            items: [
+              { n: '→', label: 'Help desk enabled', go: 'ssh_conn', say: 'Tech will connect with PuTTY now.' },
+            ],
+          },
+          ssh_shell: {
+            title: 'maint shell',
+            hint: 'Type help for commands',
+            say: 'No cashier steps — tech is on the keyboard.',
+            tech: 'Commands: help · resetpw manager · (others per help). Don’t freestyle destructive commands on phone.',
+            items: [
+              { n: '1', label: 'resetpw manager', go: 'ssh_resetpw', say: 'Resetting Manager password next.' },
+            ],
+          },
+          ssh_resetpw: {
+            title: 'resetpw manager',
+            hint: 'Prints temporary Manager password',
+            say: 'When the tech has the new temporary password, they’ll log into Config Client as Manager and set the permanent password (letter cycle).',
+            tech: 'Run: resetpw manager → Enter → copy printed password → Config Client login → forced change to next A–E + base → Liferaft: letter + changed today.',
+            items: [
+              { n: '✓', label: 'Manager password recovered', go: 'ssh_root', say: 'Done. Document the new Manager letter and today’s date in the site notes.' },
+            ],
+          },
+        },
+      },
+    };
+
+    let device = 'csr';
+    let nodeId = TREES.csr.root;
+    let history = [];
+    let fleetShell = null;
+
+    const el = (id) => document.getElementById(id);
+
+    function toast(msg) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2800);
+    }
+
+    function tree() { return TREES[device]; }
+    function node() { return tree().nodes[nodeId] || tree().nodes[tree().root]; }
+
+    function ancestors(id) {
+      // BFS parent map
+      const nodes = tree().nodes;
+      const parent = {};
+      Object.keys(nodes).forEach(pid => {
+        (nodes[pid].items || []).forEach(it => {
+          if (it.go) parent[it.go] = pid;
+        });
+      });
+      const chain = [];
+      let cur = id;
+      const guard = new Set();
+      while (cur && !guard.has(cur)) {
+        guard.add(cur);
+        chain.unshift(cur);
+        cur = parent[cur];
+      }
+      if (chain[0] !== tree().root) chain.unshift(tree().root);
+      return chain;
+    }
+
+    function renderTabs() {
+      el('deviceTabs').innerHTML = Object.values(TREES).map(t =>
+        `<button type="button" class="tab ${t.id === device ? 'active' : ''}" data-dev="${t.id}">${t.label}</button>`
+      ).join('');
+      el('deviceTabs').querySelectorAll('[data-dev]').forEach(b => {
+        b.addEventListener('click', () => {
+          device = b.getAttribute('data-dev');
+          nodeId = TREES[device].root;
+          history = [];
+          renderAll();
+        });
+      });
+    }
+
+    function renderJumps() {
+      const sel = el('jumpSelect');
+      const jumps = tree().jumps || [];
+      sel.innerHTML = '<option value="">— pick a destination —</option>' +
+        jumps.map(j => `<option value="${j.id}">${j.label}</option>`).join('');
+    }
+
+    function renderPathTree() {
+      const box = el('pathTree');
+      const nodes = tree().nodes;
+      const lines = [];
+      function walk(id, depth, seen) {
+        if (seen.has(id) || !nodes[id]) return;
+        seen.add(id);
+        const n = nodes[id];
+        const active = id === nodeId ? 'active' : '';
+        lines.push(`<div class="node depth${Math.min(depth,4)} ${active}" data-go="${id}">${'· '.repeat(depth)}${n.title}</div>`);
+        (n.items || []).forEach(it => { if (it.go) walk(it.go, depth + 1, seen); });
+      }
+      walk(tree().root, 0, new Set());
+      box.innerHTML = lines.join('');
+      box.querySelectorAll('[data-go]').forEach(n => {
+        n.addEventListener('click', () => {
+          history.push(nodeId);
+          nodeId = n.getAttribute('data-go');
+          renderAll();
+        });
+      });
+    }
+
+    function renderScreen() {
+      const n = node();
+      const skin = tree().skin || 'reg';
+      const screen = el('screen');
+      screen.className = 'screen ' + skin;
+      el('screenTitle').textContent = n.title || '';
+      el('screenHint').textContent = n.hint || '';
+      el('menuList').innerHTML = (n.items || []).map((it, idx) => `
+        <button type="button" class="menu-item" data-idx="${idx}">
+          <span><span class="n">${it.n || (idx + 1)}</span> ${escapeHtml(it.label)}</span>
+          <span class="arrow">${it.go || it.action ? '→' : ''}</span>
+        </button>`).join('') || '<div class="screen-hint">No further steps — use Back.</div>';
+
+      el('menuList').querySelectorAll('.menu-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const it = (n.items || [])[parseInt(btn.getAttribute('data-idx'), 10)];
+          if (!it) return;
+          if (it.action === 'show_ssh') { showSsh(true); return; }
+          if (it.action === 'switch_csr_otp') {
+            device = 'csr'; nodeId = 'csr_otp'; history = []; renderAll(); return;
+          }
+          if (it.say) el('sayText').textContent = it.say;
+          if (it.go) {
+            history.push(nodeId);
+            nodeId = it.go;
+            renderAll();
+          }
+        });
+      });
+
+      const chain = ancestors(nodeId).map(id => (tree().nodes[id] || {}).title || id);
+      el('crumb').innerHTML = '<b>' + escapeHtml(tree().label) + '</b> · ' + chain.map(escapeHtml).join(' → ');
+      el('sayText').textContent = n.say || '—';
+      el('techText').textContent = n.tech || '—';
+    }
+
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderAll() {
+      renderTabs();
+      renderJumps();
+      renderPathTree();
+      renderScreen();
+    }
+
+    function apiBase() {
+      try {
+        const b = localStorage.getItem('fafo_api_base');
+        if (b) return b.replace(/\/$/, '');
+      } catch (_) {}
+      return 'http://127.0.0.87:18765/api';
+    }
+
+    async function loadFleetShell() {
+      try {
+        const r = await fetch(apiBase() + '/verifone/fleet-tech-defaults', { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        fleetShell = await r.json();
+        const sh = fleetShell.commanderShell || {};
+        el('sshUser').textContent = sh.username || 'maint';
+        el('sshPort').textContent = String(sh.port || 22);
+        el('sshPass').textContent = sh.password || '(set in fleet defaults)';
+        applyHostToPlaybook();
+      } catch (e) {
+        // Offline fallback with procedure only (password from user SOP if API down)
+        fleetShell = {
+          commanderShell: {
+            username: 'maint',
+            password: 'EsG2Com@nd3r',
+            port: 22,
+            defaultHostHint: '192.168.31.11',
+            playbookRendered: '',
+          },
+        };
+        el('sshUser').textContent = 'maint';
+        el('sshPort').textContent = '22';
+        el('sshPass').textContent = 'EsG2Com@nd3r';
+        applyHostToPlaybook();
+      }
+    }
+
+    function applyHostToPlaybook() {
+      const host = (el('siteHost').value || '192.168.31.11').trim();
+      el('sshHost').textContent = host;
+      const sh = (fleetShell && fleetShell.commanderShell) || {};
+      const user = sh.username || 'maint';
+      const pass = sh.password || 'EsG2Com@nd3r';
+      const port = sh.port || 22;
+      const text =
+`Open PuTTY
+Click SSH, enter ${host} port ${port}
+(LAN cable on the store switch — same as when loading SMS)
+
+user: ${user}
+password: ${pass}
+
+If Warning - Potential Security breach → Yes
+
+On the Commander: enable Help Desk login and enter the token.
+You're in. Type: help
+
+Reset Manager password:
+  resetpw manager
+  <Enter>
+Note the printed temp password.
+Log into Config Client as Manager with that password —
+it will force a new Manager password (use next letter + site digit base).
+Update Liferaft: letter + last changed = today.`;
+      el('sshPlaybook').textContent = text;
+    }
+
+    function showSsh(on) {
+      el('sshPanel').style.display = on ? 'block' : 'none';
+      if (on) {
+        device = 'ssh';
+        nodeId = 'ssh_resetpw';
+        history = [];
+        applyHostToPlaybook();
+        renderAll();
+      }
+    }
+
+    el('btnHome').addEventListener('click', () => { nodeId = tree().root; history = []; renderAll(); });
+    el('btnBack').addEventListener('click', () => {
+      if (history.length) { nodeId = history.pop(); renderAll(); }
+      else toast('Already at start of path');
+    });
+    el('btnSsh').addEventListener('click', () => showSsh(true));
+    el('btnHideSsh').addEventListener('click', () => showSsh(false));
+    el('siteHost').addEventListener('input', applyHostToPlaybook);
+    el('jumpSelect').addEventListener('change', () => {
+      const v = el('jumpSelect').value;
+      if (!v) return;
+      if (!tree().nodes[v]) { toast('Destination not in this tree'); return; }
+      history.push(nodeId);
+      nodeId = v;
+      el('jumpSelect').value = '';
+      renderAll();
+    });
+    el('btnCopySay').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(el('sayText').textContent);
+        toast('Copied “say this”');
+      } catch (_) { toast('Copy failed'); }
+    });
+    el('btnCopyPath').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(el('crumb').innerText);
+        toast('Copied path');
+      } catch (_) { toast('Copy failed'); }
+    });
+    el('btnCopySsh').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(el('sshPlaybook').textContent);
+        toast('Copied SSH SOP');
+      } catch (_) { toast('Copy failed'); }
+    });
+
+    const LS_PA = 'fafo_phone_assist_state';
+    function savePaState() {
+      try {
+        localStorage.setItem(LS_PA, JSON.stringify({
+          device, nodeId, host: el('siteHost').value || '',
+        }));
+      } catch (_) {}
+    }
+    function loadPaState() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_PA) || 'null');
+        if (!raw) return;
+        if (raw.host) el('siteHost').value = raw.host;
+        if (raw.device && TREES[raw.device]) device = raw.device;
+        if (raw.nodeId && tree().nodes[raw.nodeId]) nodeId = raw.nodeId;
+      } catch (_) {}
+    }
+    async function copySessionSummary() {
+      const n = node();
+      const lines = [
+        'Phone Assist — call session',
+        '===========================',
+        'Device: ' + (tree().label || device),
+        'Path: ' + (el('crumb')?.innerText || '—'),
+        'Screen: ' + (n?.title || nodeId),
+        'Host: ' + (el('siteHost').value || '—'),
+        'Say: ' + (el('sayText')?.textContent || '—'),
+        'Tech: ' + (el('techText')?.textContent || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        toast('Session summary copied');
+      } catch (_) { toast('Copy failed'); }
+    }
+    el('btnCopySession')?.addEventListener('click', copySessionSummary);
+    const _renderAll = renderAll;
+    renderAll = function () { _renderAll(); savePaState(); };
+    el('siteHost').addEventListener('change', savePaState);
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'b' || e.key === 'B') el('btnBack')?.click();
+      else if (e.key === 'h' || e.key === 'H') el('btnHome')?.click();
+      else if (e.key === 's' || e.key === 'S') copySessionSummary();
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'phone-assist',
+        helpLines: ['B — back', 'H — root', 'S — copy session summary'],
+      });
+    } catch (_) {}
+
+    loadPaState();
+    renderAll();
+    loadFleetShell();
+  </script>
+
+<script data-tool-polish="phone-assist-navigator">
+/* Tool polish: phone-assist-navigator — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "phone-assist-navigator";
+  const TOOL_NAME = "Phone Assist Navigator";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="pan">
+(function(){
+  try {
+    if (!sessionStorage.getItem('pan_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('pan_tip','1');
+      AIToolboxUI.toast('Phone Assist · follow the flow · Esc = launcher', 'ok');
+    }
+  } catch(_){}
+})();
+</script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+</body>
+</html>
+
+

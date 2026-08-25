@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System & Space Debris Tracker</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪐</text></svg>">
+    <style>
+        :root {
+            --bg: #030308;
+            --panel: rgba(8, 10, 22, 0.88);
+            --accent: #4fc3f7;
+            --accent2: #ff6b35;
+            --text: #e8ecf4;
+            --muted: #7a8499;
+            --border: rgba(79, 195, 247, 0.22);
+            --glow: 0 0 18px rgba(79, 195, 247, 0.35);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: fixed; inset: 0; }
+        canvas { display: block; }
+
+        .hud {
+            position: fixed;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .hud > * { pointer-events: auto; }
+
+        #top-bar {
+            top: 0; left: 0; right: 0;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 20px;
+            background: linear-gradient(180deg, rgba(3,3,8,0.95) 0%, transparent 100%);
+            gap: 12px;
+        }
+        #top-bar a.toolbox-back {
+            color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600;
+            padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+            white-space: nowrap;
+        }
+        #top-bar a.toolbox-back:hover { background: var(--accent); color: #000; }
+        #title-block h1 {
+            font-size: 18px; font-weight: 300; letter-spacing: 3px;
+            color: var(--accent); text-shadow: var(--glow);
+        }
+        #title-block p { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+        .status-pill {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 14px; border-radius: 20px;
+            background: var(--panel); border: 1px solid var(--border);
+            font-size: 11px;
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; animation: pulse 2s infinite; }
+        .status-dot.loading { background: #ffc107; }
+        .status-dot.offline { background: #f44336; animation: none; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        #side-panel {
+            top: 70px; left: 16px; width: 300px; max-height: calc(100vh - 90px);
+            overflow-y: auto; padding: 16px;
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 12px; backdrop-filter: blur(12px);
+            scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+        }
+        .section { margin-bottom: 18px; }
+        .section-title {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+            color: var(--accent); margin-bottom: 10px; font-weight: 600;
+        }
+
+        .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+        .btn {
+            background: transparent; border: 1px solid var(--border);
+            color: var(--text); padding: 6px 12px; border-radius: 6px;
+            cursor: pointer; font-size: 11px; transition: all 0.2s;
+        }
+        .btn:hover, .btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+        .btn.warn:hover, .btn.warn.active { background: var(--accent2); border-color: var(--accent2); }
+
+        label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+        input[type="range"] { width: 100%; accent-color: var(--accent); }
+        input[type="text"], input[type="datetime-local"], select {
+            width: 100%; padding: 7px 10px; border-radius: 6px;
+            background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+            color: var(--text); font-size: 12px;
+        }
+        .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .row label { margin: 0; flex: 1; }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stat-card {
+            background: rgba(0,0,0,0.35); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px; text-align: center;
+        }
+        .stat-val { font-size: 20px; font-weight: 600; color: var(--accent); }
+        .stat-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+        .legend { display: flex; flex-direction: column; gap: 6px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+        .swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+        #info-panel {
+            bottom: 16px; right: 16px; width: 320px; padding: 14px;
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 12px; backdrop-filter: blur(12px);
+            display: none;
+        }
+        #info-panel.visible { display: block; }
+        #info-panel h3 { font-size: 14px; color: var(--accent); margin-bottom: 8px; }
+        #info-panel .detail { font-size: 11px; color: var(--muted); line-height: 1.6; }
+        #info-panel .detail span { color: var(--text); }
+
+        #loading-overlay {
+            position: fixed; inset: 0; z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: var(--bg); transition: opacity 0.6s;
+        }
+        #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        .loader-ring {
+            width: 56px; height: 56px; border: 3px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading-text { margin-top: 16px; font-size: 13px; color: var(--muted); }
+
+        #tooltip {
+            position: fixed; padding: 8px 12px; border-radius: 6px;
+            background: rgba(0,0,0,0.85); border: 1px solid var(--border);
+            font-size: 11px; pointer-events: none; display: none; z-index: 50;
+            max-width: 260px;
+        }
+
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; }
+        .checkbox-row input { accent-color: var(--accent); }
+
+        @media (max-width: 768px) {
+            #side-panel { width: calc(100% - 32px); max-height: 45vh; }
+            #info-panel { width: calc(100% - 32px); }
+        }
+    </style>
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
+</head>
+<body>
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+<div data-fafo-layout-root data-fafo-layout-app="solar-system-debris-tracker" data-fafo-layout-type="columns" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
+    <div id="loading-overlay" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+        <div class="loader-ring"></div>
+        <div id="loading-text">Initializing 3D engine & orbital data…</div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="tooltip"></div>
+
+    <div class="hud" id="top-bar">
+        <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
+        <div id="title-block">
+            <h1>SOLAR SYSTEM DEBRIS TRACKER</h1>
+            <p>NORAD TLE · CelesTrak · SGP4 · Space pause · Shift+C copy · Esc clears focus then Toolbox</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn" type="button" id="btn-copy-focus" title="Copy focused object / stats summary">📋 Copy focus</button>
+          <a class="btn" href="Toolbox Launcher.html" style="text-decoration:none" title="Leave to FAFO Toolbox">← Toolbox</a>
+          <div class="status-pill">
+              <div class="status-dot loading" id="status-dot"></div>
+              <span id="status-text">Loading orbital data…</span>
+          </div>
+        </div>
+    </div>
+
+    <div class="hud" id="side-panel">
+        <div class="section">
+            <div class="section-title">View Mode</div>
+            <div class="btn-row">
+                <button class="btn active" data-view="solar">Solar System</button>
+                <button class="btn" data-view="earth">Earth Orbit</button>
+                <button class="btn" data-view="debris">Debris Focus</button>
+            </div>
+            <div class="checkbox-row" style="margin-top:10px">
+                <input type="checkbox" id="cam-lock" checked>
+                <label for="cam-lock">Lock &amp; sync camera to planet</label>
+            </div>
+            <label style="margin-top:8px">Follow planet</label>
+            <select id="lock-planet">
+                <option value="Earth" selected>Earth</option>
+                <option value="Mercury">Mercury</option>
+                <option value="Venus">Venus</option>
+                <option value="Mars">Mars</option>
+                <option value="Jupiter">Jupiter</option>
+                <option value="Saturn">Saturn</option>
+                <option value="Uranus">Uranus</option>
+                <option value="Neptune">Neptune</option>
+                <option value="Sun">Sun</option>
+            </select>
+            <label style="margin-top:8px">Lock distance: <span id="lock-dist-val">8.0</span> units</label>
+            <input type="range" id="lock-distance" min="1" max="250" value="8" step="0.5">
+            <p style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.4">
+                Keeps a fixed camera distance while the planet moves. Zoom/rotate to adjust angle — distance stays synced.
+            </p>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Time Control</div>
+            <div class="btn-row" style="margin-bottom:10px">
+                <button class="btn" id="btn-play">▶ Play</button>
+                <button class="btn" id="btn-pause">⏸ Pause</button>
+                <button class="btn" id="btn-now">Now (UTC)</button>
+            </div>
+            <label>Simulation speed: <span id="speed-val">300×</span></label>
+            <input type="range" id="speed-slider" min="0" max="6" value="2" step="1">
+            <label style="margin-top:8px">Simulation time (UTC)</label>
+            <input type="datetime-local" id="sim-time">
+            <div class="btn-row" style="margin-top:8px">
+                <button class="btn warn" data-archive="2007-01-11">Fengyun ASAT 2007</button>
+                <button class="btn warn" data-archive="2009-02-10">Iridium 33 2009</button>
+                <button class="btn warn" data-archive="2009-02-10">Cosmos 2251 2009</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Debris Catalogs</div>
+            <div class="checkbox-row"><input type="checkbox" id="cat-fengyun" checked><label for="cat-fengyun">Fengyun 1C ASAT debris (2007)</label></div>
+            <div class="checkbox-row"><input type="checkbox" id="cat-iridium" checked><label for="cat-iridium">Iridium 33 collision debris (2009)</label></div>
+            <div class="checkbox-row"><input type="checkbox" id="cat-cosmos" checked><label for="cat-cosmos">Cosmos 2251 collision debris (2009)</label></div>
+            <div class="checkbox-row"><input type="checkbox" id="cat-analyst"><label for="cat-analyst">Analyst / uncatalogued objects</label></div>
+            <button class="btn" id="btn-refresh" style="margin-top:8px;width:100%">↻ Refresh Live TLE Data</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Graphics</div>
+            <div class="checkbox-row"><input type="checkbox" id="gfx-bloom" checked><label for="gfx-bloom">Bloom post-processing</label></div>
+            <div class="checkbox-row"><input type="checkbox" id="gfx-trails" checked><label for="gfx-trails">Orbit trail paths</label></div>
+            <div class="checkbox-row"><input type="checkbox" id="gfx-labels" checked><label for="gfx-labels">Planet labels</label></div>
+            <div class="checkbox-row"><input type="checkbox" id="gfx-atmo" checked><label for="gfx-atmo">Earth atmosphere glow</label></div>
+            <label style="margin-top:8px">Debris point size</label>
+            <input type="range" id="debris-size" min="1" max="8" value="3" step="0.5">
+        </div>
+
+        <div class="section">
+            <div class="section-title">Search Object</div>
+            <input type="text" id="search-input" placeholder="NORAD ID or name…">
+        </div>
+
+        <div class="section">
+            <div class="section-title">Tracked Objects</div>
+            <div class="stat-grid">
+                <div class="stat-card"><div class="stat-val" id="stat-total">0</div><div class="stat-lbl">Total debris</div></div>
+                <div class="stat-card"><div class="stat-val" id="stat-visible">0</div><div class="stat-lbl">Visible</div></div>
+                <div class="stat-card"><div class="stat-val" id="stat-leo">0</div><div class="stat-lbl">LEO (&lt;2000km)</div></div>
+                <div class="stat-card"><div class="stat-val" id="stat-meo">0</div><div class="stat-lbl">MEO/HEO</div></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Debris Event Legend</div>
+            <div class="legend">
+                <div class="legend-item"><div class="swatch" style="background:#ff4444"></div>Fengyun 1C ASAT test (Jan 2007)</div>
+                <div class="legend-item"><div class="swatch" style="background:#ffaa00"></div>Iridium 33 / Cosmos 2251 (Feb 2009)</div>
+                <div class="legend-item"><div class="swatch" style="background:#aa66ff"></div>Analyst / uncatalogued</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Data Source</div>
+            <p style="font-size:10px;color:var(--muted);line-height:1.5">
+                Live TLE sets from <a href="https://celestrak.org" target="_blank" style="color:var(--accent)">CelesTrak</a> (NORAD GP elements).
+                Archived fallback embedded for offline use. Propagation via SGP4/SDP4.
+            </p>
+        </div>
+    </div>
+
+    <div class="hud" id="info-panel">
+        <h3 id="info-name">—</h3>
+        <div class="detail" id="info-body"></div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
+
+    <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // ─── Constants ───────────────────────────────────────────────────────────────
+    const AU = 149597870.7; // km
+    const EARTH_RADIUS_KM = 6371;
+    const SCENE_SCALE = 0.00001; // 1 unit = 100,000 km (solar system)
+    const EARTH_SCENE_SCALE = 0.001; // 1 unit = 1 km (earth orbit view)
+    const KM_TO_EARTH_UNIT = 0.001;
+
+    const SPEED_STEPS = [1, 60, 300, 3600, 86400, 604800, 2592000];
+
+    const DEBRIS_SOURCES = {
+        fengyun: { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=fengyun-1c-debris&FORMAT=tle', color: 0xff4444, event: 'Fengyun 1C ASAT (Jan 11, 2007)', group: 'fengyun' },
+        iridium: { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-33-debris&FORMAT=tle', color: 0xffaa00, event: 'Iridium 33 collision (Feb 10, 2009)', group: 'iridium' },
+        cosmos:  { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=cosmos-2251-debris&FORMAT=tle', color: 0xff8800, event: 'Cosmos 2251 collision (Feb 10, 2009)', group: 'cosmos' },
+        analyst: { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=analyst&FORMAT=tle', color: 0xaa66ff, event: 'Analyst / uncatalogued', group: 'analyst' }
+    };
+
+    // Archived fallback TLE snapshot (CelesTrak NORAD GP, 2026-07-03)
+    const ARCHIVED_TLE = `FENGYUN 1C DEB
+1 29733U 99025X   26183.55895177  .00001092  00000+0  18470-2 0  9999
+2 29733  99.2054 213.8677 0569277  96.0251  52.4244 12.96837390917352
+FENGYUN 1C DEB
+1 29750U 99025AQ  26183.56880417  .00000275  00000+0  17936-3 0  9999
+2 29750  98.7324 211.9337 0037305  89.9395  61.1922 14.09820530999173
+FENGYUN 1C DEB
+1 29758U 99025AY  26183.62364573  .00007326  00000+0  21436-2 0  9997
+2 29758  98.8641 312.1345 0021185  79.3510  43.3448 14.44131117  5839
+FENGYUN 1C DEB
+1 29801U 99025CT  26183.71977786  .00000536  00000+0  18853-3 0  9998
+2 29801  98.7838  93.7298 0104371  31.8679 356.6450 14.36097114 18399
+FENGYUN 1C DEB
+1 29827U 99025DV  26182.94430203  .00000558  00000+0  27092-3 0  9997
+2 29827  98.6144 174.3294 0026873  96.7256 318.2636 14.21971058  7120
+IRIDIUM 33 DEB
+1 33773U 97051L   26183.85409796  .00001116  00000+0  32276-3 0  9994
+2 33773  86.4022 334.9256 0010511 193.6905 166.4013 14.43676218912634
+IRIDIUM 33 DEB
+1 33775U 97051N   26183.83107984  .00001682  00000+0  50600-3 0  9997
+2 33775  86.3642 323.2473 0012090 205.1865 317.6236 14.42066792910525
+IRIDIUM 33 DEB
+1 33777U 97051Q   26183.83861440  .00005139  00000+0  11394-2 0  9990
+2 33777  86.3796 307.2027 0004763 303.8366  56.2388 14.56973918914759
+IRIDIUM 33 DEB
+1 33860U 97051AD  26183.83607125  .00007561  00000+0  12449-2 0  9994
+2 33860  86.3824 297.5415 0007918  21.1403 108.5260 14.70412502916893
+IRIDIUM 33 DEB
+1 34088U 97051CX  26183.83703005  .00038272  00000+0  26686-2 0  9992
+2 34088  86.3799 296.7689 0004917 190.5641 292.2368 15.05226350917683
+COSMOS 2251 DEB
+1 33757U 93036E   26183.85079519  .00000087  00000+0  41427-4 0  9996
+2 33757  74.0380 314.6356 0015834 282.6359 196.2796 14.32627992908904
+COSMOS 2251 DEB
+1 33758U 93036F   26183.81282816  .00002824  00000+0  69087-3 0  9991
+2 33758  74.0258 193.9435 0017175 221.6089 315.7964 14.52909349912381
+COSMOS 2251 DEB
+1 33765U 93036N   26183.83506481  .00028419  00000+0  10991-2 0  9995
+2 33765  74.0004 110.2070 0053498 151.6671 208.7458 15.24742302926841
+COSMOS 2251 DEB
+1 33818U 93036BK  26183.84021544  .00111361  00000+0  30597-2 0  9990
+2 33818  74.0742 101.0753 0001532  87.9842 272.1540 15.36709979929417
+COSMOS 2251 DEB
+1 33901U 93036DE  26183.79875169  .00450145  00000+0  47090-2 0  9999
+2 33901  73.7576 329.6526 0008697  25.5727 334.5919 15.62880080926115`;
+
+    const MAX_DEBRIS_OBJECTS = 8000;
+
+    const PLANETS = [
+        { name: 'Mercury', radius: 2439, dist: 0.39, period: 88, color: 0xb5b5b5, tilt: 0.03 },
+        { name: 'Venus',   radius: 6051, dist: 0.72, period: 225, color: 0xe8cda0, tilt: 0.01 },
+        { name: 'Earth',   radius: 6371, dist: 1.00, period: 365, color: 0x4488ff, tilt: 0.02, emissive: 0x112244 },
+        { name: 'Mars',    radius: 3390, dist: 1.52, period: 687, color: 0xcc6644, tilt: 0.03 },
+        { name: 'Jupiter', radius: 69911, dist: 5.20, period: 4333, color: 0xd4a574, tilt: 0.07 },
+        { name: 'Saturn',  radius: 58232, dist: 9.58, period: 10759, color: 0xc9b896, tilt: 0.05, ring: true },
+        { name: 'Uranus',  radius: 25362, dist: 19.2, period: 30687, color: 0x88ccdd, tilt: 0.04 },
+        { name: 'Neptune', radius: 24622, dist: 30.1, period: 60190, color: 0x3355aa, tilt: 0.03 }
+    ];
+
+    // ─── State ─────────────────────────────────────────────────────────────────
+    let scene, camera, renderer, controls, composer, bloomPass;
+    let sunMesh, earthGroup, earthMesh, earthAtmosphere, debrisPoints;
+    let planetMeshes = [];
+    let orbitLines = [];
+    let labelSprites = [];
+    let debrisObjects = [];
+    let simDate = new Date();
+    let playing = true;
+    let speedIdx = 2;
+    let viewMode = 'solar';
+    let dataSource = 'loading';
+    let raycaster, mouse;
+    let hoveredDebris = -1;
+    let selectedDebris = -1;
+
+    let lockEnabled = true;
+    let lockPlanetName = 'Earth';
+    let lockOffset = new THREE.Vector3(8, 3, 8);
+    let lastPlanetPos = new THREE.Vector3();
+    let lockInitialized = false;
+
+    const VIEW_LOCK_DISTANCE = { solar: 0, earth: 10, debris: 4 };
+
+    const debrisPositions = new Float32Array(0);
+    const debrisColors = new Float32Array(0);
+
+    // ─── TLE Parsing ───────────────────────────────────────────────────────────
+    function parseTLE(text, groupKey, groupMeta) {
+        const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+        const objects = [];
+        for (let i = 0; i < lines.length - 2; i += 3) {
+            const name = lines[i];
+            const l1 = lines[i + 1];
+            const l2 = lines[i + 2];
+            if (!l1.startsWith('1 ') || !l2.startsWith('2 ')) continue;
+            try {
+                const satrec = satellite.twoline2satrec(l1, l2);
+                const norad = parseInt(l1.substring(2, 7), 10);
+                objects.push({ name, norad, satrec, group: groupKey, ...groupMeta });
+            } catch (_) { /* skip invalid */ }
+        }
+        return objects;
+    }
+
+    async function fetchTLEGroup(key) {
+        const src = DEBRIS_SOURCES[key];
+        try {
+            const resp = await fetch(src.url, { signal: AbortSignal.timeout(15000) });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return parseTLE(await resp.text(), key, { color: src.color, event: src.event });
+        } catch (e) {
+            console.warn(`Failed to fetch ${key}:`, e);
+            return null;
+        }
+    }
+
+    async function loadDebrisData() {
+        setStatus('loading', 'Fetching live TLE catalogs…');
+        const cats = {
+            fengyun: document.getElementById('cat-fengyun').checked,
+            iridium: document.getElementById('cat-iridium').checked,
+            cosmos: document.getElementById('cat-cosmos').checked,
+            analyst: document.getElementById('cat-analyst').checked
+        };
+
+        let all = [];
+        let liveCount = 0;
+        const keys = Object.keys(cats).filter(k => cats[k]);
+
+        const results = await Promise.all(keys.map(k => fetchTLEGroup(k)));
+        results.forEach((objs, i) => {
+            if (objs && objs.length) {
+                all = all.concat(objs);
+                liveCount += objs.length;
+            }
+        });
+
+        if (liveCount === 0) {
+            setStatus('offline', 'Offline — using archived TLE snapshot');
+            dataSource = 'archived';
+            const archived = parseTLE(ARCHIVED_TLE, 'fengyun', DEBRIS_SOURCES.fengyun);
+            // Re-assign groups based on name patterns in archived set
+            archived.forEach(o => {
+                if (o.name.includes('IRIDIUM')) { o.group = 'iridium'; o.color = DEBRIS_SOURCES.iridium.color; o.event = DEBRIS_SOURCES.iridium.event; }
+                else if (o.name.includes('COSMOS')) { o.group = 'cosmos'; o.color = DEBRIS_SOURCES.cosmos.color; o.event = DEBRIS_SOURCES.cosmos.event; }
+            });
+            all = archived.filter(o => cats[o.group] !== false);
+        } else {
+            setStatus('online', `Live TLE · ${liveCount.toLocaleString()} objects tracked`);
+            dataSource = 'live';
+        }
+
+        if (all.length > MAX_DEBRIS_OBJECTS) {
+            all = all.slice(0, MAX_DEBRIS_OBJECTS);
+            setStatus(dataSource === 'live' ? 'online' : 'offline',
+                `${dataSource === 'live' ? 'Live TLE' : 'Archived'} · ${all.length.toLocaleString()} objects (capped for performance)`);
+        }
+
+        debrisObjects = all;
+        rebuildDebrisGeometry();
+        updateStats();
+    }
+
+    function setStatus(mode, text) {
+        const dot = document.getElementById('status-dot');
+        const txt = document.getElementById('status-text');
+        dot.className = 'status-dot ' + (mode === 'loading' ? 'loading' : mode === 'offline' ? 'offline' : '');
+        txt.textContent = text;
+    }
+
+    // ─── Orbital Propagation ───────────────────────────────────────────────────
+    function propagateDebris(date) {
+        if (!debrisObjects.length || !debrisPoints) return;
+        const pos = debrisPoints.geometry.attributes.position.array;
+        const vis = debrisPoints.geometry.attributes.visible.array;
+        let visibleCount = 0;
+
+        for (let i = 0; i < debrisObjects.length; i++) {
+            const obj = debrisObjects[i];
+            const pv = satellite.propagate(obj.satrec, date);
+            if (!pv.position || !pv.velocity) {
+                vis[i] = 0;
+                continue;
+            }
+            const gmst = satellite.gstime(date);
+            const geo = satellite.eciToEcf(pv.position, gmst);
+            const lat = satellite.degreesLat(geo.latitude);
+            const lon = satellite.degreesLong(geo.longitude);
+            const alt = geo.height;
+
+            obj._lat = lat; obj._lon = lon; obj._alt = alt;
+            obj._eci = pv.position;
+            obj._vel = Math.sqrt(pv.velocity.x ** 2 + pv.velocity.y ** 2 + pv.velocity.z ** 2);
+
+            // ECI position in km → earth-local scene coords
+            pos[i * 3]     = pv.position.x * KM_TO_EARTH_UNIT;
+            pos[i * 3 + 1] = pv.position.z * KM_TO_EARTH_UNIT; // Y-up: swap Z
+            pos[i * 3 + 2] = -pv.position.y * KM_TO_EARTH_UNIT;
+
+            vis[i] = 1;
+            visibleCount++;
+        }
+
+        debrisPoints.geometry.attributes.position.needsUpdate = true;
+        debrisPoints.geometry.attributes.visible.needsUpdate = true;
+        document.getElementById('stat-visible').textContent = visibleCount.toLocaleString();
+    }
+
+    function rebuildDebrisGeometry() {
+        if (debrisPoints) {
+            scene.remove(debrisPoints);
+            debrisPoints.geometry.dispose();
+            debrisPoints.material.dispose();
+        }
+
+        const n = debrisObjects.length;
+        const positions = new Float32Array(n * 3);
+        const colors = new Float32Array(n * 3);
+        const visible = new Float32Array(n);
+
+        for (let i = 0; i < n; i++) {
+            const c = new THREE.Color(debrisObjects[i].color);
+            colors[i * 3] = c.r;
+            colors[i * 3 + 1] = c.g;
+            colors[i * 3 + 2] = c.b;
+            visible[i] = 1;
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geo.setAttribute('visible', new THREE.BufferAttribute(visible, 1));
+
+        const size = parseFloat(document.getElementById('debris-size').value);
+        const mat = new THREE.PointsMaterial({
+            size: size * 0.01,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.85,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+
+        debrisPoints = new THREE.Points(geo, mat);
+        debrisPoints.frustumCulled = false;
+        earthGroup.add(debrisPoints);
+
+        document.getElementById('stat-total').textContent = n.toLocaleString();
+        propagateDebris(simDate);
+        countAltitudeBands();
+    }
+
+    function countAltitudeBands() {
+        let leo = 0, meo = 0;
+        debrisObjects.forEach(o => {
+            if (o._alt !== undefined) {
+                if (o._alt < 2000) leo++;
+                else meo++;
+            }
+        });
+        document.getElementById('stat-leo').textContent = leo.toLocaleString();
+        document.getElementById('stat-meo').textContent = meo.toLocaleString();
+    }
+
+    // ─── Scene Setup ───────────────────────────────────────────────────────────
+    function createStarfield() {
+        const count = 12000;
+        const pos = new Float32Array(count * 3);
+        const col = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+            const r = 800 + Math.random() * 1200;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+            pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            pos[i * 3 + 2] = r * Math.cos(phi);
+            const b = 0.5 + Math.random() * 0.5;
+            col[i * 3] = b; col[i * 3 + 1] = b; col[i * 3 + 2] = b * (0.8 + Math.random() * 0.4);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        const mat = new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.8 });
+        return new THREE.Points(geo, mat);
+    }
+
+    function createSun() {
+        const geo = new THREE.SphereGeometry(15, 64, 64);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xfff4e0 });
+        const sun = new THREE.Mesh(geo, mat);
+
+        // Corona glow layers
+        [20, 28, 38].forEach((r, i) => {
+            const glowGeo = new THREE.SphereGeometry(r, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: 0xffaa44, transparent: true, opacity: 0.06 - i * 0.015,
+                side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            sun.add(new THREE.Mesh(glowGeo, glowMat));
+        });
+
+        // Point light
+        const light = new THREE.PointLight(0xfff0dd, 3, 0, 0.5);
+        sun.add(light);
+        scene.add(new THREE.AmbientLight(0x111122, 0.3));
+
+        return sun;
+    }
+
+    function createPlanet(data, index) {
+        const dist = data.dist * AU * SCENE_SCALE;
+        const radius = Math.max(0.15, Math.cbrt(data.radius / 6371) * 0.5);
+
+        const geo = new THREE.SphereGeometry(radius, 48, 48);
+        const mat = new THREE.MeshPhongMaterial({
+            color: data.color,
+            emissive: data.emissive || 0x000000,
+            emissiveIntensity: data.emissive ? 0.3 : 0,
+            shininess: 15
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData = { ...data, orbitRadius: dist, angle: (index / PLANETS.length) * Math.PI * 2 };
+
+        // Orbit path
+        const orbitPts = [];
+        for (let a = 0; a <= 128; a++) {
+            const t = (a / 128) * Math.PI * 2;
+            orbitPts.push(new THREE.Vector3(Math.cos(t) * dist, 0, Math.sin(t) * dist));
+        }
+        const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPts);
+        const orbitMat = new THREE.LineBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.25 });
+        const orbit = new THREE.Line(orbitGeo, orbitMat);
+        scene.add(orbit);
+        orbitLines.push(orbit);
+
+        // Saturn ring
+        if (data.ring) {
+            const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.2, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xaa9977, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2.5;
+            mesh.add(ring);
+        }
+
+        scene.add(mesh);
+        return mesh;
+    }
+
+    function createEarthDetail() {
+        const group = new THREE.Group();
+        const r = EARTH_RADIUS_KM * KM_TO_EARTH_UNIT;
+
+        const earthGeo = new THREE.SphereGeometry(r, 64, 64);
+        const earthMat = new THREE.MeshPhongMaterial({
+            color: 0x2266cc, emissive: 0x0a1a33, shininess: 25
+        });
+        earthMesh = new THREE.Mesh(earthGeo, earthMat);
+        group.add(earthMesh);
+
+        // Atmosphere shell
+        const atmoGeo = new THREE.SphereGeometry(r * 1.06, 64, 64);
+        const atmoMat = new THREE.MeshBasicMaterial({
+            color: 0x44aaff, transparent: true, opacity: 0.12,
+            side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        earthAtmosphere = new THREE.Mesh(atmoGeo, atmoMat);
+        group.add(earthAtmosphere);
+
+        // Outer glow
+        const glowGeo = new THREE.SphereGeometry(r * 1.15, 32, 32);
+        const glowMat = new THREE.MeshBasicMaterial({
+            color: 0x2288ff, transparent: true, opacity: 0.05,
+            side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        group.add(new THREE.Mesh(glowGeo, glowMat));
+
+        // Graticule
+        const graticule = new THREE.GridHelper(r * 4, 20, 0x224466, 0x112233);
+        graticule.material.opacity = 0.15;
+        graticule.material.transparent = true;
+        group.add(graticule);
+
+        return group;
+    }
+
+    function makeTextSprite(text) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 256; canvas.height = 64;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, 256, 64);
+        ctx.font = '22px Segoe UI, sans-serif';
+        ctx.fillStyle = '#4fc3f7';
+        ctx.textAlign = 'center';
+        ctx.fillText(text, 128, 40);
+        const tex = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(4, 1, 1);
+        return sprite;
+    }
+
+    function initScene() {
+        const container = document.getElementById('canvas-container');
+        scene = new THREE.Scene();
+
+        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.01, 5000);
+        camera.position.set(0, 80, 180);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        container.appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 0.5;
+        controls.maxDistance = 2000;
+
+        controls.addEventListener('change', () => {
+            if (lockEnabled) syncLockOffsetFromCamera();
+        });
+
+        // Post-processing
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.5, 0.4, 0.85
+        );
+        composer.addPass(bloomPass);
+
+        scene.add(createStarfield());
+        sunMesh = createSun();
+
+        planetMeshes = PLANETS.map((p, i) => {
+            const mesh = createPlanet(p, i);
+            if (p.name === 'Earth') {
+                earthGroup = createEarthDetail();
+                mesh.add(earthGroup);
+            }
+            const label = makeTextSprite(p.name);
+            label.position.y = Math.cbrt(p.radius / 6371) * 0.5 + 1;
+            mesh.add(label);
+            labelSprites.push(label);
+            return mesh;
+        });
+
+        raycaster = new THREE.Raycaster();
+        raycaster.params.Points = { threshold: 0.05 };
+        mouse = new THREE.Vector2();
+
+        window.addEventListener('resize', onResize);
+        renderer.domElement.addEventListener('mousemove', onMouseMove);
+        renderer.domElement.addEventListener('click', onClick);
+    }
+
+    // ─── Camera lock ───────────────────────────────────────────────────────────
+    function getLockedTarget() {
+        if (lockPlanetName === 'Sun') return sunMesh;
+        return planetMeshes.find(m => m.userData.name === lockPlanetName) || null;
+    }
+
+    function getTargetWorldPos(target, out) {
+        return target ? target.getWorldPosition(out) : out.set(0, 0, 0);
+    }
+
+    function syncLockOffsetFromCamera() {
+        const target = getLockedTarget();
+        if (!target) return;
+        const worldPos = new THREE.Vector3();
+        getTargetWorldPos(target, worldPos);
+        lockOffset.copy(camera.position).sub(worldPos);
+        updateLockDistanceUI(lockOffset.length());
+    }
+
+    function updateLockDistanceUI(dist) {
+        const slider = document.getElementById('lock-distance');
+        const label = document.getElementById('lock-dist-val');
+        if (!slider || !label) return;
+        const clamped = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), dist));
+        slider.value = clamped.toFixed(1);
+        label.textContent = clamped.toFixed(1);
+    }
+
+    function setLockDistance(dist) {
+        if (lockOffset.lengthSq() < 1e-6) lockOffset.set(1, 0.4, 1);
+        lockOffset.normalize().multiplyScalar(dist);
+        lockInitialized = false;
+        applyCameraLock();
+    }
+
+    function resetCameraLock(presetDistance) {
+        lockInitialized = false;
+        lastPlanetPos.set(0, 0, 0);
+        if (presetDistance != null) setLockDistance(presetDistance);
+        else applyCameraLock();
+    }
+
+    function applyCameraLock() {
+        if (!lockEnabled) return;
+
+        const target = getLockedTarget();
+        const worldPos = new THREE.Vector3();
+        getTargetWorldPos(target, worldPos);
+
+        if (!lockInitialized) {
+            controls.target.copy(worldPos);
+            if (lockOffset.lengthSq() < 1e-6) lockOffset.set(8, 3, 8);
+            camera.position.copy(worldPos).add(lockOffset);
+            lastPlanetPos.copy(worldPos);
+            lockInitialized = true;
+            return;
+        }
+
+        const delta = worldPos.clone().sub(lastPlanetPos);
+        if (delta.lengthSq() > 0) {
+            camera.position.add(delta);
+            controls.target.add(delta);
+        }
+        lastPlanetPos.copy(worldPos);
+    }
+
+    // ─── Animation ─────────────────────────────────────────────────────────────
+    function updatePlanets(elapsed) {
+        const t = elapsed * 0.0001;
+        planetMeshes.forEach(mesh => {
+            const d = mesh.userData;
+            const angle = d.angle + t * (365 / d.period);
+            mesh.position.x = Math.cos(angle) * d.orbitRadius;
+            mesh.position.z = Math.sin(angle) * d.orbitRadius;
+            mesh.rotation.y += 0.002;
+        });
+        sunMesh.rotation.y += 0.001;
+        if (earthMesh) earthMesh.rotation.y += 0.005;
+    }
+
+    function setViewMode(mode) {
+        viewMode = mode;
+        document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
+
+        const lockCheckbox = document.getElementById('cam-lock');
+        const planetSelect = document.getElementById('lock-planet');
+
+        if (mode === 'solar') {
+            lockEnabled = false;
+            if (lockCheckbox) lockCheckbox.checked = false;
+            camera.position.set(0, 80, 180);
+            controls.target.set(0, 0, 0);
+            lockInitialized = false;
+            lastPlanetPos.set(0, 0, 0);
+            if (debrisPoints) debrisPoints.material.size = parseFloat(document.getElementById('debris-size').value) * 0.003;
+        } else {
+            lockEnabled = true;
+            if (lockCheckbox) lockCheckbox.checked = true;
+            lockPlanetName = 'Earth';
+            if (planetSelect) planetSelect.value = 'Earth';
+            const dist = VIEW_LOCK_DISTANCE[mode] || 8;
+            lockOffset.set(dist * 0.7, dist * 0.35, dist * 0.7);
+            updateLockDistanceUI(dist);
+            resetCameraLock(dist);
+            if (debrisPoints) {
+                const mult = mode === 'earth' ? 0.01 : 0.02;
+                debrisPoints.material.size = parseFloat(document.getElementById('debris-size').value) * mult;
+            }
+        }
+        controls.update();
+    }
+
+    let lastTime = performance.now();
+    function animate(now) {
+        requestAnimationFrame(animate);
+        const dt = (now - lastTime) / 1000;
+        lastTime = now;
+
+        if (playing) {
+            simDate = new Date(simDate.getTime() + dt * SPEED_STEPS[speedIdx] * 1000);
+            updateSimTimeInput();
+        }
+
+        propagateDebris(simDate);
+        updatePlanets(now);
+        applyCameraLock();
+        controls.update();
+
+        const useBloom = document.getElementById('gfx-bloom').checked;
+        if (useBloom) composer.render();
+        else renderer.render(scene, camera);
+    }
+
+    // ─── UI Handlers ───────────────────────────────────────────────────────────
+    function updateSimTimeInput() {
+        const pad = n => String(n).padStart(2, '0');
+        const d = simDate;
+        const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        document.getElementById('sim-time').value = local;
+    }
+
+    function updateStats() {
+        document.getElementById('stat-total').textContent = debrisObjects.length.toLocaleString();
+    }
+
+    function showObjectInfo(obj) {
+        const panel = document.getElementById('info-panel');
+        document.getElementById('info-name').textContent = obj.name;
+        document.getElementById('info-body').innerHTML = `
+            <span>NORAD ID:</span> ${obj.norad}<br>
+            <span>Catalog:</span> ${obj.group}<br>
+            <span>Event:</span> ${obj.event}<br>
+            <span>Altitude:</span> ${obj._alt?.toFixed(1) ?? '—'} km<br>
+            <span>Latitude:</span> ${obj._lat?.toFixed(2) ?? '—'}°<br>
+            <span>Longitude:</span> ${obj._lon?.toFixed(2) ?? '—'}°<br>
+            <span>Velocity:</span> ${obj._vel?.toFixed(2) ?? '—'} km/s<br>
+            <span>Data:</span> ${dataSource === 'live' ? 'CelesTrak live TLE' : 'Archived snapshot'}
+        `;
+        panel.classList.add('visible');
+    }
+
+    function onMouseMove(e) {
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        if (!debrisPoints || viewMode === 'solar') {
+            document.getElementById('tooltip').style.display = 'none';
+            return;
+        }
+
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObject(debrisPoints);
+        const tip = document.getElementById('tooltip');
+
+        if (hits.length > 0) {
+            const idx = hits[0].index;
+            const obj = debrisObjects[idx];
+            if (obj) {
+                tip.style.display = 'block';
+                tip.style.left = e.clientX + 14 + 'px';
+                tip.style.top = e.clientY + 14 + 'px';
+                tip.innerHTML = `<strong>${obj.name}</strong><br>NORAD ${obj.norad} · ${obj._alt?.toFixed(0)} km alt`;
+                hoveredDebris = idx;
+            }
+        } else {
+            tip.style.display = 'none';
+            hoveredDebris = -1;
+        }
+    }
+
+    function onClick() {
+        if (hoveredDebris >= 0) {
+            selectedDebris = hoveredDebris;
+            showObjectInfo(debrisObjects[hoveredDebris]);
+        }
+    }
+
+    function onResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    const LS_SOLAR = 'fafo_solar_debris_prefs';
+    function saveSolarPrefs() {
+        try {
+            localStorage.setItem(LS_SOLAR, JSON.stringify({
+                speedIdx,
+                viewMode: typeof viewMode !== 'undefined' ? viewMode : 'solar',
+                lockPlanet: document.getElementById('lock-planet')?.value,
+                lockDist: document.getElementById('lock-distance')?.value,
+                camLock: document.getElementById('cam-lock')?.checked,
+                bloom: document.getElementById('gfx-bloom')?.checked,
+                trails: document.getElementById('gfx-trails')?.checked,
+                labels: document.getElementById('gfx-labels')?.checked,
+                atmo: document.getElementById('gfx-atmo')?.checked,
+                debrisSize: document.getElementById('debris-size')?.value,
+                cats: {
+                    fengyun: document.getElementById('cat-fengyun')?.checked,
+                    iridium: document.getElementById('cat-iridium')?.checked,
+                    cosmos: document.getElementById('cat-cosmos')?.checked,
+                    analyst: document.getElementById('cat-analyst')?.checked,
+                },
+            }));
+        } catch (_) {}
+    }
+    function loadSolarPrefs() {
+        try {
+            return JSON.parse(localStorage.getItem(LS_SOLAR) || 'null');
+        } catch { return null; }
+    }
+
+    function setupUI() {
+        document.getElementById('btn-play').onclick = () => { playing = true; saveSolarPrefs(); };
+        document.getElementById('btn-pause').onclick = () => { playing = false; saveSolarPrefs(); };
+        document.getElementById('btn-now').onclick = () => { simDate = new Date(); updateSimTimeInput(); };
+
+        document.getElementById('speed-slider').oninput = e => {
+            speedIdx = parseInt(e.target.value);
+            document.getElementById('speed-val').textContent = SPEED_STEPS[speedIdx].toLocaleString() + '×';
+            saveSolarPrefs();
+        };
+
+        document.getElementById('sim-time').onchange = e => {
+            simDate = new Date(e.target.value);
+            playing = false;
+        };
+
+        document.querySelectorAll('[data-view]').forEach(btn => {
+            btn.onclick = () => setViewMode(btn.dataset.view);
+        });
+
+        document.getElementById('cam-lock').onchange = e => {
+            lockEnabled = e.target.checked;
+            if (lockEnabled) resetCameraLock(parseFloat(document.getElementById('lock-distance').value));
+            else {
+                lockInitialized = false;
+                lastPlanetPos.set(0, 0, 0);
+            }
+        };
+
+        document.getElementById('lock-planet').onchange = e => {
+            lockPlanetName = e.target.value;
+            resetCameraLock(parseFloat(document.getElementById('lock-distance').value));
+        };
+
+        document.getElementById('lock-distance').oninput = e => {
+            const dist = parseFloat(e.target.value);
+            document.getElementById('lock-dist-val').textContent = dist.toFixed(1);
+            if (lockEnabled) setLockDistance(dist);
+        };
+
+        document.querySelectorAll('[data-archive]').forEach(btn => {
+            btn.onclick = () => {
+                simDate = new Date(btn.dataset.archive + 'T12:00:00Z');
+                updateSimTimeInput();
+                playing = false;
+                setViewMode('debris');
+            };
+        });
+
+        document.getElementById('btn-refresh').onclick = () => loadDebrisData();
+
+        ['cat-fengyun','cat-iridium','cat-cosmos','cat-analyst'].forEach(id => {
+            document.getElementById(id).onchange = () => loadDebrisData();
+        });
+
+        document.getElementById('gfx-bloom').onchange = () => {};
+        document.getElementById('gfx-trails').onchange = e => {
+            orbitLines.forEach(l => l.visible = e.target.checked);
+        };
+        document.getElementById('gfx-labels').onchange = e => {
+            labelSprites.forEach(s => s.visible = e.target.checked);
+        };
+        document.getElementById('gfx-atmo').onchange = e => {
+            if (earthAtmosphere) earthAtmosphere.visible = e.target.checked;
+        };
+        document.getElementById('debris-size').oninput = e => {
+            if (debrisPoints) {
+                const mult = viewMode === 'solar' ? 0.003 : viewMode === 'earth' ? 0.01 : 0.02;
+                debrisPoints.material.size = parseFloat(e.target.value) * mult;
+            }
+        };
+
+        document.getElementById('search-input').oninput = e => {
+            const q = e.target.value.trim().toLowerCase();
+            if (!q) return;
+            const found = debrisObjects.find(o =>
+                o.name.toLowerCase().includes(q) || String(o.norad).includes(q)
+            );
+            if (found) {
+                selectedDebris = debrisObjects.indexOf(found);
+                showObjectInfo(found);
+                setViewMode('debris');
+            }
+        };
+
+        simDate = new Date();
+        updateSimTimeInput();
+        // restore prefs
+        const pref = loadSolarPrefs();
+        if (pref) {
+            if (pref.speedIdx != null) {
+                speedIdx = pref.speedIdx;
+                const sl = document.getElementById('speed-slider');
+                if (sl) sl.value = speedIdx;
+            }
+            if (pref.lockPlanet && document.getElementById('lock-planet')) {
+                document.getElementById('lock-planet').value = pref.lockPlanet;
+                lockPlanetName = pref.lockPlanet;
+            }
+            if (pref.lockDist != null && document.getElementById('lock-distance')) {
+                document.getElementById('lock-distance').value = pref.lockDist;
+                document.getElementById('lock-dist-val').textContent = parseFloat(pref.lockDist).toFixed(1);
+            }
+            if (pref.camLock != null && document.getElementById('cam-lock')) {
+                document.getElementById('cam-lock').checked = pref.camLock;
+                lockEnabled = !!pref.camLock;
+            }
+            ['gfx-bloom','gfx-trails','gfx-labels','gfx-atmo'].forEach((id, i) => {
+                const keys = ['bloom','trails','labels','atmo'];
+                if (pref[keys[i]] != null && document.getElementById(id)) document.getElementById(id).checked = pref[keys[i]];
+            });
+            if (pref.debrisSize != null && document.getElementById('debris-size')) document.getElementById('debris-size').value = pref.debrisSize;
+            if (pref.cats) {
+                if (pref.cats.fengyun != null) document.getElementById('cat-fengyun').checked = pref.cats.fengyun;
+                if (pref.cats.iridium != null) document.getElementById('cat-iridium').checked = pref.cats.iridium;
+                if (pref.cats.cosmos != null) document.getElementById('cat-cosmos').checked = pref.cats.cosmos;
+                if (pref.cats.analyst != null) document.getElementById('cat-analyst').checked = pref.cats.analyst;
+            }
+        }
+        document.getElementById('speed-val').textContent = SPEED_STEPS[speedIdx].toLocaleString() + '×';
+        updateLockDistanceUI(lockOffset.length());
+
+        function copyFocusSummary() {
+            const name = document.getElementById('info-name')?.textContent || '—';
+            const body = document.getElementById('info-body')?.innerText || '';
+            const stats = ['stat-total','stat-visible','stat-leo','stat-meo'].map(id => {
+                const el = document.getElementById(id);
+                return el ? el.textContent : '0';
+            });
+            const text = [
+                'Solar System Debris Tracker',
+                '==========================',
+                'Focus: ' + name,
+                body,
+                '',
+                'Totals: ' + stats[0] + ' · Visible: ' + stats[1] + ' · LEO: ' + stats[2] + ' · MEO/HEO: ' + stats[3],
+                'Speed: ' + (SPEED_STEPS[speedIdx] || '') + '× · Playing: ' + !!playing,
+                'Time: ' + new Date().toISOString(),
+            ].join('\n');
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    try { AIToolboxUI?.toast?.('Focus summary copied', 'ok'); } catch (_) {}
+                });
+            }
+        }
+        document.getElementById('btn-copy-focus')?.addEventListener('click', copyFocusSummary);
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target && e.target.tagName) || '';
+            const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+            if (typing) return;
+            if (e.key === ' ' || e.code === 'Space') {
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+                e.preventDefault();
+                playing = !playing;
+                try { AIToolboxUI?.toast?.(playing ? 'Playing' : 'Paused', 'ok'); } catch (_) {}
+                saveSolarPrefs();
+            } else if (e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+                e.preventDefault();
+                copyFocusSummary();
+            }
+        });
+        ['cam-lock','lock-planet','lock-distance','gfx-bloom','gfx-trails','gfx-labels','gfx-atmo','debris-size',
+         'cat-fengyun','cat-iridium','cat-cosmos','cat-analyst'].forEach(id => {
+            const n = document.getElementById(id);
+            if (n) n.addEventListener('change', saveSolarPrefs);
+            if (n) n.addEventListener('input', saveSolarPrefs);
+        });
+    }
+
+    // ─── Boot ──────────────────────────────────────────────────────────────────
+    async function boot() {
+        initScene();
+        setupUI();
+        await loadDebrisData();
+        document.getElementById('loading-overlay').classList.add('hidden');
+        animate(performance.now());
+    }
+
+    boot();
+    </script>
+
+<script data-tool-polish="solar-debris-tracker">
+/* Solar: Esc pauses + clears focus first; second Esc → Toolbox */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "solar-debris-tracker";
+  const TOOL_NAME = "Solar System Debris Tracker";
+  try { document.body.dataset.tbEsc = 'off'; } catch(_){}
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return 'Toolbox Launcher.html';
+  }
+  let armLeave = false;
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    // First Esc: pause + soft reset focus
+    if (!armLeave) {
+      armLeave = true;
+      try {
+        if (typeof playing !== 'undefined') playing = false;
+        document.getElementById('btn-pause')?.click();
+        window.AIToolboxUI?.toast?.('Paused · Esc again → Toolbox', 'ok');
+      } catch(_){}
+      setTimeout(function(){ armLeave = false; }, 1600);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    location.href = launcherHref();
+  }, true);
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' · Space pause · double-Esc → Toolbox', 'ok');
+    } catch(_){}
+  });
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="solar">
+(function(){
+  try {
+    if (!sessionStorage.getItem('solar_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('solar_tip','1');
+      AIToolboxUI.toast('Debris Tracker · Space pause · Shift+C copy focus', 'ok');
+    }
+  } catch(_){}
+  try {
+    window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+      toolId: 'solar-debris',
+      helpLines: ['Space — play/pause', 'Shift+C — copy focus summary', 'View prefs persist in localStorage'],
+    });
+  } catch(_){}
+})();
+</script>
+  <script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
+</div>
+</body>
+</html>

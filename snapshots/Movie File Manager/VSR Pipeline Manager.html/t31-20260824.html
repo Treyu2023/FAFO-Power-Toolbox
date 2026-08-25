@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VSR Pipeline Manager</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+    <style>
+        :root { --bg:#050508; --panel:#0c0c12; --accent:#00f3ff; --accent2:#ff6b35; --accent3:#7c5cff; --ok:#00ff88; --text:#e8e8ec; --muted:#777; }
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{background:radial-gradient(ellipse at 30% 0%,#12121f 0%,var(--bg) 50%);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+        .top{padding:14px 20px;background:rgba(12,12,18,0.95);border-bottom:1px solid rgba(0,243,255,.2);display:flex;gap:10px;align-items:center;flex-wrap:wrap;backdrop-filter:blur(8px)}
+        .top h1{font-size:16px;color:var(--accent);margin-right:auto;letter-spacing:2px;font-weight:400;text-shadow:0 0 20px rgba(0,243,255,0.3)}
+        .pill{font-size:10px;padding:5px 12px;border-radius:14px;font-weight:700;text-transform:uppercase}
+        .pill.ok{background:rgba(0,255,136,.12);border:1px solid var(--ok);color:var(--ok)}
+        .pill.warn{background:rgba(255,107,53,.12);border:1px solid var(--accent2);color:var(--accent2);cursor:pointer}
+        .pill.wait{background:rgba(255,200,0,.12);border:1px solid #ffc800;color:#ffc800}
+        #btnStartServer:disabled{opacity:.55;cursor:wait}
+        .content{flex:1;overflow:auto;padding:20px}
+        .panel{display:none;max-width:1100px;margin:0 auto}.panel.active{display:block;animation:ui-fade-in-up 0.4s ease}
+        label{font-size:10px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px}
+        input[type=text],textarea{width:100%;background:#000;border:1px solid rgba(0,243,255,.22);color:var(--text);padding:10px;border-radius:8px;font-size:12px;transition:border-color 0.2s,box-shadow 0.2s}
+        input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 12px rgba(0,243,255,0.2)}
+        .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+        @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+        .hint{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.55}
+        .hint code{color:var(--accent);font-size:10px;background:rgba(0,243,255,0.08);padding:2px 6px;border-radius:4px}
+        .chk{display:flex;align-items:center;gap:8px;font-size:12px;margin:10px 0;cursor:pointer}
+        .ui-table{width:100%;border-collapse:collapse;font-size:11px}
+        .ui-table th,.ui-table td{padding:10px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,.06)}
+        .ui-table th{color:var(--muted);font-size:10px;text-transform:uppercase}
+        .rename-arrow{color:var(--accent2);font-size:16px}
+        .dup-group{border:1px solid rgba(255,107,53,.35);border-radius:10px;padding:12px;margin-bottom:10px;background:rgba(255,107,53,.06)}
+        .status-box{padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:14px}
+        .status-box.ok{background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.3);color:var(--ok)}
+        .status-box.warn{background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.3);color:var(--accent2)}
+        .pair-teach{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+        .pair-teach input{flex:1;min-width:180px}
+        .trust-badge{font-size:10px;color:var(--ok);margin-left:8px}
+    </style>
+</head>
+<body>
+    <div class="top animate-in">
+        <h1>⚡ VSR Pipeline Manager</h1>
+        <span id="serverStatus" class="pill warn" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = matching, rename, ffmpeg. Orange = offline — click this pill or ▶ Start Server to launch from this page (same as Launcher / Media Library).">Server …</span>
+        <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from VSR. Waits for green. If blocked: open Launcher Console / START SERVER.bat, or run SETUP (run once).bat once.">▶ Start Server</button>
+        <button class="ui-btn ghost" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+        <button class="ui-btn ghost" onclick="location.href='Media Hub.html'" title="Library + dups + organizer">🗂️ Media Hub</button>
+        <button class="ui-btn ghost" onclick="location.href='Compare Hub.html'" title="Guided match + pair review + sliders">⇄ Compare Hub</button>
+        <button class="ui-btn ghost" onclick="location.href='Pair Review Queue.html'" title="Keyboard pair review">🔎 Review</button>
+        <button class="ui-btn ghost" onclick="location.href='Media Library Manager.html'">Library</button>
+        <button class="ui-btn" id="btnTutorial" data-tip="Interactive walkthrough — hover any ⓘ for quick help too">🎓 Get Started</button>
+        <button class="ui-btn primary" id="btnPreview" data-tip="Scans folders, matches files by duration + fingerprint, shows proposed renames before you apply">↻ Refresh Preview</button>
+        <button class="ui-btn ghost" id="btnVsrReport" title="Copy VSR preview report" data-tip="Copy match summary to clipboard">📋 Report</button>
+        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent)">1-5</kbd> tabs · <kbd style="font:10px Consolas;color:var(--accent)">P</kbd> preview · <kbd style="font:10px Consolas;color:var(--accent)">E</kbd> report</span>
+        <span data-fafo-layout-toolbar></span>
+        <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and API events to debug panel">🐛 Debug</button>
+    </div>
+    <div id="vsrWorkflowBar"></div>
+
+    <div class="ui-tabs animate-in animate-in-delay-1" id="tabBar">
+        <div class="ui-tab active" data-tab="setup">① Setup<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="rename">② Match & Rename<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="teach">③ Teach Matcher<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="dupes">④ Duplicates<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="tags">⑤ Tag Rules<span class="tab-glow"></span></div>
+    </div>
+
+    <div class="content"
+         data-fafo-layout-root
+         data-fafo-layout-app="vsr-pipeline-manager"
+         data-fafo-layout-type="rows">
+        <div class="panel active" id="panel-setup" data-fafo-panel="setup" data-fafo-panel-title="① Setup" data-fafo-flex="1">
+            <div class="ui-card animate-in" id="card-folders" data-fafo-section="folders" data-fafo-section-title="Workflow Folders">
+                <h2>📁 Workflow Folders <span class="tip-icon" data-tip-title="Folders" data-tip="Point each stage to where VSR saves files. Change these anytime — your pipeline adapts without code edits.">ⓘ</span></h2>
+                <div class="grid2">
+                    <div><label>Original Sources</label><input id="f_source" placeholder="D:\Videos\Originals"></div>
+                    <div><label>Stage I — Upscale Output</label><input id="f_stage1" placeholder="D:\Videos\VSR\Upscaled"></div>
+                    <div><label>Stage II — Interpolation Output</label><input id="f_stage2" placeholder="D:\Videos\VSR\Interpolated"></div>
+                    <div style="display:flex;align-items:flex-end;gap:8px">
+                        <button class="ui-btn purple" id="btnPickSource" style="flex:1" data-tip-title="Pick folder" data-tip="Windows folder picker via the Python server. Needs green pill — use ▶ Start Server on this page if offline.">📂 Source</button>
+                        <button class="ui-btn purple" id="btnPickS1" style="flex:1" data-tip="Stage I (upscale) folder picker — needs green server">📂 Stage I</button>
+                        <button class="ui-btn purple" id="btnPickS2" style="flex:1" data-tip="Stage II (interp) folder picker — needs green server">📂 Stage II</button>
+                    </div>
+                </div>
+            </div>
+            <div class="ui-card animate-in animate-in-delay-1" id="card-templates">
+                <h2>🏷️ Naming Templates <span class="tip-icon" data-tip-title="Auto-detect" data-tip="Resolution tier (2K/4K/8K), FPS, and dimensions are read from each file via ffprobe — you never type them manually.">ⓘ</span></h2>
+                <div class="grid2">
+                    <div><label>Stage I Template</label><input id="tpl_s1" value="UpScale{res_tier}_{orig}_S_I"></div>
+                    <div><label>Stage II Template</label><input id="tpl_s2" value="Interp{fps}_{res}_{orig}_S_II"></div>
+                </div>
+                <div class="hint">Tokens: <code>{orig}</code> <code>{res_tier}</code> <code>{res}</code> <code>{fps}</code> <code>{date}</code> <code>{time}</code> <code>{datetime}</code></div>
+                <label class="chk"><input type="checkbox" id="inc_date"> Append date <span class="tip-icon" data-tip="Adds YYYYMMDD from file date to the filename">ⓘ</span></label>
+                <label class="chk"><input type="checkbox" id="inc_time"> Append time (HHMMSS)</label>
+                <div class="grid2" style="margin-top:10px">
+                    <div><label>Duration tolerance</label><input id="dur_tol" value="0.35" data-tip-title="Matching" data-tip="How much duration can differ between source and VSR output (0.35 = 35%). Increase if matches are missed."></div>
+                    <div><label>Min confidence</label><input id="min_score" value="0.52" data-tip-title="Confidence" data-tip="Minimum match score (0–1). Lower = more matches but risk wrong pairs. Default 0.52 is a good balance."></div>
+                </div>
+                <button class="ui-btn" id="btnSaveCfg" style="margin-top:14px"
+                        data-tip-title="Save config" data-tip="Remember folder paths and naming templates for next time.">Save Config</button>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-rename" data-fafo-panel="rename" data-fafo-panel-title="② Match & Rename" data-fafo-flex="1">
+            <div id="previewStatus" class="status-box warn">Click <strong>Refresh Preview</strong> after setting folders</div>
+            <div class="ui-card" id="card-stage1" data-fafo-section="rename-stage1" data-fafo-section-title="Stage I — Upscale">
+                <h2>Stage I — Upscale <span id="trustBadge1" class="trust-badge"></span></h2>
+                <table class="ui-table"><thead><tr><th>Match</th><th>Source</th><th></th><th>Rename Preview</th></tr></thead><tbody id="tbl_s1"></tbody></table>
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="ui-btn primary" id="btnApplyS1" data-tip-title="Confirm" data-tip="Shows a confirmation list first. Check 'Don't ask again' to skip when you trust the matches.">Apply Stage I</button>
+                    <button class="ui-btn ghost" id="btnDryS1" data-tip="Simulates renames without touching files">Dry Run</button>
+                    <button class="ui-btn" id="btnReviewS1" data-tip-title="Pair Review Queue" data-tip="Review each match one-by-one (keyboard accept/reject) before renaming. Safer than bulk apply when scores are mixed.">🔎 Review queue</button>
+                    <button class="ui-btn ghost" id="btnResetTrust1" data-tip="Re-enable confirmation dialogs for Stage I">Reset Trust</button>
+                </div>
+            </div>
+            <div class="ui-card" id="card-stage2" data-fafo-section="rename-stage2" data-fafo-section-title="Stage II — Interpolation">
+                <h2>Stage II — Interpolation <span id="trustBadge2" class="trust-badge"></span></h2>
+                <table class="ui-table"><thead><tr><th>Match</th><th>Original</th><th></th><th>Rename Preview</th></tr></thead><tbody id="tbl_s2"></tbody></table>
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="ui-btn primary" id="btnApplyS2"
+                            data-tip-title="Apply Stage II"
+                            data-tip-basic="Rename Stage II (interpolation) files to proposed names."
+                            data-tip-pro="Bulk vsrApply stage 2 — often includes fps tokens.">Apply Stage II</button>
+                    <button class="ui-btn" id="btnReviewS2" data-tip-title="Review Stage II" data-tip="Open Pair Review Queue for Stage II matches">🔎 Review queue</button>
+                    <button class="ui-btn ghost" id="btnResetTrust2" data-tip="Re-enable confirmation dialogs for Stage II">Reset Trust</button>
+                </div>
+            </div>
+            <div class="ui-card" data-fafo-section="rename-unmatched" data-fafo-section-title="Unmatched Files"><h2>Unmatched Files</h2><div id="unmatched" class="hint"></div></div>
+        </div>
+
+        <div class="panel" id="panel-teach" data-fafo-panel="teach" data-fafo-panel-title="③ Teach Matcher" data-fafo-flex="1">
+            <div class="ui-card" id="card-teach">
+                <h2>🧠 Teach the Matcher <span class="tip-icon" data-tip-title="Learning" data-tip="Feed 3–5 known source→output pairs. The AI learns what junk VSR adds to filenames and strips it on future matches.">ⓘ</span></h2>
+                <p class="hint">When VSR renames files unpredictably, paste a source path and its matching output. Repeat a few times, then Learn.</p>
+                <div class="pair-teach">
+                    <input id="teach_src" placeholder="Source file full path">
+                    <input id="teach_out" placeholder="VSR output file path">
+                    <button class="ui-btn" id="btnAddTeach" data-tip="Add this source/output example to the teach list.">+ Add Pair</button>
+                </div>
+                <ul id="teachList" style="margin-top:12px;font-size:11px;color:var(--muted)"></ul>
+                <button class="ui-btn purple" id="btnLearn" style="margin-top:12px"
+                        data-tip-title="Learn"
+                        data-tip-basic="Teach the matcher from your examples so future previews are smarter."
+                        data-tip-pro="vsrLearn — strip prefixes/suffixes from known pairs.">Learn From Pairs</button>
+                <div id="learned" class="hint" style="margin-top:10px"></div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-dupes" data-fafo-panel="dupes" data-fafo-panel-title="④ Duplicates" data-fafo-flex="1">
+            <div class="ui-card" id="card-dupes">
+                <h2>🔍 Duplicate Detector <span class="tip-icon" data-tip-title="Dupes" data-tip="Finds copies by duration + file hash. Deep mode also compares first video frame for near-identical files with different names.">ⓘ</span></h2>
+                <input id="dup_folder" placeholder="Folder to scan">
+                <label class="chk" style="margin-top:10px"><input type="checkbox" id="dup_deep"> Deep scan (first-frame hash)</label>
+                <button class="ui-btn primary" id="btnDupScan" style="margin-top:12px"
+                        data-tip-title="Scan duplicates"
+                        data-tip="Find duplicate videos in a folder (hash / deep frame).">Scan Duplicates</button>
+                <div id="dupResults" style="margin-top:14px"></div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-tags" data-fafo-panel="tags" data-fafo-panel-title="⑤ Tag Rules" data-fafo-flex="1">
+            <div class="ui-card" id="card-tags">
+                <h2>🏷️ Tag Re-apply Rules <span class="tip-icon" data-tip-title="Tags survive VSR" data-tip="After VSR overwrites names, rescan + apply rules to restore your tags by matching duration and stem patterns.">ⓘ</span></h2>
+                <label class="chk"><input type="checkbox" id="tags_enabled" checked> Enable auto tag re-application</label>
+                <label>Strip patterns (regex per line)</label>
+                <textarea id="tags_patterns" rows="5">_S_I[I]?$
+_upscaled?$
+_vsr.*$
+_flash.*$
+_interp.*$</textarea>
+                <label style="margin-top:10px">Auto-add tags on match</label>
+                <input id="tags_auto" value="vsr-pipeline, re-tagged">
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="ui-btn" id="btnSaveTags" data-tip="Save tag re-apply rules.">Save Rules</button>
+                    <button class="ui-btn purple" id="btnApplyTags"
+                            data-tip-title="Apply tag rules"
+                            data-tip="Re-apply tags after VSR renames (match by duration/stem).">Apply Rules Now</button>
+                </div>
+                <div id="tagResult" class="hint" style="margin-top:10px"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+    <script>
+        const API = () => window.AIToolboxAPI;
+        const UI = () => window.AIToolboxUI;
+        const DBG = () => window.AIToolboxDebug;
+        const VSR_FLOW = [
+            { id: 'setup', label: 'Folders & templates' },
+            { id: 'rename', label: 'Preview & apply' },
+            { id: 'teach', label: 'Teach (optional)' },
+            { id: 'dupes', label: 'Duplicates' },
+            { id: 'tags', label: 'Tag rules' },
+        ];
+        let teachPairs = [], lastPreview = null, activeVsrTab = 'setup';
+
+        function foldersConfigured() {
+            return document.getElementById('f_source').value.trim()
+                && document.getElementById('f_stage1').value.trim()
+                && document.getElementById('f_stage2').value.trim();
+        }
+
+        function updateVsrWorkflow() {
+            const states = {
+                setup: foldersConfigured() ? 'done' : 'active',
+                rename: lastPreview ? 'done' : (foldersConfigured() ? 'active' : 'pending'),
+                teach: teachPairs.length ? 'done' : 'pending',
+                dupes: 'pending',
+                tags: 'pending',
+            };
+            states[activeVsrTab] = states[activeVsrTab] === 'done' ? 'done' : 'active';
+            UI().renderWorkflow(document.getElementById('vsrWorkflowBar'), VSR_FLOW, states);
+            document.querySelectorAll('.ui-tab').forEach(t => {
+                const id = t.dataset.tab;
+                t.classList.toggle('done', states[id] === 'done');
+                t.classList.toggle('workflow-active', id === activeVsrTab);
+            });
+        }
+
+        const LS_VSR_TAB = 'fafo_vsr_last_tab';
+        function switchTab(name) {
+            activeVsrTab = name;
+            document.querySelectorAll('.ui-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+            document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+            try { localStorage.setItem(LS_VSR_TAB, name); } catch (_) {}
+            updateVsrWorkflow();
+        }
+        document.querySelectorAll('.ui-tab').forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+        try {
+            const lastTab = localStorage.getItem(LS_VSR_TAB);
+            if (lastTab && document.getElementById('panel-' + lastTab)) switchTab(lastTab);
+        } catch (_) {}
+        ['f_source', 'f_stage1', 'f_stage2'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateVsrWorkflow);
+        });
+
+        document.getElementById('btnDebug').onclick = () => {
+            const next = !DBG()?.enabled();
+            DBG()?.setEnabled(next);
+            if (next) DBG()?.boot(); else DBG()?.shutdown();
+            document.getElementById('btnDebug').classList.toggle('debug-on', next);
+            document.getElementById('btnDebug').textContent = next ? '🐛 Debug ON' : '🐛 Debug';
+        };
+
+        async function copyVsrReport() {
+            const s1 = lastPreview?.stage1 || [];
+            const s2 = lastPreview?.stage2 || [];
+            const unmatched = lastPreview?.unmatched || lastPreview?.unmatched_files || [];
+            const lines = [
+                'FAFO VSR Pipeline — session report',
+                'Time: ' + new Date().toISOString(),
+                'Server: ' + (document.getElementById('serverStatus')?.textContent || '').trim(),
+                'Source: ' + (document.getElementById('f_source')?.value || ''),
+                'Stage I folder: ' + (document.getElementById('f_stage1')?.value || ''),
+                'Stage II folder: ' + (document.getElementById('f_stage2')?.value || ''),
+                'Stage I matches: ' + s1.length,
+                'Stage II matches: ' + s2.length,
+                'Unmatched: ' + (Array.isArray(unmatched) ? unmatched.length : (unmatched || '—')),
+                'Active tab: ' + activeVsrTab,
+                '',
+                '— Stage I (up to 40) —',
+                ...s1.slice(0, 40).map((m, i) =>
+                    (i + 1) + '. ' + (m.source_name || m.source || m.src || '?') +
+                    ' → ' + (m.proposed_name || m.rename || m.dest_name || '?') +
+                    (m.score != null ? ' · ' + Math.round((m.score <= 1 ? m.score * 100 : m.score)) + '%' : '')
+                ),
+                '',
+                '— Stage II (up to 40) —',
+                ...s2.slice(0, 40).map((m, i) =>
+                    (i + 1) + '. ' + (m.source_name || m.source || m.src || '?') +
+                    ' → ' + (m.proposed_name || m.rename || m.dest_name || '?') +
+                    (m.score != null ? ' · ' + Math.round((m.score <= 1 ? m.score * 100 : m.score)) + '%' : '')
+                ),
+            ];
+            const text = lines.join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI()?.toast?.('VSR report copied', 'ok');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btnVsrReport')?.addEventListener('click', copyVsrReport);
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            const tabMap = { '1': 'setup', '2': 'rename', '3': 'teach', '4': 'dupes', '5': 'tags' };
+            if (tabMap[e.key]) { e.preventDefault(); switchTab(tabMap[e.key]); }
+            if (e.key === 'p' || e.key === 'P') {
+                e.preventDefault();
+                document.getElementById('btnPreview')?.click();
+            }
+            if (e.key === 'e' || e.key === 'E') {
+                e.preventDefault();
+                copyVsrReport();
+            }
+        });
+
+        function updateTrustBadges() {
+            document.getElementById('trustBadge1').textContent = UI().isTrusted('vsr_stage1') ? '✓ Trusted — skips confirm' : '';
+            document.getElementById('trustBadge2').textContent = UI().isTrusted('vsr_stage2') ? '✓ Trusted — skips confirm' : '';
+        }
+
+        let serverStarting = false;
+
+        async function checkServer() {
+            if (serverStarting) return false;
+            const on = await API().isOnline();
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            el.textContent = on ? '● Server Online' : '○ Offline — click to start';
+            el.className = 'pill ' + (on ? 'ok' : 'warn');
+            if (btn) {
+                btn.style.display = on ? 'none' : '';
+                btn.disabled = false;
+                btn.textContent = '▶ Start Server';
+            }
+            return on;
+        }
+
+        async function launchServerFromApp() {
+            if (serverStarting || API().isServerLaunching?.()) return;
+            if (await API().isOnline(true, 2000)) {
+                await checkServer();
+                UI().toast?.('Server already online', 'ok');
+                return;
+            }
+            serverStarting = true;
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            el.textContent = '◌ Starting…';
+            el.className = 'pill wait';
+            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+            try {
+                const result = await API().startServer({
+                    mode: 'tray',
+                    waitMs: 90000,
+                    onStatus: (msg) => { el.textContent = '◌ ' + msg; },
+                });
+                serverStarting = false;
+                if (result.ok) {
+                    UI().toast?.('Server online — VSR full power', 'ok');
+                    await checkServer();
+                } else {
+                    el.textContent = '○ Start failed';
+                    el.className = 'pill warn';
+                    if (btn) { btn.disabled = false; btn.textContent = '▶ Start Server'; }
+                    UI().toast?.('Browser blocked launch — open Launcher or START SERVER.bat', 'warn');
+                }
+            } catch (e) {
+                serverStarting = false;
+                if (btn) { btn.disabled = false; btn.textContent = '▶ Start Server'; }
+                UI().toast?.('Start failed: ' + (e.message || e), 'warn');
+                await checkServer();
+            }
+        }
+
+        function cfgFromForm() {
+            return {
+                folder_source: document.getElementById('f_source').value.trim(),
+                folder_stage1: document.getElementById('f_stage1').value.trim(),
+                folder_stage2: document.getElementById('f_stage2').value.trim(),
+                template_stage1: document.getElementById('tpl_s1').value.trim(),
+                template_stage2: document.getElementById('tpl_s2').value.trim(),
+                include_date: document.getElementById('inc_date').checked,
+                include_time: document.getElementById('inc_time').checked,
+                duration_tolerance: parseFloat(document.getElementById('dur_tol').value) || 0.35,
+                min_match_score: parseFloat(document.getElementById('min_score').value) || 0.52,
+            };
+        }
+
+        function cfgToForm(c) {
+            ['f_source','f_stage1','f_stage2'].forEach((id, i) => {
+                document.getElementById(id).value = [c.folder_source, c.folder_stage1, c.folder_stage2][i] || '';
+            });
+            document.getElementById('tpl_s1').value = c.template_stage1 || '';
+            document.getElementById('tpl_s2').value = c.template_stage2 || '';
+            document.getElementById('inc_date').checked = !!c.include_date;
+            document.getElementById('inc_time').checked = !!c.include_time;
+            document.getElementById('dur_tol').value = c.duration_tolerance ?? 0.35;
+            document.getElementById('min_score').value = c.min_match_score ?? 0.52;
+            document.getElementById('dup_folder').value = c.folder_source || '';
+            if (c.learned_strip_suffixes?.length) {
+                document.getElementById('learned').innerHTML = '<strong>Learned patterns:</strong> ' + 
+                    [...(c.learned_strip_prefixes||[]), ...(c.learned_strip_suffixes||[])].join(', ');
+            }
+        }
+
+        function rowHtml(r, color) {
+            const pct = Math.round((r.score||0)*100);
+            const cls = UI().scoreClass(pct);
+            return `<tr style="animation-delay:${Math.random()*0.15}s">
+                <td><span class="ui-score ${cls}">${pct}%</span></td>
+                <td>${r.source?.name || r.original_source || ''}</td>
+                <td class="rename-arrow">→</td>
+                <td><span style="color:#666">${r.current_name}</span> → <strong style="color:${color}">${r.proposed_name}</strong>
+                <br><span style="font-size:9px;color:#555">${r.output_probe?.res} · ${r.output_probe?.fps_label}fps</span></td></tr>`;
+        }
+
+        function renderPreview(data) {
+            lastPreview = data;
+            document.getElementById('tbl_s1').innerHTML = (data.stage1||[]).map(r => rowHtml(r,'var(--accent)')).join('') ||
+                '<tr><td colspan=4 style="color:#666">No Stage I matches — set folders or teach pairs</td></tr>';
+            document.getElementById('tbl_s2').innerHTML = (data.stage2||[]).map(r => rowHtml({...r, source:{name:r.original_source}},'var(--accent2)')).join('') ||
+                '<tr><td colspan=4 style="color:#666">No Stage II matches yet</td></tr>';
+            const um = [...(data.unmatched_source||[]).map(u=>'📄 '+u.name), ...(data.unmatched_stage1||[]).map(u=>'⚠ Stage1: '+u.name)];
+            document.getElementById('unmatched').innerHTML = um.length ? um.join('<br>') : '✓ All files matched!';
+            const st = document.getElementById('previewStatus');
+            st.className = 'status-box ok';
+            st.innerHTML = `Matched <strong>${data.stage1?.length||0}</strong> upscale + <strong>${data.stage2?.length||0}</strong> interpolation files — review below, then Apply`;
+            updateVsrWorkflow();
+        }
+
+        async function applyStage(stage) {
+            const key = stage === '1' ? 'vsr_stage1' : 'vsr_stage2';
+            const label = stage === '1' ? 'Stage I (Upscale)' : 'Stage II (Interpolation)';
+            const items = stage === '1' ? (lastPreview?.stage1||[]) : (lastPreview?.stage2||[]);
+            const toRename = items.filter(i => i.rename_needed);
+            if (!toRename.length) { UI().toast('Nothing to rename — refresh preview first', 'warn'); return; }
+
+            const preview = toRename.map(i => ({ from: i.current_name, to: i.proposed_name }));
+            const result = await UI().confirmAction({
+                title: `Apply ${label} Renames?`,
+                body: `<strong>${toRename.length}</strong> video files will be renamed on disk. Review the preview below.`,
+                preview,
+                trustKey: key,
+                trustLabel: `Trust ${label} — skip confirmation next time (Reset Trust button below)`,
+                trustDefaultChecked: false,
+                showSafetyNote: true,
+                confirmText: `Rename ${toRename.length} Files`,
+            });
+            if (!result.confirmed) return;
+
+            const r = await API().vsrApply(stage, false);
+            UI().toast(
+                result.skipped ? `✓ ${r.count} renamed (trusted — no prompt)` : `✓ ${r.count} files renamed`,
+                result.skipped ? 'warn' : 'ok'
+            );
+            try {
+                const n = Math.max(0, Number(r.count) || toRename.length || 0);
+                if (n) {
+                    window.FAFOOpsStats?.record({
+                        tool: 'vsr-pipeline-manager',
+                        action: 'apply-stage-' + stage,
+                        metrics: { renamesApplied: n, syncsCompleted: 1 },
+                    });
+                }
+            } catch (_) { /* stats optional */ }
+            document.getElementById('btnPreview').click();
+            updateTrustBadges();
+        }
+
+        const TUTORIAL = [
+            { target: '#serverStatus', title: 'Welcome to VSR Pipeline', body: 'Use <strong>▶ Start Server</strong> (or click the orange pill) to launch the backend <em>from this page</em> — same control as Media Library and Launcher. Green = full power: matching, rename, ffmpeg.' },
+            { target: '#card-folders', title: 'Set Your 3 Folders', body: 'Originals, Stage I upscale output, Stage II interpolation output. These are saved and changeable anytime.', tab: 'setup' },
+            { target: '#card-templates', title: 'Naming Templates', body: 'Resolution and FPS are auto-detected per file. Use tokens like {res_tier} and {fps}. Toggle date/time if you want timestamps in names.', tab: 'setup' },
+            { target: '#btnPreview', title: 'Preview Matches', body: 'The matcher uses duration + aspect ratio + fuzzy names — not just filenames. Always preview before applying.' },
+            { target: '#card-teach', title: 'Teach (Optional)', body: 'If VSR names are chaotic, feed 3–5 known pairs. The AI learns what to strip from future matches.', tab: 'teach' },
+            { target: '#card-stage1', title: 'Confirm or Trust', body: 'Apply renames the whole stage. Prefer <strong>🔎 Review queue</strong> when matches look mixed — accept/reject each pair with the keyboard before any rename.', tab: 'rename' },
+            { target: '#card-tags', title: 'Tags Survive VSR', body: 'Tag rules re-apply your labels after rescan even when VSR overwrites filenames.', tab: 'tags' },
+        ];
+
+        document.getElementById('btnTutorial').onclick = () => {
+            UI().startTutorial(TUTORIAL, 'vsr', (step) => { if (step.tab) switchTab(step.tab); }, { force: true });
+        };
+
+        function startVsrTutorial() {
+            UI().startTutorial(TUTORIAL, 'vsr', (step) => { if (step.tab) switchTab(step.tab); });
+        }
+
+        document.getElementById('btnPreview').onclick = async () => {
+            await API().vsrSaveConfig(cfgFromForm());
+            UI().toast('Scanning & matching…');
+            const data = await API().vsrPreview();
+            renderPreview(data);
+            switchTab('rename');
+        };
+
+        document.getElementById('btnApplyS1').onclick = () => applyStage('1');
+        document.getElementById('btnApplyS2').onclick = () => applyStage('2');
+        document.getElementById('btnReviewS1').onclick = () => {
+            location.href = 'Pair Review Queue.html?source=vsr&stage=1&autoload=1';
+        };
+        document.getElementById('btnReviewS2').onclick = () => {
+            location.href = 'Pair Review Queue.html?source=vsr&stage=2&autoload=1';
+        };
+        document.getElementById('btnDryS1').onclick = async () => {
+            const r = await API().vsrApply('1', true);
+            UI().toast(`Dry run: ${r.count} would rename`);
+        };
+        document.getElementById('btnResetTrust1').onclick = () => { UI().setTrusted('vsr_stage1', false); updateTrustBadges(); UI().toast('Stage I confirm restored'); };
+        document.getElementById('btnResetTrust2').onclick = () => { UI().setTrusted('vsr_stage2', false); updateTrustBadges(); UI().toast('Stage II confirm restored'); };
+
+        document.getElementById('btnSaveCfg').onclick = async () => {
+            await API().vsrSaveConfig(cfgFromForm());
+            UI().toast('Config saved', 'ok');
+        };
+
+        async function pickFolder(id) {
+            try {
+                const d = await API().pickDirectoryNative();
+                document.getElementById(id).value = d.path;
+            } catch (e) {
+                const p = prompt('Paste folder path:');
+                if (p) document.getElementById(id).value = p;
+            }
+        }
+        document.getElementById('btnPickSource').onclick = () => pickFolder('f_source');
+        document.getElementById('btnPickS1').onclick = () => pickFolder('f_stage1');
+        document.getElementById('btnPickS2').onclick = () => pickFolder('f_stage2');
+
+        document.getElementById('btnAddTeach').onclick = () => {
+            const s = document.getElementById('teach_src').value.trim();
+            const o = document.getElementById('teach_out').value.trim();
+            if (!s||!o) return;
+            teachPairs.push({ source_path: s, output_path: o });
+            document.getElementById('teachList').innerHTML = teachPairs.map((p,i) =>
+                `<li>${i+1}. ${p.source_path.split('\\').pop()} ↔ ${p.output_path.split('\\').pop()}</li>`).join('');
+            document.getElementById('teach_src').value = '';
+            document.getElementById('teach_out').value = '';
+        };
+        document.getElementById('btnLearn').onclick = async () => {
+            if (!teachPairs.length) { UI().toast('Add at least one pair', 'warn'); return; }
+            cfgToForm(await API().vsrLearn(teachPairs));
+            UI().toast('Matcher learned — refresh preview!', 'ok');
+        };
+
+        document.getElementById('btnDupScan').onclick = async () => {
+            const r = await API().scanDuplicates(document.getElementById('dup_folder').value.trim(), document.getElementById('dup_deep').checked);
+            const gb = (r.wasted_bytes/1024/1024/1024).toFixed(2);
+            let html = `<div class="status-box warn">${r.duplicate_groups} groups · ${r.scanned} files · ~${gb} GB duplicate data</div>`;
+            (r.groups||[]).forEach(g => {
+                html += `<div class="dup-group"><strong>${g.count}× duplicate</strong> (${(g.total_bytes/1e6).toFixed(0)} MB)<ul style="margin-top:6px;font-size:11px">`;
+                g.items.forEach(i => html += `<li>${i.name} — ${i.res} · ${i.duration}s</li>`);
+                html += '</ul></div>';
+            });
+            document.getElementById('dupResults').innerHTML = html;
+        };
+
+        document.getElementById('btnSaveTags').onclick = async () => {
+            await API().saveTagRules({
+                enabled: document.getElementById('tags_enabled').checked,
+                strip_patterns: document.getElementById('tags_patterns').value.split('\n').map(s=>s.trim()).filter(Boolean),
+                auto_tag_on_match: document.getElementById('tags_auto').value.split(',').map(s=>s.trim()).filter(Boolean),
+            });
+            UI().toast('Tag rules saved', 'ok');
+        };
+        document.getElementById('btnApplyTags').onclick = async () => {
+            const r = await API().applyTagRules();
+            document.getElementById('tagResult').textContent = `Re-applied tags to ${r.applied} files`;
+            UI().toast(`${r.applied} tags restored`, 'ok');
+        };
+
+        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
+        document.getElementById('serverStatus')?.addEventListener('click', () => {
+            if (!serverStarting) launchServerFromApp();
+        });
+
+        (async () => {
+            UI().initTooltips();
+            updateTrustBadges();
+            DBG()?.log('vsr', 'info', 'VSR Pipeline init');
+            if (await checkServer()) {
+                cfgToForm(await API().vsrGetConfig());
+            }
+            updateVsrWorkflow();
+            setInterval(checkServer, 5000);
+            if (!UI().isTutorialDone('vsr')) {
+                setTimeout(startVsrTutorial, 600);
+            }
+        })();
+    </script>
+
+<script data-tool-polish="vsr-pipeline">
+/* Tool polish: vsr-pipeline — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "vsr-pipeline";
+  const TOOL_NAME = "VSR Pipeline Manager";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="vsr">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('VSR needs S1 server — use ▶ Start Server', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

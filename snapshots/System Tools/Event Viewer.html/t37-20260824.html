@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Event Viewer — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{
+  --bg:#050508;--panel:#0c0f16;--panel2:#121a27;--border:rgba(0,243,255,.18);
+  --accent:#00f3ff;--ok:#34d399;--warn:#fbbf24;--danger:#f43f5e;--info:#60a5fa;
+  --text:#e2e8f0;--muted:#8b9bb4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;
+  background:
+    radial-gradient(ellipse at 20% -10%,rgba(96,165,250,.14),transparent 50%),
+    radial-gradient(ellipse at 50% -20%,#0f172a,var(--bg) 60%);
+}
+.nav{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.95);
+  position:sticky;top:0;z-index:20;
+}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.nav .t{color:var(--accent);letter-spacing:1px;font-size:14px;font-weight:700}
+.wrap{max-width:1200px;margin:0 auto;padding:22px 20px 48px}
+h1{font-size:1.5rem;margin-bottom:4px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.45}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.btn{
+  background:rgba(0,243,255,.12);border:1px solid var(--accent);color:var(--accent);
+  padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+}
+.btn:disabled{opacity:.5;cursor:wait}
+.btn.ghost{background:transparent;border-color:var(--border);color:var(--muted)}
+.inp,.sel{
+  background:var(--panel);border:1px solid var(--border);color:var(--text);
+  padding:8px 10px;border-radius:8px;font-size:12px;
+}
+.status{
+  display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;
+  border-radius:999px;border:1px solid var(--border);font-weight:600;
+}
+.status.ok{color:var(--ok)} .status.info{color:var(--info)}
+.status.warn{color:var(--warn)} .status.bad,.status.error{color:var(--danger)}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tab{
+  border:1px solid var(--border);background:var(--panel);color:var(--muted);
+  padding:10px 14px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;
+}
+.tab.active{color:#0b1020;background:linear-gradient(135deg,#67e8f9,#a78bfa);border-color:transparent}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-size:1.35rem;font-weight:700;margin-top:4px}
+.badge{
+  display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;
+  text-transform:uppercase;
+}
+.badge.ok{background:rgba(52,211,153,.14);color:var(--ok)}
+.badge.info{background:rgba(96,165,250,.14);color:var(--info)}
+.badge.warn{background:rgba(251,191,36,.14);color:var(--warn)}
+.badge.error{background:rgba(244,63,94,.14);color:var(--danger)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{
+  background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;
+  cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%;
+}
+.card:hover{border-color:#3b4d6b}
+.card.ok{border-left:3px solid var(--ok)}
+.card.info{border-left:3px solid var(--info)}
+.card.warn{border-left:3px solid var(--warn)}
+.card.error{border-left:3px solid var(--danger)}
+.card h3{font-size:14px;margin:6px 0}
+.card p{font-size:12px;color:var(--muted);line-height:1.45}
+.card .meta{font-size:11px;color:var(--muted);margin-top:8px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:14px}
+.ph{padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.pb{padding:12px 16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)}
+td{padding:8px;border-bottom:1px solid rgba(36,48,73,.5);vertical-align:top}
+tr:hover td{background:rgba(255,255,255,.03)}
+.msg{max-width:420px;color:var(--muted);line-height:1.35}
+.mono{font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.hidden{display:none}
+.callout{
+  border-left:4px solid var(--info);background:var(--panel2);padding:12px 14px;border-radius:0 12px 12px 0;
+  font-size:13px;line-height:1.45;margin-bottom:16px;color:var(--text);
+}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin-top:10px}
+.nav-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nav-chip{
+  font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
+  color:var(--accent);text-decoration:none;font-weight:600;background:rgba(0,243,255,.06);
+}
+.nav-chip:hover{background:rgba(0,243,255,.14)}
+.nav-chip.primary{border-color:rgba(167,139,250,.5);color:#c4b5fd;background:rgba(167,139,250,.1)}
+.meta-line{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stats{position:sticky;top:48px;z-index:15;background:rgba(5,5,8,.92);padding:8px 0;backdrop-filter:blur(8px)}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="nav-chips">
+    <a class="nav-chip primary" id="chipDeepDive" href="Event Deep Dive.html" title="Open ranked analysis with current window">Deep Dive →</a>
+    <a class="nav-chip" href="System Health Dashboard.html">Health Hub</a>
+    <a class="nav-chip" href="PC Diagnostics HUD.html">PC Diagnostics</a>
+    <a class="nav-chip" href="PC Reports and Log Viewer/index.html">Reports</a>
+    <a class="nav-chip" href="Hardware Board Map.html">Board Map</a>
+  </div>
+  <span class="t">EVENT VIEWER</span>
+  <span data-fafo-layout-toolbar></span>
+  <span id="pill" class="status bad">Offline</span>
+</nav>
+<div class="wrap"
+     data-fafo-layout-root
+     data-fafo-layout-app="event-viewer"
+     data-fafo-layout-type="rows">
+  <div data-fafo-panel="intro" data-fafo-panel-title="Intro" data-fafo-panel-min="80" data-fafo-panel-default="140">
+  <h1>Event Viewer (human mode)</h1>
+  <p class="sub">Windows System &amp; Application errors/warnings, grouped into plain-English themes so DCOM spam does not look like a crisis. Not a full clone of <code>eventvwr.msc</code> — use that for deep admin work.</p>
+
+  <div class="callout">
+    <strong>How to read this:</strong>
+    Green/Fine themes are normal clutter. Yellow means watch if you feel a symptom. Red means act or investigate the related hardware/app.
+    Defaults use a <strong>6-hour lite sample</strong> so opening this tool does not bog the PC — widen the window or sample size only when you need more history.
+    For ranked “what’s wrong + what to try first,” open
+    <a href="Event Deep Dive.html" style="color:var(--accent);font-weight:700">Event Deep Dive</a>
+    (it waits for you to click Run).
+  </div>
+  </div>
+
+  <div data-fafo-panel="controls" data-fafo-panel-title="Controls" data-fafo-panel-min="70" data-fafo-panel-default="110">
+  <div class="toolbar">
+    <a class="btn" id="btnDeepDiveCtx" href="Event Deep Dive.html" style="text-decoration:none" title="Opens ranked analysis with current hours/sample">Deep dive (ranked fixes)</a>
+    <button class="btn" id="btnRefresh" data-tip-title="Refresh (R)" data-tip="Reload recent Windows events and themes.">Refresh</button>
+    <button class="btn ghost" id="btnExportJson" type="button" data-tip-title="Export JSON" data-tip="Save the current summary + timeline as JSON.">↓ JSON</button>
+    <button class="btn ghost" id="btnExportCsv" type="button" data-tip-title="Export CSV" data-tip="Save the timeline as CSV for spreadsheets.">↓ CSV</button>
+    <select class="sel" id="hours" title="Smaller windows load much faster">
+      <option value="6" selected>Last 6 hours (fast)</option>
+      <option value="24">Last 24 hours</option>
+      <option value="72">Last 3 days</option>
+      <option value="168">Last 7 days (heavier)</option>
+    </select>
+    <select class="sel" id="sampleSize" title="How many events to sample from Windows">
+      <option value="150" selected>Lite sample</option>
+      <option value="300">Normal sample</option>
+      <option value="500">Deep sample</option>
+    </select>
+    <input class="inp" id="search" placeholder="Search provider or message… (/)" style="min-width:200px">
+    <select class="sel" id="logFilter">
+      <option value="">All logs</option>
+      <option value="System">System</option>
+      <option value="Application">Application</option>
+    </select>
+    <label class="meta-line" title="Auto-refresh themes while tab is visible">
+      <input type="checkbox" id="autoRefresh"> Auto
+      <select class="sel" id="autoInterval" style="padding:4px 6px">
+        <option value="30">30s</option>
+        <option value="60" selected>60s</option>
+        <option value="120">2m</option>
+      </select>
+    </label>
+    <span class="meta-line" id="lastUpdated">—</span>
+  </div>
+  <p id="loadHint" class="sub" style="margin-top:-8px;margin-bottom:12px;display:none"></p>
+  </div>
+
+  <div data-fafo-panel="results" data-fafo-panel-title="Results" data-fafo-flex="1">
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="themes">Themes</button>
+    <button class="tab" data-tab="timeline">Timeline</button>
+    <button class="tab" data-tab="providers">By provider</button>
+  </div>
+
+  <div id="view-themes"></div>
+  <div id="view-timeline" class="hidden"></div>
+  <div id="view-providers" class="hidden"></div>
+
+  <div class="legend">
+    <span><span class="badge ok">Fine</span> usually ignore</span>
+    <span><span class="badge info">FYI</span> optional</span>
+    <span><span class="badge warn">Watch</span> if symptoms</span>
+    <span><span class="badge error">Act</span> investigate</span>
+  </div>
+  </div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c => ({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[c]));
+
+const LABEL = { ok: 'Fine', info: 'FYI', warn: 'Watch', error: 'Act' };
+function badge(lv) {
+  const c = lv === 'bad' ? 'error' : (lv || 'info');
+  return `<span class="badge ${c}">${LABEL[c] || c}</span>`;
+}
+
+let summary = null;
+let timeline = null;
+let activeTheme = null;
+let tab = 'themes';
+let loadGen = 0; // ignore stale responses when user changes filters mid-flight
+let autoTimer = null;
+const PREF_KEY = 'fafo_event_viewer_prefs_v1';
+
+function qs(name) {
+  return new URLSearchParams(location.search).get(name);
+}
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+    if (p.hours && document.getElementById('hours').querySelector(`option[value="${p.hours}"]`))
+      document.getElementById('hours').value = p.hours;
+    if (p.sample && document.getElementById('sampleSize').querySelector(`option[value="${p.sample}"]`))
+      document.getElementById('sampleSize').value = p.sample;
+    if (p.log) document.getElementById('logFilter').value = p.log;
+    if (p.auto) document.getElementById('autoRefresh').checked = !!p.auto;
+    if (p.interval && document.getElementById('autoInterval').querySelector(`option[value="${p.interval}"]`))
+      document.getElementById('autoInterval').value = p.interval;
+  } catch (_) {}
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      hours: document.getElementById('hours').value,
+      sample: document.getElementById('sampleSize').value,
+      log: document.getElementById('logFilter').value,
+      auto: document.getElementById('autoRefresh').checked,
+      interval: document.getElementById('autoInterval').value,
+    }));
+  } catch (_) {}
+}
+
+function syncDeepDiveLinks() {
+  const hours = document.getElementById('hours').value;
+  // Map viewer sample sizes toward deep-dive options
+  const sm = Number(document.getElementById('sampleSize').value || 150);
+  const sample = sm <= 150 ? '250' : (sm <= 300 ? '450' : '700');
+  const h = hours === '6' ? '24' : hours;
+  const href = `Event Deep Dive.html?hours=${encodeURIComponent(h)}&sample=${encodeURIComponent(sample)}`;
+  const chip = document.getElementById('chipDeepDive');
+  const btn = document.getElementById('btnDeepDiveCtx');
+  if (chip) chip.href = href;
+  if (btn) btn.href = href;
+}
+
+function setLastUpdated(ok) {
+  const el = document.getElementById('lastUpdated');
+  if (!el) return;
+  el.textContent = ok ? ('Updated ' + new Date().toLocaleTimeString()) : '—';
+}
+
+function downloadBlob(filename, text, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: mime || 'application/json' }));
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function exportJson() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    summary,
+    timeline,
+    activeTheme,
+    tab,
+    hours: document.getElementById('hours').value,
+    sample: document.getElementById('sampleSize').value,
+  };
+  downloadBlob(`event-viewer-${Date.now()}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  UI()?.toast?.('Exported JSON', 'ok');
+}
+
+function exportCsv() {
+  const rows = timeline?.events || [];
+  if (!rows.length) {
+    UI()?.toast?.('No timeline rows — open Timeline or refresh first', 'warn');
+    return;
+  }
+  const hdr = ['time', 'level', 'log', 'provider', 'id', 'theme', 'message'];
+  const escCsv = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [hdr.join(',')].concat(rows.map(e => [
+    e.time || '', e.uiLevel || e.themeLevel || '', e.log || '', e.provider || '',
+    e.id ?? '', e.themeTitle || e.themeId || '', (e.message || '').slice(0, 500)
+  ].map(escCsv).join(',')));
+  downloadBlob(`event-timeline-${Date.now()}.csv`, lines.join('\n'), 'text/csv');
+  UI()?.toast?.('Exported CSV', 'ok');
+}
+
+function setupAuto() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  if (!document.getElementById('autoRefresh')?.checked) return;
+  const sec = Math.max(15, Number(document.getElementById('autoInterval')?.value || 60));
+  autoTimer = setInterval(() => {
+    if (document.hidden) return;
+    load();
+  }, sec * 1000);
+}
+
+function sampleMax() {
+  const n = Number(document.getElementById('sampleSize')?.value || 150);
+  return Number.isFinite(n) ? Math.max(50, Math.min(n, 800)) : 150;
+}
+
+function setLoadHint(msg) {
+  const el = document.getElementById('loadHint');
+  if (!el) return;
+  if (!msg) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.textContent = msg;
+}
+
+function setPill(ok, text) {
+  const el = document.getElementById('pill');
+  el.className = 'status ' + (ok ? 'ok' : 'bad');
+  el.textContent = text;
+}
+
+function renderStats(s) {
+  document.getElementById('stats').innerHTML = [
+    { l: 'Sampled', v: s.sampled ?? '—' },
+    { l: 'Errors', v: s.errorCount ?? '—' },
+    { l: 'Warnings', v: s.warningCount ?? '—' },
+    { l: 'Themes', v: (s.themes || []).length },
+    { l: 'Window', v: (s.windowHours || 24) + 'h' },
+    { l: 'Overall', v: LABEL[s.level] || s.level || '—' },
+  ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${esc(String(x.v))}</div></div>`).join('');
+}
+
+function renderThemes(s) {
+  const themes = s.themes || [];
+  const box = document.getElementById('view-themes');
+  if (!themes.length) {
+    box.innerHTML = '<div class="panel"><div class="pb" style="color:var(--ok)">No error/warning themes in this window ✓</div></div>';
+    return;
+  }
+  box.innerHTML = `<div class="grid">${themes.map(t => `
+    <button type="button" class="card ${t.level || 'info'}" data-theme="${esc(t.id)}">
+      ${badge(t.level)}
+      <h3>${esc(t.title)}</h3>
+      <p>${esc(t.plainEnglish)}</p>
+      <div class="meta">
+        <strong>${t.count}</strong> events · Care: ${esc(t.care || '—')}
+        ${(t.providers || []).length ? '<br>Providers: ' + esc((t.providers || []).slice(0,4).join(', ')) : ''}
+      </div>
+    </button>`).join('')}</div>`;
+  box.querySelectorAll('[data-theme]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTheme = btn.getAttribute('data-theme');
+      switchTab('timeline');
+      loadTimeline();
+    });
+  });
+}
+
+function renderTimeline(data) {
+  const box = document.getElementById('view-timeline');
+  const rows = data?.events || [];
+  const filterNote = activeTheme
+    ? `<div style="margin-bottom:10px;font-size:12px;color:var(--muted)">Filtered to theme <strong>${esc(activeTheme)}</strong>
+        <button class="btn ghost" id="btnClearTheme" style="margin-left:8px">Clear filter</button></div>`
+    : '';
+  if (!rows.length) {
+    box.innerHTML = filterNote + '<div class="panel"><div class="pb" style="color:var(--muted)">No events match.</div></div>';
+    document.getElementById('btnClearTheme')?.addEventListener('click', () => {
+      activeTheme = null;
+      loadTimeline();
+    });
+    return;
+  }
+  box.innerHTML = filterNote + `<div class="panel"><div class="ph">Timeline (${rows.length}${data.limited ? '+' : ''})</div>
+    <div class="pb" style="overflow:auto">
+    <table>
+      <thead><tr><th>When</th><th>Level</th><th>Log</th><th>Provider</th><th>ID</th><th>Theme</th><th>Message</th></tr></thead>
+      <tbody>
+        ${rows.map(e => {
+          const when = e.time ? new Date(e.time).toLocaleString() : '—';
+          return `<tr>
+            <td class="mono">${esc(when)}</td>
+            <td>${badge(e.uiLevel || e.themeLevel || 'info')}</td>
+            <td>${esc(e.log || '')}</td>
+            <td>${esc(e.provider || '')}</td>
+            <td class="mono">${esc(String(e.id ?? ''))}</td>
+            <td>${esc(e.themeTitle || e.themeId || '')}</td>
+            <td class="msg">${esc((e.message || '').slice(0, 220))}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div></div>`;
+  document.getElementById('btnClearTheme')?.addEventListener('click', () => {
+    activeTheme = null;
+    loadTimeline();
+  });
+}
+
+function renderProviders(s) {
+  const map = new Map();
+  for (const t of (s.themes || [])) {
+    for (const p of (t.providers || [])) {
+      const cur = map.get(p) || { provider: p, count: 0, level: 'ok', themes: [] };
+      cur.count += t.count || 0;
+      const ranks = { ok: 0, info: 1, warn: 2, error: 3 };
+      if ((ranks[t.level] || 0) > (ranks[cur.level] || 0)) cur.level = t.level;
+      cur.themes.push(t.title);
+      map.set(p, cur);
+    }
+  }
+  const rows = [...map.values()].sort((a, b) => b.count - a.count);
+  const box = document.getElementById('view-providers');
+  if (!rows.length) {
+    box.innerHTML = '<div class="panel"><div class="pb" style="color:var(--muted)">No providers in sample.</div></div>';
+    return;
+  }
+  box.innerHTML = `<div class="panel"><div class="ph">By provider</div><div class="pb" style="overflow:auto">
+    <table>
+      <thead><tr><th>Provider</th><th>Approx count</th><th>Care level</th><th>Themes</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td>${esc(r.provider)}</td>
+          <td class="mono">${r.count}</td>
+          <td>${badge(r.level)}</td>
+          <td class="msg">${esc([...new Set(r.themes)].join(' · '))}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div></div>`;
+}
+
+function switchTab(name) {
+  tab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.getElementById('view-themes').classList.toggle('hidden', name !== 'themes');
+  document.getElementById('view-timeline').classList.toggle('hidden', name !== 'timeline');
+  document.getElementById('view-providers').classList.toggle('hidden', name !== 'providers');
+}
+
+async function loadSummary(gen) {
+  const hours = document.getElementById('hours').value;
+  const max = sampleMax();
+  setLoadHint(`Sampling themes (last ${hours}h · up to ${max} events)…`);
+  const s = await UI().apiFetch(`/events/summary?hours=${hours}&max_events=${max}`);
+  if (gen !== loadGen) return;
+  summary = s;
+  renderStats(s);
+  renderThemes(s);
+  renderProviders(s);
+  setLoadHint(
+    `Sampled ${s.sampled ?? '—'} events · ${(s.themes || []).length} themes · window ${s.windowHours || hours}h`
+  );
+}
+
+async function loadTimeline(gen) {
+  const hours = document.getElementById('hours').value;
+  const q = document.getElementById('search').value.trim();
+  const log = document.getElementById('logFilter').value;
+  // Timeline stays smaller than summary — list view only needs recent hits
+  const max = Math.min(200, Math.max(80, Math.floor(sampleMax() * 0.6)));
+  const params = new URLSearchParams({ hours, max_events: String(max) });
+  if (q) params.set('q', q);
+  if (log) params.set('log', log);
+  if (activeTheme) params.set('theme', activeTheme);
+  setLoadHint(`Loading timeline (up to ${max} rows)…`);
+  const data = await UI().apiFetch('/events/query?' + params.toString());
+  if (gen !== loadGen) return;
+  timeline = data;
+  renderTimeline(data);
+  const n = (data?.events || []).length;
+  setLoadHint(`Timeline: ${n}${data?.limited ? '+' : ''} row(s)`);
+}
+
+async function load() {
+  const btn = document.getElementById('btnRefresh');
+  const gen = ++loadGen;
+  btn.disabled = true;
+  syncDeepDiveLinks();
+  savePrefs();
+  try {
+    await UI().apiFetch('/health');
+    if (gen !== loadGen) return;
+    setPill(true, 'Connected');
+  } catch {
+    if (gen !== loadGen) return;
+    setPill(false, 'Server offline');
+    setLoadHint('');
+    setLastUpdated(false);
+    document.getElementById('view-themes').innerHTML =
+      '<div class="panel"><div class="pb"><strong>Server offline</strong> — start toolbox server with <code>START SERVER.bat</code> or ▶ Start Server (bind <code>127.0.0.87:18765</code>), then press <strong>R</strong> or Refresh.</div></div>';
+    btn.disabled = false;
+    return;
+  }
+  try {
+    // Themes first (cheap enough for hub). Timeline only when user asks or deep-link.
+    await loadSummary(gen);
+    if (gen !== loadGen) return;
+    if (tab === 'timeline' || activeTheme) await loadTimeline(gen);
+    setLastUpdated(true);
+  } catch (e) {
+    if (gen !== loadGen) return;
+    setLoadHint('');
+    setLastUpdated(false);
+    document.getElementById('view-themes').innerHTML =
+      `<div class="panel"><div class="pb" style="color:var(--danger)">${esc(e.message || e)}</div></div>`;
+  }
+  if (gen === loadGen) btn.disabled = false;
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    switchTab(t.dataset.tab);
+    if (t.dataset.tab === 'timeline' && !timeline) {
+      const gen = loadGen;
+      loadTimeline(gen).catch(console.error);
+    }
+  });
+});
+document.getElementById('btnRefresh').onclick = load;
+document.getElementById('btnExportJson').onclick = exportJson;
+document.getElementById('btnExportCsv').onclick = exportCsv;
+document.getElementById('autoRefresh').onchange = () => { savePrefs(); setupAuto(); };
+document.getElementById('autoInterval').onchange = () => { savePrefs(); setupAuto(); };
+document.getElementById('hours').onchange = () => {
+  timeline = null;
+  syncDeepDiveLinks();
+  savePrefs();
+  load();
+};
+document.getElementById('sampleSize').onchange = () => {
+  timeline = null;
+  syncDeepDiveLinks();
+  savePrefs();
+  load();
+};
+document.getElementById('logFilter').onchange = () => {
+  savePrefs();
+  if (tab === 'timeline') {
+    const gen = ++loadGen;
+    loadTimeline(gen).catch(console.error);
+  }
+};
+let searchTimer = null;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (tab !== 'timeline') switchTab('timeline');
+    const gen = ++loadGen;
+    loadTimeline(gen).catch(console.error);
+  }, 450);
+});
+
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) {
+    e.preventDefault();
+    document.getElementById('search')?.focus();
+    return;
+  }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    load();
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && document.getElementById('autoRefresh')?.checked) load().catch(() => {});
+});
+
+// Prefs then deep link: ?theme=disk-retries or ?q=Bluetooth
+loadPrefs();
+const t0 = qs('theme');
+const q0 = qs('q');
+const h0 = qs('hours');
+const s0 = qs('sample');
+if (t0) activeTheme = t0;
+if (q0) document.getElementById('search').value = q0;
+if (h0 && ['6', '24', '72', '168'].includes(h0)) document.getElementById('hours').value = h0;
+if (s0 && ['150', '300', '500'].includes(s0)) document.getElementById('sampleSize').value = s0;
+if (t0 || q0) tab = 'timeline';
+syncDeepDiveLinks();
+
+UI()?.mountServerBar?.({ onOnline: load });
+if (tab === 'timeline') switchTab('timeline');
+load();
+setupAuto();
+</script>
+
+<script data-tool-polish="event-viewer">
+/* Tool polish: event-viewer — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "event-viewer";
+  const TOOL_NAME = "Event Viewer";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="ev">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('Event Viewer needs S1 to read Windows logs', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>
