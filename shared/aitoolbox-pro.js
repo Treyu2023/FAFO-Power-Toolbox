@@ -9,6 +9,9 @@
  * Page authors can refine with:
  *   <meta name="aitoolbox-tool-id" content="event-viewer">
  *   window.AITOOLBOX_PRO = { toolId, title, counterparts, actions: [{id,label,run}] }
+ *
+ * Snapshots: newest 5 copies of THIS file live in snapshots/shared/aitoolbox-pro.js/
+ * (per app, not a global pool). Never leave .bak next to live files. See snapshots/README.md
  */
 (function (global) {
   'use strict';

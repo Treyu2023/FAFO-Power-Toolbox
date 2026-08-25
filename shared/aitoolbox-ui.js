@@ -1,5 +1,7 @@
 /**
  * AI Toolbox UI — tooltips, confirm+trust, tutorial walkthrough, toasts.
+ * Snapshots: newest 5 copies of THIS file live in snapshots/shared/aitoolbox-ui.js/
+ * (per app, not a global pool). Never leave .bak next to live files. See snapshots/README.md
  */
 (function (global) {
     'use strict';

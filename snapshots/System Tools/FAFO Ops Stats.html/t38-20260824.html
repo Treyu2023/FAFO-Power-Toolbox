@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAFO Ops Stats — Tool tallies &amp; sessions</title>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+  <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+  <style>
+    :root {
+      --bg: #050508; --panel: #0c0c12; --panel2: #12121a;
+      --accent: #00f3ff; --accent2: #ff6b35; --ok: #00ff88;
+      --text: #e8e8ec; --muted: #888; --border: rgba(0,243,255,.18);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(ellipse at 30% 0%, #141428 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    .nav {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 10px 18px; border-bottom: 1px solid var(--border);
+      background: rgba(8,8,14,.92); position: sticky; top: 0; z-index: 20;
+    }
+    .nav a {
+      color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px;
+    }
+    .nav .t { color: var(--accent); letter-spacing: .08em; font-weight: 700; font-size: 13px; }
+    .nav .chip {
+      font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+    }
+    .nav .chip:hover { color: var(--accent); border-color: var(--accent); }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 18px 48px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+    .sub { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 18px; max-width: 760px; }
+    .kpis {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;
+      margin-bottom: 18px;
+    }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .kpi .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .kpi .val { font-size: 20px; font-weight: 700; color: var(--accent); margin-top: 6px; }
+    .kpi .val.ok { color: var(--ok); }
+    .kpi .val.warn { color: var(--accent2); }
+    .kpi .val.pink { color: #f472b6; }
+    .grid2 {
+      display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-bottom: 16px;
+    }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px 16px; min-height: 200px;
+    }
+    .card h2 {
+      font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin-bottom: 12px;
+    }
+    .chart-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    canvas { max-width: 100%; }
+    .legend { list-style: none; font-size: 12px; color: var(--muted); line-height: 1.7; }
+    .legend i {
+      display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px;
+    }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+    .btn {
+      background: transparent; border: 1px solid var(--border); color: var(--accent);
+      padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
+    }
+    .btn:hover { background: rgba(0,243,255,.1); }
+    .btn.danger { border-color: rgba(255,68,102,.45); color: #ff6b8a; }
+    .btn.primary { border-color: var(--accent); background: rgba(0,243,255,.12); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .mono { font-family: Consolas, ui-monospace, monospace; font-size: 11px; color: #a5b4c8; }
+    .empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .pill.live { color: var(--ok); border-color: rgba(0,255,136,.4); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .tab {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 700;
+    }
+    .tab.on { color: var(--accent); border-color: var(--accent); background: rgba(0,243,255,.08); }
+    .metric-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;
+    }
+    .metric-chip {
+      background: var(--panel2); border: 1px solid rgba(255,255,255,.06); border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .metric-chip .m-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .metric-chip .m-val { font-size: 16px; font-weight: 700; color: var(--text); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <span class="t">FAFO OPS STATS</span>
+    <a class="chip" href="../File Tools/Duplicate File Manager.html">🗑️ Duplicates</a>
+    <a class="chip" href="../Movie File Manager/Guided Pair Match.html">🎯 Pair Match</a>
+    <a class="chip" href="../Movie File Manager/Pair Review Queue.html">🔎 Pair Review</a>
+    <a class="chip" href="../Typing Assistant Trainer.html">⌨️ Typing</a>
+    <a class="chip" href="Disk Space Analyzer.html">💾 Disk Analyzer</a>
+    <span data-fafo-layout-toolbar></span>
+  </nav>
+
+  <div class="wrap"
+       data-fafo-layout-root
+       data-fafo-layout-app="fafo-ops-stats"
+       data-fafo-layout-type="rows">
+    <h1>Ops Stats — tool tallies</h1>
+    <p class="sub">
+      Lifetime + session ledger for FAFO tools: cleanup (files/space freed), pairing
+      (correct vs incorrect guesses, syncs, renames), typing (by player name), and more.
+      Sessions save only when something actually changed.
+    </p>
+
+    <div class="toolbar">
+      <button type="button" class="btn primary" id="btnRefresh" data-tip-title="Refresh" data-tip="Reload tallies and charts from this browser’s ledger.">↻ Refresh</button>
+      <button type="button" class="btn" id="btnCopy" data-tip-title="Copy report" data-tip="Copy a text report of lifetime stats to the clipboard.">📋 Copy report</button>
+      <button type="button" class="btn danger" id="btnReset"
+              data-tip-title="Clear tallies"
+              data-tip="Erase all lifetime/session stats on this browser only (not your files).">Clear all tallies</button>
+      <span class="pill" id="sessionPill">Session …</span>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grid2">
+      <div class="card" data-fafo-panel="charts" data-fafo-panel-title="Charts">
+        <h2>Activity by tool</h2>
+        <div class="tabs" id="chartTabs">
+          <button type="button" class="tab on" data-chart="bytes">Storage freed</button>
+          <button type="button" class="tab" data-chart="pairs">Pair decisions</button>
+          <button type="button" class="tab" data-chart="actions">Actions</button>
+        </div>
+        <div class="chart-row">
+          <canvas id="pieMain" width="220" height="220"></canvas>
+          <ul class="legend" id="pieLegend"></ul>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Recent sessions (actions)</h2>
+        <canvas id="barSessions" width="480" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px" data-fafo-panel="metrics" data-fafo-panel-title="All metrics">
+      <h2>Lifetime metrics</h2>
+      <div class="metric-grid" id="metricGrid"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px" data-fafo-panel="typing" data-fafo-panel-title="Typing by name">
+      <h2>Typing by player name</h2>
+      <div id="actorTable"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px" data-fafo-panel="lifetime" data-fafo-panel-title="By tool">
+      <h2>Lifetime by tool</h2>
+      <div id="toolTable"></div>
+    </div>
+
+    <div class="card" data-fafo-panel="sessions" data-fafo-panel-title="Sessions">
+      <h2>Session history <span class="pill" id="sessCount">0</span></h2>
+      <div id="sessionTable"></div>
+    </div>
+  </div>
+
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-version.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/fafo-ops-stats.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+  <script>
+(function () {
+  const S = () => window.FAFOOpsStats;
+  const fmt = (n) => (S() ? S().formatBytes(n) : n);
+  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+
+  let chartMode = 'bytes';
+
+  function drawPie(canvas, slices, centerLabel) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.38;
+    const total = slices.reduce((a, s) => a + s.value, 0);
+    if (!total) {
+      ctx.fillStyle = '#444';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.font = '12px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('No data yet', cx, cy + 4);
+      return;
+    }
+    let a0 = -Math.PI / 2;
+    slices.forEach((s) => {
+      const a1 = a0 + (s.value / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, a0, a1);
+      ctx.closePath();
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      a0 = a1;
+    });
+    ctx.fillStyle = '#0c0c12';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#00f3ff';
+    ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(centerLabel || String(total), cx, cy + 4);
+  }
+
+  function drawBars(canvas, points) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!points.length) {
+      ctx.fillStyle = '#888';
+      ctx.font = '12px system-ui';
+      ctx.fillText('No sessions yet — use tools to start the tally.', 12, h / 2);
+      return;
+    }
+    const max = Math.max(1, ...points.map((p) => p.value));
+    const pad = { l: 36, r: 10, t: 12, b: 36 };
+    const bw = (w - pad.l - pad.r) / points.length;
+    points.forEach((p, i) => {
+      const bh = ((h - pad.t - pad.b) * p.value) / max;
+      const x = pad.l + i * bw + 4;
+      const y = h - pad.b - bh;
+      ctx.fillStyle = p.color || '#00f3ff';
+      ctx.fillRect(x, y, Math.max(4, bw - 8), bh);
+      ctx.fillStyle = '#666';
+      ctx.font = '9px system-ui';
+      ctx.save();
+      ctx.translate(x + (bw - 8) / 2, h - 8);
+      ctx.rotate(-0.6);
+      ctx.fillText(p.label, 0, 0);
+      ctx.restore();
+    });
+  }
+
+  function toolActivityScore(b) {
+    return (b.actions || 0)
+      + (b.filesRemoved || 0)
+      + (b.pairMatches || 0) + (b.pairRejects || 0)
+      + (b.typingRuns || 0)
+      + (b.renamesApplied || 0)
+      + (b.conversions || 0)
+      + (b.pairsSaved || 0)
+      + (b.syncsCompleted || 0);
+  }
+
+  function summarizeSession(s) {
+    const parts = [];
+    if (s.filesRemoved) parts.push(s.filesRemoved + ' files');
+    if (s.bytesFreed) parts.push(fmt(s.bytesFreed));
+    if (s.pairMatches || s.pairRejects) {
+      parts.push((s.pairMatches || 0) + '✓ / ' + (s.pairRejects || 0) + '✗ pairs');
+    }
+    if (s.syncsCompleted) parts.push(s.syncsCompleted + ' syncs');
+    if (s.renamesApplied) parts.push(s.renamesApplied + ' renames');
+    if (s.pairsSaved) parts.push(s.pairsSaved + ' pairs saved');
+    if (s.typingRuns) parts.push(s.typingRuns + ' typing runs');
+    if (s.conversions) parts.push(s.conversions + ' converts');
+    if (!parts.length && s.actions) parts.push(s.actions + ' actions');
+    return parts.join(' · ') || '—';
+  }
+
+  function render() {
+    const snap = S().snapshot({ limit: 40 });
+    const L = snap.lifetime || {};
+    const pairTotal = (L.pairMatches || 0) + (L.pairRejects || 0);
+    const pairPct = pairTotal
+      ? Math.round(((L.pairMatches || 0) / pairTotal) * 100) + '%'
+      : '—';
+
+    document.getElementById('kpis').innerHTML = `
+      <div class="kpi"><div class="lbl">Files removed</div><div class="val warn">${(L.filesRemoved || 0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="lbl">Storage freed</div><div class="val ok">${fmt(L.bytesFreed || 0)}</div></div>
+      <div class="kpi"><div class="lbl">Pair matches ✓</div><div class="val pink">${(L.pairMatches || 0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="lbl">Pair rejects ✗</div><div class="val warn">${(L.pairRejects || 0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="lbl">Match rate</div><div class="val">${pairPct}</div></div>
+      <div class="kpi"><div class="lbl">Syncs / renames</div><div class="val">${(L.syncsCompleted || 0).toLocaleString()} / ${(L.renamesApplied || 0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="lbl">Typing runs</div><div class="val">${(L.typingRuns || 0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="lbl">Sessions</div><div class="val">${(L.sessionCount || 0).toLocaleString()}</div></div>
+    `;
+
+    const open = snap.openSession;
+    const pill = document.getElementById('sessionPill');
+    if (open && (open.actions || open.filesRemoved || open.pairMatches || open.typingRuns)) {
+      pill.textContent = `Live · ${open.label || open.tool} · ${summarizeSession(open)}`;
+      pill.className = 'pill live';
+    } else {
+      pill.textContent = 'No open dirty session';
+      pill.className = 'pill';
+    }
+
+    const byTool = L.byTool || {};
+    const toolRows = Object.keys(byTool).map((id) => {
+      const meta = S().toolMeta(id);
+      const b = byTool[id];
+      return {
+        id,
+        label: meta.label,
+        emoji: meta.emoji,
+        color: meta.color,
+        b,
+        score: toolActivityScore(b),
+        bytes: b.bytesFreed || 0,
+        pairs: (b.pairMatches || 0) + (b.pairRejects || 0),
+        actions: b.actions || 0,
+      };
+    }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
+
+    let slices;
+    let center;
+    if (chartMode === 'pairs') {
+      slices = toolRows.map((s) => ({ ...s, value: s.pairs })).filter((s) => s.value > 0);
+      center = String(slices.reduce((a, s) => a + s.value, 0));
+    } else if (chartMode === 'actions') {
+      slices = toolRows.map((s) => ({ ...s, value: s.actions })).filter((s) => s.value > 0);
+      center = String(slices.reduce((a, s) => a + s.value, 0));
+    } else {
+      slices = toolRows.map((s) => ({ ...s, value: s.bytes })).filter((s) => s.value > 0);
+      center = fmt(slices.reduce((a, s) => a + s.value, 0));
+    }
+    // fallback: any activity if chosen metric empty
+    if (!slices.length) {
+      slices = toolRows.map((s) => ({ ...s, value: s.score })).filter((s) => s.value > 0);
+      center = String(slices.reduce((a, s) => a + s.value, 0));
+    }
+
+    drawPie(document.getElementById('pieMain'), slices, center);
+    document.getElementById('pieLegend').innerHTML = slices.length
+      ? slices.map((s) => {
+          const b = s.b;
+          const detail = chartMode === 'pairs'
+            ? `${b.pairMatches || 0}✓ / ${b.pairRejects || 0}✗`
+            : chartMode === 'actions'
+              ? `${s.actions} actions`
+              : `${fmt(s.bytes)} · ${b.filesRemoved || 0} files`;
+          return `<li><i style="background:${s.color}"></i><strong style="color:#ddd">${esc(s.label)}</strong> · ${detail}</li>`;
+        }).join('')
+      : '<li>Use pairing, cleanup, or typing tools to populate charts.</li>';
+
+    const sess = (snap.sessions || []).slice(0, 12).reverse();
+    drawBars(document.getElementById('barSessions'), sess.map((s) => ({
+      label: new Date(s.startedAt || s.endedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      value: s.actions || toolActivityScore(s) || 0,
+      color: (S().toolMeta(s.tool) || {}).color || '#00f3ff',
+    })));
+
+    // All metrics grid
+    const defs = S().METRIC_DEFS || {};
+    const metricKeys = Object.keys(defs).filter((k) => k !== 'typingWpmSum' && (L[k] || 0) > 0 || defs[k]?.primary);
+    const showKeys = [...new Set([
+      'filesRemoved', 'bytesFreed', 'groupsMerged',
+      'pairMatches', 'pairRejects', 'pairSkips', 'syncsCompleted',
+      'renamesApplied', 'pairsSaved', 'pairsDeleted',
+      'scansCompleted', 'filesOrganized', 'conversions',
+      'typingRuns', 'typingChars', 'typingBestWpm', 'actions',
+    ])];
+    document.getElementById('metricGrid').innerHTML = showKeys.map((k) => {
+      const def = defs[k] || { label: k };
+      let val = L[k] || 0;
+      let display = S().formatMetric ? S().formatMetric(k, val) : String(val);
+      if (k === 'typingBestWpm' && val) display = val + ' WPM';
+      if (k === 'typingRuns' && L.typingWpmSum && val) {
+        display = val.toLocaleString() + ' · avg ' + S().avgWpm(L) + ' WPM';
+      }
+      return `<div class="metric-chip"><div class="m-lbl">${esc(def.label)}</div><div class="m-val">${display}</div></div>`;
+    }).join('');
+
+    // Typing by actor
+    const byActor = L.byActor || {};
+    const actors = Object.keys(byActor)
+      .map((name) => ({ name, b: byActor[name] }))
+      .filter((a) => (a.b.typingRuns || 0) > 0 || (a.b.typingChars || 0) > 0)
+      .sort((a, b) => (b.b.typingRuns || 0) - (a.b.typingRuns || 0));
+    document.getElementById('actorTable').innerHTML = actors.length
+      ? `<table><thead><tr><th>Player</th><th>Runs</th><th>Chars</th><th>Avg WPM</th><th>Best WPM</th></tr></thead><tbody>` +
+        actors.map((a) => {
+          const avg = S().avgWpm(a.b);
+          return `<tr>
+            <td><strong>${esc(a.name)}</strong></td>
+            <td>${a.b.typingRuns || 0}</td>
+            <td class="mono">${(a.b.typingChars || 0).toLocaleString()}</td>
+            <td>${avg || '—'}</td>
+            <td>${a.b.typingBestWpm || '—'}</td>
+          </tr>`;
+        }).join('') +
+        `</tbody></table>`
+      : '<div class="empty">Complete typing runs to see per-player scores (default name: Ryan Key).</div>';
+
+    document.getElementById('toolTable').innerHTML = toolRows.length
+      ? `<table><thead><tr><th>Tool</th><th>Actions</th><th>Cleanup</th><th>Pairs ✓/✗</th><th>Other</th><th>Sessions</th></tr></thead><tbody>` +
+        toolRows.map((s) => {
+          const b = s.b;
+          const cleanup = (b.filesRemoved || b.bytesFreed)
+            ? `${b.filesRemoved || 0} · ${fmt(b.bytesFreed || 0)}`
+            : '—';
+          const pairs = (b.pairMatches || b.pairRejects)
+            ? `${b.pairMatches || 0} / ${b.pairRejects || 0}`
+            : '—';
+          const other = [];
+          if (b.syncsCompleted) other.push(b.syncsCompleted + ' sync');
+          if (b.renamesApplied) other.push(b.renamesApplied + ' ren');
+          if (b.pairsSaved) other.push(b.pairsSaved + ' saved');
+          if (b.typingRuns) other.push(b.typingRuns + ' type');
+          if (b.conversions) other.push(b.conversions + ' conv');
+          return `<tr>
+            <td>${esc(s.emoji + ' ' + s.label)}</td>
+            <td>${s.actions}</td>
+            <td class="mono">${cleanup}</td>
+            <td>${pairs}</td>
+            <td class="mono">${other.join(' · ') || '—'}</td>
+            <td>${b.sessions || 0}</td>
+          </tr>`;
+        }).join('') +
+        `</tbody></table>`
+      : '<div class="empty">No tool activity yet.</div>';
+
+    const allSess = snap.sessions || [];
+    document.getElementById('sessCount').textContent = String(allSess.length);
+    document.getElementById('sessionTable').innerHTML = allSess.length
+      ? `<table><thead><tr><th>When</th><th>Tool</th><th>Summary</th><th>Actions</th></tr></thead><tbody>` +
+        allSess.map((s) => {
+          const meta = S().toolMeta(s.tool);
+          const when = s.endedAt || s.startedAt;
+          return `<tr>
+            <td class="mono">${when ? new Date(when).toLocaleString() : '—'}</td>
+            <td>${esc(meta.emoji + ' ' + (s.label || meta.label))}</td>
+            <td>${esc(summarizeSession(s))}</td>
+            <td>${s.actions || 0}</td>
+          </tr>`;
+        }).join('') +
+        `</tbody></table>`
+      : '<div class="empty">Sessions appear after tools record real activity (merge, match, type, convert…).</div>';
+  }
+
+  document.getElementById('chartTabs').addEventListener('click', (e) => {
+    const t = e.target.closest('.tab');
+    if (!t) return;
+    chartMode = t.dataset.chart || 'bytes';
+    document.querySelectorAll('#chartTabs .tab').forEach((el) => el.classList.toggle('on', el === t));
+    render();
+  });
+
+  document.getElementById('btnRefresh').onclick = render;
+  document.getElementById('btnCopy').onclick = async () => {
+    const snap = S().snapshot({ limit: 30 });
+    const L = snap.lifetime;
+    const lines = [
+      'FAFO Ops Stats report',
+      'Generated: ' + new Date().toISOString(),
+      '',
+      'LIFETIME',
+      '  Files removed: ' + (L.filesRemoved || 0),
+      '  Bytes freed: ' + (L.bytesFreed || 0) + ' (' + fmt(L.bytesFreed || 0) + ')',
+      '  Groups merged: ' + (L.groupsMerged || 0),
+      '  Pair matches: ' + (L.pairMatches || 0),
+      '  Pair rejects: ' + (L.pairRejects || 0),
+      '  Syncs: ' + (L.syncsCompleted || 0),
+      '  Renames: ' + (L.renamesApplied || 0),
+      '  Typing runs: ' + (L.typingRuns || 0),
+      '  Sessions: ' + (L.sessionCount || 0),
+      '',
+      'BY TOOL',
+      ...Object.keys(L.byTool || {}).map((id) => {
+        const b = L.byTool[id];
+        const m = S().toolMeta(id);
+        return `  ${m.label}: actions=${b.actions || 0} files=${b.filesRemoved || 0} pairs=${b.pairMatches || 0}/${b.pairRejects || 0} typing=${b.typingRuns || 0}`;
+      }),
+      '',
+      'TYPING BY NAME',
+      ...Object.keys(L.byActor || {}).map((name) => {
+        const b = L.byActor[name];
+        if (!(b.typingRuns || 0)) return null;
+        return `  ${name}: runs=${b.typingRuns} chars=${b.typingChars || 0} avgWpm=${S().avgWpm(b)} best=${b.typingBestWpm || 0}`;
+      }).filter(Boolean),
+      '',
+      'RECENT SESSIONS',
+      ...(snap.sessions || []).slice(0, 15).map((s) =>
+        `  ${s.endedAt || s.startedAt} · ${s.tool} · ${summarizeSession(s)}`
+      ),
+    ];
+    const text = lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      window.AIToolboxUI?.toast?.('Ops stats report copied', 'ok');
+    } catch (_) {
+      prompt('Copy report:', text);
+    }
+  };
+  document.getElementById('btnReset').onclick = () => {
+    if (!confirm('Clear ALL lifetime tallies and session history on this browser?')) return;
+    S().resetAll();
+    render();
+    window.AIToolboxUI?.toast?.('Ops stats cleared', 'ok');
+  };
+
+  window.addEventListener('fafo-ops-stats', render);
+  render();
+})();
+  </script>
+</body>
+</html>

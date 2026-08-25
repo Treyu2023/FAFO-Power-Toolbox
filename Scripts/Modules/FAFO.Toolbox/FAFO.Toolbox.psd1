@@ -1,6 +1,6 @@
 @{
     RootModule        = 'FAFO.Toolbox.psm1'
-    ModuleVersion     = '1.4.0'
+    ModuleVersion     = '1.4.2'
     GUID              = 'c4e8b12a-6f39-4d7e-a1c0-9b8e5f2d3a61'
     Author            = 'FAFO Power Toolbox'
     CompanyName       = 'FAFO'
@@ -23,6 +23,7 @@
         'Backup-FAFOItem',
         'Move-FAFOItem',
         'Copy-FAFOItem',
+        'Move-FAFOHtmlEditBackups',
         'Get-FAFOStatus',
         'Test-FAFOHealth',
         'Write-FAFOStatusReport',

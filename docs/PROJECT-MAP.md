@@ -41,6 +41,7 @@ Full rules: root `AGENTS.md`.
 | `Accounting Tools and calculators/` | Loan calc, converters |
 | Games / science HTML | e.g. Empire Seed 3D, Typing Trainer, Bloodmoon |
 | `docs/` | Guides, this map, multi-agent protocol, handoffs |
+| `snapshots/` | Per-app HTML/JS/CSS undo copies — **newest 5 per app**, never a global pool |
 
 ---
 

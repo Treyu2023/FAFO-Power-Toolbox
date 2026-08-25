@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HTML Tools Box · Report Library</title>
+  <style>
+    :root {
+      --bg0: #070a10;
+      --bg1: #0c1220;
+      --card: #121a2b;
+      --card2: #182235;
+      --line: #243049;
+      --text: #eef3fb;
+      --muted: #8b9bb4;
+      --accent: #8b5cf6;
+      --accent2: #22d3ee;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --bad: #f43f5e;
+      --info: #60a5fa;
+      --shadow: 0 18px 50px rgba(0,0,0,.45);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(139,92,246,.22), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(34,211,238,.12), transparent 50%),
+        linear-gradient(180deg, var(--bg0), var(--bg1) 40%, #0a101c);
+      min-height: 100%;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      min-height: 100vh;
+    }
+    @media (max-width: 960px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: sticky; top: 0; z-index: 5; }
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(8,12,20,.72);
+      backdrop-filter: blur(12px);
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 42px; height: 42px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 0 28px rgba(139,92,246,.45);
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 14px; color: #0b1020;
+    }
+    .brand h1 { margin: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
+    .brand p { margin: 2px 0 0; color: var(--muted); font-size: 0.78rem; }
+
+    /* Primary nav */
+    .nav-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .nav-tab {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--muted);
+      border-radius: 12px;
+      padding: 12px 10px;
+      cursor: pointer;
+      text-align: left;
+      transition: .15s ease;
+    }
+    .nav-tab:hover { border-color: #3b4d6b; color: var(--text); }
+    .nav-tab.active {
+      color: #0b1020;
+      background: linear-gradient(135deg, #a78bfa, #67e8f9);
+      border-color: transparent;
+      font-weight: 800;
+      box-shadow: 0 8px 24px rgba(139,92,246,.25);
+    }
+    .nav-tab small {
+      display: block;
+      font-weight: 500;
+      font-size: 0.68rem;
+      opacity: .8;
+      margin-top: 2px;
+    }
+    .nav-tab.active small { opacity: .75; }
+
+    .search {
+      width: 100%;
+      padding: 11px 12px 11px 36px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238b9bb4' viewBox='0 0 16 16'%3E%3Cpath d='M11.7 10.3l3 3a1 1 0 01-1.4 1.4l-3-3a6 6 0 111.4-1.4zM6 10a4 4 0 100-8 4 4 0 000 8z'/%3E%3C/svg%3E") 12px center no-repeat;
+      color: var(--text);
+      outline: none;
+    }
+    .search:focus { border-color: rgba(139,92,246,.6); box-shadow: 0 0 0 3px rgba(139,92,246,.15); }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: .15s ease;
+    }
+    .chip:hover { color: var(--text); border-color: #3b4d6b; }
+    .chip.active {
+      color: #0b1020;
+      background: linear-gradient(135deg, #a78bfa, #67e8f9);
+      border-color: transparent;
+      font-weight: 700;
+    }
+
+    .side-meta {
+      margin-top: auto;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.5;
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+    .side-meta code {
+      color: #c4b5fd;
+      font-size: 0.72rem;
+      word-break: break-all;
+    }
+
+    .main { padding: 22px 24px 40px; min-width: 0; }
+    .topbar {
+      display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+      gap: 12px; margin-bottom: 18px;
+    }
+    .topbar h2 { margin: 0; font-size: 1.35rem; letter-spacing: -0.02em; }
+    .topbar .sub { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+    .stats { display: flex; gap: 10px; flex-wrap: wrap; }
+    .pill {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 12px;
+      min-width: 88px;
+    }
+    .pill b { display:block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .pill span { font-weight: 700; font-size: 1.1rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      position: relative;
+      background: linear-gradient(180deg, var(--card2), var(--card));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+      overflow: hidden;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card::before {
+      content: "";
+      position: absolute; inset: 0 auto 0 0; width: 3px;
+      background: var(--accent);
+      opacity: .85;
+    }
+    .card.sev-ok::before { background: var(--ok); }
+    .card.sev-warn::before { background: var(--warn); }
+    .card.sev-bad::before { background: var(--bad); }
+    .card.sev-info::before { background: var(--info); }
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: #3b4f73;
+      box-shadow: var(--shadow);
+    }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .icon-bubble {
+      width: 40px; height: 40px; border-radius: 12px;
+      display: grid; place-items: center;
+      background: rgba(139,92,246,.12);
+      border: 1px solid rgba(139,92,246,.25);
+      color: #c4b5fd;
+      flex-shrink: 0;
+    }
+    .badge {
+      font-size: 0.68rem; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: 4px 8px; border-radius: 999px;
+    }
+    .badge.ok { background: rgba(52,211,153,.12); color: var(--ok); }
+    .badge.warn { background: rgba(251,191,36,.12); color: var(--warn); }
+    .badge.bad { background: rgba(244,63,94,.12); color: var(--bad); }
+    .badge.info { background: rgba(96,165,250,.12); color: var(--info); }
+
+    .card h3 { margin: 0; font-size: 1.02rem; letter-spacing: -0.01em; }
+    .card .summary { margin: 0; color: var(--muted); font-size: 0.86rem; flex: 1; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .tag {
+      font-size: 0.7rem; color: #a5b4cf;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 6px; padding: 2px 6px;
+    }
+    .card-foot {
+      display: flex; justify-content: space-between; align-items: center;
+      color: var(--muted); font-size: 0.75rem; margin-top: 2px;
+    }
+    .open-hint { color: #a78bfa; font-weight: 600; }
+
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--muted);
+      padding: 48px 16px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+    }
+
+    /* Log Viewer layout */
+    .view { display: none; }
+    .view.active { display: block; }
+    .log-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 14px;
+      min-height: calc(100vh - 140px);
+    }
+    @media (max-width: 900px) {
+      .log-layout { grid-template-columns: 1fr; }
+    }
+    .log-list {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 140px);
+    }
+    .log-list-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+    }
+    .log-list-body { overflow: auto; flex: 1; }
+    .log-item {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      padding: 12px 14px;
+      cursor: pointer;
+    }
+    .log-item:hover { background: rgba(255,255,255,.03); }
+    .log-item.active {
+      background: rgba(139,92,246,.12);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .log-item strong { display: block; font-size: 0.9rem; margin-bottom: 3px; }
+    .log-item span { display: block; font-size: 0.75rem; color: var(--muted); }
+    .log-item em {
+      display: inline-block;
+      margin-top: 6px;
+      font-style: normal;
+      font-size: 0.68rem;
+      color: #a5b4cf;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+
+    .log-panel {
+      background: #0a0f18;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      min-height: 420px;
+      max-height: calc(100vh - 140px);
+      overflow: hidden;
+    }
+    .log-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(18,26,43,.95);
+    }
+    .log-toolbar h3 { margin: 0; font-size: 1rem; }
+    .log-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .log-tools input[type="search"] {
+      width: min(220px, 40vw);
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      outline: none;
+    }
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: #4b628a; }
+    .btn.primary {
+      background: linear-gradient(135deg, #7c3aed, #0891b2);
+      border: none;
+      font-weight: 700;
+    }
+    .btn.active-toggle {
+      border-color: rgba(167,139,250,.6);
+      color: #c4b5fd;
+    }
+    .log-meta {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.78rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .log-meta .chip-stat {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .log-body {
+      overflow: auto;
+      padding: 0;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .log-line {
+      display: grid;
+      grid-template-columns: 54px 1fr;
+      gap: 0;
+      border-bottom: 1px solid rgba(36,48,73,.35);
+    }
+    .log-line:hover { background: rgba(255,255,255,.03); }
+    .log-line.hidden { display: none; }
+    .ln {
+      color: #4b5d7a;
+      text-align: right;
+      padding: 2px 10px 2px 8px;
+      user-select: none;
+      border-right: 1px solid rgba(36,48,73,.5);
+      background: rgba(0,0,0,.15);
+    }
+    .lt {
+      padding: 2px 12px 2px 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #c9d4e8;
+    }
+    .log-line.err .lt { color: #fda4af; background: rgba(244,63,94,.08); }
+    .log-line.warn .lt { color: #fcd34d; background: rgba(251,191,36,.07); }
+    .log-line.ok .lt { color: #6ee7b7; }
+    .log-line.info .lt { color: #93c5fd; }
+    .log-line.hl .lt {
+      outline: 1px solid rgba(167,139,250,.45);
+      background: rgba(139,92,246,.12);
+    }
+    .mark {
+      background: rgba(251,191,36,.35);
+      color: #fff7d6;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+    .log-empty {
+      padding: 48px 20px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    /* Report modal viewer */
+    .viewer {
+      position: fixed; inset: 0; z-index: 50;
+      display: none;
+      background: rgba(3,6,12,.72);
+      backdrop-filter: blur(6px);
+      padding: 18px;
+    }
+    .viewer.open { display: grid; place-items: center; }
+    .viewer-panel {
+      width: min(1180px, 100%);
+      height: min(92vh, 100%);
+      background: #0b111c;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+    .viewer-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(18,26,43,.95);
+    }
+    .viewer-bar h3 { margin: 0; font-size: 1rem; }
+    .viewer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .viewer-panel iframe {
+      width: 100%; height: 100%; border: 0; background: #0b0f17;
+    }
+
+    .hl-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .hl {
+      background: rgba(0,0,0,.25);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.72rem;
+    }
+    .hl b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+
+    .report-filters { display: block; }
+    .report-filters.hidden { display: none; }
+  </style>
+<link rel="stylesheet" href="../../shared/aitoolbox-layout.css">
+</head>
+<body>
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+  <a class="toolbox-back" href="../../Toolbox Launcher.html" style="position:fixed;top:10px;right:12px;z-index:9999;color:#22d3ee;text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.92);border:1px solid rgba(34,211,238,.35)">← Toolbox</a>
+  <div class="app" data-fafo-layout-root data-fafo-layout-app="system-tools-index" data-fafo-layout-type="columns">
+    <aside class="sidebar" data-fafo-panel="sidebar" data-fafo-panel-title="Sidebar" data-fafo-panel-min="160" data-fafo-panel-default="240">
+      <div class="brand">
+        <div class="logo">TB</div>
+        <div>
+          <h1>HTML Tools Box</h1>
+          <p>Reports &amp; logs</p>
+        </div>
+      </div>
+
+      <div class="nav-tabs" role="tablist">
+        <button type="button" class="nav-tab active" id="tabReports" data-view="reports">
+          Reports
+          <small>Cards &amp; summaries</small>
+        </button>
+        <button type="button" class="nav-tab" id="tabLogs" data-view="logs">
+          Log Viewer
+          <small>Raw .txt / .md / JSON</small>
+        </button>
+      </div>
+      <a href="../PC Diagnostics HUD.html" class="btn primary" style="display:block;text-align:center;text-decoration:none;margin-top:4px"
+         title="Run a configurable system scan with interactive HUD">🩺 Open Diagnostics HUD</a>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+        <a href="../Event Viewer.html" class="chip" style="text-decoration:none" title="Counterpart · live Windows events">📜 Event Viewer</a>
+        <a href="../System Health Dashboard.html" class="chip" style="text-decoration:none">Health Hub</a>
+      </div>
+
+      <input id="q" class="search" type="search" placeholder="Search reports… (/)" autocomplete="off" />
+
+      <div class="report-filters" id="reportFilters">
+        <div style="margin-bottom:12px">
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Category</div>
+          <div class="filters" id="catFilters"></div>
+        </div>
+        <div>
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Severity</div>
+          <div class="filters" id="sevFilters"></div>
+        </div>
+      </div>
+
+      <div class="side-actions" style="display:flex;flex-direction:column;gap:8px">
+        <button type="button" class="btn primary" id="btnRunDiag" style="width:100%;justify-content:center">▶ Run diagnostics</button>
+        <button type="button" class="btn" id="btnPack" style="width:100%;justify-content:center">↻ Refresh library pack</button>
+        <button type="button" class="btn" id="btnOpenDevice" style="width:100%;justify-content:center">📂 Device folder</button>
+        <div id="actionStatus" style="font-size:0.72rem;color:var(--muted);min-height:2.2em;line-height:1.4"></div>
+      </div>
+
+      <div class="side-meta">
+        <div id="sideMeta">Loading catalog…</div>
+        <p style="margin:10px 0 0">Uses <strong>this PC’s</strong> data under <code>%LOCALAPPDATA%\FAFO\Devices\…</code>. Buttons above rebuild the library — no manual PowerShell needed.</p>
+      </div>
+    </aside>
+
+    <main class="main" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1">
+      <!-- REPORTS VIEW -->
+      <section class="view active" id="viewReports">
+        <div class="topbar">
+          <div>
+            <h2>System reports</h2>
+            <div class="sub" id="subtitle">Browse diagnostics, firmware, and fix logs</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:4px" id="lastUpdated">—</div>
+          </div>
+          <div class="stats">
+            <div class="pill"><b>Reports</b><span id="statTotal">0</span></div>
+            <div class="pill"><b>Warnings</b><span id="statWarn" style="color:var(--warn)">0</span></div>
+            <div class="pill"><b>Fixes</b><span id="statOk" style="color:var(--ok)">0</span></div>
+            <button type="button" class="btn" id="btnExportCatalog" title="Export filtered catalog JSON">↓ JSON</button>
+          </div>
+        </div>
+        <div id="serverBanner" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(251,191,36,.08);color:#fcd34d;font-size:0.85rem"></div>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <!-- LOG VIEWER -->
+      <section class="view" id="viewLogs">
+        <div class="topbar">
+          <div>
+            <h2>Log Viewer</h2>
+            <div class="sub" id="logSubtitle">Color-coded raw logs from your toolbox reports folder</div>
+          </div>
+          <div class="stats">
+            <div class="pill"><b>Logs</b><span id="statLogs">0</span></div>
+            <div class="pill"><b>Lines</b><span id="statLines">0</span></div>
+            <div class="pill"><b>Hits</b><span id="statHits" style="color:var(--accent2)">0</span></div>
+          </div>
+        </div>
+
+        <div class="log-layout">
+          <div class="log-list">
+            <div class="log-list-head">Available logs</div>
+            <div class="log-list-body" id="logList"></div>
+          </div>
+
+          <div class="log-panel">
+            <div class="log-toolbar">
+              <h3 id="logTitle">Select a log</h3>
+              <div class="log-tools">
+                <input id="logSearch" type="search" placeholder="Filter lines…" />
+                <button type="button" class="btn" id="btnWrap" title="Toggle wrap">Wrap</button>
+                <button type="button" class="btn" id="btnOnlyHits">Hits only</button>
+                <button type="button" class="btn" id="btnCopyLog">Copy</button>
+                <button type="button" class="btn primary" id="btnOpenLogFile">Open file</button>
+              </div>
+            </div>
+            <div class="log-meta" id="logMeta">
+              <span>Pick a log on the left to view color-coded output.</span>
+            </div>
+            <div class="log-body" id="logBody">
+              <div class="log-empty">No log selected.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="viewer" id="viewer" aria-hidden="true">
+    <div class="viewer-panel">
+      <div class="viewer-bar">
+        <h3 id="viewerTitle">Report</h3>
+        <div class="viewer-actions">
+          <button class="btn" id="btnNewTab" type="button">Open in new tab</button>
+          <button class="btn primary" id="btnClose" type="button">Close</button>
+        </div>
+      </div>
+      <iframe id="frame" title="Report viewer"></iframe>
+    </div>
+  </div>
+
+  <!-- Defaults ship in git; catalog.js / logs-data.js are generated per-device and gitignored.
+       Do NOT hard-include the optional packs — missing files caused browser launch errors. -->
+  <script src="../../shared/aitoolbox-config.js"></script>
+  <script src="../../shared/aitoolbox-api.js"></script>
+  <script src="../../shared/aitoolbox-ui.js"></script>
+<script src="../../shared/aitoolbox-layout.js"></script>
+  <script src="catalog.default.js"></script>
+  <script src="logs-data.default.js"></script>
+  <style>
+    .side-actions .btn, .btn {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .side-actions .btn:hover, .btn:hover { border-color: #3b4d6b; }
+    .side-actions .btn.primary, .btn.primary {
+      background: linear-gradient(135deg, rgba(139,92,246,.35), rgba(34,211,238,.25));
+      border-color: rgba(139,92,246,.5);
+      color: #eef3fb;
+    }
+    .side-actions .btn:disabled, .btn:disabled { opacity: .5; cursor: wait; }
+  </style>
+  <script>
+    /** Load optional gitignored pack scripts without hard 404 page errors. */
+    function loadOptionalScript(src) {
+      return new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = false;
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+      });
+    }
+
+    const ICONS = {
+      cpu: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>',
+      radar: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 12l6-3"/><circle cx="12" cy="12" r="3"/></svg>',
+      heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.5-7-10a4 4 0 017-2 4 4 0 017 2c0 5.5-7 10-7 10z"/></svg>',
+      search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+      bolt: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>'
+    };
+
+    let catalog = window.REPORT_CATALOG || { reports: [] };
+    let logData = Array.isArray(window.LOG_DATA) ? window.LOG_DATA : [];
+    let activeCat = "All";
+    let activeSev = "All";
+    let query = "";
+    let currentFile = null;
+    let currentView = "reports";
+    let activeLogId = null;
+    let logFilter = "";
+    let hitsOnly = false;
+    let wrapOn = true;
+
+    const grid = document.getElementById("grid");
+    const qEl = document.getElementById("q");
+    const viewer = document.getElementById("viewer");
+    const frame = document.getElementById("frame");
+
+    function sevLabel(s) {
+      return ({ ok: "OK", warn: "Attention", bad: "Critical", info: "Info" })[s] || s;
+    }
+
+    function setView(name) {
+      currentView = name;
+      document.getElementById("viewReports").classList.toggle("active", name === "reports");
+      document.getElementById("viewLogs").classList.toggle("active", name === "logs");
+      document.getElementById("tabReports").classList.toggle("active", name === "reports");
+      document.getElementById("tabLogs").classList.toggle("active", name === "logs");
+      document.getElementById("reportFilters").classList.toggle("hidden", name !== "reports");
+      qEl.placeholder = name === "logs" ? "Search log titles…" : "Search reports, tags…";
+      if (name === "logs") {
+        renderLogList();
+        if (!activeLogId && logData.length) selectLog(logData[0].id);
+        else if (activeLogId) renderLogContent();
+      } else {
+        renderGrid();
+      }
+    }
+
+    document.getElementById("tabReports").addEventListener("click", () => setView("reports"));
+    document.getElementById("tabLogs").addEventListener("click", () => setView("logs"));
+
+    /* -------- Reports -------- */
+    function filtered() {
+      const qq = query.trim().toLowerCase();
+      return catalog.reports.filter(r => {
+        if (activeCat !== "All" && r.category !== activeCat) return false;
+        if (activeSev !== "All" && r.severity !== activeSev) return false;
+        if (!qq) return true;
+        const blob = [r.title, r.summary, r.category, ...(r.tags || [])].join(" ").toLowerCase();
+        return blob.includes(qq);
+      });
+    }
+
+    function renderFilters() {
+      const cats = ["All", ...new Set(catalog.reports.map(r => r.category))];
+      const sevs = ["All", ...new Set(catalog.reports.map(r => r.severity))];
+      const catBox = document.getElementById("catFilters");
+      const sevBox = document.getElementById("sevFilters");
+      catBox.innerHTML = cats.map(c =>
+        `<button type="button" class="chip ${c === activeCat ? "active" : ""}" data-cat="${c}">${c}</button>`
+      ).join("");
+      sevBox.innerHTML = sevs.map(s =>
+        `<button type="button" class="chip ${s === activeSev ? "active" : ""}" data-sev="${s}">${s === "All" ? "All" : sevLabel(s)}</button>`
+      ).join("");
+      catBox.querySelectorAll("[data-cat]").forEach(btn => btn.addEventListener("click", () => {
+        activeCat = btn.dataset.cat; renderFilters(); renderGrid();
+      }));
+      sevBox.querySelectorAll("[data-sev]").forEach(btn => btn.addEventListener("click", () => {
+        activeSev = btn.dataset.sev; renderFilters(); renderGrid();
+      }));
+    }
+
+    function renderGrid() {
+      const rows = filtered();
+      document.getElementById("statTotal").textContent = catalog.reports.length;
+      document.getElementById("statWarn").textContent = catalog.reports.filter(r => r.severity === "warn" || r.severity === "bad").length;
+      document.getElementById("statOk").textContent = catalog.reports.filter(r => r.category === "Fixes" || r.severity === "ok").length;
+      document.getElementById("subtitle").textContent =
+        `${rows.length} shown · ${catalog.machine || "local"} · catalog ${catalog.generatedAt || ""}`;
+      const lu = document.getElementById("lastUpdated");
+      if (lu) lu.textContent = "Updated " + new Date().toLocaleTimeString() + (catalog.generatedAt ? " · pack " + catalog.generatedAt : "");
+
+      if (!rows.length) {
+        const emptyHint = !catalog.reports.length
+          ? `<div class="empty">
+              <strong style="color:var(--text);display:block;margin-bottom:8px">No reports for this PC yet</strong>
+              Reports stay on the machine that created them (not shared via git).<br/><br/>
+              <button type="button" class="btn primary" id="btnEmptyRun">▶ Run diagnostics now</button>
+              <button type="button" class="btn" id="btnEmptyPack" style="margin-left:8px">↻ Refresh pack</button>
+              <div style="margin-top:12px;font-size:0.8rem;opacity:.85">Needs the toolbox server (or Setup protocol). Files under <code>reports\\</code> and device store are packed automatically.</div>
+            </div>`
+          : `<div class="empty">No reports match your filters.</div>`;
+        grid.innerHTML = emptyHint;
+        document.getElementById("btnEmptyRun")?.addEventListener("click", () => runDiagnostics());
+        document.getElementById("btnEmptyPack")?.addEventListener("click", () => refreshPack());
+        return;
+      }
+
+      grid.innerHTML = rows.map(r => {
+        const icon = ICONS[r.icon] || ICONS.search;
+        const hls = (r.highlights || []).map(h =>
+          `<span class="hl"><b>${h.label}</b>${h.value}</span>`
+        ).join("");
+        const tags = (r.tags || []).slice(0, 5).map(t => `<span class="tag">${t}</span>`).join("");
+        return `
+          <article class="card sev-${r.severity}" data-id="${r.id}" tabindex="0" role="button">
+            <div class="card-top">
+              <div class="icon-bubble">${icon}</div>
+              <span class="badge ${r.severity}">${sevLabel(r.severity)}</span>
+            </div>
+            <div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">${r.category} · ${r.date}</div>
+              <h3>${r.title}</h3>
+            </div>
+            <p class="summary">${r.summary}</p>
+            <div class="hl-row">${hls}</div>
+            <div class="tags">${tags}</div>
+            <div class="card-foot">
+              <span>${r.file}</span>
+              <span class="open-hint">Open →</span>
+            </div>
+          </article>`;
+      }).join("");
+
+      grid.querySelectorAll(".card").forEach(card => {
+        const open = () => {
+          const r = catalog.reports.find(x => x.id === card.dataset.id);
+          if (r) openReport(r);
+        };
+        card.addEventListener("click", open);
+        card.addEventListener("keydown", e => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        });
+      });
+    }
+
+    function openReport(r) {
+      currentFile = r.file;
+      document.getElementById("viewerTitle").textContent = r.title;
+      frame.src = r.file;
+      viewer.classList.add("open");
+      viewer.setAttribute("aria-hidden", "false");
+    }
+    function closeViewer() {
+      viewer.classList.remove("open");
+      viewer.setAttribute("aria-hidden", "true");
+      frame.src = "about:blank";
+      currentFile = null;
+    }
+
+    document.getElementById("btnClose").addEventListener("click", closeViewer);
+    document.getElementById("btnNewTab").addEventListener("click", () => {
+      if (currentFile) window.open(currentFile, "_blank");
+    });
+    viewer.addEventListener("click", e => { if (e.target === viewer) closeViewer(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeViewer(); });
+
+    qEl.addEventListener("input", () => {
+      query = qEl.value;
+      if (currentView === "reports") renderGrid();
+      else renderLogList();
+    });
+
+    /* -------- Log Viewer -------- */
+    function formatBytes(n) {
+      if (n < 1024) return n + " B";
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+      return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function lineClass(line) {
+      const s = line.toLowerCase();
+      if (/\b(error|fail|failed|critical|fatal|oom|out of memory|exception|crash)\b/.test(s)) return "err";
+      if (/\b(warn|warning|timeout|retry|flap|unexpected|attention)\b/.test(s)) return "warn";
+      if (/\b(ok|success|healthy|protected|fixed|finish|done|enabled)\b/.test(s) && !/not ok|not healthy/.test(s)) return "ok";
+      if (/\b(info|note|using|loading|initializ)/.test(s)) return "info";
+      return "";
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function highlight(text, q) {
+      const safe = escapeHtml(text);
+      if (!q) return safe;
+      try {
+        const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        return safe.replace(re, m => `<span class="mark">${m}</span>`);
+      } catch {
+        return safe;
+      }
+    }
+
+    function filteredLogs() {
+      const qq = query.trim().toLowerCase();
+      if (!qq) return logData;
+      return logData.filter(l =>
+        [l.title, l.desc, l.file, l.kind].join(" ").toLowerCase().includes(qq)
+      );
+    }
+
+    function renderLogList() {
+      const list = document.getElementById("logList");
+      const rows = filteredLogs();
+      document.getElementById("statLogs").textContent = logData.length;
+
+      if (!logData.length) {
+        list.innerHTML = `<div class="log-empty" style="padding:20px">No logs for this PC yet.<br/>
+          <button type="button" class="btn primary" id="btnLogRun" style="margin-top:10px">▶ Run diagnostics</button>
+          <button type="button" class="btn" id="btnLogPack" style="margin-top:10px;margin-left:6px">↻ Refresh pack</button>
+          <div style="margin-top:10px;opacity:.8">Other devices' logs stay on those devices.</div></div>`;
+        document.getElementById("btnLogRun")?.addEventListener("click", () => runDiagnostics());
+        document.getElementById("btnLogPack")?.addEventListener("click", () => refreshPack());
+        return;
+      }
+      if (!rows.length) {
+        list.innerHTML = `<div class="log-empty" style="padding:20px">No logs match search.</div>`;
+        return;
+      }
+
+      list.innerHTML = rows.map(l => `
+        <button type="button" class="log-item ${l.id === activeLogId ? "active" : ""}" data-id="${l.id}">
+          <strong>${escapeHtml(l.title)}</strong>
+          <span>${escapeHtml(l.desc || l.file)}</span>
+          <em>${escapeHtml(l.kind || "log")} · ${formatBytes(l.bytes || 0)}</em>
+        </button>
+      `).join("");
+
+      list.querySelectorAll(".log-item").forEach(btn => {
+        btn.addEventListener("click", () => selectLog(btn.dataset.id));
+      });
+    }
+
+    function selectLog(id) {
+      activeLogId = id;
+      renderLogList();
+      renderLogContent();
+    }
+
+    function renderLogContent() {
+      const log = logData.find(l => l.id === activeLogId);
+      const body = document.getElementById("logBody");
+      const title = document.getElementById("logTitle");
+      const meta = document.getElementById("logMeta");
+
+      if (!log) {
+        title.textContent = "Select a log";
+        meta.innerHTML = "<span>Pick a log on the left.</span>";
+        body.innerHTML = `<div class="log-empty">No log selected.</div>`;
+        document.getElementById("statLines").textContent = "0";
+        document.getElementById("statHits").textContent = "0";
+        return;
+      }
+
+      title.textContent = log.title;
+      const lines = String(log.content || "").replace(/\r\n/g, "\n").split("\n");
+      const q = logFilter.trim();
+      let hits = 0;
+      let shown = 0;
+
+      const html = lines.map((line, i) => {
+        const cls = lineClass(line);
+        const match = q && line.toLowerCase().includes(q.toLowerCase());
+        if (match) hits++;
+        const hide = (q && hitsOnly && !match) ? " hidden" : "";
+        if (!hide) shown++;
+        const hl = match ? " hl" : "";
+        return `<div class="log-line ${cls}${hl}${hide}" data-i="${i}">
+          <div class="ln">${i + 1}</div>
+          <div class="lt">${highlight(line, q)}</div>
+        </div>`;
+      }).join("");
+
+      body.innerHTML = html || `<div class="log-empty">Empty log.</div>`;
+      body.style.whiteSpace = wrapOn ? "normal" : "pre";
+
+      document.getElementById("statLines").textContent = String(lines.length);
+      document.getElementById("statHits").textContent = String(hits);
+      document.getElementById("logSubtitle").textContent =
+        `${log.file} · ${formatBytes(log.bytes || 0)} · ${lines.length} lines`;
+
+      const errN = lines.filter(l => lineClass(l) === "err").length;
+      const warnN = lines.filter(l => lineClass(l) === "warn").length;
+      meta.innerHTML = `
+        <span>File: <span class="chip-stat">${escapeHtml(log.file)}</span></span>
+        <span>Lines: <span class="chip-stat">${lines.length}</span></span>
+        <span style="color:var(--bad)">Errors-ish: <span class="chip-stat">${errN}</span></span>
+        <span style="color:var(--warn)">Warnings-ish: <span class="chip-stat">${warnN}</span></span>
+        <span>Filter hits: <span class="chip-stat">${hits}</span>${hitsOnly ? " (showing hits only)" : ""}</span>
+        <span>Showing: <span class="chip-stat">${shown}</span></span>
+      `;
+    }
+
+    document.getElementById("logSearch").addEventListener("input", e => {
+      logFilter = e.target.value;
+      renderLogContent();
+    });
+    document.getElementById("btnOnlyHits").addEventListener("click", e => {
+      hitsOnly = !hitsOnly;
+      e.currentTarget.classList.toggle("active-toggle", hitsOnly);
+      e.currentTarget.textContent = hitsOnly ? "Show all" : "Hits only";
+      renderLogContent();
+    });
+    document.getElementById("btnWrap").addEventListener("click", e => {
+      wrapOn = !wrapOn;
+      e.currentTarget.classList.toggle("active-toggle", wrapOn);
+      document.querySelectorAll(".lt").forEach(el => {
+        el.style.whiteSpace = wrapOn ? "pre-wrap" : "pre";
+      });
+    });
+    document.getElementById("btnCopyLog").addEventListener("click", async () => {
+      const log = logData.find(l => l.id === activeLogId);
+      if (!log) return;
+      try {
+        await navigator.clipboard.writeText(log.content || "");
+        const b = document.getElementById("btnCopyLog");
+        const t = b.textContent;
+        b.textContent = "Copied!";
+        setTimeout(() => { b.textContent = t; }, 1200);
+      } catch {
+        alert("Could not copy (browser blocked clipboard).");
+      }
+    });
+    document.getElementById("btnOpenLogFile").addEventListener("click", () => {
+      const log = logData.find(l => l.id === activeLogId);
+      if (log && log.file) window.open(log.file, "_blank");
+    });
+
+    /* -------- actions / server -------- */
+    function setActionStatus(msg, warn) {
+      const el = document.getElementById("actionStatus");
+      if (!el) return;
+      el.textContent = msg || "";
+      el.style.color = warn ? "#fbbf24" : "var(--muted)";
+    }
+
+    function updateSideMeta() {
+      const scopeNote = catalog.scope === "device-local"
+        ? "This PC only"
+        : "Run diagnostics to bind to this PC";
+      const realReports = (catalog.reports || []).filter(r => r.id !== "no-local-reports");
+      document.getElementById("sideMeta").innerHTML =
+        `<div><strong style="color:var(--text)">${catalog.machine || "No device pack yet"}</strong></div>
+         <div>${realReports.length} reports · ${logData.length} logs · ${scopeNote}</div>
+         <div style="margin-top:6px"><code>${catalog.deviceRoot || catalog.toolboxPath || "%LOCALAPPDATA%\\\\FAFO\\\\Devices\\\\&lt;PC&gt;"}</code></div>
+         <div style="margin-top:8px;opacity:.85">Generated: ${catalog.generatedAt || "—"}</div>`;
+    }
+
+    function paint() {
+      updateSideMeta();
+      renderFilters();
+      renderGrid();
+      renderLogList();
+      if (currentView === "logs" && activeLogId) renderLogContent();
+    }
+
+    function setBusy(on) {
+      ["btnRunDiag", "btnPack", "btnOpenDevice", "btnEmptyRun", "btnEmptyPack", "btnLogRun", "btnLogPack"]
+        .forEach(id => {
+          const b = document.getElementById(id);
+          if (b) b.disabled = !!on;
+        });
+    }
+
+    async function ensureServer() {
+      const API = window.AIToolboxAPI;
+      if (!API) return false;
+      if (await API.isOnline(true, 2000)) return true;
+      setActionStatus("Starting toolbox server…", true);
+      const r = await API.startServer({ mode: "tray", waitMs: 45000 });
+      return !!(r && r.ok);
+    }
+
+    async function refreshPack() {
+      setBusy(true);
+      setActionStatus("Refreshing library pack…");
+      try {
+        const online = await ensureServer();
+        if (!online) {
+          // Protocol fallback (no Save As for .ps1)
+          if (window.AIToolboxAPI?.tryProtocolLaunch) {
+            AIToolboxAPI.tryProtocolLaunch("pack-reports");
+          } else {
+            location.href = "aitoolbox://pack-reports";
+          }
+          setActionStatus("Launched pack via protocol — reload in a few seconds", true);
+          setTimeout(() => location.reload(), 4000);
+          return;
+        }
+        const r = await AIToolboxAPI.diagnosticsPack();
+        setActionStatus(`Pack OK · ${r.reportCount} reports · ${r.logCount} logs`);
+        // Reload scripts so log bodies + cards refresh
+        location.reload();
+      } catch (e) {
+        setActionStatus(e.message || String(e), true);
+        try {
+          location.href = "aitoolbox://pack-reports";
+          setTimeout(() => location.reload(), 5000);
+        } catch { /* ignore */ }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function runDiagnostics() {
+      setBusy(true);
+      setActionStatus("Running full system diagnostics (may take ~30–90s)…", true);
+      try {
+        const online = await ensureServer();
+        if (!online) {
+          if (window.AIToolboxAPI?.tryProtocolLaunch) {
+            AIToolboxAPI.tryProtocolLaunch("diagnostics");
+          } else {
+            location.href = "aitoolbox://diagnostics";
+          }
+          setActionStatus("Launched diagnostics via protocol — reload when the window finishes", true);
+          return;
+        }
+        const r = await AIToolboxAPI.diagnosticsRun(false);
+        const pack = r.pack || {};
+        setActionStatus(
+          (r.ok ? "Diagnostics complete" : "Diagnostics finished with warnings")
+          + ` · ${pack.reportCount ?? "?"} reports · ${pack.logCount ?? "?"} logs`
+        );
+        location.reload();
+      } catch (e) {
+        setActionStatus(e.message || String(e), true);
+        try {
+          location.href = "aitoolbox://diagnostics";
+        } catch { /* ignore */ }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function openDeviceFolder() {
+      try {
+        const online = window.AIToolboxAPI && await AIToolboxAPI.isOnline(true, 1500);
+        if (online) {
+          const st = await AIToolboxAPI.diagnosticsStatus();
+          const root = st.deviceRoot;
+          if (root && window.AIToolboxAPI.tryProtocolLaunch) {
+            // explorer via folder protocol opens toolbox root; use pack status path in clipboard tip
+            setActionStatus("Device store: " + root);
+          }
+        }
+        // Open viewer folder (user can open device-local junction)
+        if (window.AIToolboxAPI?.tryProtocolLaunch) {
+          AIToolboxAPI.tryProtocolLaunch("folder");
+        } else {
+          location.href = "aitoolbox://folder";
+        }
+        setActionStatus("Opened toolbox folder — open device-local junction or %LOCALAPPDATA%\\FAFO\\Devices");
+      } catch (e) {
+        setActionStatus(e.message || String(e), true);
+      }
+    }
+
+    document.getElementById("btnRunDiag")?.addEventListener("click", () => runDiagnostics());
+    document.getElementById("btnPack")?.addEventListener("click", () => refreshPack());
+    document.getElementById("btnOpenDevice")?.addEventListener("click", () => openDeviceFolder());
+
+    /* -------- boot -------- */
+    async function boot() {
+      // Optional per-device packs (gitignored). Fail silently if not generated yet.
+      await loadOptionalScript("catalog.js");
+      await loadOptionalScript("logs-data.js");
+      catalog = window.REPORT_CATALOG || catalog || { reports: [] };
+      logData = Array.isArray(window.LOG_DATA) ? window.LOG_DATA : logData;
+
+      // Prefer live pack from server when available (fixes missing catalog.js)
+      try {
+        if (window.AIToolboxAPI && await AIToolboxAPI.isOnline(true, 1500)) {
+          const st = await AIToolboxAPI.diagnosticsStatus();
+          const banner = document.getElementById("serverBanner");
+          if (banner) {
+            if (!st.hasCatalogJs || (st.pcReportFileCount === 0 && st.legacyReportFileCount > 0)) {
+              banner.style.display = "block";
+              banner.innerHTML = st.hasCatalogJs
+                ? `Device pack has ${st.pcReportFileCount} PC reports / ${st.legacyReportFileCount} bundled files. Click <strong>Refresh library pack</strong> if the list looks stale.`
+                : `Library pack not built yet for this PC. Click <strong>Run diagnostics</strong> or <strong>Refresh library pack</strong> (includes bundled reports folder).`;
+            }
+          }
+          // Auto-pack once if no catalog.js but files exist
+          if (!st.hasCatalogJs && (st.pcReportFileCount > 0 || st.legacyReportFileCount > 0)) {
+            setActionStatus("Building library pack…");
+            await AIToolboxAPI.diagnosticsPack();
+            location.reload();
+            return;
+          }
+        } else {
+          const banner = document.getElementById("serverBanner");
+          if (banner && !(catalog.reports && catalog.reports.length && catalog.reports[0].id !== "no-local-reports")) {
+            banner.style.display = "block";
+            banner.innerHTML = `Server offline — use Launcher <strong>Start Server</strong>, or double-click <strong>START SERVER.bat</strong>. Empty list? Run diagnostics once on this PC.`;
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+
+      paint();
+
+      // Deep-link: index.html#logs or #logs/usb-power
+      function applyHashRoute() {
+        const hash = (location.hash || "").replace(/^#/, "");
+        if (hash.startsWith("logs")) {
+          setView("logs");
+          const id = hash.split("/")[1];
+          if (id && logData.some(l => l.id === id)) selectLog(id);
+        }
+      }
+      applyHashRoute();
+      window.addEventListener("hashchange", applyHashRoute);
+    }
+
+    // QoL: export filtered catalog + keyboard focus search + remember filter prefs
+    const PCR_PREF = "fafo_pc_reports_prefs_v1";
+    try {
+      const p = JSON.parse(localStorage.getItem(PCR_PREF) || "{}");
+      if (p.q) document.getElementById("q").value = p.q;
+    } catch (_) {}
+    const qEl = document.getElementById("q");
+    if (qEl) {
+      const orig = qEl.oninput;
+      qEl.addEventListener("input", () => {
+        try { localStorage.setItem(PCR_PREF, JSON.stringify({ q: qEl.value })); } catch (_) {}
+      });
+    }
+    document.getElementById("btnExportCatalog")?.addEventListener("click", () => {
+      const rows = typeof filtered === "function" ? filtered() : (catalog.reports || []);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        machine: catalog.machine,
+        generatedAt: catalog.generatedAt,
+        filter: document.getElementById("q")?.value || "",
+        reports: rows,
+      };
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+      a.download = "pc-reports-catalog-" + Date.now() + ".json";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+    document.addEventListener("keydown", (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        const view = document.querySelector(".nav-tab.active")?.dataset.view;
+        if (view === "logs") document.getElementById("logSearch")?.focus();
+        else document.getElementById("q")?.focus();
+      }
+    });
+
+    boot();
+  </script>
+
+<script data-tool-polish="pc-reports-log-viewer">
+/* Tool polish: pc-reports-log-viewer — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "pc-reports-log-viewer";
+  const TOOL_NAME = "PC Reports & Log Viewer";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="pcr">
+(function(){
+  try {
+    if (!sessionStorage.getItem('pcr_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('pcr_tip','1');
+      AIToolboxUI.toast('PC Reports · use #logs for log tab · Esc = launcher', 'ok');
+    }
+  } catch(_){}
+})();
+</script>
+  <script src="../../shared/aitoolbox-pro.js"></script>
+</body>
+</html>

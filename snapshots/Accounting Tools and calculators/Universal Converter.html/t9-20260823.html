@@ -1,0 +1,2459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Universal Converter — FAFO Power Toolbox</title>
+  <style>
+    :root {
+      --bg: #050508;
+      --panel: rgba(16, 16, 28, 0.72);
+      --panel-solid: #0e0e18;
+      --border: rgba(255, 255, 255, 0.08);
+      --accent: #00e5ff;
+      --accent2: #ff6b35;
+      --accent3: #a78bfa;
+      --ok: #00ff88;
+      --warn: #ffc800;
+      --text: #ececf4;
+      --muted: #8b8ba0;
+      --glow: 0 0 18px rgba(0, 229, 255, 0.35);
+      --radius: 14px;
+      --font: "Segoe UI", system-ui, sans-serif;
+      --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(0, 229, 255, 0.12), transparent 50%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(167, 139, 250, 0.12), transparent 45%),
+        radial-gradient(ellipse 50% 30% at 50% 100%, rgba(255, 107, 53, 0.08), transparent 40%),
+        var(--bg);
+      padding-bottom: 48px;
+    }
+
+    nav.top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+      padding: 10px 18px;
+      background: rgba(5, 5, 12, 0.92);
+      border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+      backdrop-filter: blur(12px);
+    }
+    nav.top a {
+      color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px;
+    }
+    nav.top a:hover { text-shadow: var(--glow); }
+    .nav-title {
+      font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase;
+      color: var(--accent); opacity: 0.9;
+    }
+    .nav-meta { font-size: 11px; color: var(--muted); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 18px;
+      max-width: 1280px;
+      margin: 20px auto 0;
+      padding: 0 16px;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .sidebar {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      height: fit-content;
+      position: sticky; top: 58px;
+      backdrop-filter: blur(16px);
+    }
+    @media (max-width: 900px) {
+      .sidebar { position: static; }
+    }
+    .sidebar h2 {
+      font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 10px;
+    }
+    #modeSearch {
+      width: 100%;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(0,229,255,0.25);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    #modeSearch:focus { border-color: var(--accent); box-shadow: var(--glow); }
+    .mode-list { display: flex; flex-direction: column; gap: 4px; max-height: 70vh; overflow: auto; }
+    .mode-btn {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 10px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: 0.15s ease;
+    }
+    .mode-btn:hover { background: rgba(0,229,255,0.06); border-color: rgba(0,229,255,0.15); }
+    .mode-btn.active {
+      background: rgba(0,229,255,0.12);
+      border-color: rgba(0,229,255,0.4);
+      color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(0,229,255,0.1);
+    }
+    .mode-btn .ico { width: 22px; text-align: center; font-size: 15px; }
+    .mode-btn .lbl { flex: 1; }
+    .mode-btn .hint { font-size: 10px; color: var(--muted); display: block; margin-top: 1px; }
+
+    .main { min-width: 0; }
+    .hero {
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      font-weight: 300; letter-spacing: 2px; font-size: 26px;
+      color: #fff; text-shadow: 0 0 20px rgba(0,229,255,0.35);
+    }
+    .hero p { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.5; max-width: 70ch; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+      margin-bottom: 14px;
+    }
+    .panel h3 {
+      font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel h3 .live {
+      float: right;
+      color: var(--ok);
+      font-size: 10px;
+      letter-spacing: 1px;
+      animation: pulse 1.6s ease infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+
+    .grid { display: grid; gap: 12px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    @media (max-width: 720px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+
+    .field {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      transition: border-color 0.2s;
+    }
+    .field:hover, .field:focus-within { border-color: rgba(0,229,255,0.35); }
+    .field label {
+      display: block;
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+    }
+    .field .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .field input[type="number"],
+    .field input[type="text"],
+    .field select {
+      flex: 1;
+      min-width: 0;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(0,229,255,0.28);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .field input:focus, .field select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(0,229,255,0.3);
+    }
+    .field select { color: var(--text); font-weight: 600; cursor: pointer; }
+    .field .dual {
+      margin-top: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent3);
+      min-height: 16px;
+    }
+    .field .dual span { opacity: 0.75; color: var(--muted); margin-right: 4px; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .chip:hover { border-color: rgba(0,229,255,0.4); color: var(--accent); }
+    .chip.active {
+      background: rgba(0,229,255,0.15);
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: var(--glow);
+    }
+    .chip.scale { border-color: rgba(255,107,53,0.35); }
+    .chip.scale.active {
+      background: rgba(255,107,53,0.15);
+      border-color: var(--accent2);
+      color: var(--accent2);
+      box-shadow: 0 0 14px rgba(255,107,53,0.35);
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .btn:hover { background: var(--accent); color: #000; box-shadow: var(--glow); }
+    .btn.ghost { border-color: var(--border); color: var(--muted); }
+    .btn.ghost:hover { border-color: var(--accent); color: var(--accent); background: transparent; box-shadow: none; }
+    .btn.ok { border-color: var(--ok); color: var(--ok); }
+    .btn.ok:hover { background: var(--ok); color: #000; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      background: linear-gradient(160deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      border-top: 3px solid var(--accent);
+      min-height: 88px;
+    }
+    .metric.alt { border-top-color: var(--accent2); }
+    .metric.violet { border-top-color: var(--accent3); }
+    .metric.ok { border-top-color: var(--ok); }
+    .metric .t {
+      font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px; font-weight: 700;
+    }
+    .metric .v {
+      font-family: var(--mono);
+      font-size: 20px; font-weight: 800; color: #fff;
+      word-break: break-word;
+    }
+    .metric .s {
+      font-family: var(--mono);
+      font-size: 11px; color: var(--accent3); margin-top: 4px;
+    }
+
+    /* Resolution preview */
+    .preview-wrap {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 16px;
+      align-items: center;
+    }
+    @media (max-width: 720px) {
+      .preview-wrap { grid-template-columns: 1fr; }
+    }
+    .preview-stage {
+      position: relative;
+      height: 220px;
+      background:
+        linear-gradient(rgba(0,229,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.05) 1px, transparent 1px),
+        rgba(0,0,0,0.35);
+      background-size: 20px 20px, 20px 20px, auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .frame {
+      border: 2px solid var(--accent);
+      box-shadow: 0 0 24px rgba(0,229,255,0.35), inset 0 0 30px rgba(0,229,255,0.08);
+      background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(167,139,250,0.1));
+      transition: width 0.2s ease, height 0.2s ease;
+      display: flex; align-items: center; justify-content: center;
+      min-width: 24px; min-height: 24px;
+      max-width: 92%; max-height: 88%;
+    }
+    .frame span {
+      font-family: var(--mono); font-size: 11px; color: #fff;
+      text-shadow: 0 0 8px rgba(0,0,0,0.8);
+      padding: 4px 6px; text-align: center;
+    }
+    .scale-slider-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+    .scale-slider-row input[type="range"] { flex: 1; accent-color: var(--accent2); }
+    .scale-readout {
+      font-family: var(--mono); color: var(--accent2); font-weight: 700; min-width: 64px; text-align: right;
+    }
+
+    .table-wrap { overflow: auto; border-radius: 10px; border: 1px solid var(--border); }
+    table.conv {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    table.conv th, table.conv td {
+      padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    table.conv th {
+      background: rgba(0,0,0,0.35);
+      font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);
+      position: sticky; top: 0;
+    }
+    table.conv tr:hover td { background: rgba(0,229,255,0.04); }
+    table.conv td.num { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+    table.conv td.metric-col { font-family: var(--mono); color: var(--accent3); }
+    table.conv tr.active td { background: rgba(0,229,255,0.1); }
+
+    .toast {
+      position: fixed; bottom: 22px; right: 22px; z-index: 100;
+      background: rgba(0,0,0,0.85);
+      border: 1px solid var(--ok);
+      color: var(--ok);
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 12px; font-weight: 700;
+      opacity: 0; pointer-events: none;
+      transform: translateY(8px);
+      transition: 0.25s ease;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .hidden { display: none !important; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .split-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .lock-toggle {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--muted); cursor: pointer; user-select: none;
+    }
+    .lock-toggle input { accent-color: var(--accent); }
+
+    .formula {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent3);
+      background: rgba(167,139,250,0.08);
+      border: 1px solid rgba(167,139,250,0.2);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 8px;
+    }
+
+    .compare-banner {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch;
+    }
+    .compare-card {
+      flex: 1; min-width: 160px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .compare-card .big {
+      font-family: var(--mono); font-size: 28px; font-weight: 800; color: #fff;
+    }
+    .compare-card .unit { color: var(--accent); font-size: 13px; margin-top: 2px; }
+    .compare-card .pair { color: var(--accent3); font-family: var(--mono); font-size: 13px; margin-top: 8px; }
+    .arrow {
+      align-self: center; font-size: 22px; color: var(--accent); opacity: 0.7;
+    }
+
+    footer.note {
+      max-width: 1280px; margin: 8px auto 0; padding: 0 16px;
+      font-size: 11px; color: var(--muted); line-height: 1.5;
+    }
+  </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+</head>
+<body>
+  <nav class="top" style="position:sticky;top:0;z-index:30">
+    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <span class="nav-title">Universal Converter</span>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <a href="Amoritization loan calculator2.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:5px 10px;border-radius:999px" title="Counterpart">💰 Loan Calculator</a>
+      <a href="../Business Tax Preparedness/TaxForge Hub.html" style="color:var(--muted);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:5px 10px;border-radius:999px" title="TaxForge suite">🧾 TaxForge</a>
+      <a href="../Business Tax Preparedness/Mileage Log.html" style="color:var(--muted);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:5px 10px;border-radius:999px" title="Mileage">🚗 Mileage</a>
+      <button type="button" id="btnUcCopy" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid var(--line);padding:5px 10px;border-radius:999px;background:transparent;color:var(--accent)">📋 Copy result</button>
+      <button type="button" id="btnUcReset" style="cursor:pointer;font-size:11px;font-weight:700;border:1px solid rgba(248,113,113,.35);padding:5px 10px;border-radius:999px;background:transparent;color:#f87171" title="Reset mode">Reset mode</button>
+      <span class="nav-meta">Local · dual unit · sticky prefs</span>
+    </div>
+    <span data-fafo-layout-toolbar></span>
+</nav>
+
+  <div class="layout" data-fafo-layout-root data-fafo-layout-app="accounting-tools-and-calculators-universal-converter" data-fafo-layout-type="columns">
+    <aside class="sidebar" data-fafo-panel="sidebar" data-fafo-panel-title="Sidebar" data-fafo-panel-min="160" data-fafo-panel-default="240">
+      <h2>Modes</h2>
+      <input id="modeSearch" type="search" placeholder="Filter modes…" autocomplete="off">
+      <div class="mode-list" id="modeList"></div>
+    </aside>
+
+    <main class="main" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1">
+      <div class="hero">
+        <h1 id="pageTitle">Resolution Lab</h1>
+        <p id="pageDesc">Punch in a named res or aspect, scale by fraction or percent, lock ratio, and watch width/height, megapixels, and common targets update live.</p>
+      </div>
+
+      <!-- ============ RESOLUTION ============ -->
+      <section id="mode-resolution" class="mode-panel">
+        <div class="panel">
+          <h3>Named resolution & aspect <span class="live">● LIVE</span></h3>
+          <div class="split-head">
+            <div class="chips" id="resPresets"></div>
+            <label class="lock-toggle"><input type="checkbox" id="resLock" checked> Lock aspect</label>
+          </div>
+          <div class="grid grid-3" style="margin-top:12px">
+            <div class="field">
+              <label>Width (px)</label>
+              <div class="row"><input type="number" id="resW" value="3840" min="1" step="1"></div>
+              <div class="dual" id="resWDual"></div>
+            </div>
+            <div class="field">
+              <label>Height (px)</label>
+              <div class="row"><input type="number" id="resH" value="2160" min="1" step="1"></div>
+              <div class="dual" id="resHDual"></div>
+            </div>
+            <div class="field">
+              <label>Aspect ratio</label>
+              <div class="row">
+                <select id="resAspect"></select>
+              </div>
+              <div class="dual" id="resAspectReadout"></div>
+            </div>
+          </div>
+          <div style="margin-top:14px">
+            <label style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700">Common aspects</label>
+            <div class="chips" id="aspectChips" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Scale · fraction · percent</h3>
+          <div class="chips" id="scaleChips"></div>
+          <div class="scale-slider-row">
+            <span class="muted">Scale</span>
+            <input type="range" id="resScale" min="5" max="400" value="100" step="1">
+            <span class="scale-readout" id="resScaleLbl">100%</span>
+          </div>
+          <div class="grid grid-3" style="margin-top:12px">
+            <div class="field">
+              <label>Custom fraction</label>
+              <div class="row">
+                <input type="number" id="fracNum" value="1" min="1" step="1" style="flex:0 0 70px">
+                <span style="color:var(--muted)">/</span>
+                <input type="number" id="fracDen" value="1" min="1" step="1" style="flex:0 0 70px">
+                <button class="btn" type="button" id="applyFrac">Apply</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Base (before scale)</label>
+              <div class="row"><input type="text" id="resBaseLabel" readonly value="3840 × 2160"></div>
+              <div class="dual">Click a preset or type dims, then scale</div>
+            </div>
+            <div class="field">
+              <label>Diagonal (for PPI)</label>
+              <div class="row">
+                <input type="number" id="resDiag" value="27" min="0.1" step="0.1" style="flex:1">
+                <select id="resDiagUnit" style="flex:0 0 90px">
+                  <option value="in">in</option>
+                  <option value="cm">cm</option>
+                </select>
+              </div>
+              <div class="dual" id="resDiagDual"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Live output</h3>
+          <div class="preview-wrap">
+            <div>
+              <div class="result-grid" id="resMetrics"></div>
+              <div class="btn-row">
+                <button class="btn" type="button" id="copyRes">Copy resolution</button>
+                <button class="btn ghost" type="button" id="copyResFfmpeg">Copy ffmpeg size</button>
+                <button class="btn ghost" type="button" id="swapWH">Swap W↔H</button>
+                <button class="btn ghost" type="button" id="roundEven">Round even</button>
+              </div>
+            </div>
+            <div class="preview-stage" title="Aspect preview (not to absolute pixel scale)">
+              <div class="frame" id="resFrame"><span id="resFrameLbl">16:9</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Scaled variants from base</h3>
+          <div class="table-wrap">
+            <table class="conv" id="resTable">
+              <thead>
+                <tr><th>Label</th><th>Scale</th><th>Width × Height</th><th>Megapixels</th><th>Aspect</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ GENERIC CONVERT ============ -->
+      <section id="mode-convert" class="mode-panel hidden">
+        <div class="panel">
+          <h3 id="convHeading">Convert <span class="live">● LIVE</span></h3>
+          <div class="grid grid-2">
+            <div class="field">
+              <label>From</label>
+              <div class="row">
+                <input type="number" id="convValue" value="1" step="any">
+                <select id="convFrom"></select>
+              </div>
+              <div class="dual" id="convFromDual"></div>
+            </div>
+            <div class="field">
+              <label>To</label>
+              <div class="row">
+                <input type="text" id="convResult" readonly>
+                <select id="convTo"></select>
+              </div>
+              <div class="dual" id="convToDual"></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" type="button" id="swapUnits">⇄ Swap units</button>
+            <button class="btn ghost" type="button" id="copyConv">Copy result</button>
+            <button class="btn ghost" type="button" id="setOne">Set value = 1</button>
+          </div>
+          <div class="formula" id="convFormula"></div>
+        </div>
+
+        <div class="panel">
+          <h3>Dual readout — imperial & metric side by side</h3>
+          <div class="compare-banner" id="compareBanner"></div>
+        </div>
+
+        <div class="panel">
+          <h3>All units from current value</h3>
+          <div class="table-wrap">
+            <table class="conv" id="convTable">
+              <thead>
+                <tr><th>Unit</th><th>Value</th><th>Family dual</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ ELECTRICAL ============ -->
+      <section id="mode-electrical" class="mode-panel hidden">
+        <div class="panel">
+          <h3>Ohm / Power triangle <span class="live">● LIVE</span></h3>
+          <p class="muted" style="margin-bottom:12px">Enter any two known values — the rest solve instantly. Leave unknowns blank or zero.</p>
+          <div class="grid grid-4">
+            <div class="field">
+              <label>Voltage (V)</label>
+              <div class="row"><input type="number" id="elV" value="120" step="any"></div>
+              <div class="dual">volts</div>
+            </div>
+            <div class="field">
+              <label>Current (A)</label>
+              <div class="row"><input type="number" id="elI" value="10" step="any"></div>
+              <div class="dual">amperes</div>
+            </div>
+            <div class="field">
+              <label>Resistance (Ω)</label>
+              <div class="row"><input type="number" id="elR" value="" step="any" placeholder="solve"></div>
+              <div class="dual">ohms</div>
+            </div>
+            <div class="field">
+              <label>Power (W)</label>
+              <div class="row"><input type="number" id="elP" value="" step="any" placeholder="solve"></div>
+              <div class="dual">watts</div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" type="button" id="elSolve">Solve unknowns</button>
+            <button class="btn ghost" type="button" id="elClear">Clear</button>
+            <button class="btn ghost" type="button" id="elCopy">Copy summary</button>
+          </div>
+          <div class="chips" style="margin-top:12px" id="elPresets"></div>
+          <div class="formula" id="elFormula">P = V × I · V = I × R · P = I²R · P = V²/R</div>
+        </div>
+        <div class="panel">
+          <h3>Results</h3>
+          <div class="result-grid" id="elMetrics"></div>
+        </div>
+        <div class="panel">
+          <h3>Breaker / load helper (rule-of-thumb)</h3>
+          <div class="grid grid-3">
+            <div class="field">
+              <label>Circuit breaker (A)</label>
+              <div class="row"><input type="number" id="elBreaker" value="15" min="1" step="1"></div>
+            </div>
+            <div class="field">
+              <label>Continuous load factor</label>
+              <div class="row"><input type="number" id="elLoadFactor" value="0.8" min="0.1" max="1" step="0.05"></div>
+              <div class="dual">NEC continuous ≈ 80%</div>
+            </div>
+            <div class="field">
+              <label>System voltage</label>
+              <div class="row"><input type="number" id="elSysV" value="120" step="any"></div>
+            </div>
+          </div>
+          <div class="result-grid" id="elLoadMetrics" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <!-- ============ CURRENCY ============ -->
+      <section id="mode-currency" class="mode-panel hidden">
+        <div class="panel">
+          <h3>Currency <span class="live">● LIVE</span></h3>
+          <div class="grid grid-2">
+            <div class="field">
+              <label>Amount</label>
+              <div class="row">
+                <input type="number" id="curAmount" value="100" step="any" min="0">
+                <select id="curFrom"></select>
+              </div>
+            </div>
+            <div class="field">
+              <label>Converts to</label>
+              <div class="row">
+                <input type="text" id="curResult" readonly>
+                <select id="curTo"></select>
+              </div>
+              <div class="dual" id="curRateLbl"></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn ok" type="button" id="curFetch">Fetch live rates</button>
+            <button class="btn ghost" type="button" id="curSwap">⇄ Swap</button>
+            <button class="btn ghost" type="button" id="curCopy">Copy</button>
+          </div>
+          <p class="muted" style="margin-top:10px" id="curStatus">Using bundled offline seed rates. Click “Fetch live rates” when online (Frankfurter / ECB). *Only currency fetch leaves this PC.</p>
+        </div>
+        <div class="panel">
+          <h3>Manual rate override (optional)</h3>
+          <div class="grid grid-3">
+            <div class="field">
+              <label>1 <span id="curBaseLbl">USD</span> =</label>
+              <div class="row">
+                <input type="number" id="curManualRate" value="" step="any" placeholder="auto">
+                <span style="color:var(--muted);font-size:12px" id="curQuoteLbl">EUR</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Apply override</label>
+              <div class="row"><button class="btn" type="button" id="curApplyManual" style="width:100%">Use manual rate</button></div>
+            </div>
+            <div class="field">
+              <label>Clear override</label>
+              <div class="row"><button class="btn ghost" type="button" id="curClearManual" style="width:100%">Back to table</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Quick board (from current amount)</h3>
+          <div class="table-wrap">
+            <table class="conv" id="curTable">
+              <thead><tr><th>Currency</th><th>Amount</th><th>Per 1 base</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PERCENT / RATIO ============ -->
+      <section id="mode-percent" class="mode-panel hidden">
+        <div class="panel">
+          <h3>Percent · ratio · change <span class="live">● LIVE</span></h3>
+          <div class="grid grid-3">
+            <div class="field">
+              <label>Part / new value</label>
+              <div class="row"><input type="number" id="pctPart" value="25" step="any"></div>
+            </div>
+            <div class="field">
+              <label>Whole / original</label>
+              <div class="row"><input type="number" id="pctWhole" value="200" step="any"></div>
+            </div>
+            <div class="field">
+              <label>Percent (%)</label>
+              <div class="row"><input type="number" id="pctPct" value="" step="any" placeholder="solve"></div>
+            </div>
+          </div>
+          <div class="result-grid" id="pctMetrics" style="margin-top:14px"></div>
+          <div class="formula" id="pctFormula"></div>
+        </div>
+      </section>
+
+      <!-- ============ MEMORY TERMS ============ -->
+      <section id="mode-memory" class="mode-panel hidden">
+        <div class="panel">
+          <h3>Capacity · bits · words · pages <span class="live">● LIVE</span></h3>
+          <div class="chips" id="memCapPresets"></div>
+          <div class="grid grid-3" style="margin-top:12px">
+            <div class="field">
+              <label>Amount</label>
+              <div class="row"><input type="number" id="memAmt" value="16" min="0" step="any"></div>
+              <div class="dual" id="memAmtDual"></div>
+            </div>
+            <div class="field">
+              <label>Unit</label>
+              <div class="row"><select id="memUnit"></select></div>
+              <div class="dual">Binary (KiB/MiB) preferred for RAM</div>
+            </div>
+            <div class="field">
+              <label>Word size (for “words”)</label>
+              <div class="row">
+                <select id="memWordBits">
+                  <option value="8">8-bit</option>
+                  <option value="16">16-bit</option>
+                  <option value="32" selected>32-bit</option>
+                  <option value="64">64-bit</option>
+                  <option value="128">128-bit</option>
+                </select>
+              </div>
+              <div class="dual" id="memWordDual"></div>
+            </div>
+          </div>
+          <div class="result-grid" id="memCapMetrics" style="margin-top:14px"></div>
+          <div class="btn-row">
+            <button class="btn" type="button" id="memCopyCap">Copy capacity summary</button>
+            <button class="btn ghost" type="button" id="memSet16">16 GiB kit</button>
+            <button class="btn ghost" type="button" id="memSet32">32 GiB kit</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>DDR rate · bandwidth · CAS latency</h3>
+          <div class="chips" id="memDdrPresets"></div>
+          <div class="grid grid-3" style="margin-top:12px">
+            <div class="field">
+              <label>Data rate (MT/s)</label>
+              <div class="row"><input type="number" id="memMTs" value="3200" min="1" step="1"></div>
+              <div class="dual" id="memMTsDual"></div>
+            </div>
+            <div class="field">
+              <label>Bus width (bits / channel)</label>
+              <div class="row">
+                <select id="memBus">
+                  <option value="64" selected>64 (desktop DIMM)</option>
+                  <option value="32">32 (some LPDDR / SO)</option>
+                  <option value="128">128 (GPU / wide)</option>
+                  <option value="256">256 (GPU)</option>
+                  <option value="384">384 (GPU)</option>
+                  <option value="512">512 (HBM-ish width class)</option>
+                </select>
+              </div>
+              <div class="dual">per channel data bus</div>
+            </div>
+            <div class="field">
+              <label>Channels</label>
+              <div class="row"><input type="number" id="memCh" value="2" min="1" max="16" step="1"></div>
+              <div class="dual">dual / quad / etc.</div>
+            </div>
+            <div class="field">
+              <label>CAS latency (CL)</label>
+              <div class="row"><input type="number" id="memCL" value="16" min="1" step="1"></div>
+              <div class="dual" id="memCLDual"></div>
+            </div>
+            <div class="field">
+              <label>Sticks × size (GiB each)</label>
+              <div class="row">
+                <input type="number" id="memSticks" value="2" min="1" step="1" style="flex:0 0 70px" title="module count">
+                <span style="color:var(--muted)">×</span>
+                <input type="number" id="memStickGiB" value="8" min="0.25" step="0.25" style="flex:1" title="GiB per stick">
+              </div>
+              <div class="dual" id="memKitDual"></div>
+            </div>
+            <div class="field">
+              <label>Generation label</label>
+              <div class="row">
+                <select id="memGen">
+                  <option value="DDR3">DDR3</option>
+                  <option value="DDR4" selected>DDR4</option>
+                  <option value="DDR5">DDR5</option>
+                  <option value="LPDDR4">LPDDR4/x</option>
+                  <option value="LPDDR5">LPDDR5/x</option>
+                  <option value="GDDR6">GDDR6</option>
+                </select>
+              </div>
+              <div class="dual">marketing name helper</div>
+            </div>
+          </div>
+          <div class="result-grid" id="memDdrMetrics" style="margin-top:14px"></div>
+          <div class="formula" id="memDdrFormula"></div>
+          <div class="btn-row">
+            <button class="btn" type="button" id="memCopyDdr">Copy DDR summary</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Address bits → max addressable</h3>
+          <div class="grid grid-3">
+            <div class="field">
+              <label>Address lines / bits</label>
+              <div class="row"><input type="number" id="memAddrBits" value="32" min="1" max="64" step="1"></div>
+              <div class="dual">2ⁿ unique addresses</div>
+            </div>
+            <div class="field">
+              <label>Bytes per address</label>
+              <div class="row">
+                <select id="memAddrUnit">
+                  <option value="1" selected>byte-addressable</option>
+                  <option value="2">16-bit word</option>
+                  <option value="4">32-bit word</option>
+                  <option value="8">64-bit word</option>
+                </select>
+              </div>
+              <div class="dual">multiply address space</div>
+            </div>
+            <div class="field">
+              <label>Quick bits</label>
+              <div class="row">
+                <div class="chips" id="memAddrPresets" style="margin:0"></div>
+              </div>
+            </div>
+          </div>
+          <div class="result-grid" id="memAddrMetrics" style="margin-top:14px"></div>
+        </div>
+
+        <div class="panel">
+          <h3>Pages · cache lines · fill time</h3>
+          <div class="grid grid-3">
+            <div class="field">
+              <label>Page size</label>
+              <div class="row">
+                <select id="memPage">
+                  <option value="4096" selected>4 KiB (typical)</option>
+                  <option value="65536">64 KiB</option>
+                  <option value="2097152">2 MiB huge</option>
+                  <option value="1073741824">1 GiB huge</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>Cache line</label>
+              <div class="row">
+                <select id="memCacheLine">
+                  <option value="64" selected>64 B</option>
+                  <option value="32">32 B</option>
+                  <option value="128">128 B</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>Use capacity from above</label>
+              <div class="row"><input type="text" id="memPageFromCap" readonly></div>
+              <div class="dual">linked to capacity panel</div>
+            </div>
+          </div>
+          <div class="result-grid" id="memPageMetrics" style="margin-top:14px"></div>
+        </div>
+
+        <div class="panel">
+          <h3>Glossary — memory terms</h3>
+          <input id="memGlossarySearch" type="search" placeholder="Search terms: DDR, rank, CL, ECC, nibble…"
+            style="width:100%;background:rgba(0,0,0,.4);border:1px solid rgba(0,229,255,.25);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;outline:none">
+          <div class="table-wrap" style="max-height:360px;overflow:auto">
+            <table class="conv" id="memGlossary">
+              <thead><tr><th>Term</th><th>Meaning</th><th>Quick fact</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>All capacity units from current amount</h3>
+          <div class="table-wrap">
+            <table class="conv" id="memUnitTable">
+              <thead><tr><th>Unit / term</th><th>Value</th><th>Notes</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="note">
+    Tip: Resolution Lab keeps a <strong>base</strong> size when you pick presets; the scale slider and ¼ / ½ / 2× chips multiply that base in real time.
+    Electrical and unit converters never need the toolbox server. Currency can optionally refresh rates online.
+  </footer>
+  <div class="toast" id="toast">Copied</div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* ───────────────── helpers ───────────────── */
+    const $ = (id) => document.getElementById(id);
+    const toast = (msg) => {
+      const t = $('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(() => t.classList.remove('show'), 1600);
+    };
+    const copyText = async (s) => {
+      try { await navigator.clipboard.writeText(s); toast('Copied'); }
+      catch { toast('Copy failed'); }
+    };
+    const fmt = (n, digits = 6) => {
+      if (!Number.isFinite(n)) return '—';
+      if (Math.abs(n) >= 1e9 || (Math.abs(n) > 0 && Math.abs(n) < 1e-4)) return n.toExponential(4);
+      const s = Number(n.toPrecision(digits));
+      return String(s);
+    };
+    const fmtFixed = (n, d = 2) => Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 }) : '—';
+    const gcd = (a, b) => { a = Math.abs(Math.round(a)); b = Math.abs(Math.round(b)); while (b) { [a, b] = [b, a % b]; } return a || 1; };
+    const ratioStr = (w, h) => {
+      if (!w || !h) return '—';
+      const g = gcd(w, h);
+      return `${Math.round(w / g)}:${Math.round(h / g)}`;
+    };
+    const num = (el) => {
+      const v = parseFloat(el.value);
+      return Number.isFinite(v) ? v : NaN;
+    };
+    const isFilled = (el) => el.value !== '' && Number.isFinite(parseFloat(el.value));
+
+    /* ───────────────── mode registry ───────────────── */
+    const MODES = [
+      { id: 'resolution', name: 'Resolution Lab', emoji: '🖥️', hint: '4K · aspect · ¼ scale', panel: 'mode-resolution',
+        desc: 'Named res, aspect locks, fractional scale, PPI, ffmpeg size strings — built for VSR and media work.' },
+      { id: 'length', name: 'Length / Distance', emoji: '📏', hint: 'mi ↔ km · dual units', panel: 'mode-convert', family: 'length',
+        desc: 'Miles, kilometers, feet, meters, inches, yards, nautical miles — metric always beside imperial.' },
+      { id: 'weight', name: 'Weight / Mass', emoji: '⚖️', hint: 'lb ↔ kg', panel: 'mode-convert', family: 'weight',
+        desc: 'Pounds, kilograms, ounces, grams, stone, tons — one input, full dual table.' },
+      { id: 'volume', name: 'Liquid / Volume', emoji: '🧪', hint: 'gal ↔ L · cups', panel: 'mode-convert', family: 'volume',
+        desc: 'US gallons, liters, cups, fl oz, ml, tablespoons — kitchen and shop friendly.' },
+      { id: 'temperature', name: 'Temperature', emoji: '🌡️', hint: '°F · °C · K', panel: 'mode-convert', family: 'temperature',
+        desc: 'Fahrenheit, Celsius, Kelvin with live dual readout.' },
+      { id: 'area', name: 'Area', emoji: '🗺️', hint: 'ft² · m² · acres', panel: 'mode-convert', family: 'area',
+        desc: 'Square feet/meters, acres, hectares, square inches.' },
+      { id: 'speed', name: 'Speed', emoji: '🏎️', hint: 'mph ↔ km/h', panel: 'mode-convert', family: 'speed',
+        desc: 'Miles per hour, kilometers per hour, m/s, knots.' },
+      { id: 'data', name: 'Data storage', emoji: '💾', hint: 'MB · GiB · bits', panel: 'mode-convert', family: 'data',
+        desc: 'Binary (KiB/MiB/GiB) and decimal (KB/MB/GB) storage sizes plus bits.' },
+      { id: 'memory', name: 'Memory terms', emoji: '🧠', hint: 'RAM · DDR · bandwidth · CL', panel: 'mode-memory',
+        desc: 'RAM capacity terms, DDR MT/s ↔ MHz, dual-channel bandwidth, CAS latency ns, address bits, pages, cache lines, and a glossary.' },
+      { id: 'time', name: 'Time', emoji: '⏱️', hint: 's · min · hr · day', panel: 'mode-convert', family: 'time',
+        desc: 'Seconds through weeks — handy for encode ETAs and logs.' },
+      { id: 'pressure', name: 'Pressure', emoji: '🎈', hint: 'PSI · bar · kPa', panel: 'mode-convert', family: 'pressure',
+        desc: 'PSI, bar, kPa, atm — tires, compressors, weather.' },
+      { id: 'energy', name: 'Energy / Power-ish', emoji: '⚡', hint: 'kWh · BTU · J', panel: 'mode-convert', family: 'energy',
+        desc: 'Joules, kWh, BTU, calories — energy quantities (not the electrical triangle).' },
+      { id: 'fuel', name: 'Fuel economy', emoji: '⛽', hint: 'MPG ↔ L/100km', panel: 'mode-convert', family: 'fuel',
+        desc: 'US MPG, UK MPG, L/100km, km/L — inverted units handled correctly.' },
+      { id: 'angle', name: 'Angle', emoji: '📐', hint: 'deg ↔ rad', panel: 'mode-convert', family: 'angle',
+        desc: 'Degrees, radians, gradians.' },
+      { id: 'electrical', name: 'Electrical (V·A·W·Ω)', emoji: '🔌', hint: 'Ohm & power laws', panel: 'mode-electrical',
+        desc: 'Solve voltage, amperage, wattage, resistance from any two knowns. Breaker load helper included.' },
+      { id: 'currency', name: 'Currency', emoji: '💱', hint: 'USD · EUR · rates', panel: 'mode-currency',
+        desc: 'Offline seed rates plus optional live ECB fetch. Manual rate override for receipts.' },
+      { id: 'percent', name: 'Percent & change', emoji: '%', hint: 'of · off · delta', panel: 'mode-percent',
+        desc: 'What percent is X of Y, percent change, and “X% of Y” in one board.' },
+    ];
+
+    /* ───────────────── unit families ───────────────── */
+    // All linear families convert via base SI-ish unit.
+    // factor = how many base units in 1 of this unit
+    // dualHint: optional paired unit id for dual line
+    const FAMILIES = {
+      length: {
+        base: 'm',
+        units: [
+          { id: 'km', label: 'Kilometer (km)', factor: 1000, metric: true },
+          { id: 'm', label: 'Meter (m)', factor: 1, metric: true },
+          { id: 'cm', label: 'Centimeter (cm)', factor: 0.01, metric: true },
+          { id: 'mm', label: 'Millimeter (mm)', factor: 0.001, metric: true },
+          { id: 'mi', label: 'Mile (mi)', factor: 1609.344, metric: false },
+          { id: 'yd', label: 'Yard (yd)', factor: 0.9144, metric: false },
+          { id: 'ft', label: 'Foot (ft)', factor: 0.3048, metric: false },
+          { id: 'in', label: 'Inch (in)', factor: 0.0254, metric: false },
+          { id: 'nmi', label: 'Nautical mile', factor: 1852, metric: false },
+        ],
+        defaults: { from: 'mi', to: 'km' },
+        dualPairs: [['mi', 'km'], ['ft', 'm'], ['in', 'cm'], ['yd', 'm']],
+      },
+      weight: {
+        base: 'kg',
+        units: [
+          { id: 't', label: 'Metric ton (t)', factor: 1000, metric: true },
+          { id: 'kg', label: 'Kilogram (kg)', factor: 1, metric: true },
+          { id: 'g', label: 'Gram (g)', factor: 0.001, metric: true },
+          { id: 'mg', label: 'Milligram (mg)', factor: 1e-6, metric: true },
+          { id: 'lb', label: 'Pound (lb)', factor: 0.45359237, metric: false },
+          { id: 'oz', label: 'Ounce (oz)', factor: 0.028349523125, metric: false },
+          { id: 'st', label: 'Stone (st)', factor: 6.35029318, metric: false },
+          { id: 'ust', label: 'US ton (short)', factor: 907.18474, metric: false },
+        ],
+        defaults: { from: 'lb', to: 'kg' },
+        dualPairs: [['lb', 'kg'], ['oz', 'g'], ['ust', 't']],
+      },
+      volume: {
+        base: 'L',
+        units: [
+          { id: 'L', label: 'Liter (L)', factor: 1, metric: true },
+          { id: 'mL', label: 'Milliliter (mL)', factor: 0.001, metric: true },
+          { id: 'm3', label: 'Cubic meter (m³)', factor: 1000, metric: true },
+          { id: 'gal', label: 'US gallon', factor: 3.785411784, metric: false },
+          { id: 'qt', label: 'US quart', factor: 0.946352946, metric: false },
+          { id: 'pt', label: 'US pint', factor: 0.473176473, metric: false },
+          { id: 'cup', label: 'US cup', factor: 0.2365882365, metric: false },
+          { id: 'floz', label: 'US fl oz', factor: 0.0295735295625, metric: false },
+          { id: 'tbsp', label: 'US tbsp', factor: 0.01478676478125, metric: false },
+          { id: 'tsp', label: 'US tsp', factor: 0.00492892159375, metric: false },
+          { id: 'impgal', label: 'Imperial gallon', factor: 4.54609, metric: false },
+        ],
+        defaults: { from: 'gal', to: 'L' },
+        dualPairs: [['gal', 'L'], ['floz', 'mL'], ['cup', 'mL'], ['qt', 'L']],
+      },
+      temperature: {
+        special: 'temperature',
+        units: [
+          { id: 'C', label: 'Celsius (°C)', metric: true },
+          { id: 'F', label: 'Fahrenheit (°F)', metric: false },
+          { id: 'K', label: 'Kelvin (K)', metric: true },
+        ],
+        defaults: { from: 'F', to: 'C' },
+        dualPairs: [['F', 'C'], ['C', 'K']],
+      },
+      area: {
+        base: 'm2',
+        units: [
+          { id: 'km2', label: 'Square km', factor: 1e6, metric: true },
+          { id: 'm2', label: 'Square meter', factor: 1, metric: true },
+          { id: 'cm2', label: 'Square cm', factor: 0.0001, metric: true },
+          { id: 'ha', label: 'Hectare', factor: 10000, metric: true },
+          { id: 'mi2', label: 'Square mile', factor: 2589988.110336, metric: false },
+          { id: 'acre', label: 'Acre', factor: 4046.8564224, metric: false },
+          { id: 'ft2', label: 'Square foot', factor: 0.09290304, metric: false },
+          { id: 'in2', label: 'Square inch', factor: 0.00064516, metric: false },
+        ],
+        defaults: { from: 'ft2', to: 'm2' },
+        dualPairs: [['ft2', 'm2'], ['acre', 'ha'], ['mi2', 'km2']],
+      },
+      speed: {
+        base: 'mps',
+        units: [
+          { id: 'mps', label: 'Meters/sec (m/s)', factor: 1, metric: true },
+          { id: 'kmh', label: 'km/h', factor: 1000 / 3600, metric: true },
+          { id: 'mph', label: 'mph', factor: 1609.344 / 3600, metric: false },
+          { id: 'knot', label: 'Knot', factor: 1852 / 3600, metric: false },
+          { id: 'fps', label: 'Feet/sec', factor: 0.3048, metric: false },
+        ],
+        defaults: { from: 'mph', to: 'kmh' },
+        dualPairs: [['mph', 'kmh'], ['knot', 'kmh'], ['fps', 'mps']],
+      },
+      data: {
+        base: 'B',
+        units: [
+          { id: 'b', label: 'bit', factor: 0.125, metric: true },
+          { id: 'B', label: 'Byte (B)', factor: 1, metric: true },
+          { id: 'KB', label: 'KB (10³)', factor: 1e3, metric: true },
+          { id: 'MB', label: 'MB (10⁶)', factor: 1e6, metric: true },
+          { id: 'GB', label: 'GB (10⁹)', factor: 1e9, metric: true },
+          { id: 'TB', label: 'TB (10¹²)', factor: 1e12, metric: true },
+          { id: 'KiB', label: 'KiB (2¹⁰)', factor: 1024, metric: false },
+          { id: 'MiB', label: 'MiB (2²⁰)', factor: 1024 ** 2, metric: false },
+          { id: 'GiB', label: 'GiB (2³⁰)', factor: 1024 ** 3, metric: false },
+          { id: 'TiB', label: 'TiB (2⁴⁰)', factor: 1024 ** 4, metric: false },
+        ],
+        defaults: { from: 'GB', to: 'GiB' },
+        dualPairs: [['GB', 'GiB'], ['MB', 'MiB'], ['TB', 'TiB']],
+      },
+      time: {
+        base: 's',
+        units: [
+          { id: 'ms', label: 'Millisecond', factor: 0.001, metric: true },
+          { id: 's', label: 'Second', factor: 1, metric: true },
+          { id: 'min', label: 'Minute', factor: 60, metric: true },
+          { id: 'hr', label: 'Hour', factor: 3600, metric: true },
+          { id: 'day', label: 'Day', factor: 86400, metric: true },
+          { id: 'wk', label: 'Week', factor: 604800, metric: true },
+          { id: 'yr', label: 'Year (365d)', factor: 31536000, metric: true },
+        ],
+        defaults: { from: 'hr', to: 'min' },
+        dualPairs: [['hr', 's'], ['day', 'hr'], ['wk', 'day']],
+      },
+      pressure: {
+        base: 'Pa',
+        units: [
+          { id: 'Pa', label: 'Pascal (Pa)', factor: 1, metric: true },
+          { id: 'kPa', label: 'Kilopascal', factor: 1000, metric: true },
+          { id: 'bar', label: 'Bar', factor: 1e5, metric: true },
+          { id: 'mbar', label: 'Millibar', factor: 100, metric: true },
+          { id: 'psi', label: 'PSI', factor: 6894.757293168, metric: false },
+          { id: 'atm', label: 'Atmosphere', factor: 101325, metric: false },
+          { id: 'torr', label: 'Torr', factor: 133.322368421, metric: false },
+        ],
+        defaults: { from: 'psi', to: 'kPa' },
+        dualPairs: [['psi', 'kPa'], ['psi', 'bar'], ['atm', 'kPa']],
+      },
+      energy: {
+        base: 'J',
+        units: [
+          { id: 'J', label: 'Joule (J)', factor: 1, metric: true },
+          { id: 'kJ', label: 'Kilojoule', factor: 1000, metric: true },
+          { id: 'kWh', label: 'Kilowatt-hour', factor: 3.6e6, metric: true },
+          { id: 'cal', label: 'Calorie (cal)', factor: 4.184, metric: true },
+          { id: 'kcal', label: 'Kilocalorie', factor: 4184, metric: true },
+          { id: 'BTU', label: 'BTU (IT)', factor: 1055.05585262, metric: false },
+          { id: 'Wh', label: 'Watt-hour', factor: 3600, metric: true },
+        ],
+        defaults: { from: 'kWh', to: 'BTU' },
+        dualPairs: [['BTU', 'kJ'], ['kcal', 'kJ'], ['kWh', 'J']],
+      },
+      fuel: {
+        special: 'fuel',
+        units: [
+          { id: 'mpgUS', label: 'MPG (US)', metric: false },
+          { id: 'mpgUK', label: 'MPG (UK)', metric: false },
+          { id: 'lp100', label: 'L/100km', metric: true },
+          { id: 'kpl', label: 'km/L', metric: true },
+        ],
+        defaults: { from: 'mpgUS', to: 'lp100' },
+        dualPairs: [['mpgUS', 'lp100'], ['mpgUS', 'kpl']],
+      },
+      angle: {
+        base: 'rad',
+        units: [
+          { id: 'deg', label: 'Degree (°)', factor: Math.PI / 180, metric: false },
+          { id: 'rad', label: 'Radian', factor: 1, metric: true },
+          { id: 'grad', label: 'Gradian', factor: Math.PI / 200, metric: true },
+          { id: 'turn', label: 'Turn', factor: Math.PI * 2, metric: true },
+        ],
+        defaults: { from: 'deg', to: 'rad' },
+        dualPairs: [['deg', 'rad']],
+      },
+    };
+
+    /* temperature */
+    function tempToC(v, u) {
+      if (u === 'C') return v;
+      if (u === 'F') return (v - 32) * 5 / 9;
+      if (u === 'K') return v - 273.15;
+      return NaN;
+    }
+    function tempFromC(c, u) {
+      if (u === 'C') return c;
+      if (u === 'F') return c * 9 / 5 + 32;
+      if (u === 'K') return c + 273.15;
+      return NaN;
+    }
+
+    /* fuel economy — convert via L/100km */
+    function fuelToLp100(v, u) {
+      if (!v || v <= 0) return NaN;
+      if (u === 'lp100') return v;
+      if (u === 'kpl') return 100 / v;
+      if (u === 'mpgUS') return 235.214583 / v;
+      if (u === 'mpgUK') return 282.4809363 / v;
+      return NaN;
+    }
+    function fuelFromLp100(lp, u) {
+      if (!lp || lp <= 0) return NaN;
+      if (u === 'lp100') return lp;
+      if (u === 'kpl') return 100 / lp;
+      if (u === 'mpgUS') return 235.214583 / lp;
+      if (u === 'mpgUK') return 282.4809363 / lp;
+      return NaN;
+    }
+
+    function convertFamily(familyId, value, fromId, toId) {
+      const fam = FAMILIES[familyId];
+      if (!fam || !Number.isFinite(value)) return NaN;
+      if (fam.special === 'temperature') return tempFromC(tempToC(value, fromId), toId);
+      if (fam.special === 'fuel') return fuelFromLp100(fuelToLp100(value, fromId), toId);
+      const fromU = fam.units.find(u => u.id === fromId);
+      const toU = fam.units.find(u => u.id === toId);
+      if (!fromU || !toU) return NaN;
+      const base = value * fromU.factor;
+      return base / toU.factor;
+    }
+
+    function unitLabel(familyId, id) {
+      const u = FAMILIES[familyId]?.units.find(x => x.id === id);
+      return u ? u.label : id;
+    }
+
+    /* ───────────────── resolution ───────────────── */
+    const RES_PRESETS = [
+      { id: '8k', label: '8K UHD', w: 7680, h: 4320 },
+      { id: '5k', label: '5K', w: 5120, h: 2880 },
+      { id: '4k', label: '4K UHD', w: 3840, h: 2160 },
+      { id: 'dci4k', label: 'DCI 4K', w: 4096, h: 2160 },
+      { id: '1440p', label: '1440p', w: 2560, h: 1440 },
+      { id: '1080p', label: '1080p', w: 1920, h: 1080 },
+      { id: '720p', label: '720p', w: 1280, h: 720 },
+      { id: '480p', label: '480p', w: 854, h: 480 },
+      { id: 'ntsc', label: '720×480', w: 720, h: 480 },
+      { id: 'square1k', label: '1024²', w: 1024, h: 1024 },
+      { id: 'ig', label: 'IG 1080²', w: 1080, h: 1080 },
+      { id: 'story', label: 'Story 9:16', w: 1080, h: 1920 },
+      { id: 'ultrawide', label: 'UW 3440', w: 3440, h: 1440 },
+      { id: 'superuw', label: '32:9 5120', w: 5120, h: 1440 },
+    ];
+
+    const ASPECTS = [
+      { id: '16:9', label: '16:9', r: 16 / 9 },
+      { id: '21:9', label: '21:9', r: 21 / 9 },
+      { id: '32:9', label: '32:9', r: 32 / 9 },
+      { id: '4:3', label: '4:3', r: 4 / 3 },
+      { id: '3:2', label: '3:2', r: 3 / 2 },
+      { id: '5:4', label: '5:4', r: 5 / 4 },
+      { id: '1:1', label: '1:1', r: 1 },
+      { id: '9:16', label: '9:16', r: 9 / 16 },
+      { id: '2:3', label: '2:3', r: 2 / 3 },
+      { id: '2.39:1', label: '2.39:1 Cinema', r: 2.39 },
+      { id: '1.85:1', label: '1.85:1', r: 1.85 },
+      { id: 'custom', label: 'Custom (free)', r: null },
+    ];
+
+    const SCALE_CHIPS = [
+      { label: '1/8', s: 0.125 },
+      { label: '1/4', s: 0.25 },
+      { label: '1/3', s: 1 / 3 },
+      { label: '1/2', s: 0.5 },
+      { label: '2/3', s: 2 / 3 },
+      { label: '3/4', s: 0.75 },
+      { label: '100%', s: 1 },
+      { label: '1.5×', s: 1.5 },
+      { label: '2×', s: 2 },
+      { label: '4×', s: 4 },
+    ];
+
+    let resBase = { w: 3840, h: 2160 };
+    let resUpdating = false;
+    let activeAspectId = '16:9';
+    let currentFamily = 'length';
+    let currentMode = 'resolution';
+    let elDriving = null; // which electrical field user last edited
+
+    /* currency seed: approx mid-2026-ish static; refreshed via API */
+    const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'MXN', 'CHF', 'CNY', 'INR', 'BRL', 'KRW', 'SEK', 'NOK', 'NZD', 'SGD', 'HKD', 'ZAR', 'TRY', 'PLN'];
+    let fxRates = { USD: 1, EUR: 0.92, GBP: 0.79, JPY: 157, CAD: 1.37, AUD: 1.52, MXN: 17.2, CHF: 0.89, CNY: 7.25, INR: 83.5, BRL: 5.1, KRW: 1380, SEK: 10.5, NOK: 10.7, NZD: 1.66, SGD: 1.35, HKD: 7.82, ZAR: 18.5, TRY: 32.5, PLN: 3.95 };
+    let fxDate = 'offline seed';
+    let fxManual = null; // { from, to, rate }
+
+    /* ───────────────── UI: modes ───────────────── */
+    function renderModeList(filter = '') {
+      const q = filter.trim().toLowerCase();
+      const list = $('modeList');
+      list.innerHTML = '';
+      MODES.filter(m => {
+        if (!q) return true;
+        return (m.name + m.hint + m.desc + m.id).toLowerCase().includes(q);
+      }).forEach(m => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn' + (m.id === currentMode ? ' active' : '');
+        b.dataset.mode = m.id;
+        b.innerHTML = `<span class="ico">${m.emoji}</span><span class="lbl">${m.name}<span class="hint">${m.hint}</span></span>`;
+        b.addEventListener('click', () => setMode(m.id));
+        list.appendChild(b);
+      });
+    }
+
+    function setMode(id) {
+      const m = MODES.find(x => x.id === id);
+      if (!m) return;
+      currentMode = id;
+      document.querySelectorAll('.mode-panel').forEach(p => p.classList.add('hidden'));
+      $(m.panel).classList.remove('hidden');
+      $('pageTitle').textContent = m.name;
+      $('pageDesc').textContent = m.desc;
+      renderModeList($('modeSearch').value);
+      if (m.panel === 'mode-convert') {
+        currentFamily = m.family;
+        setupConvertFamily(m.family);
+      }
+      if (id === 'electrical') solveFromUserFields();
+      if (id === 'currency') refreshCurrency();
+      if (id === 'percent') refreshPercent();
+      if (id === 'memory') refreshMemory();
+      if (id === 'resolution') refreshResolution();
+      try { localStorage.setItem('uc-mode', id); } catch {}
+    }
+
+    /* ───────────────── resolution logic ───────────────── */
+    function buildResUI() {
+      const rp = $('resPresets');
+      RES_PRESETS.forEach(p => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = p.label;
+        c.dataset.id = p.id;
+        c.addEventListener('click', () => {
+          resBase = { w: p.w, h: p.h };
+          resUpdating = true;
+          $('resW').value = p.w;
+          $('resH').value = p.h;
+          $('resScale').value = 100;
+          $('resScaleLbl').textContent = '100%';
+          resUpdating = false;
+          // pick closest aspect
+          const r = p.w / p.h;
+          let best = ASPECTS[0], bestD = Infinity;
+          ASPECTS.forEach(a => {
+            if (a.r == null) return;
+            const d = Math.abs(a.r - r);
+            if (d < bestD) { bestD = d; best = a; }
+          });
+          activeAspectId = bestD < 0.02 ? best.id : 'custom';
+          syncAspectUI();
+          markPreset(p.id);
+          refreshResolution();
+        });
+        rp.appendChild(c);
+      });
+
+      const sel = $('resAspect');
+      ASPECTS.forEach(a => {
+        const o = document.createElement('option');
+        o.value = a.id; o.textContent = a.label;
+        sel.appendChild(o);
+      });
+      sel.value = '16:9';
+      sel.addEventListener('change', () => {
+        activeAspectId = sel.value;
+        const a = ASPECTS.find(x => x.id === activeAspectId);
+        if (a && a.r != null && $('resLock').checked) {
+          const w = num($('resW'));
+          if (Number.isFinite(w)) {
+            resUpdating = true;
+            $('resH').value = Math.round(w / a.r);
+            resUpdating = false;
+          }
+        }
+        syncAspectUI();
+        // update base to current dims when aspect changes intentionally
+        commitCurrentAsBaseIfScale100();
+        refreshResolution();
+      });
+
+      const ac = $('aspectChips');
+      ASPECTS.filter(a => a.id !== 'custom').forEach(a => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.dataset.aspect = a.id;
+        c.textContent = a.label;
+        c.addEventListener('click', () => {
+          $('resAspect').value = a.id;
+          $('resAspect').dispatchEvent(new Event('change'));
+        });
+        ac.appendChild(c);
+      });
+
+      const sc = $('scaleChips');
+      SCALE_CHIPS.forEach(s => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip scale';
+        c.textContent = s.label;
+        c.addEventListener('click', () => applyScale(s.s));
+        sc.appendChild(c);
+      });
+
+      $('resScale').addEventListener('input', () => {
+        const pct = num($('resScale'));
+        $('resScaleLbl').textContent = `${pct}%`;
+        applyScale(pct / 100, false);
+      });
+
+      $('resW').addEventListener('input', () => onDimEdit('w'));
+      $('resH').addEventListener('input', () => onDimEdit('h'));
+      $('resDiag').addEventListener('input', refreshResolution);
+      $('resDiagUnit').addEventListener('change', refreshResolution);
+      $('resLock').addEventListener('change', refreshResolution);
+
+      $('applyFrac').addEventListener('click', () => {
+        const n = num($('fracNum')) || 1;
+        const d = num($('fracDen')) || 1;
+        applyScale(n / d);
+      });
+      $('copyRes').addEventListener('click', () => {
+        const w = Math.round(num($('resW')));
+        const h = Math.round(num($('resH')));
+        copyText(`${w}×${h} (${ratioStr(w, h)})`);
+      });
+      $('copyResFfmpeg').addEventListener('click', () => {
+        const w = Math.round(num($('resW')));
+        const h = Math.round(num($('resH')));
+        copyText(`${w}x${h}`);
+      });
+      $('swapWH').addEventListener('click', () => {
+        resUpdating = true;
+        const w = $('resW').value, h = $('resH').value;
+        $('resW').value = h; $('resH').value = w;
+        resBase = { w: parseFloat(h), h: parseFloat(w) };
+        $('resScale').value = 100;
+        $('resScaleLbl').textContent = '100%';
+        resUpdating = false;
+        activeAspectId = 'custom';
+        syncAspectUI();
+        refreshResolution();
+      });
+      $('roundEven').addEventListener('click', () => {
+        resUpdating = true;
+        let w = Math.round(num($('resW')));
+        let h = Math.round(num($('resH')));
+        w -= w % 2; h -= h % 2;
+        $('resW').value = w; $('resH').value = h;
+        resBase = { w, h };
+        $('resScale').value = 100;
+        resUpdating = false;
+        refreshResolution();
+        toast('Rounded to even');
+      });
+    }
+
+    function markPreset(id) {
+      document.querySelectorAll('#resPresets .chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.id === id);
+      });
+    }
+
+    function syncAspectUI() {
+      $('resAspect').value = activeAspectId;
+      document.querySelectorAll('#aspectChips .chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.aspect === activeAspectId);
+      });
+    }
+
+    function commitCurrentAsBaseIfScale100() {
+      if (Math.abs(num($('resScale')) - 100) < 0.01) {
+        resBase = { w: num($('resW')), h: num($('resH')) };
+      }
+    }
+
+    function onDimEdit(which) {
+      if (resUpdating) return;
+      const lock = $('resLock').checked;
+      const a = ASPECTS.find(x => x.id === activeAspectId);
+      resUpdating = true;
+      if (lock && a && a.r != null) {
+        if (which === 'w') {
+          const w = num($('resW'));
+          if (Number.isFinite(w)) $('resH').value = Math.max(1, Math.round(w / a.r));
+        } else {
+          const h = num($('resH'));
+          if (Number.isFinite(h)) $('resW').value = Math.max(1, Math.round(h * a.r));
+        }
+      } else {
+        activeAspectId = 'custom';
+        syncAspectUI();
+      }
+      // editing dims sets new base at current scale 100
+      resBase = { w: num($('resW')), h: num($('resH')) };
+      $('resScale').value = 100;
+      $('resScaleLbl').textContent = '100%';
+      resUpdating = false;
+      markPreset(null);
+      refreshResolution();
+    }
+
+    function applyScale(scale, updateSlider = true) {
+      if (!Number.isFinite(scale) || scale <= 0) return;
+      resUpdating = true;
+      const w = Math.max(1, Math.round(resBase.w * scale));
+      const h = Math.max(1, Math.round(resBase.h * scale));
+      $('resW').value = w;
+      $('resH').value = h;
+      if (updateSlider) {
+        const pct = Math.min(400, Math.max(5, Math.round(scale * 100)));
+        $('resScale').value = pct;
+        $('resScaleLbl').textContent = `${Math.round(scale * 1000) / 10}%`;
+      }
+      resUpdating = false;
+      // highlight scale chip
+      document.querySelectorAll('#scaleChips .chip').forEach(c => {
+        const s = SCALE_CHIPS.find(x => x.label === c.textContent);
+        c.classList.toggle('active', s && Math.abs(s.s - scale) < 1e-6);
+      });
+      refreshResolution();
+    }
+
+    function refreshResolution() {
+      const w = Math.round(num($('resW')));
+      const h = Math.round(num($('resH')));
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return;
+
+      $('resBaseLabel').value = `${Math.round(resBase.w)} × ${Math.round(resBase.h)}`;
+      const aspect = ratioStr(w, h);
+      const decimal = w / h;
+      $('resAspectReadout').innerHTML = `<span>ratio</span>${aspect} · ${fmt(decimal, 5)}`;
+      $('resWDual').innerHTML = `<span>height@lock</span>${h}px · ${fmt(w * h / 1e6, 4)} MP`;
+      $('resHDual').innerHTML = `<span>width@lock</span>${w}px · ${aspect}`;
+
+      // diagonal dual
+      let diagIn = num($('resDiag'));
+      if ($('resDiagUnit').value === 'cm') diagIn = diagIn / 2.54;
+      const ppi = diagIn > 0 ? Math.sqrt(w * w + h * h) / diagIn : NaN;
+      const diagCm = diagIn * 2.54;
+      $('resDiagDual').innerHTML = Number.isFinite(ppi)
+        ? `<span>PPI</span>${fmtFixed(ppi, 2)} · ${fmtFixed(diagCm, 1)} cm`
+        : '';
+
+      // metrics
+      const metrics = [
+        { t: 'Resolution', v: `${w} × ${h}`, s: aspect, cls: '' },
+        { t: 'Megapixels', v: fmtFixed(w * h / 1e6, 3), s: `${(w * h).toLocaleString()} px`, cls: 'alt' },
+        { t: 'Aspect', v: aspect, s: decimal.toFixed(4) + ':1', cls: 'violet' },
+        { t: 'Scale from base', v: fmtFixed((w / resBase.w) * 100, 2) + '%', s: `base ${Math.round(resBase.w)}×${Math.round(resBase.h)}`, cls: 'ok' },
+        { t: 'PPI', v: Number.isFinite(ppi) ? fmtFixed(ppi, 2) : '—', s: diagIn ? `${fmtFixed(diagIn, 2)}" diagonal` : 'set diagonal', cls: '' },
+        { t: '16:9 height for W', v: String(Math.round(w * 9 / 16)), s: 'if forced 16:9', cls: 'alt' },
+        { t: 'Even (encode safe)', v: `${w - w % 2} × ${h - h % 2}`, s: 'mod 2', cls: 'violet' },
+        { t: 'Quarter res', v: `${Math.round(w / 4)} × ${Math.round(h / 4)}`, s: '¼ linear · 1/16 area', cls: 'ok' },
+      ];
+      $('resMetrics').innerHTML = metrics.map(m =>
+        `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+      ).join('');
+
+      // preview frame
+      const maxW = 190, maxH = 170;
+      let fw, fh;
+      if (w / h > maxW / maxH) { fw = maxW; fh = maxW * h / w; }
+      else { fh = maxH; fw = maxH * w / h; }
+      const frame = $('resFrame');
+      frame.style.width = fw + 'px';
+      frame.style.height = fh + 'px';
+      $('resFrameLbl').textContent = `${w}×${h}\n${aspect}`;
+
+      // variants table
+      const scales = [0.125, 0.25, 1 / 3, 0.5, 0.75, 1, 1.5, 2, 4];
+      const tbody = $('resTable').querySelector('tbody');
+      const curScale = w / resBase.w;
+      tbody.innerHTML = scales.map(s => {
+        const ww = Math.max(1, Math.round(resBase.w * s));
+        const hh = Math.max(1, Math.round(resBase.h * s));
+        const active = Math.abs(s - curScale) < 0.005;
+        return `<tr class="${active ? 'active' : ''}">
+          <td>${s < 1 ? `1/${Math.round(1 / s)}` : s + '×'}</td>
+          <td class="num">${fmtFixed(s * 100, 2)}%</td>
+          <td class="num">${ww} × ${hh}</td>
+          <td class="num">${fmtFixed(ww * hh / 1e6, 3)}</td>
+          <td class="metric-col">${ratioStr(ww, hh)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    /* ───────────────── generic convert ───────────────── */
+    function setupConvertFamily(familyId) {
+      const fam = FAMILIES[familyId];
+      if (!fam) return;
+      currentFamily = familyId;
+      const from = $('convFrom');
+      const to = $('convTo');
+      from.innerHTML = '';
+      to.innerHTML = '';
+      fam.units.forEach(u => {
+        from.add(new Option(u.label, u.id));
+        to.add(new Option(u.label, u.id));
+      });
+      from.value = fam.defaults.from;
+      to.value = fam.defaults.to;
+      $('convHeading').innerHTML = `${MODES.find(m => m.family === familyId)?.name || 'Convert'} <span class="live">● LIVE</span>`;
+      refreshConvert();
+    }
+
+    function refreshConvert() {
+      const fam = FAMILIES[currentFamily];
+      if (!fam) return;
+      const value = num($('convValue'));
+      const fromId = $('convFrom').value;
+      const toId = $('convTo').value;
+      const result = convertFamily(currentFamily, value, fromId, toId);
+      $('convResult').value = Number.isFinite(result) ? fmt(result, 8) : '—';
+
+      // dual under from/to
+      const dualFor = (id) => {
+        const pair = (fam.dualPairs || []).find(p => p[0] === id || p[1] === id);
+        if (!pair) {
+          // show opposite system default
+          const u = fam.units.find(x => x.id === id);
+          const other = fam.units.find(x => x.metric !== u?.metric);
+          if (!other || !Number.isFinite(value)) return '';
+          // convert current field value expressed in id? from field is always `value` in fromId
+          return '';
+        }
+        return pair;
+      };
+
+      // From dual: show value in a paired unit
+      const fromPair = (fam.dualPairs || []).find(p => p.includes(fromId));
+      if (fromPair && Number.isFinite(value)) {
+        const other = fromPair[0] === fromId ? fromPair[1] : fromPair[0];
+        const ov = convertFamily(currentFamily, value, fromId, other);
+        $('convFromDual').innerHTML = `<span>also</span>${fmt(ov, 6)} ${other}`;
+      } else if (Number.isFinite(value)) {
+        // generic: first unit of opposite metricness
+        const u = fam.units.find(x => x.id === fromId);
+        const other = fam.units.find(x => !!x.metric !== !!u?.metric);
+        if (other) {
+          const ov = convertFamily(currentFamily, value, fromId, other.id);
+          $('convFromDual').innerHTML = `<span>also</span>${fmt(ov, 6)} ${other.id}`;
+        } else $('convFromDual').textContent = '';
+      } else $('convFromDual').textContent = '';
+
+      if (Number.isFinite(result)) {
+        const toU = fam.units.find(x => x.id === toId);
+        const other = fam.units.find(x => !!x.metric !== !!toU?.metric);
+        if (other) {
+          const ov = convertFamily(currentFamily, value, fromId, other.id);
+          $('convToDual').innerHTML = `<span>also</span>${fmt(ov, 6)} ${other.id}`;
+        } else $('convToDual').textContent = '';
+        $('convFormula').textContent = `${fmt(value, 6)} ${fromId} = ${fmt(result, 8)} ${toId}`;
+      }
+
+      // compare banner — one input dual output
+      const banner = $('compareBanner');
+      const pairs = fam.dualPairs || [];
+      if (pairs.length && Number.isFinite(value)) {
+        // express input in first of primary pair
+        const [a, b] = pairs[0];
+        // value is in fromId — convert to both
+        const va = convertFamily(currentFamily, value, fromId, a);
+        const vb = convertFamily(currentFamily, value, fromId, b);
+        banner.innerHTML = `
+          <div class="compare-card">
+            <div class="muted">Standard / A</div>
+            <div class="big">${fmt(va, 6)}</div>
+            <div class="unit">${unitLabel(currentFamily, a)}</div>
+            <div class="pair">${a}</div>
+          </div>
+          <div class="arrow">⟷</div>
+          <div class="compare-card">
+            <div class="muted">Metric / B</div>
+            <div class="big">${fmt(vb, 6)}</div>
+            <div class="unit">${unitLabel(currentFamily, b)}</div>
+            <div class="pair">${b}</div>
+          </div>
+          <div class="compare-card">
+            <div class="muted">Your selection</div>
+            <div class="big">${fmt(result, 6)}</div>
+            <div class="unit">${unitLabel(currentFamily, toId)}</div>
+            <div class="pair">from ${fmt(value, 6)} ${fromId}</div>
+          </div>`;
+      } else {
+        banner.innerHTML = `<div class="muted">Enter a value to compare dual systems.</div>`;
+      }
+
+      // full table
+      const tbody = $('convTable').querySelector('tbody');
+      tbody.innerHTML = fam.units.map(u => {
+        const v = convertFamily(currentFamily, value, fromId, u.id);
+        const pair = (fam.dualPairs || []).find(p => p.includes(u.id));
+        let dual = '';
+        if (pair && Number.isFinite(value)) {
+          const other = pair[0] === u.id ? pair[1] : pair[0];
+          dual = `${fmt(convertFamily(currentFamily, value, fromId, other), 5)} ${other}`;
+        }
+        const active = u.id === toId;
+        return `<tr class="${active ? 'active' : ''}">
+          <td>${u.label}${u.metric ? ' · metric' : ''}</td>
+          <td class="num">${fmt(v, 8)}</td>
+          <td class="metric-col">${dual}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    /* ───────────────── live update bus ───────────────── */
+    // Single delegated path so every field recalcs on input/change/keyup.
+    // Individual wire* helpers still attach; this is the safety net.
+    let liveRaf = 0;
+    function scheduleLive(fn) {
+      if (typeof fn !== 'function') return;
+      cancelAnimationFrame(liveRaf);
+      liveRaf = requestAnimationFrame(() => {
+        try { fn(); } catch (err) { console.error('[Universal Converter] live update', err); }
+      });
+    }
+
+    function refreshActiveMode(fromEl) {
+      const mode = currentMode;
+      if (mode === 'resolution') {
+        if (fromEl && (fromEl.id === 'resW' || fromEl.id === 'resH')) {
+          if (!resUpdating) onDimEdit(fromEl.id === 'resW' ? 'w' : 'h');
+        } else if (fromEl && fromEl.id === 'resScale') {
+          const pct = num($('resScale'));
+          $('resScaleLbl').textContent = `${pct}%`;
+          applyScale(pct / 100, false);
+        } else {
+          refreshResolution();
+        }
+        return;
+      }
+      if (mode === 'electrical' || (fromEl && String(fromEl.id || '').startsWith('el'))) {
+        if (fromEl && ['elV', 'elI', 'elR', 'elP'].includes(fromEl.id)) {
+          fromEl.dataset.user = '1';
+          ['elV', 'elI', 'elR', 'elP'].forEach(oid => {
+            const o = $(oid);
+            if (o && o !== fromEl && o.dataset.user !== '1') o.value = '';
+          });
+        }
+        solveFromUserFields();
+        return;
+      }
+      if (mode === 'currency' || (fromEl && String(fromEl.id || '').startsWith('cur'))) {
+        refreshCurrency();
+        return;
+      }
+      if (mode === 'percent' || (fromEl && String(fromEl.id || '').startsWith('pct'))) {
+        refreshPercent();
+        return;
+      }
+      if (mode === 'memory' || (fromEl && String(fromEl.id || '').startsWith('mem'))) {
+        refreshMemory();
+        return;
+      }
+      // length/weight/volume/… all share convert panel
+      if (document.getElementById('mode-convert') && !document.getElementById('mode-convert').classList.contains('hidden')) {
+        refreshConvert();
+      }
+    }
+
+    function wireLiveUpdates() {
+      const root = document.querySelector('.main') || document.body;
+      const handler = (e) => {
+        const t = e.target;
+        if (!t || !t.id) return;
+        // ignore buttons (they have their own handlers)
+        if (t.tagName === 'BUTTON') return;
+        if (t.tagName !== 'INPUT' && t.tagName !== 'SELECT' && t.tagName !== 'TEXTAREA') return;
+        // readonly outputs
+        if (t.readOnly) return;
+        scheduleLive(() => refreshActiveMode(t));
+      };
+      // capture so we still see events even if something stops bubble later
+      root.addEventListener('input', handler, true);
+      root.addEventListener('change', handler, true);
+      root.addEventListener('keyup', handler, true);
+      root.addEventListener('paste', (e) => {
+        scheduleLive(() => refreshActiveMode(e.target));
+      }, true);
+    }
+
+    function wireConvert() {
+      ['convValue', 'convFrom', 'convTo'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('input', () => scheduleLive(refreshConvert));
+        el.addEventListener('change', () => scheduleLive(refreshConvert));
+      });
+      const swap = $('swapUnits');
+      if (swap) swap.addEventListener('click', () => {
+        const f = $('convFrom').value;
+        $('convFrom').value = $('convTo').value;
+        $('convTo').value = f;
+        const prev = num($('convResult'));
+        if (Number.isFinite(prev)) $('convValue').value = prev;
+        refreshConvert();
+      });
+      const copy = $('copyConv');
+      if (copy) copy.addEventListener('click', () => {
+        copyText(`${$('convValue').value} ${$('convFrom').value} = ${$('convResult').value} ${$('convTo').value}`);
+      });
+      const setOne = $('setOne');
+      if (setOne) setOne.addEventListener('click', () => {
+        $('convValue').value = 1;
+        refreshConvert();
+      });
+    }
+
+    /* ───────────────── electrical ───────────────── */
+    /* fix electrical: clearing a field should allow re-solve.
+       Issue: once auto-filled, all 4 stay filled. Use data-user flag.
+    */
+    function wireElectricalBetter() {
+      ['elV', 'elI', 'elR', 'elP'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('focus', () => { el.dataset.touch = '1'; });
+        const onEdit = () => {
+          el.dataset.user = '1';
+          // When user types in one field, clear auto-only fields so we recompute
+          ['elV', 'elI', 'elR', 'elP'].forEach(oid => {
+            const o = $(oid);
+            if (o !== el && o.dataset.user !== '1') o.value = '';
+          });
+          solveFromUserFields();
+        };
+        el.addEventListener('input', onEdit);
+        el.addEventListener('change', onEdit);
+      });
+      ['elBreaker', 'elLoadFactor', 'elSysV'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('input', () => solveFromUserFields());
+        el.addEventListener('change', () => solveFromUserFields());
+      });
+      const solveBtn = $('elSolve');
+      if (solveBtn) solveBtn.addEventListener('click', () => solveFromUserFields());
+      const clearBtn = $('elClear');
+      if (clearBtn) clearBtn.addEventListener('click', () => {
+        ['elV', 'elI', 'elR', 'elP'].forEach(id => {
+          $(id).value = '';
+          delete $(id).dataset.user;
+        });
+        solveFromUserFields();
+      });
+      const copyBtn = $('elCopy');
+      if (copyBtn) copyBtn.addEventListener('click', () => {
+        copyText(`V=${$('elV').value} I=${$('elI').value} R=${$('elR').value} P=${$('elP').value}`);
+      });
+    }
+
+    function solveFromUserFields() {
+      let V = null, I = null, R = null, P = null;
+      const take = (id) => {
+        const el = $(id);
+        if (el.dataset.user === '1' && isFilled(el)) return num(el);
+        // also accept filled if at least something — for presets set user on all filled
+        if (isFilled(el) && el.dataset.user === '1') return num(el);
+        return null;
+      };
+      // Prefer user fields; if preset filled without user flags, treat all filled as known
+      const userCount = ['elV', 'elI', 'elR', 'elP'].filter(id => $(id).dataset.user === '1' && isFilled($(id))).length;
+      if (userCount >= 1) {
+        V = take('elV'); I = take('elI'); R = take('elR'); P = take('elP');
+      } else {
+        V = isFilled($('elV')) ? num($('elV')) : null;
+        I = isFilled($('elI')) ? num($('elI')) : null;
+        R = isFilled($('elR')) ? num($('elR')) : null;
+        P = isFilled($('elP')) ? num($('elP')) : null;
+      }
+
+      let sV = V, sI = I, sR = R, sP = P;
+      for (let n = 0; n < 5; n++) {
+        if (sV == null && sI != null && sR != null) sV = sI * sR;
+        if (sV == null && sP != null && sI != null && sI !== 0) sV = sP / sI;
+        if (sV == null && sP != null && sR != null && sR > 0) sV = Math.sqrt(sP * sR);
+        if (sI == null && sV != null && sR != null && sR !== 0) sI = sV / sR;
+        if (sI == null && sP != null && sV != null && sV !== 0) sI = sP / sV;
+        if (sI == null && sP != null && sR != null && sR > 0) sI = Math.sqrt(sP / sR);
+        if (sR == null && sV != null && sI != null && sI !== 0) sR = sV / sI;
+        if (sR == null && sV != null && sP != null && sP !== 0) sR = (sV * sV) / sP;
+        if (sR == null && sP != null && sI != null && sI !== 0) sR = sP / (sI * sI);
+        if (sP == null && sV != null && sI != null) sP = sV * sI;
+        if (sP == null && sI != null && sR != null) sP = sI * sI * sR;
+        if (sP == null && sV != null && sR != null && sR !== 0) sP = (sV * sV) / sR;
+      }
+
+      // Write solved into non-user fields only
+      const put = (id, val, known) => {
+        const el = $(id);
+        if (known != null) return; // user owns it
+        if (val != null && Number.isFinite(val)) {
+          el.value = fmt(val, 8);
+          delete el.dataset.user;
+        } else if (known == null) {
+          // leave placeholder
+        }
+      };
+      put('elV', sV, V);
+      put('elI', sI, I);
+      put('elR', sR, R);
+      put('elP', sP, P);
+
+      const cards = [
+        { t: 'Voltage', v: sV != null ? fmt(sV, 6) + ' V' : '—', s: 'V = I × R', cls: '' },
+        { t: 'Current', v: sI != null ? fmt(sI, 6) + ' A' : '—', s: 'I = V / R', cls: 'alt' },
+        { t: 'Resistance', v: sR != null ? fmt(sR, 6) + ' Ω' : '—', s: 'R = V / I', cls: 'violet' },
+        { t: 'Power', v: sP != null ? fmt(sP, 6) + ' W' : '—', s: sP != null ? `${fmt(sP / 1000, 4)} kW` : 'P = V × I', cls: 'ok' },
+      ];
+      if (sP != null) {
+        cards.push({ t: 'kWh @ 1 hour', v: fmt(sP / 1000, 4) + ' kWh', s: 'energy if run 1h', cls: '' });
+        cards.push({ t: '30 days × 1h', v: fmt(sP / 1000 * 30, 3) + ' kWh', s: 'rough monthly energy', cls: 'alt' });
+      }
+      $('elMetrics').innerHTML = cards.map(m =>
+        `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+      ).join('');
+
+      const br = num($('elBreaker'));
+      const lf = num($('elLoadFactor'));
+      const sv = num($('elSysV'));
+      const safeA = br * lf;
+      const safeW = safeA * sv;
+      $('elLoadMetrics').innerHTML = [
+        { t: 'Safe continuous A', v: fmtFixed(safeA, 2) + ' A', s: `${fmtFixed(lf * 100, 0)}% of ${br}A`, cls: 'ok' },
+        { t: 'Safe continuous W', v: fmtFixed(safeW, 1) + ' W', s: `at ${sv} V`, cls: '' },
+        { t: 'Headroom vs load', v: (sI != null ? fmtFixed(safeA - sI, 2) + ' A' : '—'), s: sI != null ? (sI > safeA ? '⚠ over continuous budget' : 'within budget') : 'set current', cls: sI != null && sI > safeA ? 'alt' : 'violet' },
+      ].map(m =>
+        `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+      ).join('');
+
+      const knowns = [V, I, R, P].filter(x => x != null).length;
+      $('elFormula').textContent = knowns < 2 && [sV, sI, sR, sP].filter(x => x != null).length < 2
+        ? 'Enter any two of V, I, R, P — the others solve live. Editing a field clears auto-filled ones.'
+        : `V=${fmt(sV, 4)}  I=${fmt(sI, 4)}  R=${fmt(sR, 4)}  P=${fmt(sP, 4)}  ·  P=VI  V=IR  P=I²R  P=V²/R`;
+    }
+
+    // Patch presets to mark user fields
+    function buildElPresetsPatched() {
+      const presets = [
+        { label: '120V · 15A', vals: { elV: 120, elI: 15 } },
+        { label: '120V · 1500W', vals: { elV: 120, elP: 1500 } },
+        { label: '240V · 30A', vals: { elV: 240, elI: 30 } },
+        { label: '12V · 5A', vals: { elV: 12, elI: 5 } },
+        { label: 'USB-C 100W', vals: { elV: 20, elP: 100 } },
+        { label: 'LED 12V 2Ω', vals: { elV: 12, elR: 2 } },
+      ];
+      const box = $('elPresets');
+      presets.forEach(p => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = p.label;
+        c.addEventListener('click', () => {
+          ['elV', 'elI', 'elR', 'elP'].forEach(id => {
+            $(id).value = '';
+            delete $(id).dataset.user;
+          });
+          Object.entries(p.vals).forEach(([id, v]) => {
+            $(id).value = v;
+            $(id).dataset.user = '1';
+          });
+          solveFromUserFields();
+        });
+        box.appendChild(c);
+      });
+    }
+
+    function wirePercent() {
+      ['pctPart', 'pctWhole', 'pctPct'].forEach(id => {
+        $(id).addEventListener('input', refreshPercent);
+      });
+    }
+
+    /* ───────────────── memory terms ───────────────── */
+    // Capacity units expressed as bytes (base)
+    const MEM_UNITS = [
+      { id: 'b', label: 'bit', bytes: 1 / 8, note: 'smallest unit 0/1' },
+      { id: 'nibble', label: 'nibble (4-bit)', bytes: 0.5, note: 'half byte · 1 hex digit' },
+      { id: 'B', label: 'byte (B)', bytes: 1, note: '8 bits' },
+      { id: 'word', label: 'word (CPU word)', bytes: null, note: 'uses word-size selector' },
+      { id: 'KiB', label: 'kibibyte (KiB)', bytes: 1024, note: '2¹⁰ · real RAM math' },
+      { id: 'KB', label: 'kilobyte (KB, 10³)', bytes: 1000, note: 'decimal / marketing' },
+      { id: 'MiB', label: 'mebibyte (MiB)', bytes: 1024 ** 2, note: '2²⁰' },
+      { id: 'MB', label: 'megabyte (MB, 10⁶)', bytes: 1e6, note: 'decimal' },
+      { id: 'GiB', label: 'gibibyte (GiB)', bytes: 1024 ** 3, note: '2³⁰ · OS “GB” often this' },
+      { id: 'GB', label: 'gigabyte (GB, 10⁹)', bytes: 1e9, note: 'drive labels often this' },
+      { id: 'TiB', label: 'tebibyte (TiB)', bytes: 1024 ** 4, note: '2⁴⁰' },
+      { id: 'TB', label: 'terabyte (TB, 10¹²)', bytes: 1e12, note: 'decimal' },
+      { id: 'page4k', label: '4 KiB pages', bytes: 4096, note: 'typical virtual page' },
+      { id: 'cache64', label: '64 B cache lines', bytes: 64, note: 'x86 common line size' },
+    ];
+
+    const MEM_GLOSSARY = [
+      { term: 'Bit', meaning: 'Binary digit — 0 or 1. Smallest unit of digital information.', fact: '8 bits = 1 byte' },
+      { term: 'Nibble', meaning: '4 bits — half a byte. One hexadecimal digit maps to one nibble.', fact: '0xF = 1111₂' },
+      { term: 'Byte (B)', meaning: '8 bits. Fundamental addressable unit on nearly all modern CPUs.', fact: '256 possible values' },
+      { term: 'Word', meaning: 'Natural CPU data size. Today often 32- or 64-bit; historically machine-specific.', fact: 'DWORD = 32-bit on x86' },
+      { term: 'DWORD / QWORD', meaning: 'Double word (32-bit) and quad word (64-bit) in Windows/x86 docs.', fact: 'QWORD = 8 bytes' },
+      { term: 'KiB / MiB / GiB / TiB', meaning: 'Binary prefixes (IEC): powers of 1024. Correct for RAM math and most OS reporting.', fact: '1 GiB = 1,073,741,824 B' },
+      { term: 'KB / MB / GB / TB', meaning: 'SI decimal prefixes (1000ⁿ). Storage marketing and some specs use these.', fact: '1 GB ≠ 1 GiB' },
+      { term: 'RAM', meaning: 'Random Access Memory — volatile working memory the CPU reads/writes at high speed.', fact: 'cleared on power loss' },
+      { term: 'DRAM', meaning: 'Dynamic RAM — stores bits in capacitors; needs refresh. Basis of system memory.', fact: 'cheap · dense' },
+      { term: 'SRAM', meaning: 'Static RAM — flip-flop cells, no refresh. Faster/costlier; used in CPU caches.', fact: 'cache = SRAM' },
+      { term: 'DIMM', meaning: 'Dual Inline Memory Module — standard desktop/server stick form factor.', fact: '288-pin DDR4/5' },
+      { term: 'SO-DIMM', meaning: 'Small Outline DIMM — laptop / SFF memory module.', fact: 'shorter than DIMM' },
+      { term: 'Rank', meaning: 'Independent set of DRAM chips on a module that share the bus; multi-rank = more banks, timing nuances.', fact: '1R / 2R labels' },
+      { term: 'Bank / Bank group', meaning: 'Internal DRAM partitions so commands can pipeline; bank groups (DDR4+) improve concurrency.', fact: 'BG in datasheets' },
+      { term: 'Channel', meaning: 'Independent memory controller path. Dual-channel ≈ 2× bandwidth vs single (same speed).', fact: '2×64-bit typical' },
+      { term: 'DDR', meaning: 'Double Data Rate — transfers on rising and falling clock edges (2 transfers per cycle).', fact: 'MT/s ≈ 2 × MHz' },
+      { term: 'MT/s', meaning: 'Megatransfers per second — marketing “DDR4-3200” means 3200 MT/s data rate.', fact: 'not the same as MHz clock' },
+      { term: 'MHz (real clock)', meaning: 'Actual DRAM I/O clock. For classic DDR: real clock ≈ MT/s ÷ 2.', fact: 'DDR4-3200 → 1600 MHz' },
+      { term: 'CAS Latency (CL)', meaning: 'Column Address Strobe latency in clock cycles between read command and data.', fact: 'lower CL = fewer cycles' },
+      { term: 'Latency (ns)', meaning: 'Real time = CL ÷ (MT/s / 2) × 1000 ns, i.e. CL / f_MHz × 1000.', fact: 'CL16 @ 3200 ≈ 10 ns' },
+      { term: 'Timings (CL-tRCD-tRP-tRAS)', meaning: 'Primary JEDEC/XMP timing set printed on kits (e.g. 16-18-18-36).', fact: 'first number is CL' },
+      { term: 'XMP / EXPO / DOCP', meaning: 'One-click overclock profiles so kits run above JEDEC base speeds in BIOS.', fact: 'EXPO = AMD' },
+      { term: 'JEDEC', meaning: 'Standards body defining base DDR speeds/timings vendors guarantee without OC profiles.', fact: 'safe default SPD' },
+      { term: 'ECC', meaning: 'Error-Correcting Code memory detects/corrects bit flips — servers, workstations, some Ryzen PRO.', fact: 'extra chips on module' },
+      { term: 'Registered / RDIMM', meaning: 'Buffered address/command path for stability with many DIMMs (servers). Not the same as ECC alone.', fact: 'vs UDIMM' },
+      { term: 'Prefetch', meaning: 'DDR generations burst multiple bits per internal column access (e.g. n-prefetch) enabling higher I/O rates.', fact: 'DDR4 n=8' },
+      { term: 'LPDDR', meaning: 'Low-Power DDR for laptops/phones — different packages, power states, often soldered.', fact: 'LPDDR5/x common' },
+      { term: 'GDDR / HBM', meaning: 'Graphics and high-bandwidth memories for GPUs/accelerators (wider buses, different packaging).', fact: 'HBM = stacked' },
+      { term: 'Cache line', meaning: 'Atomic transfer unit between cache and memory — commonly 64 bytes on x86.', fact: 'false sharing risk' },
+      { term: 'Page (virtual memory)', meaning: 'OS maps memory in pages (often 4 KiB). Huge pages (2 MiB/1 GiB) reduce TLB pressure.', fact: 'page fault on miss' },
+      { term: 'TLB', meaning: 'Translation Lookaside Buffer — caches virtual→physical page translations.', fact: 'miss = walk page tables' },
+      { term: 'Virtual address', meaning: 'Address the program uses; MMU translates to physical RAM (or pagefile/swap).', fact: 'isolation + overcommit' },
+      { term: 'Physical address', meaning: 'Actual location in DRAM (or device memory) after translation.', fact: 'width limits max RAM' },
+      { term: '32-bit address space', meaning: '2³² byte addresses ≈ 4 GiB theoretical user/kernel split historically limited “3.something GB”.', fact: '4 GiB ceiling' },
+      { term: '64-bit address space', meaning: 'Vast virtual space; CPUs implement a subset of bits (e.g. 48/57-bit VA).', fact: 'not full 64 used' },
+      { term: 'Bandwidth', meaning: 'Peak bytes/sec ≈ MT/s × bus_bits × channels / 8.', fact: 'dual-channel doubles' },
+      { term: 'Dual / quad channel', meaning: 'Multiple parallel controllers/channels. Matched pairs (or quads) populate for full width.', fact: '2×8 GiB > 1×16 GiB BW' },
+      { term: 'SPD', meaning: 'Serial Presence Detect — EEPROM on module describing JEDEC/XMP profiles to the BIOS.', fact: 'read at POST' },
+      { term: 'tRFC / refresh', meaning: 'DRAM must refresh capacitors; tRFC and refresh intervals trade capacity vs throughput.', fact: 'hot = more refresh' },
+      { term: 'Heap vs stack', meaning: 'Stack = automatic call frames; heap = dynamic allocation (malloc/new). Both live in RAM.', fact: 'not disk “memory”' },
+      { term: 'Pagefile / swap', meaning: 'Disk-backed overflow when RAM is full — much slower than DRAM.', fact: 'not a substitute for RAM' },
+      { term: 'Shared video memory', meaning: 'iGPU steals system RAM as framebuffer when no/insufficient VRAM.', fact: 'reduces free RAM' },
+      { term: 'NUMA', meaning: 'Non-Uniform Memory Access — multi-socket (and some APUs) where local RAM is faster than remote.', fact: 'pin threads carefully' },
+    ];
+
+    const DDR_PRESETS = [
+      { label: 'DDR3-1600', mts: 1600, cl: 11, gen: 'DDR3' },
+      { label: 'DDR4-2400', mts: 2400, cl: 15, gen: 'DDR4' },
+      { label: 'DDR4-3200', mts: 3200, cl: 16, gen: 'DDR4' },
+      { label: 'DDR4-3600', mts: 3600, cl: 16, gen: 'DDR4' },
+      { label: 'DDR5-4800', mts: 4800, cl: 40, gen: 'DDR5' },
+      { label: 'DDR5-6000', mts: 6000, cl: 30, gen: 'DDR5' },
+      { label: 'DDR5-7200', mts: 7200, cl: 34, gen: 'DDR5' },
+      { label: 'LPDDR5-6400', mts: 6400, cl: 20, gen: 'LPDDR5' },
+      { label: 'GDDR6-16G', mts: 16000, cl: 20, gen: 'GDDR6' },
+    ];
+
+    function memUnitBytes(unitId, wordBits) {
+      if (unitId === 'word') return (wordBits || 32) / 8;
+      const u = MEM_UNITS.find(x => x.id === unitId);
+      return u ? u.bytes : NaN;
+    }
+
+    function capacityToBytes() {
+      const amt = num($('memAmt'));
+      const unit = $('memUnit').value;
+      const wordBits = num($('memWordBits')) || 32;
+      const bpu = memUnitBytes(unit, wordBits);
+      if (!Number.isFinite(amt) || !Number.isFinite(bpu)) return NaN;
+      return amt * bpu;
+    }
+
+    function fmtBytesHuman(bytes) {
+      if (!Number.isFinite(bytes)) return '—';
+      const abs = Math.abs(bytes);
+      if (abs >= 1024 ** 4) return fmtFixed(bytes / 1024 ** 4, 4) + ' TiB';
+      if (abs >= 1024 ** 3) return fmtFixed(bytes / 1024 ** 3, 4) + ' GiB';
+      if (abs >= 1024 ** 2) return fmtFixed(bytes / 1024 ** 2, 4) + ' MiB';
+      if (abs >= 1024) return fmtFixed(bytes / 1024, 4) + ' KiB';
+      if (abs >= 1) return fmtFixed(bytes, 2) + ' B';
+      return fmtFixed(bytes * 8, 2) + ' bits';
+    }
+
+    function buildMemoryUI() {
+      const sel = $('memUnit');
+      MEM_UNITS.forEach(u => sel.add(new Option(u.label, u.id)));
+      sel.value = 'GiB';
+
+      const capPresets = [
+        { label: '8 GiB', amt: 8, unit: 'GiB' },
+        { label: '16 GiB', amt: 16, unit: 'GiB' },
+        { label: '32 GiB', amt: 32, unit: 'GiB' },
+        { label: '64 GiB', amt: 64, unit: 'GiB' },
+        { label: '1 TiB', amt: 1, unit: 'TiB' },
+        { label: '4 GiB (32-bit max)', amt: 4, unit: 'GiB' },
+        { label: '4096 pages', amt: 4096, unit: 'page4k' },
+      ];
+      const box = $('memCapPresets');
+      capPresets.forEach(p => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = p.label;
+        c.addEventListener('click', () => {
+          $('memAmt').value = p.amt;
+          $('memUnit').value = p.unit;
+          refreshMemory();
+        });
+        box.appendChild(c);
+      });
+
+      const ddrBox = $('memDdrPresets');
+      DDR_PRESETS.forEach(p => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip scale';
+        c.textContent = p.label;
+        c.addEventListener('click', () => {
+          $('memMTs').value = p.mts;
+          $('memCL').value = p.cl;
+          $('memGen').value = p.gen;
+          if (p.gen === 'GDDR6') {
+            $('memBus').value = '256';
+            $('memCh').value = 1;
+          } else {
+            $('memBus').value = '64';
+            $('memCh').value = 2;
+          }
+          refreshMemory();
+        });
+        ddrBox.appendChild(c);
+      });
+
+      [16, 20, 24, 32, 36, 39, 48, 52, 57, 64].forEach(b => {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = b + '-bit';
+        c.addEventListener('click', () => {
+          $('memAddrBits').value = b;
+          refreshMemory();
+        });
+        $('memAddrPresets').appendChild(c);
+      });
+
+      const ids = [
+        'memAmt', 'memUnit', 'memWordBits', 'memMTs', 'memBus', 'memCh', 'memCL',
+        'memSticks', 'memStickGiB', 'memGen', 'memAddrBits', 'memAddrUnit', 'memPage', 'memCacheLine',
+      ];
+      ids.forEach(id => {
+        $(id).addEventListener('input', refreshMemory);
+        $(id).addEventListener('change', refreshMemory);
+      });
+
+      $('memCopyCap').addEventListener('click', () => {
+        const bytes = capacityToBytes();
+        copyText(`${$('memAmt').value} ${$('memUnit').value} = ${fmtBytesHuman(bytes)} (${fmtFixed(bytes, 0)} bytes)`);
+      });
+      $('memSet16').addEventListener('click', () => {
+        $('memAmt').value = 16; $('memUnit').value = 'GiB';
+        $('memSticks').value = 2; $('memStickGiB').value = 8;
+        refreshMemory();
+      });
+      $('memSet32').addEventListener('click', () => {
+        $('memAmt').value = 32; $('memUnit').value = 'GiB';
+        $('memSticks').value = 2; $('memStickGiB').value = 16;
+        refreshMemory();
+      });
+      $('memCopyDdr').addEventListener('click', () => {
+        const mts = num($('memMTs'));
+        const cl = num($('memCL'));
+        const gen = $('memGen').value;
+        const mhz = mts / 2;
+        const lat = cl / mhz * 1000;
+        const bus = num($('memBus'));
+        const ch = num($('memCh'));
+        const GBs = mts * 1e6 * bus * ch / 8 / 1e9;
+        copyText(`${gen}-${mts} · CL${cl} (${fmtFixed(lat, 2)} ns) · ${fmtFixed(GBs, 2)} GB/s peak · ${ch}×${bus}-bit`);
+      });
+
+      $('memGlossarySearch').addEventListener('input', renderMemGlossary);
+      renderMemGlossary();
+    }
+
+    function renderMemGlossary() {
+      const q = ($('memGlossarySearch').value || '').trim().toLowerCase();
+      const rows = MEM_GLOSSARY.filter(g => {
+        if (!q) return true;
+        return (g.term + ' ' + g.meaning + ' ' + g.fact).toLowerCase().includes(q);
+      });
+      $('memGlossary').querySelector('tbody').innerHTML = rows.map(g =>
+        `<tr><td><strong>${g.term}</strong></td><td>${g.meaning}</td><td class="metric-col">${g.fact}</td></tr>`
+      ).join('') || `<tr><td colspan="3" class="muted">No terms match.</td></tr>`;
+    }
+
+    function refreshMemory() {
+      const bytes = capacityToBytes();
+      const wordBits = num($('memWordBits')) || 32;
+      const wordBytes = wordBits / 8;
+
+      $('memAmtDual').innerHTML = Number.isFinite(bytes)
+        ? `<span>bytes</span>${fmtFixed(bytes, 0)} · ${fmtBytesHuman(bytes)}`
+        : '';
+      $('memWordDual').innerHTML = `<span>word</span>${wordBits} bits = ${wordBytes} B`;
+
+      // capacity metrics
+      if (Number.isFinite(bytes)) {
+        const bits = bytes * 8;
+        const words = bytes / wordBytes;
+        const pages4k = bytes / 4096;
+        const gib = bytes / (1024 ** 3);
+        const gbDec = bytes / 1e9;
+        $('memCapMetrics').innerHTML = [
+          { t: 'Bytes', v: fmtFixed(bytes, 0), s: fmtBytesHuman(bytes), cls: '' },
+          { t: 'Bits', v: fmtFixed(bits, 0), s: fmtBytesHuman(bits / 8) + ' worth', cls: 'alt' },
+          { t: 'Words', v: fmtFixed(words, 2), s: `${wordBits}-bit words`, cls: 'violet' },
+          { t: 'GiB (binary)', v: fmtFixed(gib, 4), s: 'OS/RAM style', cls: 'ok' },
+          { t: 'GB (decimal)', v: fmtFixed(gbDec, 4), s: 'SI / labels', cls: '' },
+          { t: '4 KiB pages', v: fmtFixed(pages4k, 2), s: 'virtual memory pages', cls: 'alt' },
+          { t: 'KiB vs KB gap', v: fmtFixed(gib * 1024 - gbDec * 1000, 2) + ' MiB-ish', s: 'binary − decimal @ same “G” scale', cls: 'violet' },
+          { t: 'Hex bytes', v: '0x' + Math.round(bytes).toString(16).toUpperCase(), s: 'rounded byte count', cls: 'ok' },
+        ].map(m =>
+          `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+        ).join('');
+
+        $('memUnitTable').querySelector('tbody').innerHTML = MEM_UNITS.map(u => {
+          const bpu = u.id === 'word' ? wordBytes : u.bytes;
+          const v = bytes / bpu;
+          return `<tr>
+            <td>${u.label}</td>
+            <td class="num">${fmt(v, 8)}</td>
+            <td class="metric-col">${u.note}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      // DDR
+      const mts = num($('memMTs'));
+      const bus = num($('memBus'));
+      const ch = num($('memCh'));
+      const cl = num($('memCL'));
+      const sticks = num($('memSticks'));
+      const stickGiB = num($('memStickGiB'));
+      const gen = $('memGen').value;
+
+      if (Number.isFinite(mts) && mts > 0) {
+        const realMhz = mts / 2;
+        const peakBps = mts * 1e6 * bus * ch / 8; // bytes/s
+        const peakGBs = peakBps / 1e9;
+        const peakGiBs = peakBps / (1024 ** 3);
+        const latNs = Number.isFinite(cl) ? (cl / realMhz) * 1000 : NaN;
+        const kitGiB = sticks * stickGiB;
+        const fillSec = Number.isFinite(bytes) && peakBps > 0 ? bytes / peakBps : (kitGiB * 1024 ** 3) / peakBps;
+        const label = `${gen}-${Math.round(mts)}`;
+
+        $('memMTsDual').innerHTML = `<span>real clock</span>${fmtFixed(realMhz, 1)} MHz · ${label}`;
+        $('memCLDual').innerHTML = Number.isFinite(latNs)
+          ? `<span>true latency</span>${fmtFixed(latNs, 2)} ns`
+          : '';
+        $('memKitDual').innerHTML = Number.isFinite(kitGiB)
+          ? `<span>kit</span>${fmtFixed(kitGiB, 2)} GiB total · ${sticks} module(s)`
+          : '';
+
+        $('memDdrMetrics').innerHTML = [
+          { t: 'Module name', v: label, s: `${fmtFixed(realMhz, 0)} MHz I/O clock`, cls: '' },
+          { t: 'Peak bandwidth', v: fmtFixed(peakGBs, 2) + ' GB/s', s: `${fmtFixed(peakGiBs, 2)} GiB/s · ${ch} ch × ${bus}-bit`, cls: 'ok' },
+          { t: 'Per channel', v: fmtFixed(peakGBs / ch, 2) + ' GB/s', s: 'if channels equal', cls: 'alt' },
+          { t: 'CAS latency', v: Number.isFinite(latNs) ? fmtFixed(latNs, 2) + ' ns' : '—', s: `CL${cl} @ ${fmtFixed(realMhz, 0)} MHz`, cls: 'violet' },
+          { t: 'Transfers / clock', v: '2 (DDR)', s: 'double data rate edges', cls: '' },
+          { t: 'Kit capacity', v: fmtFixed(kitGiB, 2) + ' GiB', s: `${sticks} × ${stickGiB} GiB`, cls: 'alt' },
+          { t: 'Theo. fill kit', v: fmtFixed(fillSec * 1000, 2) + ' ms', s: 'at peak BW (ideal)', cls: 'violet' },
+          { t: 'vs single channel', v: ch > 1 ? fmtFixed(ch, 0) + '× BW' : '1×', s: 'channel multiplier', cls: 'ok' },
+        ].map(m =>
+          `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+        ).join('');
+
+        $('memDdrFormula').textContent =
+          `BW = MT/s × bus_bits × channels / 8  →  ${mts}e6 × ${bus} × ${ch} / 8 = ${fmtFixed(peakBps, 0)} B/s (${fmtFixed(peakGBs, 2)} GB/s) · ` +
+          `real_MHz = MT/s ÷ 2 = ${fmtFixed(realMhz, 1)} · t_CL(ns) = CL / MHz × 1000 = ${fmtFixed(latNs, 2)}`;
+      }
+
+      // address space
+      const abits = Math.round(num($('memAddrBits')));
+      const bpa = num($('memAddrUnit')) || 1;
+      if (Number.isFinite(abits) && abits >= 1 && abits <= 64) {
+        // use careful 2^n for up to 2^53 exact in JS; beyond that approximate with exp
+        let addrCount;
+        if (abits <= 53) addrCount = 2 ** abits;
+        else addrCount = Math.pow(2, abits); // loses integer precision but OK for display
+        const spaceBytes = addrCount * bpa;
+        $('memAddrMetrics').innerHTML = [
+          { t: 'Unique addresses', v: abits <= 53 ? addrCount.toLocaleString() : `2^${abits}`, s: `${abits} address bits`, cls: '' },
+          { t: 'Addressable bytes', v: fmtBytesHuman(spaceBytes), s: `${fmtFixed(spaceBytes / 1024 ** 3, 4)} GiB`, cls: 'ok' },
+          { t: 'If byte-addressable', v: fmtBytesHuman(addrCount), s: 'bpa = 1', cls: 'alt' },
+          { t: 'Classic 32-bit', v: abits === 32 ? '4 GiB ceiling' : fmtBytesHuman(2 ** 32), s: 'historical “3.x GB” OS split', cls: 'violet' },
+          { t: 'Hex max addr', v: abits <= 32 ? '0x' + (addrCount - 1).toString(16).toUpperCase() : `2^${abits}−1`, s: 'last address', cls: '' },
+          { t: 'Bits needed for cap', v: Number.isFinite(bytes) && bytes > 0 ? String(Math.ceil(Math.log2(bytes))) : '—', s: 'min address bits for capacity above', cls: 'ok' },
+        ].map(m =>
+          `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+        ).join('');
+      }
+
+      // pages / cache
+      const pageSz = num($('memPage'));
+      const lineSz = num($('memCacheLine'));
+      const capBytes = Number.isFinite(bytes) ? bytes : (sticks * stickGiB * 1024 ** 3);
+      $('memPageFromCap').value = fmtBytesHuman(capBytes);
+      if (Number.isFinite(capBytes) && pageSz > 0 && lineSz > 0) {
+        const pages = capBytes / pageSz;
+        const lines = capBytes / lineSz;
+        const pageTableMiB = (pages * 8) / (1024 ** 2); // crude 8-byte PTE
+        $('memPageMetrics').innerHTML = [
+          { t: 'Pages in capacity', v: fmtFixed(pages, 2), s: `${fmtBytesHuman(pageSz)} each`, cls: '' },
+          { t: 'Cache lines', v: fmtFixed(lines, 2), s: `${lineSz} B lines`, cls: 'alt' },
+          { t: 'Crude PTE table', v: fmtFixed(pageTableMiB, 3) + ' MiB', s: 'if 8 B per page entry', cls: 'violet' },
+          { t: 'Lines per page', v: fmtFixed(pageSz / lineSz, 0), s: 'page ÷ line', cls: 'ok' },
+          { t: '4K pages in 1 GiB', v: fmtFixed((1024 ** 3) / 4096, 0), s: '262,144', cls: '' },
+          { t: 'Huge 2 MiB in cap', v: fmtFixed(capBytes / (2 * 1024 ** 2), 2), s: 'TLB-friendly pages', cls: 'alt' },
+        ].map(m =>
+          `<div class="metric ${m.cls}"><div class="t">${m.t}</div><div class="v">${m.v}</div><div class="s">${m.s}</div></div>`
+        ).join('');
+      }
+    }
+
+    /* ───────────────── init ───────────────── */
+    function safe(label, fn) {
+      try { fn(); }
+      catch (err) { console.error('[Universal Converter] init failed:', label, err); }
+    }
+
+    function init() {
+      renderModeList();
+      $('modeSearch').addEventListener('input', () => renderModeList($('modeSearch').value));
+
+      // Delegated live bus first so typing works even if a wire* helper fails
+      safe('wireLiveUpdates', wireLiveUpdates);
+      safe('buildResUI', buildResUI);
+      safe('wireConvert', wireConvert);
+      safe('buildElPresets', buildElPresetsPatched);
+      safe('wireElectrical', wireElectricalBetter);
+      safe('buildCurrency', buildCurrency);
+      safe('wirePercent', wirePercent);
+      safe('buildMemoryUI', buildMemoryUI);
+
+      // default electrical seed
+      safe('electrical seed', () => {
+        $('elV').dataset.user = '1';
+        $('elI').dataset.user = '1';
+        solveFromUserFields();
+      });
+
+      let start = 'resolution';
+      try {
+        const saved = localStorage.getItem('uc-mode');
+        if (saved && MODES.some(m => m.id === saved)) start = saved;
+      } catch {}
+      safe('setMode', () => setMode(start));
+      safe('markPreset', () => markPreset('4k'));
+      safe('refreshResolution', refreshResolution);
+      safe('refreshActive', () => refreshActiveMode(null));
+    }
+
+    // --- QoL: copy result summary · persist mode already · reset · keyboard ---
+    function copyUcResult() {
+      const title = ($('pageTitle') && $('pageTitle').textContent) || document.title;
+      const mode = (() => { try { return localStorage.getItem('uc-mode') || 'resolution'; } catch { return 'resolution'; } })();
+      const panel = document.querySelector('.mode-panel:not([hidden],.hidden)') || document.querySelector('.mode-panel.active') || document.getElementById('mode-' + mode) || document.querySelector('main');
+      const metrics = Array.from(document.querySelectorAll('.metric .t, .metric .v')).slice(0, 24).map(n => n.textContent.trim()).filter(Boolean);
+      const inputs = Array.from((panel || document).querySelectorAll('input[type="number"], input[type="text"]:not([type=search])'))
+        .slice(0, 12)
+        .map(i => (i.id || i.name || 'field') + '=' + i.value)
+        .join(', ');
+      const lines = [
+        'Universal Converter — result',
+        '===========================',
+        'Mode: ' + title + ' (' + mode + ')',
+        'Inputs: ' + (inputs || '—'),
+        'Metrics: ' + (metrics.join(' · ') || '—'),
+        'Time: ' + new Date().toISOString(),
+      ];
+      const text = lines.join('\n');
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          if (window.AIToolboxUI?.toast) AIToolboxUI.toast('Result summary copied', 'ok');
+        }).catch(() => {});
+      }
+    }
+    document.getElementById('btnUcCopy')?.addEventListener('click', copyUcResult);
+    document.getElementById('btnUcReset')?.addEventListener('click', () => {
+      if (!confirm('Reset current mode fields to defaults?')) return;
+      try { localStorage.removeItem('uc-mode'); } catch {}
+      location.reload();
+    });
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 's' || e.key === 'S') copyUcResult();
+      if (e.key === '/') { e.preventDefault(); $('modeSearch')?.focus(); }
+    });
+    try {
+      window.AITOOLBOX_PRO = Object.assign({}, window.AITOOLBOX_PRO || {}, {
+        toolId: 'universal-converter',
+        helpLines: ['S — copy result summary', '/ — filter modes', 'Mode remembered in localStorage'],
+      });
+    } catch {}
+
+    init();
+  })();
+  </script>
+
+<script data-tool-polish="universal-converter">
+/* Tool polish: universal-converter — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "universal-converter";
+  const TOOL_NAME = "Universal Converter";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="uc">
+(function(){
+  try {
+    if (!sessionStorage.getItem('uc_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('uc_tip','1');
+      AIToolboxUI.toast('Universal Converter ready · Esc returns to launcher', 'ok');
+    }
+  } catch(_){}
+})();
+</script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+</body>
+</html>

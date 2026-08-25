@@ -27,9 +27,22 @@ Local, secure FAFO Power Toolbox + AI HTML Toolbox. Prefer small, reversible Pow
 | Shared paths/reports/logs | `FAFO.Toolbox` helpers |
 | Python backend | `server\` (loopback only) |
 | Browser tools | existing HTML + `shared\` |
+| Per-app edit snapshots | `snapshots\<relative-path-of-file>\` (newest **5 per app**) |
 
 - Prefer **extending modules** over one-off scripts when a helper will be reused.
 - Keep modules focused; do not dump unrelated utilities into `FAFO.Toolbox`.
+
+## Per-app HTML snapshots
+
+Undo copies stay **in this git folder** so agents can see them. **Keep is per app, not global.**
+
+- **Path:** `snapshots/<relative-path-of-the-live-file>/`  
+  Example: `snapshots/Typing Assistant Trainer.html/t62k3-20260824.html`
+- **Retention:** newest **5 files in that app’s folder only**. Pruning one tool never drops another (backburner work stays).
+- **Never** write `*.bak*` next to a live HTML/JS/CSS file. If a sidecar appears, move it with `.\Scripts\Consolidate-HtmlEditBackups.ps1`.
+- Before editing a tool, copy the current file into **that tool’s** snapshots folder, then drop only the oldest file **in that folder** if it already has 5.
+- Do not commit snapshots of gitignored private apps (TaxForge, Investor Portal).
+- Policy file: `snapshots/README.md`.
 
 ## What must stay out of git
 

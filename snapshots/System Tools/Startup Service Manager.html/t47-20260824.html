@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Startup & Service Manager — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(167,139,250,.2);--accent:#a78bfa;--ok:#4ade80;--danger:#f87171;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% -20%,#1a1030,var(--bg) 60%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,8,.95)}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.wrap{max-width:1200px;margin:0 auto;padding:24px}
+.tabs{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+.tab{padding:8px 16px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;background:rgba(0,0,0,.2)}
+.tab.active{border-color:var(--accent);background:rgba(167,139,250,.15);color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top}
+.mono{font-family:Consolas,monospace;font-size:11px;word-break:break-all}
+.btn{padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(167,139,250,.1);color:var(--accent);cursor:pointer;font-size:10px}
+.btn:disabled{opacity:.45}
+.btn.danger{color:var(--danger);border-color:rgba(248,113,113,.3)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tw{max-height:500px;overflow:auto}
+.tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(167,139,250,.15);color:var(--accent)}
+.inp{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:8px;min-width:180px}
+.msg{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <a href="FAFO Task Manager Pro.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(167,139,250,.08)">← Task Manager Pro</a>
+    <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">PC Diagnostics</a>
+    <a href="System Health Dashboard.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Hub</a>
+    <a href="Disk Space Analyzer.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Disk Analyzer →</a>
+  </div>
+  <span style="color:var(--accent)">STARTUP & SERVICE MANAGER</span>
+  <span data-fafo-layout-toolbar></span>
+</nav>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="startup-service-manager" data-fafo-layout-type="rows">
+<h1 style="font-size:22px;margin-bottom:4px">Startup & Service Manager</h1>
+<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Control what runs at boot — startup folders, registry, scheduled tasks, and Windows services. Filter is local (fast); disable actions may need admin on the toolbox server.</p>
+<div class="tabs">
+<button class="tab active" data-tab="startup">Startup (<span id="cStartup">0</span>)</button>
+<button class="tab" data-tab="tasks">Scheduled Tasks (<span id="cTasks">0</span>)</button>
+<button class="tab" data-tab="services">Services (<span id="cSvc">0</span>)</button>
+</div>
+<div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">
+<span id="tabTitle">Startup Items</span>
+<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<input class="inp" id="filter" data-tip-title="Filter" data-tip="Filter startup items and services by name." placeholder="Filter name / command… (/)">
+<button class="btn" id="btnRefresh" data-tip-title="Refresh" data-tip="Reload startup programs and services inventory." title="Refresh (R)">Refresh</button>
+<button class="btn" id="btnExportCsv" data-tip-title="Export CSV" data-tip="Download startup inventory as CSV." type="button" title="Export current tab CSV">↓ CSV</button>
+<span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+</span>
+</div>
+<div class="tw" id="tableWrap"></div></div>
+<div class="msg" id="msg"></div>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'');
+let data = null, tab = 'startup';
+
+function setMsg(t) { document.getElementById('msg').textContent = t || ''; }
+
+async function api(p, o = {}) {
+  return UI().apiFetch(p, o);
+}
+
+async function load() {
+  setMsg('Loading…');
+  try {
+    data = await api('/startup/overview');
+    document.getElementById('cStartup').textContent = data.startup_count ?? (data.startup || []).length;
+    document.getElementById('cTasks').textContent = data.task_count ?? (data.tasks || []).length;
+    document.getElementById('cSvc').textContent = data.service_count ?? (data.services || []).length;
+    setMsg('');
+    render();
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    data = null;
+    document.getElementById('tableWrap').innerHTML =
+      `<div style="padding:24px;text-align:center;color:#fbbf24"><strong>Server offline</strong><br>${esc(e.message || e)}<br><span style="font-size:12px">Start with START SERVER.bat · 127.0.0.87:18765 · press R</span></div>`;
+    setMsg(e.message || String(e));
+  }
+}
+
+function matchesFilter(row) {
+  const q = (document.getElementById('filter').value || '').trim().toLowerCase();
+  if (!q) return true;
+  const hay = Object.values(row).join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
+function render() {
+  if (!data) return;
+  let rows = '', title = '';
+  if (tab === 'startup') {
+    title = 'Startup Items';
+    const items = (data.startup || []).filter(matchesFilter);
+    rows = items.map(i => `<tr>
+      <td><strong>${esc(i.name)}</strong></td>
+      <td class="tag">${esc(i.category)}</td>
+      <td>${esc(i.location)}</td>
+      <td class="mono">${esc(i.command)}</td>
+      <td><button class="btn danger" data-id="${esc(i.id)}" data-act="disable">Disable</button></td>
+    </tr>`).join('');
+  } else if (tab === 'tasks') {
+    title = 'Scheduled Tasks';
+    const items = (data.tasks || []).filter(matchesFilter);
+    rows = items.map(i => `<tr>
+      <td><strong>${esc(i.name)}</strong></td>
+      <td>${esc(i.schedule)}</td>
+      <td class="mono" colspan="2">${esc(i.command)}</td>
+      <td>${i.enabled ? 'On' : 'Off'}
+        <button class="btn danger" data-id="${esc(i.id)}" data-act="disable" style="margin-left:6px">Disable</button>
+      </td>
+    </tr>`).join('');
+  } else {
+    title = 'Services';
+    const items = (data.services || []).filter(matchesFilter);
+    rows = items.map(i => `<tr>
+      <td><strong>${esc(i.display_name || i.name)}</strong></td>
+      <td class="mono">${esc(i.name)}</td>
+      <td>${esc(i.state)}</td>
+      <td>${esc(i.start_type)}</td>
+      <td>${i.enabled
+        ? `<button class="btn danger" data-id="${esc(i.id)}" data-act="disable">Disable</button>`
+        : `<button class="btn" data-id="${esc(i.id)}" data-act="enable">Enable</button>`}
+      </td>
+    </tr>`).join('');
+  }
+  document.getElementById('tabTitle').textContent = title;
+  document.getElementById('tableWrap').innerHTML =
+    `<table><thead><tr><th>Name</th><th>Type</th><th>Info</th><th>Command/State</th><th></th></tr></thead>`
+    + `<tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">None found</td></tr>'}</tbody></table>`;
+
+  document.querySelectorAll('[data-act]').forEach(b => {
+    b.onclick = async () => {
+      const act = b.dataset.act;
+      const ok = await (UI()?.confirmAction
+        ? UI().confirmAction({
+            title: act === 'disable' ? 'Disable item?' : 'Enable item?',
+            body: `<p>This will <strong>${esc(act)}</strong> the selected startup/service item. Some changes need admin rights.</p>`,
+            confirmText: act === 'disable' ? 'Disable' : 'Enable',
+            cancelText: 'Cancel',
+          })
+        : Promise.resolve({ confirmed: confirm(act + ' this item?') }));
+      if (!ok.confirmed) return;
+      b.disabled = true;
+      try {
+        await api('/startup/' + act, { method: 'POST', body: JSON.stringify({ item_id: b.dataset.id }) });
+        UI()?.toast?.(act + ' OK', 'ok');
+        await load();
+      } catch (e) {
+        setMsg(e.message || String(e));
+        UI()?.toast?.(e.message || String(e), 'warn');
+        b.disabled = false;
+      }
+    };
+  });
+}
+
+const PREF_KEY = 'fafo_startup_mgr_prefs_v1';
+try {
+  const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+  if (p.filter) document.getElementById('filter').value = p.filter;
+  if (p.tab && ['startup', 'tasks', 'services'].includes(p.tab)) {
+    tab = p.tab;
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  }
+} catch (_) {}
+function savePrefs() {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify({ filter: document.getElementById('filter').value, tab }));
+  } catch (_) {}
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    tab = t.dataset.tab;
+    savePrefs();
+    render();
+  };
+});
+document.getElementById('btnRefresh').onclick = load;
+let filterTimer = null;
+document.getElementById('filter').oninput = () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => { savePrefs(); render(); }, 200);
+};
+document.getElementById('btnExportCsv')?.addEventListener('click', () => {
+  if (!data) return;
+  let rows = [];
+  let hdr = [];
+  if (tab === 'startup') {
+    hdr = ['name', 'category', 'location', 'command'];
+    rows = (data.startup || []).filter(matchesFilter).map(i => [i.name, i.category, i.location, i.command]);
+  } else if (tab === 'tasks') {
+    hdr = ['name', 'schedule', 'command', 'enabled'];
+    rows = (data.tasks || []).filter(matchesFilter).map(i => [i.name, i.schedule, i.command, i.enabled]);
+  } else {
+    hdr = ['display_name', 'name', 'state', 'start_type', 'enabled'];
+    rows = (data.services || []).filter(matchesFilter).map(i => [i.display_name || i.name, i.name, i.state, i.start_type, i.enabled]);
+  }
+  const escCsv = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [hdr.join(',')].concat(rows.map(r => r.map(escCsv).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = 'startup-' + tab + '-' + Date.now() + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  UI()?.toast?.('Exported CSV', 'ok');
+});
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('filter')?.focus(); return; }
+  if ((e.key === 'r' || e.key === 'R') && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
+});
+
+UI()?.mountServerBar?.({ onOnline: load });
+load();
+</script>
+
+<script data-tool-polish="startup-manager">
+/* Tool polish: startup-manager — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "startup-manager";
+  const TOOL_NAME = "Startup & Service Manager";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="startup">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('Startup Manager needs S1 for live service data', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

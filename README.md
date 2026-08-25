@@ -66,6 +66,22 @@ Owner-only finance/investor/Xero modules (if present on your machine) are **not*
 
 ---
 
+## Per-app file snapshots (`snapshots/`)
+
+Edit undo copies for each HTML tool live **in this folder**, not next to the apps and not under AppData.
+
+| | |
+|--|--|
+| Where | `snapshots/<path-of-that-app>/` |
+| How many | **Newest 5 per app** — each tool has its own stack |
+| Why per app | Rolling back one tool must not throw away a backburner tool’s last good copies |
+
+Agents: do not leave `*.bak*` beside live files. Copy into that app’s snapshots folder first. Details: [`snapshots/README.md`](snapshots/README.md). Sweep: `.\Scripts\Consolidate-HtmlEditBackups.ps1`.
+
+This is separate from **version** snapshots (`1.00.00` tags) below.
+
+---
+
 ## Version scheme (`MAJOR.FEATURES.FIXES`)
 
 Three two-digit segments, shown as `vv.vv.vv` (e.g. `1.00.00`, `1.03.02`, `2.00.00`).

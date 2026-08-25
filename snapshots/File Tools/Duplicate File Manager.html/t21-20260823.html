@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duplicate File Manager</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+    <style>
+        :root {
+            --bg: #050508; --panel: #0c0c12; --panel2: #14141c;
+            --accent: #00f3ff; --accent2: #ff6b35; --accent3: #7c5cff;
+            --text: #e8e8ec; --muted: #777; --danger: #ff4466; --ok: #00ff88;
+            --glow: 0 0 10px rgba(0,243,255,0.4);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: radial-gradient(ellipse at 20% 0%, #12121f 0%, var(--bg) 55%);
+            color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh; display: flex; flex-direction: column; min-width: 1100px;
+        }
+        .nav-bar {
+            padding: 8px 16px; background: var(--panel); border-bottom: 1px solid rgba(255,107,53,0.25);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .nav-bar h1 { font-size: 15px; color: var(--accent2); margin-right: auto; letter-spacing: 0.5px; }
+        .nav-link {
+            font-size: 11px; padding: 5px 12px; border-radius: 5px; text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.15); color: var(--muted);
+        }
+        .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+        .nav-link.active { background: rgba(255,107,53,0.15); border-color: var(--accent2); color: var(--accent2); }
+        .server-pill { font-size: 10px; padding: 4px 12px; border-radius: 12px; font-weight: 700; text-transform: uppercase; }
+        .server-pill.online { background: rgba(0,255,136,0.15); color: var(--ok); border: 1px solid var(--ok); }
+        .server-pill.offline { background: rgba(255,68,102,0.12); color: var(--danger); border: 1px solid var(--danger); }
+
+        .main {
+            flex: 1; display: flex;
+            min-height: 0; min-width: 0;
+        }
+        .sidebar, .detail-panel { background: var(--panel); overflow: hidden; }
+        .sidebar { border-right: 1px solid rgba(255,255,255,0.06); }
+        .detail-panel { border-left: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; }
+        .center {
+            min-width: 0; min-height: 0; overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        .section { padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .section h3 {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--muted); margin-bottom: 10px;
+        }
+        .hint { font-size: 10px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+        label.field-label {
+            display: block; font-size: 10px; color: var(--muted);
+            text-transform: uppercase; margin: 10px 0 5px;
+        }
+        input[type="text"], select {
+            width: 100%; background: #000; border: 1px solid rgba(255,107,53,0.3);
+            color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 12px;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--accent2); box-shadow: 0 0 8px rgba(255,107,53,0.2); }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stat {
+            background: rgba(255,107,53,0.08); border: 1px solid rgba(255,107,53,0.2);
+            border-radius: 8px; padding: 10px; font-size: 11px;
+        }
+        .stat strong { display: block; font-size: 16px; color: var(--accent2); margin-top: 4px; }
+
+        .toolbar {
+            padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex; gap: 12px; flex-wrap: nowrap; align-items: center; font-size: 11px;
+            flex-shrink: 0;
+        }
+        .toolbar-status {
+            min-width: 0; flex: 1; display: flex; gap: 8px; align-items: center;
+        }
+        #toolbarInfo {
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+        }
+        .toolbar-safe {
+            display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: nowrap;
+        }
+        .toolbar-merge {
+            display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto;
+        }
+        .scan-dock {
+            margin-top: 10px; padding: 10px; border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.28);
+            min-height: 118px;
+        }
+        .scan-dock.running { border-color: rgba(0,243,255,0.3); }
+        .scan-dock.paused { border-color: rgba(255,179,71,0.45); }
+        .scan-dock-actions {
+            display: flex; gap: 8px; flex-wrap: nowrap; margin-bottom: 8px;
+        }
+        .scan-dock-actions .ui-btn { flex: 1; white-space: nowrap; flex-shrink: 0; }
+        .keep-rules { display: flex; flex-direction: column; gap: 6px; }
+        .keep-rule {
+            display: grid; grid-template-columns: 22px 18px 1fr auto; gap: 6px; align-items: center;
+            padding: 6px 8px; border-radius: 8px; background: rgba(0,0,0,0.28);
+            border: 1px solid rgba(255,255,255,0.08); font-size: 11px;
+        }
+        .keep-rule.off { opacity: 0.45; }
+        .keep-rule .ord {
+            font-size: 10px; font-weight: 800; color: var(--accent2); text-align: center;
+        }
+        .keep-rule .rule-body { min-width: 0; }
+        .keep-rule .rule-label { color: var(--text); font-weight: 600; line-height: 1.3; }
+        .keep-rule input[type="text"] { margin-top: 4px; padding: 5px 8px; font-size: 11px; }
+        .keep-rule-btns { display: flex; flex-direction: column; gap: 2px; }
+        .keep-rule-btns button {
+            appearance: none; background: transparent; color: var(--muted);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
+            font-size: 9px; padding: 1px 5px; cursor: pointer; line-height: 1.3;
+        }
+        .keep-rule-btns button:hover { color: var(--accent); border-color: var(--accent); }
+        #keepRuleAdd { margin-top: 8px; }
+        .dup-folder {
+            color: var(--muted) !important; font-family: Consolas, 'Cascadia Mono', monospace;
+            font-size: 9px; word-break: break-all; width: 100%;
+        }
+        .groups-wrap { flex: 1; overflow: auto; padding: 12px; min-height: 0; }
+        .dup-group {
+            border: 1px solid rgba(255,107,53,0.35); border-radius: 10px;
+            padding: 12px; margin-bottom: 10px; background: rgba(255,107,53,0.06);
+            cursor: pointer; transition: border-color 0.2s, transform 0.2s;
+            display: grid; grid-template-columns: 88px 1fr; gap: 12px; align-items: start;
+        }
+        .dup-group:hover { border-color: var(--accent2); }
+        .dup-group.active { border-color: var(--accent); box-shadow: var(--glow); transform: translateY(-1px); }
+        .dup-group.provisional { border-style: dashed; border-color: rgba(251,191,36,.5); }
+        .dup-group .prov-badge {
+            display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 800;
+            padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+            color: #fbbf24; border: 1px solid rgba(251,191,36,.45);
+            background: rgba(251,191,36,.12); text-transform: uppercase; letter-spacing: .04em;
+        }
+        .dup-group h4 { font-size: 13px; color: #fff; margin-bottom: 6px; }
+        .dup-meta { font-size: 10px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+        .dup-meta span { color: var(--accent2); }
+        .dup-thumb {
+            width: 88px; height: 64px; border-radius: 8px; overflow: hidden;
+            background: #000; border: 1px solid rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: center;
+            color: #555; font-size: 10px; text-align: center; flex-shrink: 0;
+        }
+        .dup-thumb img {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .dup-thumb.ph { color: var(--muted); padding: 4px; line-height: 1.3; }
+        .size-exact { color: #9aa3b5; font-weight: 500; font-variant-numeric: tabular-nums; }
+        .file-thumb {
+            width: 120px; height: 80px; border-radius: 8px; overflow: hidden;
+            background: #000; border: 1px solid rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: center;
+            color: #666; font-size: 9px; position: relative; flex-shrink: 0;
+        }
+        .file-thumb img, .file-thumb video {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+            background: #000;
+        }
+        .file-thumb video { pointer-events: none; }
+        .file-thumb .live-badge {
+            position: absolute; left: 4px; bottom: 4px; z-index: 1;
+            font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+            padding: 2px 5px; border-radius: 4px; background: rgba(0,0,0,.72); color: var(--ok);
+            border: 1px solid rgba(0,255,136,.35);
+        }
+        .file-thumb audio { width: 100%; height: 28px; }
+        .persist-pill {
+            font-size: 10px; padding: 3px 8px; border-radius: 999px;
+            border: 1px solid rgba(0,255,136,0.35); color: var(--ok);
+            background: rgba(0,255,136,0.08);
+        }
+        body.compare-open { overflow: hidden; }
+
+        .empty {
+            text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
+        }
+
+        .detail-head { padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .detail-head h2 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+        .detail-list { flex: 1; overflow: hidden; padding: 0; display: flex; flex-direction: column; min-height: 0; }
+        .detail-list-inner { flex: 1; overflow: auto; padding: 10px 14px; min-height: 0; }
+        .detail-live-wrap {
+            margin-bottom: 12px; padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .detail-live-wrap .section-label {
+            font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+            color: var(--muted); margin-bottom: 8px; font-weight: 700;
+        }
+        .detail-live {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+            gap: 8px;
+        }
+        .live-prev {
+            background: #050508; border-radius: 10px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex; flex-direction: column; min-width: 0;
+        }
+        .live-prev.keeper { border-color: rgba(0,255,136,0.45); box-shadow: 0 0 0 1px rgba(0,255,136,0.15); }
+        .live-prev .vp {
+            position: relative; aspect-ratio: 16 / 10; background: #000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .live-prev .vp img, .live-prev .vp video {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .live-prev .vp video { pointer-events: auto; }
+        .live-prev .vp .play-hint {
+            position: absolute; top: 6px; right: 6px;
+            font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+            padding: 2px 6px; border-radius: 999px;
+            background: rgba(0,243,255,.15); color: var(--accent);
+            border: 1px solid rgba(0,243,255,.35);
+        }
+        .live-prev .vp audio { width: 92%; }
+        .live-prev .meta {
+            padding: 6px 8px; font-size: 10px; line-height: 1.35;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .live-prev .meta strong {
+            display: block; color: #fff; font-size: 11px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .live-prev .meta .sz { color: var(--accent3); font-variant-numeric: tabular-nums; }
+        .file-row {
+            display: grid; grid-template-columns: 18px 120px 1fr auto; gap: 10px; align-items: start;
+            padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 8px; background: rgba(0,0,0,0.25);
+        }
+        .file-row.keeper { border-color: rgba(0,255,136,0.35); background: rgba(0,255,136,0.06); }
+        .file-row label { font-size: 12px; font-weight: 600; word-break: break-all; cursor: pointer; }
+        .file-path { font-size: 10px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+        .file-meta { font-size: 10px; color: var(--accent3); text-align: right; white-space: nowrap; }
+        .detail-actions {
+            padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0;
+            background: var(--panel);
+        }
+        .detail-actions .ui-btn { flex-shrink: 0; }
+
+        .compare-panel {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 200;
+            display: none; flex-direction: column;
+        }
+        .compare-panel.open { display: flex; }
+        .compare-top {
+            padding: 12px 16px; background: var(--panel); border-bottom: 1px solid rgba(0,243,255,0.2);
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        }
+        .compare-top h3 { color: var(--accent); font-size: 14px; margin-right: auto; }
+        .compare-top .hint-esc { font-size: 11px; color: var(--muted); }
+        .compare-body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; min-height: 0; }
+        .compare-pane {
+            background: var(--panel); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+        }
+        .compare-pane header {
+            padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 11px; color: var(--muted);
+        }
+        .compare-pane header strong { color: #fff; display: block; margin-bottom: 4px; word-break: break-all; }
+        .compare-content { flex: 1; overflow: auto; padding: 10px; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .compare-content img, .compare-content video { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .compare-content pre {
+            width: 100%; height: 100%; overflow: auto; font-size: 11px; line-height: 1.45;
+            background: #000; border-radius: 6px; padding: 10px; white-space: pre-wrap; word-break: break-word;
+        }
+        .compare-meta { font-size: 11px; color: var(--muted); line-height: 1.6; padding: 8px; }
+        .progress-bar {
+            height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; margin-top: 8px;
+        }
+        .progress-bar > span {
+            display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent2), var(--accent));
+            transition: width 0.2s;
+        }
+        .scan-status {
+            font-size: 10px; color: var(--muted); margin-top: 8px;
+            height: 32px; overflow: hidden; word-break: break-all;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        }
+        .launch-banner {
+            display: none; padding: 10px 14px; background: rgba(255,179,71,0.1);
+            border-bottom: 1px solid rgba(255,179,71,0.3); font-size: 12px;
+            align-items: center; gap: 12px; flex-wrap: wrap;
+        }
+        .launch-banner.visible { display: flex; }
+        .launch-banner strong { color: #ffb347; }
+        .launch-banner .path { color: var(--muted); font-size: 11px; word-break: break-all; flex: 1; min-width: 200px; }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <h1>🗑️ Duplicate File Manager</h1>
+        <span class="server-pill offline" id="serverStatus" data-tip-title="Backend" data-tip="Green = scan ready. Offline: use ▶ Start Server here, or in Launcher / Media Library, or START SERVER.bat.">Server …</span>
+        <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launch the Python backend from this page. Wait for green, then scan.">▶ Start Server</button>
+        <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
+        <a class="nav-link" href="../Movie File Manager/Media Hub.html" title="Full Media Hub">🗂️ Media Hub</a>
+        <a class="nav-link" href="../Movie File Manager/Media Hub.html#duplicates">🗂️ Library (dups tab)</a>
+        <a class="nav-link" href="../Movie File Manager/Media Library Manager.html">📚 Media Library</a>
+        <a class="nav-link" href="../Movie File Manager/File Organizer.html">✏️ Organizer</a>
+        <a class="nav-link" href="../Movie File Manager/Compare Hub.html" title="Pair review + sliders">⇄ Compare</a>
+        <a class="nav-link" href="../Movie File Manager/VSR Pipeline Manager.html" title="VSR match &amp; rename">⚡ VSR</a>
+        <span class="nav-link active">🗑️ Duplicates</span>
+        <a class="nav-link" href="../System Tools/FAFO Ops Stats.html" title="Lifetime + session cleanup tallies">📊 Ops Stats</a>
+        <span class="nav-link" id="opsTally" title="This session · lifetime freed" style="border-color:rgba(0,255,136,.35);color:var(--ok);cursor:default">Session —</span>
+        <button class="ui-btn ghost" id="btnDupReport" data-tip-title="Report" data-tip="Copy a text summary of this scan to the clipboard.">📋 Report</button>
+        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent)">S</kbd> scan · <kbd style="font:10px Consolas;color:var(--accent)">E</kbd> report</span>
+        <span data-fafo-layout-toolbar></span>
+        <button class="ui-btn ghost" id="btnDebug" data-tip-title="Debug" data-tip="Show technical logging for troubleshooting.">🐛 Debug</button>
+    </nav>
+
+    <div class="main"
+         data-fafo-layout-root
+         data-fafo-layout-app="duplicate-file-manager"
+         data-fafo-layout-type="columns">
+        <aside class="sidebar"
+               data-fafo-panel="sidebar"
+               data-fafo-panel-title="Scan &amp; options"
+               data-fafo-panel-min="220"
+               data-fafo-panel-default="300">
+            <div class="section" data-fafo-section="scan" data-fafo-section-title="Scan folder">
+                <h3>Scan folder</h3>
+                <p class="hint">Find exact and near-exact duplicates across common Windows file types — images, video, audio, documents, archives, and code.</p>
+                <label class="field-label">Folder path</label>
+                <input type="text" id="folderPath" placeholder="C:\Users\You\Downloads">
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="ui-btn" id="btnPickFolder" style="flex:1;"
+                            data-tip-title="Pick folder" data-tip-basic="Choose the folder to search for duplicates."
+                            data-tip-pro="Native folder picker via S1.">📂 Pick Folder</button>
+                    <button class="ui-btn" id="btnScanThisPc" style="flex:1;"
+                            data-tip-title="This PC"
+                            data-tip-basic="Scan every local drive (C:, D:, USB…). Skips Windows and Program Files."
+                            data-tip-pro="Uses GetDriveType: fixed + removable only. CD/DVD and network shares are skipped."
+                            data-tip-efficient="Whole-PC scans take a while. Prefer Images+video, Quick match, and keep subfolders on.">🖥 This PC</button>
+                    <button class="ui-btn primary" id="btnScan" style="flex:1;"
+                            data-tip-title="Scan"
+                            data-tip-basic="Find duplicate files. Groups appear during the quick size pass, then hashes confirm."
+                            data-tip-pro="Two-phase stream: size provisional → hash confirm. You can merge while scanning."
+                            data-tip-efficient="Start with a smaller folder or narrower file types on slow disks.">↻ Scan</button>
+                </div>
+                <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:10px;cursor:pointer;">
+                    <input type="checkbox" id="scanSubfolders" checked>
+                    Scan subfolders
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:8px;cursor:pointer;">
+                    <input type="checkbox" id="scanWholeSystem">
+                    Scan whole system (all local drives)
+                </label>
+                <div class="hint" id="driveHint" style="margin-top:6px;"></div>
+                <div class="scan-dock" id="scanDock">
+                    <div class="scan-dock-actions">
+                        <button class="ui-btn ghost" id="btnPauseScan" disabled
+                                data-tip="Freeze the list so Merge / Delete stay where you clicked. Resume stays here, never next to Merge.">⏸ Pause scan</button>
+                        <button class="ui-btn danger" id="btnCancelScan" disabled
+                                data-tip="Stop walking the tree. Groups already found stay so you can merge. This button never sits next to Merge.">✕ Cancel scan</button>
+                    </div>
+                    <div class="progress-bar"><span id="scanProgress"></span></div>
+                    <div class="scan-status" id="scanStatus">Start the server (▶ Start Server above), pick a folder, then scan. Pause / Cancel live only in this left dock.</div>
+                </div>
+            </div>
+            <div class="section"
+                 data-fafo-section="options"
+                 data-fafo-section-title="Options"
+                 data-fafo-resizable="1"
+                 data-fafo-section-min="120"
+                 data-fafo-section-default="200">
+                <h3>Options</h3>
+                <label class="field-label">File types</label>
+                <select id="fileTypes">
+                    <option value="all">All common types</option>
+                    <option value="media">Images + video + audio</option>
+                    <option value="images">Images only</option>
+                    <option value="video">Video only</option>
+                    <option value="audio">Audio only</option>
+                    <option value="documents">Documents</option>
+                    <option value="archives">Archives</option>
+                    <option value="code">Code / text</option>
+                </select>
+                <label class="field-label">Match mode</label>
+                <select id="matchMode">
+                    <option value="quick">Quick — size + partial hash</option>
+                    <option value="full">Full — exact byte match (SHA-256)</option>
+                </select>
+                <label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:12px;cursor:pointer;">
+                    <input type="checkbox" id="deepVideo"> Deep video match (first-frame hash)
+                </label>
+            </div>
+            <div class="section" data-fafo-section="keep-rules" data-fafo-section-title="Keep rules"
+                 data-fafo-resizable="1" data-fafo-section-min="140" data-fafo-section-default="240">
+                <h3>Keep rules</h3>
+                <p class="hint">Top rule wins. If two copies tie, the next rule breaks it. Used for the default keeper and for <strong>Merge all</strong>.</p>
+                <div class="keep-rules" id="keepRulesList"></div>
+                <select id="keepRuleAdd" aria-label="Add keep criterion">
+                    <option value="">+ Add criterion…</option>
+                </select>
+            </div>
+            <div class="section" data-fafo-section="summary" data-fafo-section-title="Summary">
+                <h3>Summary</h3>
+                <div class="stat-grid">
+                    <div class="stat">Groups<strong id="statGroups">0</strong></div>
+                    <div class="stat">Files scanned<strong id="statScanned">0</strong></div>
+                    <div class="stat">Recoverable<strong id="statWasted">0 B</strong></div>
+                    <div class="stat">Selected<strong id="statSelected">—</strong></div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="center"
+                 data-fafo-panel="center"
+                 data-fafo-panel-title="Duplicate groups"
+                 data-fafo-flex="1">
+            <div class="launch-banner" id="launchBanner">
+                <span>Opened from <strong>Media Library</strong></span>
+                <span class="path" id="launchBannerPath"></span>
+                <a class="nav-link" href="../Movie File Manager/Media Hub.html#duplicates" id="launchBannerBack">← Back to Library</a>
+            </div>
+            <div class="toolbar">
+                <div class="toolbar-status">
+                    <span id="toolbarInfo">No scan yet</span>
+                    <span class="persist-pill" id="persistPill" style="display:none" title="Scan kept in this browser until you clear it">💾 Scan kept</span>
+                    <span class="persist-pill" id="liveScanPill" style="display:none" title="Groups appear as the scan finds them — pause on the left before merging so rows don't jump">🔴 Live scan</span>
+                </div>
+                <div class="toolbar-safe">
+                    <select id="groupSort" title="How to order the group list" style="width:auto;min-width:160px;padding:6px 8px;font-size:11px;">
+                        <option value="wasted">Sort: recoverable space</option>
+                        <option value="folder">Sort: folder path A–Z</option>
+                        <option value="folder_desc">Sort: folder path Z–A</option>
+                        <option value="name">Sort: file name</option>
+                        <option value="count">Sort: copies</option>
+                        <option value="kind">Sort: type</option>
+                    </select>
+                    <button class="ui-btn ghost" id="btnOpenFolder" disabled data-tip-title="Open folder" data-tip="Open the scanned folder in File Explorer.">📂 Open folder</button>
+                    <button class="ui-btn ghost" id="btnRefresh" disabled data-tip-title="Rescan" data-tip="Run the scan again from scratch.">↻ Rescan</button>
+                    <button class="ui-btn ghost" id="btnClearScan" disabled
+                            data-tip-title="Clear results" data-tip="Drop scan results from this browser (does not delete files). Kept away from Merge so it cannot slide under the cursor.">✕ Clear results</button>
+                </div>
+                <div class="toolbar-merge">
+                    <button class="ui-btn primary" id="btnMergeAllLowest" disabled
+                            data-tip-title="Merge all using keep rules"
+                            data-tip-basic="For every group, keep the file that wins your ranked keep rules, recycle the rest."
+                            data-tip-pro="Uses the stacked criteria on the left (top wins). Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
+                </div>
+            </div>
+            <div class="groups-wrap" id="groupsWrap">
+                <div class="empty" id="emptyState">
+                    <strong style="color:var(--text)">No scan yet</strong><br>
+                    Scan a folder, turn <strong>Scan subfolders</strong> on/off, or hit <strong>This PC</strong> for all local drives. Quick size pass fills groups immediately (dashed “likely”), then hashing confirms exact dups while you merge. Default keeper follows ranked <strong>Keep rules</strong> (top wins). Sort groups by folder path in the toolbar.<br>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">
+                        <button class="ui-btn primary" type="button" id="btnEmptyScan">↻ Scan folder</button>
+                        <button class="ui-btn" type="button" id="btnEmptyPick">📂 Pick folder</button>
+                        <a class="ui-btn ghost" href="../Movie File Manager/Media Hub.html" style="text-decoration:none">Media Hub →</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="detail-panel"
+               data-fafo-panel="detail"
+               data-fafo-panel-title="Group detail"
+               data-fafo-panel-min="280"
+               data-fafo-panel-default="400">
+            <div class="detail-head" id="detailHead" data-fafo-section="detail-head" data-fafo-section-title="Selection">
+                <h3 style="display:none">Selection</h3>
+                <h2>Select a duplicate group</h2>
+                <p class="hint" style="margin:0;">Choose which copy to keep. Merge sends extras to Recycle Bin.</p>
+            </div>
+            <!-- id stays on outer; body content is written into #detailListBody so layout chrome survives -->
+            <div class="detail-list" data-fafo-section="detail-list" data-fafo-section-title="Files &amp; previews"
+                 data-fafo-resizable="1" data-fafo-section-min="160" data-fafo-section-default="420">
+                <div id="detailList" class="detail-list-inner"></div>
+            </div>
+            <div class="detail-actions" data-fafo-section="detail-actions" data-fafo-section-title="Actions">
+                <h3 style="display:none">Actions</h3>
+                <button class="ui-btn" id="btnCompare" disabled data-tip="Side-by-side preview for two selected files">⇄ Compare</button>
+                <button class="ui-btn primary" id="btnMerge" disabled data-tip="Keep the selected file (defaults to ranked keep rules), send all other copies to Recycle Bin">⊕ Merge group</button>
+                <button class="ui-btn danger" id="btnDeleteSelected" disabled data-tip="Delete checked copies only">✕ Delete selected</button>
+                <p class="hint" style="margin:8px 0 0;font-size:10px;line-height:1.4">Default keeper follows the ranked <strong>Keep rules</strong> on the left (top wins). Override with the radio. <strong>Merge all</strong> uses the same stack.</p>
+            </div>
+        </aside>
+    </div>
+
+    <div class="compare-panel" id="comparePanel" role="dialog" aria-modal="true" aria-label="Compare duplicates" data-esc-close>
+        <div class="compare-top">
+            <h3>Compare view</h3>
+            <span class="hint-esc">Esc or ← Back closes this and returns to your scan (results stay loaded)</span>
+            <button class="ui-btn primary" id="btnCloseCompare" type="button">← Back to results</button>
+        </div>
+        <div class="compare-body">
+            <div class="compare-pane">
+                <header><strong id="cmpLeftName">—</strong><span id="cmpLeftPath"></span><div id="cmpLeftSize" class="size-exact" style="margin-top:4px"></div></header>
+                <div class="compare-content" id="cmpLeft"></div>
+            </div>
+            <div class="compare-pane">
+                <header><strong id="cmpRightName">—</strong><span id="cmpRightPath"></span><div id="cmpRightSize" class="size-exact" style="margin-top:4px"></div></header>
+                <div class="compare-content" id="cmpRight"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+    <script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+    <script>
+        const API = () => window.AIToolboxAPI;
+        const UI = () => window.AIToolboxUI;
+
+        let scanResult = null;
+        let activeGroupIndex = -1;
+        let activeGroupKey = null;
+        let keeperPath = null;
+        let compareSelection = new Set();
+        let deleteSelection = new Set();
+        let scanning = false;
+        let scanPaused = false;
+        let freezeLive = false;
+        let scanHandle = null;
+        /** Paths already merged/deleted this session — filtered out of live scan updates */
+        let excludedPaths = new Set();
+        let bulkMerging = false;
+        const LS_DUP = 'fafo_duplicate_manager_settings_v1';
+        const LS_DUP_SCAN = 'fafo_duplicate_manager_scan_v1';
+
+        const KEEP_CATALOG = {
+            path_contains: { label: 'Prefer path containing…', needs: 'text', placeholder: 'D:\\Photos\\Keep', multi: true },
+            path_not_contains: { label: 'Avoid path containing…', needs: 'text', placeholder: 'Downloads', multi: true },
+            drive: { label: 'Prefer drive…', needs: 'text', placeholder: 'E:', multi: true },
+            lowest_copy: { label: 'Lowest copy number (no # first, then (1)…)' },
+            highest_copy: { label: 'Highest copy number' },
+            newest: { label: 'Newest (date modified)' },
+            oldest: { label: 'Oldest (date modified)' },
+            largest: { label: 'Largest size' },
+            smallest: { label: 'Smallest size' },
+            shortest_path: { label: 'Shortest full path' },
+            longest_path: { label: 'Longest full path' },
+            shallower: { label: 'Fewer folders (shallower)' },
+            deeper: { label: 'More folders (deeper)' },
+            no_copy_word: { label: 'Name without “copy” / “duplicate”' },
+        };
+
+        let keepRules = [
+            { id: 'path_contains', on: false, value: '' },
+            { id: 'lowest_copy', on: true, value: '' },
+            { id: 'oldest', on: true, value: '' },
+        ];
+        let groupSort = 'wasted';
+
+        /** Copy-number rank: no suffix wins, then lowest (N). Returns [tier, n] lower = better for lowest_copy. */
+        function copyNumberRank(name) {
+            const stem = String(name || '').replace(/\.[^.]+$/, '');
+            let m = stem.match(/\s*\((\d+)\)\s*$/);
+            if (m) return [1, parseInt(m[1], 10)];
+            m = stem.match(/(?:\s+-\s+copy|\s+copy)(?:\s*\((\d+)\))?\s*$/i);
+            if (m) return [1, m[1] ? parseInt(m[1], 10) : 1];
+            m = stem.match(/[_-](\d+)$/);
+            if (m) return [1, parseInt(m[1], 10)];
+            return [0, 0];
+        }
+
+        function parentFolder(p) {
+            const s = String(p || '').replace(/\//g, '\\');
+            const i = s.lastIndexOf('\\');
+            return i > 0 ? s.slice(0, i) : s;
+        }
+
+        function folderDepth(p) {
+            return String(p || '').replace(/\//g, '\\').split('\\').filter(Boolean).length;
+        }
+
+        function normPath(p) {
+            return String(p || '').replace(/\//g, '\\').toLowerCase();
+        }
+
+        function drivePrefix(value) {
+            let v = String(value || '').trim();
+            if (!v) return '';
+            if (/^[a-zA-Z]$/.test(v)) v += ':';
+            if (/^[a-zA-Z]:$/.test(v)) v += '\\';
+            return v.replace(/\//g, '\\').toLowerCase();
+        }
+
+        function criterionParts(item, rule) {
+            const path = String(item.path || '');
+            const np = normPath(path);
+            const name = String(item.name || '');
+            const size = Number(item.size) || 0;
+            const mtime = Number(item.mtime) || 0;
+            const val = String(rule.value || '').trim();
+            switch (rule.id) {
+                case 'path_contains': {
+                    if (!val) return [0];
+                    return [np.includes(normPath(val)) ? 0 : 1];
+                }
+                case 'path_not_contains': {
+                    if (!val) return [0];
+                    return [np.includes(normPath(val)) ? 1 : 0];
+                }
+                case 'drive': {
+                    const d = drivePrefix(val);
+                    if (!d) return [0];
+                    return [np.startsWith(d) ? 0 : 1];
+                }
+                case 'lowest_copy':
+                    return copyNumberRank(name);
+                case 'highest_copy': {
+                    const r = copyNumberRank(name);
+                    return [-r[1], r[0] === 0 ? 1 : 0];
+                }
+                case 'newest':
+                    return [-mtime];
+                case 'oldest':
+                    return [mtime];
+                case 'largest':
+                    return [-size];
+                case 'smallest':
+                    return [size];
+                case 'shortest_path':
+                    return [path.length];
+                case 'longest_path':
+                    return [-path.length];
+                case 'shallower':
+                    return [folderDepth(path)];
+                case 'deeper':
+                    return [-folderDepth(path)];
+                case 'no_copy_word':
+                    return [/\b(copy|duplicate|dup)\b/i.test(name) ? 1 : 0];
+                default:
+                    return [0];
+            }
+        }
+
+        function activeKeepRules() {
+            return keepRules.filter((r) => r.on && KEEP_CATALOG[r.id] && (!KEEP_CATALOG[r.id].needs || String(r.value || '').trim()));
+        }
+
+        function keeperKey(item) {
+            const parts = [];
+            for (const rule of activeKeepRules()) parts.push(...criterionParts(item, rule));
+            parts.push(normPath(item.path));
+            return parts;
+        }
+
+        function cmpKeys(a, b) {
+            const n = Math.max(a.length, b.length);
+            for (let i = 0; i < n; i++) {
+                const av = a[i];
+                const bv = b[i];
+                if (av === bv) continue;
+                if (typeof av === 'string' || typeof bv === 'string') {
+                    return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true });
+                }
+                return (Number(av) || 0) - (Number(bv) || 0);
+            }
+            return 0;
+        }
+
+        function pickKeeper(items) {
+            if (!items || !items.length) return null;
+            let best = items[0];
+            let bestKey = keeperKey(best);
+            for (let i = 1; i < items.length; i++) {
+                const it = items[i];
+                const k = keeperKey(it);
+                if (cmpKeys(k, bestKey) < 0) {
+                    best = it;
+                    bestKey = k;
+                }
+            }
+            return best.path || null;
+        }
+
+        function pickLowestCountKeeper(items) {
+            return pickKeeper(items);
+        }
+
+        function keepRulesSummary() {
+            const active = activeKeepRules();
+            if (!active.length) return 'no keep rules (first file wins)';
+            return active.map((r, i) => {
+                const spec = KEEP_CATALOG[r.id];
+                const extra = spec?.needs && r.value ? ` “${r.value}”` : '';
+                return (i + 1) + '. ' + (spec?.label || r.id).replace(/…$/, '') + extra;
+            }).join(' → ');
+        }
+
+        function normalizeGroup(g) {
+            if (!g || !Array.isArray(g.items)) return null;
+            const items = g.items.filter((it) => it && it.path && !excludedPaths.has(it.path));
+            if (items.length < 2) return null;
+            const keep = pickKeeper(items) || items[0].path;
+            const total = items.reduce((a, it) => a + (Number(it.size) || 0), 0);
+            const keepItem = items.find((it) => it.path === keep) || items[0];
+            const wasted = Math.max(0, total - (Number(keepItem.size) || 0));
+            const sorted = items.slice().sort((a, b) => cmpKeys(keeperKey(a), keeperKey(b)));
+            return {
+                ...g,
+                items: sorted,
+                count: sorted.length,
+                total_bytes: total,
+                wasted_bytes: wasted,
+                suggested_keep: keep,
+                keep_folder: parentFolder(keep),
+                provisional: !!g.provisional,
+            };
+        }
+
+        function compareGroups(a, b) {
+            const keepA = a.suggested_keep || pickKeeper(a.items);
+            const keepB = b.suggested_keep || pickKeeper(b.items);
+            const itemA = (a.items || []).find((it) => it.path === keepA) || a.items?.[0] || {};
+            const itemB = (b.items || []).find((it) => it.path === keepB) || b.items?.[0] || {};
+            const folderA = parentFolder(itemA.path);
+            const folderB = parentFolder(itemB.path);
+            switch (groupSort) {
+                case 'folder':
+                    return folderA.localeCompare(folderB, undefined, { sensitivity: 'base', numeric: true })
+                        || String(itemA.name || '').localeCompare(String(itemB.name || ''), undefined, { sensitivity: 'base' });
+                case 'folder_desc':
+                    return folderB.localeCompare(folderA, undefined, { sensitivity: 'base', numeric: true })
+                        || String(itemA.name || '').localeCompare(String(itemB.name || ''), undefined, { sensitivity: 'base' });
+                case 'name':
+                    return String(itemA.name || '').localeCompare(String(itemB.name || ''), undefined, { sensitivity: 'base', numeric: true });
+                case 'count':
+                    return (b.count || 0) - (a.count || 0);
+                case 'kind':
+                    return String(a.kind || itemA.kind || '').localeCompare(String(b.kind || itemB.kind || ''))
+                        || (b.wasted_bytes || 0) - (a.wasted_bytes || 0);
+                default:
+                    return (b.wasted_bytes || 0) - (a.wasted_bytes || 0) || (b.count || 0) - (a.count || 0);
+            }
+        }
+
+        function normalizeGroupsList(groups) {
+            return (groups || [])
+                .map(normalizeGroup)
+                .filter(Boolean)
+                .sort(compareGroups);
+        }
+
+        function applyKeepersNow({ resetManual } = {}) {
+            if (resetManual) keeperPath = null;
+            if (scanResult?.groups) applyScanToUi({ restored: true, partial: scanning, quiet: !scanning });
+            saveDupSettings();
+        }
+
+        function renderKeepRules() {
+            const wrap = document.getElementById('keepRulesList');
+            const add = document.getElementById('keepRuleAdd');
+            if (!wrap) return;
+            wrap.innerHTML = keepRules.map((rule, i) => {
+                const spec = KEEP_CATALOG[rule.id] || { label: rule.id };
+                const needs = spec.needs === 'text';
+                return `<div class="keep-rule${rule.on ? '' : ' off'}" data-i="${i}">
+                    <span class="ord">${i + 1}</span>
+                    <input type="checkbox" ${rule.on ? 'checked' : ''} data-keep-on="${i}" title="Use this rule">
+                    <div class="rule-body">
+                        <div class="rule-label">${escapeHtml(spec.label)}</div>
+                        ${needs ? `<input type="text" data-keep-val="${i}" value="${escapeHtml(rule.value || '')}" placeholder="${escapeHtml(spec.placeholder || '')}">` : ''}
+                    </div>
+                    <div class="keep-rule-btns">
+                        <button type="button" data-keep-up="${i}" ${i === 0 ? 'disabled' : ''} title="Higher priority">▲</button>
+                        <button type="button" data-keep-down="${i}" ${i === keepRules.length - 1 ? 'disabled' : ''} title="Lower priority">▼</button>
+                        <button type="button" data-keep-del="${i}" title="Remove">✕</button>
+                    </div>
+                </div>`;
+            }).join('') || '<p class="hint" style="margin:0">No rules — add one below. With none, the first file in the group is kept.</p>';
+            wrap.querySelectorAll('[data-keep-on]').forEach((el) => {
+                el.onchange = () => {
+                    keepRules[Number(el.dataset.keepOn)].on = el.checked;
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            wrap.querySelectorAll('[data-keep-val]').forEach((el) => {
+                el.onchange = () => {
+                    keepRules[Number(el.dataset.keepVal)].value = el.value;
+                    applyKeepersNow({ resetManual: true });
+                };
+            });
+            wrap.querySelectorAll('[data-keep-up]').forEach((el) => {
+                el.onclick = () => {
+                    const i = Number(el.dataset.keepUp);
+                    if (i < 1) return;
+                    [keepRules[i - 1], keepRules[i]] = [keepRules[i], keepRules[i - 1]];
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            wrap.querySelectorAll('[data-keep-down]').forEach((el) => {
+                el.onclick = () => {
+                    const i = Number(el.dataset.keepDown);
+                    if (i >= keepRules.length - 1) return;
+                    [keepRules[i + 1], keepRules[i]] = [keepRules[i], keepRules[i + 1]];
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            wrap.querySelectorAll('[data-keep-del]').forEach((el) => {
+                el.onclick = () => {
+                    keepRules.splice(Number(el.dataset.keepDel), 1);
+                    applyKeepersNow({ resetManual: true });
+                    renderKeepRules();
+                };
+            });
+            if (add) {
+                const used = new Set(keepRules.map((r) => r.id));
+                add.innerHTML = '<option value="">+ Add criterion…</option>' +
+                    Object.entries(KEEP_CATALOG).map(([id, spec]) => {
+                        if (!spec.multi && used.has(id)) return '';
+                        return `<option value="${id}">${escapeHtml(spec.label)}</option>`;
+                    }).join('');
+            }
+        }
+
+        function setLiveScanPill(on) {
+            const el = document.getElementById('liveScanPill');
+            if (!el) return;
+            el.style.display = on ? '' : 'none';
+        }
+
+        function fmtBytes(n) {
+            if (n == null || n === '' || Number.isNaN(Number(n))) return '0 B';
+            let v = Number(n);
+            if (v < 0) v = 0;
+            const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            let i = 0;
+            while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+            const digits = i === 0 ? 0 : (v >= 100 ? 0 : v >= 10 ? 1 : 2);
+            return `${v.toFixed(digits)} ${u[i]}`;
+        }
+
+        /** Human size + exact byte count so near-dupes are easy to spot. */
+        function fmtBytesFull(n) {
+            const raw = Number(n) || 0;
+            const exact = raw.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' bytes';
+            if (raw < 1024) return exact;
+            return `${fmtBytes(raw)} · ${exact}`;
+        }
+
+        function fmtDate(ts) {
+            if (!ts) return '—';
+            return new Date(ts * 1000).toLocaleString();
+        }
+
+        function previewUrl(path) {
+            try {
+                if (API()?.filePreviewUrl) return API().filePreviewUrl(path, 0.5);
+            } catch (_) { /* ignore */ }
+            return '';
+        }
+
+        function thumbHtml(path, kind, cls) {
+            const k = String(kind || '').toLowerCase();
+            if (k === 'image' || k === 'video') {
+                const url = previewUrl(path);
+                if (url) {
+                    return `<div class="${cls}"><img src="${url}" alt="" loading="lazy" decoding="async"
+                        onerror="this.parentElement.classList.add('ph');this.parentElement.textContent='No preview';"></div>`;
+                }
+            }
+            const label = k === 'audio' ? 'Audio' : k === 'document' ? 'Doc' : k === 'archive' ? 'Zip' : k === 'code' ? 'Code' : 'File';
+            return `<div class="${cls} ph">${label}</div>`;
+        }
+
+        function persistScan() {
+            if (!scanResult) return;
+            const payload = {
+                v: 1,
+                savedAt: Date.now(),
+                folder: document.getElementById('folderPath').value.trim(),
+                types: document.getElementById('fileTypes').value,
+                match: document.getElementById('matchMode').value,
+                deep: document.getElementById('deepVideo').checked,
+                recursive: document.getElementById('scanSubfolders')?.checked !== false,
+                wholeSystem: !!document.getElementById('scanWholeSystem')?.checked,
+                activeGroupIndex,
+                keeperPath,
+                result: scanResult,
+            };
+            const raw = JSON.stringify(payload);
+            try { sessionStorage.setItem(LS_DUP_SCAN, raw); } catch (_) { /* quota */ }
+            try { localStorage.setItem(LS_DUP_SCAN, raw); } catch (_) { /* quota */ }
+            const pill = document.getElementById('persistPill');
+            if (pill) {
+                pill.style.display = '';
+                pill.textContent = '💾 Scan kept · ' + new Date(payload.savedAt).toLocaleTimeString();
+            }
+            document.getElementById('btnClearScan').disabled = false;
+            document.getElementById('btnRefresh').disabled = false;
+            document.getElementById('btnOpenFolder').disabled = !payload.folder;
+        }
+
+        function loadPersistedScan() {
+            let raw = null;
+            try { raw = sessionStorage.getItem(LS_DUP_SCAN); } catch (_) {}
+            if (!raw) {
+                try { raw = localStorage.getItem(LS_DUP_SCAN); } catch (_) {}
+            }
+            if (!raw) return false;
+            try {
+                const data = JSON.parse(raw);
+                if (!data || !data.result || !Array.isArray(data.result.groups)) return false;
+                // Prefer restoring folder/options so UI matches the kept scan
+                if (data.folder) document.getElementById('folderPath').value = data.folder;
+                if (typeof data.recursive === 'boolean' && document.getElementById('scanSubfolders')) {
+                    document.getElementById('scanSubfolders').checked = data.recursive;
+                }
+                if (typeof data.wholeSystem === 'boolean' && document.getElementById('scanWholeSystem')) {
+                    document.getElementById('scanWholeSystem').checked = data.wholeSystem;
+                }
+                if (data.types) document.getElementById('fileTypes').value = data.types;
+                if (data.match) document.getElementById('matchMode').value = data.match;
+                if (typeof data.deep === 'boolean') document.getElementById('deepVideo').checked = data.deep;
+                scanResult = data.result;
+                activeGroupIndex = Number.isInteger(data.activeGroupIndex) ? data.activeGroupIndex : -1;
+                keeperPath = data.keeperPath || null;
+                compareSelection.clear();
+                deleteSelection.clear();
+                applyScanToUi({ restored: true, savedAt: data.savedAt });
+                if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
+                    selectGroup(activeGroupIndex);
+                } else if (scanResult.groups.length) {
+                    selectGroup(0);
+                }
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function clearPersistedScan({ toastMsg } = {}) {
+            stopDetailPreviews();
+            scanResult = null;
+            activeGroupIndex = -1;
+            activeGroupKey = null;
+            keeperPath = null;
+            excludedPaths = new Set();
+            compareSelection.clear();
+            deleteSelection.clear();
+            try { sessionStorage.removeItem(LS_DUP_SCAN); } catch (_) {}
+            try { localStorage.removeItem(LS_DUP_SCAN); } catch (_) {}
+            const pill = document.getElementById('persistPill');
+            if (pill) pill.style.display = 'none';
+            setLiveScanPill(false);
+            document.getElementById('btnClearScan').disabled = true;
+            document.getElementById('btnRefresh').disabled = true;
+            document.getElementById('btnMergeAllLowest').disabled = true;
+            document.getElementById('btnOpenFolder').disabled = !document.getElementById('folderPath').value.trim();
+            document.getElementById('toolbarInfo').textContent = 'No scan yet';
+            document.getElementById('scanStatus').textContent = 'Results cleared — pick a folder and scan when ready.';
+            document.getElementById('scanProgress').style.width = '0%';
+            document.getElementById('detailList').innerHTML = '';
+            document.getElementById('detailHead').innerHTML =
+                '<h2>Select a duplicate group</h2><p class="hint" style="margin:0;">Choose which copy to keep. Merge sends extras to Recycle Bin.</p>';
+            document.getElementById('groupsWrap').innerHTML = `
+                <div class="empty" id="emptyState">
+                    <strong style="color:var(--text)">No scan loaded</strong><br>
+                    Previous results were cleared. Scan again when you want a fresh pass.<br>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">
+                        <button class="ui-btn primary" type="button" id="btnEmptyScan">↻ Scan folder</button>
+                        <button class="ui-btn" type="button" id="btnEmptyPick">📂 Pick folder</button>
+                    </div>
+                </div>`;
+            document.getElementById('btnEmptyScan')?.addEventListener('click', () => scanWithSave());
+            document.getElementById('btnEmptyPick')?.addEventListener('click', () => document.getElementById('btnPickFolder').click());
+            updateStats();
+            updateActionButtons();
+            if (toastMsg !== false) UI()?.toast?.(toastMsg || 'Scan results cleared (files untouched)', 'ok');
+        }
+
+        function applyScanToUi({ restored, partial, quiet } = {}) {
+            if (!scanResult) return;
+            // Re-normalize keepers from the ranked keep-rules stack
+            scanResult.groups = normalizeGroupsList(scanResult.groups || []);
+            scanResult.duplicate_groups = scanResult.groups.length;
+            scanResult.wasted_bytes = scanResult.groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0);
+
+            const g = scanResult.duplicate_groups ?? scanResult.groups?.length ?? 0;
+            if (!partial) {
+                document.getElementById('scanProgress').style.width = '100%';
+                if (!quiet) {
+                    document.getElementById('scanStatus').textContent = restored
+                        ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups (not rescanned).`
+                        : `Done — ${scanResult.scanned} files, ${g} duplicate groups.`;
+                }
+                setLiveScanPill(false);
+            } else {
+                setLiveScanPill(true);
+            }
+            document.getElementById('toolbarInfo').textContent = partial
+                ? `Live · ${g} groups so far · ${fmtBytesFull(scanResult.wasted_bytes || 0)} recoverable`
+                : `${g} groups · ${fmtBytesFull(scanResult.wasted_bytes || 0)} recoverable`;
+            document.getElementById('btnOpenFolder').disabled = false;
+            document.getElementById('btnRefresh').disabled = false;
+            document.getElementById('btnClearScan').disabled = false;
+            document.getElementById('btnMergeAllLowest').disabled = !g || bulkMerging;
+            // Preserve selection by group key when list reshuffles
+            if (activeGroupKey) {
+                const idx = scanResult.groups.findIndex((x) => x.key === activeGroupKey);
+                if (idx >= 0) activeGroupIndex = idx;
+                else if (activeGroupIndex >= scanResult.groups.length) {
+                    activeGroupIndex = scanResult.groups.length ? 0 : -1;
+                    activeGroupKey = scanResult.groups[activeGroupIndex]?.key || null;
+                }
+            }
+            renderGroups();
+            updateStats();
+            if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
+                const grp = scanResult.groups[activeGroupIndex];
+                // Keep user's manual keeper if still in group; else keep-rules winner
+                if (!keeperPath || !grp.items.some((it) => it.path === keeperPath)) {
+                    keeperPath = grp.suggested_keep || pickLowestCountKeeper(grp.items);
+                }
+                renderDetail(grp);
+            }
+            if (!partial) persistScan();
+            updateActionButtons();
+        }
+
+        function updateScanDock() {
+            const dock = document.getElementById('scanDock');
+            const pauseBtn = document.getElementById('btnPauseScan');
+            const cancelBtn = document.getElementById('btnCancelScan');
+            if (!dock || !pauseBtn || !cancelBtn) return;
+            dock.classList.toggle('running', scanning && !scanPaused);
+            dock.classList.toggle('paused', scanning && scanPaused);
+            pauseBtn.disabled = !scanning;
+            cancelBtn.disabled = !scanning;
+            pauseBtn.textContent = scanPaused ? '▶ Resume scan' : '⏸ Pause scan';
+        }
+
+        function freezeForInteraction() {
+            freezeLive = true;
+            if (scanning && !scanPaused && scanHandle) {
+                scanPaused = true;
+                updateScanDock();
+                scanHandle.pause?.().catch(() => {});
+                const el = document.getElementById('scanStatus');
+                if (el) el.textContent = 'Scan paused — Merge stays on the right. Resume / Cancel stay in the left dock.';
+            }
+        }
+
+        async function pauseOrResumeScan() {
+            if (!scanning || !scanHandle) return;
+            if (scanPaused) {
+                freezeLive = false;
+                try { await scanHandle.resume(); } catch (_) {}
+                scanPaused = false;
+                document.getElementById('scanStatus').textContent = 'Resumed scan…';
+            } else {
+                freezeForInteraction();
+                UI().toast('Scan paused. Merge is on the right — Resume stays on the left.', 'ok');
+            }
+            updateScanDock();
+        }
+
+        async function cancelScan() {
+            if (!scanning || !scanHandle) return;
+            freezeLive = true;
+            try { await scanHandle.cancel(); } catch (_) {}
+            document.getElementById('scanStatus').textContent = 'Cancelling scan… keeping groups already found.';
+        }
+
+        /** Apply live partial groups from the scan stream (filter out already-merged paths). */
+        function applyLivePartial(evt) {
+            if (!evt || !Array.isArray(evt.groups)) return;
+            if (freezeLive || scanPaused) {
+                const groups = normalizeGroupsList(evt.groups);
+                scanResult = {
+                    ...(scanResult || {}),
+                    scanned: evt.scanned != null ? evt.scanned : (evt.count || scanResult?.scanned || 0),
+                    groups,
+                    duplicate_groups: groups.length,
+                    wasted_bytes: groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0),
+                    partial: true,
+                };
+                updateStats();
+                return;
+            }
+            const prevKey = activeGroupKey;
+            scanResult = {
+                folder: scanResult?.folder || document.getElementById('folderPath').value.trim(),
+                scanned: evt.scanned != null ? evt.scanned : (evt.count || 0),
+                total_candidates: evt.total || scanResult?.total_candidates || 0,
+                match_mode: document.getElementById('matchMode').value,
+                file_types: document.getElementById('fileTypes').value,
+                groups: evt.groups,
+                duplicate_groups: evt.groups.length,
+                wasted_bytes: evt.wasted_bytes || 0,
+                partial: true,
+            };
+            applyScanToUi({ partial: true });
+            // Auto-select first group once one appears so user can act immediately
+            if (activeGroupIndex < 0 && scanResult.groups.length) {
+                selectGroup(0, { fromLive: true });
+            } else if (prevKey) {
+                const idx = scanResult.groups.findIndex((x) => x.key === prevKey);
+                if (idx >= 0) {
+                    activeGroupIndex = idx;
+                    activeGroupKey = prevKey;
+                    renderGroups();
+                    renderDetail(scanResult.groups[idx]);
+                }
+            }
+        }
+
+        /** After merge/delete: drop removed paths from the kept scan instead of forcing a rescan. */
+        function removePathsFromScan(paths) {
+            if (!scanResult || !Array.isArray(scanResult.groups)) return;
+            const kill = paths || [];
+            if (!kill.length) return;
+            kill.forEach((p) => excludedPaths.add(p));
+            scanResult.groups = normalizeGroupsList(scanResult.groups);
+            scanResult.duplicate_groups = scanResult.groups.length;
+            scanResult.wasted_bytes = scanResult.groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0);
+            if (activeGroupKey) {
+                const idx = scanResult.groups.findIndex((x) => x.key === activeGroupKey);
+                activeGroupIndex = idx >= 0 ? idx : (scanResult.groups.length ? 0 : -1);
+                activeGroupKey = scanResult.groups[activeGroupIndex]?.key || null;
+            } else if (activeGroupIndex >= scanResult.groups.length) {
+                activeGroupIndex = scanResult.groups.length ? 0 : -1;
+            }
+            if (activeGroupIndex >= 0) {
+                const g = scanResult.groups[activeGroupIndex];
+                keeperPath = g.suggested_keep || pickLowestCountKeeper(g.items);
+            } else {
+                keeperPath = null;
+                activeGroupKey = null;
+            }
+            compareSelection.clear();
+            deleteSelection.clear();
+            applyScanToUi({ restored: !scanning, partial: scanning });
+            if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
+                selectGroup(activeGroupIndex);
+            } else {
+                document.getElementById('detailList').innerHTML = '';
+                updateActionButtons();
+            }
+        }
+
+        let serverStarting = false;
+
+        async function pollServer() {
+            if (serverStarting) return false;
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            const on = await API().isOnline();
+            el.textContent = on ? '● Server online' : '○ Offline — click to start';
+            el.className = 'server-pill ' + (on ? 'online' : 'offline');
+            if (btn) {
+                btn.style.display = on ? 'none' : '';
+                btn.disabled = false;
+                btn.textContent = '▶ Start Server';
+            }
+            document.getElementById('btnScan').disabled = scanning || !on;
+            if (!isWholeSystemScan()) document.getElementById('btnPickFolder').disabled = scanning || !on;
+            document.getElementById('btnScanThisPc')?.toggleAttribute('disabled', scanning || !on);
+            updateScanDock();
+            return on;
+        }
+
+        async function launchServerFromApp() {
+            if (serverStarting || API().isServerLaunching?.()) return;
+            if (await API().isOnline(true, 2000)) {
+                await pollServer();
+                UI().toast('Server already online', 'ok');
+                return;
+            }
+            serverStarting = true;
+            const el = document.getElementById('serverStatus');
+            const btn = document.getElementById('btnStartServer');
+            el.textContent = '◌ Starting…';
+            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+            try {
+                const result = await API().startServer({ mode: 'tray', waitMs: 90000 });
+                serverStarting = false;
+                if (result.ok) UI().toast('Server online — ready to scan', 'ok');
+                else UI().toast('Start blocked — use Launcher or START SERVER.bat', 'warn');
+                await pollServer();
+            } catch (e) {
+                serverStarting = false;
+                UI().toast('Start failed: ' + (e.message || e), 'warn');
+                await pollServer();
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('statGroups').textContent = scanResult?.duplicate_groups ?? scanResult?.groups?.length ?? 0;
+            document.getElementById('statScanned').textContent = scanResult?.scanned ?? 0;
+            const wasted = scanResult?.wasted_bytes ?? 0;
+            const el = document.getElementById('statWasted');
+            el.textContent = fmtBytes(wasted);
+            el.title = fmtBytesFull(wasted);
+            document.getElementById('statSelected').textContent = activeGroupIndex >= 0 ? `#${activeGroupIndex + 1}` : '—';
+        }
+
+        function renderGroups() {
+            const wrap = document.getElementById('groupsWrap');
+            const groups = scanResult?.groups || [];
+            if (!groups.length) {
+                if (scanning) {
+                    wrap.innerHTML =
+                        '<div class="empty"><strong style="color:var(--text)">Scanning…</strong><br>' +
+                        '<span style="font-size:11px">Duplicate groups will show up here as soon as matches are found — you can merge them while the scan continues.</span></div>';
+                    return;
+                }
+                wrap.innerHTML =
+                    '<div class="empty">No duplicate groups found for this folder and filter set.<br>' +
+                    '<span style="font-size:11px">Try looser filters, another folder, or jump to the library to tag/organize instead.</span>' +
+                    '<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' +
+                    '<button class="ui-btn primary" type="button" id="btnNoDupRescan">↻ Rescan</button>' +
+                    '<button class="ui-btn" type="button" id="btnNoDupPick">📂 Pick folder</button>' +
+                    '<a class="ui-btn ghost" href="../Movie File Manager/Media Hub.html" style="text-decoration:none">🗂️ Media Hub</a>' +
+                    '<a class="ui-btn ghost" href="../Movie File Manager/Media Library Manager.html" style="text-decoration:none">📚 Library</a>' +
+                    '<a class="ui-btn ghost" href="../Toolbox Launcher.html" style="text-decoration:none">← Launcher</a>' +
+                    '</div></div>';
+                document.getElementById('btnNoDupRescan')?.addEventListener('click', () => scanWithSave());
+                document.getElementById('btnNoDupPick')?.addEventListener('click', () => document.getElementById('btnPickFolder')?.click());
+                return;
+            }
+            wrap.innerHTML = groups.map((g, i) => {
+                const keepPath = g.suggested_keep || pickKeeper(g.items);
+                const sample = (g.items || []).find((it) => it.path === keepPath) || g.items[0] || {};
+                const perFile = sample.size != null ? sample.size : Math.round((g.total_bytes || 0) / Math.max(1, g.count || 1));
+                const folder = parentFolder(keepPath);
+                const prov = !!g.provisional;
+                return `
+                    <div class="dup-group${i === activeGroupIndex ? ' active' : ''}${prov ? ' provisional' : ''}" data-index="${i}">
+                        ${thumbHtml(sample.path, sample.kind || g.kind, 'dup-thumb')}
+                        <div>
+                            <h4>${escapeHtml(sample.name || 'group')} <span style="color:var(--muted);font-weight:400;">+${(g.count || g.items.length) - 1} copies</span>
+                            ${prov ? '<span class="prov-badge" title="Same file size — hash confirm still running">likely</span>' : ''}</h4>
+                            <div class="dup-meta">
+                                <span>${g.count || g.items.length} files</span>
+                                <span title="Per-file size">${fmtBytesFull(perFile)}</span>
+                                <span title="Sum of all copies">${fmtBytesFull(g.total_bytes)} total</span>
+                                <span>${fmtBytesFull(g.wasted_bytes)} recoverable</span>
+                                <span title="Keeper from ranked keep rules">keep: ${escapeHtml(sample.name || '')}</span>
+                                <span>${escapeHtml(g.kind || sample.kind || 'file')}</span>
+                                ${prov ? '<span style="color:var(--warn)">size match</span>' : '<span style="color:var(--ok)">hashed</span>'}
+                                <span class="dup-folder" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+            wrap.querySelectorAll('.dup-group').forEach(el => {
+                el.onclick = () => selectGroup(Number(el.dataset.index));
+            });
+        }
+
+        function selectGroup(index, opts) {
+            if (!opts || !opts.fromLive) freezeForInteraction();
+            activeGroupIndex = index;
+            const group = scanResult.groups[index];
+            if (!group) return;
+            activeGroupKey = group.key || null;
+            const suggested = pickKeeper(group.items) || group.suggested_keep || group.items[0]?.path || null;
+            if (!keeperPath || !group.items.some((it) => it.path === keeperPath)) {
+                keeperPath = suggested;
+            }
+            group.suggested_keep = suggested;
+            compareSelection.clear();
+            deleteSelection.clear();
+            renderGroups();
+            renderDetail(group);
+            updateStats();
+            updateActionButtons();
+        }
+
+        function stopDetailPreviews() {
+            const root = document.getElementById('detailList');
+            if (!root) return;
+            root.querySelectorAll('video, audio').forEach((el) => {
+                try {
+                    el.pause();
+                    el.removeAttribute('src');
+                    el.load();
+                } catch (_) { /* ignore */ }
+            });
+        }
+
+        function serveUrl(path) {
+            try {
+                return API()?.fileServeUrl?.(path) || '';
+            } catch (_) {
+                return '';
+            }
+        }
+
+        /** Inline thumbnail / autoplay media for group comparison (muted loop for video). */
+        function liveMediaHtml(item, { compact } = {}) {
+            const kind = String(item.kind || '').toLowerCase();
+            const still = previewUrl(item.path);
+            const stream = serveUrl(item.path);
+            const badge = compact ? '<span class="live-badge">LIVE</span>' : '<span class="play-hint">auto</span>';
+
+            if (kind === 'video' && stream) {
+                const poster = still ? ` poster="${still}"` : '';
+                return `${badge}<video muted loop playsinline autoplay preload="metadata"${poster}
+                    src="${stream}"
+                    onloadeddata="this.muted=true;this.play().catch(function(){})"
+                    onerror="this.style.display='none';var f=this.nextElementSibling;if(f)f.style.display='block';"></video>
+                    ${still ? `<img src="${still}" alt="" style="display:none;width:100%;height:100%;object-fit:cover"
+                        onerror="this.parentElement.innerHTML='<span style=color:#666;font-size:10px>No preview</span>'">` : ''}`;
+            }
+            if (kind === 'image' && stream) {
+                return `<img src="${stream}" alt="" loading="lazy"
+                    onerror="${still ? `this.src='${still}'` : `this.parentElement.innerHTML='No preview'`}">`;
+            }
+            if (kind === 'audio' && stream) {
+                return `<audio controls preload="metadata" src="${stream}" style="width:96%"></audio>`;
+            }
+            // Fallback still frame for video without stream, or generic
+            if (still) {
+                return `<img src="${still}" alt="" loading="lazy">`;
+            }
+            const label = kind === 'audio' ? 'Audio' : kind === 'document' ? 'Doc' : kind === 'archive' ? 'Zip' : kind === 'code' ? 'Code' : 'File';
+            return `<span style="color:#666;font-size:10px">${label}</span>`;
+        }
+
+        function liveStripHtml(group) {
+            const items = group.items || [];
+            const media = items.filter((it) => {
+                const k = String(it.kind || '').toLowerCase();
+                return k === 'video' || k === 'image' || k === 'audio';
+            });
+            if (!media.length) return '';
+            // Cap simultaneous autoplay videos to avoid hammering the server
+            const maxLive = 8;
+            const cards = items.slice(0, maxLive).map((item) => {
+                const isKeeper = item.path === keeperPath;
+                return `
+                    <div class="live-prev${isKeeper ? ' keeper' : ''}" title="${escapeHtml(item.path)}">
+                        <div class="vp">${liveMediaHtml(item, { compact: false })}</div>
+                        <div class="meta">
+                            <strong>${escapeHtml(item.name)}${isKeeper ? ' · keep' : ''}</strong>
+                            <span class="sz">${fmtBytesFull(item.size)}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+            const more = items.length > maxLive
+                ? `<p class="hint" style="margin:8px 0 0">Showing first ${maxLive} of ${items.length} — open Compare for the rest.</p>`
+                : '';
+            return `
+                <div class="detail-live-wrap" id="detailLiveWrap">
+                    <div class="section-label">Live previews · autoplay (muted) · same group side‑by‑side</div>
+                    <div class="detail-live" id="detailLive">${cards}</div>
+                    ${more}
+                </div>`;
+        }
+
+        function rowThumbHtml(item) {
+            const kind = String(item.kind || '').toLowerCase();
+            if (kind === 'video' || kind === 'image' || kind === 'audio') {
+                return `<div class="file-thumb">${liveMediaHtml(item, { compact: true })}</div>`;
+            }
+            return thumbHtml(item.path, item.kind, 'file-thumb');
+        }
+
+        function kickDetailAutoplay() {
+            const root = document.getElementById('detailList');
+            if (!root) return;
+            root.querySelectorAll('video').forEach((v) => {
+                try {
+                    v.muted = true;
+                    v.playsInline = true;
+                    const p = v.play();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (_) { /* autoplay blocked — poster still shows */ }
+            });
+        }
+
+        function renderDetail(group) {
+            stopDetailPreviews();
+            const keepName = (group.items.find((i) => i.path === keeperPath) || group.items[0] || {}).name || '';
+            document.getElementById('detailHead').innerHTML = `
+                <h2>${escapeHtml(group.items[0].name)}</h2>
+                <p class="hint" style="margin:0;">${group.count} copies · <span class="size-exact">${fmtBytesFull(group.wasted_bytes)}</span> recoverable if merged.
+                <br>Keeper from keep rules — currently <strong>${escapeHtml(keepName)}</strong>.
+                ${scanning ? '<br><span style="color:var(--ok)">Scan still running — you can merge this group now.</span>' : ''}
+                <br>Previews autoplay muted below so you can compare without opening full Compare.</p>`;
+            const list = document.getElementById('detailList');
+            const rows = group.items.map(item => {
+                const isKeeper = item.path === keeperPath;
+                const rank = copyNumberRank(item.name);
+                const rankLabel = rank[0] === 0 ? 'no #' : `(${rank[1]})`;
+                const cmpChecked = compareSelection.has(item.path) ? 'checked' : '';
+                const delChecked = deleteSelection.has(item.path) ? 'checked' : '';
+                return `
+                    <div class="file-row${isKeeper ? ' keeper' : ''}" data-path="${encodeURIComponent(item.path)}">
+                        <input type="radio" name="keeper" ${isKeeper ? 'checked' : ''} data-keeper="${encodeURIComponent(item.path)}">
+                        ${rowThumbHtml(item)}
+                        <label>
+                            ${escapeHtml(item.name)}
+                            <span class="pill" style="margin-left:6px;font-size:9px;opacity:.85" title="Copy-number rank">${rankLabel}${isKeeper ? ' · keep' : ''}</span>
+                            <div class="file-path" data-copy="${escapeHtml(item.path)}" title="Click to copy path">${escapeHtml(item.path)}</div>
+                        </label>
+                        <div class="file-meta">
+                            <div class="size-exact" title="Exact size in bytes">${fmtBytesFull(item.size)}</div>
+                            <div style="margin-top:4px">${fmtDate(item.mtime)}</div>
+                            <div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end;">
+                                <label style="font-size:9px;color:var(--muted);display:flex;align-items:center;gap:4px;">
+                                    <input type="checkbox" class="cmp-chk" data-path="${encodeURIComponent(item.path)}" ${cmpChecked}> cmp
+                                </label>
+                                <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:4px;">
+                                    <input type="checkbox" class="del-chk" data-path="${encodeURIComponent(item.path)}" ${delChecked}${isKeeper ? ' disabled' : ''}> del
+                                </label>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            list.innerHTML = liveStripHtml(group) + rows;
+
+            list.querySelectorAll('input[data-keeper]').forEach(r => {
+                r.onchange = () => {
+                    keeperPath = decodeURIComponent(r.dataset.keeper);
+                    renderDetail(group);
+                    updateActionButtons();
+                };
+            });
+            list.querySelectorAll('.cmp-chk').forEach(c => {
+                c.onchange = () => {
+                    const p = decodeURIComponent(c.dataset.path);
+                    if (c.checked) {
+                        if (compareSelection.size >= 2) {
+                            const first = compareSelection.values().next().value;
+                            compareSelection.clear();
+                            compareSelection.add(first);
+                            list.querySelectorAll('.cmp-chk').forEach(x => {
+                                if (decodeURIComponent(x.dataset.path) !== first) x.checked = false;
+                            });
+                        }
+                        compareSelection.add(p);
+                    } else compareSelection.delete(p);
+                    updateActionButtons();
+                };
+            });
+            list.querySelectorAll('.del-chk').forEach(c => {
+                c.onchange = () => {
+                    const p = decodeURIComponent(c.dataset.path);
+                    if (c.checked) deleteSelection.add(p);
+                    else deleteSelection.delete(p);
+                    updateActionButtons();
+                };
+            });
+
+            // Browsers often need a tick after insert for autoplay
+            requestAnimationFrame(() => {
+                kickDetailAutoplay();
+                setTimeout(kickDetailAutoplay, 200);
+            });
+        }
+
+        function updateActionButtons() {
+            const hasGroup = activeGroupIndex >= 0 && !bulkMerging;
+            document.getElementById('btnCompare').disabled = !hasGroup || compareSelection.size !== 2;
+            document.getElementById('btnMerge').disabled = !hasGroup || !keeperPath;
+            document.getElementById('btnDeleteSelected').disabled = !hasGroup || deleteSelection.size === 0;
+            const gCount = scanResult?.groups?.length || 0;
+            document.getElementById('btnMergeAllLowest').disabled = !gCount || bulkMerging;
+        }
+
+        function isWholeSystemScan() {
+            return !!document.getElementById('scanWholeSystem')?.checked;
+        }
+
+        function syncScanScopeUi() {
+            const whole = isWholeSystemScan();
+            const pathEl = document.getElementById('folderPath');
+            const pickEl = document.getElementById('btnPickFolder');
+            if (pathEl) {
+                pathEl.disabled = whole;
+                pathEl.placeholder = whole ? 'All local drives (This PC)' : 'C:\\Users\\You\\Downloads';
+            }
+            if (pickEl) pickEl.disabled = whole;
+            const hint = document.getElementById('driveHint');
+            if (hint && !hint.dataset.loaded) {
+                hint.textContent = whole
+                    ? 'Whole-system scan: Windows / Program Files are skipped. This can take a long time.'
+                    : '';
+            } else if (hint && whole && hint.dataset.drives) {
+                hint.textContent = 'Scanning ' + hint.dataset.drives + ' · Windows / Program Files skipped.';
+            }
+        }
+
+        async function refreshDriveHint() {
+            const hint = document.getElementById('driveHint');
+            if (!hint || !API()?.listDuplicateDrives) return;
+            try {
+                const r = await API().listDuplicateDrives();
+                const drives = r?.drives || [];
+                hint.dataset.loaded = '1';
+                hint.dataset.drives = drives.join(', ');
+                if (isWholeSystemScan()) {
+                    hint.textContent = drives.length
+                        ? 'Scanning ' + drives.join(', ') + ' · Windows / Program Files skipped.'
+                        : 'No local drives reported.';
+                }
+            } catch (_) { /* server offline */ }
+        }
+
+        async function runScan() {
+            const whole = isWholeSystemScan();
+            const folder = document.getElementById('folderPath').value.trim();
+            if (!whole && !folder) {
+                UI().toast('Enter or pick a folder, or turn on Scan whole system', 'warn');
+                return;
+            }
+            if (!(await API().isOnline(true))) {
+                UI().toast('Start server first (▶ Start Server on this page)', 'warn');
+                return;
+            }
+
+            scanning = true;
+            scanPaused = false;
+            freezeLive = false;
+            scanHandle = null;
+            activeGroupIndex = -1;
+            activeGroupKey = null;
+            keeperPath = null;
+            excludedPaths = new Set();
+            compareSelection.clear();
+            deleteSelection.clear();
+            const opts = {
+                deep: document.getElementById('deepVideo').checked,
+                matchMode: document.getElementById('matchMode').value,
+                fileTypes: document.getElementById('fileTypes').value,
+                recursive: document.getElementById('scanSubfolders')?.checked !== false,
+                wholeSystem: whole,
+                onHandle: (h) => { scanHandle = h; },
+                onState: (state) => {
+                    if (state === 'paused') scanPaused = true;
+                    if (state === 'running') scanPaused = false;
+                    updateScanDock();
+                },
+            };
+            scanResult = {
+                folder: whole ? 'This PC' : folder,
+                scanned: 0,
+                groups: [],
+                duplicate_groups: 0,
+                wasted_bytes: 0,
+                partial: true,
+            };
+            document.getElementById('detailList').innerHTML = '';
+            document.getElementById('btnScan').disabled = true;
+            document.getElementById('btnMergeAllLowest').disabled = true;
+            document.getElementById('scanProgress').style.width = '0%';
+            document.getElementById('scanStatus').textContent = whole
+                ? 'Whole system: walking all local drives (Windows / Program Files skipped)…'
+                : (opts.recursive === false
+                    ? 'This folder only (no subfolders) — quick size pass…'
+                    : 'Phase 1: quick size pass — groups appear immediately, then hashes confirm…');
+            document.getElementById('toolbarInfo').textContent = 'Quick scan…';
+            setLiveScanPill(true);
+            updateScanDock();
+            renderGroups();
+            updateStats();
+
+            // Throttle UI group redraws slightly if stream is very chatty
+            let lastUiGroups = 0;
+            let lastPhase = '';
+            try {
+                const finalResult = await API().scanDuplicatesStream(whole ? '*' : folder, opts, (count, file, evt) => {
+                    const phase = evt?.phase || '';
+                    const total = evt?.total || 0;
+                    let pct;
+                    if (phase === 'quick' || phase === 'quick_done') {
+                        // walk has no fixed total early — pulse by count
+                        pct = total > 0
+                            ? Math.min(45, Math.round((45 * count) / total))
+                            : Math.min(40, 5 + (count % 35));
+                        if (phase === 'quick_done') pct = 48;
+                    } else if (phase === 'hash') {
+                        pct = total > 0
+                            ? 48 + Math.min(50, Math.round((50 * count) / total))
+                            : Math.min(95, 50 + (count % 45));
+                    } else {
+                        pct = total > 0
+                            ? Math.min(99, Math.round((100 * count) / total))
+                            : Math.min(95, 5 + (count % 90));
+                    }
+                    document.getElementById('scanProgress').style.width = pct + '%';
+                    const gN = evt?.groups?.length || scanResult?.groups?.length || 0;
+                    const prov = evt?.provisional_count;
+                    const msg = evt?.message
+                        || (phase === 'hash'
+                            ? `Confirming hashes ${count}${total ? '/' + total : ''}`
+                            : `Quick size pass ${count}${total ? '/' + total : ''}`);
+                    const shortFile = file
+                        ? String(file).split(/[/\\]/).slice(-2).join('/')
+                        : '';
+                    document.getElementById('scanStatus').textContent =
+                        `${msg}${gN ? ' · ' + gN + ' groups' : ''}${prov != null && phase.startsWith('quick') ? ' (likely)' : ''}${shortFile ? ' · ' + shortFile : ''}`;
+                    document.getElementById('statScanned').textContent = String(
+                        evt?.walk_total != null && phase === 'hash'
+                            ? evt.walk_total
+                            : (evt?.scanned != null ? evt.scanned : count)
+                    );
+                    document.getElementById('toolbarInfo').textContent = phase === 'hash'
+                        ? `Confirming · ${gN} groups · you can merge already`
+                        : `Live quick · ${gN} groups so far`;
+                    if (evt && Array.isArray(evt.groups)) {
+                        const now = Date.now();
+                        const phaseChanged = phase && phase !== lastPhase;
+                        lastPhase = phase || lastPhase;
+                        // Always paint on new group count, phase change, or every ~300ms
+                        if (
+                            phaseChanged
+                            || evt.groups.length !== lastUiGroups
+                            || now - (runScan._lastPartial || 0) > 300
+                        ) {
+                            lastUiGroups = evt.groups.length;
+                            runScan._lastPartial = now;
+                            applyLivePartial(evt);
+                        }
+                    }
+                });
+                // Final result — still filter paths user already cleaned during the live pass
+                if (finalResult) {
+                    scanResult = {
+                        ...finalResult,
+                        groups: finalResult.groups || [],
+                        partial: false,
+                    };
+                }
+                applyScanToUi({ restored: false, partial: false });
+                if (scanResult.groups.length) {
+                    if (activeGroupIndex < 0) selectGroup(0);
+                    else selectGroup(activeGroupIndex);
+                }
+                UI().toast(
+                    `Scan complete — ${scanResult.groups.length} groups (keepers from your keep rules)`,
+                    'ok'
+                );
+            } catch (e) {
+                document.getElementById('scanStatus').textContent = 'Scan failed: ' + e.message;
+                setLiveScanPill(false);
+                UI().toast(e.message, 'error');
+            } finally {
+                scanning = false;
+                scanPaused = false;
+                freezeLive = false;
+                scanHandle = null;
+                setLiveScanPill(false);
+                updateScanDock();
+                pollServer();
+                updateActionButtons();
+            }
+        }
+
+        async function mergeGroup() {
+            freezeForInteraction();
+            const group = scanResult?.groups?.[activeGroupIndex];
+            if (!group || !keeperPath) return;
+            const others = group.items.map(i => i.path).filter(p => p !== keeperPath);
+            const preview = `Keep (keep-rules winner):\n${keeperPath}\n\nSend to Recycle Bin (${others.length}):\n${others.slice(0, 8).join('\n')}${others.length > 8 ? '\n…' : ''}`;
+            const r = await UI().confirmAction({
+                title: 'Merge duplicate group',
+                body: `<pre style="font-size:11px;white-space:pre-wrap;color:#ccc">${preview}</pre>`,
+                confirmText: 'Merge to Recycle Bin',
+                cancelText: "Don't merge",
+                trustKey: 'dup_merge_group',
+            });
+            if (!r.confirmed) return;
+
+            try {
+                const result = await API().mergeDuplicateGroup({
+                    keepPath: keeperPath,
+                    groupPaths: group.items.map(i => i.path),
+                    toTrash: true,
+                    dryRun: false,
+                });
+                const deleted = result.deleted || 0;
+                const freed = result.bytes_freed || 0;
+                UI().toast(`Merged — ${deleted} removed, ${fmtBytesFull(freed)} freed${scanning ? ' · scan still running' : ''}`, 'ok');
+                // Keep remaining groups in memory — no forced rescan
+                removePathsFromScan(group.items.map(i => i.path).filter(p => p !== keeperPath));
+                try {
+                    window.FAFOOpsStats?.record({
+                        tool: 'duplicate-file-manager',
+                        action: 'merge',
+                        filesRemoved: deleted,
+                        bytesFreed: freed,
+                        groupsMerged: deleted > 0 ? 1 : 0,
+                        extra: { keepPath: keeperPath },
+                    });
+                    refreshOpsTally();
+                } catch (_) { /* stats optional */ }
+            } catch (e) {
+                UI().toast(e.message, 'error');
+            }
+        }
+
+        /** Merge every group using the ranked keep-rules stack (top rule wins). */
+        async function mergeAllToLowest() {
+            freezeForInteraction();
+            if (bulkMerging) return;
+            const groups = (scanResult?.groups || []).slice();
+            if (!groups.length) {
+                UI().toast('No duplicate groups to merge', 'warn');
+                return;
+            }
+            let totalOthers = 0;
+            const plan = groups.map((g) => {
+                const keep = pickKeeper(g.items) || g.suggested_keep || g.items[0]?.path;
+                const others = (g.items || []).map((i) => i.path).filter((p) => p && p !== keep);
+                totalOthers += others.length;
+                const keepName = (g.items || []).find((i) => i.path === keep)?.name || keep;
+                return { keep, paths: (g.items || []).map((i) => i.path), others, sample: keepName };
+            }).filter((p) => p.keep && p.others.length);
+
+            if (!plan.length) {
+                UI().toast('Nothing to remove — each group only has a keeper', 'warn');
+                return;
+            }
+
+            const r = await UI().confirmAction({
+                title: 'Merge ALL groups using keep rules',
+                body: `<p>Keep the file that wins your ranked rules in each group:</p>
+                    <p style="font-size:11px;color:var(--accent)">${escapeHtml(keepRulesSummary())}</p>
+                    <p><strong>${plan.length}</strong> groups · <strong>${totalOthers}</strong> file(s) → Recycle Bin.</p>`,
+                confirmText: `Merge ${plan.length} groups`,
+                cancelText: "Don't merge",
+                trustKey: 'dup_merge_all_rules',
+            });
+            if (!r.confirmed) return;
+
+            bulkMerging = true;
+            updateActionButtons();
+            let groupsOk = 0;
+            let deleted = 0;
+            let freed = 0;
+            let failed = 0;
+            document.getElementById('scanStatus').textContent = `Bulk merge 0/${plan.length}…`;
+
+            try {
+                for (let i = 0; i < plan.length; i++) {
+                    const step = plan[i];
+                    document.getElementById('scanStatus').textContent =
+                        `Bulk merge ${i + 1}/${plan.length}: ${step.sample}`;
+                    document.getElementById('scanProgress').style.width =
+                        Math.round(((i + 1) / plan.length) * 100) + '%';
+                    try {
+                        const result = await API().mergeDuplicateGroup({
+                            keepPath: step.keep,
+                            groupPaths: step.paths,
+                            toTrash: true,
+                            dryRun: false,
+                        });
+                        deleted += result.deleted || 0;
+                        freed += result.bytes_freed || 0;
+                        if ((result.deleted || 0) > 0) groupsOk += 1;
+                        removePathsFromScan(step.others);
+                    } catch (e) {
+                        failed += 1;
+                        console.warn('merge all step failed', e);
+                    }
+                }
+                try {
+                    window.FAFOOpsStats?.record({
+                        tool: 'duplicate-file-manager',
+                        action: 'merge-all-lowest',
+                        filesRemoved: deleted,
+                        bytesFreed: freed,
+                        groupsMerged: groupsOk,
+                    });
+                    refreshOpsTally();
+                } catch (_) { /* stats optional */ }
+                const msg = `Merged ${groupsOk}/${plan.length} groups · ${deleted} files · ${fmtBytesFull(freed)} freed`
+                    + (failed ? ` · ${failed} failed` : '');
+                document.getElementById('scanStatus').textContent = msg;
+                UI().toast(msg, failed ? 'warn' : 'ok');
+                persistScan();
+            } finally {
+                bulkMerging = false;
+                updateActionButtons();
+            }
+        }
+
+        async function deleteSelected() {
+            freezeForInteraction();
+            const paths = [...deleteSelection].filter(p => p !== keeperPath);
+            if (!paths.length) return;
+            // Estimate bytes from scan items before delete (API also returns bytes_freed)
+            const sizeMap = new Map();
+            (scanResult?.groups || []).forEach((g) => (g.items || []).forEach((it) => {
+                if (it.path) sizeMap.set(it.path, it.size || 0);
+            }));
+            const estBytes = paths.reduce((a, p) => a + (sizeMap.get(p) || 0), 0);
+            const r = await UI().confirmAction({
+                title: 'Delete selected copies',
+                body: `<p>Send <strong>${paths.length}</strong> file(s) to Recycle Bin?</p>`,
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+                trustKey: 'dup_delete_selected',
+            });
+            if (!r.confirmed) return;
+            try {
+                const result = await API().deleteDuplicateFiles({
+                    keepPath: keeperPath,
+                    deletePaths: paths,
+                    toTrash: true,
+                });
+                const deleted = result.deleted || 0;
+                const freed = result.bytes_freed != null ? result.bytes_freed : estBytes;
+                UI().toast(`Deleted ${deleted} file(s) · ${fmtBytesFull(freed)} freed — scan still open`, 'ok');
+                removePathsFromScan(paths);
+                try {
+                    window.FAFOOpsStats?.record({
+                        tool: 'duplicate-file-manager',
+                        action: 'delete',
+                        filesRemoved: deleted,
+                        bytesFreed: freed,
+                        groupsMerged: 0,
+                    });
+                    refreshOpsTally();
+                } catch (_) { /* stats optional */ }
+            } catch (e) {
+                UI().toast(e.message, 'error');
+            }
+        }
+
+        function refreshOpsTally() {
+            const el = document.getElementById('opsTally');
+            if (!el || !window.FAFOOpsStats) return;
+            try {
+                const snap = FAFOOpsStats.snapshot({ limit: 1 });
+                const open = snap.openSession && snap.openSession.tool === 'duplicate-file-manager'
+                    ? snap.openSession
+                    : null;
+                const life = snap.lifetime || {};
+                const sessFiles = open ? (open.filesRemoved || 0) : 0;
+                const sessBytes = open ? (open.bytesFreed || 0) : 0;
+                el.textContent = sessFiles || sessBytes
+                    ? `Session ${sessFiles} · ${FAFOOpsStats.formatBytes(sessBytes)}  ·  Σ ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)}`
+                    : `Σ freed ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)}`;
+                el.title = `This session: ${sessFiles} files, ${FAFOOpsStats.formatBytes(sessBytes)}\nLifetime: ${(life.filesRemoved || 0)} files, ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)} — open Ops Stats for charts`;
+            } catch (_) { /* ignore */ }
+        }
+
+        async function renderComparePane(container, item) {
+            container.innerHTML = '<span style="color:#666">Loading…</span>';
+            const kind = item.kind || 'other';
+            const sizeLine = `<div class="compare-meta" style="width:100%"><div><strong>Size:</strong> <span class="size-exact">${fmtBytesFull(item.size)}</span></div><div><strong>Modified:</strong> ${fmtDate(item.mtime)}</div></div>`;
+            const still = previewUrl(item.path);
+
+            if (kind === 'image') {
+                const url = API().fileServeUrl(item.path);
+                container.innerHTML = `${sizeLine}<img src="${url}" alt="" style="max-width:100%;max-height:70vh;object-fit:contain"
+                    onerror="this.outerHTML='<div class=compare-meta>Image failed to load — size still shown above.</div>'">`;
+                return;
+            }
+            if (kind === 'video') {
+                // Prefer first-frame still (reliable) + optional playable video underneath
+                const playUrl = API().fileServeUrl(item.path);
+                const frame = still
+                    ? `<img src="${still}" alt="First frame" style="max-width:100%;max-height:45vh;object-fit:contain;margin-bottom:8px"
+                        onerror="this.style.display='none'">`
+                    : '';
+                container.innerHTML = `${sizeLine}${frame}
+                    <video src="${playUrl}" controls preload="metadata" style="max-width:100%;max-height:40vh"
+                        onerror="this.insertAdjacentHTML('afterend','<div class=compare-meta>Video stream failed — use first frame / sizes to compare.</div>')"></video>`;
+                return;
+            }
+            if (kind === 'audio') {
+                container.innerHTML = `${sizeLine}<audio src="${API().fileServeUrl(item.path)}" controls style="width:100%"></audio>`;
+                return;
+            }
+            try {
+                const info = await API().getFileInfo(item.path);
+                const textKinds = new Set(['code', 'document', 'other']);
+                if (textKinds.has(kind) || /\.(txt|md|json|xml|html?|css|js|ts|py|ps1|csv|log|ini|cfg|bat|cmd|sql|ya?ml)$/i.test(item.path)) {
+                    const t = await API().getFileText(item.path);
+                    container.innerHTML = `${sizeLine}<pre>${escapeHtml(t.text)}</pre>`;
+                    return;
+                }
+                container.innerHTML = `<div class="compare-meta">
+                    <div><strong>Size:</strong> <span class="size-exact">${fmtBytesFull(info.size)}</span></div>
+                    <div><strong>Modified:</strong> ${fmtDate(info.mtime)}</div>
+                    <div><strong>Type:</strong> ${escapeHtml(info.mime || '—')}</div>
+                    <div><strong>Quick hash:</strong> ${escapeHtml(info.hash_quick || '—')}</div>
+                    <div style="margin-top:12px;color:#888">No inline preview for this file type. Use Open folder to inspect in Explorer. <strong>Back to results</strong> keeps your scan.</div>
+                </div>`;
+            } catch (e) {
+                container.innerHTML = `${sizeLine}<div class="compare-meta">Could not preview: ${escapeHtml(e.message)}. Use ← Back to results — your scan is still there.</div>`;
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function closeCompare() {
+            const panel = document.getElementById('comparePanel');
+            panel.classList.remove('open');
+            document.body.classList.remove('compare-open');
+            // Stop compare media so group-detail autoplay isn't fighting for bandwidth
+            panel.querySelectorAll('video, audio').forEach((el) => {
+                try { el.pause(); el.removeAttribute('src'); el.load(); } catch (_) {}
+            });
+            document.getElementById('cmpLeft').innerHTML = '';
+            document.getElementById('cmpRight').innerHTML = '';
+            // Return focus to the group list — scan data is still in memory
+            document.getElementById('groupsWrap')?.focus?.();
+            // Resume inline group previews if a group is selected
+            if (activeGroupIndex >= 0 && scanResult?.groups?.[activeGroupIndex]) {
+                kickDetailAutoplay();
+            }
+        }
+
+        async function openCompare() {
+            const paths = [...compareSelection];
+            if (paths.length !== 2) {
+                UI()?.toast?.('Check exactly two files with “cmp”', 'warn');
+                return;
+            }
+            const group = scanResult?.groups?.[activeGroupIndex];
+            if (!group) {
+                UI()?.toast?.('Select a duplicate group first', 'warn');
+                return;
+            }
+            const left = group.items.find(i => i.path === paths[0]);
+            const right = group.items.find(i => i.path === paths[1]);
+            if (!left || !right) {
+                UI()?.toast?.('Could not resolve compare files in this group', 'warn');
+                return;
+            }
+            document.getElementById('cmpLeftName').textContent = left.name;
+            document.getElementById('cmpRightName').textContent = right.name;
+            document.getElementById('cmpLeftPath').textContent = left.path;
+            document.getElementById('cmpRightPath').textContent = right.path;
+            document.getElementById('cmpLeftSize').textContent = fmtBytesFull(left.size);
+            document.getElementById('cmpRightSize').textContent = fmtBytesFull(right.size);
+            document.getElementById('comparePanel').classList.add('open');
+            document.body.classList.add('compare-open');
+            try {
+                await Promise.all([
+                    renderComparePane(document.getElementById('cmpLeft'), left),
+                    renderComparePane(document.getElementById('cmpRight'), right),
+                ]);
+            } catch (e) {
+                UI()?.toast?.('Compare preview issue: ' + (e.message || e) + ' — use Back to results', 'warn');
+            }
+        }
+
+        function saveDupSettings() {
+            try {
+                localStorage.setItem(LS_DUP, JSON.stringify({
+                    folder: document.getElementById('folderPath').value,
+                    types: document.getElementById('fileTypes').value,
+                    match: document.getElementById('matchMode').value,
+                    deep: document.getElementById('deepVideo').checked,
+                    recursive: document.getElementById('scanSubfolders')?.checked !== false,
+                    wholeSystem: !!document.getElementById('scanWholeSystem')?.checked,
+                    keepRules,
+                    groupSort,
+                }));
+            } catch (_) {}
+        }
+        function restoreDupSettings() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(LS_DUP) || 'null');
+                if (!raw) return;
+                if (raw.folder) document.getElementById('folderPath').value = raw.folder;
+                if (raw.types) document.getElementById('fileTypes').value = raw.types;
+                if (raw.match) document.getElementById('matchMode').value = raw.match;
+                if (typeof raw.deep === 'boolean') document.getElementById('deepVideo').checked = raw.deep;
+                if (typeof raw.recursive === 'boolean' && document.getElementById('scanSubfolders')) {
+                    document.getElementById('scanSubfolders').checked = raw.recursive;
+                }
+                if (typeof raw.wholeSystem === 'boolean' && document.getElementById('scanWholeSystem')) {
+                    document.getElementById('scanWholeSystem').checked = raw.wholeSystem;
+                }
+                if (Array.isArray(raw.keepRules) && raw.keepRules.length) {
+                    keepRules = raw.keepRules
+                        .filter((r) => r && KEEP_CATALOG[r.id])
+                        .map((r) => ({ id: r.id, on: r.on !== false, value: String(r.value || '') }));
+                    if (!keepRules.length) {
+                        keepRules = [
+                            { id: 'path_contains', on: false, value: '' },
+                            { id: 'lowest_copy', on: true, value: '' },
+                            { id: 'oldest', on: true, value: '' },
+                        ];
+                    }
+                }
+                if (raw.groupSort && document.getElementById('groupSort')) {
+                    groupSort = raw.groupSort;
+                    document.getElementById('groupSort').value = raw.groupSort;
+                }
+            } catch (_) {}
+        }
+        restoreDupSettings();
+        renderKeepRules();
+        syncScanScopeUi();
+        refreshDriveHint();
+        ['folderPath', 'fileTypes', 'matchMode', 'deepVideo', 'scanSubfolders', 'scanWholeSystem'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => {
+                if (id === 'scanWholeSystem') syncScanScopeUi();
+                saveDupSettings();
+            });
+        });
+        document.getElementById('keepRuleAdd')?.addEventListener('change', (e) => {
+            const id = e.target.value;
+            e.target.value = '';
+            if (!id || !KEEP_CATALOG[id]) return;
+            keepRules.push({ id, on: true, value: '' });
+            renderKeepRules();
+            applyKeepersNow({ resetManual: true });
+        });
+        document.getElementById('groupSort')?.addEventListener('change', (e) => {
+            groupSort = e.target.value || 'wasted';
+            applyKeepersNow();
+        });
+        document.getElementById('btnScanThisPc')?.addEventListener('click', () => {
+            const el = document.getElementById('scanWholeSystem');
+            if (el) el.checked = true;
+            syncScanScopeUi();
+            saveDupSettings();
+            refreshDriveHint();
+            scanWithSave();
+        });
+
+        function scanWithSave() {
+            saveDupSettings();
+            return runScan();
+        }
+
+        document.getElementById('btnScan').onclick = scanWithSave;
+        document.getElementById('btnRefresh').onclick = scanWithSave;
+        document.getElementById('btnPauseScan')?.addEventListener('click', pauseOrResumeScan);
+        document.getElementById('btnCancelScan')?.addEventListener('click', cancelScan);
+        document.getElementById('btnClearScan')?.addEventListener('click', () => clearPersistedScan());
+        document.getElementById('btnEmptyScan')?.addEventListener('click', () => scanWithSave());
+        document.getElementById('btnEmptyPick')?.addEventListener('click', () => document.getElementById('btnPickFolder').click());
+        document.getElementById('btnPickFolder').onclick = async () => {
+            try {
+                const r = await API().pickFolderOnly();
+                document.getElementById('folderPath').value = r.path || '';
+                saveDupSettings();
+            } catch (e) {
+                UI().toast(e.message, 'warn');
+            }
+        };
+
+        async function copyDupReport() {
+            const groups = scanResult?.groups || [];
+            const lines = [
+                'FAFO Duplicate File Manager — scan report',
+                'Time: ' + new Date().toISOString(),
+                'Folder: ' + (document.getElementById('folderPath').value || ''),
+                'Types: ' + document.getElementById('fileTypes').value,
+                'Match: ' + document.getElementById('matchMode').value,
+                'Deep video: ' + document.getElementById('deepVideo').checked,
+                'Groups: ' + (document.getElementById('statGroups')?.textContent || groups.length),
+                'Scanned: ' + (document.getElementById('statScanned')?.textContent || ''),
+                'Recoverable: ' + (document.getElementById('statWasted')?.textContent || ''),
+                '',
+                '— Groups (up to 60) —',
+                ...groups.slice(0, 60).map((g, i) =>
+                    (i + 1) + '. ' + (g.count || g.items?.length || 0) + ' copies · ' +
+                    (g.items?.[0]?.name || g.name || g.hash || 'group') +
+                    (g.wasted || g.waste_bytes ? ' · waste ~' + (g.wasted || g.waste_bytes) : '')
+                ),
+            ];
+            const text = lines.join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI()?.toast?.('Duplicate report copied', 'ok');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        document.getElementById('btnDupReport')?.addEventListener('click', copyDupReport);
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && document.getElementById('comparePanel')?.classList.contains('open')) {
+                e.preventDefault();
+                closeCompare();
+                return;
+            }
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+                if (e.key === 'Enter' && e.target.id === 'folderPath') {
+                    e.preventDefault();
+                    scanWithSave();
+                }
+                return;
+            }
+            if (e.key === 's' || e.key === 'S') { e.preventDefault(); scanWithSave(); }
+            if (e.key === 'e' || e.key === 'E') { e.preventDefault(); copyDupReport(); }
+        });
+        document.getElementById('btnOpenFolder').onclick = async () => {
+            const folder = document.getElementById('folderPath').value.trim();
+            if (!folder) return;
+            const base = (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || window.AITOOLBOX_API_BASE || 'http://127.0.0.87:18765/api';
+            await fetch(`${base}/open-folder?path=${encodeURIComponent(folder)}`);
+        };
+        document.getElementById('btnMerge').onclick = mergeGroup;
+        document.getElementById('btnMergeAllLowest').onclick = mergeAllToLowest;
+        document.getElementById('btnDeleteSelected').onclick = deleteSelected;
+        document.getElementById('btnCompare').onclick = openCompare;
+        document.getElementById('btnCloseCompare').onclick = closeCompare;
+        document.getElementById('comparePanel')?.addEventListener('click', (ev) => {
+            // Click dark backdrop edge: only close if target is the panel itself (not panes)
+            if (ev.target === document.getElementById('comparePanel')) closeCompare();
+        });
+        document.getElementById('btnDebug').onclick = () => {
+            const DBG = window.AIToolboxDebug;
+            const next = !DBG?.enabled();
+            DBG?.setEnabled(next);
+            if (next) DBG?.boot(); else DBG?.shutdown();
+            const btn = document.getElementById('btnDebug');
+            btn.classList.toggle('debug-on', next);
+            btn.textContent = next ? '🐛 Debug ON' : '🐛 Debug';
+        };
+
+        async function applyLaunchParams() {
+            const params = new URLSearchParams(location.search);
+            const folder = params.get('folder');
+            if (!folder) return;
+
+            document.getElementById('folderPath').value = folder;
+            const types = params.get('types');
+            if (types) document.getElementById('fileTypes').value = types;
+            const match = params.get('match');
+            if (match) document.getElementById('matchMode').value = match;
+            if (params.get('deep') === '1') document.getElementById('deepVideo').checked = true;
+            saveDupSettings();
+
+            if (params.get('from') === 'library') {
+                const banner = document.getElementById('launchBanner');
+                banner.classList.add('visible');
+                const label = params.get('label');
+                document.getElementById('launchBannerPath').textContent = label
+                    ? `Folder for: ${label} — ${folder}`
+                    : folder;
+            }
+
+            // Only auto-scan when explicitly requested. If we already restored a
+            // scan for this folder, keep it (avoids wiping results when hopping tabs).
+            if (params.get('scan') !== '1') return;
+            const sameFolderRestored = scanResult
+                && (document.getElementById('folderPath').value.trim().toLowerCase() === String(folder).trim().toLowerCase())
+                && (scanResult.groups || []).length;
+            if (sameFolderRestored && params.get('force') !== '1') {
+                document.getElementById('scanStatus').textContent =
+                    'Using kept scan for this folder — click Rescan for a fresh pass.';
+                return;
+            }
+
+            document.getElementById('scanStatus').textContent = 'Auto-scan queued — waiting for server…';
+            const tryScan = async () => {
+                if (scanning) return;
+                if (!(await API().isOnline(true))) return false;
+                document.getElementById('btnScan').disabled = false;
+                await runScan();
+                return true;
+            };
+            if (!(await tryScan())) {
+                const iv = setInterval(async () => {
+                    if (await tryScan()) clearInterval(iv);
+                }, 2000);
+                setTimeout(() => clearInterval(iv), 120000);
+            }
+        }
+
+        document.getElementById('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
+        document.getElementById('serverStatus')?.addEventListener('click', () => {
+            if (!serverStarting) launchServerFromApp();
+        });
+        pollServer();
+        setInterval(pollServer, 5000);
+        UI().initTooltips();
+        updateStats();
+        try {
+            window.FAFOOpsStats?.ensureSession('duplicate-file-manager', { label: 'Duplicate File Manager' });
+            refreshOpsTally();
+            window.addEventListener('fafo-ops-stats', refreshOpsTally);
+        } catch (_) { /* stats optional */ }
+        // Restore last scan first (survives Media Hub tab switches / reloads)
+        const restored = loadPersistedScan();
+        if (restored) {
+            UI()?.toast?.('Restored previous duplicate scan — no rescan needed', 'ok');
+        }
+        // Launch params may still auto-scan when ?scan=1 (explicit)
+        applyLaunchParams();
+    </script>
+<script data-extra-polish="dup"></script></body>
+</html>

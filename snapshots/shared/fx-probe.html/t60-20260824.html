@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FXPROBE boot</title>
+  <style>
+    html, body { margin: 0; min-height: 100vh; background: #050508; color: #9ef; font: 13px/1.4 Consolas, monospace; }
+    #hud {
+      position: fixed; z-index: 99999; top: 12px; left: 12px;
+      background: rgba(0,0,0,0.78); border: 1px solid #0ff6;
+      padding: 12px 14px; min-width: 340px; pointer-events: none;
+      white-space: pre; letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">FXPROBE starting…</div>
+  <script src="aitoolbox-cinematic.js?v=fxprobe2"></script>
+  <script src="aitoolbox-launcher-fx.js?v=fxprobe2"></script>
+  <script>
+    (function () {
+      const hud = document.getElementById('hud');
+      const params = new URLSearchParams(location.search);
+      const auto = params.get('autorun') !== '0';
+      const dwell = Math.max(4000, parseInt(params.get('dwell') || '7000', 10) || 7000);
+      const order = ['off', 'css', 'canvas', 'marquee-noblur', 'marquee', 'all'];
+      let idx = 0;
+
+      function paint() {
+        const s = window.AIToolboxLauncherFX?.probeStats?.() || {};
+        const v = s.videos || {};
+        const c = s.canvas || {};
+        hud.textContent =
+          'mode     ' + (s.mode || '?') + '\n' +
+          'fps      ' + (s.fps || 0) + '  lag=' + (s.lagScore || 0) + '\n' +
+          'videos   el=' + (v.elements || 0) +
+          '  playing=' + (v.playing || 0) +
+          '  still=' + (v.still || 0) +
+          '  ready=' + (v.ready || 0) + '\n' +
+          'canvas   ' + (c.bufW || 0) + 'x' + (c.bufH || 0) +
+          '  dpr=' + (c.dpr || 0) +
+          '  px=' + (c.pixels || 0) +
+          '  draw=' + !!c.drawing + '\n' +
+          'tracers  ' + (s.tracers || 0) + '  sparks=' + (s.sparks || 0);
+        document.title = 'FXPROBE ' + (s.mode || 'boot');
+      }
+
+      async function boot() {
+        try {
+          localStorage.setItem('aitoolbox.cine.prefs', JSON.stringify({
+            skipOnLaunch: true, muteVideo: true
+          }));
+        } catch (_) { /* ignore */ }
+        await window.AIToolboxLauncherFX.start();
+        paint();
+        setInterval(paint, 400);
+        if (!auto) return;
+        const step = () => {
+          const mode = order[idx % order.length];
+          window.AIToolboxLauncherFX.probeSet(mode);
+          paint();
+          idx += 1;
+        };
+        step();
+        setInterval(step, dwell);
+      }
+      boot().catch((e) => { hud.textContent = 'FXPROBE error\n' + e; });
+    })();
+  </script>
+</body>
+</html>

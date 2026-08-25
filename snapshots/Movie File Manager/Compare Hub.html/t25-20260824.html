@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compare Hub — Pairs · Video · Image</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⇄</text></svg>">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+  <style>
+    :root {
+      --bg: #050508; --panel: #0c0c12; --accent: #a78bfa; --accent2: #00f3ff;
+      --text: #e8e8ec; --muted: #888; --ok: #00ff88;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column;
+    }
+    .hub-bar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 12px;
+      background: linear-gradient(180deg, #12101a, #0a0a10);
+      border-bottom: 1px solid rgba(167, 139, 250, 0.35);
+      z-index: 5;
+    }
+    .hub-bar h1 {
+      font-size: 14px; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--accent); margin-right: 6px;
+    }
+    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+    .hub-tab {
+      appearance: none; border: 1px solid rgba(167, 139, 250, 0.35);
+      background: transparent; color: var(--muted);
+      padding: 7px 12px; border-radius: 999px; cursor: pointer;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+      transition: 0.15s;
+    }
+    .hub-tab:hover { color: #ddd; border-color: var(--accent); }
+    .hub-tab.active {
+      background: rgba(167, 139, 250, 0.2);
+      color: #fff; border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(167, 139, 250, 0.3);
+    }
+    .hub-meta { font-size: 10px; color: var(--muted); max-width: 300px; line-height: 1.35; }
+    .hub-actions { display: flex; gap: 6px; align-items: center; }
+    .hub-actions a, .hub-actions button {
+      font-size: 11px; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.14); background: transparent;
+      color: var(--muted); text-decoration: none; cursor: pointer; font-weight: 600;
+    }
+    .hub-actions a:hover, .hub-actions button:hover {
+      color: var(--accent2); border-color: var(--accent2);
+    }
+    .frame-wrap { flex: 1; min-height: 0; position: relative; background: #000; }
+    .frame-wrap iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      border: 0; background: #050508;
+    }
+    .loading {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 13px; pointer-events: none;
+      background: radial-gradient(ellipse at 50% 30%, #1a1430, #050508 70%);
+      transition: opacity 0.3s;
+    }
+    .loading.hide { opacity: 0; pointer-events: none; }
+    .loading.fail { opacity: 1; pointer-events: auto; flex-direction: column; gap: 12px; text-align: center; padding: 24px; }
+    .loading.fail .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .loading.fail button, .loading.fail a {
+      font-size: 12px; font-weight: 700; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(167,139,250,.45); background: rgba(167,139,250,.15); color: #e9d5ff;
+      text-decoration: none;
+    }
+    .loading.fail button.ghost, .loading.fail a.ghost {
+      border-color: rgba(255,255,255,.2); background: transparent; color: var(--muted);
+    }
+    .server-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,200,0,.4);
+      color: #ffc800; background: rgba(255,200,0,.08); white-space: nowrap;
+    }
+    .server-badge.ok { color: var(--ok); border-color: rgba(0,255,136,.45); background: rgba(0,255,136,.1); }
+    .server-badge.bad { color: #ff6b8a; border-color: rgba(255,68,102,.45); background: rgba(255,68,102,.1); cursor: pointer; }
+    .hub-actions #btnStartServer { border-color: rgba(0,255,136,.4); color: var(--ok); }
+    .kbd-hint {
+      font-size: 10px; color: var(--muted); padding: 4px 8px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.08); white-space: nowrap;
+    }
+    .kbd-hint kbd {
+      font-family: Consolas, monospace; font-size: 10px; color: var(--accent2);
+      padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
+      background: rgba(0,0,0,.35);
+    }
+  </style>
+</head>
+<body>
+<div data-fafo-layout-root data-fafo-layout-app="movie-file-manager-compare-hub" data-fafo-layout-type="rows" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
+  <header class="hub-bar" data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
+    <h1>⇄ COMPARE HUB</h1>
+    <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
+    <div class="hub-tabs" id="hubTabs" role="tablist">
+      <button type="button" class="hub-tab active" data-tab="match" role="tab"
+              data-tip-title="Guided Match" data-tip="Try candidates one-by-one per source file until you lock a pair.">Guided Match</button>
+      <button type="button" class="hub-tab" data-tab="pairs" role="tab"
+              data-tip-title="Pair Review" data-tip="Keyboard accept/reject queue before renames.">Pair Review</button>
+      <button type="button" class="hub-tab" data-tab="video" role="tab"
+              data-tip-title="Video Comparator" data-tip="Side-by-side / slider sync for video pairs.">Video Comparator</button>
+      <button type="button" class="hub-tab" data-tab="image" role="tab"
+              data-tip-title="Image Comparator" data-tip="Slider compare for still image pairs.">Image Comparator</button>
+    </div>
+    <div class="hub-meta" id="hubMeta">Guided match: try up to 10 candidates per file — you decide. Then review or open sliders.</div>
+    <span class="kbd-hint" title="Keyboard"><kbd>1</kbd>–<kbd>4</kbd> tabs · <kbd>R</kbd> report</span>
+    <div class="hub-actions">
+      <a href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Launcher</a>
+      <button type="button" id="btnStartServer" data-legacy-server-chrome
+              data-tip-title="Start Server" data-tip="Start toolbox backend if offline (prefer top S1/S2 bar).">▶ Start Server</button>
+      <a href="Media Hub.html" data-tip-title="Media Hub" data-tip="Library + duplicates + organizer tabs.">🗂️ Media Hub</a>
+      <a href="Media Library Manager.html" data-tip-title="Library" data-tip="Full Media Library window.">📚 Library</a>
+      <a href="VSR Pipeline Manager.html" data-tip-title="VSR" data-tip="Match and rename upscale / interpolation stages.">⚡ VSR</a>
+      <a href="Guided Pair Match.html" data-tip-title="Guided Match" data-tip="Open Guided Match in its own window.">🎯 Match</a>
+      <a href="Pair Review Queue.html" data-tip-title="Pair Review" data-tip="Open Pair Review in its own window.">🔎 Review</a>
+      <button type="button" id="btnCopyReport" data-tip-title="Report" data-tip="Copy a compare-hub session summary.">📋 Report</button>
+      <button type="button" id="btnPopout" data-tip-title="Pop out" data-tip="Open this tab in a full window.">↗ Pop out</button>
+    </div>
+    <span data-fafo-layout-toolbar></span>
+</header>
+  <div class="frame-wrap">
+    <div class="loading" id="loading">Loading compare workspace…</div>
+    <iframe id="hubFrame" title="Compare workspace" allow="autoplay; fullscreen"></iframe>
+  </div>
+
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+  <script>
+    (function () {
+      const TABS = {
+        match: {
+          path: 'Guided Pair Match.html',
+          toolboxPath: 'Movie File Manager/Guided Pair Match.html',
+          title: 'Guided Pair Match',
+          meta: 'One unpaired file at a time · up to 10 candidates · Y match / N next · process of elimination with you at the helm.'
+        },
+        pairs: {
+          path: 'Pair Review Queue.html',
+          toolboxPath: 'Movie File Manager/Pair Review Queue.html',
+          title: 'Pair Review',
+          meta: 'Review before/after pairs, accept or reject, batch-fix catalog links — then jump to a comparator.'
+        },
+        video: {
+          path: '../Video Tools/Video Comparison Slider Tool.html',
+          toolboxPath: 'Video Tools/Video Comparison Slider Tool.html',
+          title: 'Video Comparator',
+          meta: 'Side-by-side / slider sync playback for upscaled vs source video pairs.'
+        },
+        image: {
+          path: '../Image tools/Image Comparitor With Slider.html',
+          toolboxPath: 'Image tools/Image Comparitor With Slider.html',
+          title: 'Image Comparator',
+          meta: 'Before/after image slider with blend & loupe.'
+        }
+      };
+
+      const frame = document.getElementById('hubFrame');
+      const loading = document.getElementById('loading');
+      const meta = document.getElementById('hubMeta');
+      const LS_TAB = 'fafo_compare_hub_last_tab';
+      let current = 'match';
+      let loadTimer = null;
+      let loadGen = 0;
+
+      function normalizeTab(raw) {
+        let h = String(raw || '').replace(/^#/, '').toLowerCase();
+        h = h.split('?')[0].split('/')[0].trim();
+        if (h === 'match' || h === 'guided' || h === 'elim' || h === 'studio') return 'match';
+        if (h === 'pair' || h === 'pairs' || h === 'review' || h === 'queue') return 'pairs';
+        if (h === 'video' || h === 'vid' || h === 'vc') return 'video';
+        if (h === 'image' || h === 'img' || h === 'ic') return 'image';
+        if (TABS[h]) return h;
+        return '';
+      }
+
+      function tabFromHash() {
+        let h = (location.hash || '').replace(/^#/, '');
+        if (!h) {
+          try {
+            const m = /#([^#]*)$/.exec(location.href || '');
+            if (m) h = decodeURIComponent(m[1]);
+          } catch (_) {}
+        }
+        const tab = normalizeTab(h);
+        if (tab) return tab;
+        if (!h || h === 'compare') {
+          try {
+            const last = localStorage.getItem(LS_TAB);
+            if (last && TABS[last]) return last;
+          } catch (_) {}
+        }
+        return 'match';
+      }
+
+      function launcherHref() {
+        try {
+          if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+        } catch (_) {}
+        return '../Toolbox Launcher.html';
+      }
+
+      async function pingServer() {
+        const badge = document.getElementById('serverBadge');
+        if (!badge) return;
+        try {
+          const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
+          badge.textContent = on ? '● Online' : '○ Offline — click ▶ Start';
+          badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
+          badge.title = on ? 'Toolbox server online' : 'Server offline — click to start from this page';
+        } catch (_) {
+          badge.textContent = '○ Offline';
+          badge.className = 'server-badge bad';
+        }
+      }
+
+      async function startServerFromHub() {
+        const btn = document.getElementById('btnStartServer');
+        if (btn) btn.disabled = true;
+        try {
+          window.AIToolboxUI?.toast?.('Starting toolbox server…', 'ok');
+          if (window.AIToolboxAPI?.startServer) {
+            await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+          } else {
+            location.href = launcherHref();
+            return;
+          }
+          await pingServer();
+          window.AIToolboxUI?.toast?.('Server ready — reloading workspace', 'ok');
+          showTab(current, false);
+        } catch (e) {
+          window.AIToolboxUI?.toast?.(e.message || 'Start failed — open Launcher', 'warn');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      async function resolveSrc(tab) {
+        const t = TABS[tab];
+        let src = t.path;
+        const qs = location.search || '';
+        try {
+          if (window.AIToolboxAPI?.isOnline && window.AIToolboxAPI?.toolPageUrl) {
+            const on = await AIToolboxAPI.isOnline(false, 1500).catch(() => false);
+            if (on) src = AIToolboxAPI.toolPageUrl(t.toolboxPath);
+          }
+        } catch (_) { /* ignore */ }
+        if (qs) {
+          src += (String(src).includes('?') ? '&' : '?') + qs.replace(/^\?/, '');
+        }
+        return src;
+      }
+
+      function showLoadFail(title, src) {
+        loading.classList.remove('hide');
+        loading.classList.add('fail');
+        loading.innerHTML =
+          '<div><strong style="color:#fff">' + title + ' didn’t load</strong></div>' +
+          '<div style="max-width:420px;color:var(--muted);font-size:12px;line-height:1.45">' +
+          'Workspace tab timed out or failed. Retry, open full-window, or return to the Launcher.</div>' +
+          '<div class="actions">' +
+          '<button type="button" id="hubRetry">↻ Retry</button>' +
+          '<a href="' + String(src).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">↗ Open full window</a>' +
+          '<a class="ghost" href="' + launcherHref() + '">← Launcher</a>' +
+          '<button type="button" class="ghost" id="hubStartFromFail">▶ Start Server</button>' +
+          '</div>';
+        document.getElementById('hubRetry')?.addEventListener('click', () => showTab(current, false));
+        document.getElementById('hubStartFromFail')?.addEventListener('click', startServerFromHub);
+      }
+
+      async function showTab(id, pushHash) {
+        if (!TABS[id]) id = 'match';
+        current = id;
+        document.querySelectorAll('.hub-tab').forEach((b) => {
+          b.classList.toggle('active', b.dataset.tab === id);
+        });
+        const t = TABS[id];
+        document.title = t.title + ' — Compare Hub';
+        meta.innerHTML = t.meta;
+        try { localStorage.setItem(LS_TAB, id); } catch (_) {}
+        if (pushHash !== false) {
+          if (location.hash.replace(/^#/, '') !== id) {
+            history.replaceState(null, '', '#' + id);
+          }
+        }
+        const gen = ++loadGen;
+        if (loadTimer) clearTimeout(loadTimer);
+        loading.classList.remove('hide', 'fail');
+        loading.textContent = 'Loading ' + t.title + '…';
+        const src = await resolveSrc(id);
+        frame.onload = () => {
+          if (gen !== loadGen) return;
+          if (loadTimer) clearTimeout(loadTimer);
+          loading.classList.add('hide');
+          loading.classList.remove('fail');
+        };
+        frame.onerror = () => {
+          if (gen !== loadGen) return;
+          if (loadTimer) clearTimeout(loadTimer);
+          showLoadFail(t.title, src);
+        };
+        loadTimer = setTimeout(() => {
+          if (gen !== loadGen) return;
+          if (loading.classList.contains('hide')) return;
+          try {
+            const doc = frame.contentDocument;
+            if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+              loading.classList.add('hide');
+              return;
+            }
+          } catch (_) {
+            if (frame.getAttribute('src')) {
+              loading.classList.add('hide');
+              return;
+            }
+          }
+          showLoadFail(t.title, src);
+        }, 25000);
+        frame.src = src;
+      }
+
+      async function copyHubReport() {
+        const t = TABS[current] || TABS.match;
+        const text = [
+          'FAFO Compare Hub — session report',
+          'Time: ' + new Date().toISOString(),
+          'Active workspace: ' + (t.title || current),
+          'URL: ' + location.href,
+          'Server: ' + (document.getElementById('serverBadge')?.textContent || 'unknown'),
+          '',
+          'Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator',
+          'Counterparts: Media Hub · VSR · Pair Review · Guided Match',
+        ].join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          window.AIToolboxUI?.toast?.('Compare report copied', 'ok');
+        } catch (_) { prompt('Copy report:', text); }
+      }
+
+      document.getElementById('hubTabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('.hub-tab');
+        if (!btn) return;
+        showTab(btn.dataset.tab, true);
+      });
+
+      document.getElementById('btnPopout').addEventListener('click', async () => {
+        window.open(await resolveSrc(current), '_blank');
+      });
+      document.getElementById('btnCopyReport').addEventListener('click', copyHubReport);
+      document.getElementById('btnStartServer')?.addEventListener('click', startServerFromHub);
+      document.getElementById('serverBadge')?.addEventListener('click', () => {
+        if (document.getElementById('serverBadge').classList.contains('bad')) startServerFromHub();
+        else pingServer();
+      });
+
+      window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) showTab(tabFromHash(), false);
+      });
+      showTab(tabFromHash(), true);
+      pingServer();
+      setInterval(pingServer, 20000);
+      document.addEventListener('keydown', function hubTabKeys(e){
+        if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+        const map = { '1':'match', '2':'pairs', '3':'video', '4':'image' };
+        if (map[e.key]) showTab(map[e.key], true);
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyHubReport(); }
+      });
+      window.addEventListener('message', function (ev) {
+        const data = ev?.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'fafo-compare-tab') {
+          const tab = normalizeTab(data.tab);
+          if (!tab) return;
+          if (data.search && String(data.search).startsWith('?')) {
+            try { history.replaceState(null, '', data.search + '#' + tab); } catch (_) {}
+          }
+          showTab(tab, true);
+          return;
+        }
+        if (data.type === 'fafo-escape') {
+          try {
+            location.href = (window.AIToolboxUI?.launcherHref?.() || data.href || '../Toolbox Launcher.html');
+          } catch (_) {
+            location.href = '../Toolbox Launcher.html';
+          }
+        }
+      });
+    })();
+  </script>
+
+<script data-tool-polish="compare-hub">
+/* Tool polish: compare-hub — Esc → launcher (shared UI layered), load toast */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "compare-hub";
+  const TOOL_NAME = "Compare Hub";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    if (window.AIToolboxUI?.bindEscToLauncher) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+</div>
+</body>
+</html>
