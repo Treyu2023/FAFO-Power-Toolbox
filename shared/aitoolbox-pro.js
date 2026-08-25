@@ -69,8 +69,13 @@
       counterparts: ['media-hub', 'media-library', 'vsr-pipeline'],
     },
     'vsr pipeline': {
-      id: 'vsr-pipeline', title: 'VSR Pipeline', emoji: '⚡',
-      path: 'Movie File Manager/VSR Pipeline Manager.html',
+      id: 'vsr-pipeline', title: 'Mismatched Source Companion', emoji: '🔗',
+      path: 'Movie File Manager/Mismatched Source Companion.html',
+      counterparts: ['media-hub', 'compare-hub', 'batch-media'],
+    },
+    'mismatched source': {
+      id: 'vsr-pipeline', title: 'Mismatched Source Companion', emoji: '🔗',
+      path: 'Movie File Manager/Mismatched Source Companion.html',
       counterparts: ['media-hub', 'compare-hub', 'batch-media'],
     },
     'video comparison': {

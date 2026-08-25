@@ -36,7 +36,7 @@ Full rules: root `AGENTS.md`.
 | `Scripts/` | PowerShell modules, session, pre-push |
 | `Verifone Tools/` | Commander / field / site tooling |
 | `System Tools/` | Health, diagnostics, security, disk, **Admin: System Health Desk + Secrets Presence Console** |
-| `Movie File Manager/` | Media library, VSR pipeline |
+| `Movie File Manager/` | Media library, Mismatched Source Companion (name-repair, not FlashVSR) |
 | `private/` | Owner-only notes (`README.md` tracked; apps gitignored) |
 | `Accounting Tools and calculators/` | Loan calc, converters |
 | Games / science HTML | e.g. Empire Seed 3D, Typing Trainer, Bloodmoon |

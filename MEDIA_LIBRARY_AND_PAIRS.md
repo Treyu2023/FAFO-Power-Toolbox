@@ -4,7 +4,7 @@ Guide for **AI HTML Toolbox** users (not the FAFO Chrome extension).
 Covers cataloging, Explorer-visible metadata, before/after pairing, moving files, and realistic storage options.
 
 **Requires:** Toolbox server running on **`127.0.0.87:18765`** (green pill). FAFO’s optional companion still uses `127.0.0.1:8765` — they no longer share a port.  
-**Start it in-app:** **▶ Start Server** on **Media Library**, **VSR Pipeline**, **File Organizer**, or **Launcher** — or click the offline pill. No need to hunt for a `.bat` first.
+**Start it in-app:** **▶ Start Server** on **Media Library**, **Mismatched Source Companion**, **File Organizer**, or **Launcher** — or click the offline pill. No need to hunt for a `.bat` first.
 
 ---
 
@@ -15,7 +15,7 @@ Covers cataloging, Explorer-visible metadata, before/after pairing, moving files
 | Browse / search / preview | **Media Library Manager** |
 | Rank ★, category, status, bulk table | **File Organizer** |
 | Side-by-side before/after | Pair → **Video / Image Comparator** |
-| VSR rename pipeline | **VSR Pipeline Manager** |
+| Match scrambled upscale names | **Mismatched Source Companion** (not FlashVSR) |
 | Start Python backend | Any of the above → **▶ Start Server** |
 
 ---
@@ -25,7 +25,7 @@ Covers cataloging, Explorer-visible metadata, before/after pairing, moving files
 | Place | Control |
 |-------|---------|
 | **Media Library** | **▶ Start Server** button; click red pill; offline banner (Start / Open Folder / Setup Once / Console) |
-| **VSR Pipeline** | **▶ Start Server**; click orange offline pill |
+| **Mismatched Source Companion** | **▶ Start Server**; click orange offline pill |
 | **File Organizer** | **▶ Start Server**; click offline pill |
 | **Launcher** | Banner **▶ Start Server**, Console, Open Folder, Setup Once |
 

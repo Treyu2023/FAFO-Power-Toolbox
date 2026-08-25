@@ -48,7 +48,7 @@ Backend: **`http://127.0.0.87:18765`** (toolbox + Verifone). FAFO Local Tab tags
 
 ### 3. First-time tour
 
-- Launcher, Media Library, and VSR Pipeline each run a **🎓 Get Started** tour on first visit.
+- Launcher, Media Library, and Mismatched Source Companion each run a **🎓 Get Started** tour on first visit.
 - Hover buttons and cards for **tooltips** — day-to-day use does not require reading this file.
 - Media Library **❓ Q&A** has short answers (pairs, Explorer tags, ZIP vs USB, server start).
 
@@ -56,7 +56,7 @@ Backend: **`http://127.0.0.87:18765`** (toolbox + Verifone). FAFO Local Tab tags
 
 1. **Media Library** — add watched folders, tag files, pair before/after  
    - Hover toolbar buttons for tips · **❓ Q&A** · **🎓 Get Started**  
-2. **VSR Pipeline** — point at upscale/interp folders, preview matches, apply renames  
+2. **Mismatched Source Companion** (optional) — only if an upscaler scrambled names; match dumps back to originals and rename. Skip for Pinokio FlashVSR_plus.  
 3. **Video / Image Comparator** — open saved pairs for side-by-side review  
 
 Owner-only finance/investor/Xero modules (if present on your machine) are **not** part of the public repo — see `private/README.md`.
@@ -139,7 +139,7 @@ Config lives in **`shared/aitoolbox-bind.json`** (Python) and **`shared/aitoolbo
 
 ## Debug mode
 
-Click **🐛 Debug** on the Launcher, Media Library, or VSR Pipeline (or add `?debug=1` to the URL).
+Click **🐛 Debug** on the Launcher, Media Library, or Mismatched Source Companion (or add `?debug=1` to the URL).
 
 - Captures errors, API calls, and user events in a floating panel
 - Syncs with server log at `server/debug_runtime.log`
@@ -160,7 +160,7 @@ Click **🐛 Debug** on the Launcher, Media Library, or VSR Pipeline (or add `?d
 
 ### `1.05.01` — In-app server launch
 
-- **▶ Start Server** from Media Library, VSR Pipeline, File Organizer, and Launcher
+- **▶ Start Server** from Media Library, Mismatched Source Companion, File Organizer, and Launcher
 - Shared `AIToolboxAPI.startServer()` — `aitoolbox://` protocol + `launch_server.hta`, wait for green
 - Media Library offline banner (Setup Once / Open Folder / Console fallbacks)
 - Docs + tooltips/FAQ updated for in-app start
@@ -218,7 +218,7 @@ Click **🐛 Debug** on the Launcher, Media Library, or VSR Pipeline (or add `?d
 
 - Toolbox Launcher with custom PNG icons and server status
 - Media Library Manager — folders, tags, search, pairs, batch rename with confirm/trust
-- VSR Pipeline Manager — two-stage matching, teach matcher, duplicates, tag rules
+- Mismatched Source Companion — match/rename dumps whose names no longer match originals (not FlashVSR)
 - Video & image comparators with pair loading via server
 - Python backend (`127.0.0.87:18765`) — scan, rename, ffmpeg thumbs, native folder picker
 - Shared UI kit — tooltips, animations, first-run tutorials, confirm + trust dialogs
@@ -245,7 +245,7 @@ AI HTML TOOLBOX/
 ├── launch_server.hta       ← used by in-app ▶ Start Server
 ├── Toolbox Launcher.html   ← start here
 ├── shared/                 ← API (incl. startServer), UI kit, IndexedDB core
-├── Movie File Manager/     ← Media Library, File Organizer, VSR Pipeline
+├── Movie File Manager/     ← Media Library, File Organizer, Mismatched Source Companion
 ├── Video Tools/
 ├── Image tools/
 └── server/                 ← Python backend

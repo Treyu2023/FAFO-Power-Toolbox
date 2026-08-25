@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Movie File Manager/Mismatched Source Companion.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mismatched Source Companion — match dumps to originals</title>
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+    <style>
+        :root { --bg:#0b1220; --panel:#121a28; --border:rgba(0,243,255,.22); --accent:#00f3ff; --accent2:#e879f9; --gold:#f5d76e; --ok:#4ade80; --warn:#fbbf24; --danger:#f87171; --text:#e8eef8; --muted:#94a3b8; }
+        :focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{background:radial-gradient(ellipse at 30% 0%,#152033 0%,var(--bg) 55%);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+        .top{padding:14px 20px;background:rgba(11,18,32,0.95);border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap;backdrop-filter:blur(8px)}
+        .top h1{font-size:16px;color:var(--accent);margin-right:auto;letter-spacing:2px;font-weight:400;text-shadow:0 0 20px rgba(0,243,255,0.3)}
+        .pill{font-size:10px;padding:5px 12px;border-radius:14px;font-weight:700;text-transform:uppercase}
+        .pill.ok{background:rgba(0,255,136,.12);border:1px solid var(--ok);color:var(--ok)}
+        .pill.warn{background:rgba(251,191,36,.12);border:1px solid var(--warn);color:var(--warn);cursor:pointer}
+        .pill.wait{background:rgba(245,215,110,.12);border:1px solid var(--gold);color:var(--gold)}
+        #btnStartServer:disabled{opacity:.55;cursor:wait}
+        .content{flex:1;overflow:auto;padding:20px}
+        .panel{display:none;max-width:1100px;margin:0 auto}.panel.active{display:block;animation:ui-fade-in-up 0.4s ease}
+        label{font-size:10px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px}
+        input[type=text],textarea{width:100%;background:#000;border:1px solid rgba(0,243,255,.22);color:var(--text);padding:10px;border-radius:8px;font-size:12px;transition:border-color 0.2s,box-shadow 0.2s}
+        input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 12px rgba(0,243,255,0.2)}
+        .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+        @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+        .hint{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.55}
+        .hint code{color:var(--accent);font-size:10px;background:rgba(0,243,255,0.08);padding:2px 6px;border-radius:4px}
+        .chk{display:flex;align-items:center;gap:8px;font-size:12px;margin:10px 0;cursor:pointer}
+        .ui-table{width:100%;border-collapse:collapse;font-size:11px}
+        .ui-table th,.ui-table td{padding:10px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,.06)}
+        .ui-table th{color:var(--muted);font-size:10px;text-transform:uppercase}
+        .rename-arrow{color:var(--gold);font-size:16px}
+        .dup-group{border:1px solid rgba(232,121,249,.35);border-radius:10px;padding:12px;margin-bottom:10px;background:rgba(232,121,249,.06)}
+        .status-box{padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:14px}
+        .status-box.ok{background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.3);color:var(--ok)}
+        .status-box.warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:var(--warn)}
+        .pair-teach{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+        .pair-teach input{flex:1;min-width:180px}
+        .trust-badge{font-size:10px;color:var(--ok);margin-left:8px}
+    </style>
+</head>
+<body>
+    <div class="top animate-in">
+        <h1 title="Not FlashVSR. Use this when an upscaler (ComfyUI, etc.) scrambled output names.">🔗 Mismatched Source Companion</h1>
+        <span id="serverStatus" class="pill warn" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = matching, rename, ffmpeg. Orange = offline — click this pill or ▶ Start Server to launch from this page (same as Launcher / Media Library).">Server …</span>
+        <button class="ui-btn primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from VSR. Waits for green. If blocked: open Launcher Console / START SERVER.bat, or run SETUP (run once).bat once.">▶ Start Server</button>
+        <button class="ui-btn ghost" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+        <button class="ui-btn ghost" onclick="location.href='Media Hub.html'" title="Library + dups + organizer">🗂️ Media Hub</button>
+        <button class="ui-btn ghost" onclick="location.href='Compare Hub.html'" title="Guided match + pair review + sliders">⇄ Compare Hub</button>
+        <button class="ui-btn ghost" onclick="location.href='Pair Review Queue.html'" title="Keyboard pair review">🔎 Review</button>
+        <button class="ui-btn ghost" onclick="location.href='Media Library Manager.html'">Library</button>
+        <button class="ui-btn" id="btnTutorial" data-tip="Interactive walkthrough — hover any ⓘ for quick help too">🎓 Get Started</button>
+        <button class="ui-btn primary" id="btnPreview" data-tip="Scans folders, matches files by duration + fingerprint, shows proposed renames before you apply">↻ Refresh Preview</button>
+        <button class="ui-btn ghost" id="btnVsrReport" title="Copy VSR preview report" data-tip="Copy match summary to clipboard">📋 Report</button>
+        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent)">1-5</kbd> tabs · <kbd style="font:10px Consolas;color:var(--accent)">P</kbd> preview · <kbd style="font:10px Consolas;color:var(--accent)">E</kbd> report</span>
+        <span data-fafo-layout-toolbar></span>
+        <button class="ui-btn ghost" id="btnDebug" data-tip="Echo errors and API events to debug panel">🐛 Debug</button>
+    </div>
+    <div id="vsrWorkflowBar"></div>
+
+    <div class="ui-tabs animate-in animate-in-delay-1" id="tabBar">
+        <div class="ui-tab active" data-tab="setup" role="tab" tabindex="0">① Setup<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="rename" role="tab" tabindex="0">② Match & Rename<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="teach" role="tab" tabindex="0">③ Teach Matcher<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="dupes" role="tab" tabindex="0">④ Duplicates<span class="tab-glow"></span></div>
+        <div class="ui-tab" data-tab="tags" role="tab" tabindex="0">⑤ Tag Rules<span class="tab-glow"></span></div>
+    </div>
+
+    <div class="content"
+         data-fafo-layout-root
+         data-fafo-layout-app="vsr-pipeline-manager"
+         data-fafo-layout-type="rows">
+        <div class="panel active" id="panel-setup" data-fafo-panel="setup" data-fafo-panel-title="① Setup" data-fafo-flex="1">
+            <div class="ui-card animate-in" id="card-folders" data-fafo-section="folders" data-fafo-section-title="Workflow Folders">
+                <h2>📁 Workflow Folders <span class="tip-icon" data-tip-title="Folders" data-tip="Point each stage to where VSR saves files. Change these anytime — your pipeline adapts without code edits.">ⓘ</span></h2>
+                <p class="hint">Companion only — it does not run FlashVSR. Use this when output names drifted from the originals (ComfyUI dumps, anonymous <code>ComfyUI_0001.mp4</code>, etc.). Pinokio FlashVSR_plus already keeps grok-video ids; skip this app for that pipeline.</p>
+                <div class="grid2">
+                    <div><label>Original Sources</label><input id="f_source" placeholder="D:\Videos\Originals"></div>
+                    <div><label>Stage I — Upscale Output</label><input id="f_stage1" placeholder="D:\Videos\VSR\Upscaled"></div>
+                    <div><label>Stage II — Interpolation Output</label><input id="f_stage2" placeholder="D:\Videos\VSR\Interpolated"></div>
+                    <div style="display:flex;align-items:flex-end;gap:8px">
+                        <button class="ui-btn purple" id="btnPickSource" style="flex:1" data-tip-title="Pick folder" data-tip="Windows folder picker via the Python server. Needs green pill — use ▶ Start Server on this page if offline.">📂 Source</button>
+                        <button class="ui-btn purple" id="btnPickS1" style="flex:1" data-tip="Stage I (upscale) folder picker — needs green server">📂 Stage I</button>
+                        <button class="ui-btn purple" id="btnPickS2" style="flex:1" data-tip="Stage II (interp) folder picker — needs green server">📂 Stage II</button>
+                    </div>
+                </div>
+            </div>
+            <div class="ui-card animate-in animate-in-delay-1" id="card-templates">
+                <h2>🏷️ Naming Templates <span class="tip-icon" data-tip-title="Auto-detect" data-tip="Resolution tier (2K/4K/8K), FPS, and dimensions are read from each file via ffprobe — you never type them manually.">ⓘ</span></h2>
+                <div class="grid2">
+                    <div><label>Stage I Template</label><input id="tpl_s1" value="UpScale{res_tier}_{orig}_S_I"></div>
+                    <div><label>Stage II Template</label><input id="tpl_s2" value="Interp{fps}_{res}_{orig}_S_II"></div>
+                </div>
+                <div class="hint">Tokens: <code>{orig}</code> <code>{res_tier}</code> <code>{res}</code> <code>{fps}</code> <code>{date}</code> <code>{time}</code> <code>{datetime}</code></div>
+                <label class="chk"><input type="checkbox" id="inc_date"> Append date <span class="tip-icon" data-tip="Adds YYYYMMDD from file date to the filename">ⓘ</span></label>
+                <label class="chk"><input type="checkbox" id="inc_time"> Append time (HHMMSS)</label>
+                <div class="grid2" style="margin-top:10px">
+                    <div><label>Duration tolerance</label><input id="dur_tol" value="0.35" data-tip-title="Matching" data-tip="How much duration can differ between source and VSR output (0.35 = 35%). Increase if matches are missed."></div>
+                    <div><label>Min confidence</label><input id="min_score" value="0.52" data-tip-title="Confidence" data-tip="Minimum match score (0–1). Lower = more matches but risk wrong pairs. Default 0.52 is a good balance."></div>
+                </div>
+                <button class="ui-btn" id="btnSaveCfg" style="margin-top:14px"
+                        data-tip-title="Save config" data-tip="Remember folder paths and naming templates for next time.">Save Config</button>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-rename" data-fafo-panel="rename" data-fafo-panel-title="② Match & Rename" data-fafo-flex="1">
+            <div id="previewStatus" class="status-box warn">Click <strong>Refresh Preview</strong> after setting folders</div>
+            <div class="ui-card" id="card-stage1" data-fafo-section="rename-stage1" data-fafo-section-title="Stage I — Upscale">
+                <h2>Stage I — Upscale <span id="trustBadge1" class="trust-badge"></span></h2>
+                <table class="ui-table"><thead><tr><th>Match</th><th>Source</th><th></th><th>Rename Preview</th></tr></thead><tbody id="tbl_s1"></tbody></table>
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="ui-btn primary" id="btnApplyS1" data-tip-title="Confirm" data-tip="Shows a confirmation list first. Check 'Don't ask again' to skip when you trust the matches.">Apply Stage I</button>
+                    <button class="ui-btn ghost" id="btnDryS1" data-tip="Simulates renames without touching files">Dry Run</button>
+                    <button class="ui-btn" id="btnReviewS1" data-tip-title="Pair Review Queue" data-tip="Review each match one-by-one (keyboard accept/reject) before renaming. Safer than bulk apply when scores are mixed.">🔎 Review queue</button>
+                    <button class="ui-btn ghost" id="btnResetTrust1" data-tip="Re-enable confirmation dialogs for Stage I">Reset Trust</button>
+                </div>
+            </div>
+            <div class="ui-card" id="card-stage2" data-fafo-section="rename-stage2" data-fafo-section-title="Stage II — Interpolation">
+                <h2>Stage II — Interpolation <span id="trustBadge2" class="trust-badge"></span></h2>
+                <table class="ui-table"><thead><tr><th>Match</th><th>Original</th><th></th><th>Rename Preview</th></tr></thead><tbody id="tbl_s2"></tbody></table>
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="ui-btn primary" id="btnApplyS2"
+                            data-tip-title="Apply Stage II"
+                            data-tip-basic="Rename Stage II (interpolation) files to proposed names."
+                            data-tip-pro="Bulk vsrApply stage 2 — often includes fps tokens.">Apply Stage II</button>
+                    <button class="ui-btn" id="btnReviewS2" data-tip-title="Review Stage II" data-tip="Open Pair Review Queue for Stage II matches">🔎 Review queue</button>
+                    <button class="ui-btn ghost" id="btnResetTrust2" data-tip="Re-enable confirmation dialogs for Stage II">Reset Trust</button>
+                </div>
+            </div>
+            <div class="ui-card" data-fafo-section="rename-unmatched" data-fafo-section-title="Unmatched Files"><h2>Unmatched Files</h2><div id="unmatched" class="hint"></div></div>
+        </div>
+
+        <div class="panel" id="panel-teach" data-fafo-panel="teach" data-fafo-panel-title="③ Teach Matcher" data-fafo-flex="1">
+            <div class="ui-card" id="card-teach">
+                <h2>🧠 Teach the Matcher <span class="tip-icon" data-tip-title="Learning" data-tip="Feed 3–5 known source→output pairs. The AI learns what junk VSR adds to filenames and strips it on future matches.">ⓘ</span></h2>
+                <p class="hint">When VSR renames files unpredictably, paste a source path and its matching output. Repeat a few times, then Learn.</p>
+                <div class="pair-teach">
+                    <input id="teach_src" placeholder="Source file full path">
+                    <input id="teach_out" placeholder="VSR output file path">
+                    <button class="ui-btn" id="btnAddTeach" data-tip="Add this source/output example to the teach list.">+ Add Pair</button>
+                </div>
+                <ul id="teachList" style="margin-top:12px;font-size:11px;color:var(--muted)"></ul>
+                <button class="ui-btn purple" id="btnLearn" style="margin-top:12px"
+                        data-tip-title="Learn"
+                        data-tip-basic="Teach the matcher from your examples so future previews are smarter."
+                        data-tip-pro="vsrLearn — strip prefixes/suffixes from known pairs.">Learn From Pairs</button>
+                <div id="learned" class="hint" style="margin-top:10px"></div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-dupes" data-fafo-panel="dupes" data-fafo-panel-title="④ Duplicates" data-fafo-flex="1">
+            <div class="ui-card" id="card-dupes">
+                <h2>🔍 Duplicate Detector <span class="tip-icon" data-tip-title="Dupes" data-tip="Finds copies by duration + file hash. Deep mode also compares first video frame for near-identical files with different names.">ⓘ</span></h2>
+                <input id="dup_folder" placeholder="Folder to scan">
+                <label class="chk" style="margin-top:10px"><input type="checkbox" id="dup_deep"> Deep scan (first-frame hash)</label>
+                <button class="ui-btn primary" id="btnDupScan" style="margin-top:12px"
+                        data-tip-title="Scan duplicates"
+                        data-tip="Find duplicate videos in a folder (hash / deep frame).">Scan Duplicates</button>
+                <div id="dupResults" style="margin-top:14px"></div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-tags" data-fafo-panel="tags" data-fafo-panel-title="⑤ Tag Rules" data-fafo-flex="1">
+            <div class="ui-card" id="card-tags">
+                <h2>🏷️ Tag Re-apply Rules <span class="tip-icon" data-tip-title="Tags survive VSR" data-tip="After VSR overwrites names, rescan + apply rules to restore your tags by matching duration and stem patterns.">ⓘ</span></h2>
+                <label class="chk"><input type="checkbox" id="tags_enabled" checked> Enable auto tag re-application</label>
+                <label>Strip patterns (regex per line)</label>
+                <textarea id="tags_patterns" rows="5">_S_I[I]?$
+_upscaled?$
+_vsr.*$
+_flash.*$
+_interp.*$</textarea>
+                <label style="margin-top:10px">Auto-add tags on match</label>
+                <input id="tags_auto" value="vsr-pipeline, re-tagged">
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="ui-btn" id="btnSaveTags" data-tip="Save tag re-apply rules.">Save Rules</button>
+                    <button class="ui-btn purple" id="btnApplyTags"
+                            data-tip-title="Apply tag rules"
+                            data-tip="Re-apply tags after VSR renames (match by duration/stem).">Apply Rules Now</button>
+                </div>
+                <div id="tagResult" class="hint" style="margin-top:10px"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+    <script>
+        const API = () => window.AIToolboxAPI;
+        const UI = () => window.AIToolboxUI;
+        const DBG = () => window.AIToolboxDebug;
+        const VSR_FLOW = [
+            { id: 'setup', label: 'Folders & templates' },
+            { id: 'rename', label: 'Preview & apply' },
+            { id: 'teach', label: 'Teach (optional)' },
+            { id: 'dupes', label: 'Duplicates' },
+            { id: 'tags', label: 'Tag rules' },
+        ];
+        let teachPairs = [], lastPreview = null, activeVsrTab = 'setup';
+        let busy = false;
+        const _blobUrls = [];
+        function el(id) {
+            try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+        }
+        function setText(id, text) {
+            const n = el(id);
+            if (n) n.textContent = text == null ? '' : String(text);
+        }
+        function bind(id, ev, fn) {
+            const n = el(id);
+            if (!n || !fn) return;
+            n.addEventListener(ev, fn);
+        }
+        function lsGet(key, fallback) {
+            try {
+                const v = localStorage.getItem(key);
+                return v == null ? fallback : v;
+            } catch (_) { return fallback; }
+        }
+        function lsSet(key, val) {
+            try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+        }
+        async function withBusy(fn, btnId) {
+            if (busy) return;
+            busy = true;
+            const b = btnId ? el(btnId) : null;
+            if (b) b.disabled = true;
+            try { return await fn(); }
+            finally {
+                busy = false;
+                if (b) b.disabled = false;
+            }
+        }
+        function escHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function trackBlob(url) {
+            if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+            return url;
+        }
+        function revokeBlobs() {
+            while (_blobUrls.length) {
+                try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+            }
+        }
+        window.addEventListener('pagehide', revokeBlobs);
+        function toast(msg, type) { try { UI()?.toast?.(msg, type || ''); } catch (_) {} }
+
+
+        function foldersConfigured() {
+            const a = el('f_source'), b = el('f_stage1'), c = el('f_stage2');
+            return !!(a && a.value.trim() && b && b.value.trim() && c && c.value.trim());
+        }
+
+        function updateVsrWorkflow() {
+            const states = {
+                setup: foldersConfigured() ? 'done' : 'active',
+                rename: lastPreview ? 'done' : (foldersConfigured() ? 'active' : 'pending'),
+                teach: teachPairs.length ? 'done' : 'pending',
+                dupes: 'pending',
+                tags: 'pending',
+            };
+            states[activeVsrTab] = states[activeVsrTab] === 'done' ? 'done' : 'active';
+            try { UI()?.renderWorkflow?.(el('vsrWorkflowBar'), VSR_FLOW, states); } catch (_) {}
+            document.querySelectorAll('.ui-tab').forEach(t => {
+                const id = t.dataset.tab;
+                t.classList.toggle('done', states[id] === 'done');
+                t.classList.toggle('workflow-active', id === activeVsrTab);
+            });
+        }
+
+        const LS_VSR_TAB = 'fafo_vsr_last_tab';
+        function switchTab(name) {
+            activeVsrTab = name;
+            document.querySelectorAll('.ui-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+            document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+            lsSet(LS_VSR_TAB, name);
+            updateVsrWorkflow();
+        }
+        document.querySelectorAll('.ui-tab').forEach(tab => {
+            tab.onclick = () => switchTab(tab.dataset.tab);
+            tab.addEventListener('keydown', ev => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); switchTab(tab.dataset.tab); }
+            });
+        });
+        const lastTab = lsGet(LS_VSR_TAB, '');
+        if (lastTab && el('panel-' + lastTab)) switchTab(lastTab);
+        ['f_source', 'f_stage1', 'f_stage2'].forEach(id => bind(id, 'input', updateVsrWorkflow));
+
+        bind('btnDebug', 'click', () => {
+            const next = !DBG()?.enabled();
+            DBG()?.setEnabled(next);
+            if (next) DBG()?.boot(); else DBG()?.shutdown();
+            const dbg = el('btnDebug');
+            if (dbg) {
+                dbg.classList.toggle('debug-on', next);
+                dbg.textContent = next ? '🐛 Debug ON' : '🐛 Debug';
+            }
+        });
+
+        async function copyVsrReport() {
+            const s1 = lastPreview?.stage1 || [];
+            const s2 = lastPreview?.stage2 || [];
+            const unmatched = lastPreview?.unmatched || lastPreview?.unmatched_files || [];
+            const lines = [
+                'FAFO Mismatched Source Companion — session report',
+                'Time: ' + new Date().toISOString(),
+                'Server: ' + (document.getElementById('serverStatus')?.textContent || '').trim(),
+                'Source: ' + (document.getElementById('f_source')?.value || ''),
+                'Stage I folder: ' + (document.getElementById('f_stage1')?.value || ''),
+                'Stage II folder: ' + (document.getElementById('f_stage2')?.value || ''),
+                'Stage I matches: ' + s1.length,
+                'Stage II matches: ' + s2.length,
+                'Unmatched: ' + (Array.isArray(unmatched) ? unmatched.length : (unmatched || '—')),
+                'Active tab: ' + activeVsrTab,
+                '',
+                '— Stage I (up to 40) —',
+                ...s1.slice(0, 40).map((m, i) =>
+                    (i + 1) + '. ' + (m.source_name || m.source || m.src || '?') +
+                    ' → ' + (m.proposed_name || m.rename || m.dest_name || '?') +
+                    (m.score != null ? ' · ' + Math.round((m.score <= 1 ? m.score * 100 : m.score)) + '%' : '')
+                ),
+                '',
+                '— Stage II (up to 40) —',
+                ...s2.slice(0, 40).map((m, i) =>
+                    (i + 1) + '. ' + (m.source_name || m.source || m.src || '?') +
+                    ' → ' + (m.proposed_name || m.rename || m.dest_name || '?') +
+                    (m.score != null ? ' · ' + Math.round((m.score <= 1 ? m.score * 100 : m.score)) + '%' : '')
+                ),
+            ];
+            const text = lines.join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                UI()?.toast?.('VSR report copied', 'ok');
+            } catch (_) { prompt('Copy report:', text); }
+        }
+        bind('btnVsrReport', 'click', copyVsrReport);
+        document.addEventListener('keydown', e => {
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            const tabMap = { '1': 'setup', '2': 'rename', '3': 'teach', '4': 'dupes', '5': 'tags' };
+            if (tabMap[e.key]) { e.preventDefault(); switchTab(tabMap[e.key]); }
+            if (e.key === 'p' || e.key === 'P') {
+                e.preventDefault();
+                document.getElementById('btnPreview')?.click();
+            }
+            if (e.key === 'e' || e.key === 'E') {
+                e.preventDefault();
+                copyVsrReport();
+            }
+        });
+
+        function updateTrustBadges() {
+            setText('trustBadge1', UI()?.isTrusted?.('vsr_stage1') ? '✓ Trusted — skips confirm' : '');
+            setText('trustBadge2', UI()?.isTrusted?.('vsr_stage2') ? '✓ Trusted — skips confirm' : '');
+        }
+
+        let serverStarting = false;
+
+        async function checkServer() {
+            if (serverStarting) return false;
+            const on = await API().isOnline();
+            const statusEl = el('serverStatus');
+            const btn = el('btnStartServer');
+            if (statusEl) {
+                statusEl.textContent = on ? '● Server Online' : '○ Offline — click to start';
+                statusEl.className = 'pill ' + (on ? 'ok' : 'warn');
+            }
+            if (btn) {
+                btn.style.display = on ? 'none' : '';
+                btn.disabled = false;
+                btn.textContent = '▶ Start Server';
+            }
+            return on;
+        }
+
+        async function launchServerFromApp() {
+            if (serverStarting || API().isServerLaunching?.()) return;
+            if (await API().isOnline(true, 2000)) {
+                await checkServer();
+                toast('Server already online', 'ok');
+                return;
+            }
+            serverStarting = true;
+            const statusEl = el('serverStatus');
+            const btn = el('btnStartServer');
+            if (statusEl) {
+                statusEl.textContent = '◌ Starting…';
+                statusEl.className = 'pill wait';
+            }
+            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+            try {
+                const result = await API().startServer({
+                    mode: 'tray',
+                    waitMs: 90000,
+                    onStatus: (msg) => { if (statusEl) statusEl.textContent = '◌ ' + msg; },
+                });
+                serverStarting = false;
+                if (result.ok) {
+                    toast('Server online — VSR full power', 'ok');
+                    await checkServer();
+                } else {
+                    if (statusEl) { statusEl.textContent = '○ Start failed'; statusEl.className = 'pill warn'; }
+                    if (btn) { btn.disabled = false; btn.textContent = '▶ Start Server'; }
+                    toast('Browser blocked launch — open Launcher or START SERVER.bat', 'warn');
+                }
+            } catch (e) {
+                serverStarting = false;
+                if (btn) { btn.disabled = false; btn.textContent = '▶ Start Server'; }
+                toast('Start failed: ' + (e.message || e), 'warn');
+                await checkServer();
+            }
+        }
+
+        function val(id) { const n = el(id); return n && 'value' in n ? String(n.value).trim() : ''; }
+        function checked(id) { const n = el(id); return !!(n && n.checked); }
+        function cfgFromForm() {
+            return {
+                folder_source: val('f_source'),
+                folder_stage1: val('f_stage1'),
+                folder_stage2: val('f_stage2'),
+                template_stage1: val('tpl_s1'),
+                template_stage2: val('tpl_s2'),
+                include_date: checked('inc_date'),
+                include_time: checked('inc_time'),
+                duration_tolerance: parseFloat(val('dur_tol')) || 0.35,
+                min_match_score: parseFloat(val('min_score')) || 0.52,
+            };
+        }
+
+        function cfgToForm(c) {
+            c = c || {};
+            const map = { f_source: c.folder_source, f_stage1: c.folder_stage1, f_stage2: c.folder_stage2 };
+            Object.keys(map).forEach(id => { const n = el(id); if (n) n.value = map[id] || ''; });
+            const s1 = el('tpl_s1'); if (s1) s1.value = c.template_stage1 || '';
+            const s2 = el('tpl_s2'); if (s2) s2.value = c.template_stage2 || '';
+            const idt = el('inc_date'); if (idt) idt.checked = !!c.include_date;
+            const itm = el('inc_time'); if (itm) itm.checked = !!c.include_time;
+            const dt = el('dur_tol'); if (dt) dt.value = c.duration_tolerance ?? 0.35;
+            const ms = el('min_score'); if (ms) ms.value = c.min_match_score ?? 0.52;
+            const df = el('dup_folder'); if (df) df.value = c.folder_source || '';
+            if (c.learned_strip_suffixes?.length) {
+                const learned = [...(c.learned_strip_prefixes||[]), ...(c.learned_strip_suffixes||[])].map(escHtml).join(', ');
+                const node = el('learned');
+                if (node) node.innerHTML = '<strong>Learned patterns:</strong> ' + learned;
+            }
+        }
+
+        function rowHtml(r, color) {
+            r = r || {};
+            const pct = Math.round((r.score||0)*100);
+            let cls = 'mid';
+            try { cls = UI()?.scoreClass?.(pct) || cls; } catch (_) {}
+            const src = escHtml(r.source?.name || r.original_source || '');
+            const cur = escHtml(r.current_name);
+            const prop = escHtml(r.proposed_name);
+            const res = escHtml(r.output_probe?.res);
+            const fps = escHtml(r.output_probe?.fps_label);
+            return `<tr>
+                <td><span class="ui-score ${escHtml(cls)}">${pct}%</span></td>
+                <td>${src}</td>
+                <td class="rename-arrow">→</td>
+                <td><span style="color:#666">${cur}</span> → <strong style="color:${color}">${prop}</strong>
+                <br><span style="font-size:9px;color:#555">${res} · ${fps}fps</span></td></tr>`;
+        }
+
+        function renderPreview(data) {
+            data = data || {};
+            lastPreview = data;
+            const t1 = el('tbl_s1');
+            if (t1) t1.innerHTML = (data.stage1||[]).map(r => rowHtml(r,'var(--accent)')).join('') ||
+                '<tr><td colspan=4 style="color:#666">No Stage I matches — set folders or teach pairs</td></tr>';
+            const t2 = el('tbl_s2');
+            if (t2) t2.innerHTML = (data.stage2||[]).map(r => rowHtml({...r, source:{name:r.original_source}},'var(--accent2)')).join('') ||
+                '<tr><td colspan=4 style="color:#666">No Stage II matches yet</td></tr>';
+            const um = [
+                ...(data.unmatched_source||[]).map(u=>'📄 '+escHtml(u && u.name)),
+                ...(data.unmatched_stage1||[]).map(u=>'⚠ Stage1: '+escHtml(u && u.name))
+            ];
+            const umEl = el('unmatched');
+            if (umEl) umEl.innerHTML = um.length ? um.join('<br>') : '✓ All files matched!';
+            const st = el('previewStatus');
+            if (st) {
+                st.className = 'status-box ok';
+                st.innerHTML = `Matched <strong>${data.stage1?.length||0}</strong> upscale + <strong>${data.stage2?.length||0}</strong> interpolation files — review below, then Apply`;
+            }
+            updateVsrWorkflow();
+        }
+
+        async function applyStage(stage) {
+            return withBusy(async () => {
+            const key = stage === '1' ? 'vsr_stage1' : 'vsr_stage2';
+            const label = stage === '1' ? 'Stage I (Upscale)' : 'Stage II (Interpolation)';
+            const items = stage === '1' ? (lastPreview?.stage1||[]) : (lastPreview?.stage2||[]);
+            const toRename = items.filter(i => i.rename_needed);
+            if (!toRename.length) { toast('Nothing to rename — refresh preview first', 'warn'); return; }
+
+            const preview = toRename.map(i => ({ from: i.current_name, to: i.proposed_name }));
+            const result = await UI()?.confirmAction?.({
+                title: `Apply ${label} Renames?`,
+                body: `<strong>${toRename.length}</strong> video files will be renamed on disk. Review the preview below.`,
+                preview,
+                trustKey: key,
+                trustLabel: `Trust ${label} — skip confirmation next time (Reset Trust button below)`,
+                trustDefaultChecked: false,
+                showSafetyNote: true,
+                confirmText: `Rename ${toRename.length} Files`,
+            });
+            if (!result || !result.confirmed) return;
+
+            const r = await API()?.vsrApply?.(stage, false) || {};
+            toast(
+                result.skipped ? `✓ ${r.count||0} renamed (trusted — no prompt)` : `✓ ${r.count||0} files renamed`,
+                result.skipped ? 'warn' : 'ok'
+            );
+            try {
+                const n = Math.max(0, Number(r.count) || toRename.length || 0);
+                if (n) {
+                    window.FAFOOpsStats?.record({
+                        tool: 'vsr-pipeline-manager',
+                        action: 'apply-stage-' + stage,
+                        metrics: { renamesApplied: n, syncsCompleted: 1 },
+                    });
+                }
+            } catch (_) { /* stats optional */ }
+            el('btnPreview')?.click();
+            updateTrustBadges();
+            }, stage === '1' ? 'btnApplyS1' : 'btnApplyS2');
+        }
+
+        const TUTORIAL = [
+            { target: '#serverStatus', title: 'Mismatched Source Companion', body: 'This is <em>not</em> FlashVSR. Use it when output names no longer match the originals (Comfy dumps, random upscalers). <strong>▶ Start Server</strong> (or the orange pill) enables matching, rename, and ffmpeg.' },
+            { target: '#card-folders', title: 'Set Your 3 Folders', body: 'Originals, Stage I upscale output, Stage II interpolation output. These are saved and changeable anytime.', tab: 'setup' },
+            { target: '#card-templates', title: 'Naming Templates', body: 'Resolution and FPS are auto-detected per file. Use tokens like {res_tier} and {fps}. Toggle date/time if you want timestamps in names.', tab: 'setup' },
+            { target: '#btnPreview', title: 'Preview Matches', body: 'The matcher uses duration + aspect ratio + fuzzy names — not just filenames. Always preview before applying.' },
+            { target: '#card-teach', title: 'Teach (Optional)', body: 'If VSR names are chaotic, feed 3–5 known pairs. The AI learns what to strip from future matches.', tab: 'teach' },
+            { target: '#card-stage1', title: 'Confirm or Trust', body: 'Apply renames the whole stage. Prefer <strong>🔎 Review queue</strong> when matches look mixed — accept/reject each pair with the keyboard before any rename.', tab: 'rename' },
+            { target: '#card-tags', title: 'Tags Survive VSR', body: 'Tag rules re-apply your labels after rescan even when VSR overwrites filenames.', tab: 'tags' },
+        ];
+
+        bind('btnTutorial', 'click', () => {
+            UI()?.startTutorial?.(TUTORIAL, 'vsr', (step) => { if (step.tab) switchTab(step.tab); }, { force: true });
+        });
+
+        function startVsrTutorial() {
+            UI()?.startTutorial?.(TUTORIAL, 'vsr', (step) => { if (step.tab) switchTab(step.tab); });
+        }
+
+        bind('btnPreview', 'click', () => withBusy(async () => {
+            try {
+                await API()?.vsrSaveConfig?.(cfgFromForm());
+                toast('Scanning & matching\u2026');
+                const data = await API()?.vsrPreview?.();
+                renderPreview(data);
+                switchTab('rename');
+            } catch (e) { toast('Preview failed: ' + (e.message || e), 'warn'); }
+        }, 'btnPreview'));
+
+        bind('btnApplyS1', 'click', () => applyStage('1'));
+        bind('btnApplyS2', 'click', () => applyStage('2'));
+        bind('btnReviewS1', 'click', () => { location.href = 'Pair Review Queue.html?source=vsr&stage=1&autoload=1'; });
+        bind('btnReviewS2', 'click', () => { location.href = 'Pair Review Queue.html?source=vsr&stage=2&autoload=1'; });
+        bind('btnDryS1', 'click', () => withBusy(async () => {
+            try {
+                const r = await API()?.vsrApply?.('1', true) || {};
+                toast('Dry run: ' + (r.count||0) + ' would rename');
+            } catch (e) { toast('Dry run failed: ' + (e.message || e), 'warn'); }
+        }, 'btnDryS1'));
+        bind('btnResetTrust1', 'click', () => { UI()?.setTrusted?.('vsr_stage1', false); updateTrustBadges(); toast('Stage I confirm restored'); });
+        bind('btnResetTrust2', 'click', () => { UI()?.setTrusted?.('vsr_stage2', false); updateTrustBadges(); toast('Stage II confirm restored'); });
+
+        bind('btnSaveCfg', 'click', () => withBusy(async () => {
+            try { await API()?.vsrSaveConfig?.(cfgFromForm()); toast('Config saved', 'ok'); }
+            catch (e) { toast('Save failed: ' + (e.message || e), 'warn'); }
+        }, 'btnSaveCfg'));
+
+        async function pickFolder(id) {
+            try {
+                const d = await API()?.pickDirectoryNative?.();
+                const n = el(id);
+                if (n && d && d.path) n.value = d.path;
+            } catch (e) {
+                const pth = prompt('Paste folder path:');
+                const n = el(id);
+                if (pth && n) n.value = pth;
+            }
+        }
+        bind('btnPickSource', 'click', () => pickFolder('f_source'));
+        bind('btnPickS1', 'click', () => pickFolder('f_stage1'));
+        bind('btnPickS2', 'click', () => pickFolder('f_stage2'));
+
+        bind('btnAddTeach', 'click', () => {
+            const s = val('teach_src');
+            const o = val('teach_out');
+            if (!s||!o) return;
+            teachPairs.push({ source_path: s, output_path: o });
+            const list = el('teachList');
+            if (list) {
+                const parts = teachPairs.map((pair, i) => {
+                    const a = String(pair.source_path||'').split('\\').pop();
+                    const b = String(pair.output_path||'').split('\\').pop();
+                    return '<li>' + (i+1) + '. ' + escHtml(a) + ' \u2194 ' + escHtml(b) + '</li>';
+                });
+                list.innerHTML = parts.join('');
+            }
+            const ts = el('teach_src'); if (ts) ts.value = '';
+            const to = el('teach_out'); if (to) to.value = '';
+        });
+        bind('btnLearn', 'click', () => withBusy(async () => {
+            if (!teachPairs.length) { toast('Add at least one pair', 'warn'); return; }
+            try {
+                cfgToForm(await API()?.vsrLearn?.(teachPairs));
+                toast('Matcher learned \u2014 refresh preview!', 'ok');
+            } catch (e) { toast('Learn failed: ' + (e.message || e), 'warn'); }
+        }, 'btnLearn'));
+
+        bind('btnDupScan', 'click', () => withBusy(async () => {
+            try {
+                const r = await API()?.scanDuplicates?.(val('dup_folder'), checked('dup_deep')) || {};
+                const gb = ((Number(r.wasted_bytes)||0)/1024/1024/1024).toFixed(2);
+                let html = '<div class="status-box warn">' + escHtml(r.duplicate_groups||0) + ' groups \u00b7 ' + escHtml(r.scanned||0) + ' files \u00b7 ~' + escHtml(gb) + ' GB duplicate data</div>';
+                (r.groups||[]).forEach(g => {
+                    g = g || {};
+                    html += '<div class="dup-group"><strong>' + escHtml(g.count) + '\u00d7 duplicate</strong> (' + escHtml(((g.total_bytes||0)/1e6).toFixed(0)) + ' MB)<ul style="margin-top:6px;font-size:11px">';
+                    (g.items||[]).forEach(i => {
+                        html += '<li>' + escHtml(i && i.name) + ' \u2014 ' + escHtml(i && i.res) + ' \u00b7 ' + escHtml(i && i.duration) + 's</li>';
+                    });
+                    html += '</ul></div>';
+                });
+                const box = el('dupResults');
+                if (box) box.innerHTML = html;
+            } catch (e) { toast('Dup scan failed: ' + (e.message || e), 'warn'); }
+        }, 'btnDupScan'));
+
+        bind('btnSaveTags', 'click', () => withBusy(async () => {
+            try {
+                const pat = (el('tags_patterns') && el('tags_patterns').value || '').split('\n').map(s=>s.trim()).filter(Boolean);
+                await API()?.saveTagRules?.({
+                    enabled: checked('tags_enabled'),
+                    strip_patterns: pat,
+                    auto_tag_on_match: val('tags_auto').split(',').map(s=>s.trim()).filter(Boolean),
+                });
+                toast('Tag rules saved', 'ok');
+            } catch (e) { toast('Save tags failed: ' + (e.message || e), 'warn'); }
+        }, 'btnSaveTags'));
+        bind('btnApplyTags', 'click', () => withBusy(async () => {
+            try {
+                const r = await API()?.applyTagRules?.() || {};
+                setText('tagResult', 'Re-applied tags to ' + (r.applied||0) + ' files');
+                toast((r.applied||0) + ' tags restored', 'ok');
+            } catch (e) { toast('Apply tags failed: ' + (e.message || e), 'warn'); }
+        }, 'btnApplyTags'));
+
+        bind('btnStartServer', 'click', () => launchServerFromApp());
+        bind('serverStatus', 'click', () => { if (!serverStarting) launchServerFromApp(); });
+        bind('serverStatus', 'keydown', ev => {
+            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); if (!serverStarting) launchServerFromApp(); }
+        });
+
+        (async () => {
+            try { UI()?.initTooltips?.(); } catch (_) {}
+            updateTrustBadges();
+            DBG()?.log('vsr', 'info', 'Mismatched Source Companion init');
+            if (await checkServer()) {
+                try { cfgToForm(await API()?.vsrGetConfig?.() || {}); } catch (_) {}
+            }
+            updateVsrWorkflow();
+            setInterval(checkServer, 5000);
+            if (!UI()?.isTutorialDone?.('vsr')) {
+                setTimeout(startVsrTutorial, 600);
+            }
+        })();
+    </script>
+
+<script data-tool-polish="vsr-pipeline">
+/* Tool polish: vsr-pipeline — Esc → launcher, load toast, error surface */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "vsr-pipeline";
+  const TOOL_NAME = "Mismatched Source Companion";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+<script data-extra-polish="vsr">
+(async function(){
+  try {
+    const on = await window.AIToolboxAPI?.isOnline?.(true, 2000);
+    if (!on && window.AIToolboxUI?.toast) AIToolboxUI.toast('VSR needs S1 server — use ▶ Start Server', 'warn');
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

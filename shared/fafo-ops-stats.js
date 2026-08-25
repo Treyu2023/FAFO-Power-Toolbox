@@ -39,7 +39,7 @@
     'duplicate-file-manager': { label: 'Duplicate File Manager', emoji: '🗑️', color: '#ff6b35' },
     'media-library-manager': { label: 'Media Library', emoji: '📚', color: '#00f3ff' },
     'file-organizer': { label: 'File Organizer', emoji: '✏️', color: '#7c5cff' },
-    'vsr-pipeline-manager': { label: 'VSR Pipeline', emoji: '⚡', color: '#a78bfa' },
+    'vsr-pipeline-manager': { label: 'Mismatched Source Companion', emoji: '🔗', color: '#a78bfa' },
     'batch-media-converter': { label: 'Batch Converter', emoji: '🔄', color: '#34d399' },
     'fafo-vid-trim': { label: 'VID ŦRIM', emoji: '🎬', color: '#38bdf8' },
     'disk-space-analyzer': { label: 'Disk Analyzer', emoji: '💾', color: '#fbbf24' },
