@@ -115,7 +115,7 @@ Auto-init runs on `DOMContentLoaded` for every `[data-fafo-layout-root]` (also t
 | LAN Task Manager | `lan-task-manager` | multi-panel |
 | System Health Dashboard | `system-health-dashboard` | multi-panel |
 | FAFO Task Manager Pro | `fafo-task-manager-pro` | sidebar · main |
-| VSR Pipeline Manager | `vsr-pipeline-manager` | setup · rename · teach · dupes · tags |
+| Mismatched Source Companion | `vsr-pipeline-manager` | setup · rename · teach · dupes · tags |
 
 ### Full app-id inventory
 
@@ -146,7 +146,7 @@ Auto-init runs on `DOMContentLoaded` for every `[data-fafo-layout-root]` (also t
 | Media Hub | `media-hub` |
 | Media Library Manager | `media-library-manager` |
 | Pair Review Queue | `movie-file-manager-pair-review-queue` |
-| VSR Pipeline Manager | `vsr-pipeline-manager` |
+| Mismatched Source Companion | `vsr-pipeline-manager` |
 | Progress Map | `progress-map-progress-map` |
 | Windows REG QoL Tweaks | `reg-tweak-ai-bat-files-windows-reg-qol-tweaks` |
 | Setup Configurator | `setup-configurator` |
