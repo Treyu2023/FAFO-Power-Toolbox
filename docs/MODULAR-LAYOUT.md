@@ -24,6 +24,8 @@ Each **panel** (and each **section** inside a panel) keeps its own size. **Enlar
 
 Classic viewport-locked split (zero-sum) is opt-in with `data-fafo-layout-pin="1"`. Opt out of any leftover lock with `data-fafo-layout-page-scroll="1"`.
 
+**Phone vs desktop is a different control.** The Look panel (`O`, or **Look** on the pro bar) sets *layout* (phone stacks columns / larger taps; desktop keeps side-by-side). *Lighting* (glow strength and accent color) is a separate group in that same panel and does not change the layout.
+
 Layouts **auto-save** to `localStorage` under `fafo_layout_v2_<appId>`.
 
 ## Adopting in a new app (required going forward)

@@ -739,19 +739,7 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
         } catch (_) { /* ignore */ }
     }
 
-    function applyShellLighting() {
-        try {
-            const p = global.AIToolboxPrefs && global.AIToolboxPrefs.get && global.AIToolboxPrefs.get();
-            if (!p) return;
-            const mul = (Number(p.glow) || 55) / 50;
-            const lit = p.lighting || 'full';
-            const scale = lit === 'flat' ? 0 : lit === 'dim' ? 0.35 : lit === 'soft' ? 0.7 : 1;
-            document.documentElement.style.setProperty('--lx-tess', String(Math.max(0, +(mul * scale).toFixed(3))));
-        } catch (_) { /* prefs optional */ }
-    }
-
     function applyEnabled() {
-        applyShellLighting();
         document.body.classList.toggle('lx-off', !prefs.enabled);
         document.getElementById('lxToggle')?.classList.toggle('on', prefs.enabled);
         if (marqueeStage) {
@@ -1322,7 +1310,6 @@ body.lx-marquee-throttled .lx-marquee-track video { visibility: hidden; }
         injectStyles();
         buildDom();
         applyEnabled();
-        try { document.addEventListener('fafo-shell-prefs', applyShellLighting); } catch (_) { /* ignore */ }
         wireInteractions();
 
         document.addEventListener('visibilitychange', () => {
