@@ -4008,6 +4008,72 @@ def api_tools_launch(body: ToolsLaunchBody):
             return {"ok": True, "launched": "transfer-monitor", "via": "TransferMonitor.ps1"}
         raise HTTPException(404, "Transfer Monitor scripts missing")
 
+    if tid in (
+        "imagine-tracker",
+        "imaginetracker",
+        "imagine-vault",
+        "imaginevault",
+        "grok-imagine",
+    ):
+        folder = ROOT / "System Tools" / "ImagineTracker"
+        if action in ("folder", "open-folder"):
+            target = folder
+            if not target.is_dir():
+                raise HTTPException(404, "ImagineTracker folder missing")
+            subprocess.Popen(["explorer.exe", str(target)], shell=False)
+            return {"ok": True, "launched": "folder", "path": str(target)}
+
+        if action in ("ui", "html", "page"):
+            html = folder / "Imagine Tracker.html"
+            if not html.is_file():
+                raise HTTPException(404, "Imagine Tracker.html missing")
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "", str(html)],
+                cwd=str(folder),
+                shell=False,
+            )
+            return {"ok": True, "launched": "ui", "path": str(html)}
+
+        bat = folder / "Launch-ImagineVault.bat"
+        vbs = folder / "Launch-ImagineVault.vbs"
+        ps1 = folder / "Launch-ImagineVault.ps1"
+        creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if vbs.is_file():
+            subprocess.Popen(
+                ["wscript.exe", "//B", str(vbs)],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.vbs"}
+        if bat.is_file():
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat)],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.bat"}
+        if ps1.is_file():
+            ps = os.path.expandvars(r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
+            subprocess.Popen(
+                [
+                    ps,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-File",
+                    str(ps1),
+                ],
+                cwd=str(folder),
+                shell=False,
+                creationflags=creation,
+            )
+            return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.ps1"}
+        raise HTTPException(404, "Imagine Vault scripts missing")
+
     raise HTTPException(400, f"Unknown or blocked tool launch id: {tid}")
 @app.get("/api/launch/watchdog/status")
 def api_watchdog_status():
