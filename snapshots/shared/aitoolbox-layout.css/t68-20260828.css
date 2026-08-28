@@ -28,17 +28,6 @@
 }
 .fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin) {
   min-height: 100dvh;
-  height: auto;
-  overflow: visible;
-}
-/* Beat per-app `html, body { overflow:hidden; height:100% }` cages on row stacks */
-html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)),
-html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
-  height: auto !important;
-  max-height: none !important;
-  min-height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto !important;
 }
 /* Auto-scaffolded full-page shells */
 .fafo-auto-shell.fafo-layout-root,
@@ -53,30 +42,18 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: visible;
-  flex-shrink: 0;
-}
-.fafo-layout-panel[hidden],
-[hidden].fafo-layout-panel,
-.fafo-layout-panel.hidden {
-  display: none !important;
+  overflow: hidden;
 }
 .fafo-layout-panel[data-fafo-flex="1"] {
-  flex: 1 0 auto !important;
+  flex: 1 1 auto !important;
   min-height: 0;
+  /* Flex survivors must be allowed to grow past corrupt fixed heights */
   height: auto !important;
   max-height: none !important;
 }
 .fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"] {
-  flex: 1 0 auto !important;
-  min-height: 220px;
-}
-.fafo-layout-panel[data-fafo-sized="1"] {
-  overflow: hidden;
-}
-.fafo-layout-panel[data-fafo-sized="1"] > .fafo-panel-body {
-  overflow: auto;
-  min-height: 0;
+  flex: 1 1 auto !important;
+  min-height: 160px;
 }
 .fafo-layout-panel.is-dragging {
   opacity: 0.72;
@@ -445,9 +422,10 @@ body.atx-dense .fafo-panel-chrome {
 }
 
 /* --------------------------------------------------------------------------
-   Viewport lock is OPT-IN (`data-fafo-layout-pin="1"`).
-   Default: document scroll. Growing one panel/section must not shrink
-   its neighbors — the page gets taller instead.
+   Viewport lock + independent panel/section/tile scroll
+   Without this, the whole page grows with content. Selecting a row in a
+   long list scrolls the document and the options/settings panel (usually
+   at the top of a column or row stack) is stuck off-screen.
    -------------------------------------------------------------------------- */
 html.fafo-layout-locked {
   height: 100%;
@@ -477,17 +455,16 @@ body.fafo-layout-locked .fafo-layout-root.fafo-viewport-pin:not(body > *) {
   max-height: calc(100dvh - var(--fafo-chrome-top, 0px) - var(--fafo-chrome-bottom, 0px));
 }
 
-/* 2+ sections in a panel: size independently. Compact = content height.
-   Flex list grows into leftover but NEVER shrinks when a sibling is enlarged. */
+/* 2+ sections in a panel: each section scrolls on its own so Options
+   stay on-screen while the list/tiles below move independently. */
 .fafo-panel-body.fafo-body-split {
-  overflow: visible;
+  overflow: hidden;
 }
 .fafo-body-split > [data-fafo-section] {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: visible;
-  flex-shrink: 0;
+  overflow: hidden;
 }
 .fafo-body-split > [data-fafo-section] > .fafo-section-body {
   flex: 1 1 auto;
@@ -498,17 +475,13 @@ body.fafo-layout-locked .fafo-layout-root.fafo-viewport-pin:not(body > *) {
   scrollbar-color: rgba(0, 243, 255, 0.45) rgba(255, 255, 255, 0.06);
 }
 .fafo-body-split > [data-fafo-section].fafo-section-compact {
-  flex: 0 0 auto;
-  max-height: none;
+  flex: 0 1 auto;
+  max-height: min(220px, 32%);
   min-height: 0;
 }
 .fafo-body-split > [data-fafo-section].fafo-section-flex {
-  flex: 1 0 auto;
+  flex: 1 1 40%;
   min-height: 180px;
-}
-.fafo-body-split > [data-fafo-section][data-fafo-user-sized="1"] {
-  overflow: hidden;
-  flex: 0 0 auto;
 }
 
 /* Launcher / catalog pages: never lock the document. Page scroll is the

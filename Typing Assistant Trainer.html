@@ -28,8 +28,8 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      min-height: 0;
-      height: 100%;
+      min-height: 100dvh;
+      height: auto;
       background:
         radial-gradient(ellipse at 50% -10%, #14142a 0%, transparent 55%),
         radial-gradient(ellipse at 90% 80%, rgba(124, 92, 255, 0.08) 0%, transparent 40%),
@@ -37,7 +37,7 @@
       color: var(--text);
       font-family: "Segoe UI", system-ui, sans-serif;
       padding: 10px clamp(8px, 1.4vw, 18px) 28px;
-      overflow: hidden;
+      overflow: auto;
     }
     body.combo-glow {
       animation: comboBg 0.55s ease;
@@ -419,7 +419,7 @@
       animation: none;
     }
 
-    /* Fill the window — don't trap the prompt in a narrow centered column */
+    /* Fill the window — grow with content, page scrolls (never steal from a sibling) */
     .wrap {
       width: 100%;
       max-width: min(1680px, 100%);
@@ -427,44 +427,36 @@
       position: relative;
       z-index: 1;
       box-sizing: border-box;
-      flex: 1 1 auto;
+      flex: 1 0 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: none;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
 
-    /* PET-T61: independent panel wheel.
-       layout.js pinViewport + .fafo-layout-locked hide html/body overflow.
-       Wheel only works over a real overflow:auto pane with a CONSTRAINED height
-       (.fafo-panel-body / .fafo-scroll-pane) — not height:auto growing boxes. */
+    /* Page scroll is the source of truth. Enlarging one panel must not shrink another. */
     html, body {
-      height: 100%;
-      max-height: 100%;
-      overflow: hidden;
-    }
-    html.fafo-layout-locked,
-    html.fafo-layout-locked body,
-    body.fafo-layout-locked {
-      height: 100%;
-      overflow: hidden;
+      height: auto;
+      max-height: none;
+      min-height: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
     body {
       display: flex;
       flex-direction: column;
-      min-height: 0;
     }
     .wrap[data-fafo-layout-root],
     .wrap {
-      flex: 1 1 auto;
+      flex: 1 0 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: none;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
     .wrap > header,
     .wrap > .panel,
@@ -472,19 +464,19 @@
     .fafo-layout-panel {
       display: flex;
       flex-direction: column;
+      flex-shrink: 0;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     .wrap > .grid-2 {
-      flex: 0 1 auto;
-      max-height: 34%;
-      min-height: 0;
+      flex: 0 0 auto;
+      max-height: none;
     }
     .wrap > .grid-2 > .panel {
       display: flex;
       flex-direction: column;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     .grid-2.fafo-layout-panel > .fafo-panel-body,
     .grid-2 > .fafo-scroll-pane {
@@ -501,18 +493,19 @@
     .fafo-scroll-pane {
       flex: 1 1 auto;
       min-height: 0;
+      overflow: visible;
+    }
+    .fafo-layout-panel[data-fafo-sized="1"] > .fafo-panel-body,
+    .fafo-layout-panel[data-fafo-sized="1"] > .fafo-scroll-pane {
       overflow: auto;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
     }
     #mainPanel {
-      flex: 1 1 auto !important;
-      min-height: 0 !important;
+      flex: 1 0 auto !important;
+      min-height: 280px !important;
     }
     .prompt-wrap {
-      min-height: 0 !important;
-      overflow: auto;
-      overscroll-behavior: contain;
+      min-height: 220px;
+      overflow: visible;
     }
 
 
@@ -1997,29 +1990,18 @@
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="shared/aitoolbox-layout.css">
 <style id="tat-t61-wheel">
-  /* PET-T61 ADD: wheel on a panel scrolls THAT panel (layout 1.16.20).
-     Native overflow + overscroll-behavior. Do not preventDefault wheel on document. */
   :focus-visible { outline: 2px solid var(--accent, #00f3ff); outline-offset: 2px; }
-  .fafo-layout-panel,
-  .panel.fafo-layout-panel,
-  .campaign-panel.show {
+  /* Layout chrome must not un-hide mode panels or cage them at leftover height */
+  .campaign-panel:not(.show) {
+    display: none !important;
+  }
+  .campaign-panel.show,
+  .campaign-panel.show.fafo-layout-panel {
     display: flex !important;
     flex-direction: column;
-    min-height: 0;
-  }
-  .fafo-layout-panel { overflow: hidden; }
-  .fafo-panel-body,
-  .fafo-layout-panel > .fafo-panel-body,
-  [data-fafo-section][data-fafo-resizable="1"] .fafo-section-body {
-    overflow: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    min-height: 0;
-    flex: 1 1 auto;
   }
   .history-list, .hs-list, .map-wrap, .mini-row, #storyJournal, .territories, .novel-chapter-list {
     overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
   }
   .history-list, .hs-list { overflow-y: auto; }
 </style>
@@ -2662,7 +2644,7 @@ body.tat-rm-on .tat-ghost-caret { animation: none !important; }
   </div>
   <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
 
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
     <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
       <div class="fafo-panel-body fafo-scroll-pane">
       <h1>⌨️ TYPING ASSISTANT TRAINER <span id="tatVer" class="tat-ver" title="PET-T65 ghostReplay tape / sprint podium">T65</span></h1>

@@ -145,7 +145,6 @@
   }
 
   function defaultStateFromDom(root) {
-    const type = (root && root.getAttribute('data-fafo-layout-type')) || 'columns';
     const panels = panelEls(root);
     const order = panels.map((p) => p.getAttribute('data-fafo-panel'));
     const sizes = {};
@@ -155,10 +154,7 @@
       const def = parseInt(p.getAttribute('data-fafo-panel-default') || '', 10);
       const isFlex = p.getAttribute('data-fafo-flex') === '1';
       flex[id] = isFlex;
-      // Columns: a default width is useful (content doesn't define it).
-      // Rows: never seed a 120–140px cage — height comes from content until
-      // the user drags. Seeding defaults was the "one grows, neighbor shrinks" bug.
-      if (type === 'columns' && !isFlex && Number.isFinite(def) && def > 0) sizes[id] = def;
+      if (!isFlex && Number.isFinite(def) && def > 0) sizes[id] = def;
     });
     const sections = {};
     panels.forEach((p) => {
@@ -168,6 +164,8 @@
     });
     const sectionHeights = {};
     // Do not seed sectionHeights from data-fafo-section-default.
+    // Those 140–160px values were being persisted as "user sizes" and
+    // locked lists into a tiny strip. Defaults only apply after a drag.
     return { order, sizes, flex, sections, sectionHeights };
   }
 
@@ -406,13 +404,10 @@
     };
     out = healBannerStripState(root, out, opts);
 
-    // Cap fixed COLUMN widths so a sidebar can't erase the workspace.
-    // ROW heights are independent — do not cap to the viewport (that's how
-    // enlarging one panel stole height from its neighbors).
-    const maxPanel =
-      type === 'rows'
-        ? Math.max(2400, Math.floor((window.innerHeight || 800) * 4))
-        : Math.max(220, Math.floor(span * 0.85));
+    // Cap fixed panel sizes to ~85% of usable span so neighbors stay reachable
+    const maxPanel = Math.max(220, Math.floor(span * 0.85));
+    // Banner-strip floor: never re-persist 40–120px as "the whole workspace"
+    // for a non-nav panel when the viewport is tall/wide.
     const minContent =
       type === 'rows'
         ? Math.min(280, Math.max(160, Math.floor(span * 0.25)))
@@ -429,29 +424,17 @@
         return;
       }
       if (w < 40) w = 40;
+      // Nav/toolbars may stay short; content-like ids get a higher floor
       const looksNav = /^(nav|header|toolbar|tabs|chrome|status)$/i.test(id) || /nav|toolbar|header|tabs/i.test(id);
-      if (type === 'rows') {
-        // Drop auto-saved default cages (exact or near data-fafo-panel-default)
-        try {
-          const p = root.querySelector('[data-fafo-panel="' + id.replace(/"/g, '') + '"]');
-          const def = parseInt(p && p.getAttribute('data-fafo-panel-default') || '', 10);
-          if (Number.isFinite(def) && def > 0 && Math.abs(w - def) <= 12) {
-            delete out.sizes[id];
-            return;
-          }
-        } catch (_) { /* keep */ }
-        if (!looksNav && w < minContent && span > 400) {
-          delete out.sizes[id];
-          return;
-        }
-      } else if (!looksNav && w < minContent && span > 400) {
+      if (!looksNav && w < minContent && span > 400) {
+        // Drop corrupt tiny size so defaults / flex heal apply next applyState
         delete out.sizes[id];
         return;
       }
       if (w > maxPanel) w = maxPanel;
       out.sizes[id] = Math.round(w);
     });
-    const maxSec = Math.max(400, Math.floor((window.innerHeight || 800) * 4));
+    const maxSec = Math.max(120, Math.floor((window.innerHeight || 800) * 0.7));
     Object.keys(out.sectionHeights).forEach((id) => {
       let h = out.sectionHeights[id];
       if (!Number.isFinite(h) || h <= 0) {
@@ -523,8 +506,7 @@
       }
     }
 
-    // Size every panel first. Growing one panel must NOT shrink its neighbors:
-    // flex-shrink stays 0. Rows without a user size are height:auto (content).
+    // Size every panel first
     order.forEach((id) => {
       const panel = byId[id];
       if (!panel) return;
@@ -532,9 +514,8 @@
       const min = parseInt(panel.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
       const max = parseInt(panel.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
       if (isFlex) {
-        panel.style.flex = '1 0 auto';
-        panel.style.flexShrink = '0';
-        panel.style.minHeight = type === 'rows' ? Math.max(min, 200) + 'px' : '';
+        panel.style.flex = '1 1 auto';
+        panel.style.minHeight = type === 'rows' ? Math.max(min, 120) + 'px' : '';
         panel.style.minWidth = type === 'columns' ? min + 'px' : '';
         panel.style.width = '';
         panel.style.height = '';
@@ -546,50 +527,31 @@
         if (state.sizes) delete state.sizes[id];
       } else {
         let w = state.sizes && state.sizes[id];
-        if (type === 'rows') {
-          if (!Number.isFinite(w) || w <= 0) {
-            panel.style.flex = '0 0 auto';
-            panel.style.flexShrink = '0';
-            panel.style.height = 'auto';
-            panel.style.maxHeight = 'none';
-            panel.style.minHeight = Math.min(min, 80) + 'px';
-            panel.style.width = '';
-            panel.style.maxWidth = '';
-            panel.removeAttribute('data-fafo-sized');
-            delete panel.dataset.fafoSize;
-            if (state.sizes) delete state.sizes[id];
-          } else {
-            w = Math.max(min, w);
-            if (max > 0) w = Math.min(max, w);
-            panel.style.flex = '0 0 auto';
-            panel.style.flexShrink = '0';
-            panel.style.height = w + 'px';
-            panel.style.minHeight = min + 'px';
-            panel.style.maxHeight = 'none';
-            panel.style.width = '';
-            panel.style.maxWidth = '';
-            panel.setAttribute('data-fafo-sized', '1');
-            panel.dataset.fafoSize = String(w);
-            if (state.sizes) state.sizes[id] = w;
-          }
-        } else {
-          if (!Number.isFinite(w) || w <= 0) {
-            w = parseInt(panel.getAttribute('data-fafo-panel-default') || String(min), 10) || min;
-          }
-          w = Math.max(min, w);
-          if (max > 0) w = Math.min(max, w);
-          const span = layoutSpan(root, type);
-          if (span > 80) w = Math.min(w, Math.max(min, Math.floor(span * 0.85)));
+        if (!Number.isFinite(w) || w <= 0) {
+          w = parseInt(panel.getAttribute('data-fafo-panel-default') || String(min), 10) || min;
+        }
+        w = Math.max(min, w);
+        if (max > 0) w = Math.min(max, w);
+        // Viewport clamp using real window when root is collapsed
+        const span = layoutSpan(root, type);
+        if (span > 80) w = Math.min(w, Math.max(min, Math.floor(span * 0.85)));
+        if (type === 'columns') {
           panel.style.flex = '0 0 auto';
-          panel.style.flexShrink = '0';
           panel.style.width = w + 'px';
           panel.style.minWidth = min + 'px';
           panel.style.height = '';
           panel.style.maxHeight = '';
-          panel.setAttribute('data-fafo-sized', '1');
-          panel.dataset.fafoSize = String(w);
-          if (state.sizes) state.sizes[id] = w;
+        } else {
+          panel.style.flex = '0 0 auto';
+          panel.style.height = w + 'px';
+          panel.style.minHeight = min + 'px';
+          panel.style.width = '';
+          panel.style.maxWidth = '';
         }
+        panel.setAttribute('data-fafo-sized', '1');
+        panel.dataset.fafoSize = String(w);
+        // Keep store honest after clamp
+        if (state.sizes) state.sizes[id] = w;
       }
     });
 
@@ -646,12 +608,10 @@
             if (state.sectionHeights) delete state.sectionHeights[sid];
           } else {
             h = Math.max(minH, h);
-            const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 4));
+            const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 0.7));
             h = Math.min(h, maxH);
             s.style.flex = '0 0 auto';
-            s.style.flexShrink = '0';
             s.style.height = h + 'px';
-            s.style.maxHeight = 'none';
             s.dataset.fafoHeight = String(h);
             s.setAttribute('data-fafo-user-sized', '1');
             if (state.sectionHeights) state.sectionHeights[sid] = h;
@@ -672,9 +632,6 @@
       const isFlex = p.getAttribute('data-fafo-flex') === '1';
       flex[id] = isFlex;
       if (isFlex) return;
-      // Rows: only persist a height the user actually dragged. Capturing
-      // content height on every save froze panels and made neighbors shrink.
-      if (type === 'rows' && p.getAttribute('data-fafo-sized') !== '1') return;
       const rect = p.getBoundingClientRect();
       const px = type === 'columns' ? rect.width : rect.height;
       if (px > 0) sizes[id] = Math.round(px);
@@ -761,6 +718,7 @@
         const leftFlex = left.getAttribute('data-fafo-flex') === '1';
         const rightFlex = right.getAttribute('data-fafo-flex') === '1';
         const target = leftFlex && !rightFlex ? right : left;
+        const other = target === left ? right : left;
         const min = parseInt(target.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
         const maxAttr = parseInt(target.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
         const start = type === 'columns' ? ev.clientX : ev.clientY;
@@ -790,19 +748,20 @@
           let next = startSize + sign * (cur - start);
           next = Math.max(min, next);
           if (maxAttr > 0) next = Math.min(maxAttr, next);
-          // Independent sizes: do NOT clamp to leftover so the neighbor
-          // would have to shrink. The page/root grows instead.
+          // Don't crush the other panel below its min
+          const otherMin = parseInt(other.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
+          const rootRect = root.getBoundingClientRect();
+          const rootSpan = type === 'columns' ? rootRect.width : rootRect.height;
+          const maxAllowed = rootSpan - otherMin - 12; // handles
+          if (maxAllowed > min) next = Math.min(next, maxAllowed);
 
           target.style.flex = '0 0 auto';
-          target.style.flexShrink = '0';
-          target.setAttribute('data-fafo-sized', '1');
           if (type === 'columns') {
             target.style.width = next + 'px';
             target.style.minWidth = min + 'px';
           } else {
             target.style.height = next + 'px';
             target.style.minHeight = min + 'px';
-            target.style.maxHeight = 'none';
           }
           target.dataset.fafoSize = String(Math.round(next));
         }
@@ -858,13 +817,11 @@
           if (finished) return;
           let h = startH + (e.clientY - startY);
           h = Math.max(minH, h);
-          // Independent height — no viewport cap that would steal from siblings
-          const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 4));
+          // Soft cap so sections can't push UI into a permanent drag feel
+          const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 0.75));
           h = Math.min(h, maxH);
           section.style.flex = '0 0 auto';
-          section.style.flexShrink = '0';
           section.style.height = h + 'px';
-          section.style.maxHeight = 'none';
           section.dataset.fafoHeight = String(Math.round(h));
           section.setAttribute('data-fafo-user-sized', '1');
         }
@@ -1185,28 +1142,11 @@
   }
 
   /**
-   * Pin is OPT-IN (`data-fafo-layout-pin="1"`). Default is document scroll so
-   * enlarging one panel grows the page instead of stealing height from siblings.
+   * Pin the layout root to the remaining viewport so each panel gets a real
+   * height and overflow:auto actually kicks in (instead of growing the page).
    */
-  function wantsViewportPin(root) {
-    if (!root) return false;
-    if (root.getAttribute('data-fafo-layout-page-scroll') === '1') return false;
-    return root.getAttribute('data-fafo-layout-pin') === '1';
-  }
-
-  function unpinViewport(root) {
-    try {
-      document.documentElement.classList.remove('fafo-layout-locked');
-      document.body.classList.remove('fafo-layout-locked');
-      if (root) root.classList.remove('fafo-viewport-pin');
-    } catch (_) { /* ignore */ }
-  }
-
   function pinViewport(root) {
-    if (!wantsViewportPin(root)) {
-      unpinViewport(root);
-      return;
-    }
+    if (!root || root.getAttribute('data-fafo-layout-page-scroll') === '1') return;
     const html = document.documentElement;
     html.classList.add('fafo-layout-locked');
     document.body.classList.add('fafo-layout-locked');
@@ -1263,11 +1203,9 @@
           if (userSized) return;
           if (!flexed && (isListSection(s) || (last && !isSettingsSection(s)))) {
             s.classList.add('fafo-section-flex');
-            s.style.flexShrink = '0';
             flexed = true;
           } else {
             s.classList.add('fafo-section-compact');
-            s.style.flexShrink = '0';
           }
         });
         if (!flexed) {
