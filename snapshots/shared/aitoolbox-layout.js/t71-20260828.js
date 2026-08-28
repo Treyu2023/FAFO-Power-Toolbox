@@ -406,8 +406,13 @@
     };
     out = healBannerStripState(root, out, opts);
 
-    // No viewport ceiling — the user may drag a panel larger than the window
-    // and scroll. Tiny sizes still get healed so we never freeze a slim banner.
+    // Cap fixed COLUMN widths so a sidebar can't erase the workspace.
+    // ROW heights are independent — do not cap to the viewport (that's how
+    // enlarging one panel stole height from its neighbors).
+    const maxPanel =
+      type === 'rows'
+        ? Math.max(2400, Math.floor((window.innerHeight || 800) * 4))
+        : Math.max(220, Math.floor(span * 0.85));
     const minContent =
       type === 'rows'
         ? Math.min(280, Math.max(160, Math.floor(span * 0.25)))
@@ -443,8 +448,10 @@
         delete out.sizes[id];
         return;
       }
+      if (w > maxPanel) w = maxPanel;
       out.sizes[id] = Math.round(w);
     });
+    const maxSec = Math.max(400, Math.floor((window.innerHeight || 800) * 4));
     Object.keys(out.sectionHeights).forEach((id) => {
       let h = out.sectionHeights[id];
       if (!Number.isFinite(h) || h <= 0) {
@@ -462,6 +469,7 @@
         }
       } catch (_) { /* keep */ }
       if (h < 60) h = 60;
+      if (h > maxSec) h = maxSec;
       out.sectionHeights[id] = Math.round(h);
     });
     return out;
@@ -570,6 +578,8 @@
           }
           w = Math.max(min, w);
           if (max > 0) w = Math.min(max, w);
+          const span = layoutSpan(root, type);
+          if (span > 80) w = Math.min(w, Math.max(min, Math.floor(span * 0.85)));
           panel.style.flex = '0 0 auto';
           panel.style.flexShrink = '0';
           panel.style.width = w + 'px';
@@ -636,6 +646,8 @@
             if (state.sectionHeights) delete state.sectionHeights[sid];
           } else {
             h = Math.max(minH, h);
+            const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 4));
+            h = Math.min(h, maxH);
             s.style.flex = '0 0 auto';
             s.style.flexShrink = '0';
             s.style.height = h + 'px';
@@ -846,6 +858,9 @@
           if (finished) return;
           let h = startH + (e.clientY - startY);
           h = Math.max(minH, h);
+          // Independent height — no viewport cap that would steal from siblings
+          const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 4));
+          h = Math.min(h, maxH);
           section.style.flex = '0 0 auto';
           section.style.flexShrink = '0';
           section.style.height = h + 'px';

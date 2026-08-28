@@ -30,8 +30,6 @@
     // Layout — arrangement, not color
     layout: 'auto',          // auto | phone | desktop
     density: 'comfortable',  // comfortable | compact
-    uiScale: 100,            // % whole UI (panels, chrome, assets)
-    textScale: 100,          // % extra text in panels / main UI
     // Lighting — glow / accents / neon, not arrangement
     accent: 'cyan',
     glow: 55,                // 0–100
@@ -68,8 +66,6 @@
     const out = { ...DEFAULTS, ...raw };
     if (!['auto', 'phone', 'desktop'].includes(out.layout)) out.layout = 'auto';
     if (!['comfortable', 'compact'].includes(out.density)) out.density = 'comfortable';
-    out.uiScale = clamp(out.uiScale != null ? out.uiScale : 100, 25, 800);
-    out.textScale = clamp(out.textScale != null ? out.textScale : 100, 25, 800);
     if (!ACCENTS[out.accent]) out.accent = 'cyan';
     out.glow = clamp(out.glow, 0, 100);
     if (!['full', 'soft', 'dim', 'flat'].includes(out.lighting)) out.lighting = 'full';
@@ -122,10 +118,6 @@
     html.style.setProperty('--atx-accent3', pal.accent3);
     html.style.setProperty('--atx-accent-rgb', pal.rgb);
     html.style.setProperty('--atx-glow-mul', String(glowMul));
-    const ui = clamp(p.uiScale != null ? p.uiScale : 100, 25, 800) / 100;
-    const tx = clamp(p.textScale != null ? p.textScale : 100, 25, 800) / 100;
-    html.style.setProperty('--atx-ui-scale', String(ui));
-    html.style.setProperty('--atx-text-scale', String(tx));
     html.style.setProperty('--ui-accent', pal.accent);
     html.style.setProperty('--ui-accent2', pal.accent2);
     html.style.setProperty('--ui-accent3', pal.accent3);
@@ -186,19 +178,6 @@ html[data-atx-layout="phone"] body, html[data-atx-layout="phone"]{
 }
 html[data-atx-layout="desktop"] #atx-pro-bar{
   flex-direction:row;
-}
-
-/* Scale — whole UI + extra panel text. Look panel counter-zooms so it stays usable. */
-body {
-  zoom: var(--atx-ui-scale, 1);
-}
-#atx-look, #atx-look-chip {
-  zoom: calc(1 / var(--atx-ui-scale, 1));
-}
-.fafo-panel-body, .panel, .ui-card, .prompt,
-textarea, select, input[type="text"], input[type="search"], input:not([type]),
-.hs-list, .history-list, .tips, label, .section-title, .section-label {
-  font-size: calc(1em * var(--atx-text-scale, 1));
 }
 
 /* Lighting (glow + accents) — color / neon only */
@@ -268,7 +247,7 @@ body.atx-ambient-off .amb-wash, body.atx-ambient-off .lx-wash{
   background:rgba(var(--atx-accent-rgb,0,243,255),.16);
 }
 #atx-look label.row{
-  display:grid; grid-template-columns:110px 1fr auto; gap:8px; align-items:center;
+  display:grid; grid-template-columns:110px 1fr 42px; gap:8px; align-items:center;
   margin:8px 0; font-size:11px; color:#c5d0dc;
 }
 #atx-look input[type="range"]{width:100%; accent-color:var(--atx-accent,#00f3ff)}
@@ -357,9 +336,6 @@ body.atx-pro-pad #atx-look-chip{display:none} /* pro bar already has Look */
           { v: 'comfortable', l: 'Comfortable' },
           { v: 'compact', l: 'Compact' },
         ], p.density) +
-        '<label class="row"><span>UI scale</span><input type="range" min="50" max="400" step="5" id="atxUiScale" value="' + p.uiScale + '"><input type="number" min="25" max="800" step="5" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
-        '<label class="row"><span>Text scale</span><input type="range" min="50" max="400" step="5" id="atxTextScale" value="' + p.textScale + '"><input type="number" min="25" max="800" step="5" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
-        '<p class="atx-look-hint">UI scale resizes chrome, panels, and assets. Text scale is extra for copy inside panels. Drag panel edges as large as you want — no window-size cap. Ctrl+mouse-wheel also changes UI scale. Type up to 800% in the box.</p>' +
       '</div>' +
 
       '<div class="atx-look-sec">' +
@@ -413,22 +389,6 @@ body.atx-pro-pad #atx-look-chip{display:none} /* pro bar already has Look */
         save({ glow: clamp(glow.value, 0, 100) });
       });
     }
-    function bindScale(rangeId, numId, key) {
-      const r = panel.querySelector('#' + rangeId);
-      const n = panel.querySelector('#' + numId);
-      function setBoth(v) {
-        v = clamp(v, 25, 800);
-        if (r) r.value = String(Math.max(50, Math.min(400, v)));
-        if (n) n.value = String(v);
-        const patch = {};
-        patch[key] = v;
-        save(patch);
-      }
-      r && r.addEventListener('input', function () { setBoth(r.value); if (n) n.value = r.value; });
-      n && n.addEventListener('change', function () { setBoth(n.value); });
-    }
-    bindScale('atxUiScale', 'atxUiScaleN', 'uiScale');
-    bindScale('atxTextScale', 'atxTextScaleN', 'textScale');
     panel.querySelector('#atxHalo')?.addEventListener('change', function (e) {
       save({ halo: !!e.target.checked });
     });
@@ -517,15 +477,6 @@ body.atx-pro-pad #atx-look-chip{display:none} /* pro bar already has Look */
       chip.addEventListener('click', openPanel);
       document.body.appendChild(chip);
     }
-    document.addEventListener('wheel', function (e) {
-      if (!e.ctrlKey) return;
-      const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' && e.target.type === 'number') return;
-      e.preventDefault();
-      const step = e.deltaY < 0 ? 5 : -5;
-      save({ uiScale: clamp(prefs.uiScale + step, 25, 800) });
-      if (document.getElementById('atx-look')?.classList.contains('open')) renderPanel();
-    }, { passive: false });
     try {
       window.matchMedia('(max-width: 720px)').addEventListener('change', onResize);
     } catch (_) {
