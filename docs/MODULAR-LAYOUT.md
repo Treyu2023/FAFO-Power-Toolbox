@@ -20,9 +20,9 @@ In apps that adopt the layout engine you get a small toolbar:
 - **Double-click a panel header** — maximize that panel (hide the others); double-click again to restore  
 - **Layout chip** (bottom-left) — show/hide the floating layout dock. Starts collapsed so it does not cover tools.
 
-Each **panel** (and each **section** inside a panel) scrolls **on its own**. Selecting a row in a long list no longer yanks the Options / Settings pane off the top of the page. Layouts pin to the remaining viewport (`html.fafo-layout-locked`). Opt out with `data-fafo-layout-page-scroll="1"` on the root.
+Each **panel** (and each **section** inside a panel) keeps its own size. **Enlarging one does not shrink its neighbors** — the page grows and scrolls. Heights are only persisted after you drag a resize handle; HTML `data-fafo-panel-default` / `data-fafo-section-default` values are not auto-saved as cages.
 
-**Toolbox Launcher** is excluded from viewport lock — it is a catalog page and uses **document scroll**. Section heights are only persisted after you drag a resize handle; HTML `data-fafo-section-default` values are not auto-saved (that used to freeze lists at ~160px).
+Classic viewport-locked split (zero-sum) is opt-in with `data-fafo-layout-pin="1"`. Opt out of any leftover lock with `data-fafo-layout-page-scroll="1"`.
 
 Layouts **auto-save** to `localStorage` under `fafo_layout_v2_<appId>`.
 
