@@ -38,7 +38,6 @@
     lighting: 'full',        // full | soft | dim | flat
     halo: true,
     ambient: true,
-    fxTheme: 'off',          // off | sparkysparks | paintonsalought  (lighting FX, not layout)
   };
 
   function clamp(n, lo, hi) {
@@ -76,7 +75,6 @@
     if (!['full', 'soft', 'dim', 'flat'].includes(out.lighting)) out.lighting = 'full';
     out.halo = out.halo !== false;
     out.ambient = out.ambient !== false;
-    if (!['off', 'sparkysparks', 'paintonsalought'].includes(out.fxTheme)) out.fxTheme = 'off';
     return out;
   }
 
@@ -86,11 +84,7 @@
     prefs = { ...prefs, ...patch };
     safeSet(LS, JSON.stringify(prefs));
     apply();
-    try {
-      const ev = new CustomEvent(EVT, { detail: get() });
-      global.dispatchEvent(ev);
-      document.dispatchEvent(ev);
-    } catch (_) { /* ignore */ }
+    try { global.dispatchEvent(new CustomEvent(EVT, { detail: get() })); } catch (_) { /* ignore */ }
     return prefs;
   }
 
@@ -123,7 +117,6 @@
     html.setAttribute('data-atx-layout', layout);
     html.setAttribute('data-atx-lighting', p.lighting);
     html.setAttribute('data-atx-accent', p.accent);
-    html.setAttribute('data-atx-fx', p.fxTheme === 'sparkysparks' || p.fxTheme === 'paintonsalought' ? p.fxTheme : 'off');
     html.style.setProperty('--atx-accent', pal.accent);
     html.style.setProperty('--atx-accent2', pal.accent2);
     html.style.setProperty('--atx-accent3', pal.accent3);
@@ -392,13 +385,6 @@ body.atx-pro-pad #atx-look-chip{display:none} /* pro bar already has Look */
           '<label><input type="checkbox" id="atxAmbient"' + (p.ambient ? ' checked' : '') + '> Ambient wash</label>' +
         '</div>' +
         '<p class="atx-look-hint">Glow strength and accent color never change phone vs desktop layout.</p>' +
-        '<h3 style="margin-top:12px">Theme FX</h3>' +
-        segHtml('fxTheme', [
-          { v: 'off', l: 'Off' },
-          { v: 'sparkysparks', l: 'SparkySparks' },
-          { v: 'paintonsalought', l: 'PAINTONSaLOUGHT' },
-        ], p.fxTheme || 'off') +
-        '<p class="atx-look-hint">SparkySparks: click fireworks, move to shower bloom sparks that pile at the bottom, scroll blows piles away, borders lightning-flash in burst colors. PAINTONSaLOUGHT: same motion with neon / blacklight paint specks that swell when you get near them. Lighting, not layout.</p>' +
       '</div>' +
 
       '<div class="row-btns">' +
@@ -415,12 +401,9 @@ body.atx-pro-pad #atx-look-chip{display:none} /* pro bar already has Look */
         const v = btn.getAttribute('data-v');
         const patch = {};
         patch[k] = v;
-        if (k === 'fxTheme' && v === 'sparkysparks') patch.accent = 'gold';
-        if (k === 'fxTheme' && v === 'paintonsalought') patch.accent = 'violet';
         save(patch);
         renderPanel();
-        toast(k === 'layout' || k === 'density' ? 'Layout: ' + (k === 'layout' ? v : prefs.density)
-          : (k === 'fxTheme' ? (v === 'off' ? 'Theme FX off' : 'Theme: ' + v) : 'Lighting updated'));
+        toast(k === 'layout' || k === 'density' ? 'Layout: ' + (k === 'layout' ? v : prefs.density) : 'Lighting updated');
       });
     });
     const glow = panel.querySelector('#atxGlow');
@@ -522,32 +505,9 @@ body.atx-pro-pad #atx-look-chip{display:none} /* pro bar already has Look */
     apply();
   }
 
-  function loadThemeFx() {
-    if (global.AIToolboxThemeFx) {
-      try { global.AIToolboxThemeFx.sync(); } catch (_) { /* ignore */ }
-      return;
-    }
-    try {
-      const nodes = document.querySelectorAll('script[src]');
-      let url = '';
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const src = nodes[i].getAttribute('src') || '';
-        if (/aitoolbox-prefs\.js/i.test(src)) { url = src.replace(/aitoolbox-prefs\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js'); break; }
-        if (/aitoolbox-pro\.js/i.test(src)) { url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js'); break; }
-      }
-      if (!url) url = 'shared/aitoolbox-theme-fx.js';
-      const s = document.createElement('script');
-      s.src = url;
-      s.async = true;
-      s.onload = function () { try { global.AIToolboxThemeFx && global.AIToolboxThemeFx.sync(); } catch (_) { /* ignore */ } };
-      (document.head || document.documentElement).appendChild(s);
-    } catch (_) { /* optional */ }
-  }
-
   function boot() {
     injectCss();
     apply();
-    loadThemeFx();
     if (!document.getElementById('atx-pro-bar') && !document.getElementById('atx-look-chip') && document.body) {
       const chip = document.createElement('button');
       chip.id = 'atx-look-chip';
