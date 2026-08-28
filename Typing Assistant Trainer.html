@@ -875,7 +875,15 @@
       height: 0.35em;
     }
     .prompt .done { color: var(--ok); transition: color 0.1s; }
-    .prompt .done.wrong { color: var(--err); background: rgba(255, 77, 106, 0.12); border-radius: 2px; }
+    .prompt .done.wrong {
+      color: #e07030 !important;
+      -webkit-text-fill-color: #e07030 !important;
+      background: linear-gradient(180deg, rgba(90, 28, 8, 0.72), rgba(18, 8, 4, 0.92));
+      border-radius: 3px;
+      text-shadow: 0 0 8px rgba(255, 90, 20, 0.75), 0 1px 0 #1a0a04;
+      box-shadow: inset 0 -2px 0 rgba(255, 80, 16, 0.7);
+      filter: contrast(1.12) saturate(1.15);
+    }
     .prompt .current {
       background: rgba(0, 243, 255, 0.28);
       color: #fff;
@@ -1884,32 +1892,47 @@
     }
 
     /* ——— Text animations ——— */
-    .prompt.anim-glint {
-      position: relative;
-    }
-    .prompt.anim-glint::after {
-      content: "";
-      pointer-events: none;
-      position: absolute;
-      inset: -8% -20%;
-      background: linear-gradient(
+    /* Glint rides the glyphs only (background-clip), never a full-box overlay */
+    .prompt.anim-glint .todo,
+    .prompt.anim-glint .done {
+      background-image: linear-gradient(
         105deg,
-        transparent 35%,
-        rgba(255,255,255,0.0) 40%,
-        rgba(255,255,255,0.35) 50%,
-        rgba(255,255,255,0.0) 60%,
-        transparent 65%
+        currentColor 0%,
+        currentColor 38%,
+        rgba(255,255,255,0.95) 50%,
+        currentColor 62%,
+        currentColor 100%
       );
-      transform: translateX(-60%);
-      animation: textGlint 3.6s ease-in-out infinite;
-      mix-blend-mode: screen;
+      background-size: 220% 100%;
+      background-repeat: no-repeat;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+      -webkit-text-fill-color: transparent;
+      animation: textGlintClip 3.6s ease-in-out infinite;
     }
-    @keyframes textGlint {
-      0%, 55% { transform: translateX(-70%); opacity: 0; }
-      60% { opacity: 1; }
-      75% { transform: translateX(70%); opacity: 0.85; }
-      100% { transform: translateX(80%); opacity: 0; }
+    .prompt.anim-glint .current {
+      color: #fff !important;
+      -webkit-text-fill-color: #fff;
+      background-image: none;
+      animation: caret 1s steps(1) infinite;
     }
+    .prompt.anim-glint .done.wrong,
+    .prompt.anim-glint .done.charred,
+    .prompt.anim-glint .gone {
+      background-image: none !important;
+      -webkit-background-clip: border-box;
+      background-clip: border-box;
+      color: #e07030 !important;
+      -webkit-text-fill-color: #e07030 !important;
+      animation: none;
+    }
+    @keyframes textGlintClip {
+      0%, 52% { background-position: 120% 0; }
+      78% { background-position: -20% 0; }
+      100% { background-position: -20% 0; }
+    }
+    .prompt.anim-glint::after { content: none; display: none; }
     .prompt.anim-pulse .todo,
     .prompt.anim-pulse .done {
       animation: textPulse 2.4s ease-in-out infinite;
@@ -1972,19 +1995,107 @@
       0%, 100% { filter: saturate(1) brightness(1); }
       50% { filter: saturate(1.25) brightness(1.08); }
     }
+    .prompt.anim-ember .done,
+    .prompt.anim-ember .todo {
+      animation: textEmber 1.6s ease-in-out infinite;
+    }
+    .prompt.anim-ember .done.wrong {
+      animation: textEmberHot 0.7s ease-in-out infinite;
+    }
+    @keyframes textEmber {
+      0%, 100% { text-shadow: 0 0 4px rgba(255,120,40,0.15); filter: brightness(1); }
+      50% { text-shadow: 0 0 12px rgba(255,90,20,0.45); filter: brightness(1.12); }
+    }
+    @keyframes textEmberHot {
+      0%, 100% { text-shadow: 0 0 6px rgba(255,80,20,0.5); }
+      50% { text-shadow: 0 0 16px rgba(255,140,40,0.95), 0 0 28px rgba(255,60,0,0.5); }
+    }
+    .prompt.anim-flicker .todo,
+    .prompt.anim-flicker .done {
+      animation: textFlicker 0.18s steps(2) infinite;
+    }
+    @keyframes textFlicker {
+      0% { opacity: 1; }
+      40% { opacity: 0.82; }
+      70% { opacity: 1; }
+      85% { opacity: 0.9; }
+    }
+    .prompt.anim-sparkle .done {
+      animation: textSparkle 1.8s ease-in-out infinite;
+    }
+    .prompt.anim-sparkle .word:nth-child(odd) .done { animation-delay: 0.35s; }
+    @keyframes textSparkle {
+      0%, 100% { filter: brightness(1); }
+      40% { filter: brightness(1.05); }
+      48% { filter: brightness(1.45) saturate(1.3); }
+      56% { filter: brightness(1.05); }
+    }
+    .prompt.anim-slide .word {
+      display: inline-block;
+      animation: textSlide 3.4s ease-in-out infinite;
+    }
+    .prompt.anim-slide .word:nth-child(odd) { animation-delay: 0.4s; }
+    @keyframes textSlide {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(3px); }
+    }
 
-    /* Charred done letters briefly flash coal */
-    .prompt .done.charred {
-      color: #6b5b4a !important;
-      text-shadow: 0 0 6px rgba(255,120,40,0.45), 0 1px 0 #1a120c;
+    /* Charred missed letters PERSIST after the player corrects them */
+    .prompt .done.charred,
+    .prompt .done.wrong {
+      color: #c45a22 !important;
+      -webkit-text-fill-color: #c45a22 !important;
+      text-shadow: 0 0 6px rgba(255,90,20,0.7), 0 1px 0 #1a0c06;
       transition: color 0.35s ease, text-shadow 0.35s ease, filter 0.35s ease;
-      filter: contrast(1.1);
+      filter: contrast(1.12);
     }
     .prompt .done.charred-ash {
       color: #3a3530 !important;
       opacity: 0.85;
       text-shadow: none;
       filter: grayscale(0.6);
+    }
+    .prompt .done.wrong.charred {
+      color: #a84818 !important;
+      -webkit-text-fill-color: #a84818 !important;
+      background: linear-gradient(180deg, rgba(70, 22, 6, 0.8), rgba(12, 6, 4, 0.95));
+      box-shadow: inset 0 -2px 0 rgba(255, 70, 10, 0.75);
+    }
+    .prompt .current.miss-heat {
+      outline-color: #ff4d6a;
+      background: rgba(255, 77, 106, 0.38) !important;
+      box-shadow: 0 0 22px rgba(255,77,106,0.6), 0 0 40px rgba(255,90,20,0.25);
+    }
+    .prompt .current.miss-critical {
+      outline-color: #ff9a2a;
+      animation: missCritical 0.35s steps(2) infinite, caret 1s steps(1) infinite;
+    }
+    @keyframes missCritical {
+      0% { filter: brightness(1); }
+      100% { filter: brightness(1.35) saturate(1.4); }
+    }
+    .prompt .gone {
+      display: inline-block;
+      min-width: 0.42em;
+      position: relative;
+      color: transparent !important;
+      -webkit-text-fill-color: transparent !important;
+      background: linear-gradient(180deg, rgba(255, 90, 20, 0.08), rgba(40, 14, 6, 0.9));
+      border-bottom: 2px solid rgba(255, 110, 30, 0.8);
+      border-radius: 2px;
+      text-shadow: none;
+      vertical-align: baseline;
+    }
+    .prompt .gone::after {
+      content: "✶";
+      pointer-events: none;
+      position: absolute;
+      left: 50%;
+      top: 42%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 150, 50, 0.7);
+      font-size: 0.55em;
+      text-shadow: 0 0 8px rgba(255, 90, 20, 0.8);
     }
   </style>
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
@@ -2066,6 +2177,160 @@
   opacity: 0.28;
   transform-origin: center;
   will-change: transform, filter, opacity;
+}
+.tat-stage-bg {
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0.62;
+  mix-blend-mode: screen;
+}
+.tat-stage-bg.stage-none { opacity: 0; }
+.tat-stage-bg::before,
+.tat-stage-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#promptWrap[data-tat-stage]:not([data-tat-stage="none"]) .tat-gutter {
+  background: rgba(5, 6, 12, 0.22);
+}
+.tat-stage-bg.stage-aurora {
+  background:
+    radial-gradient(ellipse 80% 50% at 18% 28%, rgba(0,255,180,0.42), transparent 55%),
+    radial-gradient(ellipse 70% 48% at 82% 18%, rgba(120,70,255,0.48), transparent 52%),
+    radial-gradient(ellipse 60% 42% at 48% 86%, rgba(0,170,255,0.32), transparent 50%),
+    #040612;
+  background-size: 160% 160%;
+  animation: stageAurora 16s ease-in-out infinite alternate;
+}
+.tat-stage-bg.stage-aurora::after {
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
+  animation: stageSweep 7s linear infinite;
+}
+@keyframes stageAurora {
+  from { background-position: 0% 20%, 100% 0%, 40% 100%; filter: hue-rotate(0deg); }
+  to { background-position: 80% 70%, 10% 80%, 20% 10%; filter: hue-rotate(28deg); }
+}
+.tat-stage-bg.stage-starfield {
+  background:
+    radial-gradient(1px 1px at 12% 22%, #fff, transparent),
+    radial-gradient(1px 1px at 44% 68%, #cde, transparent),
+    radial-gradient(1.5px 1.5px at 78% 18%, #fff, transparent),
+    radial-gradient(1px 1px at 62% 42%, #9cf, transparent),
+    radial-gradient(2px 2px at 28% 82%, #fff, transparent),
+    #02040c;
+  background-size: 220px 180px, 280px 240px, 190px 210px, 320px 160px, 260px 200px, auto;
+  animation: stageStars 40s linear infinite;
+  mix-blend-mode: normal;
+  opacity: 0.7;
+}
+.tat-stage-bg.stage-starfield::after {
+  background: radial-gradient(ellipse 50% 30% at 70% 30%, rgba(90,140,255,0.18), transparent 60%);
+  animation: stageDrift 22s ease-in-out infinite alternate;
+}
+@keyframes stageStars {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to { background-position: 220px 180px, -140px 240px, 90px -210px, -160px 80px, 130px -200px, 0 0; }
+}
+.tat-stage-bg.stage-embers {
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 120%, rgba(255,80,10,0.35), transparent 50%),
+    linear-gradient(180deg, #140806, #080404);
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-embers::before {
+  background-image:
+    radial-gradient(2px 2px at 20% 80%, rgba(255,160,40,0.9), transparent),
+    radial-gradient(2px 2px at 50% 90%, rgba(255,80,20,0.8), transparent),
+    radial-gradient(3px 3px at 75% 85%, rgba(255,200,80,0.7), transparent),
+    radial-gradient(2px 2px at 35% 70%, rgba(255,120,30,0.75), transparent);
+  background-size: 180px 140px;
+  animation: stageRise 7s linear infinite;
+}
+.tat-stage-bg.stage-rain {
+  background: linear-gradient(180deg, #071018, #04080e);
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-rain::before {
+  background: repeating-linear-gradient(185deg, transparent 0 12px, rgba(160,210,255,0.16) 12px 13px);
+  animation: stageFall 1.1s linear infinite;
+}
+.tat-stage-bg.stage-circuits {
+  background:
+    linear-gradient(90deg, rgba(0,243,255,0.08) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(0,243,255,0.08) 1px, transparent 1px),
+    #050814;
+  background-size: 28px 28px, 28px 28px, auto;
+  mix-blend-mode: normal;
+  animation: stageGrid 12s linear infinite;
+}
+.tat-stage-bg.stage-circuits::after {
+  background: linear-gradient(90deg, transparent, rgba(0,243,255,0.35), transparent);
+  width: 22%;
+  animation: stagePulse 3.2s ease-in-out infinite;
+}
+.tat-stage-bg.stage-ocean {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 110%, rgba(0,180,255,0.35), transparent 55%),
+    linear-gradient(180deg, #041018, #02080e);
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-ocean::before {
+  background: repeating-linear-gradient(180deg, transparent 0 18px, rgba(0,200,255,0.08) 18px 20px);
+  animation: stageWave 5s ease-in-out infinite;
+}
+.tat-stage-bg.stage-nebula {
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 40%, rgba(180,60,255,0.4), transparent 55%),
+    radial-gradient(ellipse 50% 45% at 75% 60%, rgba(255,40,140,0.32), transparent 50%),
+    radial-gradient(ellipse 40% 40% at 50% 20%, rgba(40,120,255,0.28), transparent 50%),
+    #080510;
+  background-size: 180% 180%;
+  animation: stageNebula 22s ease-in-out infinite alternate;
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-scan {
+  background: repeating-linear-gradient(0deg, rgba(0,255,160,0.05) 0 2px, transparent 2px 4px), #03140c;
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-scan::after {
+  background: linear-gradient(180deg, transparent, rgba(0,255,140,0.22), transparent);
+  height: 18%;
+  animation: stageScan 2.8s linear infinite;
+}
+.tat-stage-bg.stage-plasma {
+  background:
+    conic-gradient(from 40deg, #00f3ff, #7c5cff, #ff4d9a, #00ff88, #00f3ff);
+  filter: blur(18px) saturate(1.3);
+  opacity: 0.38;
+  animation: stageSpin 18s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes stageSweep { to { transform: translateX(40%); } }
+@keyframes stageDrift { from { transform: translate3d(-4%, -2%, 0); } to { transform: translate3d(4%, 3%, 0); } }
+@keyframes stageRise { from { transform: translateY(20%); opacity: 0.2; } to { transform: translateY(-40%); opacity: 0.9; } }
+@keyframes stageFall { to { background-position: 0 80px; } }
+@keyframes stageGrid { to { background-position: 28px 28px, 28px 28px, 0 0; } }
+@keyframes stagePulse { 0%, 100% { transform: translateX(-40%); opacity: 0; } 50% { transform: translateX(180%); opacity: 1; } }
+@keyframes stageWave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8%); } }
+@keyframes stageNebula { from { background-position: 0% 20%, 100% 80%, 40% 0%; } to { background-position: 80% 70%, 10% 10%, 70% 90%; } }
+@keyframes stageScan { from { transform: translateY(-20%); } to { transform: translateY(520%); } }
+@keyframes stageSpin { to { transform: rotate(360deg) scale(1.15); } }
+body.tat-rm-on .tat-stage-bg,
+body.tat-rm-on .tat-stage-bg::before,
+body.tat-rm-on .tat-stage-bg::after {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not(.tat-rm-off) .tat-stage-bg,
+  body:not(.tat-rm-off) .tat-stage-bg::before,
+  body:not(.tat-rm-off) .tat-stage-bg::after {
+    animation: none !important;
+  }
 }
 .tat-light {
   position: absolute;
@@ -2916,9 +3181,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
             <input type="checkbox" id="optAmbient" checked>
             <span><span class="hi">Ambient light</span> — soft shifts (anti burn-in)</span>
           </label>
-          <label class="toggle" title="Correct keys burn explosion shards into charcoal ash">
+          <label class="toggle" title="Missed keys stay burned after you correct them. Five misses on the same glyph detonates a ±3 chain firework.">
             <input type="checkbox" id="optBurn" checked>
-            <span><span class="hi">Char burn</span> — sparks sear remnants to ash</span>
+            <span><span class="hi">Char burn</span> — misses stay ash; 5× detonates a chain</span>
           </label>
           <label class="toggle" title="When a Novel chapter finishes, load the next one automatically">
             <input type="checkbox" id="optNovelAuto" checked>
@@ -2986,13 +3251,32 @@ body:not(.run-active) .combo-bar { display: none !important; }
             <label for="optTextAnim">Text animation</label>
             <select id="optTextAnim">
               <option value="none">None</option>
-              <option value="glint">Glint sweep</option>
+              <option value="glint">Glint sweep (text only)</option>
               <option value="pulse">Brightness pulse</option>
               <option value="float">Soft float</option>
               <option value="shimmer">Shimmer</option>
               <option value="wave">Word wave</option>
               <option value="glitch">Caret glitch</option>
               <option value="breathe">Breathe / saturate</option>
+              <option value="ember">Ember glow</option>
+              <option value="flicker">Neon flicker</option>
+              <option value="sparkle">Sparkle hits</option>
+              <option value="slide">Soft slide</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="optStageBg">Stage background</label>
+            <select id="optStageBg" title="Moving plate backdrop behind the prompt">
+              <option value="none">None (skin only)</option>
+              <option value="aurora" selected>Aurora drift</option>
+              <option value="starfield">Starfield</option>
+              <option value="embers">Rising embers</option>
+              <option value="rain">Night rain</option>
+              <option value="circuits">Circuit grid</option>
+              <option value="ocean">Ocean swell</option>
+              <option value="nebula">Nebula clouds</option>
+              <option value="scan">Scanlines</option>
+              <option value="plasma">Plasma wash</option>
             </select>
           </div>
           <div class="field">
@@ -3516,6 +3800,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
 
       <div class="prompt-wrap" id="promptWrap">
         <div id="tatPlate" class="tat-plate" aria-hidden="true">
+          <div id="tatStage" class="tat-stage-bg stage-aurora" data-stage="aurora"></div>
           <div id="tatBg" class="tat-bg"></div>
           <div id="tatLight" class="tat-light" data-lit="rim"></div>
           <div id="tatGutter" class="tat-gutter"><div id="tatT63Layer" class="tat-t63-layer" aria-hidden="true"></div></div>
@@ -4108,6 +4393,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
   let finished = false;
   let running = false;
   let wrongFlags = [];
+  let missCounts = [];
+  let explodedFlags = [];
   let streak = 0;
   let bestStreak = 0;
   let score = 0;
@@ -4342,7 +4629,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       target = (target + ' ' + simplifyText(next.text())).trim();
     }
     index = 0;
-    wrongFlags = new Array(target.length).fill(false);
+    resetErrorTrack(target.length);
     skipNextIndexInc = true; // caller already counted the clear keystroke
     renderPrompt();
     highlightNext();
@@ -4443,6 +4730,183 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (v === 'high') return 1.45;
     if (v === 'insane') return 2.1;
     return 1;
+  }
+
+  function resetErrorTrack(len) {
+    const n = Math.max(0, len | 0);
+    wrongFlags = new Array(n).fill(false);
+    missCounts = new Array(n).fill(0);
+    explodedFlags = new Array(n).fill(false);
+  }
+  function extendErrorTrack(extraLen) {
+    const n = Math.max(0, extraLen | 0);
+    wrongFlags = wrongFlags.concat(new Array(n).fill(false));
+    missCounts = missCounts.concat(new Array(n).fill(0));
+    explodedFlags = explodedFlags.concat(new Array(n).fill(false));
+  }
+  function nextLiveIndex(from) {
+    let i = Math.max(0, from | 0);
+    while (i < target.length && explodedFlags[i]) i++;
+    return i;
+  }
+  function prevLiveIndex(from) {
+    let i = from | 0;
+    while (i >= 0 && explodedFlags[i]) i--;
+    return i;
+  }
+  function glyphCenter(i) {
+    const el = promptEl && promptEl.querySelector('[data-i="' + i + '"]');
+    if (!el) return { x: window.innerWidth / 2, y: window.innerHeight * 0.42, ch: target[i] };
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, ch: target[i] };
+  }
+  function fwColor(hue, light) {
+    return 'hsl(' + ((hue % 360) + 360) % 360 + ',100%,' + (light == null ? 62 : light) + '%)';
+  }
+  function spawnChainFirework(x, y, hue0, generation) {
+    if (!$('optFx')?.checked) return;
+    const mul = fxLevelMul();
+    const gen = generation || 0;
+    particles.push({
+      kind: 'fwShell',
+      x, y,
+      vx: (Math.random() - 0.5) * (1.4 + gen * 0.4),
+      vy: -3.2 - Math.random() * 2.4 - gen * 0.4,
+      life: 1,
+      decay: 0.02 + Math.random() * 0.01,
+      size: 3.4 + mul,
+      hue: hue0,
+      hueSpeed: 50 + Math.random() * 90,
+      gen,
+      color: fwColor(hue0, 70),
+      glow: true,
+      grav: 0.045,
+    });
+  }
+  function burstFirework(shell) {
+    if (!shell) return;
+    const mul = fxLevelMul();
+    const n = Math.round((22 + 16 * mul) * (shell.gen ? 0.75 : 1));
+    const base = shell.hue || 0;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + Math.random() * 0.18;
+      const v = 1.4 + Math.random() * (3.6 + mul);
+      particles.push({
+        kind: 'fwStar',
+        x: shell.x,
+        y: shell.y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - 0.35,
+        life: 1,
+        decay: 0.009 + Math.random() * 0.012,
+        size: 1.5 + Math.random() * 2.6,
+        hue: (base + i * (360 / Math.max(8, n))) % 360,
+        hueSpeed: 70 + Math.random() * 160,
+        color: fwColor(base + i * 12, 64),
+        glow: true,
+        grav: 0.032,
+        trail: 0.55,
+        drag: 0.986,
+      });
+    }
+    const inner = Math.round(8 + 6 * mul);
+    for (let i = 0; i < inner; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 0.4 + Math.random() * 1.6;
+      particles.push({
+        kind: 'fwSparkle',
+        x: shell.x,
+        y: shell.y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v,
+        life: 1,
+        decay: 0.016 + Math.random() * 0.02,
+        size: 1 + Math.random() * 1.8,
+        hue: (base + 180 + Math.random() * 40) % 360,
+        hueSpeed: 120,
+        color: '#fff',
+        glow: true,
+        grav: -0.01,
+      });
+    }
+    if ((shell.gen || 0) < 2 && Math.random() < 0.72) {
+      const kids = 1 + ((Math.random() * 2) | 0);
+      for (let k = 0; k < kids; k++) {
+        later(() => {
+          spawnChainFirework(
+            shell.x + (Math.random() - 0.5) * 40,
+            shell.y + (Math.random() - 0.5) * 24,
+            (base + 70 + k * 55) % 360,
+            (shell.gen || 0) + 1
+          );
+        }, 80 + k * 70);
+      }
+    }
+  }
+  function detonateMissChain(center) {
+    const lo = Math.max(0, center - 3);
+    const hi = Math.min(target.length - 1, center + 3);
+    const victims = [];
+    for (let i = lo; i <= hi; i++) {
+      if (!explodedFlags[i]) {
+        explodedFlags[i] = true;
+        wrongFlags[i] = true;
+        victims.push(i);
+      }
+    }
+    victims.forEach((i, n) => {
+      later(() => {
+        const p = glyphCenter(i);
+        const hue = (n * 47 + (performance.now() * 0.07)) % 360;
+        spawnChainFirework(p.x, p.y, hue, 0);
+        spawnChainFirework(p.x + (Math.random() - 0.5) * 16, p.y - 10, (hue + 90) % 360, 1);
+        spawnCharredBits(p.x, p.y, target[i], 1.7);
+        spawnBurst(p.x, p.y, fwColor(hue, 60), 12, 3.4);
+        spawnFlames(p.x, p.y + 2, 1.3);
+      }, n * 65);
+    });
+    flashScreen('rgba(255,150,40,0.26)');
+    showComboToast('CHAIN BLAST', victims.length + ' chars · fireworks');
+    index = nextLiveIndex(hi + 1);
+    renderPrompt();
+    highlightNext();
+    updateStats();
+    if (index >= target.length) {
+      if (miniRun && miniConfig?.type === 'wordrush') {
+        advanceWordRush();
+        return true;
+      }
+      if (miniRun && miniConfig?.type === 'echo') {
+        echoRound++;
+        if (echoRound >= 3) {
+          finishTest('complete');
+          return true;
+        }
+        target = echoTarget;
+        index = 0;
+        resetErrorTrack(target.length);
+        renderPrompt();
+        highlightNext();
+        updateStats();
+        return true;
+      }
+      if (shouldKeepFeedingText()) {
+        let extra;
+        if (miniRun && miniConfig?.type === 'storm') extra = ' ' + buildMiniTarget({ type: 'storm' });
+        else if (miniRun && miniConfig?.type === 'ghost') extra = ' ' + pick(TEXTS.medium);
+        else if (boardsRun) extra = ' ' + simplifyText(STORY_BOARDS[boardIndex].text());
+        else extra = ' ' + getTargetText();
+        if (!extra || !String(extra).trim()) extra = ' keep going';
+        target += extra;
+        extendErrorTrack(extra.length);
+        index = nextLiveIndex(index);
+        renderPrompt();
+        highlightNext();
+      } else {
+        finishTest('complete');
+      }
+    }
+    return true;
   }
 
   function spawnBurst(x, y, color, count, speed) {
@@ -4828,6 +5292,18 @@ body:not(.run-active) .combo-bar { display: none !important; }
         p.vy += p.grav != null ? p.grav : 0.12;
         p.rot = (p.rot || 0) + (p.spin || 0);
         p.size *= p.kind === 'char' || p.kind === 'charGlyph' ? 0.988 : 0.992;
+      } else if (p.kind === 'fwShell' || p.kind === 'fwStar' || p.kind === 'fwSparkle') {
+        if (p.drag) {
+          p.vx *= p.drag;
+          p.vy *= p.drag;
+        }
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.grav != null ? p.grav : 0.03;
+        if (p.hue != null) {
+          p.hue = (p.hue + (p.hueSpeed || 40) * 0.016) % 360;
+          p.color = fwColor(p.hue, p.kind === 'fwShell' ? 72 : (p.kind === 'fwSparkle' ? 88 : 62));
+        }
       } else {
         // spark / default
         if (p.drag) {
@@ -4840,6 +5316,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       }
       p.life -= p.decay;
       if (p.life <= 0 || p.size < 0.3) {
+        if (p.kind === 'fwShell') burstFirework(p);
         particles.splice(i, 1);
         continue;
       }
@@ -4847,6 +5324,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       fxCtx.globalAlpha = alpha;
       if (p.glow) {
         fxCtx.shadowBlur = p.kind === 'flame' ? 18
+          : (p.kind === 'fwShell' || p.kind === 'fwStar') ? 22
           : (p.kind === 'shard' || p.kind === 'glyphBit') ? 16
           : (p.trail ? 14 : 12);
         fxCtx.shadowColor = p.color;
@@ -4854,7 +5332,44 @@ body:not(.run-active) .combo-bar { display: none !important; }
         fxCtx.shadowBlur = 0;
       }
       fxCtx.fillStyle = p.color;
-      if (p.kind === 'flame') {
+      if (p.kind === 'fwShell') {
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(1.4, p.size * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.fillStyle = '#fff';
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(0.6, p.size * 0.35 * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'fwStar') {
+        fxCtx.save();
+        fxCtx.translate(p.x, p.y);
+        const ang = Math.atan2(p.vy, p.vx);
+        fxCtx.rotate(ang);
+        const len = Math.max(4, p.size * (2.4 + (p.trail || 0) * 3) * p.life);
+        const grd = fxCtx.createLinearGradient(-len, 0, len * 0.2, 0);
+        grd.addColorStop(0, 'rgba(255,255,255,0)');
+        grd.addColorStop(0.4, p.color);
+        grd.addColorStop(1, '#ffffff');
+        fxCtx.fillStyle = grd;
+        fxCtx.beginPath();
+        fxCtx.moveTo(-len, 0);
+        fxCtx.lineTo(0, Math.max(0.5, p.size * 0.4));
+        fxCtx.lineTo(len * 0.15, 0);
+        fxCtx.lineTo(0, -Math.max(0.5, p.size * 0.4));
+        fxCtx.closePath();
+        fxCtx.fill();
+        fxCtx.fillStyle = '#fff';
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, Math.max(0.7, p.size * 0.55 * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'fwSparkle') {
+        const tw = 0.55 + 0.45 * Math.abs(Math.sin((p.hue || 0) * 0.2));
+        fxCtx.globalAlpha = alpha * tw;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(0.5, p.size * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'flame') {
         fxCtx.beginPath();
         // elongated flame blob
         const rw = p.size * (0.55 + 0.45 * p.life);
@@ -4931,7 +5446,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       }
     }
     // Cap particle budget for smooth 60fps (higher when showering hard)
-    if (particles.length > 780) particles.splice(0, particles.length - 780);
+    if (particles.length > 1600) particles.splice(0, particles.length - 1600);
     fxCtx.globalAlpha = 1;
     fxCtx.shadowBlur = 0;
     tatSkinTick();
@@ -4959,8 +5474,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
     font: ['mono','jetbrains','space','orbitron','audiowide','cinzel','playfair','syne','righteous','press','pacifico','system'],
     color: ['cyan','neon','gold','parchment','emerald','violet','ice','fire','white'],
     fx: ['none','border','thick-border','shadow','double-shadow','emboss','neon','chrome','rainbow','outline-glow'],
-    anim: ['none','glint','pulse','float','shimmer','wave','glitch','breathe'],
+    anim: ['none','glint','pulse','float','shimmer','wave','glitch','breathe','ember','flicker','sparkle','slide'],
     fxLevel: ['low','med','high','insane'],
+    stage: ['none','aurora','starfield','embers','rain','circuits','ocean','nebula','scan','plasma'],
   };
   function allowedSelect(id, val, list, fallback) {
     const el = $(id);
@@ -4974,11 +5490,23 @@ body:not(.run-active) .combo-bar { display: none !important; }
     const color = allowedSelect('optColor', $('optColor')?.value, STYLE_ALLOW.color, 'cyan');
     const fx = allowedSelect('optTextFx', $('optTextFx')?.value, STYLE_ALLOW.fx, 'none');
     const anim = allowedSelect('optTextAnim', $('optTextAnim')?.value, STYLE_ALLOW.anim, 'none');
+    const stage = allowedSelect('optStageBg', $('optStageBg')?.value, STYLE_ALLOW.stage, 'aurora');
     promptEl.className = 'prompt'
       + ' font-' + font
       + ' color-' + color
       + (fx && fx !== 'none' ? ' fx-' + fx : '')
       + (anim && anim !== 'none' ? ' anim-' + anim : '');
+    applyStageBg(stage);
+  }
+  function applyStageBg(val) {
+    const stage = val || allowedSelect('optStageBg', $('optStageBg')?.value, STYLE_ALLOW.stage, 'aurora');
+    const el = $('tatStage');
+    if (el) {
+      el.dataset.stage = stage;
+      el.className = 'tat-stage-bg stage-' + stage;
+    }
+    const wrap = $('promptWrap');
+    if (wrap) wrap.setAttribute('data-tat-stage', stage);
   }
 
   // ——— Document library (PDF / text) + skill-based passages ———
@@ -5388,8 +5916,19 @@ body:not(.run-active) .combo-bar { display: none !important; }
       .replace(/'/g, '&#39;');
   }
   function charClass(i) {
-    if (i < index) return 'done' + (wrongFlags[i] ? ' wrong' : '');
-    if (i === index) return 'current';
+    if (explodedFlags[i]) return 'gone';
+    if (i < index) {
+      let cls = 'done';
+      if (wrongFlags[i]) cls += ' wrong charred';
+      return cls;
+    }
+    if (i === index) {
+      let cls = 'current';
+      const misses = missCounts[i] || 0;
+      if (misses >= 3) cls += ' miss-critical';
+      else if (misses >= 1) cls += ' miss-heat';
+      return cls;
+    }
     return 'todo';
   }
 
@@ -5816,7 +6355,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
     skipNextIndexInc = false;
     if (!reuseText) target = getTargetText();
-    wrongFlags = new Array(target.length).fill(false);
+    resetErrorTrack(target.length);
     resultBanner && resultBanner.classList.remove('show', 'highscore');
     if ($('btnSaveHs')) $('btnSaveHs').style.display = 'none';
     if ($('btnResultBonus')) $('btnResultBonus').style.display = 'none';
@@ -5889,7 +6428,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
     target = wordRushList[wordRushIndex];
     index = 0;
-    wrongFlags = new Array(target.length).fill(false);
+    resetErrorTrack(target.length);
     renderPrompt();
     highlightNext();
     updateStats();
@@ -6160,9 +6699,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (key === 'Backspace') {
       if (index > 0) {
         index--;
+        index = Math.max(0, prevLiveIndex(index));
         if (correctKeystrokes > 0) correctKeystrokes--;
         if (totalKeystrokes > 0) totalKeystrokes--;
-        if (index < wrongFlags.length) wrongFlags[index] = false;
         try { tatT65OnIndex(); } catch (_) {}
         renderPrompt();
         highlightNext();
@@ -6236,17 +6775,17 @@ body:not(.run-active) .combo-bar { display: none !important; }
           later(() => burnExplosionRemnants(cx, cy, 110 + streak, burnI + 0.2), 40);
           later(() => burnExplosionRemnants(cx, cy, 140, burnI + 0.35), 90);
         }
-        // Briefly charcoal the completed glyph in the prompt
-        if ($('optBurn')?.checked) {
+        // Briefly charcoal a CLEAN hit (missed glyphs stay burned via charClass)
+        if ($('optBurn')?.checked && !wrongFlags[index]) {
           requestAnimationFrame(() => {
-            const dones = promptEl.querySelectorAll('.done');
+            const dones = promptEl.querySelectorAll('.done:not(.wrong)');
             const last = dones[dones.length - 1];
-            if (last) {
+            if (last && !last.classList.contains('wrong')) {
               last.classList.add('charred');
               later(() => {
                 last.classList.add('charred-ash');
                 later(() => {
-                  last.classList.remove('charred', 'charred-ash');
+                  if (!last.classList.contains('wrong')) last.classList.remove('charred', 'charred-ash');
                 }, 420);
               }, 180);
             }
@@ -6280,6 +6819,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       } else {
         index++;
       }
+      index = nextLiveIndex(index);
       try { tatT65OnIndex(); } catch (_) {}
       if (gain && score % 100 < gain) popStat('statScore');
 
@@ -6307,7 +6847,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
           }
           target = echoTarget;
           index = 0;
-          wrongFlags = new Array(target.length).fill(false);
+          resetErrorTrack(target.length);
           renderPrompt();
           highlightNext();
           updateStats();
@@ -6329,7 +6869,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
           }
           if (!extra || !String(extra).trim()) extra = ' keep going';
           target += extra;
-          wrongFlags = wrongFlags.concat(new Array(extra.length).fill(false));
+          extendErrorTrack(extra.length);
+          index = nextLiveIndex(index);
           renderPrompt();
           highlightNext();
         } else {
@@ -6339,6 +6880,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
     } else {
       errors++;
       if (index < wrongFlags.length) wrongFlags[index] = true;
+      if (index >= missCounts.length) missCounts[index] = 0;
+      missCounts[index] = (missCounts[index] || 0) + 1;
       streak = 0;
       cleanSinceLife = 0;
       setFireMode(0);
@@ -6348,6 +6891,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
       reactAtCaret('miss');
       tatSkinNote('miss', 0);
       try { t63OnMiss(); } catch (_) {}
+      if (missCounts[index] >= 5) {
+        detonateMissChain(index);
+        return;
+      }
       // ash puff on miss
       const curMiss = promptEl.querySelector('.current');
       if (curMiss && $('optFx')?.checked) {
@@ -7224,6 +7771,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     allowedSelect('optTextFx', prefs.textFx, STYLE_ALLOW.fx, 'none');
     allowedSelect('optTextAnim', prefs.textAnim, STYLE_ALLOW.anim, 'none');
     allowedSelect('optFxLevel', prefs.fxLevel, STYLE_ALLOW.fxLevel, 'med');
+    allowedSelect('optStageBg', prefs.stageBg, STYLE_ALLOW.stage, 'aurora');
     if (prefs.novelBookId && NOVEL_BOOKS.some((b) => b.id === prefs.novelBookId)) novelBookId = prefs.novelBookId;
     if (Number.isFinite(prefs.novelChapterIndex)) novelChapterIndex = Math.max(0, prefs.novelChapterIndex | 0);
     if (prefs.novelDone && typeof prefs.novelDone === 'object') novelDoneChapters = prefs.novelDone;
@@ -7246,7 +7794,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if ($('playerName')) $('playerName').value = name;
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
-  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium'];
+  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','stageBg','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium'];
   function pickAllowed(obj, allow) {
     const out = {};
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
@@ -7272,6 +7820,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       textFx: $('optTextFx')?.value || 'none',
       textAnim: $('optTextAnim')?.value || 'none',
       fxLevel: $('optFxLevel')?.value || 'med',
+      stageBg: $('optStageBg')?.value || 'aurora',
       skin: collectSkinPrefs(),
       reducedMotion: skinPick($('optReducedMotion') && $('optReducedMotion').value, ['auto','on','off'], 'auto'),
       masterProfile: (TAT64_MASTER === 'calm' || TAT64_MASTER === 'arcade' || TAT64_MASTER === 'chaos') ? TAT64_MASTER : 'custom',
@@ -7434,7 +7983,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
   ['optSound', 'optFx', 'optAmbient', 'optBurn', 'optGhostReplay', 'optSprintPodium'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
   });
-  ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel'].forEach((id) => {
+  ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel', 'optStageBg'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', () => {
       if (id === 'optFxLevel') tatMarkCustom();
       savePrefs();
