@@ -163,14 +163,9 @@
       if (secs.length) sections[id] = secs;
     });
     const sectionHeights = {};
-    panels.forEach((p) => {
-      sectionEls(p).forEach((s) => {
-        if (s.getAttribute('data-fafo-resizable') !== '1') return;
-        const sid = s.getAttribute('data-fafo-section');
-        const def = parseInt(s.getAttribute('data-fafo-section-default') || '', 10);
-        if (sid && Number.isFinite(def) && def > 0) sectionHeights[sid] = def;
-      });
-    });
+    // Do not seed sectionHeights from data-fafo-section-default.
+    // Those 140–160px values were being persisted as "user sizes" and
+    // locked lists into a tiny strip. Defaults only apply after a drag.
     return { order, sizes, flex, sections, sectionHeights };
   }
 
@@ -446,6 +441,16 @@
         delete out.sectionHeights[id];
         return;
       }
+      // Drop auto-saved defaults (exact or near data-fafo-section-default).
+      // Those were never a real user choice and crush list panes.
+      try {
+        const sec = root.querySelector('[data-fafo-section="' + id.replace(/"/g, '') + '"]');
+        const def = parseInt(sec && sec.getAttribute('data-fafo-section-default') || '160', 10) || 160;
+        if (Math.abs(h - def) <= 12) {
+          delete out.sectionHeights[id];
+          return;
+        }
+      } catch (_) { /* keep */ }
       if (h < 60) h = 60;
       if (h > maxSec) h = maxSec;
       out.sectionHeights[id] = Math.round(h);
@@ -592,17 +597,25 @@
         if (s) body.appendChild(s);
         if (s && s.getAttribute('data-fafo-resizable') === '1') {
           let h = state.sectionHeights && state.sectionHeights[sid];
-          if (!Number.isFinite(h) || h <= 0) {
-            h = parseInt(s.getAttribute('data-fafo-section-default') || '160', 10) || 160;
-          }
           const minH = parseInt(s.getAttribute('data-fafo-section-min') || '80', 10) || 80;
-          h = Math.max(minH, h);
-          const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 0.7));
-          h = Math.min(h, maxH);
-          s.style.flex = '0 0 auto';
-          s.style.height = h + 'px';
-          s.dataset.fafoHeight = String(h);
-          if (state.sectionHeights) state.sectionHeights[sid] = h;
+          if (!Number.isFinite(h) || h <= 0) {
+            // No user size — CSS flex (list fills leftover; others size to content)
+            s.style.flex = '';
+            s.style.height = '';
+            s.style.maxHeight = '';
+            delete s.dataset.fafoHeight;
+            s.removeAttribute('data-fafo-user-sized');
+            if (state.sectionHeights) delete state.sectionHeights[sid];
+          } else {
+            h = Math.max(minH, h);
+            const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 0.7));
+            h = Math.min(h, maxH);
+            s.style.flex = '0 0 auto';
+            s.style.height = h + 'px';
+            s.dataset.fafoHeight = String(h);
+            s.setAttribute('data-fafo-user-sized', '1');
+            if (state.sectionHeights) state.sectionHeights[sid] = h;
+          }
         }
       });
     });
@@ -631,6 +644,7 @@
       sections[id] = secs.map((s) => s.getAttribute('data-fafo-section'));
       secs.forEach((s) => {
         if (s.getAttribute('data-fafo-resizable') !== '1') return;
+        if (s.getAttribute('data-fafo-user-sized') !== '1') return;
         const sid = s.getAttribute('data-fafo-section');
         const h = Math.round(s.getBoundingClientRect().height);
         if (sid && h > 0) sectionHeights[sid] = h;
@@ -721,9 +735,10 @@
         try {
           handle.setPointerCapture?.(ev.pointerId);
         } catch (_) { /* ignore */ }
-        // Convert flex target to fixed size for the duration of resize
+        // Don't convert a flex survivor into a fixed pixel width — that
+        // is how "resize once, layout stuck forever" happens.
         if (target.getAttribute('data-fafo-flex') === '1') {
-          target.removeAttribute('data-fafo-flex');
+          target.style.flex = '0 0 auto';
         }
 
         let finished = false;
@@ -754,6 +769,16 @@
           if (finished) return;
           finished = true;
           handle.classList.remove('is-active');
+          if (target.getAttribute('data-fafo-flex') === '1') {
+            target.style.flex = '1 1 auto';
+            if (type === 'columns') {
+              target.style.width = '';
+              target.style.maxWidth = '';
+            } else {
+              target.style.height = '';
+              target.style.maxHeight = '';
+            }
+          }
           clearLayoutPointerState(root);
           try {
             handle.releasePointerCapture?.(ev.pointerId);
@@ -798,6 +823,7 @@
           section.style.flex = '0 0 auto';
           section.style.height = h + 'px';
           section.dataset.fafoHeight = String(Math.round(h));
+          section.setAttribute('data-fafo-user-sized', '1');
         }
         function onUp() {
           if (finished) return;
@@ -1173,9 +1199,9 @@
         let flexed = false;
         secs.forEach((s, i) => {
           const last = i === secs.length - 1;
-          const resizable = s.getAttribute('data-fafo-resizable') === '1';
-          if (resizable) return;
-          if (isListSection(s) || (last && !flexed && !isSettingsSection(s))) {
+          const userSized = s.getAttribute('data-fafo-user-sized') === '1';
+          if (userSized) return;
+          if (!flexed && (isListSection(s) || (last && !isSettingsSection(s)))) {
             s.classList.add('fafo-section-flex');
             flexed = true;
           } else {
@@ -1184,8 +1210,10 @@
         });
         if (!flexed) {
           const last = secs[secs.length - 1];
-          last.classList.add('fafo-section-flex');
-          last.classList.remove('fafo-section-compact');
+          if (last.getAttribute('data-fafo-user-sized') !== '1') {
+            last.classList.add('fafo-section-flex');
+            last.classList.remove('fafo-section-compact');
+          }
         }
       }
       try {
@@ -1210,9 +1238,6 @@
     if (!pane) {
       try {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior });
-      } catch (_) { /* ignore */ }
-      try {
-        window.scrollTo(0, 0);
       } catch (_) { /* ignore */ }
       return;
     }
@@ -1251,11 +1276,19 @@
           return orig.apply(this, arguments);
         }
         const locked =
-          document.documentElement.classList.contains('fafo-layout-locked') ||
-          document.body.classList.contains('lx-split-scroll');
-        const inPane = this.closest &&
-          this.closest('.fafo-layout-root, .lx-tile-scroll, .fafo-panel-body, .fafo-scroll-pane');
-        if (locked || inPane) {
+          document.documentElement.classList.contains('fafo-layout-locked');
+        const pane = this.closest &&
+          this.closest('.fafo-layout-root, .lx-tile-scroll, .fafo-panel-body, .fafo-scroll-pane, .fafo-section-body');
+        let paneScrolls = false;
+        try {
+          if (pane) {
+            const oy = getComputedStyle(pane).overflowY;
+            paneScrolls =
+              pane.scrollHeight > pane.clientHeight + 2 &&
+              (oy === 'auto' || oy === 'scroll');
+          }
+        } catch (_) { /* ignore */ }
+        if (paneScrolls || (locked && pane)) {
           const opts = typeof arg === 'object' && arg ? arg : {};
           scrollInsidePane(this, {
             behavior: opts.behavior || (arg === true ? 'smooth' : 'auto'),
@@ -1548,14 +1581,13 @@
           panel &&
           sectionEls(panel).find((s) => s.getAttribute('data-fafo-section') === sectionId);
         if (sec) {
-          const def = parseInt(sec.getAttribute('data-fafo-section-default') || '160', 10) || 160;
-          cur.sectionHeights = cur.sectionHeights || {};
-          cur.sectionHeights[sectionId] = def;
-          sec.style.height = def + 'px';
-          sec.dataset.fafoHeight = String(def);
-        } else {
-          if (cur.sectionHeights) delete cur.sectionHeights[sectionId];
+          sec.style.height = '';
+          sec.style.flex = '';
+          sec.style.maxHeight = '';
+          delete sec.dataset.fafoHeight;
+          sec.removeAttribute('data-fafo-user-sized');
         }
+        if (cur.sectionHeights) delete cur.sectionHeights[sectionId];
         // Restore section order slot to default for that panel
         if (panelId && cur.sections && defaults.sections && defaults.sections[panelId]) {
           cur.sections[panelId] = defaults.sections[panelId].slice();
