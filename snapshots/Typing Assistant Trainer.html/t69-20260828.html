@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Typing Assistant Trainer.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -27,8 +28,8 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      min-height: 0;
-      height: 100%;
+      min-height: 100dvh;
+      height: auto;
       background:
         radial-gradient(ellipse at 50% -10%, #14142a 0%, transparent 55%),
         radial-gradient(ellipse at 90% 80%, rgba(124, 92, 255, 0.08) 0%, transparent 40%),
@@ -36,7 +37,7 @@
       color: var(--text);
       font-family: "Segoe UI", system-ui, sans-serif;
       padding: 10px clamp(8px, 1.4vw, 18px) 28px;
-      overflow: hidden;
+      overflow: auto;
     }
     body.combo-glow {
       animation: comboBg 0.55s ease;
@@ -418,7 +419,7 @@
       animation: none;
     }
 
-    /* Fill the window — don't trap the prompt in a narrow centered column */
+    /* Fill the window — grow with content, page scrolls (never steal from a sibling) */
     .wrap {
       width: 100%;
       max-width: min(1680px, 100%);
@@ -426,44 +427,36 @@
       position: relative;
       z-index: 1;
       box-sizing: border-box;
-      flex: 1 1 auto;
+      flex: 1 0 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: none;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
 
-    /* PET-T61: independent panel wheel.
-       layout.js pinViewport + .fafo-layout-locked hide html/body overflow.
-       Wheel only works over a real overflow:auto pane with a CONSTRAINED height
-       (.fafo-panel-body / .fafo-scroll-pane) — not height:auto growing boxes. */
+    /* Page scroll is the source of truth. Enlarging one panel must not shrink another. */
     html, body {
-      height: 100%;
-      max-height: 100%;
-      overflow: hidden;
-    }
-    html.fafo-layout-locked,
-    html.fafo-layout-locked body,
-    body.fafo-layout-locked {
-      height: 100%;
-      overflow: hidden;
+      height: auto;
+      max-height: none;
+      min-height: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
     body {
       display: flex;
       flex-direction: column;
-      min-height: 0;
     }
     .wrap[data-fafo-layout-root],
     .wrap {
-      flex: 1 1 auto;
+      flex: 1 0 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: none;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
     .wrap > header,
     .wrap > .panel,
@@ -471,19 +464,19 @@
     .fafo-layout-panel {
       display: flex;
       flex-direction: column;
+      flex-shrink: 0;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     .wrap > .grid-2 {
-      flex: 0 1 auto;
-      max-height: 34%;
-      min-height: 0;
+      flex: 0 0 auto;
+      max-height: none;
     }
     .wrap > .grid-2 > .panel {
       display: flex;
       flex-direction: column;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     .grid-2.fafo-layout-panel > .fafo-panel-body,
     .grid-2 > .fafo-scroll-pane {
@@ -500,18 +493,19 @@
     .fafo-scroll-pane {
       flex: 1 1 auto;
       min-height: 0;
+      overflow: visible;
+    }
+    .fafo-layout-panel[data-fafo-sized="1"] > .fafo-panel-body,
+    .fafo-layout-panel[data-fafo-sized="1"] > .fafo-scroll-pane {
       overflow: auto;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
     }
     #mainPanel {
-      flex: 1 1 auto !important;
-      min-height: 0 !important;
+      flex: 1 0 auto !important;
+      min-height: 280px !important;
     }
     .prompt-wrap {
-      min-height: 0 !important;
-      overflow: auto;
-      overscroll-behavior: contain;
+      min-height: 220px;
+      overflow: visible;
     }
 
 
@@ -1996,34 +1990,632 @@
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="shared/aitoolbox-layout.css">
 <style id="tat-t61-wheel">
-  /* PET-T61 ADD: wheel on a panel scrolls THAT panel (layout 1.16.20).
-     Native overflow + overscroll-behavior. Do not preventDefault wheel on document. */
   :focus-visible { outline: 2px solid var(--accent, #00f3ff); outline-offset: 2px; }
-  .fafo-layout-panel,
-  .panel.fafo-layout-panel,
-  .campaign-panel.show {
+  /* Layout chrome must not un-hide mode panels or cage them at leftover height */
+  .campaign-panel:not(.show) {
+    display: none !important;
+  }
+  .campaign-panel.show,
+  .campaign-panel.show.fafo-layout-panel {
     display: flex !important;
     flex-direction: column;
-    min-height: 0;
-  }
-  .fafo-layout-panel { overflow: hidden; }
-  .fafo-panel-body,
-  .fafo-layout-panel > .fafo-panel-body,
-  [data-fafo-section][data-fafo-resizable="1"] .fafo-section-body {
-    overflow: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    min-height: 0;
-    flex: 1 1 auto;
   }
   .history-list, .hs-list, .map-wrap, .mini-row, #storyJournal, .territories, .novel-chapter-list {
     overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
   }
   .history-list, .hs-list { overflow-y: auto; }
 </style>
+<style id="tat-t62-skin">
+/* PET-T62 ADD: mixable FX / skin plate. Lives BEHIND glyphs. pointer-events none.
+   I = clamp01(B+E)*gain. E: hit +0.15 / miss +0.25 / chain n*0.08 cap 0.6. */
+.prompt.t62-contrast-floor .current {
+  color: var(--tat-t62-current, #fff) !important;
+  -webkit-text-fill-color: var(--tat-t62-current, #fff);
+}
+.prompt.t62-contrast-floor .todo {
+  color: var(--tat-t62-todo, #d5d8e0) !important;
+}
+#tatPlate::after {
+  content: ""; pointer-events: none; position: absolute; inset: 0;
+  opacity: var(--tat-noise, 0);
+  background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+#promptWrap {
+  isolation: isolate;
+}
+#promptWrap .prompt {
+  position: relative;
+  z-index: 5;
+}
+#promptWrap .prompt .current {
+  position: relative;
+  z-index: 6;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  text-shadow:
+    0 0 2px #000,
+    0 1px 0 #050508,
+    0 0 10px rgba(0,0,0,0.9),
+    0 0 18px rgba(0,0,0,0.55);
+  background: #031018 !important;
+  mix-blend-mode: normal !important;
+  filter: none !important;
+}
+#promptWrap .prompt .todo,
+#promptWrap .prompt .done,
+#promptWrap .prompt .word {
+  text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 0 8px rgba(0,0,0,0.35);
+}
+.tat-plate,
+.tat-plate * {
+  pointer-events: none !important;
+}
+.tat-plate {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  contain: strict;
+}
+.tat-bg {
+  position: absolute;
+  inset: -30%;
+  z-index: 0;
+  opacity: 0.28;
+  transform-origin: center;
+  will-change: transform, filter, opacity;
+}
+.tat-light {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.85;
+}
+.tat-gutter {
+  position: absolute;
+  inset: 6% 5%;
+  z-index: 2;
+  border-radius: 16px;
+  background: rgba(5, 6, 12, 0.42);
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.35);
+}
+.tat-fx-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+}
+.tat-fx-layers {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+.tat-frame,
+.tat-deco {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+}
+.tat-bloom {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  margin: -70px 0 0 -70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,200,80,0.42) 0%, rgba(255,90,0,0.12) 38%, transparent 70%);
+  opacity: 0;
+  transform: translate(var(--tat-caret-x, 50%), var(--tat-caret-y, 50%));
+  filter: blur(2px);
+  mix-blend-mode: screen;
+}
+.tat-well {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  margin: -80px 0 0 -80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,0,0,0.72) 0%, rgba(20,8,32,0.35) 46%, transparent 72%);
+  opacity: 0.0;
+  mix-blend-mode: multiply;
+}
+#promptWrap.tat-mood-hit .tat-bloom { opacity: calc(0.35 + var(--tat-inten, 0.4) * 0.45); }
+#promptWrap.tat-mood-miss .tat-well { opacity: calc(0.28 + var(--tat-inten, 0.4) * 0.4); }
+#promptWrap.tat-has-bloom .tat-bloom { opacity: calc(0.22 + var(--tat-inten, 0.4) * 0.35); }
+#promptWrap.tat-has-void .tat-well { opacity: calc(0.18 + var(--tat-inten, 0.4) * 0.3); }
+
+/* Lighting on the plate */
+.tat-light[data-lit="rim"] {
+  box-shadow: inset 0 0 28px rgba(0,243,255,0.22), inset 0 0 80px rgba(124,92,255,0.12);
+}
+.tat-light[data-lit="stage"] {
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), transparent 42%, rgba(0,0,0,0.22));
+}
+.tat-light[data-lit="underglow"] {
+  background: linear-gradient(0deg, rgba(255,80,0,0.22), transparent 40%);
+}
+.tat-light[data-lit="spotlight"] {
+  background: radial-gradient(ellipse at 50% 0%, rgba(255,255,220,0.18), transparent 55%);
+}
+.tat-light[data-lit="scan"] {
+  background: repeating-linear-gradient(180deg, rgba(0,243,255,0.08) 0 2px, transparent 2px 10px);
+  animation: tatScan 6s linear infinite;
+}
+@keyframes tatScan {
+  from { background-position: 0 0; }
+  to { background-position: 0 80px; }
+}
+
+/* Frames / borders / corners */
+.tat-frame[data-frame="circuit"] {
+  border: 1px solid rgba(0,243,255,0.28);
+  box-shadow: inset 0 0 0 1px rgba(124,92,255,0.14), 0 0 18px rgba(0,243,255,0.08);
+  background:
+    linear-gradient(90deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) top left / 42px 1px no-repeat,
+    linear-gradient(180deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) top left / 1px 42px no-repeat,
+    linear-gradient(90deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) top right / 42px 1px no-repeat,
+    linear-gradient(180deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) top right / 1px 42px no-repeat,
+    linear-gradient(90deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) bottom left / 42px 1px no-repeat,
+    linear-gradient(0deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) bottom left / 1px 42px no-repeat,
+    linear-gradient(90deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) bottom right / 42px 1px no-repeat,
+    linear-gradient(0deg, rgba(0,243,255,0.35) 0 8px, transparent 8px) bottom right / 1px 42px no-repeat;
+}
+.tat-frame[data-frame="rune"] {
+  border: 2px solid rgba(253,230,138,0.35);
+  box-shadow: inset 0 0 24px rgba(180,83,9,0.12);
+}
+.tat-frame[data-frame="chrome"] {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(rgba(5,5,8,0), rgba(5,5,8,0)) padding-box,
+    linear-gradient(135deg, #e8e8ec, #7c5cff, #00f3ff, #888) border-box;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+.tat-frame[data-frame="tape"] {
+  border: 3px dashed rgba(255,159,67,0.45);
+}
+.tat-frame[data-frame="gothic"] {
+  border: 3px double rgba(196,181,253,0.4);
+  box-shadow: inset 0 0 30px rgba(40,0,60,0.35);
+}
+.tat-frame[data-frame="arcade"] {
+  border: 3px solid #00f3ff;
+  box-shadow: 0 0 0 3px #111, 0 0 16px #00f3ff;
+}
+.tat-frame[data-border="hairline"] { outline: 1px solid rgba(232,232,236,0.22); outline-offset: -6px; }
+.tat-frame[data-border="neon-pipe"] {
+  box-shadow: inset 0 0 0 2px rgba(0,243,255,0.45), 0 0 16px rgba(0,243,255,0.18);
+}
+.tat-frame[data-border="dashed-orbit"] {
+  outline: 2px dashed rgba(124,92,255,0.5);
+  outline-offset: -10px;
+  animation: tatOrbit 12s linear infinite;
+}
+@keyframes tatOrbit { to { outline-offset: -14px; } }
+.tat-frame[data-border="hex-studs"] {
+  background-image: radial-gradient(circle at 8px 8px, #00f3ff 1.2px, transparent 1.4px),
+    radial-gradient(circle at calc(100% - 8px) 8px, #00f3ff 1.2px, transparent 1.4px),
+    radial-gradient(circle at 8px calc(100% - 8px), #7c5cff 1.2px, transparent 1.4px),
+    radial-gradient(circle at calc(100% - 8px) calc(100% - 8px), #7c5cff 1.2px, transparent 1.4px);
+}
+
+.tat-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  color: var(--accent);
+  opacity: 0.7;
+}
+.tat-corner.tl { top: 6px; left: 6px; border-right: 0; border-bottom: 0; }
+.tat-corner.tr { top: 6px; right: 6px; border-left: 0; border-bottom: 0; }
+.tat-corner.bl { bottom: 6px; left: 6px; border-right: 0; border-top: 0; }
+.tat-corner.br { bottom: 6px; right: 6px; border-left: 0; border-top: 0; }
+.tat-rail {
+  position: absolute;
+  width: 4px;
+  top: 18%;
+  bottom: 18%;
+  border-radius: 99px;
+  background: linear-gradient(180deg, transparent, var(--accent), transparent);
+  opacity: 0.45;
+  filter: blur(0.4px);
+}
+.tat-rail.l { left: 8px; }
+.tat-rail.r { right: 8px; }
+.tat-deco[data-deco="stars"] {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.55) 1px, transparent 1.2px);
+  background-size: 42px 42px;
+  opacity: 0.35;
+}
+.tat-deco[data-deco="runes"] {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 28px, rgba(253,230,138,0.18) 28px 29px),
+    repeating-linear-gradient(0deg, transparent 0 34px, rgba(253,230,138,0.10) 34px 35px);
+  opacity: 0.45;
+}
+.tat-deco[data-deco="bolts"] {
+  background: repeating-linear-gradient(135deg, transparent 0 16px, rgba(0,243,255,0.12) 16px 18px);
+  opacity: 0.5;
+}
+.tat-deco[data-deco="petals"] {
+  background-image: radial-gradient(circle at 20% 30%, rgba(255,154,213,0.18) 0 18px, transparent 19px),
+    radial-gradient(circle at 80% 70%, rgba(124,92,255,0.16) 0 22px, transparent 23px);
+  opacity: 0.7;
+}
+
+/* Themes on plate */
+#promptWrap[data-tat-theme="ember"] { --tat-a: #ff6b1a; --tat-b: #ffc800; --tat-c: #ff4d6a; }
+#promptWrap[data-tat-theme="ice"] { --tat-a: #7dd3fc; --tat-b: #e0f2fe; --tat-c: #38bdf8; }
+#promptWrap[data-tat-theme="void"] { --tat-a: #7c5cff; --tat-b: #1a1028; --tat-c: #c4b5fd; }
+#promptWrap[data-tat-theme="acid"] { --tat-a: #bef264; --tat-b: #a3e635; --tat-c: #67e8f9; }
+#promptWrap[data-tat-theme="gold"] { --tat-a: #ffc800; --tat-b: #fde68a; --tat-c: #00f3ff; }
+#promptWrap[data-tat-theme="cyan"] { --tat-a: #00f3ff; --tat-b: #7c5cff; --tat-c: #00ff88; }
+
+#promptWrap.tat-has-neon .tat-gutter {
+  box-shadow: inset 0 0 24px color-mix(in srgb, var(--tat-a, #00f3ff) 35%, transparent),
+    0 0 18px color-mix(in srgb, var(--tat-a, #00f3ff) 22%, transparent);
+}
+#promptWrap.tat-has-hologram .tat-fx-layers::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 4px);
+  mix-blend-mode: soft-light;
+  opacity: 0.55;
+  animation: tatHolo 5s linear infinite;
+}
+@keyframes tatHolo { to { background-position: 0 12px; } }
+#promptWrap.tat-has-invert.tat-flash-neg .tat-bg,
+#promptWrap.tat-has-invert.tat-flash-neg .tat-gutter {
+  filter: invert(1) hue-rotate(180deg) saturate(1.4);
+}
+#promptWrap.tat-mood-hit.tat-has-fire .tat-gutter {
+  box-shadow: inset 0 -20px 40px rgba(255,80,0,0.18);
+}
+#promptWrap.tat-mood-miss.tat-has-ice .tat-gutter {
+  box-shadow: inset 0 20px 40px rgba(56,189,248,0.16);
+}
+#promptWrap.tat-mood-miss.tat-has-static .tat-fx-layers::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 3px);
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+}
+#promptWrap.tat-idle-breath .tat-gutter {
+  animation: tatBreath 3.6s ease-in-out infinite;
+}
+@keyframes tatBreath {
+  0%, 100% { opacity: 0.86; filter: saturate(0.92); }
+  50% { opacity: 1; filter: saturate(1.12); }
+}
+
+/* Skin / FX settings pane — own wheel */
+.tat-skin-panel {
+  margin-top: 16px;
+  border: 1px solid rgba(0,243,255,0.18);
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(12,16,28,0.92), rgba(6,8,14,0.96));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(42vh, 440px);
+  overflow: hidden;
+}
+.tat-skin-panel > summary {
+  flex: 0 0 auto;
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid rgba(0,243,255,0.1);
+}
+.tat-skin-panel > summary::-webkit-details-marker { display: none; }
+.tat-skin-panel > summary::after {
+  content: " mixable. letters stay smug.";
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.tat-skin-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px 14px;
+}
+.tat-skin-blurb {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+.tat-skin-blurb strong { color: var(--text); }
+.tat-fx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px 10px;
+  margin: 8px 0 12px;
+}
+.tat-fx-grid label.toggle { margin: 0; }
+.tat-knob-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px 12px;
+  margin: 8px 0 4px;
+}
+.tat-knob-grid .field label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tat-knob-grid input[type="range"] { width: 100%; }
+.tat-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tat-light[data-lit="scan"],
+  #promptWrap.tat-has-hologram .tat-fx-layers::after,
+  #promptWrap.tat-idle-breath .tat-gutter,
+  .tat-frame[data-border="dashed-orbit"] {
+    animation: none !important;
+  }
+  #promptWrap.tat-has-invert.tat-flash-neg .tat-bg,
+  #promptWrap.tat-has-invert.tat-flash-neg .tat-gutter {
+    filter: none;
+  }
+}
+</style>
+<style id="tat-t63-juice">
+/* PET-T63 ADD: t63.perfect / t63.finish / t63.ripple only.
+   Plate gutter, z under .prompt, pointer-events none. Not on letters/.current/caret.
+   Combo-bar untouched. I=clamp01(B+E)*gain unchanged. Ripple feeds E +0.05, hit-tau 400ms. */
+.tat-ver {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #031018;
+  background: #7dd3fc;
+  vertical-align: middle;
+  pointer-events: none;
+}
+#tatT63Layer, .tat-t63-layer, .tat-t63-layer * {
+  pointer-events: none !important;
+}
+#tatT63Layer, .tat-t63-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.tat-t63-ripple {
+  position: absolute;
+  width: calc(28px + var(--t63-n, 0.7) * 22px);
+  height: calc(28px + var(--t63-n, 0.7) * 22px);
+  margin: 0;
+  border: 2px solid var(--t63-tint, #00f3ff);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--t63-tint, #00f3ff);
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+  animation: tatT63Ripple var(--t63-ms, 150ms) ease-out forwards;
+  z-index: 2;
+}
+@keyframes tatT63Ripple {
+  0% { transform: translate(-50%, -50%) scale(0.28); opacity: 0.1; }
+  45% { transform: translate(-50%, -50%) scale(0.92); opacity: 0.88; }
+  100% { transform: translate(-50%, -50%) scale(1.28); opacity: 0; }
+}
+.tat-t63-burst {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 28px var(--t63-tint, #00f3ff),
+    0 0 18px var(--t63-tint, #00f3ff);
+  opacity: 0;
+  animation: tatT63Burst var(--t63-ms, 340ms) ease-out forwards;
+}
+@keyframes tatT63Burst {
+  0% { opacity: 0; filter: brightness(1); }
+  22% { opacity: 0.72; filter: brightness(1.18); }
+  100% { opacity: 0; filter: brightness(1); }
+}
+.tat-t63-mote {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--t63-tint, #00f3ff);
+  box-shadow: 0 0 8px var(--t63-tint, #00f3ff);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  animation: tatT63Mote var(--t63-ms, 340ms) ease-out forwards;
+}
+@keyframes tatT63Mote {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  24% { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(var(--t63-dx, 0px), var(--t63-dy, -18px)) scale(0.2); }
+}
+.tat-t63-fw {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--t63-tint, #ffc800);
+  box-shadow: 0 0 10px var(--t63-tint, #ffc800);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  animation: tatT63Fw var(--t63-ms, 520ms) ease-out forwards;
+}
+@keyframes tatT63Fw {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  100% { opacity: 0; transform: translate(var(--t63-dx, 0px), var(--t63-dy, 0px)) scale(0.15); }
+}
+.tat-t63-controls {
+  margin: 8px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not(.tat-rm-off) .tat-t63-ripple, body:not(.tat-rm-off) .tat-t63-burst, body:not(.tat-rm-off) .tat-t63-mote, body:not(.tat-rm-off) .tat-t63-fw {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .tat-t63-mote, body.tat-rm-on .tat-t63-fw {
+  animation: none !important;
+  opacity: 0 !important;
+}
+</style>
+<style id="tat-t64-sie">
+/* PET-T64 ADD: prefs.v3.reducedMotion + masterProfile + 5 skinSlots.v1.
+   CRE pills+chips in #tatSkinPanel only. Selected 2px --tat-a rim. Contrast >= 4.5.
+   Never cover glyphs/caret/.current/combo. SKIN_PRESETS not mutated. I-math / T61 / T63 kept. */
+#tatSkinPanel { --tat-a: #00f3ff; }
+#tatSkinPanel .tat-master-row,
+#tatSkinPanel .tat-slot-row { margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+#tatSkinPanel .tat-master-pills,
+#tatSkinPanel .tat-t64-pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+#tatSkinPanel .tat-master-pill,
+#tatSkinPanel .tat-t64-pill {
+  appearance: none; box-sizing: border-box;
+  min-height: 32px; height: 34px; max-height: 36px;
+  padding: 0 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  line-height: 32px; cursor: pointer;
+  border: 1px solid transparent; color: #f4f7fb; background: #10141c;
+}
+#tatSkinPanel .tat-master-pill:focus-visible,
+#tatSkinPanel .tat-t64-pill:focus-visible { outline: 2px solid var(--tat-a, #00f3ff); outline-offset: 2px; }
+#tatSkinPanel .tat-master-pill.is-on,
+#tatSkinPanel .tat-master-pill[aria-checked="true"],
+#tatSkinPanel .tat-t64-pill[aria-checked="true"] {
+  border: 2px solid var(--tat-a, #00f3ff); line-height: 30px;
+}
+#tatSkinPanel .tat-master-pill[data-profile="calm"],
+#tatSkinPanel .tat-t64-calm { background: #072833; color: #e0f2fe; border-color: #38bdf8; }
+#tatSkinPanel .tat-master-pill[data-profile="arcade"],
+#tatSkinPanel .tat-t64-arcade { background: #14081f; color: #00f3ff; border-color: #00f3ff; }
+#tatSkinPanel .tat-master-pill[data-profile="chaos"],
+#tatSkinPanel .tat-t64-chaos { background: #1a0a10; color: #ffd4a8; border-color: #ff6b1a; }
+#tatSkinPanel .tat-t64-rm[data-rm="auto"] { background: #121820; color: #e8eef6; border-color: #5b6b7c; }
+#tatSkinPanel .tat-t64-rm[data-rm="on"] { background: #2a1a08; color: #ffe8b0; border-color: #d4a017; }
+#tatSkinPanel .tat-t64-rm[data-rm="off"] { background: #0c2418; color: #c8f7d4; border-color: #2f9e5f; }
+#tatSkinPanel .tat-rm-field { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+#tatSkinPanel .tat-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+#tatSkinPanel .tat-slot,
+#tatSkinPanel .tat-t64-slot {
+  box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; height: 34px; max-height: 36px;
+  padding: 0 8px 0 10px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16); background: #0e1218; color: #f1f5f9;
+  font-size: 12px; font-weight: 650; cursor: pointer;
+}
+#tatSkinPanel .tat-slot.is-full,
+#tatSkinPanel .tat-t64-slot.is-full { border-color: rgba(0,243,255,0.35); }
+#tatSkinPanel .tat-slot-pip {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px;
+  background: var(--tat-a, #00f3ff); box-shadow: 0 0 0 1px rgba(0,0,0,0.45);
+}
+#tatSkinPanel .tat-slot-pip[hidden] { display: none !important; }
+#tatSkinPanel .tat-slot-name { min-width: 44px; max-width: 9.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; outline: none; }
+#tatSkinPanel .tat-slot-name[contenteditable="true"] { overflow: visible; background: #03060a; border-radius: 4px; padding: 0 4px; }
+#tatSkinPanel .tat-slot-save {
+  height: 22px; padding: 0 7px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.22); background: #1a2230; color: #e8eef6;
+  font-size: 10px; font-weight: 700; cursor: pointer;
+}
+</style>
+<style id="tat-t65-sie">
+/* PET-T65 ADD: prefs.v3.ghostReplay + sprintPodium.
+   Tape: aitoolbox.typingTrainer.ghostReplay.v1 best-WPM per timed bucket.
+   Shape {wpm,acc,at,name,marks:[{tMs,idx}]} cap 8000.
+   Ghost caret .tat-ghost-caret z under .current. Ghost Pace mini untouched.
+   Podium 15/30/60 finish only, reads highscores.v2, no auto-save, empty=You're first.
+   I=clamp01(B+E)*gain / T61 wheel / T63 / T64 kept. Contrast >= 4.5. */
+#promptWrap .prompt .tat-ghost-caret {
+  position: relative;
+  z-index: 4;
+  outline: 2px solid #e6c04a;
+  outline-offset: 2px;
+  border-radius: 6px;
+  box-shadow: 0 0 10px rgba(230,192,74,0.25);
+  background: transparent;
+}
+#promptWrap .prompt .current {
+  z-index: 6;
+}
+#promptWrap .prompt .current.tat-ghost-caret {
+  z-index: 6;
+}
+.tat-podium {
+  margin: 10px auto 12px;
+  max-width: 420px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #10141c;
+  border: 1px solid #5b6b7c;
+  color: #f4f7fb;
+  text-align: left;
+}
+.tat-podium-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffe8b0;
+  margin-bottom: 8px;
+}
+.tat-podium-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tat-podium-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #f4f7fb;
+}
+.tat-podium-rank { color: #ffc800; font-variant-numeric: tabular-nums; }
+.tat-podium-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fb; }
+.tat-podium-wpm, .tat-podium-score { color: #e0f2fe; font-variant-numeric: tabular-nums; }
+.tat-podium-empty { color: #ffe8b0; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) {
+  body:not(.tat-rm-off) .tat-ghost-caret { animation: none !important; }
+}
+body.tat-rm-on .tat-ghost-caret { animation: none !important; }
+</style>
 </head>
-<body data-tb-esc="off">
+<body data-tb-esc="off" data-tat-ver="T65">
   <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
   <div id="ambient" aria-hidden="true">
     <div class="amb-wash"></div>
@@ -2052,10 +2644,10 @@
   </div>
   <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
 
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
     <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
       <div class="fafo-panel-body fafo-scroll-pane">
-      <h1>⌨️ TYPING ASSISTANT TRAINER</h1>
+      <h1>⌨️ TYPING ASSISTANT TRAINER <span id="tatVer" class="tat-ver" title="PET-T65 ghostReplay tape / sprint podium">T65</span></h1>
       <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center">
         <a href="Bloodmoon Survivor.html" style="font-size:11px;font-weight:700;color:#c4b5fd;text-decoration:none;border:1px solid rgba(167,139,250,.4);padding:5px 10px;border-radius:999px" title="Break · Vampire survivors-style">🦇 Bloodmoon</a>
@@ -2162,6 +2754,14 @@
             <input type="checkbox" id="optNovelAuto" checked>
             <span><span class="hi">Novel auto-next</span> — advance chapters</span>
           </label>
+          <label class="toggle" title="Replay your best-WPM caret tape on timed runs">
+            <input type="checkbox" id="optGhostReplay" checked>
+            <span><span class="hi">Ghost replay</span> — second caret from your best timed tape</span>
+          </label>
+          <label class="toggle" title="Show a 3-row podium after 15/30/60 timed finishes">
+            <input type="checkbox" id="optSprintPodium" checked>
+            <span><span class="hi">Sprint podium</span> — top 3 after 15/30/60</span>
+          </label>
         </div>
 
         <div class="section-label">Text style — fonts · colors · effects · animations</div>
@@ -2235,6 +2835,340 @@
             </select>
           </div>
         </div>
+
+        
+        <details class="tat-skin-panel" id="tatSkinPanel" open>
+          <summary>Skin / FX — stack the weather</summary>
+          <div class="fafo-panel-body fafo-scroll-pane tat-skin-body" id="tatSkinBody">
+            <div class="tat-master-row" id="tatMasterRow">
+              <div class="section-label">Reduced motion</div>
+              <div class="tat-t64-pills" id="tatRmPills" role="radiogroup" aria-label="Reduced motion">
+                <button type="button" class="tat-t64-pill tat-t64-rm" data-rm="auto" role="radio" aria-checked="true">Auto</button>
+                <button type="button" class="tat-t64-pill tat-t64-rm" data-rm="on" role="radio" aria-checked="false">On</button>
+                <button type="button" class="tat-t64-pill tat-t64-rm" data-rm="off" role="radio" aria-checked="false">Off</button>
+              </div>
+              <div class="section-label">Master profile</div>
+              <div class="tat-master-pills" role="radiogroup" aria-label="Master profile">
+                <button type="button" class="tat-master-pill tat-t64-calm" data-profile="calm" id="tatProfCalm" role="radio" aria-checked="false">Calm</button>
+                <button type="button" class="tat-master-pill tat-t64-arcade" data-profile="arcade" id="tatProfArcade" role="radio" aria-checked="false">Arcade</button>
+                <button type="button" class="tat-master-pill tat-t64-chaos" data-profile="chaos" id="tatProfChaos" role="radio" aria-checked="false">Chaos</button>
+              </div>
+              <div class="field tat-rm-field">
+                <label for="optReducedMotion">Reduced motion</label>
+                <select id="optReducedMotion" aria-label="Reduced motion" tabindex="-1">
+                  <option value="auto" selected>Auto (OS)</option>
+                  <option value="on">On</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+            </div>
+            <div class="tat-slot-row" id="tatSlotRow">
+              <div class="section-label">Skin slots — click name to rename</div>
+              <div class="tat-slots" id="tatSkinSlots" role="list" aria-label="Skin slots"></div>
+            </div>
+            <p class="tat-skin-blurb"><strong>Mixable. Not radios.</strong> Hits heat, bloom, surge. Misses go cold, glitch, shatter. Idle breathes. Glyphs stay readable — FX lives behind the letters. Wheel this pane on its own.</p>
+            <div class="tat-t63-controls" id="tatT63Prefs">
+              <div class="section-label">T63 juice — perfect / finish / ripple · enable + 0–100</div>
+              <label class="toggle" for="t63Perfect">
+                <input type="checkbox" id="t63Perfect" checked>
+                <span><span class="hi">Perfect-word burst</span> — plate gutter, 280–400ms, never on letters</span>
+              </label>
+              <div class="t62-row" style="display:grid;grid-template-columns:118px 1fr 72px;gap:6px 8px;align-items:center;margin:6px 0;font-size:12px">
+                <label for="t63PerfectN">Burst intensity</label>
+                <input type="range" id="t63PerfectN" min="0" max="100" value="70">
+                <span class="t62-num" id="t63PerfectNVal">70</span>
+              </div>
+              <label class="toggle" for="t63Finish">
+                <input type="checkbox" id="t63Finish" checked>
+                <span><span class="hi">Finish fireworks</span> — session corners/rails, optFx</span>
+              </label>
+              <div class="t62-row" style="display:grid;grid-template-columns:118px 1fr 72px;gap:6px 8px;align-items:center;margin:6px 0;font-size:12px">
+                <label for="t63FinishN">Finish intensity</label>
+                <input type="range" id="t63FinishN" min="0" max="100" value="80">
+                <span class="t62-num" id="t63FinishNVal">80</span>
+              </div>
+              <label class="toggle" for="t63Ripple">
+                <input type="checkbox" id="t63Ripple" checked>
+                <span><span class="hi">Key ripple</span> — correct only, plate ring at caret gutter</span>
+              </label>
+              <div class="t62-row" style="display:grid;grid-template-columns:118px 1fr 72px;gap:6px 8px;align-items:center;margin:6px 0;font-size:12px">
+                <label for="t63RippleN">Ripple intensity</label>
+                <input type="range" id="t63RippleN" min="0" max="100" value="70">
+                <span class="t62-num" id="t63RippleNVal">70</span>
+              </div>
+            </div>
+            <div class="tat-preset-row">
+              <label class="toggle" for="skinLive">
+                <input type="checkbox" id="skinLive" checked>
+                <span><span class="hi">Skin FX live</span> — plate weather on</span>
+              </label>
+              <label class="toggle" for="skinIdleBreath">
+                <input type="checkbox" id="skinIdleBreath" checked>
+                <span><span class="hi">Idle breath</span> — ambient when you pause</span>
+              </label>
+              <div class="field">
+                <label for="skinPreset">Weird presets</label>
+                <select id="skinPreset" aria-label="Skin FX presets">
+                  <option value="keep" selected>Custom (keep mixing)</option>
+                  <option value="clean">Clean neon</option>
+                  <option value="inferno">Inferno</option>
+                  <option value="blizzard">Blizzard</option>
+                  <option value="storm">Storm keys</option>
+                  <option value="voidrave">Void rave</option>
+                  <option value="grok">Grok weird</option>
+                  <option value="paper">Paper altar</option>
+                </select>
+              </div>
+              <button type="button" class="btn ghost" id="btnSkinReset">Reset skin</button>
+            </div>
+            <div class="section-label">Mixable weather (stack several)</div>
+            <div class="tat-fx-grid" role="group" aria-label="Mixable FX layers">
+            <label class="toggle" for="skinFx_ice">
+              <input type="checkbox" id="skinFx_ice">
+              <span><span class="hi">Ice</span> — frost motes, not a snow-blind</span>
+            </label>
+            <label class="toggle" for="skinFx_fire">
+              <input type="checkbox" id="skinFx_fire">
+              <span><span class="hi">Fire</span> — ember tongues under the glyphs</span>
+            </label>
+            <label class="toggle" for="skinFx_lightning">
+              <input type="checkbox" id="skinFx_lightning">
+              <span><span class="hi">Lightning</span> — forks around the caret, never on it</span>
+            </label>
+            <label class="toggle" for="skinFx_neon">
+              <input type="checkbox" id="skinFx_neon" checked>
+              <span><span class="hi">Neon glow</span> — rim light that knows its place</span>
+            </label>
+            <label class="toggle" for="skinFx_invert">
+              <input type="checkbox" id="skinFx_invert">
+              <span><span class="hi">Negative flash</span> — the universe blinks; letters don't</span>
+            </label>
+            <label class="toggle" for="skinFx_bloom">
+              <input type="checkbox" id="skinFx_bloom" checked>
+              <span><span class="hi">Hot-spot blooms</span> — caret becomes a tiny sun</span>
+            </label>
+            <label class="toggle" for="skinFx_void">
+              <input type="checkbox" id="skinFx_void">
+              <span><span class="hi">Void wells</span> — photons go for a swim</span>
+            </label>
+            <label class="toggle" for="skinFx_aurora">
+              <input type="checkbox" id="skinFx_aurora">
+              <span><span class="hi">Aurora</span> — cheap northern lights, expensive vibes</span>
+            </label>
+            <label class="toggle" for="skinFx_plasma">
+              <input type="checkbox" id="skinFx_plasma">
+              <span><span class="hi">Plasma orbs</span> — they orbit, you type</span>
+            </label>
+            <label class="toggle" for="skinFx_prism">
+              <input type="checkbox" id="skinFx_prism">
+              <span><span class="hi">Prism shards</span> — spectral debris</span>
+            </label>
+            <label class="toggle" for="skinFx_static">
+              <input type="checkbox" id="skinFx_static">
+              <span><span class="hi">Static</span> — miss-chain snow</span>
+            </label>
+            <label class="toggle" for="skinFx_comet">
+              <input type="checkbox" id="skinFx_comet">
+              <span><span class="hi">Comets</span> — they have somewhere else to be</span>
+            </label>
+            <label class="toggle" for="skinFx_mycelium">
+              <input type="checkbox" id="skinFx_mycelium">
+              <span><span class="hi">Mycelium</span> — the plate grows a nervous system</span>
+            </label>
+            <label class="toggle" for="skinFx_hologram">
+              <input type="checkbox" id="skinFx_hologram">
+              <span><span class="hi">Hologram</span> — scanlines, no eye strain</span>
+            </label>
+            <label class="toggle" for="skinFx_magma">
+              <input type="checkbox" id="skinFx_magma">
+              <span><span class="hi">Magma</span> — slow and rude</span>
+            </label>
+            <label class="toggle" for="skinFx_pixelstorm">
+              <input type="checkbox" id="skinFx_pixelstorm">
+              <span><span class="hi">Pixel storm</span> — chunky weather</span>
+            </label>
+            <label class="toggle" for="skinFx_gravitywell">
+              <input type="checkbox" id="skinFx_gravitywell">
+              <span><span class="hi">Gravity well</span> — everything leans in</span>
+            </label>
+            <label class="toggle" for="skinFx_chromeoil">
+              <input type="checkbox" id="skinFx_chromeoil">
+              <span><span class="hi">Chrome oil</span> — iridescent bad decisions</span>
+            </label>
+            </div>
+            <div class="section-label">Family mix — enable + B (0-100) + hue · I=clamp01(B+E)×gain</div>
+            <div class="t62-row" style="display:grid;grid-template-columns:118px 1fr 72px;gap:6px 8px;align-items:center;margin:6px 0;font-size:12px">
+              <label for="skinGain">Global gain</label>
+              <input type="range" id="skinGain" min="0" max="200" value="100">
+              <span class="t62-num" id="skinGainVal">1.00</span>
+            </div>
+            <div id="tatFamMix"></div>
+            <div class="section-label">Frame bits / accents / decorations</div>
+            <div class="opt-grid">
+          <div class="field">
+            <label for="skinFrame">Frame</label>
+            <select id="skinFrame">
+              <option value="none">None</option>
+              <option value="circuit">Circuit corners</option>
+              <option value="rune">Rune gilt</option>
+              <option value="chrome">Chrome lip</option>
+              <option value="tape">Hazard tape</option>
+              <option value="gothic">Gothic double</option>
+              <option value="arcade">Arcade cabinet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="skinBorder">Border</label>
+            <select id="skinBorder">
+              <option value="none">None</option>
+              <option value="hairline">Hairline</option>
+              <option value="neon-pipe">Neon pipe</option>
+              <option value="dashed-orbit">Dashed orbit</option>
+              <option value="hex-studs">Hex studs</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="skinDeco">Decoration</label>
+            <select id="skinDeco">
+              <option value="none">None</option>
+              <option value="stars">Star dust</option>
+              <option value="runes">Rune lattice</option>
+              <option value="bolts">Bolt rain</option>
+              <option value="petals">Petal ghosts</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="skinTheme">Accent theme</label>
+            <select id="skinTheme">
+              <option value="cyan">Cyan</option>
+              <option value="ember">Ember</option>
+              <option value="ice">Ice</option>
+              <option value="void">Void</option>
+              <option value="acid">Acid</option>
+              <option value="gold">Gold</option>
+            </select>
+          </div>
+              <label class="toggle" for="skinCorners">
+                <input type="checkbox" id="skinCorners" checked>
+                <span><span class="hi">Corner ticks</span> — little brackets</span>
+              </label>
+              <label class="toggle" for="skinRails">
+                <input type="checkbox" id="skinRails">
+                <span><span class="hi">Accent rails</span> — side glow bars</span>
+              </label>
+            </div>
+            <div class="section-label">Tiled background — Photoshop-adjacent knobs</div>
+            <div class="opt-grid">
+          <div class="field">
+            <label for="skinBgPattern">Tile pattern</label>
+            <select id="skinBgPattern">
+              <option value="none">None</option>
+              <option value="grid">Grid</option>
+              <option value="hex">Hex motes</option>
+              <option value="dots">Dots</option>
+              <option value="circuit">Circuit</option>
+              <option value="noise">Noise weave</option>
+              <option value="chevron">Chevron</option>
+              <option value="carbon">Carbon</option>
+              <option value="constellation">Constellation</option>
+              <option value="brick">Brick</option>
+              <option value="scan">Scanlines</option>
+              <option value="wave">Wavelets</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="skinBgTile">Tile mode</label>
+            <select id="skinBgTile">
+              <option value="cover">Cover</option>
+              <option value="repeat">Repeat</option>
+              <option value="repeat-x">Repeat-X</option>
+              <option value="repeat-y">Repeat-Y</option>
+              <option value="no-repeat">No repeat</option>
+              <option value="space">Space</option>
+              <option value="round">Round</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="skinBgBlend">Blend</label>
+            <select id="skinBgBlend">
+              <option value="normal">Normal</option>
+              <option value="multiply">Multiply</option>
+              <option value="screen">Screen</option>
+              <option value="overlay">Overlay</option>
+              <option value="soft-light">Soft light</option>
+              <option value="color-dodge">Color dodge</option>
+              <option value="difference">Difference</option>
+              <option value="lighten">Lighten</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="skinLighting">Plate lighting</label>
+            <select id="skinLighting">
+              <option value="none">None</option>
+              <option value="rim">Rim</option>
+              <option value="stage">Stage wash</option>
+              <option value="underglow">Underglow</option>
+              <option value="spotlight">Spotlight</option>
+              <option value="scan">Scan sweep</option>
+            </select>
+          </div>
+            </div>
+            <div class="tat-knob-grid">
+          <div class="field">
+            <label for="skinBgScale">Scale <span id="skinBgScaleVal"></span></label>
+            <input type="range" id="skinBgScale" min="10" max="400" value="80" step="1" aria-describedby="skinBgScaleVal">
+          </div>
+          <div class="field">
+            <label for="skinBgRotate">Rotate <span id="skinBgRotateVal"></span></label>
+            <input type="range" id="skinBgRotate" min="0" max="360" value="0" step="1" aria-describedby="skinBgRotateVal">
+          </div>
+          <div class="field">
+            <label for="skinBgOffX">Offset X <span id="skinBgOffXVal"></span></label>
+            <input type="range" id="skinBgOffX" min="-200" max="200" value="0" step="1" aria-describedby="skinBgOffXVal">
+          </div>
+          <div class="field">
+            <label for="skinBgOffY">Offset Y <span id="skinBgOffYVal"></span></label>
+            <input type="range" id="skinBgOffY" min="-200" max="200" value="0" step="1" aria-describedby="skinBgOffYVal">
+          </div>
+          <div class="field">
+            <label for="skinBgHue">Hue <span id="skinBgHueVal"></span></label>
+            <input type="range" id="skinBgHue" min="0" max="360" value="180" step="1" aria-describedby="skinBgHueVal">
+          </div>
+          <div class="field">
+            <label for="skinBgSat">Saturation <span id="skinBgSatVal"></span></label>
+            <input type="range" id="skinBgSat" min="0" max="200" value="70" step="1" aria-describedby="skinBgSatVal">
+          </div>
+          <div class="field">
+            <label for="skinBgLevels">Levels <span id="skinBgLevelsVal"></span></label>
+            <input type="range" id="skinBgLevels" min="20" max="180" value="90" step="1" aria-describedby="skinBgLevelsVal">
+          </div>
+          <div class="field">
+            <label for="skinBgBlur">Blur <span id="skinBgBlurVal"></span></label>
+            <input type="range" id="skinBgBlur" min="0" max="12" value="0" step="1" aria-describedby="skinBgBlurVal">
+          </div>
+          <div class="field">
+            <label for="skinBgOverlay">Overlay / opacity <span id="skinBgOverlayVal"></span></label>
+            <input type="range" id="skinBgOverlay" min="0" max="100" value="28" step="1" aria-describedby="skinBgOverlayVal">
+          </div>
+          <div class="field">
+            <label for="skinBgContrast">Contrast <span id="skinBgContrastVal"></span></label>
+            <input type="range" id="skinBgContrast" min="50" max="200" value="100" step="1">
+          </div>
+          <div class="field">
+            <label for="skinBgInvert">Invert <span id="skinBgInvertVal"></span></label>
+            <input type="range" id="skinBgInvert" min="0" max="100" value="0" step="1">
+          </div>
+          <div class="field">
+            <label for="skinBgNoise">Noise <span id="skinBgNoiseVal"></span></label>
+            <input type="range" id="skinBgNoise" min="0" max="100" value="12" step="1">
+          </div>
+          <div class="field">
+            <label for="skinBgParallax">Parallax <span id="skinBgParallaxVal"></span></label>
+            <input type="range" id="skinBgParallax" min="0" max="40" value="12" step="1">
+          </div>
+            </div>
+          </div>
+        </details>
 
         <div class="section-label">Your library — PDF / documents (skill-based slices)</div>
       <div class="lib-row">
@@ -2393,6 +3327,10 @@
           <div><div class="big" id="resultAcc">100%</div><div class="sub">Accuracy</div></div>
           <div><div class="big" id="resultMult">×1</div><div class="sub">Best combo</div></div>
         </div>
+        <div class="tat-podium" id="tatPodium" hidden>
+          <div class="tat-podium-title">Sprint podium</div>
+          <ol class="tat-podium-list" id="tatPodiumList"></ol>
+        </div>
         <div class="result-name-row" id="resultNameRow">
           <label for="resultName">Your name for the high-score board</label>
           <input type="text" id="resultName" placeholder="Ryan Key" maxlength="48" autocomplete="name" data-tip-title="High-score name" data-tip="Confirm or edit your name after a run, then Save High Score.">
@@ -2406,6 +3344,19 @@
       </div>
 
       <div class="prompt-wrap" id="promptWrap">
+        <div id="tatPlate" class="tat-plate" aria-hidden="true">
+          <div id="tatBg" class="tat-bg"></div>
+          <div id="tatLight" class="tat-light" data-lit="rim"></div>
+          <div id="tatGutter" class="tat-gutter"><div id="tatT63Layer" class="tat-t63-layer" aria-hidden="true"></div></div>
+          <canvas id="tatFxCanvas" class="tat-fx-canvas"></canvas>
+          <div id="tatFxLayers" class="tat-fx-layers">
+            <div id="tatBloom" class="tat-bloom"></div>
+            <div id="tatWell" class="tat-well"></div>
+          </div>
+          <div id="tatFrame" class="tat-frame" data-frame="circuit" data-border="neon-pipe"></div>
+          <div id="tatDeco" class="tat-deco" data-deco="none"></div>
+        </div>
+
         <div class="prompt" id="prompt" aria-live="polite"></div>
         <input class="hidden-input" id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Typing input">
       </div>
@@ -2476,7 +3427,9 @@
     campaign: 'aitoolbox.typingTrainer.campaign.v3',
     name: 'aitoolbox.typingTrainer.playerName',
     prefs: 'aitoolbox.typingTrainer.prefs.v3',
+    skinSlots: 'aitoolbox.typingTrainer.skinSlots.v1',
     libraryMeta: 'aitoolbox.typingTrainer.libraryMeta.v1',
+    ghostReplay: 'aitoolbox.typingTrainer.ghostReplay.v1',
   };
   const DEFAULT_PLAYER_NAME = (window.FAFOOpsStats && window.FAFOOpsStats.DEFAULT_TYPING_ACTOR) || 'Ryan Key';
 
@@ -3284,8 +4237,11 @@
   let fireHeatLevel = 0; // 0–3 from streak tiers
 
   function resizeCanvas() {
-    fxCanvas.width = window.innerWidth;
-    fxCanvas.height = window.innerHeight;
+    if (fxCanvas) {
+      fxCanvas.width = window.innerWidth;
+      fxCanvas.height = window.innerHeight;
+    }
+    tatSkinResize();
   }
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
@@ -3804,6 +4760,7 @@
     if (particles.length > 780) particles.splice(0, particles.length - 780);
     fxCtx.globalAlpha = 1;
     fxCtx.shadowBlur = 0;
+    tatSkinTick();
     if (!fxPaused) rafId = requestAnimationFrame(tickFx);
     else rafId = null;
   }
@@ -4267,16 +5224,16 @@
     const cls = charClass(i);
     if (raw === '\n') {
       // Visual break + real line wrap point
-      return `<span class="${cls}">↵</span><span class="nl" aria-hidden="true"></span>`;
+      return `<span class="${cls}" data-i="${i}">↵</span><span class="nl" aria-hidden="true"></span>`;
     }
     if (raw === ' ') {
       // Real space so the browser wraps between words (not mid-word)
       if (i === index) {
-        return `<span class="${cls} space-caret"> </span>`;
+        return `<span class="${cls} space-caret" data-i="${i}"> </span>`;
       }
-      return `<span class="${cls} ws"> </span>`;
+      return `<span class="${cls} ws" data-i="${i}"> </span>`;
     }
-    return `<span class="${cls}">${escapeHtml(raw)}</span>`;
+    return `<span class="${cls}" data-i="${i}">${escapeHtml(raw)}</span>`;
   }
 
   /**
@@ -4307,6 +5264,7 @@
       i = j;
     }
     promptEl.innerHTML = html;
+    try { tatT65OnRender(); } catch (_) {}
   }
 
   // ——— Stats ———
@@ -4398,6 +5356,7 @@
       if (progressFill) progressFill.style.width = pct + '%';
     }
     if (mode === 'novel') updateNovelHud();
+    try { tatT65OnStats(); } catch (_) {}
   }
 
   function stopTimer() {
@@ -4637,6 +5596,8 @@
     pendingHs = null;
     lastResultMeta = null;
     setFireMode(0);
+    tatSkinNote('reset', 0);
+    try { t63OnReset(); } catch (_) {}
     resultBanner && resultBanner.classList.remove('show-name', 'highscore');
     boardsRun = mode === 'boards';
     if (boardsRun) {
@@ -4717,6 +5678,7 @@
     }
     typer.value = '';
     typer.focus();
+    try { tatT65OnNewTest(); } catch (_) {}
   }
 
   function beginRun() {
@@ -4733,6 +5695,7 @@
     focusHint.className = 'focus-hint live';
     setCompanion('focus');
     ensureAudio();
+    try { tatT65OnBegin(); } catch (_) {}
   }
 
   function advanceWordRush() {
@@ -4759,6 +5722,7 @@
   function finishTest(reason) {
     if (finished) return;
     finished = true;
+    try { t63Finish(); } catch (_) {}
     running = false;
     setRunActive(false);
     stopTimer();
@@ -4957,6 +5921,7 @@
     renderHistory();
     // Ops ledger: per-player (uses field name now; HS Save re-syncs name for next time)
     recordTypingOps(reason, wpm, acc, score);
+    try { tatT65OnFinish(wpm, acc); } catch (_) {}
     // leave miniRun flag until next start so Try Again works
   }
 
@@ -5021,6 +5986,7 @@
         if (correctKeystrokes > 0) correctKeystrokes--;
         if (totalKeystrokes > 0) totalKeystrokes--;
         if (index < wrongFlags.length) wrongFlags[index] = false;
+        try { tatT65OnIndex(); } catch (_) {}
         renderPrompt();
         highlightNext();
         updateStats();
@@ -5129,12 +6095,15 @@
         reactAtCaret(heatFromStreak(streak) >= 2 ? 'fire' : 'good');
       }
       setFireMode(heatFromStreak(streak));
+      tatSkinNote('hit', streak);
+      try { t63OnCorrect(expected, index); } catch (_) {}
 
       if (skipNextIndexInc) {
         skipNextIndexInc = false;
       } else {
         index++;
       }
+      try { tatT65OnIndex(); } catch (_) {}
       if (gain && score % 100 < gain) popStat('statScore');
 
       renderPrompt();
@@ -5200,6 +6169,8 @@
       sfxMiss();
       setCompanion('miss');
       reactAtCaret('miss');
+      tatSkinNote('miss', 0);
+      try { t63OnMiss(); } catch (_) {}
       // ash puff on miss
       const curMiss = promptEl.querySelector('.current');
       if (curMiss && $('optFx')?.checked) {
@@ -5902,6 +6873,160 @@
     }
   }
 
+  // ===== PET-T65: ghostReplay tape + sprint podium =====
+  var TAT65_MARK_CAP = 8000;
+  var TAT65_SPRINT = { 15: 1, 30: 1, 60: 1 };
+  let ghostMarks = [];
+  let ghostTapeMarks = null;
+  let ghostLiveIdx = -1;
+
+  function tatT65GhostOn() {
+    return !$('optGhostReplay') || !!$('optGhostReplay').checked;
+  }
+  function tatT65PodiumOn() {
+    return !$('optSprintPodium') || !!$('optSprintPodium').checked;
+  }
+  function tatT65TimedBucket() {
+    if (mode !== 'timed' || miniRun || campaignRun || boardsRun) return '';
+    const k = optionKey();
+    return (k && k.indexOf('timed:') === 0) ? k : '';
+  }
+  function tatT65SprintOk() {
+    return !!tatT65TimedBucket() && !!TAT65_SPRINT[durationSec];
+  }
+  function tatT65HidePodium() {
+    const box = $('tatPodium');
+    if (box) box.hidden = true;
+  }
+  function tatT65LoadTape() {
+    ghostTapeMarks = null;
+    ghostLiveIdx = -1;
+    if (!tatT65GhostOn()) return;
+    const bucket = tatT65TimedBucket();
+    if (!bucket) return;
+    const all = loadJson(KEYS.ghostReplay, {});
+    const rec = all && typeof all === 'object' && !Array.isArray(all) ? all[bucket] : null;
+    if (!rec || typeof rec !== 'object' || !Array.isArray(rec.marks)) return;
+    const marks = [];
+    const n = Math.min(rec.marks.length, TAT65_MARK_CAP);
+    for (let i = 0; i < n; i++) {
+      const m = rec.marks[i];
+      if (!m || typeof m !== 'object') continue;
+      const tMs = Number(m.tMs);
+      const idx = Number(m.idx);
+      if (!Number.isFinite(tMs) || !Number.isFinite(idx)) continue;
+      marks.push({ tMs: Math.max(0, tMs), idx: Math.max(0, idx | 0) });
+    }
+    ghostTapeMarks = marks.length ? marks : null;
+  }
+  function tatT65Lookup(marks, tMs) {
+    if (!marks || !marks.length) return -1;
+    let lo = 0, hi = marks.length - 1, ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (marks[mid].tMs <= tMs) { ans = mid; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return marks[ans].idx | 0;
+  }
+  function tatT65Paint() {
+    if (!promptEl) return;
+    const prev = promptEl.querySelectorAll('.tat-ghost-caret');
+    for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tat-ghost-caret');
+    if (!tatT65GhostOn() || ghostLiveIdx < 0) return;
+    const el = promptEl.querySelector('[data-i="' + ghostLiveIdx + '"]');
+    if (el) el.classList.add('tat-ghost-caret');
+  }
+  function tatT65Tick() {
+    if (!tatT65GhostOn() || !running || !ghostTapeMarks) {
+      if (ghostLiveIdx !== -1) { ghostLiveIdx = -1; tatT65Paint(); }
+      return;
+    }
+    const next = tatT65Lookup(ghostTapeMarks, elapsedMs());
+    if (next !== ghostLiveIdx) {
+      ghostLiveIdx = next;
+      tatT65Paint();
+    }
+  }
+  function tatT65Mark() {
+    if (!running || finished) return;
+    if (!tatT65TimedBucket()) return;
+    if (ghostMarks.length >= TAT65_MARK_CAP) return;
+    const t = elapsedMs();
+    const last = ghostMarks.length ? ghostMarks[ghostMarks.length - 1] : null;
+    if (last && last.idx === index && last.tMs === t) return;
+    ghostMarks.push({ tMs: t, idx: index });
+  }
+  function tatT65Commit(wpm, acc) {
+    if (!tatT65GhostOn()) return;
+    const bucket = tatT65TimedBucket();
+    if (!bucket) return;
+    if (!ghostMarks.length) return;
+    const nw = Number(wpm) || 0;
+    const allRaw = loadJson(KEYS.ghostReplay, {});
+    const all = allRaw && typeof allRaw === 'object' && !Array.isArray(allRaw) ? allRaw : {};
+    const prev = all[bucket];
+    if (prev && (Number(prev.wpm) || 0) >= nw) return;
+    all[bucket] = {
+      wpm: nw,
+      acc: Number(acc) || 0,
+      at: Date.now(),
+      name: getPlayerName() || DEFAULT_PLAYER_NAME,
+      marks: ghostMarks.slice(0, TAT65_MARK_CAP),
+    };
+    saveJson(KEYS.ghostReplay, all);
+  }
+  function tatT65ShowPodium() {
+    const box = $('tatPodium');
+    const list = $('tatPodiumList');
+    if (!box || !list) return;
+    if (!tatT65PodiumOn() || !tatT65SprintOk()) {
+      box.hidden = true;
+      return;
+    }
+    const bucket = tatT65TimedBucket();
+    const rows = ((loadHighScores()[bucket]) || []).slice(0, 3);
+    list.innerHTML = '';
+    if (!rows.length) {
+      const li = document.createElement('li');
+      li.className = 'tat-podium-empty';
+      li.textContent = "You're first.";
+      list.appendChild(li);
+    } else {
+      for (let i = 0; i < rows.length; i++) {
+        const h = rows[i] || {};
+        const li = document.createElement('li');
+        li.innerHTML =
+          '<span class="tat-podium-rank">' + (i + 1) + '</span>' +
+          '<span class="tat-podium-name">' + escapeHtml(h.name || '\u2014') + '</span>' +
+          '<span class="tat-podium-wpm">' + (Number(h.wpm) || 0) + ' wpm</span>' +
+          '<span class="tat-podium-score">' + (Number(h.score) || 0) + '</span>';
+        list.appendChild(li);
+      }
+    }
+    box.hidden = false;
+  }
+  function tatT65OnNewTest() {
+    ghostMarks = [];
+    ghostTapeMarks = null;
+    ghostLiveIdx = -1;
+    tatT65HidePodium();
+    tatT65LoadTape();
+    tatT65Paint();
+  }
+  function tatT65OnBegin() {
+    ghostMarks = [{ tMs: 0, idx: index }];
+    tatT65LoadTape();
+    tatT65Tick();
+  }
+  function tatT65OnRender() { tatT65Paint(); }
+  function tatT65OnStats() { tatT65Tick(); }
+  function tatT65OnIndex() { tatT65Mark(); }
+  function tatT65OnFinish(wpm, acc) {
+    tatT65Commit(wpm, acc);
+    tatT65ShowPodium();
+  }
+
   // ——— Prefs ———
   function applyAmbientPref() {
     const on = $('optAmbient') ? $('optAmbient').checked : true;
@@ -5909,7 +7034,7 @@
   }
   function loadPrefs() {
     const p = loadJson(KEYS.prefs, {});
-    const prefs = p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+    const prefs = pickAllowed(p && typeof p === 'object' && !Array.isArray(p) ? p : {}, PREF_ALLOW);
     if (prefs.noCaps && $('optNoCaps')) $('optNoCaps').checked = true;
     if (prefs.noPunct && $('optNoPunct')) $('optNoPunct').checked = true;
     if (prefs.sound === false && $('optSound')) $('optSound').checked = false;
@@ -5928,6 +7053,13 @@
     if (prefs.novelPace && $('novelPace')) $('novelPace').value = prefs.novelPace;
     applyAmbientPref();
     applyPromptStyle();
+    allowedSelect('optReducedMotion', prefs.reducedMotion, ['auto','on','off'], 'auto');
+    if (prefs.ghostReplay === false && $('optGhostReplay')) $('optGhostReplay').checked = false;
+    if (prefs.sprintPodium === false && $('optSprintPodium')) $('optSprintPodium').checked = false;
+    applySkinPrefs(prefs.skin);
+    TAT64_MASTER = skinPick(prefs.masterProfile, ['custom','calm','arcade','chaos'], 'custom');
+    try { tatPaintMaster(); } catch (_) {}
+    try { tatSyncReduced(); } catch (_) {}
     populateNovelBookSelect();
     renderNovelChapterList();
     updateNovelHud();
@@ -5937,11 +7069,20 @@
     if ($('playerName')) $('playerName').value = name;
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
+  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium'];
+  function pickAllowed(obj, allow) {
+    const out = {};
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
+    for (let i = 0; i < allow.length; i++) {
+      const k = allow[i];
+      if (Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
+    }
+    return out;
+  }
   function savePrefs() {
-    const prev = loadJson(KEYS.prefs, {});
-    const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? prev : {};
+    const prev = pickAllowed(loadJson(KEYS.prefs, {}), PREF_ALLOW);
     saveJson(KEYS.prefs, {
-      ...base,
+      ...prev,
       noCaps: !!$('optNoCaps')?.checked,
       noPunct: !!$('optNoPunct')?.checked,
       sound: $('optSound') ? !!$('optSound').checked : true,
@@ -5954,6 +7095,11 @@
       textFx: $('optTextFx')?.value || 'none',
       textAnim: $('optTextAnim')?.value || 'none',
       fxLevel: $('optFxLevel')?.value || 'med',
+      skin: collectSkinPrefs(),
+      reducedMotion: skinPick($('optReducedMotion') && $('optReducedMotion').value, ['auto','on','off'], 'auto'),
+      masterProfile: (TAT64_MASTER === 'calm' || TAT64_MASTER === 'arcade' || TAT64_MASTER === 'chaos') ? TAT64_MASTER : 'custom',
+      ghostReplay: $('optGhostReplay') ? !!$('optGhostReplay').checked : true,
+      sprintPodium: $('optSprintPodium') ? !!$('optSprintPodium').checked : true,
       novelBookId,
       novelChapterIndex,
       novelDone: novelDoneChapters,
@@ -5962,6 +7108,7 @@
     try { localStorage.setItem(KEYS.name, getPlayerName()); } catch (_) {}
     applyAmbientPref();
     applyPromptStyle();
+    applySkinLook();
   }
 
   // ——— Events ———
@@ -6080,11 +7227,12 @@
       if (!running && !finished) newTest(false);
     });
   });
-  ['optSound', 'optFx', 'optAmbient', 'optBurn'].forEach((id) => {
+  ['optSound', 'optFx', 'optAmbient', 'optBurn', 'optGhostReplay', 'optSprintPodium'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
   });
   ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', () => {
+      if (id === 'optFxLevel') tatMarkCustom();
       savePrefs();
       applyPromptStyle();
     });
@@ -6259,6 +7407,13 @@
     stopTimer();
     fxPaused = true;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    try {
+      if (typeof TAT62 !== 'undefined' && TAT62) {
+        TAT62.particles.length = 0;
+        TAT62.bolts.length = 0;
+        if (TAT62.ro) { TAT62.ro.disconnect(); TAT62.ro = null; }
+      }
+    } catch (_) {}
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -6285,10 +7440,1126 @@
     }
   }, true);
 
+  // ===== PET-T62 Skin / FX (mixable, behind glyphs) =====
+  const SKIN_ALLOW = {
+    fx: ['ice','fire','lightning','neon','invert','bloom','void','aurora','plasma','prism','static','comet','mycelium','hologram','magma','pixelstorm','gravitywell','chromeoil'],
+    frame: ['none','circuit','rune','chrome','tape','gothic','arcade'],
+    border: ['none','hairline','neon-pipe','dashed-orbit','hex-studs'],
+    deco: ['none','stars','runes','bolts','petals'],
+    theme: ['cyan','ember','ice','void','acid','gold'],
+    bgPattern: ['none','grid','hex','dots','circuit','noise','chevron','carbon','constellation','brick','scan','wave'],
+    bgBlend: ['normal','multiply','screen','overlay','soft-light','color-dodge','difference','lighten'],
+    bgTile: ['cover','repeat','repeat-x','repeat-y','no-repeat','space','round'],
+    lighting: ['none','rim','stage','underglow','spotlight','scan'],
+    preset: ['keep','clean','inferno','blizzard','storm','voidrave','grok','paper'],
+  };
+  const SKIN_DEFAULT = {
+    live: true,
+    fx: ['neon','bloom'],
+    frame: 'circuit',
+    corners: true,
+    rails: false,
+    border: 'neon-pipe',
+    deco: 'none',
+    theme: 'cyan',
+    bgPattern: 'grid',
+    bgScale: 80,
+    bgRotate: 0,
+    bgOffX: 0,
+    bgOffY: 0,
+    bgHue: 180,
+    bgSat: 70,
+    bgLevels: 90,
+    bgBlend: 'overlay',
+    bgBlur: 0,
+    bgTile: 'repeat',
+    bgOverlay: 28,
+    bgContrast: 100,
+    bgInvert: 0,
+    bgNoise: 12,
+    bgParallax: 12,
+    gain: 1,
+    famB: {},
+    famHue: {},
+    lighting: 'rim',
+    idleBreath: true,
+    't63.perfect': { enable: true, intensity: 70 },
+    't63.finish': { enable: true, intensity: 80 },
+    't63.ripple': { enable: true, intensity: 70 },
+  };
+  const SKIN_COLD = { ice:1, void:1, static:1, invert:1, prism:1, aurora:1 };
+  const SKIN_HOT = { fire:1, bloom:1, neon:1, magma:1, comet:1, plasma:1, lightning:1 };
+  const SKIN_THEME = {
+    cyan: { a:'#00f3ff', b:'#7c5cff', c:'#00ff88' },
+    ember: { a:'#ff6b1a', b:'#ffc800', c:'#ff4d6a' },
+    ice: { a:'#7dd3fc', b:'#e0f2fe', c:'#38bdf8' },
+    void: { a:'#7c5cff', b:'#1a1028', c:'#c4b5fd' },
+    acid: { a:'#bef264', b:'#a3e635', c:'#67e8f9' },
+    gold: { a:'#ffc800', b:'#fde68a', c:'#00f3ff' },
+  };
+  const SKIN_PRESETS = {
+    clean: { fx:['neon'], frame:'none', border:'hairline', deco:'none', theme:'cyan', bgPattern:'none', lighting:'rim', idleBreath:true },
+    inferno: { fx:['fire','bloom','magma','comet'], frame:'arcade', border:'neon-pipe', deco:'none', theme:'ember', bgPattern:'wave', bgHue:20, bgSat:130, lighting:'underglow', idleBreath:true },
+    blizzard: { fx:['ice','void','prism','aurora'], frame:'chrome', border:'hairline', deco:'stars', theme:'ice', bgPattern:'hex', bgHue:200, bgSat:80, lighting:'stage', idleBreath:true },
+    storm: { fx:['lightning','static','plasma','comet'], frame:'circuit', border:'dashed-orbit', deco:'bolts', theme:'void', bgPattern:'scan', lighting:'scan', idleBreath:false },
+    voidrave: { fx:['void','invert','neon','hologram','gravitywell'], frame:'gothic', border:'hex-studs', deco:'runes', theme:'void', bgPattern:'constellation', lighting:'spotlight', idleBreath:true },
+    grok: { fx:['mycelium','chromeoil','aurora','pixelstorm','prism'], frame:'tape', border:'dashed-orbit', deco:'petals', theme:'acid', bgPattern:'circuit', bgHue:90, bgSat:140, lighting:'rim', idleBreath:true },
+    paper: { fx:[], frame:'rune', border:'hairline', deco:'runes', theme:'gold', bgPattern:'brick', bgSat:40, bgOverlay:16, lighting:'stage', idleBreath:true },
+  };
+  var TAT62 = {
+    hitChain: 0, missChain: 0, lastKind: 'idle', lastAt: 0, lastAmb: 0,
+    intensity: 0.32, particles: [], bolts: [], wells: [],
+    caret: { x: 0.5, y: 0.5 }, canvas: null, ctx: null,
+    reduced: false, invertT: 0, ro: null,
+    Ehit: 0, Emiss: 0, pulse: 0, lastTick: 0, idleAcc: 0, mx: 0.5, my: 0.5,
+  };
+  function skinClamp(n, lo, hi, fallback) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return fallback;
+    return Math.min(hi, Math.max(lo, v));
+  }
+  function skinPick(val, list, fallback) {
+    return list.includes(String(val || '')) ? String(val) : fallback;
+  }
+  function skinTheme() {
+    return SKIN_THEME[skinPick($('skinTheme')?.value, SKIN_ALLOW.theme, 'cyan')] || SKIN_THEME.cyan;
+  }
+  function enabledFx() {
+    if ($('skinLive') && !$('skinLive').checked) return [];
+    const out = [];
+    for (const id of SKIN_ALLOW.fx) {
+      const el = $('skinFx_' + id);
+      if (el && el.checked) out.push(id);
+    }
+    return out;
+  }
+  function particleBudget() {
+    const mul = fxLevelMul();
+    let cap = TAT62.reduced ? 48 : 160;
+    cap = Math.round(cap * Math.min(1.35, 0.7 + mul * 0.3));
+    return cap;
+  }
+  function moodBias(id) {
+    if (TAT62.lastKind === 'miss') return SKIN_COLD[id] ? 1.6 : 0.5;
+    if (TAT62.lastKind === 'hit') return SKIN_HOT[id] ? 1.6 : 0.65;
+    return 1;
+  }
+  const SKIN_HUE = { ice:200, fire:20, lightning:220, neon:300, invert:0, bloom:15, void:250, aurora:160, plasma:280, prism:280, static:210, comet:30, mycelium:130, hologram:190, magma:18, pixelstorm:310, gravitywell:260, chromeoil:40 };
+  function t62Clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+  function familyB(id) { return skinClamp($('skinB_' + id)?.value, 0, 100, 35) / 100; }
+  function familyHue(id) { return skinClamp($('skinHue_' + id)?.value, 0, 360, SKIN_HUE[id] || 180); }
+  function skinGain() { return skinClamp($('skinGain')?.value, 0, 200, 100) / 100; }
+  function t62Decay(now) {
+    const prev = TAT62.lastTick || now;
+    const dt = Math.max(0, Math.min(80, now - prev));
+    TAT62.lastTick = now;
+    const age = now - (TAT62.lastAt || now);
+    const hitWin = TAT62.lastKind === 'hit' && age < 400;
+    const missWin = TAT62.lastKind === 'miss' && age < 700;
+    if (hitWin) TAT62.Ehit *= Math.exp(-dt / 400);
+    else if (missWin) TAT62.Emiss *= Math.exp(-dt / 700);
+    else {
+      TAT62.lastKind = 'idle';
+      TAT62.idleAcc = (TAT62.idleAcc || 0) + dt;
+      while (TAT62.idleAcc >= 200) {
+        TAT62.idleAcc -= 200;
+        TAT62.Ehit *= 0.82;
+        TAT62.Emiss *= 0.82;
+      }
+      let wpm = 0, acc = 100;
+      try { wpm = calcWpm(); acc = calcAccuracy(); } catch (_) {}
+      const base = (0.03 + (wpm / 120) * 0.07) * (acc / 100);
+      TAT62.pulse = TAT62.reduced || !$('skinIdleBreath')?.checked ? base * 0.35 : base * (0.5 + 0.5 * Math.sin(now / 900));
+    }
+    if (TAT62.Ehit < 0.002) TAT62.Ehit = 0;
+    if (TAT62.Emiss < 0.002) TAT62.Emiss = 0;
+  }
+  function familyI(id) {
+    if (!enabledFx().includes(id)) return 0;
+    const B = familyB(id);
+    const E = SKIN_HOT[id]
+      ? (TAT62.Ehit || 0) + (TAT62.pulse || 0) * 0.7 + (TAT62.Emiss || 0) * 0.15
+      : (TAT62.Emiss || 0) + (TAT62.pulse || 0) * 0.4 + (TAT62.Ehit || 0) * 0.12;
+    return t62Clamp01(B + E) * skinGain();
+  }
+  function skinIntensity(now) {
+    t62Decay(now || ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()));
+    let mx = 0;
+    enabledFx().forEach((id) => { const v = familyI(id); if (v > mx) mx = v; });
+    TAT62.intensity = mx;
+    return TAT62.intensity;
+  }
+  function collectSkinPrefs() {
+    return {
+      live: $('skinLive') ? !!$('skinLive').checked : true,
+      fx: enabledFx(),
+      frame: skinPick($('skinFrame')?.value, SKIN_ALLOW.frame, 'circuit'),
+      corners: !!$('skinCorners')?.checked,
+      rails: !!$('skinRails')?.checked,
+      border: skinPick($('skinBorder')?.value, SKIN_ALLOW.border, 'neon-pipe'),
+      deco: skinPick($('skinDeco')?.value, SKIN_ALLOW.deco, 'none'),
+      theme: skinPick($('skinTheme')?.value, SKIN_ALLOW.theme, 'cyan'),
+      bgPattern: skinPick($('skinBgPattern')?.value, SKIN_ALLOW.bgPattern, 'grid'),
+      bgScale: skinClamp($('skinBgScale')?.value, 10, 400, 80),
+      bgRotate: skinClamp($('skinBgRotate')?.value, 0, 360, 0),
+      bgOffX: skinClamp($('skinBgOffX')?.value, -200, 200, 0),
+      bgOffY: skinClamp($('skinBgOffY')?.value, -200, 200, 0),
+      bgHue: skinClamp($('skinBgHue')?.value, 0, 360, 180),
+      bgSat: skinClamp($('skinBgSat')?.value, 0, 200, 70),
+      bgLevels: skinClamp($('skinBgLevels')?.value, 20, 180, 90),
+      bgBlend: skinPick($('skinBgBlend')?.value, SKIN_ALLOW.bgBlend, 'overlay'),
+      bgBlur: skinClamp($('skinBgBlur')?.value, 0, 12, 0),
+      bgTile: skinPick($('skinBgTile')?.value, SKIN_ALLOW.bgTile, 'repeat'),
+      bgOverlay: skinClamp($('skinBgOverlay')?.value, 0, 100, 28),
+      bgContrast: skinClamp($('skinBgContrast')?.value, 50, 200, 100),
+      bgInvert: skinClamp($('skinBgInvert')?.value, 0, 100, 0),
+      bgNoise: skinClamp($('skinBgNoise')?.value, 0, 100, 12),
+      bgParallax: skinClamp($('skinBgParallax')?.value, 0, 40, 12),
+      gain: skinGain(),
+      famB: Object.fromEntries(SKIN_ALLOW.fx.map((id) => [id, skinClamp($('skinB_' + id)?.value, 0, 100, 35)])),
+      famHue: Object.fromEntries(SKIN_ALLOW.fx.map((id) => [id, familyHue(id)])),
+      lighting: skinPick($('skinLighting')?.value, SKIN_ALLOW.lighting, 'rim'),
+      idleBreath: $('skinIdleBreath') ? !!$('skinIdleBreath').checked : true,
+      ...t63Collect(),
+    };
+  }
+  var TAT64_MASTER = 'custom';
+  var TAT64_APPLYING = false;
+  var TAT64_PROFILES = {
+    calm: { fx: ['neon', 'aurora'], gain: 0.45, fxLevel: 'low', idleBreath: true, theme: 'ice', border: 'hairline',
+      't63.perfect': { enable: true, intensity: 45 }, 't63.finish': { enable: false, intensity: 80 }, 't63.ripple': { enable: true, intensity: 40 } },
+    arcade: { fx: ['neon', 'bloom', 'lightning'], gain: 1.00, fxLevel: 'high', idleBreath: true, theme: 'cyan', border: 'neon-pipe',
+      't63.perfect': { enable: true, intensity: 70 }, 't63.finish': { enable: true, intensity: 80 }, 't63.ripple': { enable: true, intensity: 70 } },
+    chaos: { fx: ['lightning', 'fire', 'plasma', 'invert', 'pixelstorm', 'gravitywell', 'static'], gain: 1.55, fxLevel: 'insane', idleBreath: false, theme: 'ember', border: 'hex-studs',
+      't63.perfect': { enable: true, intensity: 90 }, 't63.finish': { enable: true, intensity: 100 }, 't63.ripple': { enable: true, intensity: 90 } },
+  };
+  function tatPaintMaster() {
+    document.querySelectorAll('#tatMasterRow .tat-master-pill').forEach((btn) => {
+      const on = btn.dataset.profile === TAT64_MASTER;
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    const rm = tatReducedMode();
+    document.querySelectorAll('#tatSkinPanel [data-rm]').forEach((btn) => {
+      btn.setAttribute('aria-checked', btn.getAttribute('data-rm') === rm ? 'true' : 'false');
+    });
+  }
+  function tatMarkCustom() {
+    if (TAT64_APPLYING) return;
+    if (TAT64_MASTER !== 'custom') {
+      TAT64_MASTER = 'custom';
+      tatPaintMaster();
+    }
+  }
+  function tatReducedMode() {
+    return skinPick($('optReducedMotion') && $('optReducedMotion').value, ['auto', 'on', 'off'], 'auto');
+  }
+  function tatOsReduced() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; }
+  }
+  function tatSyncReduced() {
+    const mode = tatReducedMode();
+    const on = mode === 'on' ? true : mode === 'off' ? false : tatOsReduced();
+    if (typeof TAT62 !== 'undefined' && TAT62) TAT62.reduced = on;
+    document.body.classList.toggle('tat-rm-on', on);
+    document.body.classList.toggle('tat-rm-off', !on);
+    document.body.setAttribute('data-tat-rm', mode);
+    if (on) {
+      try { t63OnReset(); } catch (_) {}
+    }
+  }
+  function tatApplyMaster(name) {
+    const id = skinPick(name, ['custom', 'calm', 'arcade', 'chaos'], 'custom');
+    TAT64_MASTER = id;
+    tatPaintMaster();
+    if (id === 'custom') return;
+    const spec = TAT64_PROFILES[id];
+    if (!spec) return;
+    TAT64_APPLYING = true;
+    try {
+      applySkinPrefs(Object.assign({}, SKIN_DEFAULT, spec, { live: true, fx: spec.fx.slice(), gain: spec.gain }));
+      if ($('optFxLevel')) $('optFxLevel').value = spec.fxLevel;
+      applySkinLook();
+    } finally {
+      TAT64_APPLYING = false;
+    }
+  }
+  function tatSlotState() {
+    const raw = loadJson(KEYS.skinSlots, null);
+    let src = [];
+    if (Array.isArray(raw)) src = raw;
+    else if (raw && Array.isArray(raw.slots)) src = raw.slots;
+    const out = [];
+    for (let i = 0; i < 5; i++) {
+      const s = src[i] && typeof src[i] === 'object' ? src[i] : {};
+      let name = String(s.name == null ? '' : s.name).trim().slice(0, 14);
+      const skin = s.skin && typeof s.skin === 'object' && !Array.isArray(s.skin) ? s.skin : null;
+      const theme = (s.theme || (skin && skin.theme) || 'cyan');
+      out.push({ name: name, skin: skin, theme: theme });
+    }
+    return out;
+  }
+  function tatSaveSlotState(slots) {
+    saveJson(KEYS.skinSlots, { slots: slots.map((s) => ({ name: s.name, skin: s.skin, theme: s.theme })) });
+  }
+  var TAT64_PIP = { cyan: '#00f3ff', ember: '#ff6b1a', ice: '#7dd3fc', void: '#7c5cff', acid: '#bef264', gold: '#ffc800' };
+  function tatSlotLabel(s, i) { const n = s && String(s.name || '').trim(); return n || ('Slot ' + (i + 1)); }
+  function tatRenderSlots() {
+    const host = $('tatSkinSlots');
+    if (!host) return;
+    const slots = tatSlotState();
+    host.textContent = '';
+    slots.forEach((s, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'tat-slot tat-t64-slot' + (s.skin ? ' is-full' : '');
+      chip.setAttribute('role', 'listitem');
+      const pip = document.createElement('i');
+      pip.className = 'tat-slot-pip';
+      pip.setAttribute('aria-hidden', 'true');
+      if (s.skin) pip.style.background = TAT64_PIP[s.theme] || TAT64_PIP.cyan;
+      else pip.hidden = true;
+      const name = document.createElement('span');
+      name.className = 'tat-slot-name';
+      name.textContent = tatSlotLabel(s, i);
+      name.title = 'Click to rename';
+      const btnSave = document.createElement('button');
+      btnSave.type = 'button';
+      btnSave.className = 'tat-slot-save';
+      btnSave.textContent = 'Save';
+      btnSave.title = s.skin ? 'Overwrite this slot' : 'Save current skin here';
+      chip.appendChild(pip);
+      chip.appendChild(name);
+      chip.appendChild(btnSave);
+      name.addEventListener('click', (e) => {
+        e.stopPropagation();
+        name.contentEditable = 'true';
+        name.focus();
+        const finish = (ok) => {
+          name.contentEditable = 'false';
+          const all = tatSlotState();
+          if (ok && all[i].skin) {
+            all[i].name = String(name.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 14);
+            tatSaveSlotState(all);
+          }
+          tatRenderSlots();
+        };
+        name.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); name.blur(); }
+          if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+        });
+        name.addEventListener('input', () => { if ((name.textContent || '').length > 14) name.textContent = String(name.textContent || '').slice(0, 14); });
+        name.addEventListener('blur', () => finish(true), { once: true });
+      });
+      btnSave.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const all = tatSlotState();
+        if (all[i].skin) {
+          if (!window.confirm('Overwrite slot "' + tatSlotLabel(all[i], i) + '"?')) return;
+        }
+        all[i].skin = collectSkinPrefs();
+        all[i].theme = skinPick($('skinTheme') && $('skinTheme').value, SKIN_ALLOW.theme, 'cyan');
+        tatSaveSlotState(all);
+        tatRenderSlots();
+      });
+      chip.addEventListener('click', () => {
+        const all = tatSlotState();
+        if (!all[i].skin) return;
+        TAT64_APPLYING = true;
+        try {
+          applySkinPrefs(all[i].skin);
+          TAT64_MASTER = 'custom';
+          tatPaintMaster();
+          savePrefs();
+        } finally { TAT64_APPLYING = false; }
+      });
+      host.appendChild(chip);
+    });
+  }
+  function tatT64Init() {
+    document.querySelectorAll('#tatMasterRow .tat-master-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        tatApplyMaster(btn.dataset.profile);
+        savePrefs();
+      });
+    });
+    document.querySelectorAll('#tatSkinPanel [data-rm]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if ($('optReducedMotion')) $('optReducedMotion').value = skinPick(btn.getAttribute('data-rm'), ['auto', 'on', 'off'], 'auto');
+        tatSyncReduced();
+        applySkinLook();
+        savePrefs();
+        tatPaintMaster();
+      });
+    });
+    $('optReducedMotion') && $('optReducedMotion').addEventListener('change', () => {
+      tatSyncReduced();
+      applySkinLook();
+      savePrefs();
+      tatPaintMaster();
+    });
+    tatPaintMaster();
+    tatSyncReduced();
+    tatRenderSlots();
+  }
+  function applySkinPrefs(raw) {
+    try { t62BuildFamMix(); } catch (_) {}
+    const s = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const fxSet = new Set(Array.isArray(s.fx) ? s.fx.filter((id) => SKIN_ALLOW.fx.includes(id)) : SKIN_DEFAULT.fx);
+    if ($('skinLive')) $('skinLive').checked = s.live !== false;
+    SKIN_ALLOW.fx.forEach((id) => {
+      const el = $('skinFx_' + id);
+      if (el) el.checked = fxSet.has(id);
+    });
+    if ($('skinFrame')) $('skinFrame').value = skinPick(s.frame, SKIN_ALLOW.frame, SKIN_DEFAULT.frame);
+    if ($('skinCorners')) $('skinCorners').checked = s.corners !== false;
+    if ($('skinRails')) $('skinRails').checked = !!s.rails;
+    if ($('skinBorder')) $('skinBorder').value = skinPick(s.border, SKIN_ALLOW.border, SKIN_DEFAULT.border);
+    if ($('skinDeco')) $('skinDeco').value = skinPick(s.deco, SKIN_ALLOW.deco, SKIN_DEFAULT.deco);
+    if ($('skinTheme')) $('skinTheme').value = skinPick(s.theme, SKIN_ALLOW.theme, SKIN_DEFAULT.theme);
+    if ($('skinBgPattern')) $('skinBgPattern').value = skinPick(s.bgPattern, SKIN_ALLOW.bgPattern, SKIN_DEFAULT.bgPattern);
+    const knobs = [
+      ['skinBgScale', s.bgScale, 10, 400, 80],
+      ['skinBgRotate', s.bgRotate, 0, 360, 0],
+      ['skinBgOffX', s.bgOffX, -200, 200, 0],
+      ['skinBgOffY', s.bgOffY, -200, 200, 0],
+      ['skinBgHue', s.bgHue, 0, 360, 180],
+      ['skinBgSat', s.bgSat, 0, 200, 70],
+      ['skinBgLevels', s.bgLevels, 20, 180, 90],
+      ['skinBgBlur', s.bgBlur, 0, 12, 0],
+      ['skinBgOverlay', s.bgOverlay, 0, 100, 28],
+    ];
+    knobs.forEach(([id, val, lo, hi, fb]) => { if ($(id)) $(id).value = String(skinClamp(val, lo, hi, fb)); });
+    if ($('skinBgContrast')) $('skinBgContrast').value = String(skinClamp(s.bgContrast, 50, 200, 100));
+    if ($('skinBgInvert')) $('skinBgInvert').value = String(skinClamp(s.bgInvert, 0, 100, 0));
+    if ($('skinBgNoise')) $('skinBgNoise').value = String(skinClamp(s.bgNoise, 0, 100, 12));
+    if ($('skinBgParallax')) $('skinBgParallax').value = String(skinClamp(s.bgParallax, 0, 40, 12));
+    if ($('skinGain')) $('skinGain').value = String(Math.round(skinClamp(s.gain, 0, 2, 1) * 100));
+    if ($('skinGainVal')) $('skinGainVal').textContent = skinClamp(s.gain, 0, 2, 1).toFixed(2);
+    const famB = s.famB && typeof s.famB === 'object' ? s.famB : {};
+    const famHue = s.famHue && typeof s.famHue === 'object' ? s.famHue : {};
+    SKIN_ALLOW.fx.forEach((id) => {
+      if ($('skinB_' + id)) $('skinB_' + id).value = String(skinClamp(famB[id], 0, 100, 35));
+      if ($('skinBVal_' + id)) $('skinBVal_' + id).textContent = String(skinClamp(famB[id], 0, 100, 35));
+      if ($('skinHue_' + id)) $('skinHue_' + id).value = String(skinClamp(famHue[id], 0, 360, SKIN_HUE[id] || 180));
+    });
+    if ($('skinBgBlend')) $('skinBgBlend').value = skinPick(s.bgBlend, SKIN_ALLOW.bgBlend, SKIN_DEFAULT.bgBlend);
+    if ($('skinBgTile')) $('skinBgTile').value = skinPick(s.bgTile, SKIN_ALLOW.bgTile, SKIN_DEFAULT.bgTile);
+    if ($('skinLighting')) $('skinLighting').value = skinPick(s.lighting, SKIN_ALLOW.lighting, SKIN_DEFAULT.lighting);
+    if ($('skinIdleBreath')) $('skinIdleBreath').checked = s.idleBreath !== false;
+    try { t63Write(s); } catch (_) {}
+    applySkinLook();
+  }
+  function bgPatternCss(name) {
+    const a = 'rgba(0,243,255,0.28)';
+    const b = 'rgba(124,92,255,0.20)';
+    switch (name) {
+      case 'grid': return `linear-gradient(${a} 1px, transparent 1px), linear-gradient(90deg, ${a} 1px, transparent 1px)`;
+      case 'hex': return `radial-gradient(circle, ${a} 1.4px, transparent 1.6px)`;
+      case 'dots': return `radial-gradient(circle, ${a} 1.1px, transparent 1.3px)`;
+      case 'circuit': return `linear-gradient(${a} 1px, transparent 1px), linear-gradient(90deg, ${b} 1px, transparent 1px), radial-gradient(circle, ${a} 1px, transparent 1.2px)`;
+      case 'noise': return `repeating-linear-gradient(0deg, ${a} 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, ${b} 0 1px, transparent 1px 5px)`;
+      case 'chevron': return `repeating-linear-gradient(135deg, ${a} 0 6px, transparent 6px 14px)`;
+      case 'carbon': return `linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.05) 25%, transparent 25%)`;
+      case 'constellation': return `radial-gradient(circle, #fff 1px, transparent 1.2px), radial-gradient(circle, ${a} 1px, transparent 1.3px)`;
+      case 'brick': return `linear-gradient(${b} 2px, transparent 2px), linear-gradient(90deg, ${b} 2px, transparent 2px)`;
+      case 'scan': return `repeating-linear-gradient(180deg, ${a} 0 1px, transparent 1px 7px)`;
+      case 'wave': return `repeating-radial-gradient(circle at 0 50%, ${a} 0 2px, transparent 2px 18px)`;
+      default: return 'none';
+    }
+  }
+  function bgSizeCss(name, scale) {
+    const s = scale;
+    if (name === 'grid' || name === 'circuit' || name === 'brick') return s + 'px ' + s + 'px, ' + s + 'px ' + s + 'px' + (name === 'circuit' ? ', ' + (s * 2) + 'px ' + (s * 2) + 'px' : '');
+    if (name === 'constellation') return (s * 2.4) + 'px ' + (s * 2.4) + 'px, ' + (s * 1.1) + 'px ' + (s * 1.1) + 'px';
+    return s + 'px ' + s + 'px';
+  }
+  function applySkinLook() {
+    if (!TAT62) return;
+    const wrap = $('promptWrap');
+    const plate = $('tatPlate');
+    const bg = $('tatBg');
+    const light = $('tatLight');
+    const frame = $('tatFrame');
+    const deco = $('tatDeco');
+    if (!wrap || !plate) return;
+    const p = collectSkinPrefs();
+    wrap.dataset.tatTheme = p.theme;
+    wrap.classList.toggle('tat-idle-breath', !!p.idleBreath && !TAT62.reduced);
+    SKIN_ALLOW.fx.forEach((id) => wrap.classList.toggle('tat-has-' + id, p.fx.includes(id)));
+    if (frame) {
+      frame.dataset.frame = p.frame;
+      frame.dataset.border = p.border;
+      frame.innerHTML = '';
+      if (p.corners && p.frame !== 'none') {
+        ['tl','tr','bl','br'].forEach((c) => {
+          const d = document.createElement('i');
+          d.className = 'tat-corner ' + c;
+          d.setAttribute('aria-hidden', 'true');
+          frame.appendChild(d);
+        });
+      }
+      if (p.rails) {
+        ['l','r'].forEach((c) => {
+          const d = document.createElement('i');
+          d.className = 'tat-rail ' + c;
+          d.setAttribute('aria-hidden', 'true');
+          frame.appendChild(d);
+        });
+      }
+    }
+    if (deco) deco.dataset.deco = p.deco;
+    if (light) light.dataset.lit = p.lighting;
+    if (bg) {
+      const pat = skinPick(p.bgPattern, SKIN_ALLOW.bgPattern, 'grid');
+      bg.style.backgroundImage = pat === 'none' ? 'none' : bgPatternCss(pat);
+      bg.style.backgroundSize = pat === 'none' ? 'auto' : bgSizeCss(pat, p.bgScale);
+      bg.style.backgroundRepeat = skinPick(p.bgTile, SKIN_ALLOW.bgTile, 'repeat');
+      bg.style.backgroundPosition = p.bgOffX + 'px ' + p.bgOffY + 'px';
+      const tile = skinPick(p.bgTile, SKIN_ALLOW.bgTile, 'repeat');
+      bg.style.backgroundSize = (pat === 'none') ? 'auto' : (tile === 'cover' ? 'cover' : bgSizeCss(pat, p.bgScale));
+      bg.style.backgroundRepeat = tile === 'cover' ? 'no-repeat' : tile;
+      const px = ((TAT62.mx - 0.5) * (p.bgParallax || 0));
+      const py = ((TAT62.my - 0.5) * (p.bgParallax || 0));
+      bg.style.filter = 'hue-rotate(' + p.bgHue + 'deg) saturate(' + p.bgSat + '%) brightness(' + p.bgLevels + '%) contrast(' + ((p.bgContrast || 100) / 100) + ') invert(' + ((p.bgInvert || 0) / 100) + ') blur(' + p.bgBlur + 'px)';
+      bg.style.mixBlendMode = skinPick(p.bgBlend, SKIN_ALLOW.bgBlend, 'overlay');
+      bg.style.opacity = String(p.bgOverlay / 100);
+      bg.style.transform = 'translate(' + px + 'px,' + py + 'px) rotate(' + p.bgRotate + 'deg)';
+      wrap.style.setProperty('--tat-noise', String((p.bgNoise || 0) / 100));
+    }
+    const map = [
+      ['skinBgScaleVal', p.bgScale + '%'],
+      ['skinBgRotateVal', p.bgRotate + '°'],
+      ['skinBgOffXVal', p.bgOffX + 'px'],
+      ['skinBgOffYVal', p.bgOffY + 'px'],
+      ['skinBgHueVal', p.bgHue + '°'],
+      ['skinBgSatVal', p.bgSat + '%'],
+      ['skinBgLevelsVal', p.bgLevels + '%'],
+      ['skinBgBlurVal', p.bgBlur + 'px'],
+      ['skinBgOverlayVal', p.bgOverlay + '%'],
+      ['skinBgContrastVal', (p.bgContrast || 100) + '%'],
+      ['skinBgInvertVal', (p.bgInvert || 0) + '%'],
+      ['skinBgNoiseVal', (p.bgNoise || 0) + '%'],
+      ['skinBgParallaxVal', (p.bgParallax || 0) + 'px'],
+    ];
+    if ($('skinGainVal')) $('skinGainVal').textContent = skinGain().toFixed(2);
+    try { t62ApplyContrast(); } catch (_) {}
+    map.forEach(([id, txt]) => { if ($(id)) $(id).textContent = txt; });
+    wrap.style.setProperty('--tat-inten', String(TAT62.intensity));
+    wrap.style.setProperty('--tat-a', skinTheme().a);
+    const pan = $('tatSkinPanel');
+    if (pan) pan.style.setProperty('--tat-a', skinTheme().a);
+  }
+  function applySkinPreset(name) {
+    const preset = SKIN_PRESETS[name];
+    if (!preset) return;
+    applySkinPrefs({ ...SKIN_DEFAULT, ...preset, live: true });
+  }
+  function tatSkinResize() {
+    if (!TAT62) return;
+    const wrap = $('promptWrap');
+    const c = TAT62.canvas || $('tatFxCanvas');
+    if (!wrap || !c) return;
+    TAT62.canvas = c;
+    TAT62.ctx = c.getContext('2d');
+    const r = wrap.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.floor(r.width * dpr));
+    const h = Math.max(1, Math.floor(r.height * dpr));
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
+    }
+  }
+  function updateCaret() {
+    const wrap = $('promptWrap');
+    const cur = promptEl && promptEl.querySelector('.current');
+    if (!wrap) return;
+    const wr = wrap.getBoundingClientRect();
+    if (cur) {
+      const r = cur.getBoundingClientRect();
+      TAT62.caret.x = (r.left + r.width / 2 - wr.left) / Math.max(1, wr.width);
+      TAT62.caret.y = (r.top + r.height / 2 - wr.top) / Math.max(1, wr.height);
+    }
+    wrap.style.setProperty('--tat-caret-x', (TAT62.caret.x * 100).toFixed(2) + '%');
+    wrap.style.setProperty('--tat-caret-y', (TAT62.caret.y * 100).toFixed(2) + '%');
+    const bloom = $('tatBloom');
+    if (bloom) {
+      bloom.style.left = (TAT62.caret.x * 100).toFixed(2) + '%';
+      bloom.style.top = (TAT62.caret.y * 100).toFixed(2) + '%';
+    }
+    const well = $('tatWell');
+    if (well) {
+      well.style.left = ((1 - TAT62.caret.x) * 100).toFixed(2) + '%';
+      well.style.top = (TAT62.caret.y * 100).toFixed(2) + '%';
+    }
+  }
+  function pushP(p) {
+    if (TAT62.particles.length >= particleBudget()) TAT62.particles.shift();
+    TAT62.particles.push(p);
+  }
+  function spawnFxBurst(id, x, y, inten, kind) {
+    const th = skinTheme();
+    const nBase = TAT62.reduced ? 2 : 7;
+    const n = Math.max(1, Math.round(nBase * inten * moodBias(id) * (fxLevelMul() * 0.65 + 0.4)));
+    const cold = kind === 'miss';
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (cold ? 1.4 : 2.2) * (0.4 + Math.random());
+      pushP({
+        fx: id, x, y,
+        vx: Math.cos(a) * sp * (cold ? 0.7 : 1),
+        vy: Math.sin(a) * sp + (id === 'fire' || id === 'magma' ? -1.4 : id === 'ice' ? 0.6 : 0),
+        life: 1, decay: 0.016 + Math.random() * 0.02,
+        size: 1.6 + Math.random() * 3.2 * inten,
+        color: cold ? (id === 'static' ? '#c4b5fd' : th.b) : (id === 'fire' || id === 'magma' ? th.a : th.a),
+        spin: (Math.random() - 0.5) * 0.2,
+        rot: Math.random() * 6,
+      });
+    }
+    if (id === 'lightning' && !TAT62.reduced) {
+      TAT62.bolts.push({
+        x1: x, y1: y - 40 - Math.random() * 30,
+        x2: x + (Math.random() - 0.5) * 40, y2: y + 10,
+        life: 1, decay: 0.08, color: kind === 'miss' ? '#a78bfa' : '#e0f2fe',
+      });
+    }
+  }
+  function spawnAmbient(id, w, h, inten) {
+    const th = skinTheme();
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const cx = TAT62.caret.x * w;
+    const cy = TAT62.caret.y * h;
+    if (id === 'lightning' && Math.random() < 0.15 * inten) {
+      TAT62.bolts.push({
+        x1: cx + (Math.random() - 0.5) * 80, y1: cy - 50,
+        x2: cx, y2: cy, life: 1, decay: 0.1, color: th.b,
+      });
+      return;
+    }
+    pushP({
+      fx: id,
+      x: id === 'comet' ? -10 : (id === 'void' || id === 'gravitywell' ? cx + (Math.random() - 0.5) * 90 : x),
+      y: id === 'fire' || id === 'magma' ? h + 4 : (id === 'ice' || id === 'pixelstorm' ? -6 : y),
+      vx: id === 'comet' ? 2.2 + Math.random() * 2 : (id === 'void' || id === 'gravitywell' ? (cx - x) * 0.01 : (Math.random() - 0.5) * 0.6),
+      vy: id === 'fire' || id === 'magma' ? -0.8 - Math.random() : (id === 'ice' || id === 'pixelstorm' ? 0.7 + Math.random() : (Math.random() - 0.5) * 0.5),
+      life: 1, decay: 0.008 + Math.random() * 0.01,
+      size: 1.2 + Math.random() * 2.8 * inten,
+      color: id === 'chromeoil' ? th.c : (id === 'mycelium' ? th.b : th.a),
+      spin: (Math.random() - 0.5) * 0.12,
+      rot: Math.random() * 6,
+    });
+  }
+  function flashNeg() {
+    const wrap = $('promptWrap');
+    if (!wrap || TAT62.reduced) return;
+    if (!enabledFx().includes('invert')) return;
+    wrap.classList.add('tat-flash-neg');
+    later(() => wrap.classList.remove('tat-flash-neg'), 90);
+  }
+  function tatSkinNote(kind, chain) {
+    if (!TAT62) return;
+    const now = performance.now();
+    TAT62.lastAt = now;
+    TAT62.lastKind = kind === 'miss' ? 'miss' : (kind === 'reset' ? 'idle' : 'hit');
+    const wrap = $('promptWrap');
+    if (wrap) {
+      wrap.classList.remove('tat-mood-hit', 'tat-mood-miss', 'tat-mood-idle');
+      wrap.classList.add(TAT62.lastKind === 'miss' ? 'tat-mood-miss' : (TAT62.lastKind === 'hit' ? 'tat-mood-hit' : 'tat-mood-idle'));
+    }
+    if (kind === 'reset') {
+      TAT62.hitChain = 0;
+      TAT62.missChain = 0;
+      TAT62.particles.length = 0;
+      TAT62.bolts.length = 0;
+      return;
+    }
+    if (kind === 'miss') {
+      TAT62.missChain = (TAT62.missChain || 0) + 1;
+      TAT62.hitChain = 0;
+      TAT62.Emiss += 0.25 + Math.min(0.6, TAT62.missChain * 0.08);
+      if (TAT62.Emiss > 1.8) TAT62.Emiss = 1.8;
+      flashNeg();
+    } else {
+      TAT62.hitChain = typeof chain === 'number' ? chain : TAT62.hitChain + 1;
+      TAT62.missChain = 0;
+      TAT62.Ehit += 0.15 + Math.min(0.6, TAT62.hitChain * 0.08);
+      if (TAT62.Ehit > 1.8) TAT62.Ehit = 1.8;
+      if (TAT62.hitChain % 8 === 0) flashNeg();
+    }
+    const c = TAT62.canvas;
+    if (!c) return;
+    const x = TAT62.caret.x * c.width;
+    const y = TAT62.caret.y * c.height;
+    const inten = skinIntensity(now);
+    enabledFx().forEach((id) => spawnFxBurst(id, x, y, familyI(id) || inten, kind));
+  }
+  function drawBolt(ctx, b) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, b.life);
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth = 1.3;
+    ctx.shadowBlur = TAT62.reduced ? 0 : 10;
+    ctx.shadowColor = b.color;
+    ctx.beginPath();
+    ctx.moveTo(b.x1, b.y1);
+    const segs = TAT62.reduced ? 3 : 6;
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      const x = b.x1 + (b.x2 - b.x1) * t + (Math.random() - 0.5) * 14;
+      const y = b.y1 + (b.y2 - b.y1) * t + (Math.random() - 0.5) * 8;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawSkinP(ctx, p) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.strokeStyle = p.color;
+    ctx.shadowBlur = TAT62.reduced ? 0 : (p.fx === 'neon' || p.fx === 'bloom' ? 12 : 6);
+    ctx.shadowColor = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot || 0);
+    const s = Math.max(0.4, p.size * p.life);
+    if (p.fx === 'ice' || p.fx === 'prism') {
+      ctx.beginPath();
+      ctx.moveTo(0, -s);
+      ctx.lineTo(s * 0.6, 0);
+      ctx.lineTo(0, s);
+      ctx.lineTo(-s * 0.6, 0);
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.fx === 'pixelstorm' || p.fx === 'static') {
+      ctx.fillRect(-s, -s, s * 2, s * 2);
+    } else if (p.fx === 'mycelium') {
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(s * 3, s * (Math.sin(p.rot || 0)));
+      ctx.stroke();
+    } else if (p.fx === 'comet') {
+      ctx.beginPath();
+      ctx.moveTo(-s * 4, 0);
+      ctx.lineTo(s, s * 0.35);
+      ctx.lineTo(s, -s * 0.35);
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.fx === 'chromeoil') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 1.6, s * 0.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function tatSkinTick() {
+    if (!TAT62 || document.hidden || fxPaused) return;
+    const wrap = $('promptWrap');
+    const ctx = TAT62.ctx;
+    const c = TAT62.canvas;
+    if (!wrap || !ctx || !c) return;
+    const now = performance.now();
+    const idleAfter = TAT62.lastKind === 'miss' ? 700 : 400;
+    if (now - TAT62.lastAt > idleAfter) {
+      wrap.classList.remove('tat-mood-hit', 'tat-mood-miss');
+      wrap.classList.add('tat-mood-idle');
+    }
+    const inten = skinIntensity(now);
+    wrap.style.setProperty('--tat-inten', String(inten));
+    updateCaret();
+    const fxOn = $('optFx') ? !!$('optFx').checked : true;
+    const live = $('skinLive') ? !!$('skinLive').checked : true;
+    if (fxOn && live && !TAT62.reduced) {
+      if (now - TAT62.lastAmb > (90 / Math.max(0.5, inten))) {
+        TAT62.lastAmb = now;
+        const ids = enabledFx();
+        if (ids.length && TAT62.particles.length < particleBudget()) {
+          const pickId = ids[(Math.random() * ids.length) | 0];
+          spawnAmbient(pickId, c.width, c.height, inten * moodBias(pickId));
+        }
+      }
+    }
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (!fxOn || !live) {
+      TAT62.particles.length = 0;
+      TAT62.bolts.length = 0;
+      return;
+    }
+    for (let i = TAT62.particles.length - 1; i >= 0; i--) {
+      const p = TAT62.particles[i];
+      if (p.fx === 'gravitywell' || p.fx === 'void') {
+        const cx = TAT62.caret.x * c.width;
+        const cy = TAT62.caret.y * c.height;
+        p.vx += (cx - p.x) * 0.002;
+        p.vy += (cy - p.y) * 0.002;
+      }
+      if (p.fx === 'aurora') p.vx += Math.sin((now / 400) + p.y) * 0.05;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot = (p.rot || 0) + (p.spin || 0);
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        TAT62.particles.splice(i, 1);
+        continue;
+      }
+      drawSkinP(ctx, p);
+    }
+    for (let i = TAT62.bolts.length - 1; i >= 0; i--) {
+      const b = TAT62.bolts[i];
+      b.life -= b.decay;
+      if (b.life <= 0) {
+        TAT62.bolts.splice(i, 1);
+        continue;
+      }
+      drawBolt(ctx, b);
+    }
+    if (TAT62.particles.length > particleBudget()) {
+      TAT62.particles.splice(0, TAT62.particles.length - particleBudget());
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+  function t62BuildFamMix() {
+    const host = $('tatFamMix');
+    if (!host || host.dataset.ready) return;
+    host.dataset.ready = '1';
+    SKIN_ALLOW.fx.forEach((id) => {
+      const row = document.createElement('div');
+      row.className = 't62-row';
+      row.style.cssText = 'display:grid;grid-template-columns:118px 1fr 44px 1fr 36px;gap:6px 8px;align-items:center;margin:3px 0;font-size:11px';
+      row.innerHTML = '<span style="color:var(--muted)">' + id + ' B/hue</span>'
+        + '<input type="range" id="skinB_' + id + '" min="0" max="100" value="35" aria-label="' + id + ' intensity B">'
+        + '<span class="t62-num" id="skinBVal_' + id + '">35</span>'
+        + '<input type="range" id="skinHue_' + id + '" min="0" max="360" value="' + (SKIN_HUE[id] || 180) + '" aria-label="' + id + ' hue">'
+        + '<span class="t62-num">hue</span>';
+      host.appendChild(row);
+      ['skinB_' + id, 'skinHue_' + id].forEach((cid) => {
+        const el = $(cid);
+        if (!el) return;
+        el.addEventListener('input', () => {
+          if (cid.indexOf('skinB_') === 0 && $('skinBVal_' + id)) $('skinBVal_' + id).textContent = el.value;
+          applySkinLook();
+        });
+        el.addEventListener('change', () => { applySkinLook(); savePrefs(); });
+      });
+    });
+  }
+  function t62Rgb(str) {
+    const m = String(str || '').match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    return m ? [+m[1], +m[2], +m[3]] : null;
+  }
+  function t62Lum(rgb) {
+    const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+  }
+  function t62Ratio(a, b) {
+    const L1 = t62Lum(a), L2 = t62Lum(b);
+    const hi = Math.max(L1, L2), lo = Math.min(L1, L2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  function t62WalkBg(el) {
+    let n = el;
+    while (n && n !== document.documentElement) {
+      const raw = getComputedStyle(n).backgroundColor;
+      const rgb = t62Rgb(raw);
+      const am = String(raw).match(/rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*([0-9.]+))?/);
+      const a = am && am[1] != null ? Number(am[1]) : 1;
+      if (rgb && a >= 0.55) return rgb;
+      n = n.parentElement;
+    }
+    return [12, 12, 18];
+  }
+  function t62ApplyContrast() {
+    if (!promptEl) return;
+    const bg = t62WalkBg($('promptWrap') || promptEl);
+    const cur = promptEl.querySelector('.current');
+    const todo = promptEl.querySelector('.todo');
+    let need = false;
+    const pick = (fg) => {
+      if (t62Ratio(fg, bg) >= 4.5) return fg;
+      need = true;
+      const w = [255,255,255], k = [17,17,20];
+      return t62Ratio(w, bg) >= t62Ratio(k, bg) ? w : k;
+    };
+    let curCol = [255,255,255], todoCol = [213,216,224];
+    if (cur) curCol = pick(t62Rgb(getComputedStyle(cur).color) || curCol);
+    if (todo) todoCol = pick(t62Rgb(getComputedStyle(todo).color) || todoCol);
+    promptEl.style.setProperty('--tat-t62-current', 'rgb(' + curCol.join(',') + ')');
+    promptEl.style.setProperty('--tat-t62-todo', 'rgb(' + todoCol.join(',') + ')');
+    promptEl.classList.toggle('t62-contrast-floor', need);
+  }
+  function tatSkinInit() {
+    tatSyncReduced();
+    try {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (mq && mq.addEventListener) mq.addEventListener('change', () => { tatSyncReduced(); applySkinLook(); });
+    } catch (_) {}
+    tatSkinResize();
+    if (!TAT62.ro && typeof ResizeObserver !== 'undefined' && $('promptWrap')) {
+      TAT62.ro = new ResizeObserver(() => tatSkinResize());
+      TAT62.ro.observe($('promptWrap'));
+    }
+    applySkinLook();
+    const wrapEl = $('promptWrap');
+    if (wrapEl && !wrapEl.dataset.t62Par) {
+      wrapEl.dataset.t62Par = '1';
+      wrapEl.addEventListener('pointermove', (e) => {
+        const r = wrapEl.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        TAT62.mx = (e.clientX - r.left) / r.width;
+        TAT62.my = (e.clientY - r.top) / r.height;
+      }, { passive: true });
+    }
+    const bind = ['skinLive','skinFrame','skinCorners','skinRails','skinBorder','skinDeco','skinTheme','skinBgPattern','skinBgBlend','skinBgTile','skinLighting','skinIdleBreath'];
+    bind.forEach((id) => {
+      $(id)?.addEventListener('change', () => { tatMarkCustom(); applySkinLook(); savePrefs(); });
+    });
+    SKIN_ALLOW.fx.forEach((id) => {
+      $('skinFx_' + id)?.addEventListener('change', () => { tatMarkCustom(); applySkinLook(); savePrefs(); });
+    });
+    t62BuildFamMix();
+    ['skinBgScale','skinBgRotate','skinBgOffX','skinBgOffY','skinBgHue','skinBgSat','skinBgLevels','skinBgBlur','skinBgOverlay','skinBgContrast','skinBgInvert','skinBgNoise','skinBgParallax','skinGain'].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener('input', applySkinLook);
+      el.addEventListener('change', () => { tatMarkCustom(); applySkinLook(); savePrefs(); });
+    });
+    $('skinPreset')?.addEventListener('change', () => {
+      const v = skinPick($('skinPreset').value, SKIN_ALLOW.preset, 'keep');
+      if (v !== 'keep') {
+        applySkinPreset(v);
+        $('skinPreset').value = 'keep';
+        tatMarkCustom();
+        savePrefs();
+      }
+    });
+    $('btnSkinReset')?.addEventListener('click', () => {
+      applySkinPrefs(SKIN_DEFAULT);
+      tatMarkCustom();
+      savePrefs();
+    });
+    try { tatT64Init(); } catch (_) {}
+  }
+
+  // ===== PET-T63 juice: t63.perfect / t63.finish / t63.ripple (combo-bar untouched) =====
+  var TAT63 = { wordDirty: false };
+  var T63_KEYS = ['perfect', 'finish', 'ripple'];
+  var T63_DEFAULT = {
+    't63.perfect': { enable: true, intensity: 70 },
+    't63.finish': { enable: true, intensity: 80 },
+    't63.ripple': { enable: true, intensity: 70 },
+  };
+  function t63Read(name) {
+    const fb = T63_DEFAULT['t63.' + name] || { enable: true, intensity: 70 };
+    const cap = 't63' + name.charAt(0).toUpperCase() + name.slice(1);
+    const on = $(cap);
+    const sl = $(cap + 'N');
+    return {
+      enable: on ? !!on.checked : fb.enable,
+      intensity: skinClamp(sl ? sl.value : fb.intensity, 0, 100, fb.intensity),
+    };
+  }
+  function t63Collect() {
+    const out = {};
+    T63_KEYS.forEach((k) => { out['t63.' + k] = t63Read(k); });
+    return out;
+  }
+  function t63PickRaw(raw) {
+    const s = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const nested = s.t63 && typeof s.t63 === 'object' && !Array.isArray(s.t63) ? s.t63 : {};
+    const out = {};
+    T63_KEYS.forEach((k) => {
+      const key = 't63.' + k;
+      let row = s[key];
+      if (!row || typeof row !== 'object') row = nested[k];
+      if (!row || typeof row !== 'object') row = T63_DEFAULT[key];
+      const n = row && (row.intensity != null ? row.intensity : row.n != null ? row.n : row.i);
+      out[key] = {
+        enable: !row || row.enable !== false,
+        intensity: skinClamp(n, 0, 100, T63_DEFAULT[key].intensity),
+      };
+    });
+    return out;
+  }
+  function t63Write(raw) {
+    const p = t63PickRaw(raw);
+    T63_KEYS.forEach((k) => {
+      const row = p['t63.' + k];
+      const cap = 't63' + k.charAt(0).toUpperCase() + k.slice(1);
+      if ($(cap)) $(cap).checked = row.enable;
+      if ($(cap + 'N')) $(cap + 'N').value = String(row.intensity);
+      if ($(cap + 'NVal')) $(cap + 'NVal').textContent = String(row.intensity);
+    });
+    return p;
+  }
+  function t63On(name) { return t63Read(name).enable !== false; }
+  function t63N(name) { return t63Read(name).intensity / 100; }
+  function t63Reduced() {
+    if (typeof TAT62 !== 'undefined' && TAT62 && TAT62.reduced) return true;
+    return false;
+  }
+  function t63Tint() {
+    try {
+      const ids = enabledFx();
+      if (ids && ids.length) {
+        const id = ids[(Math.random() * ids.length) | 0];
+        const h = familyHue(id);
+        const s = 68 + Math.round(familyB(id) * 18);
+        return 'hsl(' + h + ' ' + s + '% 60%)';
+      }
+      return skinTheme().a;
+    } catch (_) { return '#00f3ff'; }
+  }
+  function t63Layer() { return $('tatT63Layer'); }
+  function t63CaretIn(el) {
+    const wrap = el || t63Layer() || $('tatGutter') || $('promptWrap');
+    const cur = promptEl && promptEl.querySelector('.current');
+    if (!wrap) return { x: 0.5, y: 0.5 };
+    const wr = wrap.getBoundingClientRect();
+    if (!wr.width || !wr.height) return { x: 0.5, y: 0.5 };
+    if (cur) {
+      const r = cur.getBoundingClientRect();
+      return { x: (r.left + r.width / 2 - wr.left) / wr.width, y: (r.top + r.height / 2 - wr.top) / wr.height };
+    }
+    if (typeof TAT62 !== 'undefined' && TAT62 && TAT62.caret) {
+      const pr = $('promptWrap') && $('promptWrap').getBoundingClientRect();
+      if (pr && pr.width) {
+        const ax = pr.left + TAT62.caret.x * pr.width;
+        const ay = pr.top + TAT62.caret.y * pr.height;
+        return { x: (ax - wr.left) / wr.width, y: (ay - wr.top) / wr.height };
+      }
+    }
+    return { x: 0.5, y: 0.5 };
+  }
+  function t63CapLive() {
+    const layer = t63Layer();
+    if (!layer) return;
+    while (layer.childElementCount > 18) layer.removeChild(layer.firstChild);
+  }
+  function t63Spawn(cls, x, y, ms, extra) {
+    const layer = t63Layer();
+    if (!layer || t63Reduced()) return null;
+    const el = document.createElement('i');
+    el.className = cls;
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = (x * 100).toFixed(2) + '%';
+    el.style.top = (y * 100).toFixed(2) + '%';
+    el.style.setProperty('--t63-ms', ms + 'ms');
+    el.style.setProperty('--t63-tint', t63Tint());
+    el.style.setProperty('--t63-n', String(t63N('ripple')));
+    if (extra) {
+      if (extra.dx != null) el.style.setProperty('--t63-dx', extra.dx + 'px');
+      if (extra.dy != null) el.style.setProperty('--t63-dy', extra.dy + 'px');
+    }
+    layer.appendChild(el);
+    t63CapLive();
+    later(() => { if (el.parentNode) el.parentNode.removeChild(el); }, ms + 48);
+    return el;
+  }
+  function t63FeedE() {
+    if (typeof TAT62 === 'undefined' || !TAT62) return;
+    TAT62.Ehit = (TAT62.Ehit || 0) + 0.05;
+    if (TAT62.Ehit > 1.8) TAT62.Ehit = 1.8;
+    TAT62.lastKind = 'hit';
+    TAT62.lastAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  }
+  function t63Ripple() {
+    if (!t63On('ripple')) return;
+    t63FeedE();
+    if (t63Reduced()) return;
+    const n = t63N('ripple');
+    const visual = 120 + Math.round(n * 60);
+    const peak = Math.min(120, Math.round(visual * 0.45));
+    const fade = Math.min(200, visual + 16);
+    const pos = t63CaretIn(t63Layer());
+    const el = t63Spawn('tat-t63-ripple', pos.x, pos.y, visual);
+    if (el) {
+      el.style.setProperty('--t63-peak', peak + 'ms');
+      el.style.setProperty('--t63-fade', fade + 'ms');
+    }
+  }
+  function t63IsSep(ch) { return ch == null || ch === '' || /\s/.test(ch); }
+  function t63Perfect() {
+    if (!t63On('perfect')) return;
+    if (t63Reduced()) return;
+    const n = t63N('perfect');
+    const ms = 280 + Math.round(n * 120);
+    const layer = t63Layer();
+    if (!layer) return;
+    const bloom = document.createElement('span');
+    bloom.className = 'tat-t63-burst';
+    bloom.setAttribute('aria-hidden', 'true');
+    bloom.style.setProperty('--t63-ms', ms + 'ms');
+    bloom.style.setProperty('--t63-tint', t63Tint());
+    layer.appendChild(bloom);
+    later(() => { if (bloom.parentNode) bloom.parentNode.removeChild(bloom); }, ms + 48);
+    const pos = t63CaretIn(layer);
+    const motes = 5 + Math.round(n * 4);
+    for (let i = 0; i < motes; i++) {
+      const ang = (Math.PI * 2 * i) / motes + Math.random() * 0.4;
+      const dist = 16 + n * 22 + Math.random() * 10;
+      t63Spawn('tat-t63-mote', pos.x, pos.y, ms, { dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist });
+    }
+  }
+  function t63Finish() {
+    if (!t63On('finish')) return;
+    if (!$('optFx') || !$('optFx').checked) return;
+    if (t63Reduced()) return;
+    if (TAT64_MASTER === 'calm') return;
+    const n = t63N('finish');
+    const lo = 6 + Math.round(n * 6);
+    const hi = 8 + Math.round(n * 8);
+    const count = lo + ((Math.random() * (hi - lo + 1)) | 0);
+    const layer = t63Layer();
+    if (!layer) return;
+    const spots = [[0.06, 0.08], [0.94, 0.08], [0.06, 0.92], [0.94, 0.92], [0.22, 0.05], [0.5, 0.05], [0.78, 0.05], [0.22, 0.95], [0.5, 0.95], [0.78, 0.95], [0.04, 0.5], [0.96, 0.5]];
+    for (let i = 0; i < count; i++) {
+      const s = spots[i % spots.length];
+      const jx = s[0] + (Math.random() - 0.5) * 0.04;
+      const jy = s[1] + (Math.random() - 0.5) * 0.04;
+      const ms = 420 + Math.round(n * 180);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 28 + n * 36;
+      t63Spawn('tat-t63-fw', jx, jy, ms, { dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist });
+    }
+  }
+  function t63OnCorrect(expected, idx) {
+    t63Ripple();
+    const next = (typeof target === 'string') ? target[idx + 1] : null;
+    if (t63IsSep(expected)) { TAT63.wordDirty = false; return; }
+    if (t63IsSep(next) && !TAT63.wordDirty) t63Perfect();
+    if (t63IsSep(next)) TAT63.wordDirty = false;
+  }
+  function t63OnMiss() { TAT63.wordDirty = true; }
+  function t63OnReset() {
+    TAT63.wordDirty = false;
+    const layer = t63Layer();
+    if (layer) layer.textContent = '';
+  }
+  function t63Init() {
+    t63Write(t63Collect());
+    T63_KEYS.forEach((k) => {
+      const cap = 't63' + k.charAt(0).toUpperCase() + k.slice(1);
+      $(cap)?.addEventListener('change', () => { savePrefs(); });
+      const sl = $(cap + 'N');
+      if (!sl) return;
+      sl.addEventListener('input', () => { if ($(cap + 'NVal')) $(cap + 'NVal').textContent = String(skinClamp(sl.value, 0, 100, 70)); });
+      sl.addEventListener('change', () => { savePrefs(); });
+    });
+  }
+
   // Init
   buildKeyboard();
   loadPrefs();
   applyPromptStyle();
+  tatSkinInit();
+  try { t63Init(); } catch (_) {}
   updateLibStatus();
   renderHistory();
   renderHighScores();
