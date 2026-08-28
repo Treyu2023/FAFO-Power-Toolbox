@@ -275,7 +275,12 @@
       counterparts: ['loan-calc'],
     },
     'typing assistant trainer': {
-      id: 'typing-trainer', title: 'Typing Trainer', emoji: '⌨️',
+      id: 'typing-trainer', title: 'KEYFLARE', emoji: '⚡',
+      path: 'Typing Assistant Trainer.html',
+      counterparts: ['bloodmoon', 'empire-seed'],
+    },
+    'keyflare': {
+      id: 'typing-trainer', title: 'KEYFLARE', emoji: '⚡',
       path: 'Typing Assistant Trainer.html',
       counterparts: ['bloodmoon', 'empire-seed'],
     },
