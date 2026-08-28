@@ -60,7 +60,8 @@ TaxForge, Investor Portal, and Xero proxy modules live **only on the owner machi
 ### Pro shell + QoL wave (2026-08-11)
 
 - `shared/aitoolbox-pro.js` — every tool gets counterparts bar, `?` help, focus/density, copy report  
-- `shared/aitoolbox-prefs.js` — Look panel: **layout** (phone / desktop / auto) vs **lighting** (glow, accents) as separate groups (`O`)  
+- `shared/aitoolbox-prefs.js` — Look panel: **layout** (phone / desktop / auto) vs **lighting** (glow, accents, theme FX) as separate groups (`O`)
+- `shared/aitoolbox-theme-fx.js` — SparkySparks (fireworks / spark piles) and PAINTONSaLOUGHT (blacklight paint specks)  
 - Media · System · Verifone · Games · Calculators: **3 QoL upgrades each** + pair deep-links  
 - Common keys in tools: `?` help · `C` first counterpart · `L` launcher · `R` report · `F` focus · `D` dense  
 
