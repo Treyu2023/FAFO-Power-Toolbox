@@ -5,6 +5,7 @@
  *  1. Counterpart / related-tools ribbon
  *  2. Keyboard help (? or Ctrl+/) + quick actions
  *  3. Focus mode (F), density toggle, copy page report, recents
+ *  4. Look panel (O) — Layout (phone/desktop) and Lighting (glow/accents) are separate
  *
  * Page authors can refine with:
  *   <meta name="aitoolbox-tool-id" content="event-viewer">
@@ -21,6 +22,21 @@
   const LS_DENSE = 'aitoolbox.pro.dense';
   const LS_MINI = 'aitoolbox.pro.minibar';
   const MAX_RECENT = 14;
+
+  (function loadPrefsModule() {
+    if (global.AIToolboxPrefs) return;
+    try {
+      const cur = document.currentScript;
+      const src = (cur && (cur.src || cur.getAttribute('src'))) || '';
+      if (!src) return;
+      const url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-prefs.js');
+      if (url === src) return;
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = false;
+      cur.parentNode.insertBefore(s, cur.nextSibling);
+    } catch (_) { /* prefs still optional */ }
+  })();
 
   /** Canonical tool graph: path fragment → meta + counterparts */
   const REGISTRY = {
@@ -541,6 +557,7 @@ body.atx-dense{--ui-ease:linear}
         <li><kbd>/</kbd> — jump to search / filter box</li>
         <li><kbd>F</kbd> — focus mode (dim chrome)</li>
         <li><kbd>D</kbd> — compact density</li>
+        <li><kbd>O</kbd> — Look (layout vs lighting)</li>
         <li><kbd>B</kbd> — previous tool (recents)</li>
         <li><kbd>L</kbd> — Toolbox launcher</li>
         <li><kbd>C</kbd> — jump first counterpart</li>
@@ -600,6 +617,7 @@ body.atx-dense{--ui-ease:linear}
         <button type="button" class="atx-chip" data-act="back">Back <span class="atx-kbd">B</span></button>
         <button type="button" class="atx-chip" data-act="focus">Focus <span class="atx-kbd">F</span></button>
         <button type="button" class="atx-chip" data-act="dense">Dense <span class="atx-kbd">D</span></button>
+        <button type="button" class="atx-chip" data-act="look">Look <span class="atx-kbd">O</span></button>
         <button type="button" class="atx-chip" data-act="report">Report <span class="atx-kbd">R</span></button>
         <button type="button" class="atx-chip" data-act="minibar" title="Tuck the bar away until hover">▾</button>
       </div>`;
@@ -616,8 +634,16 @@ body.atx-dense{--ui-ease:linear}
       }
       if (act === 'dense') {
         document.body.classList.toggle('atx-dense');
-        localStorage.setItem(LS_DENSE, document.body.classList.contains('atx-dense') ? '1' : '0');
-        toast(document.body.classList.contains('atx-dense') ? 'Compact density' : 'Comfortable density');
+        const compact = document.body.classList.contains('atx-dense');
+        localStorage.setItem(LS_DENSE, compact ? '1' : '0');
+        try { global.AIToolboxPrefs?.save({ density: compact ? 'compact' : 'comfortable' }); } catch (_) { /* ignore */ }
+        toast(compact ? 'Compact density' : 'Comfortable density');
+      }
+      if (act === 'look') {
+        try {
+          if (global.AIToolboxPrefs?.open) global.AIToolboxPrefs.open();
+          else toast('Look module still loading — try O in a second');
+        } catch (_) { toast('Look panel unavailable'); }
       }
       if (act === 'report') {
         const ok = await copyText(buildReport(tool));
@@ -665,7 +691,9 @@ body.atx-dense{--ui-ease:linear}
         localStorage.setItem(LS_FOCUS, document.body.classList.contains('atx-focus') ? '1' : '0');
       } else if (e.key === 'd' || e.key === 'D') {
         document.body.classList.toggle('atx-dense');
-        localStorage.setItem(LS_DENSE, document.body.classList.contains('atx-dense') ? '1' : '0');
+        const compact = document.body.classList.contains('atx-dense');
+        localStorage.setItem(LS_DENSE, compact ? '1' : '0');
+        try { global.AIToolboxPrefs?.save({ density: compact ? 'compact' : 'comfortable' }); } catch (_) { /* ignore */ }
       } else if (e.key === 'b' || e.key === 'B') {
         goBack(tool);
       } else if (e.key === 'l' || e.key === 'L') {
