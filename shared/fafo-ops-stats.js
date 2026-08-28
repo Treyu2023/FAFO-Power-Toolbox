@@ -45,7 +45,7 @@
     'disk-space-analyzer': { label: 'Disk Analyzer', emoji: '💾', color: '#fbbf24' },
     'guided-pair-match': { label: 'Guided Pair Match', emoji: '🎯', color: '#f472b6' },
     'pair-review-queue': { label: 'Pair Review Queue', emoji: '🔎', color: '#fb7185' },
-    'typing-assistant': { label: 'Typing Assistant', emoji: '⌨️', color: '#22d3ee' },
+    'typing-assistant': { label: 'KEYFLARE', emoji: '⚡', color: '#22d3ee' },
     'other': { label: 'Other tools', emoji: '🧰', color: '#94a3b8' },
   };
 
