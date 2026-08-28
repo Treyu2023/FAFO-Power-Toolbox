@@ -1714,82 +1714,11 @@
         }
         body.lx-chrome-compact > .server-banner {
             max-height: none;
-            min-height: 0;
-            padding: 6px 12px !important;
-            margin-bottom: 8px;
+            padding: 8px 12px !important;
+            margin-bottom: 10px;
         }
         body.lx-chrome-compact > .server-banner .server-actions .ui-btn.ghost {
             display: none;
-        }
-        /* Compact chrome: tiles must land in the first viewport */
-        body.lx-chrome-compact > header {
-            margin-bottom: 4px;
-        }
-        body.lx-chrome-compact > header .brand-lockup { gap: 2px; }
-        body.lx-chrome-compact > header .brand-fafo { font-size: 22px; }
-        body.lx-chrome-compact > header .brand-title { font-size: 13px; letter-spacing: 3px; }
-        body.lx-chrome-compact > header .brand-credit,
-        body.lx-chrome-compact > header .subtitle { display: none !important; }
-        body.lx-chrome-compact > .toolbar-top {
-            margin-bottom: 6px;
-            gap: 6px;
-        }
-        body.lx-chrome-compact > .section-nav {
-            margin-bottom: 6px;
-            padding: 6px 4px;
-        }
-        body.lx-chrome-compact > .filter-bar {
-            margin-bottom: 8px;
-            gap: 8px;
-        }
-        /* First-run: keep a one-line install strip, drop the essay */
-        body.lx-chrome-compact > #firstRunSetupPanel {
-            padding: 8px 12px !important;
-            margin: 0 auto 8px !important;
-            max-width: 900px;
-        }
-        body.lx-chrome-compact > #firstRunSetupPanel p,
-        body.lx-chrome-compact > #firstRunSetupPanel ul,
-        body.lx-chrome-compact > #firstRunSetupPanel #firstRunHint {
-            display: none !important;
-        }
-        body.lx-chrome-compact > #firstRunSetupPanel h3 { font-size: 13px; margin: 0; }
-        body.lx-chrome-compact > #firstRunSetupPanel > div:first-child { margin-bottom: 8px !important; }
-        body.lx-chrome-compact > .home-strips {
-            margin-bottom: 8px;
-            gap: 8px;
-        }
-        body.lx-chrome-compact > .home-strips .home-strip { padding: 8px 10px; }
-        .settings-drawer:not(.open) {
-            pointer-events: none;
-            visibility: hidden;
-        }
-        .settings-drawer.open {
-            visibility: visible;
-            pointer-events: auto;
-        }
-        @media (max-width: 720px) {
-            body.lx-chrome-compact > .toolbar-top #btnCineSettings,
-            body.lx-chrome-compact > .toolbar-top #btnPortalSettings,
-            body.lx-chrome-compact > .toolbar-top #btnEditIcons,
-            body.lx-chrome-compact > .toolbar-top #btnTiles,
-            body.lx-chrome-compact > .toolbar-top #btnToolVisibility,
-            body.lx-chrome-compact > .toolbar-top #btnDebug,
-            body.lx-chrome-compact > .toolbar-top #btnGetStarted,
-            body.lx-chrome-compact > .toolbar-top .neon-dock {
-                display: none !important;
-            }
-            body.lx-chrome-compact > .section-nav {
-                gap: 4px;
-                padding: 4px 2px;
-            }
-            body.lx-chrome-compact > .section-nav .sec-btn {
-                padding: 5px 10px;
-                font-size: 10px;
-            }
-            body.lx-chrome-compact > .server-banner .server-actions .ui-btn:not(.primary):not(#btnStartServer) {
-                display: none !important;
-            }
         }
         .tool-card .card-star {
             position: absolute;
@@ -3514,8 +3443,17 @@
                 if (metaEl) metaEl.textContent = `${visibleCount} match${visibleCount === 1 ? '' : 'es'}`;
                 if (backBtn) backBtn.style.display = 'inline-block';
             } else if (activeSection === 'home') {
-                /* Home already has nav + featured + accordion — skip the extra banner */
-                sectionHeader.classList.remove('visible');
+                sectionHeader.classList.add('visible');
+                if (emojiEl) emojiEl.textContent = '🏠';
+                if (titleEl) titleEl.textContent = 'Home';
+                if (descEl) descEl.textContent = 'Click a category to expand or collapse its tools. Use 👁 Visible tools to hide ones you do not need.';
+                if (metaEl) {
+                    const n = visiblePrimaryTools().length;
+                    const hidden = TOOLS.filter(isPrimaryTool).length - n;
+                    metaEl.textContent = hidden > 0
+                        ? `${n} shown · ${hidden} hidden`
+                        : `${n} tools`;
+                }
                 if (backBtn) backBtn.style.display = 'none';
             } else if (activeSection === 'all') {
                 sectionHeader.classList.add('visible');
@@ -3823,10 +3761,8 @@
             const favHost = document.getElementById('favChips');
             if (!strips || !recentHost || !favHost) return;
 
-            const recents = recentIds.map(toolById).filter(t => t && isToolVisible(t)).slice(0, MAX_RECENTS);
-            const favs = favoriteIds.map(toolById).filter(t => t && isToolVisible(t));
             const onHome = !searchQuery.trim() && activeSection === 'home';
-            strips.classList.toggle('visible', onHome && (recents.length > 0 || favs.length > 0));
+            strips.classList.toggle('visible', onHome);
             if (!onHome) return;
 
             const makeChip = (tool, { favStyle } = {}) => {
@@ -3862,18 +3798,18 @@
             };
 
             recentHost.innerHTML = '';
+            const recents = recentIds.map(toolById).filter(t => t && isToolVisible(t)).slice(0, MAX_RECENTS);
             if (!recents.length) {
-                document.getElementById('recentStrip')?.setAttribute('hidden', '');
+                recentHost.innerHTML = '<span class="chip-empty">No recents yet — open a tool and it will show up here.</span>';
             } else {
-                document.getElementById('recentStrip')?.removeAttribute('hidden');
                 recents.forEach(t => recentHost.appendChild(makeChip(t)));
             }
 
             favHost.innerHTML = '';
+            const favs = favoriteIds.map(toolById).filter(t => t && isToolVisible(t));
             if (!favs.length) {
-                document.getElementById('favStrip')?.setAttribute('hidden', '');
+                favHost.innerHTML = '<span class="chip-empty">Star any tool (★ on the card) or right-click → Favorite.</span>';
             } else {
-                document.getElementById('favStrip')?.removeAttribute('hidden');
                 favs.forEach(t => favHost.appendChild(makeChip(t, { favStyle: true })));
             }
         }

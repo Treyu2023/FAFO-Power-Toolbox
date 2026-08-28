@@ -1239,6 +1239,9 @@
       try {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior });
       } catch (_) { /* ignore */ }
+      try {
+        window.scrollTo(0, 0);
+      } catch (_) { /* ignore */ }
       return;
     }
     const pad = (opts && opts.padding) || 12;

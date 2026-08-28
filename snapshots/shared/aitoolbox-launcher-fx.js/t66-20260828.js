@@ -82,43 +82,10 @@
 }
 body.lx-off #lxRoot { opacity: 0; visibility: hidden; }
 body.lx-active { position: relative; }
-/* Raise in-flow content above the FX canvas. Do NOT force position:relative
-   on every body child — that overrides position:fixed on Settings, toasts,
-   command palette, and the FX buttons, shoving a 1000px+ hole into the page. */
-body.lx-active > header,
-body.lx-active > .server-banner,
-body.lx-active > .get-started,
-body.lx-active > .toolbar-top,
-body.lx-active > .section-nav,
-body.lx-active > .filter-bar,
-body.lx-active > .featured-strip,
-body.lx-active > .section-hub,
-body.lx-active > .tools-panel,
-body.lx-active > .section-header,
-body.lx-active > .home-strips,
-body.lx-active > .hint-bar,
-body.lx-active > .lx-tile-scroll,
-body.lx-active > .perf-strip,
-body.lx-active > #watchdogPanel,
-body.lx-active > footer,
-body.lx-active > .sumran-band {
-  position: relative;
-  z-index: 2;
+body.lx-active > :not(#lxRoot):not(.cine-root):not(#cineSettingsPop) {
+  position: relative; z-index: 1;
 }
 body.lx-active .section-nav { z-index: 40; }
-body.lx-active .settings-drawer,
-body.lx-active .cmdk-backdrop,
-body.lx-active .settings-backdrop,
-body.lx-active .vis-modal-backdrop,
-body.lx-active .tile-modal-backdrop,
-body.lx-active .ui-tooltip,
-body.lx-active .ui-toast,
-body.lx-active #ui-toast-global,
-body.lx-active #lxControls,
-body.lx-active .lx-ctx,
-body.lx-active .fafo-layout-float-dock {
-  position: fixed !important;
-}
 
 #lxCanvas {
   position: absolute; inset: 0; width: 100%; height: 100%;

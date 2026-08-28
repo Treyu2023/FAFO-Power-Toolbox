@@ -532,18 +532,6 @@
         return (num < 0 ? '-' : '') + shown + ' ' + units[i];
     }
 
-    function isToolboxLauncherPage() {
-        try {
-            if (document.body && document.body.getAttribute('data-tb-chrome') === 'off') return true;
-            const raw = String(location.pathname || '') + ' ' + String(location.href || '');
-            let decoded = raw;
-            try { decoded = decodeURIComponent(raw.replace(/\+/g, '%20')); } catch (_) { /* ignore */ }
-            if (/Toolbox Launcher\.html/i.test(raw) || /Toolbox Launcher\.html/i.test(decoded)) return true;
-            if (/toolbox%20launcher\.html/i.test(raw)) return true;
-        } catch (_) { /* ignore */ }
-        return false;
-    }
-
     /**
      * Inject a consistent multi-server status bar (S1 HTML Toolbox + S2 FAFO Tagger)
      * with ← Toolbox escape hatch. OLED black + teal/neon accents.
@@ -551,7 +539,8 @@
      */
     function mountServerBar(opts = {}) {
         // Don't put a second bar on the launcher (it has its own full panel)
-        if (opts.skipOnLauncher !== false && isToolboxLauncherPage()) {
+        const isLauncher = /Toolbox Launcher\.html/i.test(location.pathname || location.href || '');
+        if (opts.skipOnLauncher !== false && isLauncher) {
             return null;
         }
 
@@ -1337,7 +1326,7 @@
             try {
                 // Skip pure extension pages / about:blank noise
                 if (!document.body) return;
-                if (document.body.dataset.tbChrome === 'off' || isToolboxLauncherPage()) return;
+                if (document.body.dataset.tbChrome === 'off') return;
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
                 bindFramedHubLinks();
