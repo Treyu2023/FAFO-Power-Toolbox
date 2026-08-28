@@ -26,6 +26,8 @@ Classic viewport-locked split (zero-sum) is opt-in with `data-fafo-layout-pin="1
 
 **Phone vs desktop is a different control.** The Look panel (`O`, or **Look** on the pro bar) sets *layout* (phone stacks columns / larger taps; desktop keeps side-by-side). *Lighting* (glow strength and accent color) is a separate group in that same panel and does not change the layout.
 
+**Scale is uncapped.** Drag a panel or section as large as you want — the page scrolls instead of clamping to the window. Look → Layout also has **UI scale** (whole chrome/assets) and **Text scale** (copy inside panels). Type up to 800% or use Ctrl+mouse-wheel for UI scale.
+
 Layouts **auto-save** to `localStorage` under `fafo_layout_v2_<appId>`.
 
 ## Adopting in a new app (required going forward)
