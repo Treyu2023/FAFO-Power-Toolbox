@@ -1,9 +1,10 @@
 <!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Typing Assistant Trainer.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Typing Assistant Trainer — T64</title>
+  <title>Typing Assistant Trainer — AI HTML Toolbox</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,8 +28,8 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      min-height: 0;
-      height: 100%;
+      min-height: 100dvh;
+      height: auto;
       background:
         radial-gradient(ellipse at 50% -10%, #14142a 0%, transparent 55%),
         radial-gradient(ellipse at 90% 80%, rgba(124, 92, 255, 0.08) 0%, transparent 40%),
@@ -36,7 +37,7 @@
       color: var(--text);
       font-family: "Segoe UI", system-ui, sans-serif;
       padding: 10px clamp(8px, 1.4vw, 18px) 28px;
-      overflow: hidden;
+      overflow: auto;
     }
     body.combo-glow {
       animation: comboBg 0.55s ease;
@@ -418,52 +419,44 @@
       animation: none;
     }
 
-    /* Fill the window — don't trap the prompt in a narrow centered column */
+    /* Fill the window — grow with content, page scrolls (never steal from a sibling) */
     .wrap {
       width: 100%;
-      max-width: min(1680px, 100%);
-      margin: 0 auto;
+      max-width: none;
+      margin: 0;
       position: relative;
       z-index: 1;
       box-sizing: border-box;
-      flex: 1 1 auto;
+      flex: 1 0 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: none;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
 
-    /* PET-T61: independent panel wheel.
-       layout.js pinViewport + .fafo-layout-locked hide html/body overflow.
-       Wheel only works over a real overflow:auto pane with a CONSTRAINED height
-       (.fafo-panel-body / .fafo-scroll-pane) — not height:auto growing boxes. */
+    /* Page scroll is the source of truth. Enlarging one panel must not shrink another. */
     html, body {
-      height: 100%;
-      max-height: 100%;
-      overflow: hidden;
-    }
-    html.fafo-layout-locked,
-    html.fafo-layout-locked body,
-    body.fafo-layout-locked {
-      height: 100%;
-      overflow: hidden;
+      height: auto;
+      max-height: none;
+      min-height: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
     body {
       display: flex;
       flex-direction: column;
-      min-height: 0;
     }
     .wrap[data-fafo-layout-root],
     .wrap {
-      flex: 1 1 auto;
+      flex: 1 0 auto;
       min-height: 0;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: none;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
     .wrap > header,
     .wrap > .panel,
@@ -471,19 +464,19 @@
     .fafo-layout-panel {
       display: flex;
       flex-direction: column;
+      flex-shrink: 0;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     .wrap > .grid-2 {
-      flex: 0 1 auto;
-      max-height: 34%;
-      min-height: 0;
+      flex: 0 0 auto;
+      max-height: none;
     }
     .wrap > .grid-2 > .panel {
       display: flex;
       flex-direction: column;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     .grid-2.fafo-layout-panel > .fafo-panel-body,
     .grid-2 > .fafo-scroll-pane {
@@ -500,18 +493,19 @@
     .fafo-scroll-pane {
       flex: 1 1 auto;
       min-height: 0;
+      overflow: visible;
+    }
+    .fafo-layout-panel[data-fafo-sized="1"] > .fafo-panel-body,
+    .fafo-layout-panel[data-fafo-sized="1"] > .fafo-scroll-pane {
       overflow: auto;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
     }
     #mainPanel {
-      flex: 1 1 auto !important;
-      min-height: 0 !important;
+      flex: 1 0 auto !important;
+      min-height: clamp(360px, calc(100dvh - 220px), 1200px) !important;
     }
     .prompt-wrap {
-      min-height: 0 !important;
-      overflow: auto;
-      overscroll-behavior: contain;
+      min-height: 220px;
+      overflow: visible;
     }
 
 
@@ -809,7 +803,7 @@
       width: 100%;
       min-height: 0;
       box-sizing: border-box;
-      contain: layout;
+      contain: none;
     }
     #mainPanel .stats,
     #mainPanel .combo-bar,
@@ -1996,29 +1990,18 @@
   <link rel="stylesheet" href="shared/aitoolbox-ui.css">
 <link rel="stylesheet" href="shared/aitoolbox-layout.css">
 <style id="tat-t61-wheel">
-  /* PET-T61 ADD: wheel on a panel scrolls THAT panel (layout 1.16.20).
-     Native overflow + overscroll-behavior. Do not preventDefault wheel on document. */
   :focus-visible { outline: 2px solid var(--accent, #00f3ff); outline-offset: 2px; }
-  .fafo-layout-panel,
-  .panel.fafo-layout-panel,
-  .campaign-panel.show {
+  /* Layout chrome must not un-hide mode panels or cage them at leftover height */
+  .campaign-panel:not(.show) {
+    display: none !important;
+  }
+  .campaign-panel.show,
+  .campaign-panel.show.fafo-layout-panel {
     display: flex !important;
     flex-direction: column;
-    min-height: 0;
-  }
-  .fafo-layout-panel { overflow: hidden; }
-  .fafo-panel-body,
-  .fafo-layout-panel > .fafo-panel-body,
-  [data-fafo-section][data-fafo-resizable="1"] .fafo-section-body {
-    overflow: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    min-height: 0;
-    flex: 1 1 auto;
   }
   .history-list, .hs-list, .map-wrap, .mini-row, #storyJournal, .territories, .novel-chapter-list {
     overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
   }
   .history-list, .hs-list { overflow-y: auto; }
 </style>
@@ -2567,8 +2550,240 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
   font-size: 10px; font-weight: 700; cursor: pointer;
 }
 </style>
+<style id="tat-t65-sie">
+/* PET-T65 ADD: prefs.v3.ghostReplay + sprintPodium.
+   Tape: aitoolbox.typingTrainer.ghostReplay.v1 best-WPM per timed bucket.
+   Shape {wpm,acc,at,name,marks:[{tMs,idx}]} cap 8000.
+   Ghost caret .tat-ghost-caret z under .current. Ghost Pace mini untouched.
+   Podium 15/30/60 finish only, reads highscores.v2, no auto-save, empty=You're first.
+   I=clamp01(B+E)*gain / T61 wheel / T63 / T64 kept. Contrast >= 4.5. */
+#promptWrap .prompt .tat-ghost-caret {
+  position: relative;
+  z-index: 4;
+  outline: 2px solid #e6c04a;
+  outline-offset: 2px;
+  border-radius: 6px;
+  box-shadow: 0 0 10px rgba(230,192,74,0.25);
+  background: transparent;
+}
+#promptWrap .prompt .current {
+  z-index: 6;
+}
+#promptWrap .prompt .current.tat-ghost-caret {
+  z-index: 6;
+}
+.tat-podium {
+  margin: 10px auto 12px;
+  max-width: 420px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #10141c;
+  border: 1px solid #5b6b7c;
+  color: #f4f7fb;
+  text-align: left;
+}
+.tat-podium-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffe8b0;
+  margin-bottom: 8px;
+}
+.tat-podium-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tat-podium-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #f4f7fb;
+}
+.tat-podium-rank { color: #ffc800; font-variant-numeric: tabular-nums; }
+.tat-podium-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fb; }
+.tat-podium-wpm, .tat-podium-score { color: #e0f2fe; font-variant-numeric: tabular-nums; }
+.tat-podium-empty { color: #ffe8b0; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) {
+  body:not(.tat-rm-off) .tat-ghost-caret { animation: none !important; }
+}
+body.tat-rm-on .tat-ghost-caret { animation: none !important; }
+</style>
+<style id="tat-t69-stage">
+/* PET-T69: full-viewport typing stage. No 1680px column. Prompt is the hero. */
+html, body {
+  width: 100%;
+  max-width: none;
+}
+body {
+  padding: 8px clamp(10px, 1.2vw, 22px) 20px;
+}
+.wrap > header {
+  padding-top: 8px;
+  margin-bottom: 8px;
+}
+.wrap > header p { font-size: 12px; }
+.wrap,
+.wrap[data-fafo-layout-root] {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0;
+  min-height: calc(100dvh - 16px);
+}
+#mainPanel {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  min-height: clamp(380px, calc(100dvh - 220px), 1200px) !important;
+  contain: none;
+}
+#mainPanel > .fafo-panel-body,
+#mainPanel > .fafo-scroll-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  min-height: 0;
+}
+.prompt-wrap {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: clamp(260px, 56dvh, 980px) !important;
+  justify-content: center;
+}
+.prompt {
+  font-size: clamp(1.2rem, 0.7rem + 1.15cqi + 0.35vw, 2.55rem);
+  letter-spacing: 0.02em;
+  line-height: 1.55;
+  padding: clamp(10px, 1.4vw, 22px) clamp(8px, 1.2vw, 18px);
+}
+@supports not (font-size: 1cqi) {
+  .prompt { font-size: clamp(1.2rem, 1.35vw + 0.85rem, 2.45rem); }
+}
+#tatPlate .tat-gutter {
+  inset: clamp(8px, 1.2vw, 22px) clamp(10px, 1.6vw, 28px);
+}
+.tat-extra-setup {
+  margin-top: 12px;
+  border: 1px solid rgba(0, 243, 255, 0.16);
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(12, 16, 28, 0.72), rgba(6, 8, 14, 0.9));
+}
+.tat-extra-setup > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.tat-extra-setup > summary::-webkit-details-marker { display: none; }
+.tat-extra-setup > summary::after {
+  content: " — fonts, skins, library";
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.tat-extra-setup[open] > summary {
+  border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+}
+.tat-extra-setup .options-shell {
+  border: 0;
+  margin-top: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.stats {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+/* Play / fullscreen: the prompt owns the window */
+body.run-active .wrap > header,
+body.tat-stage .wrap > header,
+body.run-active .wrap > [data-fafo-panel="block"],
+body.run-active #campaignPanel,
+body.tat-stage #campaignPanel,
+body.run-active #miniPanel,
+body.tat-stage #miniPanel,
+body.run-active .wrap > [data-fafo-panel="block-4"],
+body.tat-stage .wrap > [data-fafo-panel="block-4"],
+body.run-active .wrap > .grid-2,
+body.tat-stage .wrap > .grid-2,
+body.run-active .footer-note,
+body.tat-stage .footer-note,
+body.run-active .fafo-split-handle,
+body.tat-stage .fafo-split-handle,
+body.run-active .fafo-panel-chrome,
+body.tat-stage .fafo-panel-chrome {
+  display: none !important;
+}
+body.run-active #mainPanel,
+body.tat-stage #mainPanel,
+body.run-active #mainPanel > .fafo-panel-body,
+body.tat-stage #mainPanel > .fafo-panel-body {
+  min-height: calc(100dvh - 20px) !important;
+  height: auto;
+}
+body.run-active .prompt-wrap,
+body.tat-stage .prompt-wrap {
+  min-height: clamp(320px, 68dvh, 1100px);
+}
+body.run-active .toolbox-back,
+body.tat-stage .toolbox-back { opacity: 0.4; }
+body.run-active .toolbox-back:hover,
+body.tat-stage .toolbox-back:hover { opacity: 1; }
+
+html:fullscreen,
+html:-webkit-full-screen {
+  background: var(--bg);
+}
+html:fullscreen body,
+html:-webkit-full-screen body {
+  padding: 8px 16px 12px;
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow: auto;
+}
+html:fullscreen .wrap,
+html:-webkit-full-screen .wrap {
+  min-height: calc(100dvh - 12px);
+  max-width: none !important;
+}
+html:fullscreen #mainPanel,
+html:-webkit-full-screen #mainPanel {
+  min-height: clamp(420px, calc(100dvh - 160px), 1400px) !important;
+}
+html:fullscreen body.run-active #mainPanel,
+html:-webkit-full-screen body.run-active #mainPanel {
+  min-height: calc(100dvh - 16px) !important;
+}
+.btn.tat-fs-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+body:not(.run-active) .combo-bar { display: none !important; }
+@media (max-height: 900px) {
+  .wrap > header p { display: none; }
+  .companion-bar { display: none; }
+  #mainPanel { min-height: clamp(300px, calc(100dvh - 168px), 900px) !important; }
+  .prompt-wrap { min-height: clamp(220px, 48dvh, 720px) !important; }
+}
+@media (max-width: 720px), (max-height: 640px) {
+  #mainPanel { min-height: clamp(260px, 58dvh, 720px) !important; }
+  .prompt-wrap { min-height: clamp(180px, 42dvh, 560px) !important; }
+  .prompt { font-size: clamp(1.05rem, 3.4vw, 1.7rem); }
+}
+</style>
 </head>
-<body data-tb-esc="off" data-tat-ver="T64">
+<body data-tb-esc="off" data-tat-ver="T69">
   <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
   <div id="ambient" aria-hidden="true">
     <div class="amb-wash"></div>
@@ -2597,15 +2812,16 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
   </div>
   <a class="toolbox-back" href="Toolbox Launcher.html">← Toolbox</a>
 
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
     <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
       <div class="fafo-panel-body fafo-scroll-pane">
-      <h1>⌨️ TYPING ASSISTANT TRAINER <span id="tatVer" class="tat-ver" title="PET-T64 reducedMotion / masterProfile / skin slots">T64</span></h1>
+      <h1>⌨️ TYPING ASSISTANT TRAINER <span id="tatVer" class="tat-ver" title="PET-T69 full-viewport typing stage">T69</span></h1>
       <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center">
         <a href="Bloodmoon Survivor.html" style="font-size:11px;font-weight:700;color:#c4b5fd;text-decoration:none;border:1px solid rgba(167,139,250,.4);padding:5px 10px;border-radius:999px" title="Break · Vampire survivors-style">🦇 Bloodmoon</a>
         <a href="Empire Seed.html" style="font-size:11px;font-weight:700;color:#fbbf24;text-decoration:none;border:1px solid rgba(251,191,36,.4);padding:5px 10px;border-radius:999px" title="Break · 4X empire builder">👑 Empire Seed</a>
         <button type="button" class="btn ghost" id="btnExportHs" style="font-size:11px" data-tip-title="Export high scores" data-tip="Download your high-score board as a shareable text/JSON dump.">📋 Export high scores</button>
+        <button type="button" class="btn ghost tat-fs-btn" id="btnFullscreen" style="font-size:11px" aria-pressed="false" data-tip-title="Full screen" data-tip="Fill the monitor. Esc exits browser full screen.">⛶ Full screen</button>
         <span style="font-size:11px;color:var(--muted)">Tab restart · sound prefs persist · ? for Pro help</span>
       </div>
       <span data-fafo-layout-toolbar></span>
@@ -2669,14 +2885,15 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
         </div>
       </div>
 
+      <details class="tat-extra-setup" id="tatExtraSetup">
+      <summary>More setup</summary>
+      <div class="options-shell">
       <div class="name-row">
         <div class="field">
           <label for="playerName">Your name (optional here — you can set it after a run too)</label>
           <input type="text" id="playerName" placeholder="Ryan Key" maxlength="48" autocomplete="name" value="Ryan Key" data-tip-title="Player name" data-tip="Name used for high scores and Ops Stats (default Ryan Key). You can also set it after a run.">
         </div>
       </div>
-
-      <div class="options-shell">
         <div class="section-label">Practice options</div>
         <div class="toggles">
           <label class="toggle" title="Strip capitals to lowercase for simpler practice">
@@ -2706,6 +2923,14 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
           <label class="toggle" title="When a Novel chapter finishes, load the next one automatically">
             <input type="checkbox" id="optNovelAuto" checked>
             <span><span class="hi">Novel auto-next</span> — advance chapters</span>
+          </label>
+          <label class="toggle" title="Replay your best-WPM caret tape on timed runs">
+            <input type="checkbox" id="optGhostReplay" checked>
+            <span><span class="hi">Ghost replay</span> — second caret from your best timed tape</span>
+          </label>
+          <label class="toggle" title="Show a 3-row podium after 15/30/60 timed finishes">
+            <input type="checkbox" id="optSprintPodium" checked>
+            <span><span class="hi">Sprint podium</span> — top 3 after 15/30/60</span>
           </label>
         </div>
 
@@ -2782,7 +3007,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
         </div>
 
         
-        <details class="tat-skin-panel" id="tatSkinPanel" open>
+        <details class="tat-skin-panel" id="tatSkinPanel">
           <summary>Skin / FX — stack the weather</summary>
           <div class="fafo-panel-body fafo-scroll-pane tat-skin-body" id="tatSkinBody">
             <div class="tat-master-row" id="tatMasterRow">
@@ -3130,6 +3355,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
       </div>
       <div class="lib-status" id="libStatus">No library loaded — built-in texts will be used (more repeats). Import a PDF or .txt for fresh, skill-matched passages.</div>
       </div><!-- /.options-shell -->
+      </details>
 
       <!-- Novel Mode book shelf -->
       <div class="novel-panel" id="novelPanel">
@@ -3210,7 +3436,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
 </div>
 
     <!-- Main typing -->
-    <div class="panel" id="mainPanel" data-fafo-panel="test-complete" data-fafo-panel-title="Results" data-fafo-panel-min="60" data-fafo-panel-default="140" data-fafo-flex="1">
+    <div class="panel" id="mainPanel" data-fafo-panel="test-complete" data-fafo-panel-title="Typing stage" data-fafo-panel-min="320" data-fafo-panel-default="640" data-fafo-flex="1">
       <div class="fafo-panel-body fafo-scroll-pane">
       <div class="companion-bar" id="companionBar">
         <div class="companion-face" id="companionFace" aria-hidden="true">⌨️</div>
@@ -3271,6 +3497,10 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
           <div><div class="big" id="resultWpm">0</div><div class="sub">WPM</div></div>
           <div><div class="big" id="resultAcc">100%</div><div class="sub">Accuracy</div></div>
           <div><div class="big" id="resultMult">×1</div><div class="sub">Best combo</div></div>
+        </div>
+        <div class="tat-podium" id="tatPodium" hidden>
+          <div class="tat-podium-title">Sprint podium</div>
+          <ol class="tat-podium-list" id="tatPodiumList"></ol>
         </div>
         <div class="result-name-row" id="resultNameRow">
           <label for="resultName">Your name for the high-score board</label>
@@ -3370,6 +3600,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     prefs: 'aitoolbox.typingTrainer.prefs.v3',
     skinSlots: 'aitoolbox.typingTrainer.skinSlots.v1',
     libraryMeta: 'aitoolbox.typingTrainer.libraryMeta.v1',
+    ghostReplay: 'aitoolbox.typingTrainer.ghostReplay.v1',
   };
   const DEFAULT_PLAYER_NAME = (window.FAFOOpsStats && window.FAFOOpsStats.DEFAULT_TYPING_ACTOR) || 'Ryan Key';
 
@@ -3844,6 +4075,9 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
   };
   const setRunActive = (on) => {
     try { document.body.classList.toggle('run-active', !!on); } catch (_) {}
+  };
+  const setStageMode = (on) => {
+    try { document.body.classList.toggle('tat-stage', !!on); } catch (_) {}
   };
 
   const promptEl = $('prompt');
@@ -5164,16 +5398,16 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     const cls = charClass(i);
     if (raw === '\n') {
       // Visual break + real line wrap point
-      return `<span class="${cls}">↵</span><span class="nl" aria-hidden="true"></span>`;
+      return `<span class="${cls}" data-i="${i}">↵</span><span class="nl" aria-hidden="true"></span>`;
     }
     if (raw === ' ') {
       // Real space so the browser wraps between words (not mid-word)
       if (i === index) {
-        return `<span class="${cls} space-caret"> </span>`;
+        return `<span class="${cls} space-caret" data-i="${i}"> </span>`;
       }
-      return `<span class="${cls} ws"> </span>`;
+      return `<span class="${cls} ws" data-i="${i}"> </span>`;
     }
-    return `<span class="${cls}">${escapeHtml(raw)}</span>`;
+    return `<span class="${cls}" data-i="${i}">${escapeHtml(raw)}</span>`;
   }
 
   /**
@@ -5204,6 +5438,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
       i = j;
     }
     promptEl.innerHTML = html;
+    try { tatT65OnRender(); } catch (_) {}
   }
 
   // ——— Stats ———
@@ -5295,6 +5530,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
       if (progressFill) progressFill.style.width = pct + '%';
     }
     if (mode === 'novel') updateNovelHud();
+    try { tatT65OnStats(); } catch (_) {}
   }
 
   function stopTimer() {
@@ -5616,6 +5852,9 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     }
     typer.value = '';
     typer.focus();
+    setStageMode(true);
+    try { mainPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+    try { tatT65OnNewTest(); } catch (_) {}
   }
 
   function beginRun() {
@@ -5632,6 +5871,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     focusHint.className = 'focus-hint live';
     setCompanion('focus');
     ensureAudio();
+    try { tatT65OnBegin(); } catch (_) {}
   }
 
   function advanceWordRush() {
@@ -5661,6 +5901,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     try { t63Finish(); } catch (_) {}
     running = false;
     setRunActive(false);
+    setStageMode(false);
     stopTimer();
     if (!pausedAt) pausedAt = Date.now();
     updateStats();
@@ -5857,6 +6098,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     renderHistory();
     // Ops ledger: per-player (uses field name now; HS Save re-syncs name for next time)
     recordTypingOps(reason, wpm, acc, score);
+    try { tatT65OnFinish(wpm, acc); } catch (_) {}
     // leave miniRun flag until next start so Try Again works
   }
 
@@ -5921,6 +6163,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
         if (correctKeystrokes > 0) correctKeystrokes--;
         if (totalKeystrokes > 0) totalKeystrokes--;
         if (index < wrongFlags.length) wrongFlags[index] = false;
+        try { tatT65OnIndex(); } catch (_) {}
         renderPrompt();
         highlightNext();
         updateStats();
@@ -6037,6 +6280,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
       } else {
         index++;
       }
+      try { tatT65OnIndex(); } catch (_) {}
       if (gain && score % 100 < gain) popStat('statScore');
 
       renderPrompt();
@@ -6806,6 +7050,160 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     }
   }
 
+  // ===== PET-T65: ghostReplay tape + sprint podium =====
+  var TAT65_MARK_CAP = 8000;
+  var TAT65_SPRINT = { 15: 1, 30: 1, 60: 1 };
+  let ghostMarks = [];
+  let ghostTapeMarks = null;
+  let ghostLiveIdx = -1;
+
+  function tatT65GhostOn() {
+    return !$('optGhostReplay') || !!$('optGhostReplay').checked;
+  }
+  function tatT65PodiumOn() {
+    return !$('optSprintPodium') || !!$('optSprintPodium').checked;
+  }
+  function tatT65TimedBucket() {
+    if (mode !== 'timed' || miniRun || campaignRun || boardsRun) return '';
+    const k = optionKey();
+    return (k && k.indexOf('timed:') === 0) ? k : '';
+  }
+  function tatT65SprintOk() {
+    return !!tatT65TimedBucket() && !!TAT65_SPRINT[durationSec];
+  }
+  function tatT65HidePodium() {
+    const box = $('tatPodium');
+    if (box) box.hidden = true;
+  }
+  function tatT65LoadTape() {
+    ghostTapeMarks = null;
+    ghostLiveIdx = -1;
+    if (!tatT65GhostOn()) return;
+    const bucket = tatT65TimedBucket();
+    if (!bucket) return;
+    const all = loadJson(KEYS.ghostReplay, {});
+    const rec = all && typeof all === 'object' && !Array.isArray(all) ? all[bucket] : null;
+    if (!rec || typeof rec !== 'object' || !Array.isArray(rec.marks)) return;
+    const marks = [];
+    const n = Math.min(rec.marks.length, TAT65_MARK_CAP);
+    for (let i = 0; i < n; i++) {
+      const m = rec.marks[i];
+      if (!m || typeof m !== 'object') continue;
+      const tMs = Number(m.tMs);
+      const idx = Number(m.idx);
+      if (!Number.isFinite(tMs) || !Number.isFinite(idx)) continue;
+      marks.push({ tMs: Math.max(0, tMs), idx: Math.max(0, idx | 0) });
+    }
+    ghostTapeMarks = marks.length ? marks : null;
+  }
+  function tatT65Lookup(marks, tMs) {
+    if (!marks || !marks.length) return -1;
+    let lo = 0, hi = marks.length - 1, ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (marks[mid].tMs <= tMs) { ans = mid; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return marks[ans].idx | 0;
+  }
+  function tatT65Paint() {
+    if (!promptEl) return;
+    const prev = promptEl.querySelectorAll('.tat-ghost-caret');
+    for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tat-ghost-caret');
+    if (!tatT65GhostOn() || ghostLiveIdx < 0) return;
+    const el = promptEl.querySelector('[data-i="' + ghostLiveIdx + '"]');
+    if (el) el.classList.add('tat-ghost-caret');
+  }
+  function tatT65Tick() {
+    if (!tatT65GhostOn() || !running || !ghostTapeMarks) {
+      if (ghostLiveIdx !== -1) { ghostLiveIdx = -1; tatT65Paint(); }
+      return;
+    }
+    const next = tatT65Lookup(ghostTapeMarks, elapsedMs());
+    if (next !== ghostLiveIdx) {
+      ghostLiveIdx = next;
+      tatT65Paint();
+    }
+  }
+  function tatT65Mark() {
+    if (!running || finished) return;
+    if (!tatT65TimedBucket()) return;
+    if (ghostMarks.length >= TAT65_MARK_CAP) return;
+    const t = elapsedMs();
+    const last = ghostMarks.length ? ghostMarks[ghostMarks.length - 1] : null;
+    if (last && last.idx === index && last.tMs === t) return;
+    ghostMarks.push({ tMs: t, idx: index });
+  }
+  function tatT65Commit(wpm, acc) {
+    if (!tatT65GhostOn()) return;
+    const bucket = tatT65TimedBucket();
+    if (!bucket) return;
+    if (!ghostMarks.length) return;
+    const nw = Number(wpm) || 0;
+    const allRaw = loadJson(KEYS.ghostReplay, {});
+    const all = allRaw && typeof allRaw === 'object' && !Array.isArray(allRaw) ? allRaw : {};
+    const prev = all[bucket];
+    if (prev && (Number(prev.wpm) || 0) >= nw) return;
+    all[bucket] = {
+      wpm: nw,
+      acc: Number(acc) || 0,
+      at: Date.now(),
+      name: getPlayerName() || DEFAULT_PLAYER_NAME,
+      marks: ghostMarks.slice(0, TAT65_MARK_CAP),
+    };
+    saveJson(KEYS.ghostReplay, all);
+  }
+  function tatT65ShowPodium() {
+    const box = $('tatPodium');
+    const list = $('tatPodiumList');
+    if (!box || !list) return;
+    if (!tatT65PodiumOn() || !tatT65SprintOk()) {
+      box.hidden = true;
+      return;
+    }
+    const bucket = tatT65TimedBucket();
+    const rows = ((loadHighScores()[bucket]) || []).slice(0, 3);
+    list.innerHTML = '';
+    if (!rows.length) {
+      const li = document.createElement('li');
+      li.className = 'tat-podium-empty';
+      li.textContent = "You're first.";
+      list.appendChild(li);
+    } else {
+      for (let i = 0; i < rows.length; i++) {
+        const h = rows[i] || {};
+        const li = document.createElement('li');
+        li.innerHTML =
+          '<span class="tat-podium-rank">' + (i + 1) + '</span>' +
+          '<span class="tat-podium-name">' + escapeHtml(h.name || '\u2014') + '</span>' +
+          '<span class="tat-podium-wpm">' + (Number(h.wpm) || 0) + ' wpm</span>' +
+          '<span class="tat-podium-score">' + (Number(h.score) || 0) + '</span>';
+        list.appendChild(li);
+      }
+    }
+    box.hidden = false;
+  }
+  function tatT65OnNewTest() {
+    ghostMarks = [];
+    ghostTapeMarks = null;
+    ghostLiveIdx = -1;
+    tatT65HidePodium();
+    tatT65LoadTape();
+    tatT65Paint();
+  }
+  function tatT65OnBegin() {
+    ghostMarks = [{ tMs: 0, idx: index }];
+    tatT65LoadTape();
+    tatT65Tick();
+  }
+  function tatT65OnRender() { tatT65Paint(); }
+  function tatT65OnStats() { tatT65Tick(); }
+  function tatT65OnIndex() { tatT65Mark(); }
+  function tatT65OnFinish(wpm, acc) {
+    tatT65Commit(wpm, acc);
+    tatT65ShowPodium();
+  }
+
   // ——— Prefs ———
   function applyAmbientPref() {
     const on = $('optAmbient') ? $('optAmbient').checked : true;
@@ -6833,6 +7231,8 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     applyAmbientPref();
     applyPromptStyle();
     allowedSelect('optReducedMotion', prefs.reducedMotion, ['auto','on','off'], 'auto');
+    if (prefs.ghostReplay === false && $('optGhostReplay')) $('optGhostReplay').checked = false;
+    if (prefs.sprintPodium === false && $('optSprintPodium')) $('optSprintPodium').checked = false;
     applySkinPrefs(prefs.skin);
     TAT64_MASTER = skinPick(prefs.masterProfile, ['custom','calm','arcade','chaos'], 'custom');
     try { tatPaintMaster(); } catch (_) {}
@@ -6846,7 +7246,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
     if ($('playerName')) $('playerName').value = name;
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
-  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile'];
+  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium'];
   function pickAllowed(obj, allow) {
     const out = {};
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
@@ -6875,6 +7275,8 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
       skin: collectSkinPrefs(),
       reducedMotion: skinPick($('optReducedMotion') && $('optReducedMotion').value, ['auto','on','off'], 'auto'),
       masterProfile: (TAT64_MASTER === 'calm' || TAT64_MASTER === 'arcade' || TAT64_MASTER === 'chaos') ? TAT64_MASTER : 'custom',
+      ghostReplay: $('optGhostReplay') ? !!$('optGhostReplay').checked : true,
+      sprintPodium: $('optSprintPodium') ? !!$('optSprintPodium').checked : true,
       novelBookId,
       novelChapterIndex,
       novelDone: novelDoneChapters,
@@ -6890,6 +7292,33 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
   document.querySelectorAll('#modePills .pill').forEach((p) => {
     p.addEventListener('click', () => setMode(p.dataset.mode));
   });
+  function tatIsFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function tatSyncFsBtn() {
+    const btn = $('btnFullscreen');
+    if (!btn) return;
+    const on = tatIsFullscreen();
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.textContent = on ? '⛶ Exit full screen' : '⛶ Full screen';
+  }
+  async function tatToggleFullscreen() {
+    try {
+      if (tatIsFullscreen()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+      } else {
+        const root = document.documentElement;
+        const req = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (req) await req.call(root);
+      }
+    } catch (_) { /* browser blocked fullscreen */ }
+    tatSyncFsBtn();
+  }
+  $('btnFullscreen')?.addEventListener('click', () => { tatToggleFullscreen(); });
+  document.addEventListener('fullscreenchange', tatSyncFsBtn);
+  document.addEventListener('webkitfullscreenchange', tatSyncFsBtn);
+
   $('btnStart')?.addEventListener('click', () => {
     if (mode === 'campaign') {
       startCampaignAttack();
@@ -7002,7 +7431,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
       if (!running && !finished) newTest(false);
     });
   });
-  ['optSound', 'optFx', 'optAmbient', 'optBurn'].forEach((id) => {
+  ['optSound', 'optFx', 'optAmbient', 'optBurn', 'optGhostReplay', 'optSprintPodium'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
   });
   ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel'].forEach((id) => {
@@ -8369,6 +8798,7 @@ body.tat-rm-on .tat-t63-ripple, body.tat-rm-on .tat-t63-burst, body.tat-rm-on .t
   let lastEsc = 0;
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return;
     const ov = document.getElementById('bonusOverlay');
     if (ov && ov.classList.contains('show')) return;
     const t = e.target;

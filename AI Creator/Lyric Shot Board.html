@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/AI Creator/Lyric Shot Board.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lyric Shot Board — AI HTML Toolbox</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{--bg:#08060c;--panel:#120e18;--panel2:#0c0a12;--line:rgba(251,113,133,.22);--accent:#fb7185;--accent2:#67e8f9;--ok:#34d399;--warn:#fbbf24;--text:#f4eef6;--muted:#9aa0b8;--glow:0 0 16px rgba(251,113,133,.35)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100dvh;background:radial-gradient(ellipse 70% 40% at 90% -10%,rgba(251,113,133,.16),transparent 50%),radial-gradient(ellipse 50% 40% at 0% 0%,rgba(103,232,249,.1),transparent 45%),var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif}
+.nav{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:rgba(8,6,12,.92);position:sticky;top:0;z-index:20;backdrop-filter:blur(10px);flex-wrap:wrap}
+.nav a{color:var(--accent2);text-decoration:none;font-weight:700;font-size:13px}
+.nav h1{font-size:14px;letter-spacing:.12em;color:var(--accent);font-weight:800}
+.nav .sub{color:var(--muted);font-size:12px;flex:1;min-width:180px}
+.btn{background:transparent;border:1px solid var(--accent);color:var(--accent);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+.btn:hover{background:var(--accent);color:#1a0810}
+.btn.ghost{border-color:var(--line);color:var(--text)}
+.btn.ok{border-color:var(--ok);color:var(--ok)}
+.layout{display:flex;min-height:calc(100dvh - 52px);align-items:stretch}
+.side,.detail{background:var(--panel);padding:14px;overflow:auto}
+.side{border-right:1px solid var(--line)}
+.detail{border-left:1px solid var(--line)}
+.main{padding:16px;min-width:0;overflow:auto}
+label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:8px 0 4px}
+input,select,textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:8px;font:inherit}
+textarea{min-height:72px;resize:vertical}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px}
+.sec{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid transparent;border-radius:10px;cursor:pointer;margin-bottom:6px}
+.sec:hover,.sec.on{border-color:var(--accent);background:rgba(251,113,133,.1)}
+.sec b{font-size:13px}
+.sec span{margin-left:auto;font-size:11px;color:var(--muted)}
+.kind{font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--accent2)}
+.shots{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+.shots th{text-align:left;color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:6px}
+.shots td{padding:6px;border-top:1px solid var(--line);vertical-align:top}
+.shots input,.shots select,.shots textarea{padding:6px 8px;min-height:0}
+.shots textarea{min-height:52px}
+.pack{font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.45;background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:10px;padding:10px;white-space:pre-wrap;min-height:160px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.beat{font-size:12px;color:var(--accent2);margin:6px 0 12px}
+.empty{color:var(--muted);padding:24px;text-align:center}
+.status-keep{color:var(--ok)} .status-maybe{color:var(--warn)} .status-kill{color:#f87171}
+@media(max-width:980px){.layout{flex-direction:column}.side,.detail{border:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <h1>LYRIC SHOT BOARD</h1>
+  <span class="sub">Map verses to camera shots. Local only — nothing leaves this PC.</span>
+  <span data-fafo-layout-toolbar></span>
+  <button type="button" class="btn ghost" id="btnNew">New project</button>
+  <button type="button" class="btn ghost" id="btnExport">Export JSON</button>
+  <button type="button" class="btn ghost" id="btnMd">Shot list MD</button>
+  <button type="button" class="btn ok" id="btnSave">Saved</button>
+</nav>
+<div class="layout" data-fafo-layout-root data-fafo-layout-app="lyric-shot-board" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
+  <aside class="side" data-fafo-panel="sidebar" data-fafo-panel-title="Sections" data-fafo-panel-min="200" data-fafo-panel-default="260">
+    <label>Project</label>
+    <input id="title" placeholder="Track title">
+    <div class="meta">
+      <div><label>BPM</label><input id="bpm" type="number" min="40" max="240" value="98"></div>
+      <div><label>Aspect</label>
+        <select id="aspect"><option>16:9</option><option>9:16</option><option>2.39:1</option><option>4:3</option></select>
+      </div>
+    </div>
+    <label>Director notes</label>
+    <textarea id="notes" placeholder="World, wardrobe, practical lights…"></textarea>
+    <div class="row">
+      <button type="button" class="btn" id="btnAddSec">+ Section</button>
+    </div>
+    <div id="secList"></div>
+  </aside>
+  <section class="main" data-fafo-panel="center" data-fafo-panel-title="Shots" data-fafo-flex="1">
+    <div id="editor" class="empty">Pick a section.</div>
+  </section>
+  <aside class="detail" data-fafo-panel="detail" data-fafo-panel-title="Packed prompt" data-fafo-panel-min="240" data-fafo-panel-default="320">
+    <div class="beat" id="beatHud"></div>
+    <label>Packed generation prompt</label>
+    <div class="pack" id="pack"></div>
+    <div class="row">
+      <button type="button" class="btn" id="btnCopy">Copy prompt</button>
+      <button type="button" class="btn ghost" id="btnImport">Import JSON</button>
+    </div>
+    <input id="fileIn" type="file" accept="application/json" hidden>
+    <p class="beat" style="color:var(--muted)">1 bar @ BPM = seconds. Shots inherit aspect + look. Drop this prompt into Imagine / your video model.</p>
+  </aside>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const KEY='fafo_lyric_shot_board_v1';
+const KINDS=['intro','verse','pre-chorus','chorus','bridge','drop','outro','instrumental'];
+const CAMS=['wide','medium','close-up','insert','POV','drone','macro','over-shoulder','tracking','static lock-off'];
+const MOTION=['hold','push in','pull out','pan L','pan R','tilt up','handheld drift','orbit','crash zoom','whip'];
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function load(fb){try{const r=JSON.parse(localStorage.getItem(KEY));return r&&typeof r==='object'?r:fb}catch(_){return fb}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('btnSave').textContent='Saved'}catch(_){$('btnSave').textContent='Save failed'}}
+function barSec(bpm){return 240/Math.max(40,Number(bpm)||98)}
+function seed(){
+  return {title:'Neon Alley (demo)',bpm:98,aspect:'16:9',notes:'Wet asphalt, magenta practicals, chrome rain. No logos.',
+    sections:[
+      {id:uid(),kind:'verse',name:'Verse 1',bars:8,lyric:'I walk the alley where the signs still hum\nYour name in pink on a boarded-up club',
+        shots:[{id:uid(),tc:'0:00',camera:'wide',motion:'push in',subject:'figure in rain, neon alley',prompt:'cinematic music video, wet neon alley at night, lone figure walking, magenta and cyan practical lights, shallow depth, 35mm anamorphic, rain streaks, no text',status:'keep',notes:''},
+               {id:uid(),tc:'0:08',camera:'close-up',motion:'handheld drift',subject:'eyes + falling rain',prompt:'extreme close-up rain on eyelashes, neon bokeh, music video still, moody, photoreal',status:'maybe',notes:'match cut to chorus'}]},
+      {id:uid(),kind:'chorus',name:'Chorus',bars:8,lyric:'Call it love or call it weather\nWe burn the map and stay together',
+        shots:[{id:uid(),tc:'0:32',camera:'tracking',motion:'orbit',subject:'two figures, spinning sign',prompt:'orbiting camera around two dancers in neon rain, music video, kinetic, long coat silhouettes, volumetric light',status:'keep',notes:''}]}
+    ]};
+}
+let state=load(null)||seed();
+let active=state.sections[0]&&state.sections[0].id;
+function sec(){return state.sections.find(s=>s.id===active)||state.sections[0]}
+function renderList(){
+  $('secList').innerHTML=state.sections.map(s=>`<div class="sec ${s.id===active?'on':''}" data-id="${s.id}"><span class="kind">${s.kind}</span><b>${esc(s.name)}</b><span>${s.shots.length} shots</span></div>`).join('')||'<p class="empty">No sections</p>';
+}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
+function renderEditor(){
+  const s=sec(); if(!s){$('editor').innerHTML='<p class="empty">Add a section.</p>';return}
+  $('editor').innerHTML=`
+    <div class="meta">
+      <div><label>Name</label><input id="sName" value="${esc(s.name)}"></div>
+      <div><label>Kind</label><select id="sKind">${KINDS.map(k=>`<option ${k===s.kind?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div><label>Bars</label><input id="sBars" type="number" min="1" max="64" value="${s.bars}"></div>
+    </div>
+    <label>Lyric</label>
+    <textarea id="sLyric">${esc(s.lyric)}</textarea>
+    <div class="row">
+      <button type="button" class="btn" id="btnAddShot">+ Shot</button>
+      <button type="button" class="btn ghost" id="btnDup">Duplicate section</button>
+      <button type="button" class="btn ghost" id="btnDel">Delete section</button>
+    </div>
+    <table class="shots"><thead><tr><th>TC</th><th>Camera</th><th>Motion</th><th>Subject</th><th>Gen prompt</th><th>Status</th><th></th></tr></thead>
+    <tbody>${s.shots.map((sh,i)=>`<tr data-i="${i}">
+      <td><input data-f="tc" value="${esc(sh.tc)}"></td>
+      <td><select data-f="camera">${CAMS.map(c=>`<option ${c===sh.camera?'selected':''}>${c}</option>`).join('')}</select></td>
+      <td><select data-f="motion">${MOTION.map(c=>`<option ${c===sh.motion?'selected':''}>${c}</option>`).join('')}</select></td>
+      <td><input data-f="subject" value="${esc(sh.subject)}"></td>
+      <td><textarea data-f="prompt">${esc(sh.prompt)}</textarea></td>
+      <td><select data-f="status"><option ${sh.status==='keep'?'selected':''}>keep</option><option ${sh.status==='maybe'?'selected':''}>maybe</option><option ${sh.status==='kill'?'selected':''}>kill</option></select></td>
+      <td><button type="button" class="btn ghost" data-del="${i}">×</button></td>
+    </tr>`).join('')}</tbody></table>`;
+  bindEditor();
+  pack();
+}
+function bindEditor(){
+  const s=sec(); if(!s) return;
+  $('sName').oninput=()=>{s.name=$('sName').value;persist();renderList()};
+  $('sKind').onchange=()=>{s.kind=$('sKind').value;persist();renderList()};
+  $('sBars').oninput=()=>{s.bars=+$('sBars').value||8;persist();pack()};
+  $('sLyric').oninput=()=>{s.lyric=$('sLyric').value;persist();pack()};
+  $('btnAddShot').onclick=()=>{s.shots.push({id:uid(),tc:'',camera:'medium',motion:'hold',subject:'',prompt:'',status:'maybe',notes:''});persist();renderEditor()};
+  $('btnDup').onclick=()=>{const n=JSON.parse(JSON.stringify(s));n.id=uid();n.name=s.name+' copy';n.shots.forEach(sh=>sh.id=uid());state.sections.push(n);active=n.id;persist();renderList();renderEditor()};
+  $('btnDel').onclick=()=>{state.sections=state.sections.filter(x=>x.id!==s.id);active=state.sections[0]&&state.sections[0].id;persist();renderList();renderEditor()};
+  $('editor').querySelectorAll('[data-f]').forEach(el=>{
+    el.addEventListener('input',()=>{const i=+el.closest('tr').dataset.i;s.shots[i][el.dataset.f]=el.value;persist();pack()});
+    el.addEventListener('change',()=>{const i=+el.closest('tr').dataset.i;s.shots[i][el.dataset.f]=el.value;persist();pack()});
+  });
+  $('editor').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{s.shots.splice(+b.dataset.del,1);persist();renderEditor()});
+}
+function persist(){save();hud()}
+function hud(){
+  const b=barSec(state.bpm);
+  const bars=state.sections.reduce((n,s)=>n+(s.bars||0),0);
+  $('beatHud').textContent=`${state.bpm} BPM · 1 bar ${b.toFixed(2)}s · ${bars} bars ≈ ${(bars*b).toFixed(1)}s runtime · ${state.aspect}`;
+}
+function pack(){
+  const s=sec(); if(!s){$('pack').textContent='';return}
+  const keep=s.shots.filter(sh=>sh.status!=='kill');
+  const lines=[`${state.title} — ${s.name} (${s.kind})`,`aspect ${state.aspect}, ${state.bpm} BPM`,state.notes,s.lyric,'---',
+    ...keep.map(sh=>`[${sh.tc||'?'}] ${sh.camera} / ${sh.motion} · ${sh.subject}\n${sh.prompt}`)];
+  $('pack').textContent=lines.filter(Boolean).join('\n');
+}
+function bindHead(){
+  $('title').value=state.title||'';
+  $('bpm').value=state.bpm||98;
+  $('aspect').value=state.aspect||'16:9';
+  $('notes').value=state.notes||'';
+  ['title','bpm','aspect','notes'].forEach(id=>$ (id).addEventListener('input',()=>{state.title=$('title').value;state.bpm=+$('bpm').value||98;state.aspect=$('aspect').value;state.notes=$('notes').value;persist();pack()}));
+}
+$('secList').addEventListener('click',e=>{const el=e.target.closest('.sec');if(!el)return;active=el.dataset.id;renderList();renderEditor()});
+$('btnAddSec').onclick=()=>{const n={id:uid(),kind:'verse',name:'New section',bars:8,lyric:'',shots:[]};state.sections.push(n);active=n.id;persist();renderList();renderEditor()};
+$('btnNew').onclick=()=>{if(!confirm('Start a blank project? Demo data will be replaced.'))return;state={title:'Untitled',bpm:120,aspect:'16:9',notes:'',sections:[]};active=null;persist();bindHead();renderList();renderEditor()};
+$('btnExport').onclick=()=>dl((state.title||'shot-board').replace(/\W+/g,'-')+'.json',JSON.stringify(state,null,2),'application/json');
+$('btnMd').onclick=()=>{
+  const b=barSec(state.bpm);
+  let md=`# ${state.title}\n\n${state.bpm} BPM · ${state.aspect}\n\n${state.notes}\n\n`;
+  state.sections.forEach(s=>{md+=`## ${s.name} (${s.kind}, ${s.bars} bars ≈ ${(s.bars*b).toFixed(1)}s)\n\n${s.lyric}\n\n`;s.shots.forEach(sh=>{md+=`- **${sh.tc||'TC'}** ${sh.camera} / ${sh.motion} — ${sh.subject} _( ${sh.status} )_\n  - ${sh.prompt}\n`});md+='\n'});
+  dl((state.title||'shot-list').replace(/\W+/g,'-')+'.md',md,'text/markdown');
+};
+$('btnCopy').onclick=()=>navigator.clipboard.writeText($('pack').textContent).then(()=>AIToolboxUI?.toast?.('Prompt copied','ok'),()=>{});
+$('btnImport').onclick=()=>$('fileIn').click();
+$('fileIn').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(!j||!Array.isArray(j.sections))throw 0;state=j;active=state.sections[0]&&state.sections[0].id;persist();bindHead();renderList();renderEditor();AIToolboxUI?.toast?.('Imported','ok')}catch(_){AIToolboxUI?.toast?.('Bad JSON','warn')}};r.readAsText(f);e.target.value=''};
+function dl(name,text,mime){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:mime}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
+bindHead();renderList();renderEditor();hud();
+</script>
+</body>
+</html>

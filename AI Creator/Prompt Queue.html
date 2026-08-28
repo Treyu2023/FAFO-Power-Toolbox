@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/AI Creator/Prompt Queue.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prompt Queue — AI HTML Toolbox</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📥</text></svg>">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{--bg:#06100c;--panel:#0d1a14;--line:rgba(52,211,153,.22);--accent:#34d399;--accent2:#67e8f9;--warn:#fbbf24;--bad:#f87171;--text:#e8f6ef;--muted:#8aa399}
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100dvh;background:radial-gradient(ellipse 50% 40% at 100% 0,rgba(52,211,153,.14),transparent 50%),var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif}
+.nav{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:rgba(6,16,12,.92);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+.nav a{color:var(--accent2);text-decoration:none;font-weight:700;font-size:13px}
+.nav h1{font-size:14px;letter-spacing:.12em;color:var(--accent)}
+.btn{background:transparent;border:1px solid var(--accent);color:var(--accent);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+.btn.ghost{border-color:var(--line);color:var(--text)}
+.wrap{display:grid;grid-template-columns:320px 1fr;min-height:calc(100dvh - 52px)}
+.side{background:var(--panel);border-right:1px solid var(--line);padding:14px;overflow:auto}
+.main{padding:16px;overflow:auto}
+label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:8px 0 4px}
+input,select,textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:8px;font:inherit}
+textarea{min-height:90px;resize:vertical}
+.job{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;padding:12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:rgba(0,0,0,.22)}
+.job.running{border-color:var(--accent2);box-shadow:0 0 16px rgba(103,232,249,.12)}
+.job.done{opacity:.75}
+.job.failed{border-color:var(--bad)}
+.pri{font-weight:800;color:var(--warn);width:28px;text-align:center}
+.badge{font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.06em}
+.queued{color:var(--warn)} .running{color:var(--accent2)} .hold{color:var(--muted)} .done{color:var(--accent)} .failed{color:var(--bad)}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.prompt{font-size:13px;line-height:1.4;margin:4px 0}
+.meta{font-size:11px;color:var(--muted)}
+.hud{font-size:12px;color:var(--accent2);margin-bottom:10px}
+@media(max-width:860px){.wrap{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <h1>PROMPT QUEUE</h1>
+  <span style="color:var(--muted);font-size:12px;flex:1">Local production queue — priority, kind, status. Run the next job when a GPU slot frees.</span>
+  <span data-fafo-layout-toolbar></span>
+  <button type="button" class="btn" id="btnNext">Start next</button>
+  <button type="button" class="btn ghost" id="btnExport">Export</button>
+</nav>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="prompt-queue" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
+  <aside class="side" data-fafo-panel="sidebar" data-fafo-panel-title="New job" data-fafo-panel-min="240" data-fafo-panel-default="320">
+    <label>Title</label><input id="title" placeholder="Chorus still pack">
+    <label>Kind</label>
+    <select id="kind"><option>image</option><option>video</option><option>audio</option><option>upscale</option><option>lip-sync</option></select>
+    <label>Priority 1–5 (5 first)</label>
+    <input id="pri" type="number" min="1" max="5" value="3">
+    <label>Prompt</label><textarea id="prompt"></textarea>
+    <label>Params</label><input id="params" placeholder="seed, steps, duration, size">
+    <label>Output note</label><input id="out" placeholder="folder or filename when done">
+    <div class="row"><button type="button" class="btn" id="btnAdd">Queue job</button></div>
+  </aside>
+  <section class="main" data-fafo-panel="center" data-fafo-panel-title="Queue" data-fafo-flex="1">
+    <div class="hud" id="hud"></div>
+    <div class="row" style="margin-bottom:10px">
+      <select id="filter"><option value="">all statuses</option><option>queued</option><option>running</option><option>hold</option><option>done</option><option>failed</option></select>
+    </div>
+    <div id="list"></div>
+  </section>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const KEY='fafo_prompt_queue_v1';
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function seed(){return [
+  {id:uid(),title:'Hero alley stills',kind:'image',pri:5,prompt:'wet neon alley, lone figure, magenta+cyan practicals, 35mm anamorphic',params:'4K · 30 steps · seed 44192',out:'takes/hero/',status:'queued',note:'',at:Date.now()},
+  {id:uid(),title:'Chorus orbit clip',kind:'video',pri:4,prompt:'orbit two dancers in neon rain, 5s',params:'5s · 24fps',out:'takes/chorus/',status:'hold',note:'wait for stills',at:Date.now()},
+  {id:uid(),title:'Upscale keepers',kind:'upscale',pri:2,prompt:'upscale keep-rated stills 2x',params:'2x',out:'masters/',status:'queued',note:'',at:Date.now()}
+]}
+function load(){try{const r=JSON.parse(localStorage.getItem(KEY));return Array.isArray(r)?r:null}catch(_){return null}}
+let jobs=load()||seed();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(jobs))}catch(_){}}
+function order(list){return list.slice().sort((a,b)=>{const rank={running:0,queued:1,hold:2,failed:3,done:4};return (rank[a.status]-rank[b.status])||(b.pri-a.pri)||(a.at-b.at)})}
+function render(){
+  const f=$('filter').value;
+  const list=order(jobs).filter(j=>!f||j.status===f);
+  $('list').innerHTML=list.map((j,idx)=>`<article class="job ${j.status}" data-id="${j.id}">
+    <div class="pri">${j.pri}</div>
+    <div>
+      <strong>${esc(j.title)}</strong> <span class="badge ${j.status}">${j.status}</span>
+      <div class="meta">${esc(j.kind)} · ${esc(j.params)}</div>
+      <div class="prompt">${esc(j.prompt)}</div>
+      <div class="meta">out: ${esc(j.out||'—')} ${j.note?'· '+esc(j.note):''}</div>
+      <div class="row">
+        <button type="button" class="btn ghost" data-st="running">Run</button>
+        <button type="button" class="btn ghost" data-st="hold">Hold</button>
+        <button type="button" class="btn ghost" data-st="done">Done</button>
+        <button type="button" class="btn ghost" data-st="failed">Fail</button>
+        <button type="button" class="btn ghost" data-st="queued">Requeue</button>
+        <button type="button" class="btn ghost" data-up>↑</button>
+        <button type="button" class="btn ghost" data-dn>↓</button>
+        <button type="button" class="btn ghost" data-copy>Copy prompt</button>
+        <button type="button" class="btn ghost" data-del>Delete</button>
+      </div>
+    </div>
+    <div class="meta">#${idx+1}</div>
+  </article>`).join('')||'<p class="meta">Queue empty.</p>';
+  const c=s=>jobs.filter(j=>j.status===s).length;
+  $('hud').textContent=`${jobs.length} jobs · ${c('running')} running · ${c('queued')} queued · ${c('hold')} hold · ${c('done')} done · ${c('failed')} failed`;
+}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
+$('btnAdd').onclick=()=>{
+  jobs.push({id:uid(),title:$('title').value.trim()||'Untitled',kind:$('kind').value,pri:Math.min(5,Math.max(1,+$('pri').value||3)),prompt:$('prompt').value,params:$('params').value,out:$('out').value,status:'queued',note:'',at:Date.now()});
+  $('title').value=$('prompt').value='';save();render();
+};
+$('list').addEventListener('click',e=>{
+  const art=e.target.closest('.job'); if(!art)return;
+  const j=jobs.find(x=>x.id===art.dataset.id); if(!j)return;
+  if(e.target.dataset.st){j.status=e.target.dataset.st;if(e.target.dataset.st==='done')j.note='finished '+new Date().toLocaleString();save();render();return}
+  if(e.target.dataset.del){jobs=jobs.filter(x=>x.id!==j.id);save();render();return}
+  if(e.target.dataset.copy){navigator.clipboard.writeText(j.prompt);AIToolboxUI?.toast?.('Copied','ok');return}
+  if(e.target.dataset.up){j.pri=Math.min(5,j.pri+1);save();render();return}
+  if(e.target.dataset.dn){j.pri=Math.max(1,j.pri-1);save();render();return}
+});
+$('btnNext').onclick=()=>{
+  if(jobs.some(j=>j.status==='running')){AIToolboxUI?.toast?.('A job is already running','warn');return}
+  const next=order(jobs).find(j=>j.status==='queued');
+  if(!next){AIToolboxUI?.toast?.('Nothing queued','warn');return}
+  next.status='running';save();render();
+  navigator.clipboard.writeText(next.prompt).then(()=>AIToolboxUI?.toast?.('Running · prompt copied','ok'));
+};
+$('filter').onchange=render;
+$('btnExport').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(jobs,null,2)],{type:'application/json'}));a.download='prompt-queue.json';a.click()};
+render();
+</script>
+</body>
+</html>

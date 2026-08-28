@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/AI Creator/Style Bible.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Style Bible — AI HTML Toolbox</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<style>
+:root{--bg:#08070f;--panel:#13101c;--line:rgba(167,139,250,.25);--accent:#a78bfa;--accent2:#fbbf24;--ok:#34d399;--text:#f3eefc;--muted:#9b93b0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100dvh;background:radial-gradient(ellipse 50% 40% at 10% 0,rgba(167,139,250,.18),transparent 50%),var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif}
+.nav{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:rgba(8,7,15,.92);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+.nav a{color:#67e8f9;text-decoration:none;font-weight:700;font-size:13px}
+.nav h1{font-size:14px;letter-spacing:.12em;color:var(--accent)}
+.btn{background:transparent;border:1px solid var(--accent);color:var(--accent);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+.btn.ghost{border-color:var(--line);color:var(--text)}
+.wrap{display:grid;grid-template-columns:280px 1fr;min-height:calc(100dvh - 52px)}
+.side{background:var(--panel);border-right:1px solid var(--line);padding:14px;overflow:auto}
+.main{padding:18px;overflow:auto}
+.look{padding:10px;border:1px solid transparent;border-radius:10px;cursor:pointer;margin-bottom:8px}
+.look.on,.look:hover{border-color:var(--accent);background:rgba(167,139,250,.1)}
+.swatch{display:flex;height:28px;border-radius:8px;overflow:hidden;margin:6px 0;border:1px solid var(--line)}
+.swatch i{flex:1}
+label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
+input,select,textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:8px;font:inherit}
+textarea{min-height:64px;resize:vertical}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.pack{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:12px;padding:14px;min-height:140px}
+.pals{display:flex;gap:6px;flex-wrap:wrap}
+.pals input[type=color]{width:42px;height:36px;padding:0;border:0;background:none;cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+@media(max-width:840px){.wrap{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <h1>STYLE BIBLE</h1>
+  <span style="color:var(--muted);font-size:12px;flex:1">Looks, palettes, camera grammar, negatives — reusable packed prompts.</span>
+  <span data-fafo-layout-toolbar></span>
+  <button type="button" class="btn ghost" id="btnNew">New look</button>
+  <button type="button" class="btn ghost" id="btnExport">Export</button>
+</nav>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="style-bible" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
+  <aside class="side" data-fafo-panel="sidebar" data-fafo-panel-title="Looks" data-fafo-panel-min="200" data-fafo-panel-default="280">
+    <div id="list"></div>
+  </aside>
+  <section class="main" data-fafo-panel="center" data-fafo-panel-title="Look" data-fafo-flex="1">
+    <div class="grid">
+      <div><label>Name</label><input id="name"></div>
+      <div><label>Tags</label><input id="tags" placeholder="mv, night, rain"></div>
+    </div>
+    <label>Palette</label>
+    <div class="pals" id="pals"></div>
+    <div class="swatch" id="swatch"></div>
+    <div class="grid">
+      <div><label>Type / fonts</label><textarea id="type"></textarea></div>
+      <div><label>Camera grammar</label><textarea id="cam"></textarea></div>
+      <div><label>Lighting</label><textarea id="lit"></textarea></div>
+      <div><label>Color grade</label><textarea id="grade"></textarea></div>
+      <div><label>Do</label><textarea id="yes"></textarea></div>
+      <div><label>Don't</label><textarea id="no"></textarea></div>
+    </div>
+    <label>Negative prompt</label>
+    <textarea id="neg"></textarea>
+    <label>Packed look prompt</label>
+    <div class="pack" id="pack"></div>
+    <div class="row">
+      <button type="button" class="btn" id="btnCopy">Copy packed look</button>
+      <button type="button" class="btn ghost" id="btnDel">Delete look</button>
+    </div>
+  </section>
+</div>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+<script>
+const KEY='fafo_style_bible_v1';
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function seed(){return [
+  {id:uid(),name:'Neon Rain MV',tags:'mv, night, rain',palette:['#fb7185','#67e8f9','#0f172a','#fbbf24','#34d399','#1e1030'],type:'No on-screen type. If titles: condensed grotesk, tracking 0.2em.',cam:'35mm anamorphic, orbit on chorus, lock-off verse, crash-zoom drop.',lit:'Magenta + cyan practicals, wet bounce, no beauty dish.',grade:'teal-orange crushed blacks, glow highlights, mild grain.',yes:'rain streaks, chrome puddles, long coats, bokeh signage',no:'clean daylight, studio cyclorama, modern smartphones',neg:'text, watermark, extra fingers, plastic skin, logo'},
+  {id:uid(),name:'Parchment Folk',tags:'folk, day, warm',palette:['#f4e4c1','#7c4a1e','#2b2118','#c45c26','#8aa36b','#efe6d2'],type:'Serif titles, letterpress feel.',cam:'50mm spherical, slow push, golden-hour handheld.',lit:'window key, negative fill, dust motes.',grade:'warm roll-off, faded reds.',yes:'linen, wood, late sun, analog texture',no:'neon, sci-fi, glossy grade',neg:'cyberpunk, HDR, modern cars'},
+  {id:uid(),name:'Chrome Opera',tags:'opera, stage, gold',palette:['#e8d5a3','#111111','#8b1e3f','#4b5563','#f5f5f4','#ca8a04'],type:'Didot / high-contrast serif.',cam:'wide stage, crane down, CU on grit.',lit:'hard spots, rim from flies, haze.',grade:'silk blacks, gold highlight.',yes:'velvet, chrome, stage haze, orchestra pit',no:'casual clothes, daylight exteriors',neg:'cartoon, anime, selfie'}
+]}
+function load(){try{const r=JSON.parse(localStorage.getItem(KEY));return Array.isArray(r)&&r.length?r:null}catch(_){return null}}
+let looks=load()||seed();
+let active=looks[0].id;
+function cur(){return looks.find(l=>l.id===active)||looks[0]}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(looks))}catch(_){}}
+function renderList(){
+  $('list').innerHTML=looks.map(l=>`<div class="look ${l.id===active?'on':''}" data-id="${l.id}"><b>${esc(l.name)}</b><div class="swatch">${l.palette.map(c=>`<i style="background:${c}"></i>`).join('')}</div><small style="color:var(--muted)">${esc(l.tags)}</small></div>`).join('');
+}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
+function renderLook(){
+  const l=cur(); if(!l)return;
+  $('name').value=l.name;$('tags').value=l.tags;$('type').value=l.type;$('cam').value=l.cam;$('lit').value=l.lit;$('grade').value=l.grade;$('yes').value=l.yes;$('no').value=l.no;$('neg').value=l.neg;
+  $('pals').innerHTML=l.palette.map((c,i)=>`<input type="color" data-i="${i}" value="${c}">`).join('');
+  $('swatch').innerHTML=l.palette.map(c=>`<i style="background:${c}"></i>`).join('');
+  pack();
+}
+function pack(){
+  const l=cur(); if(!l)return;
+  $('pack').textContent=[l.name,`palette ${l.palette.join(' ')}`,l.cam,l.lit,l.grade,`include: ${l.yes}`,`avoid: ${l.no}`,`negative: ${l.neg}`].join('\n');
+}
+function bind(){
+  ['name','tags','type','cam','lit','grade','yes','no','neg'].forEach(id=>$(id).addEventListener('input',()=>{
+    const l=cur(); if(!l)return; l.name=$('name').value;l.tags=$('tags').value;l.type=$('type').value;l.cam=$('cam').value;l.lit=$('lit').value;l.grade=$('grade').value;l.yes=$('yes').value;l.no=$('no').value;l.neg=$('neg').value;save();pack();renderList();
+  }));
+  $('pals').addEventListener('input',e=>{const i=e.target.dataset.i;if(i==null)return;cur().palette[+i]=e.target.value;save();renderLook();renderList()});
+}
+$('list').addEventListener('click',e=>{const el=e.target.closest('.look');if(!el)return;active=el.dataset.id;renderList();renderLook()});
+$('btnNew').onclick=()=>{const n={id:uid(),name:'New look',tags:'',palette:['#111111','#ffffff','#fb7185','#67e8f9','#a78bfa','#fbbf24'],type:'',cam:'',lit:'',grade:'',yes:'',no:'',neg:''};looks.push(n);active=n.id;save();renderList();renderLook()};
+$('btnDel').onclick=()=>{if(looks.length<2)return;looks=looks.filter(l=>l.id!==active);active=looks[0].id;save();renderList();renderLook()};
+$('btnCopy').onclick=()=>navigator.clipboard.writeText($('pack').textContent).then(()=>AIToolboxUI?.toast?.('Copied','ok'));
+$('btnExport').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(looks,null,2)],{type:'application/json'}));a.download='style-bible.json';a.click()};
+bind();renderList();renderLook();
+</script>
+</body>
+</html>
