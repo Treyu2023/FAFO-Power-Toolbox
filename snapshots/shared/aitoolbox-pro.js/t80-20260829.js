@@ -437,9 +437,8 @@
 #atx-pro-bar .atx-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:120px}
 #atx-pro-bar a.atx-chip, #atx-pro-bar button.atx-chip{
   appearance:none;border:1px solid rgba(0,243,255,.28);background:rgba(0,243,255,.06);
-  color:#d7f7ff;border-radius:999px;padding:6px 12px;cursor:pointer;text-decoration:none;
+  color:#d7f7ff;border-radius:999px;padding:4px 10px;cursor:pointer;text-decoration:none;
   font:600 10px/1 "Segoe UI",system-ui,sans-serif;white-space:nowrap;
-  min-height:32px;display:inline-flex;align-items:center;
 }
 #atx-pro-bar a.atx-chip:hover, #atx-pro-bar button.atx-chip:hover{
   border-color:#00f3ff;background:rgba(0,243,255,.14);color:#fff;
@@ -453,16 +452,7 @@
   opacity:.65;font-size:9px;border:1px solid rgba(255,255,255,.12);
   border-radius:4px;padding:1px 4px;margin-left:4px;
 }
-body.atx-pro-pad{padding-bottom:var(--atx-pro-h, 52px) !important}
-body.run-active #atx-pro-bar,
-body.tat-stage #atx-pro-bar,
-body.run-active .fafo-layout-float-dock,
-body.tat-stage .fafo-layout-float-dock,
-html:fullscreen #atx-pro-bar,
-html:-webkit-full-screen #atx-pro-bar {
-  display:none !important;
-}
-body.run-active, body.tat-stage { padding-bottom:0 !important }
+body.atx-pro-pad{padding-bottom:52px !important}
 body.atx-pro-min #atx-pro-bar{transform:translateY(72%);opacity:.45}
 body.atx-pro-min #atx-pro-bar:hover, body.atx-pro-min #atx-pro-bar:focus-within{
   transform:none;opacity:1
@@ -476,7 +466,7 @@ body.atx-dense .ui-card, body.atx-dense .panel, body.atx-dense .card{
 }
 body.atx-dense{--ui-ease:linear}
 #atx-pro-help{
-  position:fixed;inset:0;z-index:100045;display:none;place-items:center;
+  position:fixed;inset:0;z-index:99990;display:none;place-items:center;
   background:rgba(0,0,0,.55);backdrop-filter:blur(4px);
 }
 #atx-pro-help.open{display:grid}
@@ -497,7 +487,7 @@ body.atx-dense{--ui-ease:linear}
   border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:700;font-size:11px
 }
 #atx-pro-toast{
-  position:fixed;bottom:calc(var(--atx-pro-h, 52px) + 8px);right:14px;z-index:100030;
+  position:fixed;bottom:58px;right:14px;z-index:99985;
   background:rgba(8,14,20,.95);border:1px solid rgba(0,243,255,.35);
   color:#dff;padding:8px 12px;border-radius:10px;font:600 11px/1.3 "Segoe UI",system-ui,sans-serif;
   opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;max-width:360px
@@ -605,25 +595,9 @@ body.atx-dense{--ui-ease:linear}
       .replace(/"/g, '&quot;');
   }
 
-  function inIframe() {
-    try { return window.self !== window.top; } catch (_) { return true; }
-  }
-
-  function syncProPad() {
-    const bar = document.getElementById('atx-pro-bar');
-    if (!bar || bar.style.display === 'none') {
-      document.documentElement.style.setProperty('--atx-pro-h', '0px');
-      return;
-    }
-    try {
-      const h = Math.ceil(bar.getBoundingClientRect().height) || 52;
-      document.documentElement.style.setProperty('--atx-pro-h', h + 'px');
-    } catch (_) { /* ignore */ }
-  }
-
   function mountBar(tool) {
     if (document.getElementById('atx-pro-bar')) return;
-    if (inIframe()) return;
+    // Skip inside nested iframes without own chrome? still useful.
     ensureStyles();
     document.body.classList.add('atx-pro-pad');
     if (localStorage.getItem(LS_FOCUS) === '1') document.body.classList.add('atx-focus');
@@ -699,13 +673,6 @@ body.atx-dense{--ui-ease:linear}
     });
 
     document.body.appendChild(bar);
-    syncProPad();
-    try {
-      if (typeof ResizeObserver === 'function') {
-        new ResizeObserver(syncProPad).observe(bar);
-      }
-    } catch (_) { /* ignore */ }
-    window.addEventListener('resize', syncProPad);
   }
 
   function goBack(tool) {
@@ -724,8 +691,6 @@ body.atx-dense{--ui-ease:linear}
         document.getElementById('atx-pro-help')?.classList.remove('open');
       }
       if (typing && e.key !== 'Escape') return;
-      if (document.body.classList.contains('run-active') || document.body.classList.contains('tat-stage')) return;
-      if (inIframe()) return;
       if (e.key === '?' || (e.key === '/' && e.ctrlKey)) {
         e.preventDefault();
         openHelp(tool);
@@ -777,10 +742,6 @@ body.atx-dense{--ui-ease:linear}
     if (global.AITOOLBOX_PRO_DISABLE) return;
     // Don't double-mount inside extension pages without body
     if (!document.body) return;
-    if (inIframe()) {
-      document.documentElement.setAttribute('data-atx-iframe', '1');
-      return;
-    }
     try { installGuard(); } catch { /* ignore */ }
     // Launcher has its own chrome — light mode only (recents + help still ok)
     const tool = detectTool();

@@ -29,12 +29,11 @@
             --tag-cols: 2;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        html { font-size: var(--font-base); }
+        html { font-size: calc(var(--font-base) * var(--ui-scale)); }
         body {
             background: radial-gradient(ellipse at 20% 0%, #12121f 0%, var(--bg) 50%);
             color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
-            min-height: 100vh; height: 100vh; display: flex; flex-direction: column;
-            overflow: auto; min-width: 0;
+            height: 100vh; display: flex; flex-direction: column; overflow: hidden; min-width: 720px;
             font-size: 1rem;
         }
 
@@ -794,16 +793,12 @@
             </div>
             <div class="ui-scale-bar" data-tip-title="Display scale" data-tip="UI scale zooms the whole app. Tag size / columns only affect the tag library column. Drag panel edges to resize.">
                 <label for="uiScaleSelect">UI</label>
-                <select id="uiScaleSelect" aria-label="App UI scale (Look)">
-                    <option value="0.5">50%</option>
-                    <option value="0.75">75%</option>
+                <select id="uiScaleSelect" aria-label="App UI scale">
                     <option value="0.85">85%</option>
                     <option value="1" selected>100%</option>
                     <option value="1.1">110%</option>
                     <option value="1.25">125%</option>
                     <option value="1.4">140%</option>
-                    <option value="1.6">160%</option>
-                    <option value="2">200%</option>
                 </select>
                 <label for="tagScaleSelect">Tags</label>
                 <select id="tagScaleSelect" aria-label="Tag chip size">
@@ -1489,15 +1484,11 @@
                     <div>
                         <label style="font-size:10px;">App UI scale</label>
                         <select id="setUiScale" style="width:100%;background:#000;border:1px solid rgba(0,243,255,.3);color:var(--text);padding:6px;border-radius:5px;font-size:12px;">
-                            <option value="0.5">50%</option>
-                            <option value="0.75">75%</option>
                             <option value="0.85">85%</option>
                             <option value="1">100%</option>
                             <option value="1.1">110%</option>
                             <option value="1.25">125%</option>
                             <option value="1.4">140%</option>
-                            <option value="1.6">160%</option>
-                            <option value="2">200%</option>
                         </select>
                     </div>
                     <div>
@@ -1982,21 +1973,20 @@
             if (setSel) setSel.value = String(cols);
         }
 
-        function applyUiScale(scale, persistLook) {
-            const s = Math.max(0.5, Math.min(8, parseFloat(scale) || 1));
+        function applyUiScale(scale) {
+            const s = Math.max(0.75, Math.min(1.6, parseFloat(scale) || 1));
+            document.documentElement.style.setProperty('--ui-scale', String(s));
             lsSet('ml_ui_scale', String(s));
             const sel = el('uiScaleSelect');
             if (sel) {
-                const opt = [...sel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.04);
+                const opt = [...sel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.01);
                 if (opt) sel.value = opt.value;
+                else sel.value = '1';
             }
             const setSel = el('setUiScale');
             if (setSel) {
-                const opt = [...setSel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.04);
+                const opt = [...setSel.options].find(o => Math.abs(parseFloat(o.value) - s) < 0.01);
                 if (opt) setSel.value = opt.value;
-            }
-            if (persistLook) {
-                try { window.AIToolboxPrefs?.save({ uiScale: Math.round(s * 100) }); } catch (_) {}
             }
         }
 
@@ -2030,14 +2020,7 @@
             if (dw) root.style.setProperty('--detail-w', dw + 'px');
             if (sw) root.style.setProperty('--sidebar-w', sw + 'px');
             if (tw) root.style.setProperty('--tags-w', tw + 'px');
-            {
-                let sc = lsGet('ml_ui_scale') || '1';
-                try {
-                    const look = window.AIToolboxPrefs?.get?.();
-                    if (look && look.uiScale) sc = String(look.uiScale / 100);
-                } catch (_) {}
-                applyUiScale(sc);
-            }
+            applyUiScale(lsGet('ml_ui_scale') || '1');
             applyTagScale(lsGet('ml_tag_scale') || 'md');
             applyTagCols(lsGet('ml_tag_cols') || '2');
             setTagsCollapsed(lsGet('ml_tags_collapsed') === '1');
@@ -2143,7 +2126,7 @@
         }
 
         function initLayoutControls() {
-            el('uiScaleSelect')?.addEventListener('change', e => applyUiScale(e.target.value, true));
+            el('uiScaleSelect')?.addEventListener('change', e => applyUiScale(e.target.value));
             el('tagScaleSelect')?.addEventListener('change', e => applyTagScale(e.target.value));
             el('btnResetLayout')?.addEventListener('click', resetLayout);
             el('btnToggleTagsPanel')?.addEventListener('click', () => {
@@ -2165,7 +2148,7 @@
                 lsSet('ml_tag_sort', e.target.value);
                 renderMlTagLibrary();
             });
-            el('setUiScale')?.addEventListener('change', e => applyUiScale(e.target.value, true));
+            el('setUiScale')?.addEventListener('change', e => applyUiScale(e.target.value));
             el('setTagScale')?.addEventListener('change', e => applyTagScale(e.target.value));
             el('setTagCols')?.addEventListener('change', e => applyTagCols(e.target.value));
             el('btnSettingsResetLayout')?.addEventListener('click', resetLayout);
@@ -3682,7 +3665,7 @@
         }
 
         const LIBRARY_TUTORIAL = [
-            { target: '#tbSharedServerBar, #tbPillS1, #serverStatus', title: 'Media Library', body: 'Your catalog for thousands of videos & images. Use <strong>▶ Start Server</strong> (or click the red pill / offline banner) to launch the backend <em>from this page</em> — green = rename, Explorer tags, pair relink, ffmpeg thumbs, playlists, smart lists.' },
+            { target: '#serverStatus', title: 'Media Library', body: 'Your catalog for thousands of videos & images. Use <strong>▶ Start Server</strong> (or click the red pill / offline banner) to launch the backend <em>from this page</em> — green = rename, Explorer tags, pair relink, ffmpeg thumbs, playlists, smart lists.' },
             { target: '#btnAddDir', title: 'Watch Folders', body: 'Add folders — files are indexed, not copied. Two roots (Sources + Upscaled) is optional; one tree is fine.' },
             { target: '#searchInput', title: 'Search Everything', body: 'Search by name, path, tags, or notes. After pairing, try searching <code>UP-</code> to find both sides of a pair.' },
             { target: '#batchBar', title: 'Batch Actions', body: 'Select files, then batch-tag (optional: also tag pair partners) or batch-rename. Tags write to disk when the server is on.' },
@@ -3696,13 +3679,7 @@
 
         async function addDirectory() {
             try {
-                if (serverOn) {
-                    const picked = await API()?.pickFolderOnly?.();
-                    if (picked?.path) return addDirectoryByPath(picked.path);
-                    const typed = prompt('Folder path:', 'D:\\');
-                    if (typed) return addDirectoryByPath(typed);
-                    return;
-                }
+                if (serverOn) return addDirectoryByPath(prompt('Folder path:', 'D:\\'));
                 if ('showDirectoryPicker' in window) {
                     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
                     const entry = await AIToolbox.addDirectory(handle);
@@ -3725,7 +3702,7 @@
 
         async function scanDir(entry) {
             const prog = document.createElement('div');
-            prog.style.cssText = 'position:fixed;bottom:calc(var(--atx-pro-h, 52px) + 16px);left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--accent);padding:12px 20px;border-radius:8px;z-index:100050;font-size:12px;';
+            prog.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--accent);padding:12px 20px;border-radius:8px;z-index:200;font-size:12px;';
             prog.textContent = 'Scanning… 0 files';
             document.body.appendChild(prog);
             try {

@@ -290,45 +290,7 @@
       if (isHex(p.colorBg)) body.style.backgroundColor = p.colorBg;
       else body.style.removeProperty('background-color');
     }
-    markScaleRoots();
     return p;
-  }
-
-  const OVERLAY_SEL = [
-    '#atx-look', '#atx-look-chip', '#atx-pro-bar', '#atx-pro-help', '#atx-pro-toast',
-    '#atx-theme-fx', '#ui-toast-global',
-    '.fafo-layout-float-dock', '.ui-modal-bg', '.ui-tutorial-bg', '.ui-toast', '.ui-tooltip',
-    '.dbg-panel', '.compare-panel', '.cine-root', '.cmdk-backdrop',
-    '.tile-modal-backdrop', '.vis-modal-backdrop',
-    '#tbSharedServerBar', '#tbCompanionBar', '#settingsModal',
-  ].join(',');
-
-  function inIframe() {
-    try { return window.self !== window.top; } catch (_) { return true; }
-  }
-
-  function isOverlayNode(el) {
-    if (!el || el.nodeType !== 1) return true;
-    const tag = el.tagName;
-    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'LINK' || tag === 'META' || tag === 'NOSCRIPT') return true;
-    try { return el.matches(OVERLAY_SEL); } catch (_) { return false; }
-  }
-
-  function markScaleRoots() {
-    const html = document.documentElement;
-    const body = document.body;
-    if (inIframe()) {
-      html.setAttribute('data-atx-iframe', '1');
-      html.style.setProperty('--atx-ui-scale', '1');
-      if (body) body.querySelectorAll('.fafo-scale-root').forEach(function (n) { n.classList.remove('fafo-scale-root'); });
-      return;
-    }
-    html.removeAttribute('data-atx-iframe');
-    if (!body) return;
-    Array.prototype.forEach.call(body.children, function (el) {
-      if (isOverlayNode(el)) el.classList.remove('fafo-scale-root');
-      else el.classList.add('fafo-scale-root');
-    });
   }
 
   function injectCss() {
@@ -360,28 +322,23 @@ html[data-atx-layout="phone"] #atx-pro-bar button.atx-chip,
 html[data-atx-layout="phone"] .btn, html[data-atx-layout="phone"] button.pill{
   min-height:44px; padding:8px 14px;
 }
-html[data-atx-layout="phone"] .fafo-chrome-btn{
-  min-width:32px; min-height:32px; width:auto; height:auto;
+html[data-atx-layout="phone"] body, html[data-atx-layout="phone"]{
+  font-size:16px;
 }
 html[data-atx-layout="desktop"] #atx-pro-bar{
   flex-direction:row;
 }
 
-/* Scale the app shell only. Overlays (Look, pro bar, modals) stay 1:1 with the viewport. */
-.fafo-scale-root {
+/* Scale — whole UI + extra panel text. Look panel counter-zooms so it stays usable. */
+body {
   zoom: var(--atx-ui-scale, 1);
 }
-html[data-atx-iframe="1"] .fafo-scale-root {
-  zoom: 1 !important;
+#atx-look, #atx-look-chip {
+  zoom: calc(1 / var(--atx-ui-scale, 1));
 }
-body.run-active .fafo-scale-root,
-body.tat-stage .fafo-scale-root,
-html:fullscreen .fafo-scale-root,
-html:-webkit-full-screen .fafo-scale-root {
-  zoom: 1;
-}
-.fafo-panel-body, .panel, .ui-card,
-.hs-list, .history-list, .tips, .section-title, .section-label {
+.fafo-panel-body, .panel, .ui-card, .prompt,
+textarea, select, input[type="text"], input[type="search"], input:not([type]),
+.hs-list, .history-list, .tips, label, .section-title, .section-label {
   font-size: calc(1em * var(--atx-text-scale, 1));
 }
 
@@ -389,7 +346,7 @@ html:-webkit-full-screen .fafo-scale-root {
 html[data-atx-lighting="soft"] .panel, html[data-atx-lighting="soft"] .ui-card{
   box-shadow:0 8px 28px rgba(0,0,0,.28) !important;
 }
-html[data-atx-lighting="dim"] .fafo-scale-root{
+html[data-atx-lighting="dim"]{
   filter:saturate(.88) brightness(.94);
 }
 html[data-atx-lighting="dim"] .panel::before,
@@ -417,7 +374,7 @@ body.atx-ambient-off .amb-wash, body.atx-ambient-off .lx-wash{
 
 /* Look panel */
 #atx-look{
-  position:fixed; inset:0; z-index:100000; display:none; place-items:center;
+  position:fixed; inset:0; z-index:99992; display:none; place-items:center;
   background:rgba(0,0,0,.58); backdrop-filter:blur(5px);
 }
 #atx-look.open{display:grid}
@@ -651,8 +608,8 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
           { v: 'comfortable', l: 'Comfortable' },
           { v: 'compact', l: 'Compact' },
         ], p.density) +
-        '<label class="row"><span>UI scale</span><input type="range" min="25" max="800" step="5" id="atxUiScale" value="' + p.uiScale + '"><input type="number" min="25" max="800" step="5" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
-        '<label class="row"><span>Text scale</span><input type="range" min="25" max="800" step="5" id="atxTextScale" value="' + p.textScale + '"><input type="number" min="25" max="800" step="5" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
+        '<label class="row"><span>UI scale</span><input type="range" min="50" max="400" step="5" id="atxUiScale" value="' + p.uiScale + '"><input type="number" min="25" max="800" step="5" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
+        '<label class="row"><span>Text scale</span><input type="range" min="50" max="400" step="5" id="atxTextScale" value="' + p.textScale + '"><input type="number" min="25" max="800" step="5" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
         '<p class="atx-look-hint">UI scale resizes chrome, panels, and assets. Text scale is extra for copy inside panels. Drag panel edges as large as you want — no window-size cap. Ctrl+mouse-wheel also changes UI scale. Type up to 800% in the box.</p>' +
       '</div>' +
 
@@ -755,7 +712,7 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
       const n = panel.querySelector('#' + numId);
       function setBoth(v) {
         v = clamp(v, 25, 800);
-        if (r) r.value = String(v);
+        if (r) r.value = String(Math.max(50, Math.min(400, v)));
         if (n) n.value = String(v);
         const patch = {};
         patch[key] = v;
@@ -903,15 +860,8 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
   function boot() {
     injectCss();
     apply();
-    markScaleRoots();
-    if (document.body && !document.body._fafoScaleObs) {
-      document.body._fafoScaleObs = true;
-      try {
-        new MutationObserver(function () { markScaleRoots(); }).observe(document.body, { childList: true });
-      } catch (_) { /* ignore */ }
-    }
     loadThemeFx();
-    if (!document.getElementById('atx-pro-bar') && !document.getElementById('atx-look-chip') && document.body && !inIframe()) {
+    if (!document.getElementById('atx-pro-bar') && !document.getElementById('atx-look-chip') && document.body) {
       const chip = document.createElement('button');
       chip.id = 'atx-look-chip';
       chip.type = 'button';
@@ -922,13 +872,8 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
     }
     document.addEventListener('wheel', function (e) {
       if (!e.ctrlKey) return;
-      if (inIframe()) return;
-      const body = document.body;
-      if (body && (body.classList.contains('run-active') || body.classList.contains('tat-stage'))) return;
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' && e.target.type === 'number') return;
-      if (/^(VIDEO|CANVAS|IMG|IFRAME)$/.test(tag)) return;
-      if (e.target && e.target.closest && e.target.closest('video, canvas, .video-deck, .compare-content, .prompt-wrap, .prompt')) return;
       e.preventDefault();
       const step = e.deltaY < 0 ? 5 : -5;
       save({ uiScale: clamp(prefs.uiScale + step, 25, 800) });
@@ -940,27 +885,20 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
       window.addEventListener('resize', onResize);
     }
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        const box = document.getElementById('atx-look');
-        if (box && box.classList.contains('open')) {
-          e.preventDefault();
-          e.stopPropagation();
-          closePanel();
-        }
-        return;
-      }
       const tag = (e.target && e.target.tagName) || '';
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+      if (e.key === 'Escape') {
+        closePanel();
+        return;
+      }
       if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-      const body = document.body;
-      if (body && (body.classList.contains('run-active') || body.classList.contains('tat-stage'))) return;
       if (e.key === 'o' || e.key === 'O') {
         e.preventDefault();
         const box = document.getElementById('atx-look');
         if (box && box.classList.contains('open')) closePanel();
         else openPanel();
       }
-    }, true);
+    });
   }
 
   global.AIToolboxPrefs = {
@@ -974,8 +912,6 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
     apply,
     open: openPanel,
     close: closePanel,
-    inIframe: inIframe,
-    markScaleRoots: markScaleRoots,
     resolvedLayout: function () { return resolvedLayout(prefs); },
   };
 

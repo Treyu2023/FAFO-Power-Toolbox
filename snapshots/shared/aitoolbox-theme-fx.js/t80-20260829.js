@@ -65,7 +65,7 @@
     const css = document.createElement('style');
     css.id = 'atx-theme-fx-css';
     css.textContent = `
-#atx-theme-fx{position:fixed;inset:0;z-index:5;pointer-events:none;mix-blend-mode:screen}
+#atx-theme-fx{position:fixed;inset:0;z-index:99970;pointer-events:none;mix-blend-mode:screen}
 html[data-atx-fx="sparkysparks"], html[data-atx-fx="paintonsalought"]{
   --atx-bolt: transparent;
 }

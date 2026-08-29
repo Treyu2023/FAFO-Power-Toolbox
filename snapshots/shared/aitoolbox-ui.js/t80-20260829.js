@@ -1077,11 +1077,6 @@
                 return true;
             }
             // Explicit close targets (Dup Manager compare, etc.)
-            const look = document.getElementById('atx-look');
-            if (look && look.classList.contains('open')) {
-                try { window.AIToolboxPrefs?.close?.(); } catch (_) { look.classList.remove('open'); }
-                return true;
-            }
             const cmp = document.getElementById('comparePanel');
             if (cmp && cmp.classList.contains('open')) {
                 const btn = document.getElementById('btnCloseCompare');
