@@ -38,6 +38,14 @@
 
   // v2 prefix: one-time break from corrupt "slim banner" saves in v1 (tiny fixed row heights).
   // Old v1 keys are left in place but ignored so first open heals to a full window.
+
+  function readUiScale() {
+    try {
+      if (document.documentElement.getAttribute('data-atx-iframe') === '1') return 1;
+      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--atx-ui-scale'));
+      return Number.isFinite(v) && v > 0.05 ? v : 1;
+    } catch (_) { return 1; }
+  }
   const STORAGE_PREFIX = 'fafo_layout_v2_';
   const INDEX_KEY = 'fafo_layout_v2__index';
   const instances = new Map();
@@ -275,12 +283,15 @@
       rootW = r.width || 0;
       rootH = r.height || 0;
     } catch (_) { /* ignore */ }
+    const scale = readUiScale();
     if (type === 'columns') {
-      // Trust root width only when it looks like a real shell
-      return rootW >= 280 ? rootW : vw;
+      // Trust root width only when it looks like a real shell (CSS px, not zoomed paint)
+      const cssW = rootW / scale;
+      return cssW >= 280 ? cssW : vw;
     }
     // rows: if root is shorter than ~half the viewport, treat as collapsed / corrupt
-    return rootH >= Math.min(320, vh * 0.4) ? rootH : vh;
+    const cssH = rootH / scale;
+    return cssH >= Math.min(320, vh * 0.4) ? cssH : vh;
   }
 
   /**
@@ -792,11 +803,12 @@
         const target = leftFlex && !rightFlex ? right : left;
         const min = parseInt(target.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
         const maxAttr = parseInt(target.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
+        const scale = readUiScale();
         const start = type === 'columns' ? ev.clientX : ev.clientY;
         const startSize =
-          type === 'columns'
+          ((type === 'columns'
             ? target.getBoundingClientRect().width
-            : target.getBoundingClientRect().height;
+            : target.getBoundingClientRect().height) / scale);
         const sign = target === left ? 1 : -1;
 
         handle.classList.add('is-active');
@@ -816,7 +828,7 @@
         function onMove(e) {
           if (finished) return;
           const cur = type === 'columns' ? e.clientX : e.clientY;
-          let next = startSize + sign * (cur - start);
+          let next = startSize + sign * ((cur - start) / scale);
           next = Math.max(min, next);
           if (maxAttr > 0) next = Math.min(maxAttr, next);
           // Independent sizes: do NOT clamp to leftover so the neighbor
@@ -875,8 +887,9 @@
         const section = handle.closest('[data-fafo-section]');
         if (!section) return;
         const minH = parseInt(section.getAttribute('data-fafo-section-min') || '80', 10) || 80;
+        const scale = readUiScale();
         const startY = ev.clientY;
-        const startH = section.getBoundingClientRect().height;
+        const startH = section.getBoundingClientRect().height / scale;
         handle.classList.add('is-active');
         document.body.classList.add('fafo-layout-resizing-row');
         try {
@@ -885,7 +898,7 @@
         let finished = false;
         function onMove(e) {
           if (finished) return;
-          let h = startH + (e.clientY - startY);
+          let h = startH + ((e.clientY - startY) / scale);
           h = Math.max(minH, h);
           section.style.flex = '0 0 auto';
           section.style.flexShrink = '0';

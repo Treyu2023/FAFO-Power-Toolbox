@@ -1,2 +1,2 @@
 /** Keep in sync with /VERSION */
-(function (g) { g.AITOOLBOX_VERSION = '1.16.37'; })(typeof window !== 'undefined' ? window : globalThis);
+(function (g) { g.AITOOLBOX_VERSION = '1.16.38'; })(typeof window !== 'undefined' ? window : globalThis);
