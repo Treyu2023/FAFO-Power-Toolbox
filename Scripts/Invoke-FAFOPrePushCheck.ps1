@@ -33,7 +33,10 @@ $requiredPatterns = @(
     'Logs/',
     'Backups/',
     'Secrets/',
-    '.env'
+    '.env',
+    'Investor Portal.html',
+    'server/investor_ops.py',
+    'server/xero_ops.py'
 )
 
 if (-not (Test-Path -LiteralPath $gitignorePath)) {
@@ -67,6 +70,12 @@ $blockedRelative = @(
     'backups',
     'terminals',
     'server\security_config.json',
+    'Investor Portal.html',
+    'Business Tax Preparedness',
+    'server\investor_ops.py',
+    'server\xero_ops.py',
+    'server\_private_investor_routes.py',
+    'server\_private_xero_routes.py',
     'System Tools\PC Reports and Log Viewer\catalog.js',
     'System Tools\PC Reports and Log Viewer\logs-data.js',
     'System Tools\PC Reports and Log Viewer\device-local',
@@ -94,6 +103,9 @@ function Test-PathLooksSecret([string]$RelativePath, [string]$FullPath) {
         return $true
     }
     if ($name -ieq 'security_config.json') { return $true }
+    if ($name -ieq 'Investor Portal.html') { return $true }
+    if ($rel -match '(?i)Business Tax Preparedness') { return $true }
+    if ($name -match '(?i)(investor_ops|xero_ops|_private_investor|_private_xero)') { return $true }
     if ($name -match '(?i)(^\.env$|\.pem$|\.pfx$|credentials\.json|token\.json)') { return $true }
     if ($name -match '(?i)(api_key|auth_key)') { return $true }
     if ($name -match '(?i)\.xml$' -and $rel -match '(?i)Secrets') { return $true }
@@ -115,6 +127,8 @@ function Test-FileContentSecretish([string]$FullPath) {
         if ($text -match '(?im)(api[_-]?key|auth[_-]?key|secret[_-]?key)\s*[:=]\s*["''][^"'']{12,}["'']') { return $true }
         if ($text -match '-----BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY-----') { return $true }
         if ($text -match '(?i)xai-[A-Za-z0-9]{20,}') { return $true }
+        # Live maint/SSH/API passwords must not ship in the public tree
+        if ($text -match '(?i)password\s*[:=]\s*[''"][^''"]{8,}[''"]') { return $true }
     }
     catch {
         return $false
