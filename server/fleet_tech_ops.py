@@ -91,7 +91,10 @@ def default_payload() -> dict[str, Any]:
 def ensure_seeded() -> dict[str, Any]:
     """
     Create local defaults if missing.
-    Seeds the known fleet maint password only into LOCALAPPDATA (not the git tree).
+
+    Password stays empty in the repo and in a fresh seed. Set it on this PC via
+    fleet-tech-defaults (LocalAppData) or a site override — never commit it.
+    Existing LocalAppData files are left as-is (not overwritten).
     """
     p = _path()
     if p.is_file():
@@ -102,16 +105,14 @@ def ensure_seeded() -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             pass
     data = default_payload()
-    # Field procedure provided by tech team — machine-local only
-    data["commanderShell"]["password"] = "EsG2Com@nd3r"
     data["commanderShell"]["username"] = "maint"
     data["commanderShell"]["port"] = 22
     data["commanderShell"]["defaultHostHint"] = "192.168.31.11"
     data["commanderShell"]["lastVerifiedAt"] = _utc_now()
     data["updatedAt"] = _utc_now()
     data["seedNote"] = (
-        "Seeded from field SOP. Change here if Verifone rotates fleet maint password. "
-        "Never commit this file to git."
+        "Password is empty until set on this PC (Toolbox fleet-tech-defaults). "
+        "Never commit fleet-tech-defaults.json or a live maint password to git."
     )
     save_defaults(data)
     return data
