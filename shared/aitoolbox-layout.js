@@ -167,8 +167,9 @@
       if (secs.length) sections[id] = secs;
     });
     const sectionHeights = {};
+    const collapsed = {};
     // Do not seed sectionHeights from data-fafo-section-default.
-    return { order, sizes, flex, sections, sectionHeights };
+    return { order, sizes, flex, sections, sectionHeights, collapsed };
   }
 
   function ensureChrome(panel) {
@@ -412,6 +413,7 @@
       flex: { ...(state.flex || {}) },
       sections: { ...(state.sections || {}) },
       sectionHeights: { ...(state.sectionHeights || {}) },
+      collapsed: { ...(state.collapsed || {}) },
     };
     out = healBannerStripState(root, out, opts);
 
@@ -470,8 +472,17 @@
           return;
         }
       } catch (_) { /* keep */ }
-      if (h < 60) h = 60;
+      let minH = 60;
+      try {
+        const sec2 = root.querySelector('[data-fafo-section="' + id.replace(/"/g, '') + '"]');
+        const attrMin = parseInt(sec2 && sec2.getAttribute('data-fafo-section-min') || '', 10);
+        if (Number.isFinite(attrMin) && attrMin > 0) minH = Math.max(24, attrMin);
+      } catch (_) { /* keep */ }
+      if (h < minH) h = minH;
       out.sectionHeights[id] = Math.round(h);
+    });
+    Object.keys(out.collapsed || {}).forEach((id) => {
+      if (!out.collapsed[id]) delete out.collapsed[id];
     });
     return out;
   }
@@ -654,8 +665,24 @@
             if (state.sectionHeights) state.sectionHeights[sid] = h;
           }
         }
+        applyCollapsedClass(s, !!(state.collapsed && state.collapsed[sid]));
       });
     });
+  }
+
+  function applyCollapsedClass(section, on) {
+    if (!section) return;
+    if (on) {
+      section.classList.add('fafo-section-collapsed');
+      section.setAttribute('data-fafo-collapsed', '1');
+      section.style.height = '';
+      section.style.flex = '0 0 auto';
+      section.style.flexShrink = '0';
+      section.style.maxHeight = 'none';
+    } else {
+      section.classList.remove('fafo-section-collapsed');
+      section.removeAttribute('data-fafo-collapsed');
+    }
   }
 
   function captureState(root, opts) {
@@ -678,19 +705,24 @@
     });
     const sections = {};
     const sectionHeights = {};
+    const collapsed = {};
     panels.forEach((p) => {
       const id = p.getAttribute('data-fafo-panel');
       const secs = sectionEls(p);
       sections[id] = secs.map((s) => s.getAttribute('data-fafo-section'));
       secs.forEach((s) => {
+        const sid = s.getAttribute('data-fafo-section');
+        if (sid && (s.getAttribute('data-fafo-collapsed') === '1' || s.classList.contains('fafo-section-collapsed'))) {
+          collapsed[sid] = true;
+        }
         if (s.getAttribute('data-fafo-resizable') !== '1') return;
         if (s.getAttribute('data-fafo-user-sized') !== '1') return;
-        const sid = s.getAttribute('data-fafo-section');
+        if (s.getAttribute('data-fafo-collapsed') === '1') return;
         const h = Math.round(s.getBoundingClientRect().height);
         if (sid && h > 0) sectionHeights[sid] = h;
       });
     });
-    return { order, sizes, flex, sections, sectionHeights };
+    return { order, sizes, flex, sections, sectionHeights, collapsed };
   }
 
   /**
@@ -1017,7 +1049,7 @@
       <button type="button" class="fafo-layout-btn" data-act="save" title="Save layout now (also auto-saves)">Save layout</button>
       <button type="button" class="fafo-layout-btn" data-act="reset" title="Reset this app's panel layout to defaults (fixes off-screen / skewed panels)">Reset layout</button>
       <button type="button" class="fafo-layout-btn danger" data-act="reset-all" title="Reset saved layouts for every toolbox app on this PC">Reset all apps</button>
-      <span class="fafo-layout-hint" title="Drag panel headers to reorder · drag edges to resize · ↺ on each panel/section resets just that piece · layout always remembers last position">Layout remembers · auto-saves</span>
+      <span class="fafo-layout-hint" title="Drag panel headers to reorder · drag edges to resize · ▾ collapses a section · ↺ resets just that piece · layout always remembers last position">Layout remembers · auto-saves</span>
     `;
     bar.querySelector('[data-act="save"]').addEventListener('click', () => {
       try {
@@ -1121,9 +1153,37 @@
       actions = el('span', 'fafo-section-actions');
       chrome.appendChild(actions);
     }
-    if (actions.querySelector('[data-fafo-reset-section]')) return;
     const sid = section.getAttribute('data-fafo-section');
     const pid = panel.getAttribute('data-fafo-panel');
+    if (!actions.querySelector('[data-fafo-collapse-section]')) {
+      const collapsed = section.getAttribute('data-fafo-collapsed') === '1' ||
+        section.classList.contains('fafo-section-collapsed');
+      const fold = el('button', 'fafo-chrome-btn', {
+        type: 'button',
+        title: collapsed ? 'Expand this section' : 'Collapse this section to its header',
+        'data-fafo-collapse-section': sid || '1',
+        'aria-pressed': collapsed ? 'true' : 'false',
+        text: collapsed ? '▸' : '▾',
+      });
+      fold.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (instance && typeof instance.toggleSection === 'function') {
+          instance.toggleSection(pid, sid);
+        }
+      });
+      fold.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      fold.draggable = false;
+      actions.appendChild(fold);
+    } else {
+      const fold = actions.querySelector('[data-fafo-collapse-section]');
+      const collapsed = section.getAttribute('data-fafo-collapsed') === '1' ||
+        section.classList.contains('fafo-section-collapsed');
+      fold.textContent = collapsed ? '▸' : '▾';
+      fold.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+      fold.title = collapsed ? 'Expand this section' : 'Collapse this section to its header';
+    }
+    if (actions.querySelector('[data-fafo-reset-section]')) return;
     const btn = el('button', 'fafo-chrome-btn', {
       type: 'button',
       title: 'Reset this section height to default',
@@ -1159,6 +1219,7 @@
   }
 
   const SETTINGS_RE = /option|setting|control|scan|filter|config|pref|keep|action|sidebar|intro|assist/i;
+  const COMPACT_RE = /summary|stat|footer|hint|toolbar|action|head|nav|status|tally/i;
   const LIST_RE = /list|result|group|file|preview|library|grid|log|queue|detail-list|timeline|tile|catalog/i;
   const LIST_CHILD_SEL =
     '.groups-wrap, .list, .results, .file-list, .item-list, .grid-wrap, .table-wrap, .detail-list, .detail-list-inner, .log, .timeline, #groupsWrap, #fileGrid, #toolGrid, [data-fafo-scroll]';
@@ -1176,6 +1237,20 @@
       ' ' +
       (s.getAttribute('data-fafo-section-title') || '');
     return LIST_RE.test(id);
+  }
+  function isCompactSection(s) {
+    if (!s) return false;
+    const flag = s.getAttribute('data-fafo-compact');
+    if (flag === '1') return true;
+    if (flag === '0') return false;
+    const id =
+      (s.getAttribute('data-fafo-section') || '') +
+      ' ' +
+      (s.getAttribute('data-fafo-section-title') || '');
+    return SETTINGS_RE.test(id) || COMPACT_RE.test(id);
+  }
+  function isCollapsedSection(s) {
+    return !!(s && (s.getAttribute('data-fafo-collapsed') === '1' || s.classList.contains('fafo-section-collapsed')));
   }
 
   /**
@@ -1251,11 +1326,16 @@
       if (secs.length >= 2) {
         body.classList.add('fafo-body-split');
         let flexed = false;
-        secs.forEach((s, i) => {
-          const last = i === secs.length - 1;
+        secs.forEach((s) => {
           const userSized = s.getAttribute('data-fafo-user-sized') === '1';
+          if (isCompactSection(s) || isCollapsedSection(s)) {
+            s.classList.add('fafo-section-compact');
+            s.classList.remove('fafo-section-flex');
+            s.style.flexShrink = '0';
+            return;
+          }
           if (userSized) return;
-          if (!flexed && (isListSection(s) || (last && !isSettingsSection(s)))) {
+          if (!flexed && isListSection(s)) {
             s.classList.add('fafo-section-flex');
             s.style.flexShrink = '0';
             flexed = true;
@@ -1264,13 +1344,8 @@
             s.style.flexShrink = '0';
           }
         });
-        if (!flexed) {
-          const last = secs[secs.length - 1];
-          if (last.getAttribute('data-fafo-user-sized') !== '1') {
-            last.classList.add('fafo-section-flex');
-            last.classList.remove('fafo-section-compact');
-          }
-        }
+        // Never dump leftover height into a compact footer/summary/actions pane.
+        // If no list is present, leftover stays as empty panel background.
       }
       try {
         body.querySelectorAll(LIST_CHILD_SEL).forEach((el) => {
@@ -1642,8 +1717,10 @@
           sec.style.maxHeight = '';
           delete sec.dataset.fafoHeight;
           sec.removeAttribute('data-fafo-user-sized');
+          applyCollapsedClass(sec, false);
         }
         if (cur.sectionHeights) delete cur.sectionHeights[sectionId];
+        if (cur.collapsed) delete cur.collapsed[sectionId];
         // Restore section order slot to default for that panel
         if (panelId && cur.sections && defaults.sections && defaults.sections[panelId]) {
           cur.sections[panelId] = defaults.sections[panelId].slice();
@@ -1657,6 +1734,28 @@
       },
       getState() {
         return captureState(root, opts);
+      },
+      /** Collapse or expand one section to chrome-only height. */
+      toggleSection(panelId, sectionId) {
+        if (!sectionId) return;
+        const panel = panelEls(root).find((p) => p.getAttribute('data-fafo-panel') === panelId);
+        const sec =
+          panel &&
+          sectionEls(panel).find((s) => s.getAttribute('data-fafo-section') === sectionId);
+        if (!sec) return;
+        const on = sec.getAttribute('data-fafo-collapsed') !== '1';
+        applyCollapsedClass(sec, on);
+        const cur = captureState(root, opts);
+        cur.collapsed = cur.collapsed || {};
+        if (on) cur.collapsed[sectionId] = true;
+        else delete cur.collapsed[sectionId];
+        const next = sanitizeState(root, cur, opts);
+        applyState(root, next, opts);
+        rebindAll();
+        wireResets();
+        markScrollPanes(root);
+        saveNow();
+        toast(on ? 'Section collapsed' : 'Section expanded');
       },
       destroy() {
         instances.delete(appId);
@@ -1775,6 +1874,7 @@
       flex: { ...(defaults.flex || {}), ...(saved.flex || {}) },
       sections: { ...(defaults.sections || {}) },
       sectionHeights: { ...(defaults.sectionHeights || {}), ...(saved.sectionHeights || {}) },
+      collapsed: { ...(defaults.collapsed || {}), ...(saved.collapsed || {}) },
     };
     // append any new default panels not in saved order
     (defaults.order || []).forEach((id) => {
