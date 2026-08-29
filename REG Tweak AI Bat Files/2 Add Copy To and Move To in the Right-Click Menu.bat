@@ -1,17 +1,10 @@
 @echo off
-title Speed Up File Explorer
-echo Disabling Automatic Folder Type Discovery...
+title Add Copy To and Move To
+echo Adding Copy To folder and Move To folder to the right-click menu...
 
-:: Deletes existing cached folder views to ensure a clean slate
-reg delete "HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags" /f
-reg delete "HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU" /f
+reg add "HKCU\Software\Classes\AllFilesystemObjects\shellex\ContextMenuHandlers\Copy To" /ve /t REG_SZ /d "{C2FBB630-2971-11D1-A18C-00C04FD75D13}" /f
+reg add "HKCU\Software\Classes\AllFilesystemObjects\shellex\ContextMenuHandlers\Move To" /ve /t REG_SZ /d "{C2FBB631-2971-11D1-A18C-00C04FD75D13}" /f
 
-:: Forces all folders to open instantly as generic items
-reg add "HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags\AllFolders\Shell" /v FolderType /t REG_SZ /d "NotSpecified" /f
-
-taskkill /f /im explorer.exe
-start explorer.exe
-echo Complete! Folders will now load instantly.
+echo.
+echo Complete! Right-click a file to see Copy To folder and Move To folder.
 pause
-
-2. Add "Copy To" and "Move To" in the Right-Click Menu

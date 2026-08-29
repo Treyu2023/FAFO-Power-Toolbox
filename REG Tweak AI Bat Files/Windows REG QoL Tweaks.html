@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="aitoolbox-tool-id" content="reg-qol-tweaks">
   <title>Windows REG QoL Tweaks — AI HTML Toolbox</title>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
   <link rel="stylesheet" href="../shared/aitoolbox-layout.css">
@@ -13,21 +14,20 @@
       --panel: #0c1420;
       --border: rgba(0, 243, 255, 0.22);
       --accent: #00f3ff;
-      --accent2: #e879f9;
-      --gold: #f5d76e;
       --ok: #4ade80;
       --warn: #fbbf24;
       --text: #e8eef8;
       --muted: #94a3b8;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: radial-gradient(ellipse at 50% -20%, #102033, var(--bg) 60%);
       color: var(--text);
       min-height: 100vh;
     }
-    :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.01ms !important;
@@ -37,25 +37,56 @@
       .card:hover { transform: none; }
     }
     .nav {
-      display: flex; justify-content: space-between; align-items: center;
+      display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
       padding: 10px 20px; border-bottom: 1px solid var(--border);
       background: rgba(7, 11, 18, 0.95); position: sticky; top: 0; z-index: 10;
     }
     .nav a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
     .nav .t { color: var(--accent); letter-spacing: 1px; font-size: 13px; }
+    .hub-link {
+      color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 700;
+      padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: rgba(0,243,255,.08);
+    }
+    .hub-link.muted { color: var(--muted); font-weight: 600; background: transparent; }
     .wrap { max-width: 920px; margin: 0 auto; padding: 24px; }
     h1 { font-size: 24px; margin-bottom: 6px; }
     .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.5; }
+    .warn, .banner {
+      border-radius: 12px; padding: 14px 16px; font-size: 13px; margin-bottom: 16px; line-height: 1.5;
+    }
     .warn {
       background: rgba(251, 191, 36, 0.1);
       border: 1px solid rgba(251, 191, 36, 0.3);
       color: #fcd34d;
-      border-radius: 12px;
-      padding: 14px 16px;
-      font-size: 13px;
-      margin-bottom: 20px;
-      line-height: 1.5;
     }
+    .banner {
+      display: none;
+      background: rgba(0, 243, 255, 0.08);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .banner.show { display: block; }
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      margin-bottom: 16px; font-size: 12px; font-weight: 700;
+    }
+    .lg {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+    }
+    .lg.ok { border-color: rgba(74,222,128,.55); color: var(--ok); background: rgba(74,222,128,.1); }
+    .lg.miss { border-color: rgba(251,191,36,.5); color: var(--warn); background: rgba(251,191,36,.1); }
+    .lg.unk { color: var(--muted); }
+    .kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-bottom: 16px; }
+    @media (max-width: 640px) { .kpis { grid-template-columns: 1fr; } }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+    }
+    .kpi .lbl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .kpi .val { font-size: 22px; font-weight: 800; margin-top: 2px; }
+    .kpi .val.ok { color: var(--ok); }
+    .kpi .val.miss { color: var(--warn); }
     .toolbar {
       display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; align-items: center;
     }
@@ -76,16 +107,35 @@
       border-radius: 14px;
       padding: 18px 18px 16px;
       margin-bottom: 12px;
-      transition: border-color .2s, transform .2s;
+      transition: border-color .2s, transform .2s, box-shadow .2s;
     }
-    .card:hover { border-color: var(--gold); transform: translateY(-1px); }
+    .card:hover { transform: translateY(-1px); }
+    .card.applied {
+      border-color: rgba(74,222,128,.55);
+      box-shadow: inset 3px 0 0 var(--ok), 0 0 18px rgba(74,222,128,.12);
+    }
+    .card.missing {
+      border-color: rgba(251,191,36,.45);
+      box-shadow: inset 3px 0 0 var(--warn);
+    }
+    .card.unknown { border-color: var(--border); }
     .card.hidden { display: none; }
-    .card h3 { font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
-    .card p { font-size: 12px; color: var(--muted); line-height: 1.55; margin-bottom: 12px; }
-    .meta { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent2); opacity: .9; margin-bottom: 8px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .card-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 6px; }
+    .badge {
+      flex: 0 0 auto;
+      font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+      padding: 5px 10px; border-radius: 999px;
+    }
+    .badge.applied { background: var(--ok); color: #04140a; }
+    .badge.missing { background: var(--warn); color: #1a1200; }
+    .badge.unknown { background: rgba(148,163,184,.2); color: var(--muted); }
+    .card h3 { font-size: 15px; margin-bottom: 6px; }
+    .card p { font-size: 12px; color: var(--muted); line-height: 1.55; margin-bottom: 10px; }
+    .meta { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); opacity: .9; margin-bottom: 6px; }
+    .keys { font-family: Consolas, ui-monospace, monospace; font-size: 10px; color: #64748b; margin-bottom: 12px; line-height: 1.45; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .btn {
-      display: inline-block; text-decoration: none;
+      display: inline-flex; align-items: center; text-decoration: none;
       padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
       border: 1px solid var(--accent); color: var(--accent); background: rgba(0,243,255,.1);
       cursor: pointer;
@@ -93,46 +143,57 @@
     .btn:hover { background: var(--accent); color: #071018; }
     .btn:disabled { opacity: .55; cursor: wait; }
     .btn.ghost { border-color: rgba(255,255,255,.15); color: var(--muted); background: transparent; }
-    .btn.ghost:hover { border-color: var(--gold); color: var(--gold); }
+    .btn.ghost:hover { border-color: var(--warn); color: var(--warn); }
+    .btn.reapply { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.1); }
+    .btn.reapply:hover { background: var(--ok); color: #04140a; }
     .empty { text-align: center; color: var(--muted); padding: 40px 16px; font-size: 13px; }
     .footer { margin-top: 24px; font-size: 11px; color: var(--muted); line-height: 1.5; }
-    code { color: var(--gold); font-size: 11px; }
+    code { color: var(--warn); font-size: 11px; }
     .hidden { display: none; }
   </style>
 </head>
 <body>
   <nav class="nav">
-    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <a href="../Toolbox Launcher.html" id="btnHome">← Toolbox</a>
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
       <a href="../System Tools/System Health Dashboard.html" class="hub-link">Health Hub</a>
       <a href="../System Tools/Startup Service Manager.html" class="hub-link muted">Startup Manager</a>
     </div>
     <span class="t">WINDOWS REG QoL TWEAKS</span>
-    <a class="btn ghost" href="Open-Folder.bat" id="btnOpenFolder" style="display:none">Open Folder</a>
     <span data-fafo-layout-toolbar></span>
   </nav>
-  <style>
-    .hub-link { color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(0,243,255,.08); }
-    .hub-link.muted { color:var(--muted);font-weight:600;background:transparent; }
-  </style>
 
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="reg-tweak-ai-bat-files-windows-reg-qol-tweaks" data-fafo-layout-type="rows">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="reg-tweak-ai-bat-files-windows-reg-qol-tweaks" data-fafo-layout-type="rows" data-fafo-chrome="0">
     <h1>Windows REG QoL Tweaks</h1>
     <p class="sub">
-      Local one-click registry / Explorer quality-of-life scripts for AI and media workflows.
-      Each card launches a <code>.bat</code> in this folder. Review what it does before running.
+      Optional Explorer / Start / input registry fixes for AI and media work.
+      The desk scans whether each fix is already on this PC, colors the card, and sorts applied ones to the top. Re-apply is always allowed — both first-time and repeat ask for confirmation.
     </p>
 
     <div class="warn">
       These scripts edit the Windows registry and may restart Explorer.
-      Run only what you understand. Prefer one tweak at a time. Some require approval (UAC) or a reboot (Long Paths).
+      Run only what you understand. Prefer one tweak at a time. Some require approval (UAC) or a reboot (Long Paths, verbose status).
+    </div>
+    <div class="banner" id="banner"></div>
+
+    <div class="legend" aria-label="Status key">
+      <span class="lg ok">APPLIED — already on this PC</span>
+      <span class="lg miss">NOT APPLIED — optional, not written yet</span>
+      <span class="lg unk">NOT SCANNED — could not read the key</span>
     </div>
 
-    <div class="toolbar" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Applied</div><div class="val ok" id="kpiApplied">—</div></div>
+      <div class="kpi"><div class="lbl">Not applied</div><div class="val miss" id="kpiMissing">—</div></div>
+      <div class="kpi"><div class="lbl">In this list</div><div class="val" id="kpiCount">—</div></div>
+    </div>
+
+    <div class="toolbar">
       <input class="inp" id="search" type="search" placeholder="Filter tweaks… (/)" aria-label="Filter tweaks">
       <div class="chip-row" id="cats" role="tablist" aria-label="Tweak categories"></div>
       <span id="tweakCount" style="font-size:12px;color:var(--muted);margin-left:auto">—</span>
-      <button type="button" class="btn ghost" id="btnCopyList" title="Copy visible tweak list">Copy list</button>
+      <button type="button" class="btn" id="btnScan">Scan registry</button>
+      <button type="button" class="btn ghost" id="btnCopyList">Copy list</button>
     </div>
 
     <div id="list"></div>
@@ -140,234 +201,381 @@
 
     <p class="footer">
       Source folder: <code>REG Tweak AI Bat Files</code> · See also
-      <code>Readme QOL REG Bat File Tweaks.txt</code> in the same directory.
-      Scripts stay local — nothing leaves this PC.
+      <code>Readme QOL REG Bat File Tweaks.txt</code>.
+      Scripts stay local — nothing leaves this PC. Applied status is read from the live registry when the toolbox server is running on Windows.
     </p>
   </div>
 
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
   <script src="../shared/aitoolbox-ui.js"></script>
   <script src="../shared/aitoolbox-layout.js"></script>
   <script src="../shared/aitoolbox-pro.js"></script>
   <script>
-    const TWEAKS = [
-      {
-        id: 'classic-menu',
-        cat: 'Explorer',
-        name: 'Restore Classic Right-Click Menu',
-        file: 'restore classic context menu.bat',
-        desc: 'Windows 11 hides third-party tools behind “Show more options.” This restores the classic Windows 10 context menu so Notepad++, ExifTool, Python scripts, and more appear immediately.'
-      },
-      {
-        id: 'long-paths',
-        cat: 'AI / Dev',
-        name: 'Enable Win32 Long Paths',
-        file: 'Enable Win32 Long Paths Crucial for AIDocker.bat',
-        desc: 'Removes the 260-character path limit. Essential for ComfyUI, Pinokio, Docker, and nested AI node installs that otherwise fail silently. May need reboot / admin.'
-      },
-      {
-        id: 'file-sniff',
-        cat: 'Explorer',
-        name: 'Speed Up Explorer (Disable Folder Sniffing)',
-        file: '1 Disable File Sniff on open in windows to speed system up.bat',
-        desc: 'Stops Windows from scanning folder contents to auto-apply Video/Picture layouts. Heavy media folders open as a generic list instantly; also tames Downloads date grouping.'
-      },
-      {
-        id: 'copy-move',
-        cat: 'Explorer',
-        name: 'Add “Copy To” / “Move To” Menu',
-        file: '2 Add Copy To and Move To in the Right-Click Menu.bat',
-        desc: 'Adds precise Copy To folder… and Move To folder… entries so you can route files across NVMe / external drives without accidental drag-drops.'
-      },
-      {
-        id: 'show-ext',
-        cat: 'Explorer',
-        name: 'Force Show Extensions & Hidden Files',
-        file: '3. Force Show File Extensions and Hidden Files.bat',
-        desc: 'Always show .mp4 / .mkv / .png / .webp and unhide system/app data folders (.git, .docker caches, etc.) — critical when managing mixed media and code.'
-      },
-      {
-        id: 'notepad',
-        cat: 'Apps',
-        name: 'Regedit Fix Notepad',
-        file: 'regedit fix notepad.bat',
-        desc: 'Registry fix for Notepad association / classic Notepad behavior when Windows Store Notepad or broken file associations get in the way.'
-      }
-    ];
+    (function () {
+      const TWEAKS = [
+        { id: 'classic-menu', cat: 'Explorer', name: 'Restore Classic Right-Click Menu', file: 'restore classic context menu.bat', optional: false, needsAdmin: false, desc: 'Windows 11 hides third-party tools behind Show more options. Restores the classic Windows 10 context menu so Notepad++, ExifTool, and scripts appear immediately.', checkHint: 'HKCU\\…\\{86ca1aa0-…}\\InprocServer32' },
+        { id: 'long-paths', cat: 'AI / Dev', name: 'Enable Win32 Long Paths', file: 'Enable Win32 Long Paths Crucial for AIDocker.bat', optional: false, needsAdmin: true, desc: 'Removes the 260-character path limit. Essential for ComfyUI, Pinokio, Docker, and nested AI node installs that otherwise fail silently. May need reboot / admin.', checkHint: 'HKLM\\SYSTEM\\…\\FileSystem LongPathsEnabled = 1' },
+        { id: 'file-sniff', cat: 'Explorer', name: 'Speed Up Explorer (Disable Folder Sniffing)', file: '1 Disable File Sniff on open in windows to speed system up.bat', optional: false, needsAdmin: false, desc: 'Stops Windows from scanning folder contents to auto-apply Video/Picture layouts. Heavy media folders open as a generic list instantly; also tames Downloads date grouping.', checkHint: 'FolderType = NotSpecified' },
+        { id: 'copy-move', cat: 'Explorer', name: 'Add Copy To / Move To Menu', file: '2 Add Copy To and Move To in the Right-Click Menu.bat', optional: false, needsAdmin: false, desc: 'Adds Copy To folder and Move To folder on the right-click menu so you can route files across drives without accidental drag-drops.', checkHint: 'AllFilesystemObjects\\…\\Copy To + Move To' },
+        { id: 'show-ext', cat: 'Explorer', name: 'Force Show Extensions & Hidden Files', file: '3. Force Show File Extensions and Hidden Files.bat', optional: false, needsAdmin: false, desc: 'Always show .mp4 / .mkv / .png / .webp and unhide system/app data folders (.git, .docker caches) — critical when managing mixed media and code.', checkHint: 'HideFileExt = 0, Hidden = 1' },
+        { id: 'notepad', cat: 'Apps', name: 'Regedit Fix Notepad', file: 'regedit fix notepad.bat', optional: false, needsAdmin: false, desc: 'Rebuilds .txt as a real text file with New > Text Document on the desktop when Store Notepad or a broken association gets in the way.', checkHint: 'HKCU\\Software\\Classes\\.txt = txtfile' },
+        { id: 'no-bing', cat: 'Start / Taskbar', name: 'Disable Bing Web Search in Start', file: '4 Disable Bing Search in Start.bat', optional: true, needsAdmin: false, desc: 'Stops Start search from querying Bing. Local apps, settings, and files come back instantly on a fast machine.', checkHint: 'BingSearchEnabled = 0' },
+        { id: 'taskbar-seconds', cat: 'Start / Taskbar', name: 'Show Seconds on the Clock', file: '5 Show Seconds on Taskbar Clock.bat', optional: true, needsAdmin: false, desc: 'Puts seconds on the notification-area clock. Handy when timing encodes, captures, or waiting on a reboot.', checkHint: 'ShowSecondsInSystemClock = 1' },
+        { id: 'hide-widgets', cat: 'Start / Taskbar', name: 'Hide Widgets / News Button', file: '6 Hide Widgets News Button.bat', optional: true, needsAdmin: false, desc: 'Removes the Widgets / News and Interests button from the taskbar so weather and MSN feed clicks stop stealing focus.', checkHint: 'TaskbarDa = 0' },
+        { id: 'end-task', cat: 'Start / Taskbar', name: 'End Task from the Taskbar', file: '7 Enable End Task on Taskbar.bat', optional: true, needsAdmin: false, desc: 'Adds End task to a right-click on a running app’s taskbar icon — faster than opening Task Manager for a stuck preview or encode.', checkHint: 'TaskbarEndTask = 1' },
+        { id: 'this-pc', cat: 'Explorer', name: 'Explorer Opens to This PC', file: '8 Explorer Opens to This PC.bat', optional: true, needsAdmin: false, desc: 'File Explorer starts on This PC instead of Home / Quick Access, so drives and project folders are the first thing you see.', checkHint: 'LaunchTo = 1' },
+        { id: 'no-shake', cat: 'Explorer', name: 'Disable Aero Shake Minimize', file: '9 Disable Aero Shake.bat', optional: true, needsAdmin: false, desc: 'Stops grabbing a window title bar and shaking it from minimizing everything else — a common accident on a crowded compare / preview desktop.', checkHint: 'DisallowShaking = 1' },
+        { id: 'fast-menus', cat: 'Input', name: 'Instant Menus (No Hover Delay)', file: '10 Instant Menus.bat', optional: true, needsAdmin: false, desc: 'Sets MenuShowDelay to 0 so cascading right-click menus open immediately instead of waiting ~400 ms.', checkHint: 'MenuShowDelay = 0' },
+        { id: 'no-suggestions', cat: 'Start / Taskbar', name: 'Disable Start & Lock Suggestions', file: '11 Disable Start and Lock Suggestions.bat', optional: true, needsAdmin: false, desc: 'Turns off lock-screen fun facts, Start suggestions, and silent Store app installs so the machine stops advertising at you.', checkHint: 'SystemPaneSuggestionsEnabled = 0' },
+        { id: 'no-sticky', cat: 'Input', name: 'Disable Sticky Keys Popup', file: '12 Disable Sticky Keys Popup.bat', optional: true, needsAdmin: false, desc: 'Stops the Sticky Keys / Filter Keys accessibility prompt when Shift is held — a frequent interrupt during long keyboard work.', checkHint: 'StickyKeys Flags = 506' },
+        { id: 'verbose-status', cat: 'System', name: 'Verbose Startup / Shutdown Status', file: '13 Verbose Startup Shutdown Status.bat', optional: true, needsAdmin: true, desc: 'Shows the real driver / service names during boot and shutdown instead of generic Please wait. Needs admin; helps when a hang is on a specific service.', checkHint: 'HKLM\\…\\VerboseStatus = 1' }
+      ];
 
-    let busy = false;
-    const _blobUrls = [];
+      const DEMO_APPLIED = ['classic-menu', 'show-ext', 'this-pc', 'fast-menus', 'no-sticky', 'copy-move'];
+      const DEMO_KEY = 'fafo_reg_qol_demo_applied_v1';
+      const PREF_KEY = 'fafo_reg_qol_prefs_v1';
 
-    function el(id) {
-      try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
-    }
-    function setText(id, text) {
-      const n = el(id);
-      if (n) n.textContent = text == null ? '' : String(text);
-    }
-    function bind(id, ev, fn) {
-      const n = el(id);
-      if (!n || !fn) return;
-      n.addEventListener(ev, fn);
-    }
-    function lsGet(key, fallback) {
-      try {
-        const v = localStorage.getItem(key);
-        return v == null ? fallback : v;
-      } catch (_) { return fallback; }
-    }
-    function lsSet(key, val) {
-      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
-    }
-    async function withBusy(fn, btnId) {
-      if (busy) return;
-      busy = true;
-      const b = btnId ? el(btnId) : null;
-      if (b) b.disabled = true;
-      try { return await fn(); }
-      finally {
-        busy = false;
-        if (b) b.disabled = false;
-      }
-    }
-    function esc(s) {
-      return String(s == null ? '' : s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    }
-    function trackBlob(url) {
-      if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
-      return url;
-    }
-    function revokeBlobs() {
-      while (_blobUrls.length) {
-        try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
-      }
-    }
-    window.addEventListener('pagehide', revokeBlobs);
+      let busy = false;
+      let live = false;
+      let statusMap = {};
+      let activeCat = 'All';
+      const cats = ['All', 'Applied', 'Not applied', 'Optional', ...Array.from(new Set(TWEAKS.map(function (t) { return t.cat; })))];
 
-    let activeCat = 'All';
-    const cats = ['All', ...new Set((Array.isArray(TWEAKS) ? TWEAKS : []).map(t => t && t.cat).filter(Boolean))];
-
-    const PREF_KEY = 'fafo_reg_qol_prefs_v1';
-    function loadPrefs() {
-      let p = {};
-      try { p = JSON.parse(lsGet(PREF_KEY, '{}') || '{}') || {}; } catch (_) { p = {}; }
-      const search = el('search');
-      if (search && p.q) search.value = String(p.q);
-      if (p.cat && cats.includes(p.cat)) activeCat = p.cat;
-    }
-    function savePrefs() {
-      const search = el('search');
-      lsSet(PREF_KEY, JSON.stringify({
-        q: search ? search.value : '',
-        cat: activeCat
-      }));
-    }
-
-    function matches(t, q) {
-      if (!t) return false;
-      if (activeCat !== 'All' && t.cat !== activeCat) return false;
-      if (!q) return true;
-      const hay = [t.name, t.desc, t.cat, t.file].map(x => String(x || '')).join(' ').toLowerCase();
-      return hay.includes(q);
-    }
-
-    function visibleTweaks() {
-      const search = el('search');
-      const q = ((search && search.value) || '').trim().toLowerCase();
-      return (Array.isArray(TWEAKS) ? TWEAKS : []).filter(t => matches(t, q));
-    }
-
-    function renderCats() {
-      const host = el('cats');
-      if (!host) return;
-      host.innerHTML = cats.map(function (c, i) {
-        return '<button type="button" class="chip' + (c === activeCat ? ' active' : '') +
-          '" role="tab" aria-selected="' + (c === activeCat ? 'true' : 'false') +
-          '" data-cat="' + esc(c) + '" data-idx="' + i + '">' + esc(c) + '</button>';
-      }).join('');
-      host.querySelectorAll('.chip').forEach(function (btn) {
-        bind(btn, 'click', function () {
-          activeCat = btn.dataset.cat || 'All';
-          renderCats();
-          renderList();
-        });
-      });
-    }
-
-    function renderList() {
-      const list = el('list');
-      const empty = el('empty');
-      const shown = visibleTweaks();
-      if (empty) empty.classList.toggle('hidden', shown.length > 0);
-      setText('tweakCount', shown.length + ' / ' + (Array.isArray(TWEAKS) ? TWEAKS.length : 0) + ' tweaks');
-      if (!list) return;
-      list.innerHTML = shown.map(function (t) {
-        return '<article class="card" data-id="' + esc(t.id) + '">' +
-          '<div class="meta">' + esc(t.cat) + '</div>' +
-          '<h3>' + esc(t.name) + '</h3>' +
-          '<p>' + esc(t.desc) + '</p>' +
-          '<div class="actions">' +
-            '<a class="btn" href="' + encodeURI(String(t.file || '')) + '" title="Run ' + esc(t.file) + '">Run tweak</a>' +
-            '<span style="font-size:11px;color:var(--muted);align-self:center">' + esc(t.file) + '</span>' +
-          '</div>' +
-        '</article>';
-      }).join('');
-      savePrefs();
-    }
-
-    let searchTimer = null;
-    bind('search', 'input', function () {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(renderList, 180);
-    });
-    bind('btnCopyList', 'click', function () {
-      return withBusy(async function () {
-        const shown = visibleTweaks();
-        const lines = shown.map(function (t) {
-          return '[' + (t.cat || '') + '] ' + (t.name || '') + ' — ' + (t.file || '');
-        });
+      function el(id) {
         try {
-          await navigator.clipboard.writeText(lines.join('\n'));
-          try { window.AIToolboxUI && window.AIToolboxUI.toast && window.AIToolboxUI.toast('Copied ' + shown.length + ' tweaks', 'ok'); } catch (_) {}
-        } catch (_) {
-          try { window.AIToolboxUI && window.AIToolboxUI.toast && window.AIToolboxUI.toast('Clipboard blocked', 'warn'); } catch (__) {}
-        }
-      }, 'btnCopyList');
-    });
-
-    document.addEventListener('keydown', function (e) {
-      const t = e.target;
-      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-      if (e.key === '/' && !typing) {
-        e.preventDefault();
-        const s = el('search');
-        if (s) s.focus();
-        return;
+          if (!id) return null;
+          return typeof id === 'string' ? document.getElementById(id) : id;
+        } catch (_) { return null; }
       }
-      if (!t || !t.closest || !t.closest('#cats')) return;
-      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return;
-      const host = el('cats');
-      const chips = Array.from((host || document).querySelectorAll('.chip'));
-      if (!chips.length) return;
-      e.preventDefault();
-      let i = chips.indexOf(t);
-      if (i < 0) i = 0;
-      if (e.key === 'ArrowRight') i = (i + 1) % chips.length;
-      else if (e.key === 'ArrowLeft') i = (i - 1 + chips.length) % chips.length;
-      else if (e.key === 'Home') i = 0;
-      else if (e.key === 'End') i = chips.length - 1;
-      chips[i].focus();
-      chips[i].click();
-    });
+      function setText(id, text) {
+        const n = el(id);
+        if (n) n.textContent = text == null ? '' : String(text);
+      }
+      function bind(id, ev, fn) {
+        const n = el(id);
+        if (!n || !fn) return;
+        n.addEventListener(ev, fn);
+      }
+      function lsGet(key, fallback) {
+        try {
+          const v = localStorage.getItem(key);
+          return v == null ? fallback : v;
+        } catch (_) { return fallback; }
+      }
+      function lsSet(key, val) {
+        try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+      }
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&' + 'amp;')
+          .replace(/</g, '&' + 'lt;')
+          .replace(/>/g, '&' + 'gt;')
+          .replace(/"/g, '&' + 'quot;')
+          .replace(/'/g, '&#39;');
+      }
+      function toast(msg, kind) {
+        try { window.AIToolboxUI && AIToolboxUI.toast && AIToolboxUI.toast(msg, kind || 'ok'); } catch (_) {}
+      }
+      async function withBusy(fn, btn) {
+        if (busy) return;
+        busy = true;
+        const b = typeof btn === 'string' ? el(btn) : btn;
+        if (b) b.disabled = true;
+        try { return await fn(); }
+        finally {
+          busy = false;
+          if (b) b.disabled = false;
+        }
+      }
+      function api() {
+        return window.AIToolboxAPI;
+      }
+      async function apiCall(path, opts) {
+        const ui = window.AIToolboxUI;
+        if (ui && typeof ui.apiFetch === 'function') {
+          return ui.apiFetch(path, Object.assign({ signal: AbortSignal.timeout(2500) }, opts || {}));
+        }
+        throw new Error('API unavailable');
+      }
 
-    loadPrefs();
-    renderCats();
-    renderList();
+      function loadDemoApplied() {
+        let extra = [];
+        try { extra = JSON.parse(lsGet(DEMO_KEY, '[]') || '[]') || []; } catch (_) { extra = []; }
+        const set = {};
+        DEMO_APPLIED.concat(extra).forEach(function (id) { set[id] = true; });
+        return set;
+      }
+      function rememberDemoApplied(id) {
+        let extra = [];
+        try { extra = JSON.parse(lsGet(DEMO_KEY, '[]') || '[]') || []; } catch (_) { extra = []; }
+        if (extra.indexOf(id) < 0) extra.push(id);
+        lsSet(DEMO_KEY, JSON.stringify(extra));
+      }
 
-    try {
-      if (window.AIToolboxUI && window.AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
-    } catch (_) { /* ignore */ }
+      function applyDemoStatus() {
+        live = false;
+        const demo = loadDemoApplied();
+        statusMap = {};
+        TWEAKS.forEach(function (t) {
+          statusMap[t.id] = demo[t.id] ? true : false;
+        });
+        const b = el('banner');
+        b.className = 'banner show';
+        b.textContent = 'Sample scan so you can see the colors: green = already applied, amber = not written yet. Applied cards sit at the top. On your PC, Scan registry against the live Windows registry.';
+      }
+
+      function applyLiveStatus(payload) {
+        live = !!(payload && payload.live);
+        statusMap = {};
+        const rows = (payload && payload.tweaks) || [];
+        rows.forEach(function (row) {
+          statusMap[row.id] = row.applied;
+        });
+        TWEAKS.forEach(function (t) {
+          if (!(t.id in statusMap)) statusMap[t.id] = null;
+        });
+        const b = el('banner');
+        if (live) {
+          b.className = 'banner';
+          b.textContent = '';
+        } else {
+          applyDemoStatus();
+        }
+      }
+
+      function stateOf(t) {
+        const v = statusMap[t.id];
+        if (v === true) return 'applied';
+        if (v === false) return 'missing';
+        return 'unknown';
+      }
+
+      function matches(t, q) {
+        if (!t) return false;
+        if (activeCat === 'Applied' && stateOf(t) !== 'applied') return false;
+        if (activeCat === 'Not applied' && stateOf(t) !== 'missing') return false;
+        if (activeCat === 'Optional' && !t.optional) return false;
+        if (activeCat !== 'All' && activeCat !== 'Applied' && activeCat !== 'Not applied' && activeCat !== 'Optional' && t.cat !== activeCat) return false;
+        if (!q) return true;
+        const hay = [t.name, t.desc, t.cat, t.file, t.checkHint].join(' ').toLowerCase();
+        return hay.indexOf(q) >= 0;
+      }
+
+      function visibleTweaks() {
+        const search = el('search');
+        const q = ((search && search.value) || '').trim().toLowerCase();
+        const rank = { applied: 0, unknown: 1, missing: 2 };
+        return TWEAKS.filter(function (t) { return matches(t, q); }).slice().sort(function (a, b) {
+          const ra = rank[stateOf(a)];
+          const rb = rank[stateOf(b)];
+          if (ra !== rb) return ra - rb;
+          return TWEAKS.indexOf(a) - TWEAKS.indexOf(b);
+        });
+      }
+
+      function loadPrefs() {
+        let p = {};
+        try { p = JSON.parse(lsGet(PREF_KEY, '{}') || '{}') || {}; } catch (_) { p = {}; }
+        const search = el('search');
+        if (search && p.q) search.value = String(p.q);
+        if (p.cat && cats.indexOf(p.cat) >= 0) activeCat = p.cat;
+      }
+      function savePrefs() {
+        const search = el('search');
+        lsSet(PREF_KEY, JSON.stringify({
+          q: search ? search.value : '',
+          cat: activeCat
+        }));
+      }
+
+      function renderKpis() {
+        const applied = TWEAKS.filter(function (t) { return stateOf(t) === 'applied'; }).length;
+        const missing = TWEAKS.filter(function (t) { return stateOf(t) === 'missing'; }).length;
+        setText('kpiApplied', applied);
+        setText('kpiMissing', missing);
+        setText('kpiCount', TWEAKS.length);
+      }
+
+      function renderCats() {
+        const host = el('cats');
+        if (!host) return;
+        host.innerHTML = cats.map(function (c, i) {
+          return '<button type="button" class="chip' + (c === activeCat ? ' active' : '') +
+            '" role="tab" aria-selected="' + (c === activeCat ? 'true' : 'false') +
+            '" data-cat="' + esc(c) + '" data-idx="' + i + '">' + esc(c) + '</button>';
+        }).join('');
+        host.querySelectorAll('.chip').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            activeCat = btn.dataset.cat || 'All';
+            renderCats();
+            renderList();
+          });
+        });
+      }
+
+      function renderList() {
+        const list = el('list');
+        const empty = el('empty');
+        const shown = visibleTweaks();
+        if (empty) empty.classList.toggle('hidden', shown.length > 0);
+        const appliedN = shown.filter(function (t) { return stateOf(t) === 'applied'; }).length;
+        setText('tweakCount', shown.length + ' shown · ' + appliedN + ' already on' + (live ? '' : ' (sample)'));
+        if (!list) return;
+        list.innerHTML = shown.map(function (t) {
+          const st = stateOf(t);
+          const label = st === 'applied' ? 'APPLIED' : (st === 'missing' ? 'NOT APPLIED' : 'NOT SCANNED');
+          const btnLabel = st === 'applied' ? 'Re-apply' : 'Apply tweak';
+          const btnClass = st === 'applied' ? 'btn reapply' : 'btn';
+          const opt = t.optional ? ' · optional' : '';
+          const admin = t.needsAdmin ? ' · admin' : '';
+          return '<article class="card ' + st + '" data-id="' + esc(t.id) + '" data-state="' + st + '">' +
+            '<div class="card-top"><div class="meta">' + esc(t.cat) + opt + admin + '</div>' +
+            '<span class="badge ' + st + '">' + label + '</span></div>' +
+            '<h3>' + esc(t.name) + '</h3>' +
+            '<p>' + esc(t.desc) + '</p>' +
+            '<div class="keys">' + esc(t.checkHint) + '</div>' +
+            '<div class="actions">' +
+              '<button type="button" class="' + btnClass + '" data-apply="' + esc(t.id) + '">' + btnLabel + '</button>' +
+              '<span style="font-size:11px;color:var(--muted)">' + esc(t.file) + '</span>' +
+            '</div></article>';
+        }).join('');
+        list.querySelectorAll('[data-apply]').forEach(function (btn) {
+          btn.addEventListener('click', function () { applyTweak(btn.getAttribute('data-apply'), btn); });
+        });
+        savePrefs();
+      }
+
+      async function confirmApply(t, already) {
+        const title = already ? ('Re-apply “' + t.name + '”?') : ('Apply “' + t.name + '”?');
+        const body = already
+          ? '<p>This tweak is <strong>already applied</strong> on this PC. Re-apply rewrites the same registry values. Safe, but confirm you want to do it again.</p>'
+          : '<p>This writes Windows registry values for <strong>' + esc(t.name) + '</strong>.</p><p>' + esc(t.checkHint) + '</p>' +
+            (t.needsAdmin ? '<p>This one may need Administrator approval.</p>' : '');
+        const ui = window.AIToolboxUI;
+        if (ui && ui.confirmAction) {
+          return ui.confirmAction({
+            title: title,
+            body: body,
+            confirmText: already ? 'Re-apply' : 'Apply',
+            cancelText: 'Cancel'
+          });
+        }
+        return { confirmed: window.confirm(already ? ('Re-apply ' + t.name + '? It is already on.') : ('Apply ' + t.name + '?')) };
+      }
+
+      async function applyTweak(id, btn) {
+        const t = TWEAKS.filter(function (x) { return x.id === id; })[0];
+        if (!t) return;
+        const already = stateOf(t) === 'applied';
+        await withBusy(async function () {
+          const conf = await confirmApply(t, already);
+          if (!conf || !conf.confirmed) return;
+          if (live) {
+            try {
+              const r = await apiCall('/reg-qol/apply', {
+                method: 'POST',
+                body: JSON.stringify({ id: t.id })
+              });
+              if (r && r.needsAdmin && r.applied !== true) {
+                toast((r.errors && r.errors[0]) || 'Needs Administrator — run the .bat elevated', 'warn');
+              } else {
+                toast((already ? 'Re-applied ' : 'Applied ') + t.name, 'ok');
+              }
+              await scan(true);
+              return;
+            } catch (e) {
+              toast((e && e.message) || 'Apply failed', 'warn');
+            }
+          }
+          rememberDemoApplied(t.id);
+          statusMap[t.id] = true;
+          toast((already ? 'Re-applied (sample) ' : 'Applied (sample) ') + t.name, 'ok');
+          renderKpis();
+          renderList();
+        }, btn);
+      }
+
+      async function scan(quiet) {
+        try {
+          const payload = await apiCall('/reg-qol/status');
+          if (payload && payload.ok && payload.live) {
+            applyLiveStatus(payload);
+            renderKpis();
+            renderList();
+            if (!quiet) toast('Registry scanned — ' + payload.applied + ' already on', 'ok');
+            return;
+          }
+        } catch (_) { /* fall through to sample */ }
+        applyDemoStatus();
+        renderKpis();
+        renderList();
+        if (!quiet) toast('Sample scan — start the toolbox server on Windows for a live read', 'ok');
+      }
+
+      let searchTimer = null;
+      bind('search', 'input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(renderList, 180);
+      });
+      bind('btnCopyList', 'click', function () {
+        return withBusy(async function () {
+          const shown = visibleTweaks();
+          const lines = shown.map(function (t) {
+            return '[' + stateOf(t) + '] [' + (t.cat || '') + '] ' + (t.name || '') + ' — ' + (t.file || '');
+          });
+          try {
+            await navigator.clipboard.writeText(lines.join('\n'));
+            toast('Copied ' + shown.length + ' tweaks', 'ok');
+          } catch (_) {
+            toast('Clipboard blocked', 'warn');
+          }
+        }, 'btnCopyList');
+      });
+      bind('btnScan', 'click', function () { scan(false); });
+      bind('btnHome', 'click', function (e) {
+        if (window.AIToolboxUI && AIToolboxUI.navigateToolbox) {
+          e.preventDefault();
+          AIToolboxUI.navigateToolbox('../Toolbox Launcher.html');
+        }
+      });
+
+      document.addEventListener('keydown', function (e) {
+        const t = e.target;
+        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+        if (e.key === '/' && !typing) {
+          e.preventDefault();
+          const s = el('search');
+          if (s) s.focus();
+          return;
+        }
+        if (!t || !t.closest || !t.closest('#cats')) return;
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return;
+        const host = el('cats');
+        const chips = Array.from((host || document).querySelectorAll('.chip'));
+        if (!chips.length) return;
+        e.preventDefault();
+        let i = chips.indexOf(t);
+        if (i < 0) i = 0;
+        if (e.key === 'ArrowRight') i = (i + 1) % chips.length;
+        else if (e.key === 'ArrowLeft') i = (i - 1 + chips.length) % chips.length;
+        else if (e.key === 'Home') i = 0;
+        else if (e.key === 'End') i = chips.length - 1;
+        chips[i].focus();
+        chips[i].click();
+      });
+
+      loadPrefs();
+      applyDemoStatus();
+      renderCats();
+      renderKpis();
+      renderList();
+      scan(true);
+
+      try {
+        if (window.AIToolboxUI && window.AIToolboxUI.initTooltips) AIToolboxUI.initTooltips();
+      } catch (_) { /* ignore */ }
+    })();
   </script>
 
 <script data-tool-polish="reg-qol-tweaks">
@@ -403,15 +611,6 @@
     if (!ev || !ev.filename || !/\.js($|\?)/i.test(ev.filename)) return;
     try { window.AIToolboxUI && window.AIToolboxUI.toast && window.AIToolboxUI.toast('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
   });
-})();
-</script>
-<script data-extra-polish="reg">
-(async function(){
-  try {
-    const api = window.AIToolboxAPI;
-    const on = api && api.isOnline ? await api.isOnline(true, 2000) : true;
-    if (!on && window.AIToolboxUI && window.AIToolboxUI.toast) AIToolboxUI.toast('REG tweaks apply best with S1 online', 'warn');
-  } catch(_){}
 })();
 </script>
 </body>
