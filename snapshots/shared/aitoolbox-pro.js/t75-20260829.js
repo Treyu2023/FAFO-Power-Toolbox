@@ -77,7 +77,7 @@
     'media library': {
       id: 'media-library', title: 'Media Library', emoji: '📚',
       path: 'Movie File Manager/Media Library Manager.html',
-      counterparts: ['media-hub', 'file-organizer', 'imagine-tracker', 'duplicate-finder'],
+      counterparts: ['media-hub', 'file-organizer', 'duplicate-finder'],
     },
     'file organizer': {
       id: 'file-organizer', title: 'File Organizer', emoji: '✏️',
@@ -123,16 +123,6 @@
       id: 'batch-media', title: 'Batch Media Converter', emoji: '🔄',
       path: 'System Tools/Batch Media Converter.html',
       counterparts: ['fafo-vid-trim', 'vsr-pipeline', 'media-hub'],
-    },
-    'imagine vault': {
-      id: 'imagine-tracker', title: 'Imagine Vault', emoji: '🎬',
-      path: 'System Tools/ImagineTracker/Imagine Tracker.html',
-      counterparts: ['media-hub', 'media-library', 'file-organizer'],
-    },
-    'imagine tracker': {
-      id: 'imagine-tracker', title: 'Imagine Vault', emoji: '🎬',
-      path: 'System Tools/ImagineTracker/Imagine Tracker.html',
-      counterparts: ['media-hub', 'media-library', 'file-organizer'],
     },
     'image converter_cropper': {
       id: 'image-cropper', title: 'Image Cropper', emoji: '✂️',

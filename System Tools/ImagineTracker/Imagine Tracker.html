@@ -1,89 +1,526 @@
 <!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/System Tools/ImagineTracker/Imagine Tracker.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Imagine Vault — AI HTML Toolbox</title>
+  <meta name="aitoolbox-tool-id" content="imagine-tracker" />
+  <title>Imagine Vault — HAVE / MISS</title>
   <link rel="stylesheet" href="../../shared/aitoolbox-ui.css">
+  <link rel="stylesheet" href="../../shared/aitoolbox-layout.css">
   <style>
+    :root {
+      --bg: #05080c; --panel: #0c1220; --panel2: #141c2c;
+      --text: #f1f5f9; --muted: #9bb0c9;
+      --have: #00f0ff; --miss: #ff2bd6; --gold: #f5c542; --ok: #34d399;
+      --border: rgba(0, 240, 255, 0.22);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      background: linear-gradient(145deg, #05080c 0%, #12101c 55%, #05080c 100%);
-      color: #e2e8f0; min-height: 100vh; display: flex; align-items: center;
-      justify-content: center; padding: 24px; padding-top: 64px;
+      background:
+        radial-gradient(ellipse at 12% -10%, rgba(0, 240, 255, 0.12), transparent 42%),
+        radial-gradient(ellipse at 88% 0%, rgba(255, 43, 214, 0.1), transparent 40%),
+        linear-gradient(180deg, #070b14, var(--bg) 55%);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column; min-height: 100vh;
     }
-    .card {
-      width: 100%; max-width: 680px; background: rgba(15, 23, 42, 0.92);
-      border: 1px solid rgba(0, 243, 255, 0.22); border-radius: 18px; padding: 32px;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(255, 43, 214, 0.08);
+    .nav {
+      flex: 0 0 auto;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      background: rgba(6, 10, 18, 0.94);
+      border-bottom: 1px solid var(--border);
+      z-index: 20;
     }
+    .nav h1 {
+      font-size: 14px; letter-spacing: 0.08em; color: var(--have);
+      margin-right: 6px;
+    }
+    .pill {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid rgba(255, 200, 0, 0.4); color: var(--gold);
+    }
+    .pill.ok { color: var(--ok); border-color: rgba(52, 211, 153, 0.5); }
+    .pill.bad { color: #fb7185; border-color: rgba(255, 43, 214, 0.45); cursor: pointer; }
+    .nav a, .nav button {
+      font-size: 11px; font-weight: 700; padding: 6px 11px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.16); background: transparent;
+      color: var(--muted); text-decoration: none; cursor: pointer;
+    }
+    .nav a:hover, .nav button:hover { color: var(--have); border-color: var(--have); }
+    .nav button.primary { border-color: var(--have); color: var(--have); }
+    .legend { font-size: 11px; color: var(--muted); margin-left: auto; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px 0 10px; }
+    .dot.have { background: var(--have); box-shadow: 0 0 8px var(--have); }
+    .dot.miss { background: var(--miss); box-shadow: 0 0 8px var(--miss); }
+    .wrap {
+      flex: 1; min-height: 0; display: flex; flex-direction: column;
+      max-width: 1280px; width: 100%; margin: 0 auto; padding: 16px 16px 28px;
+    }
+    .banner {
+      display: none; padding: 10px 14px; border-radius: 10px; margin-bottom: 12px;
+      font-size: 12px; line-height: 1.45; border: 1px solid rgba(255, 43, 214, 0.35);
+      background: rgba(255, 43, 214, 0.08); color: #fbcfe8;
+    }
+    .banner.show { display: block; }
+    .banner.demo {
+      border-color: rgba(245, 197, 66, 0.4);
+      background: rgba(245, 197, 66, 0.08); color: #fde68a;
+    }
+    .kpis {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 720px) { .kpis { grid-template-columns: 1fr 1fr; } }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .kpi .lbl { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .kpi .val { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--have); }
+    .kpi .val.miss { color: var(--miss); }
+    .kpi .val.gold { color: var(--gold); }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .tab {
+      appearance: none; border: 1px solid rgba(0, 240, 255, 0.28);
+      background: transparent; color: var(--muted);
+      padding: 7px 12px; border-radius: 999px; cursor: pointer;
+      font-size: 11px; font-weight: 700;
+    }
+    .tab:hover { color: var(--have); border-color: var(--have); }
+    .tab.active { background: rgba(0, 240, 255, 0.14); color: #fff; border-color: var(--have); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .toolbar input, .toolbar select {
+      background: #05080c; border: 1px solid var(--border); color: var(--text);
+      padding: 7px 10px; border-radius: 8px; font-size: 12px;
+    }
+    .toolbar input { flex: 1; min-width: 160px; }
+    .list {
+      flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px;
+      min-height: 240px;
+    }
+    .row {
+      display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center;
+      background: var(--panel); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; padding: 10px 12px; cursor: pointer;
+    }
+    .row.have { border-left: 3px solid var(--have); }
+    .row.miss { border-left: 3px solid var(--miss); }
+    .row:hover { border-color: var(--have); }
+    .thumb {
+      width: 72px; height: 48px; border-radius: 8px; object-fit: cover;
+      background: #070b12; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .thumb.ph {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; color: var(--muted);
+    }
+    .meta .name { font-size: 13px; font-weight: 650; word-break: break-all; }
+    .meta .prompt { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .meta .ids { font-size: 10px; color: #64748b; font-family: Consolas, monospace; margin-top: 4px; }
     .badge {
-      display: inline-block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-      color: #67e8f9; background: rgba(0, 243, 255, 0.1); border: 1px solid rgba(0, 243, 255, 0.28);
-      border-radius: 999px; padding: 6px 12px; margin-bottom: 16px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+      padding: 4px 8px; border-radius: 999px; white-space: nowrap;
     }
-    h1 { font-size: 28px; margin: 0 0 10px; }
-    p { color: #94a3b8; line-height: 1.6; margin-bottom: 14px; font-size: 14px; }
-    ul { margin: 0 0 18px 18px; color: #cbd5e1; font-size: 13px; line-height: 1.7; }
-    .legend span { margin-right: 14px; }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
-    .have { background: #00f0ff; box-shadow: 0 0 8px #00f0ff; }
-    .miss { background: #ff2bd6; box-shadow: 0 0 8px #ff2bd6; }
-    .row { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
-      background: transparent; border: 1px solid #00f0ff; color: #00f0ff;
-      padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    .badge.have { color: var(--have); border: 1px solid var(--have); }
+    .badge.miss { color: var(--miss); border: 1px solid var(--miss); }
+    .empty {
+      text-align: center; color: var(--muted); padding: 48px 16px; font-size: 13px; line-height: 1.55;
     }
-    button:hover { background: rgba(0, 240, 255, 0.12); }
-    #status { margin-top: 14px; font-size: 12px; color: #7dd; }
-    code { color: #67e8f9; }
+    .prompt-block {
+      background: var(--panel); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; padding: 12px 14px;
+    }
+    .prompt-block .t { font-size: 13px; line-height: 1.45; white-space: pre-wrap; }
+    .prompt-block .s { font-size: 10px; color: #64748b; margin-top: 6px; font-family: Consolas, monospace; }
+    :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    button:disabled { opacity: 0.5; cursor: wait; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">Grok Imagine overlay</div>
-    <h1>Imagine Vault</h1>
-    <p>Site overlay for grok.com/imagine. Neon borders show which movies are already on disk. Unique prompts are de-duplicated; new sentences append to a scrape log.</p>
-    <p class="legend">
-      <span><i class="dot have"></i>HAVE (downloaded)</span>
-      <span><i class="dot miss"></i>MISS (not saved)</span>
-    </p>
-    <ul>
-      <li>Start the vault, then reload the Chrome extension.</li>
-      <li>Open Imagine — HUD on the right: harvest, save missing, apply folder tags.</li>
-      <li>Library: <code>Downloads\GrokImagine</code> + <code>%LOCALAPPDATA%\FAFO\ImagineTracker</code></li>
-      <li>Scrape log: <code>logs\prompt-delta.jsonl</code></li>
-    </ul>
-    <div class="row">
-      <button type="button" data-act="run">Start vault</button>
-      <button type="button" data-act="folder">Open folder</button>
-      <button type="button" id="openImagine">Open grok.com/imagine</button>
+  <header class="nav">
+    <a href="../../Toolbox Launcher.html" id="btnHome">← Launcher</a>
+    <h1>🎬 IMAGINE VAULT</h1>
+    <span class="pill bad" id="vaultPill" title="Local vault status">Vault …</span>
+    <button type="button" class="primary" id="btnStart">▶ Start vault</button>
+    <button type="button" id="btnScan">↻ Scan disk</button>
+    <button type="button" id="btnImagine">Open grok.com/imagine</button>
+    <button type="button" id="btnFolder">📂 Library folder</button>
+    <button type="button" id="btnReport">📋 Report</button>
+    <span data-fafo-layout-toolbar></span>
+    <span class="legend"><i class="dot have"></i>HAVE on disk <i class="dot miss"></i>MISS — seen, not saved</span>
+  </header>
+
+  <div class="wrap"
+       data-fafo-layout-root
+       data-fafo-layout-app="imagine-vault"
+       data-fafo-layout-type="rows"
+       data-fafo-layout-pin="1"
+       data-fafo-chrome="0">
+    <div class="banner" id="banner"></div>
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">HAVE (downloaded)</div><div class="val" id="kpiHave">—</div></div>
+      <div class="kpi"><div class="lbl">MISS (not saved)</div><div class="val miss" id="kpiMiss">—</div></div>
+      <div class="kpi"><div class="lbl">Unique prompts</div><div class="val gold" id="kpiPrompts">—</div></div>
+      <div class="kpi"><div class="lbl">Indexed clips</div><div class="val" id="kpiCount">—</div></div>
     </div>
-    <div id="status"></div>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="miss">Missing</button>
+      <button type="button" class="tab" data-tab="have">Have</button>
+      <button type="button" class="tab" data-tab="all">All</button>
+      <button type="button" class="tab" data-tab="prompts">Unique prompts</button>
+      <button type="button" class="tab" data-tab="log">Scrape log</button>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Filter name, prompt, id…" />
+      <select id="typeFilter">
+        <option value="">All types</option>
+        <option value="video">Videos</option>
+        <option value="image">Images</option>
+      </select>
+    </div>
+    <div class="list" id="list"></div>
   </div>
+
   <script src="../../shared/aitoolbox-api.js"></script>
+  <script src="../../shared/aitoolbox-ui.js"></script>
+  <script src="../../shared/aitoolbox-layout.js"></script>
+  <script src="../../shared/aitoolbox-pro.js"></script>
   <script>
-    const status = document.getElementById('status');
-    function setStatus(t) { status.textContent = t; }
-    document.querySelectorAll('[data-act]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const action = btn.getAttribute('data-act');
+    (function () {
+      const VAULT = 'http://127.0.0.1:18767';
+      const DEMO_ITEMS = [
+        { id: '7a1c9e20-4b33-4c1a-9f0e-imagine0001', hasFile: true, mediaType: 'video', filename: 'grok-video-neon-alley.mp4', prompt: 'Rain-slick alley, cyan neon kanji, slow dolly toward a glowing doorway.', stage: 'orig' },
+        { id: '7a1c9e20-4b33-4c1a-9f0e-imagine0002', hasFile: true, mediaType: 'video', filename: 'grok-video-orbit-burn.mp4', prompt: 'Camera orbits a chrome figurine as sparks crawl up the torso.', stage: '4k' },
+        { id: '7a1c9e20-4b33-4c1a-9f0e-imagine0003', hasFile: false, mediaType: 'video', filename: '', prompt: 'Macro of melting stained glass, magenta rim light, 2s hold then crash zoom.', stage: '' },
+        { id: '7a1c9e20-4b33-4c1a-9f0e-imagine0004', hasFile: false, mediaType: 'video', filename: '', prompt: 'Handheld night drive, dashboard glow, wipers in time with a kick drum.', stage: '' },
+        { id: '7a1c9e20-4b33-4c1a-9f0e-imagine0005', hasFile: true, mediaType: 'image', filename: 'grok-image-still-frame.jpg', prompt: 'Still from the alley shot — doorway only, no figure.', stage: 'orig' },
+        { id: '7a1c9e20-4b33-4c1a-9f0e-imagine0006', hasFile: false, mediaType: 'image', filename: '', prompt: 'Wide establishing: wet rooftop, city grid, one window lit magenta.', stage: '' },
+      ];
+      const DEMO_PROMPTS = DEMO_ITEMS.map((it, i) => ({
+        prompt: it.prompt, lastSeen: new Date(Date.now() - i * 3600000).toISOString(), count: 1 + i,
+      }));
+
+      function el(id) {
         try {
-          if (window.AIToolboxAPI && AIToolboxAPI.launchLocalTool) {
-            await AIToolboxAPI.launchLocalTool('imagine-tracker', { action });
-            setStatus('Launched ' + action);
+          if (!id) return null;
+          return typeof id === 'string' ? document.getElementById(id) : id;
+        } catch (_) { return null; }
+      }
+      function setText(id, text) {
+        const n = el(id);
+        if (n) n.textContent = text == null ? '' : String(text);
+      }
+      function bind(id, ev, fn) {
+        const n = el(id);
+        if (!n || !fn) return;
+        n.addEventListener(ev, fn);
+      }
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+      }
+      function toast(msg, kind) {
+        try { window.AIToolboxUI?.toast?.(msg, kind || 'ok'); } catch (_) {}
+      }
+
+      let vaultOn = false;
+      let demo = false;
+      let tab = 'miss';
+      let catalog = { items: {}, haveFile: 0, missingFile: 0, uniquePrompts: 0, count: 0 };
+      let prompts = [];
+      let delta = [];
+
+      async function vaultGet(path) {
+        const r = await fetch(VAULT + path, { cache: 'no-store' });
+        if (!r.ok) throw new Error('vault ' + r.status);
+        const ct = r.headers.get('content-type') || '';
+        if (ct.indexOf('json') >= 0) return r.json();
+        return r.text();
+      }
+      async function vaultPost(path, body) {
+        const r = await fetch(VAULT + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body || {}),
+        });
+        if (!r.ok) throw new Error('vault ' + r.status);
+        return r.json();
+      }
+
+      function itemsArray() {
+        const raw = catalog.items || {};
+        if (Array.isArray(raw)) return raw;
+        return Object.keys(raw).map((k) => raw[k]);
+      }
+
+      function applyDemo() {
+        demo = true;
+        vaultOn = false;
+        const items = {};
+        DEMO_ITEMS.forEach((it) => { items[it.id] = it; });
+        catalog = {
+          items,
+          haveFile: DEMO_ITEMS.filter((x) => x.hasFile).length,
+          missingFile: DEMO_ITEMS.filter((x) => !x.hasFile).length,
+          uniquePrompts: DEMO_PROMPTS.length,
+          count: DEMO_ITEMS.length,
+        };
+        prompts = DEMO_PROMPTS;
+        delta = DEMO_ITEMS.filter((x) => !x.hasFile).map((x) => ({
+          ts: new Date().toISOString(), prompt: x.prompt, id: x.id, kind: 'miss',
+        }));
+        const b = el('banner');
+        b.className = 'banner show demo';
+        b.textContent = 'Showing a sample catalog so you can see the desk. On your PC, Start vault — then this list is your real Downloads / GrokImagine HAVE vs MISS.';
+      }
+
+      function applyLive(stats, itemMap, uniqueRows, deltaRows) {
+        demo = false;
+        catalog = {
+          items: itemMap || {},
+          haveFile: stats.haveFile || 0,
+          missingFile: stats.missingFile || 0,
+          uniquePrompts: stats.uniquePrompts || 0,
+          count: stats.count || 0,
+          libraryDir: stats.libraryDir,
+        };
+        prompts = (uniqueRows && uniqueRows.prompts) || [];
+        delta = (deltaRows && deltaRows.rows) || [];
+        const b = el('banner');
+        b.className = 'banner';
+        b.textContent = '';
+      }
+
+      function renderKpis() {
+        setText('kpiHave', catalog.haveFile);
+        setText('kpiMiss', catalog.missingFile);
+        setText('kpiPrompts', catalog.uniquePrompts);
+        setText('kpiCount', catalog.count);
+        const pill = el('vaultPill');
+        if (vaultOn) {
+          pill.className = 'pill ok';
+          setText('vaultPill', '● Vault online');
+        } else {
+          pill.className = 'pill bad';
+          setText('vaultPill', demo ? '○ Sample — start vault' : '○ Vault offline');
+        }
+      }
+
+      function filteredClips() {
+        const q = (el('search').value || '').trim().toLowerCase();
+        const type = el('typeFilter').value;
+        return itemsArray().filter((it) => {
+          if (tab === 'miss' && it.hasFile) return false;
+          if (tab === 'have' && !it.hasFile) return false;
+          if (type && (it.mediaType || '') !== type) return false;
+          if (!q) return true;
+          const blob = [it.filename, it.prompt, it.id, it.title, (it.tags || []).join(' ')].join(' ').toLowerCase();
+          return blob.indexOf(q) >= 0;
+        });
+      }
+
+      function renderList() {
+        const box = el('list');
+        if (tab === 'prompts') {
+          const q = (el('search').value || '').trim().toLowerCase();
+          const rows = prompts.filter((p) => !q || String(p.prompt || '').toLowerCase().indexOf(q) >= 0);
+          if (!rows.length) {
+            box.innerHTML = '<div class="empty">No unique prompts yet. Harvest from grok.com/imagine with the overlay, or import a prompts dump.</div>';
             return;
           }
-        } catch (e) { setStatus(String(e)); }
-        if (action === 'run') location.href = 'aitoolbox://imagine-tracker';
+          box.innerHTML = rows.map((p) =>
+            '<article class="prompt-block"><div class="t">' + esc(p.prompt) + '</div>' +
+            '<div class="s">' + esc(p.count != null ? (p.count + '× · ') : '') + esc(p.lastSeen || p.firstSeen || '') + '</div></article>'
+          ).join('');
+          return;
+        }
+        if (tab === 'log') {
+          if (!delta.length) {
+            box.innerHTML = '<div class="empty">Scrape log is empty. New sentences from Imagine append here as you harvest.</div>';
+            return;
+          }
+          box.innerHTML = delta.map((row) =>
+            '<article class="prompt-block"><div class="t">' + esc(row.prompt || row.text || JSON.stringify(row)) + '</div>' +
+            '<div class="s">' + esc(row.ts || '') + (row.id ? ' · ' + esc(row.id) : '') + '</div></article>'
+          ).join('');
+          return;
+        }
+        const rows = filteredClips();
+        if (!rows.length) {
+          const hint = vaultOn
+            ? 'Nothing in this filter. Open grok.com/imagine with the overlay, or Scan disk after downloads land.'
+            : 'Start the vault on this PC to load your real HAVE / MISS list.';
+          box.innerHTML = '<div class="empty">' + hint + '</div>';
+          return;
+        }
+        box.innerHTML = rows.map((it) => {
+          const have = !!it.hasFile;
+          const src = vaultOn && have && it.id
+            ? (VAULT + '/preview?id=' + encodeURIComponent(it.id))
+            : '';
+          const thumb = src
+            ? '<img class="thumb" alt="" src="' + esc(src) + '">'
+            : '<div class="thumb ph">' + (it.mediaType === 'image' ? '🖼' : '🎬') + '</div>';
+          return '<article class="row ' + (have ? 'have' : 'miss') + '" data-id="' + esc(it.id) + '">' +
+            thumb +
+            '<div class="meta"><div class="name">' + esc(it.filename || it.title || (have ? it.id : 'Not downloaded')) + '</div>' +
+            '<div class="prompt">' + esc(it.prompt || 'No prompt captured yet') + '</div>' +
+            '<div class="ids">' + esc(it.id) + (it.stage ? ' · ' + esc(it.stage) : '') + '</div></div>' +
+            '<span class="badge ' + (have ? 'have' : 'miss') + '">' + (have ? 'HAVE' : 'MISS') + '</span></article>';
+        }).join('');
+        box.querySelectorAll('.row[data-id]').forEach((row) => {
+          row.addEventListener('click', () => reveal(row.getAttribute('data-id')));
+        });
+      }
+
+      async function reveal(id) {
+        if (!vaultOn) {
+          toast('Start the vault to reveal files on disk', 'warn');
+          return;
+        }
+        try {
+          await vaultGet('/reveal?id=' + encodeURIComponent(id));
+        } catch (_) {
+          toast('Could not reveal that file', 'warn');
+        }
+      }
+
+      async function refresh() {
+        try {
+          const health = await vaultGet('/health');
+          vaultOn = !!(health && health.ok);
+        } catch (_) {
+          vaultOn = false;
+        }
+        if (!vaultOn) {
+          applyDemo();
+          renderKpis();
+          renderList();
+          return;
+        }
+        try {
+          const [stats, cat, uniq, log] = await Promise.all([
+            vaultGet('/stats'),
+            vaultGet('/catalog'),
+            vaultGet('/prompts/unique'),
+            vaultGet('/prompts/delta?limit=80'),
+          ]);
+          applyLive(stats, (cat && cat.items) || {}, uniq, log);
+        } catch (e) {
+          applyDemo();
+          toast(e.message || 'Vault read failed', 'warn');
+        }
+        renderKpis();
+        renderList();
+      }
+
+      async function startVault() {
+        const btn = el('btnStart');
+        if (btn) btn.disabled = true;
+        try {
+          toast('Starting Imagine Vault…', 'ok');
+          if (window.AIToolboxAPI?.launchLocalTool) {
+            await AIToolboxAPI.launchLocalTool('imagine-tracker', { action: 'run' });
+          } else {
+            location.href = 'aitoolbox://imagine-tracker';
+          }
+          for (let i = 0; i < 12; i++) {
+            await new Promise((r) => setTimeout(r, 700));
+            try {
+              const h = await vaultGet('/health');
+              if (h && h.ok) break;
+            } catch (_) {}
+          }
+          await refresh();
+          toast(vaultOn ? 'Vault online — catalog loaded' : 'Vault still starting — retry Scan in a few seconds', vaultOn ? 'ok' : 'warn');
+        } catch (e) {
+          toast(e.message || 'Start failed', 'warn');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      async function scanDisk() {
+        if (!vaultOn) { await startVault(); if (!vaultOn) return; }
+        try {
+          toast('Scanning watch folders…', 'ok');
+          await vaultPost('/scan', { deep: true });
+          setTimeout(refresh, 1200);
+          setTimeout(refresh, 4000);
+        } catch (e) {
+          toast(e.message || 'Scan failed', 'warn');
+        }
+      }
+
+      async function openFolder() {
+        try {
+          if (window.AIToolboxAPI?.launchLocalTool) {
+            await AIToolboxAPI.launchLocalTool('imagine-tracker', { action: 'folder' });
+            return;
+          }
+        } catch (_) {}
+        if (vaultOn) {
+          try { await vaultGet('/reveal?id='); } catch (_) {}
+        }
+      }
+
+      async function copyReport() {
+        const text = [
+          'FAFO Imagine Vault — session report',
+          'Time: ' + new Date().toISOString(),
+          'Vault: ' + (vaultOn ? 'online' : (demo ? 'sample preview' : 'offline')),
+          'HAVE: ' + catalog.haveFile,
+          'MISS: ' + catalog.missingFile,
+          'Unique prompts: ' + catalog.uniquePrompts,
+          'Indexed: ' + catalog.count,
+          catalog.libraryDir ? ('Library: ' + catalog.libraryDir) : '',
+          '',
+          'Overlay lives on grok.com/imagine (Chrome extension). This desk is the toolbox catalog.',
+        ].filter(Boolean).join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          toast('Vault report copied', 'ok');
+        } catch (_) {
+          try { prompt('Copy report:', text); } catch (__) {}
+        }
+      }
+
+      document.querySelectorAll('.tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          tab = btn.dataset.tab;
+          document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
+          renderList();
+        });
       });
-    });
-    document.getElementById('openImagine').addEventListener('click', () => {
-      window.open('https://grok.com/imagine', '_blank');
-    });
-    fetch('http://127.0.0.1:18767/health').then(r => r.json()).then(j => {
-      setStatus(j && j.ok ? 'Vault online on :18767' : 'Vault offline');
-    }).catch(() => setStatus('Vault offline — click Start vault'));
+      bind('search', 'input', renderList);
+      bind('typeFilter', 'change', renderList);
+      bind('btnStart', 'click', startVault);
+      bind('btnScan', 'click', scanDisk);
+      bind('vaultPill', 'click', () => { if (!vaultOn) startVault(); else refresh(); });
+      bind('btnImagine', 'click', () => { window.open('https://grok.com/imagine', '_blank', 'noopener'); });
+      bind('btnFolder', 'click', openFolder);
+      bind('btnReport', 'click', copyReport);
+      bind('btnHome', 'click', (e) => {
+        if (window.AIToolboxUI?.navigateToolbox) {
+          e.preventDefault();
+          AIToolboxUI.navigateToolbox('../../Toolbox Launcher.html');
+        }
+      });
+
+      window.AITOOLBOX_PRO = {
+        toolId: 'imagine-tracker',
+        title: 'Imagine Vault',
+        counterparts: ['media-hub', 'media-library', 'file-organizer'],
+      };
+
+      refresh();
+      setInterval(() => { if (vaultOn) refresh(); }, 12000);
+    })();
   </script>
 </body>
 </html>
