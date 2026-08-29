@@ -46,26 +46,6 @@
     .nav a.hot, .nav button.hot { border-color: var(--miss); color: #fff; background: rgba(255,43,214,.28); }
     .nav a:hover, .nav button:hover { color: var(--have); border-color: var(--have); }
     .nav button.primary { border-color: var(--have); color: #001018; background: var(--have); }
-    .watch-bar {
-      margin: 10px 0 0; padding: 10px 12px; border-radius: 12px;
-      border: 1px solid rgba(0,240,255,.18); background: rgba(0,20,32,.45);
-      font-size: 12px; color: var(--muted);
-    }
-    .watch-bar .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; }
-    .watch-bar .lbl { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--have); min-width: 84px; }
-    .watch-bar code { color: var(--text); font-size: 11px; word-break: break-all; }
-    .watch-bar button {
-      font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 7px; cursor: pointer;
-      border: 1px solid rgba(255,255,255,.16); background: transparent; color: var(--muted);
-    }
-    .watch-bar button:hover { color: var(--have); border-color: var(--have); }
-    .watch-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 3px 8px 3px 10px;
-      max-width: 100%;
-    }
-    .watch-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42ch; color: var(--text); }
-    .watch-chip button { padding: 0 4px; border: 0; color: #fb7185; }
     .wrap {
       flex: 1; min-height: 0; overflow: auto;
       width: 100%; margin: 0 auto; padding: 12px 14px 24px; max-width: 1680px;
@@ -170,16 +150,6 @@
   </header>
   <div class="wrap">
     <div class="banner" id="banner"></div>
-    <div class="watch-bar" id="watchBar">
-      <div class="row"><span class="lbl">Library</span><code id="libPath">Start vault to set a watch folder</code>
-        <button type="button" id="btnLib">Change…</button>
-        <button type="button" id="btnOpenLib">Open</button>
-      </div>
-      <div class="row"><span class="lbl">Also watch</span><div id="watchList" style="display:flex;flex-wrap:wrap;gap:6px;flex:1"></div>
-        <button type="button" id="btnAddWatch">Add folder…</button>
-      </div>
-      <div class="row" style="opacity:.8">HAVE/MISS reads these folders (nested files included). Not the script folder. Vault must be running to pick a path.</div>
-    </div>
     <div class="legend" id="legend">
       <span class="chip have">HAVE</span>
       <span>cyan ring — already downloaded</span>
@@ -306,7 +276,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body || {}),
-          timeout: path.indexOf('pick-folder') >= 0 ? 180000 : 8000
+          timeout: 4000
         });
         if (!r.ok) throw new Error('vault ' + r.status);
         return r.json();
@@ -342,63 +312,8 @@
         }
       }
 
-      function renderWatch(cfg) {
-        const lib = (cfg && cfg.libraryDir) || '';
-        const watches = (cfg && cfg.watchDirs) || [];
-        const libEl = el('libPath');
-        if (libEl) libEl.textContent = lib || '— not set —';
-        const list = el('watchList');
-        if (!list) return;
-        list.innerHTML = '';
-        (watches || []).forEach(function (p) {
-          const chip = document.createElement('div');
-          chip.className = 'watch-chip';
-          const span = document.createElement('span');
-          span.textContent = p;
-          span.title = p;
-          const rm = document.createElement('button');
-          rm.type = 'button';
-          rm.textContent = '×';
-          rm.title = 'Stop watching this folder';
-          rm.addEventListener('click', function () { removeWatch(p); });
-          chip.appendChild(span);
-          chip.appendChild(rm);
-          list.appendChild(chip);
-        });
-        if (!watches.length) {
-          list.innerHTML = '<span style="color:#64748b">No extra folders</span>';
-        }
-      }
-
-      async function pickWatch(role) {
-        if (!vaultOn) { await startVault(); if (!vaultOn) { toast('Start the vault first', 'warn'); return; } }
-        toast('Pick a folder in the dialog…', 'ok');
-        try {
-          const r = await vaultPost('/pick-folder', { role: role || 'watch' });
-          if (r && r.cancelled) { toast('Cancelled', 'ok'); return; }
-          if (r && r.ok) {
-            renderWatch(r.config);
-            toast((role === 'library' ? 'Library → ' : 'Watching ') + (r.path || ''), 'ok');
-            setTimeout(refresh, 800);
-          } else toast('Folder pick failed', 'warn');
-        } catch (e) { toast((e && e.message) || 'Folder pick failed — is the vault running?', 'warn'); }
-      }
-
-      async function removeWatch(path) {
-        if (!vaultOn) return;
-        try {
-          const cfg = await vaultGet('/config');
-          const next = ((cfg.config && cfg.config.watchDirs) || []).filter(function (p) { return p !== path; });
-          const r = await vaultPost('/config', { watchDirs: next });
-          renderWatch(r.config || { watchDirs: next, libraryDir: (cfg.config || {}).libraryDir });
-          toast('Removed watch folder', 'ok');
-          setTimeout(refresh, 800);
-        } catch (e) { toast((e && e.message) || 'Could not remove folder', 'warn'); }
-      }
-
       function applyLive(stats, itemMap, uniqueRows, deltaRows) {
         demo = false;
-        renderWatch({ libraryDir: stats.libraryDir, watchDirs: stats.watchDirs });
         catalog = {
           items: itemMap || {},
           haveFile: stats.haveFile || 0,
@@ -614,17 +529,11 @@
         copyPainter();
       });
       bind('btnFolder', 'click', async function () {
-        if (vaultOn) {
-          try { await vaultGet('/open-library'); toast('Opened library folder', 'ok'); return; }
-          catch (_) {}
-        }
-        pickWatch('library');
-      });
-      bind('btnLib', 'click', function () { pickWatch('library'); });
-      bind('btnAddWatch', 'click', function () { pickWatch('watch'); });
-      bind('btnOpenLib', 'click', async function () {
-        if (!vaultOn) { toast('Start the vault first', 'warn'); return; }
-        try { await vaultGet('/open-library'); } catch (e) { toast((e && e.message) || 'Open failed', 'warn'); }
+        try {
+          if (window.AIToolboxAPI && AIToolboxAPI.launchLocalTool) {
+            await AIToolboxAPI.launchLocalTool('imagine-tracker', { action: 'folder' });
+          }
+        } catch (_) {}
       });
       bind('btnReport', 'click', copyReport);
       bind('btnHome', 'click', function (e) {

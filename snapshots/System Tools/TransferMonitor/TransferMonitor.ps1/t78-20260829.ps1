@@ -22,29 +22,6 @@ param(
 
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
-
-$script:WatchStore = Join-Path $env:LOCALAPPDATA 'FAFO\TransferMonitor\watch-folders.json'
-function Read-WatchFolders {
-  if (Test-Path -LiteralPath $script:WatchStore) {
-    try {
-      $j = Get-Content -LiteralPath $script:WatchStore -Raw -Encoding UTF8 | ConvertFrom-Json
-      $list = @($j.folders | ForEach-Object { [string]$_ } | Where-Object { $_ })
-      if ($list.Count -gt 0) { return $list }
-    } catch {}
-  }
-  return @($WatchFolders)
-}
-function Write-WatchFolders([string[]]$list) {
-  $dir = Split-Path $script:WatchStore -Parent
-  if (-not (Test-Path -LiteralPath $dir)) {
-    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-  }
-  @{ folders = @($list) } | ConvertTo-Json | Set-Content -LiteralPath $script:WatchStore -Encoding UTF8
-}
-$script:WatchLive = New-Object System.Collections.Generic.List[string]
-foreach ($f in (Read-WatchFolders)) {
-  if ($f -and -not $script:WatchLive.Contains($f)) { [void]$script:WatchLive.Add($f) }
-}
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -225,10 +202,10 @@ function Add-History($t, [string]$status) {
 
 function Get-PartialTransfers {
   $found = @{}
-  foreach ($folder in @($script:WatchLive)) {
+  foreach ($folder in $WatchFolders) {
     if (-not (Test-Path -LiteralPath $folder)) { continue }
     foreach ($pat in $partialPatterns) {
-      Get-ChildItem -LiteralPath $folder -Filter $pat -File -Force -Recurse -Depth 3 -ErrorAction SilentlyContinue | ForEach-Object {
+      Get-ChildItem -LiteralPath $folder -Filter $pat -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
         $key = Get-StableKey 'file' $_.FullName
         $name = $_.Name -replace '\.(partial|crdownload|opdownload|download|aria2)$',''
         $proto = switch -Regex ($_.Extension) {
@@ -502,84 +479,12 @@ $btnClear.BackColor = [System.Drawing.Color]::FromArgb(8, 20, 24)
 $btnClear.ForeColor = $script:Theme.Accent
 $hdr.Controls.Add($btnClear)
 
-$btnFolders = New-Object System.Windows.Forms.Button
-$btnFolders.Text = 'Watch folders'
-$btnFolders.Size = New-Object System.Drawing.Size(108, 28)
-$btnFolders.Anchor = 'Top, Right'
-$btnFolders.Location = New-Object System.Drawing.Point(660, 32)
-$btnFolders.FlatStyle = 'Flat'
-$btnFolders.FlatAppearance.BorderColor = $script:Theme.AccentDim
-$btnFolders.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(0, 50, 60)
-$btnFolders.BackColor = [System.Drawing.Color]::FromArgb(8, 20, 24)
-$btnFolders.ForeColor = $script:Theme.Accent
-$hdr.Controls.Add($btnFolders)
-
-function Show-WatchFolderUi {
-  $dlg = New-Object System.Windows.Forms.Form
-  $dlg.Text = 'Watch folders — partial downloads'
-  $dlg.Size = New-Object System.Drawing.Size(580, 380)
-  $dlg.StartPosition = 'CenterParent'
-  $dlg.BackColor = [System.Drawing.Color]::FromArgb(6, 10, 14)
-  $dlg.ForeColor = [System.Drawing.Color]::FromArgb(0, 243, 255)
-  $hint = New-Object System.Windows.Forms.Label
-  $hint.Text = 'Browser .crdownload / .partial files in these folders show as live transfers. Add the folder you actually download into.'
-  $hint.Dock = 'Top'
-  $hint.Height = 42
-  $hint.Padding = New-Object System.Windows.Forms.Padding(8)
-  $dlg.Controls.Add($hint)
-  $lb = New-Object System.Windows.Forms.ListBox
-  $lb.Dock = 'Fill'
-  $lb.BackColor = [System.Drawing.Color]::FromArgb(10, 16, 22)
-  $lb.ForeColor = [System.Drawing.Color]::White
-  @($script:WatchLive) | ForEach-Object { [void]$lb.Items.Add($_) }
-  $dlg.Controls.Add($lb)
-  $bar = New-Object System.Windows.Forms.FlowLayoutPanel
-  $bar.Dock = 'Bottom'
-  $bar.Height = 44
-  $bar.Padding = New-Object System.Windows.Forms.Padding(8)
-  $dlg.Controls.Add($bar)
-  $add = New-Object System.Windows.Forms.Button
-  $add.Text = 'Add folder…'
-  $add.AutoSize = $true
-  $rm = New-Object System.Windows.Forms.Button
-  $rm.Text = 'Remove'
-  $rm.AutoSize = $true
-  $ok = New-Object System.Windows.Forms.Button
-  $ok.Text = 'Done'
-  $ok.AutoSize = $true
-  $bar.Controls.AddRange(@($add, $rm, $ok))
-  $add.Add_Click({
-    $fb = New-Object System.Windows.Forms.FolderBrowserDialog
-    $fb.Description = 'Folder to watch for in-progress downloads'
-    $fb.ShowNewFolderButton = $true
-    if ($fb.ShowDialog($dlg) -eq 'OK' -and $fb.SelectedPath) {
-      $p = $fb.SelectedPath
-      if (-not $script:WatchLive.Contains($p)) { [void]$script:WatchLive.Add($p) }
-      if (-not $lb.Items.Contains($p)) { [void]$lb.Items.Add($p) }
-      Write-WatchFolders @($script:WatchLive)
-    }
-  })
-  $rm.Add_Click({
-    if ($lb.SelectedItem) {
-      $p = [string]$lb.SelectedItem
-      [void]$script:WatchLive.Remove($p)
-      $lb.Items.Remove($p)
-      Write-WatchFolders @($script:WatchLive)
-    }
-  })
-  $ok.Add_Click({ $dlg.Close() })
-  [void]$dlg.ShowDialog($form)
-}
-
-$btnFolders.Add_Click({ Show-WatchFolderUi })
-
 function Move-HeaderButtons {
   $right = $hdr.ClientSize.Width - 120
-  if ($right -lt 280) { $right = 280 }
+  if ($right -lt 200) { $right = 200 }
   $chkTop.Left = $right
   $btnClear.Left = $right
-  $btnFolders.Left = $right - 118
-  $lblNet.Width = [math]::Max(120, $right - 146)
+  $lblNet.Width = [math]::Max(120, $right - 28)
 }
 $form.Add_Resize({ Move-HeaderButtons; $hdr.Invalidate() })
 $hdr.Add_Resize({ Move-HeaderButtons })

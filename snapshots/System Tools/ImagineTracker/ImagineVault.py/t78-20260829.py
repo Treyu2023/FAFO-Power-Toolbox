@@ -122,7 +122,6 @@ def default_config() -> dict:
         "copyIntoLibrary": False,
         "scanSeconds": 3.0,
         "recoverSidecars": True,
-        "watchDepth": 6,
     }
 
 
@@ -142,26 +141,17 @@ def init_state() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     p = paths()
     dflt = default_config()
-    disk = load_json(p["config"], {})
-    had_user = bool(isinstance(disk, dict) and str(disk.get("libraryDir") or "").strip())
-    cfg = {**dflt, **(disk if isinstance(disk, dict) else {})}
+    cfg = {**dflt, **load_json(p["config"], {})}
     for k, v in dflt.items():
         if k not in cfg or cfg.get(k) in (None, "", []):
             cfg[k] = v
-    # Only seed the D:\OUTPUTS defaults on first run. Never overwrite a saved library.
-    if not had_user:
-        if X_GROK.is_dir() and str(X_GROK) not in (cfg.get("deepIndexDirs") or []):
-            cfg.setdefault("deepIndexDirs", []).append(str(X_GROK))
-        if NEW_DOWNLOADS.is_dir() and str(NEW_DOWNLOADS) not in (cfg.get("watchDirs") or []):
-            cfg.setdefault("watchDirs", []).insert(0, str(NEW_DOWNLOADS))
-            cfg["libraryDir"] = str(NEW_DOWNLOADS)
+    if X_GROK.is_dir() and str(X_GROK) not in (cfg.get("deepIndexDirs") or []):
+        cfg.setdefault("deepIndexDirs", []).append(str(X_GROK))
+    if NEW_DOWNLOADS.is_dir() and str(NEW_DOWNLOADS) not in (cfg.get("watchDirs") or []):
+        cfg.setdefault("watchDirs", []).insert(0, str(NEW_DOWNLOADS))
+        cfg["libraryDir"] = str(NEW_DOWNLOADS)
     cfg["copyIntoLibrary"] = False
-    cfg["watchDirs"] = _norm_dir_list(cfg.get("watchDirs"))
-    cfg["deepIndexDirs"] = _norm_dir_list(cfg.get("deepIndexDirs"))
-    try:
-        Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
+    Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
     save_json(p["config"], cfg)
     with _lock:
         _state["config"] = cfg
@@ -406,79 +396,23 @@ def media_type_for(path: Path) -> str:
     return "video"
 
 
-def _norm_dir_list(raw) -> list[str]:
-    out: list[str] = []
-    for p in raw or []:
-        s = str(p or "").strip()
-        if not s:
-            continue
-        key = s.lower()
-        if key not in {x.lower() for x in out}:
-            out.append(s)
-    return out
-
-
-def pick_directory(title: str = "Watch folder") -> str:
-    """Windows folder picker (STA). Empty string if cancelled."""
-    desc = title.replace("'", "''")
-    ps = (
-        "Add-Type -AssemblyName System.Windows.Forms; "
-        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
-        f"$d.Description = '{desc}'; $d.ShowNewFolderButton = $true; "
-        "if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.SelectedPath) }"
-    )
-    try:
-        r = subprocess.run(
-            [
-                os.path.expandvars(r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"),
-                "-STA",
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                ps,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return (r.stdout or "").strip()
-    except Exception:
-        return ""
-
-
-def iter_dir_files(
-    root: Path,
-    recursive: bool,
-    max_depth: int = 8,
-    require_id: bool = False,
-) -> list[Path]:
+def iter_dir_files(root: Path, recursive: bool) -> list[Path]:
     out: list[Path] = []
     if not root.is_dir():
         return out
-    root_s = str(root)
     try:
         if not recursive:
             for entry in root.iterdir():
                 if entry.is_file() and (entry.suffix.lower() in MEDIA_EXT or entry.suffix.lower() == ".json"):
-                    if require_id and entry.suffix.lower() != ".json" and not extract_ids(entry.name):
-                        continue
                     out.append(entry)
             return out
         for dirpath, dirnames, filenames in os.walk(root):
-            rel = os.path.relpath(dirpath, root_s)
-            depth = 0 if rel in (".", "") else rel.count(os.sep) + 1
-            if depth > max_depth:
-                dirnames[:] = []
-                continue
             dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
             for name in filenames:
                 p = Path(dirpath) / name
                 if p.suffix.lower() in MEDIA_EXT or p.suffix.lower() == ".json":
-                    if require_id and p.suffix.lower() != ".json" and not extract_ids(name):
-                        continue
-                    out.append(p)
+                    if extract_ids(name) or p.suffix.lower() == ".json":
+                        out.append(p)
     except OSError:
         pass
     return out
@@ -489,13 +423,11 @@ SKIP_DIRS = {"$recycle.bin", "system volume information", ".git", "node_modules"
 
 def iter_watch_files(deep: bool = False) -> list[Path]:
     cfg = _state["config"]
-    depth = int(cfg.get("watchDepth") or 6)
     roots = [Path(cfg["libraryDir"]), *[Path(p) for p in (cfg.get("watchDirs") or [])]]
     seen: set[str] = set()
     out: list[Path] = []
     for root in roots:
-        # Nested downloads count. Do not require a UUID in the filename.
-        for entry in iter_dir_files(root, recursive=True, max_depth=depth, require_id=False):
+        for entry in iter_dir_files(root, recursive=False):
             key = str(entry).lower()
             if key in seen:
                 continue
@@ -503,7 +435,7 @@ def iter_watch_files(deep: bool = False) -> list[Path]:
             out.append(entry)
     if deep:
         for root in [Path(p) for p in (cfg.get("deepIndexDirs") or [])]:
-            for entry in iter_dir_files(root, recursive=True, max_depth=20, require_id=True):
+            for entry in iter_dir_files(root, recursive=True):
                 key = str(entry).lower()
                 if key in seen:
                     continue
@@ -719,8 +651,6 @@ def catalog_view() -> dict:
             "uniquePrompts": len(unique),
             "scan": dict(_state.get("scan") or {}),
             "libraryDir": _state["config"].get("libraryDir"),
-            "watchDirs": list(_state["config"].get("watchDirs") or []),
-            "deepIndexDirs": list(_state["config"].get("deepIndexDirs") or []),
             "items": cat,
         }
 
@@ -897,8 +827,6 @@ class Handler(BaseHTTPRequestHandler):
                 "ts": utc_now(),
                 "count": len(_state.get("catalog") or {}),
                 "scan": scan,
-                "libraryDir": (_state.get("config") or {}).get("libraryDir"),
-                "watchDirs": list((_state.get("config") or {}).get("watchDirs") or []),
             })
             return
         if u.path in ("/catalog", "/api/catalog"):
@@ -939,17 +867,6 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/config", "/api/config"):
             self._send(200, {"ok": True, "config": _state["config"], "dataDir": str(DATA)})
             return
-        if u.path in ("/open-library", "/api/open-library"):
-            lib = str((_state.get("config") or {}).get("libraryDir") or "")
-            ok = False
-            if lib and Path(lib).exists():
-                try:
-                    subprocess.Popen(["explorer.exe", lib], shell=False)
-                    ok = True
-                except Exception:
-                    ok = False
-            self._send(200, {"ok": ok, "path": lib})
-            return
         if u.path in ("/item", "/api/item"):
             iid = str((q.get("id") or [""])[0]).lower()
             self._send(200, {"ok": True, "item": _state["catalog"].get(iid)})
@@ -986,51 +903,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if u.path in ("/config", "/api/config"):
             with _lock:
-                nxt = {**_state["config"], **body}
-                if "watchDirs" in body:
-                    nxt["watchDirs"] = _norm_dir_list(body.get("watchDirs"))
-                if "deepIndexDirs" in body:
-                    nxt["deepIndexDirs"] = _norm_dir_list(body.get("deepIndexDirs"))
-                lib = str(nxt.get("libraryDir") or "").strip()
-                if lib:
-                    nxt["libraryDir"] = lib
-                    try:
-                        Path(lib).mkdir(parents=True, exist_ok=True)
-                    except OSError:
-                        pass
-                _state["config"] = nxt
+                _state["config"] = {**_state["config"], **body}
+                Path(_state["config"]["libraryDir"]).mkdir(parents=True, exist_ok=True)
             persist()
-            threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
             self._send(200, {"ok": True, "config": _state["config"]})
-            return
-        if u.path in ("/pick-folder", "/api/pick-folder"):
-            role = str(body.get("role") or "watch").lower()
-            title = "Library folder (HAVE files live here)" if role == "library" else "Add a watch folder"
-            picked = pick_directory(title)
-            if not picked:
-                self._send(200, {"ok": False, "cancelled": True})
-                return
-            with _lock:
-                cfg = dict(_state["config"])
-                if role == "library":
-                    cfg["libraryDir"] = picked
-                    dirs = _norm_dir_list(cfg.get("watchDirs"))
-                    if picked not in dirs:
-                        dirs.insert(0, picked)
-                    cfg["watchDirs"] = dirs
-                else:
-                    dirs = _norm_dir_list(cfg.get("watchDirs"))
-                    if picked not in dirs:
-                        dirs.append(picked)
-                    cfg["watchDirs"] = dirs
-                try:
-                    Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
-                except OSError:
-                    pass
-                _state["config"] = cfg
-            persist()
-            threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
-            self._send(200, {"ok": True, "path": picked, "config": _state["config"]})
             return
         if u.path in ("/reveal", "/api/reveal"):
             iid = str(body.get("id") or "").lower()
