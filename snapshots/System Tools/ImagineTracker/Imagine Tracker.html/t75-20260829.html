@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Imagine Vault — AI HTML Toolbox</title>
+  <link rel="stylesheet" href="../../shared/aitoolbox-ui.css">
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(145deg, #05080c 0%, #12101c 55%, #05080c 100%);
+      color: #e2e8f0; min-height: 100vh; display: flex; align-items: center;
+      justify-content: center; padding: 24px; padding-top: 64px;
+    }
+    .card {
+      width: 100%; max-width: 680px; background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(0, 243, 255, 0.22); border-radius: 18px; padding: 32px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(255, 43, 214, 0.08);
+    }
+    .badge {
+      display: inline-block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #67e8f9; background: rgba(0, 243, 255, 0.1); border: 1px solid rgba(0, 243, 255, 0.28);
+      border-radius: 999px; padding: 6px 12px; margin-bottom: 16px;
+    }
+    h1 { font-size: 28px; margin: 0 0 10px; }
+    p { color: #94a3b8; line-height: 1.6; margin-bottom: 14px; font-size: 14px; }
+    ul { margin: 0 0 18px 18px; color: #cbd5e1; font-size: 13px; line-height: 1.7; }
+    .legend span { margin-right: 14px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    .have { background: #00f0ff; box-shadow: 0 0 8px #00f0ff; }
+    .miss { background: #ff2bd6; box-shadow: 0 0 8px #ff2bd6; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      background: transparent; border: 1px solid #00f0ff; color: #00f0ff;
+      padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    }
+    button:hover { background: rgba(0, 240, 255, 0.12); }
+    #status { margin-top: 14px; font-size: 12px; color: #7dd; }
+    code { color: #67e8f9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">Grok Imagine overlay</div>
+    <h1>Imagine Vault</h1>
+    <p>Site overlay for grok.com/imagine. Neon borders show which movies are already on disk. Unique prompts are de-duplicated; new sentences append to a scrape log.</p>
+    <p class="legend">
+      <span><i class="dot have"></i>HAVE (downloaded)</span>
+      <span><i class="dot miss"></i>MISS (not saved)</span>
+    </p>
+    <ul>
+      <li>Start the vault, then reload the Chrome extension.</li>
+      <li>Open Imagine — HUD on the right: harvest, save missing, apply folder tags.</li>
+      <li>Library: <code>Downloads\GrokImagine</code> + <code>%LOCALAPPDATA%\FAFO\ImagineTracker</code></li>
+      <li>Scrape log: <code>logs\prompt-delta.jsonl</code></li>
+    </ul>
+    <div class="row">
+      <button type="button" data-act="run">Start vault</button>
+      <button type="button" data-act="folder">Open folder</button>
+      <button type="button" id="openImagine">Open grok.com/imagine</button>
+    </div>
+    <div id="status"></div>
+  </div>
+  <script src="../../shared/aitoolbox-api.js"></script>
+  <script>
+    const status = document.getElementById('status');
+    function setStatus(t) { status.textContent = t; }
+    document.querySelectorAll('[data-act]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const action = btn.getAttribute('data-act');
+        try {
+          if (window.AIToolboxAPI && AIToolboxAPI.launchLocalTool) {
+            await AIToolboxAPI.launchLocalTool('imagine-tracker', { action });
+            setStatus('Launched ' + action);
+            return;
+          }
+        } catch (e) { setStatus(String(e)); }
+        if (action === 'run') location.href = 'aitoolbox://imagine-tracker';
+      });
+    });
+    document.getElementById('openImagine').addEventListener('click', () => {
+      window.open('https://grok.com/imagine', '_blank');
+    });
+    fetch('http://127.0.0.1:18767/health').then(r => r.json()).then(j => {
+      setStatus(j && j.ok ? 'Vault online on :18767' : 'Vault offline');
+    }).catch(() => setStatus('Vault offline — click Start vault'));
+  </script>
+</body>
+</html>
