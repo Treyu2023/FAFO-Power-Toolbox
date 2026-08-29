@@ -1028,7 +1028,8 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
 
     log(
         f"lifecycle heal: S1 want={want_s1} up={snap['tb_up']} | "
-        f"S2 want={want_s2} up={snap['meta_up']} chrome={launch_ops.chrome_running()}",
+        f"S2 want={want_s2} up={snap['meta_up']} "
+        f"browser={launch_ops.host_browser_running()} demand={launch_ops.demand_fresh('s2')}",
         "WARN",
     )
     try:

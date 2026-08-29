@@ -106,9 +106,10 @@ def _default_prefs() -> dict[str, Any]:
         },
         # Host-app sessions drive auto-heal (independent products):
         #   toolboxActive = True after Open Toolbox / wake S1; False after Sleep S1
-        #   S2 has no session flag — bound to chrome.exe presence
+        #   fafoMediaActive = FAFO Ultimate Tab / Local Media asked for S2
         "sessions": {
             "toolboxActive": False,
+            "fafoMediaActive": False,
         },
         # Manual hold: user explicitly started a server (Start All / Start S2 / wake).
         # Keeps it up until Sleep even if Chrome is closed (S2) or Toolbox session ends (S1).
@@ -361,8 +362,54 @@ def servers_sleeping(prefs: dict[str, Any] | None = None) -> dict[str, bool]:
     }
 
 
-def chrome_running() -> bool:
-    """True if Google Chrome browser process is running (S2 host app)."""
+# Chromium family that hosts FAFO Ultimate Tab / Local Media
+_HOST_BROWSER_NAMES = {
+    "chrome.exe",
+    "chrome",
+    "msedge.exe",
+    "msedge",
+    "brave.exe",
+    "brave",
+    "chromium.exe",
+    "chromium",
+    "vivaldi.exe",
+    "opera.exe",
+    "opera",
+}
+
+DEMAND_TTL_SEC = 12 * 60  # keep S2 up this long after last FAFO ping
+
+
+def demand_path(which: str = "s2") -> Path:
+    name = "demand-s2.json" if str(which).lower() in ("s2", "fafo", "meta", "fafometa") else "demand-s1.json"
+    return _localappdata() / "FAFO" / name
+
+
+def note_demand(which: str = "s2", *, app: str = "") -> None:
+    """Record that a host app asked for this server (watchdog will start/keep it)."""
+    rec = {
+        "at": time.time(),
+        "app": app or ("fafo-local-media" if which == "s2" else "html-toolbox"),
+        "which": "s2" if str(which).lower() in ("s2", "fafo", "meta", "fafometa") else "s1",
+    }
+    try:
+        _write_json(demand_path(which), rec)
+    except OSError:
+        pass
+
+
+def demand_fresh(which: str = "s2", ttl_sec: float | None = None) -> bool:
+    ttl = DEMAND_TTL_SEC if ttl_sec is None else float(ttl_sec)
+    raw = _read_json(demand_path(which)) or {}
+    try:
+        at = float(raw.get("at") or 0)
+    except (TypeError, ValueError):
+        return False
+    return at > 0 and (time.time() - at) <= ttl
+
+
+def host_browser_running() -> bool | None:
+    """True if Chrome/Edge/Brave/etc is running. None = scan failed (do not kill S2)."""
     if not IS_WINDOWS:
         return False
     try:
@@ -371,13 +418,18 @@ def chrome_running() -> bool:
         for p in psutil.process_iter(["name"]):
             try:
                 name = (p.info.get("name") or "").lower()
-                if name in ("chrome.exe", "chrome"):
+                if name in _HOST_BROWSER_NAMES:
                     return True
             except Exception:
                 continue
+        return False
     except Exception:
-        pass
-    return False
+        return None
+
+
+def chrome_running() -> bool:
+    """True if a Chromium-family browser that can host FAFO is running."""
+    return host_browser_running() is True
 
 
 def get_sessions(prefs: dict[str, Any] | None = None) -> dict[str, bool]:
@@ -425,11 +477,13 @@ def should_auto_run_s1(prefs: dict[str, Any] | None = None) -> bool:
         return False
     if bool(get_sessions(p).get("toolboxActive")):
         return True
+    if demand_fresh("s1"):
+        return True
     return bool(manual_hold(p).get("toolboxServer"))
 
 
 def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
-    """S2 with Chrome, or manual hold after explicit Start/Wake (any time)."""
+    """S2 while FAFO/Ultimate Tab is in use, a host browser is open, or manual hold."""
     p = prefs or get_prefs()
     if servers_sleeping(p).get("fafoMetaServer"):
         return False
@@ -437,7 +491,11 @@ def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
         return False
     if not p.get("startWithOneClick", {}).get("fafoMetaServer", True):
         return False
-    if chrome_running():
+    if demand_fresh("s2"):
+        return True
+    if bool(get_sessions(p).get("fafoMediaActive")):
+        return True
+    if host_browser_running():
         return True
     return bool(manual_hold(p).get("fafoMetaServer"))
 
@@ -446,7 +504,7 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
     """Align S1/S2 with host apps + manual holds (tray + watchdog).
 
     S1 HTML Toolbox  → toolbox session or manual hold
-    S2 Ultimate Tab  → Chrome process or manual hold (explicit Start/Wake)
+    S2 Ultimate Tab  → FAFO demand / Chromium browser / manual hold
     """
     prefs = get_prefs()
     actions: list[str] = []
@@ -455,25 +513,37 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
     s1_up = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
     s2_up = _port_open(META_HOST, META_PORT)
     hold = manual_hold(prefs)
+    browser = host_browser_running()
 
     if want_s1 and not s1_up:
         r = start_toolbox_server()
         actions.append(f"start_s1:{r.get('started') or r.get('alreadyRunning') or r.get('error')}")
+        if r.get("started"):
+            for _ in range(12):
+                if _port_open(TOOLBOX_HOST, TOOLBOX_PORT):
+                    break
+                time.sleep(0.4)
     # Do not auto-stop S1 when session ends — user Sleep is explicit
 
     if want_s2 and not s2_up:
         r = start_fafo_meta_server()
         actions.append(f"start_s2:{r.get('started') or r.get('alreadyRunning') or r.get('error')}")
+        if r.get("started"):
+            for _ in range(16):
+                if _port_open(META_HOST, META_PORT):
+                    break
+                time.sleep(0.4)
     elif (
         (not want_s2)
         and s2_up
         and not servers_sleeping(prefs).get("fafoMetaServer")
         and not hold.get("fafoMetaServer")
-        and not chrome_running()
+        and browser is False
+        and not demand_fresh("s2")
     ):
-        # Chrome closed and no manual hold — free resources; do not mark user-sleep
+        # Host browser closed AND FAFO has not pinged recently — free resources
         killed = stop_companions(toolbox=False, fafo_meta=True, mark_sleep=False)
-        actions.append(f"stop_s2_chrome_gone:killed={killed.get('killed')}")
+        actions.append(f"stop_s2_host_gone:killed={killed.get('killed')}")
 
     tray_info: dict[str, Any] = {}
     if ensure_tray:
@@ -486,6 +556,8 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
         "actions": actions,
         "want": {"s1": want_s1, "s2": want_s2},
         "chromeRunning": chrome_running(),
+        "hostBrowser": browser,
+        "s2Demand": demand_fresh("s2"),
         "sessions": get_sessions(),
         "serversSleeping": servers_sleeping(),
         "status": companion_status(),
@@ -1208,7 +1280,7 @@ def start_companions(
         reason = (
             "S1 auto-runs with Toolbox session (open Toolbox, or Start/Wake S1 manually)"
             if s == "toolboxServer"
-            else "S2 auto-runs with Chrome (or Start/Wake S2 manually anytime)"
+            else "S2 auto-runs when FAFO Ultimate Tab / Local Media is open (or Start/Wake S2)"
         )
         results.append(
             {

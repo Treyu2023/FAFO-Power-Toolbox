@@ -292,6 +292,11 @@ class PlaylistItemsAdd(BaseModel):
 
 @app.get("/api/health")
 def health():
+    try:
+        import launch_ops as _launch_ops
+        _launch_ops.note_demand("s1", app="html-toolbox")
+    except Exception:
+        pass
     return {
         "ok": True,
         "ffmpeg": ops.find_ffmpeg() is not None,
