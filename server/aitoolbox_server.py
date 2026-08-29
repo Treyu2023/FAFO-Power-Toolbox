@@ -3767,6 +3767,16 @@ def api_launch_status():
         raise HTTPException(500, str(e))
 
 
+@app.get("/api/launch/stack")
+def api_launch_stack():
+    """S1/S2 plus companion apps/runtimes the toolbox needs (color-coded)."""
+    try:
+        st = launch_ops.companion_status()
+        return st.get("stack") or launch_ops.runtime_stack()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @app.get("/api/launch/prefs")
 def api_launch_prefs_get():
     try:

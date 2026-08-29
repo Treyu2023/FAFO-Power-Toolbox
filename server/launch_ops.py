@@ -702,6 +702,235 @@ def companion_status() -> dict[str, Any]:
                 "lifecycle": "Starts with Chrome · stops when Chrome exits",
             },
         ],
+        "stack": runtime_stack(
+            toolbox_listening=toolbox_listening,
+            toolbox_health=toolbox_health,
+            meta_listening=meta_listening,
+            meta_health=meta_health,
+            chrome_up=chrome_up,
+            sleep=sleep,
+            prefs=prefs,
+        ),
+    }
+
+
+def _running_images() -> set[str]:
+    names: set[str] = set()
+    if not IS_WINDOWS:
+        return names
+    try:
+        import psutil  # type: ignore
+
+        for p in psutil.process_iter(["name"]):
+            try:
+                n = (p.info.get("name") or "").lower()
+                if n:
+                    names.add(n)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return names
+
+
+def _level(*, up: bool, required: bool, expected: bool = False, degraded: bool = False) -> str:
+    """green good · yellow issue · orange problem · red failure"""
+    if up and not degraded:
+        return "good"
+    if up and degraded:
+        return "issue"
+    if required:
+        return "failure"
+    if expected:
+        return "problem"
+    return "issue"
+
+
+def runtime_stack(
+    toolbox_listening: bool | None = None,
+    toolbox_health: dict[str, Any] | None = None,
+    meta_listening: bool | None = None,
+    meta_health: dict[str, Any] | None = None,
+    chrome_up: bool | None = None,
+    sleep: dict[str, bool] | None = None,
+    prefs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Monitor S1/S2 plus companion apps/windows the toolbox needs to run smoothly."""
+    if toolbox_listening is None:
+        toolbox_listening = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
+    if toolbox_health is None:
+        toolbox_health = (
+            _http_health_resilient(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health")
+            if toolbox_listening
+            else {"ok": False}
+        )
+    if meta_listening is None:
+        meta_listening = _port_open(META_HOST, META_PORT)
+    if meta_health is None:
+        meta_health = (
+            _http_health_resilient(f"http://{META_HOST}:{META_PORT}/api/health")
+            if meta_listening
+            else {"ok": False}
+        )
+    if chrome_up is None:
+        chrome_up = chrome_running()
+    sleep = sleep or servers_sleeping(prefs)
+    prefs = prefs or get_prefs()
+    one = prefs.get("startWithOneClick") or {}
+    images = _running_images()
+    venv = _server_python()
+    body = toolbox_health.get("body") if isinstance(toolbox_health.get("body"), dict) else {}
+    ffmpeg_ok = bool(body.get("ffmpeg")) if toolbox_health.get("ok") else False
+    vault_up = _port_open("127.0.0.1", 18767)
+    vault_h = _http_health("http://127.0.0.1:18767/health", timeout=0.6) if vault_up else {"ok": False}
+    try:
+        wd = watchdog_status()
+    except Exception:
+        wd = {"running": False, "attentionRequired": False}
+    git_ok = False
+    try:
+        import shutil
+
+        git_ok = bool(shutil.which("git"))
+    except Exception:
+        git_ok = False
+
+    s1_up = bool(toolbox_listening and toolbox_health.get("ok"))
+    s1_listen_only = bool(toolbox_listening and not toolbox_health.get("ok"))
+    s2_up = bool(meta_listening and (meta_health.get("ok") or meta_listening))
+    s2_expected = bool(chrome_up and not sleep.get("fafoMetaServer") and one.get("fafoMetaServer", True))
+    pinokio = "pinokio.exe" in images
+    chrome = chrome_up or "chrome.exe" in images
+
+    items = [
+        {
+            "id": "s1",
+            "name": "S1 Toolbox Server",
+            "kind": "server",
+            "required": True,
+            "up": s1_up,
+            "level": "issue" if s1_listen_only else _level(up=s1_up, required=True),
+            "detail": "127.0.0.87:18765" + (" · listening but health failed" if s1_listen_only else ""),
+            "how": "Start All / ▶ Start S1. Powers nearly every HTML tool (media, Verifone, system, git).",
+            "apps": [
+                "Media Hub / Library / Organizer / Duplicates",
+                "Compare Hub / Guided Pair / VSR companion / VID TRIM",
+                "Commander Console / HUD / Phone Assist / Punch List",
+                "PC Diagnostics, Health Desk, Event Viewer, Task Pro, LAN, Disk, Git",
+                "Transfer Monitor launch, Batch convert (ffmpeg), IP profiles",
+            ],
+        },
+        {
+            "id": "s2",
+            "name": "S2 Media Tagger",
+            "kind": "server",
+            "required": False,
+            "up": s2_up,
+            "level": _level(up=s2_up, required=False, expected=s2_expected),
+            "detail": "127.0.0.1:8765" + (" · expected while Chrome is open" if s2_expected and not s2_up else ""),
+            "how": "Starts with Chrome (Ultimate Tab). ▶ Start S2 if tags/ratings are dead.",
+            "apps": ["FAFO Local Media Chrome extension", "Explorer on-play tags", "Pairs index"],
+        },
+        {
+            "id": "chrome",
+            "name": "Google Chrome",
+            "kind": "app",
+            "required": False,
+            "up": chrome,
+            "level": _level(up=chrome, required=False, expected=s2_expected),
+            "detail": "Host for Toolbox shell, Ultimate Tab, grok.com/imagine",
+            "how": "Open Chrome or Launch-AI-HTML-Toolbox.bat",
+            "apps": ["Toolbox Chrome shell", "S2 Ultimate Tab", "Imagine tab painter"],
+        },
+        {
+            "id": "python",
+            "name": "Python .venv",
+            "kind": "runtime",
+            "required": True,
+            "up": bool(venv and venv.is_file()),
+            "level": _level(up=bool(venv and venv.is_file()), required=True),
+            "detail": str(venv) if venv else "Missing .venv — run INSTALL-PYTHON.bat / SETUP",
+            "how": "SETUP (run once).bat or Install FAFO Toolbox.bat",
+            "apps": ["S1", "S2", "Imagine Vault", "tray", "watchdog"],
+        },
+        {
+            "id": "ffmpeg",
+            "name": "FFmpeg",
+            "kind": "runtime",
+            "required": False,
+            "up": ffmpeg_ok,
+            "level": _level(up=ffmpeg_ok, required=False, expected=s1_up),
+            "detail": "S1 reports ffmpeg " + ("ok" if ffmpeg_ok else "missing"),
+            "how": "Install ffmpeg on PATH. Needed for convert / VID TRIM / probe.",
+            "apps": ["Batch Media Converter", "FAFO VID TRIM", "video probe"],
+        },
+        {
+            "id": "imagine-vault",
+            "name": "Imagine Vault",
+            "kind": "server",
+            "required": False,
+            "up": bool(vault_h.get("ok") or vault_up),
+            "level": _level(up=bool(vault_h.get("ok") or vault_up), required=False),
+            "detail": "127.0.0.1:18767 HAVE/MISS download checker",
+            "how": "Imagine Vault page → Start vault (Launch-ImagineVault.vbs)",
+            "apps": ["Imagine Tracker", "grok.com/imagine overlay"],
+        },
+        {
+            "id": "watchdog",
+            "name": "Server Watchdog",
+            "kind": "monitor",
+            "required": False,
+            "up": bool(wd.get("running")),
+            "level": (
+                "problem"
+                if wd.get("attentionRequired")
+                else _level(up=bool(wd.get("running")), required=False)
+            ),
+            "detail": "auto-heal S1/S2 every 15s" + (" · ATTENTION" if wd.get("attentionRequired") else ""),
+            "how": "Start monitor on this page / Start-Server-Watchdog.bat",
+            "apps": ["S1", "S2"],
+        },
+        {
+            "id": "git",
+            "name": "Git",
+            "kind": "runtime",
+            "required": False,
+            "up": git_ok,
+            "level": _level(up=git_ok, required=False),
+            "detail": "git on PATH" if git_ok else "git not on PATH",
+            "how": "Install Git for Windows. Used by Git Repository Manager.",
+            "apps": ["Git Repository Manager"],
+        },
+        {
+            "id": "pinokio",
+            "name": "Pinokio",
+            "kind": "app",
+            "required": False,
+            "up": pinokio,
+            "level": _level(up=pinokio, required=False),
+            "detail": "Pinokio.exe " + ("running" if pinokio else "not running"),
+            "how": "Start Pinokio when using Pinokio Dock / FlashVSR from Pinokio.",
+            "apps": ["Pinokio Dock", "FlashVSR (Pinokio)"],
+        },
+    ]
+
+    order = {"failure": 0, "problem": 1, "issue": 2, "good": 3}
+    worst = "good"
+    for it in items:
+        if order.get(it["level"], 9) < order.get(worst, 9):
+            worst = it["level"]
+    counts = {k: sum(1 for i in items if i["level"] == k) for k in ("good", "issue", "problem", "failure")}
+    return {
+        "ok": worst in ("good", "issue"),
+        "worst": worst,
+        "counts": counts,
+        "items": items,
+        "legend": [
+            {"level": "good", "color": "green", "means": "Running / healthy"},
+            {"level": "issue", "color": "yellow", "means": "Optional down or degraded"},
+            {"level": "problem", "color": "orange", "means": "Should be up (lifecycle) but is not"},
+            {"level": "failure", "color": "red", "means": "Required piece is down"},
+        ],
     }
 
 

@@ -1473,6 +1473,38 @@
         .server-dot.off { background: #ff4466; box-shadow: 0 0 8px #ff4466; }
         .server-dot.waiting { background: #2dd4bf; box-shadow: 0 0 10px #2dd4bf; animation: ui-pulse-glow 1.2s ease infinite; }
         .server-dot.warn { background: #ff9f1a; box-shadow: 0 0 10px #ff9f1a; }
+        .server-dot.issue { background: #ffd600; box-shadow: 0 0 10px #ffd600; }
+        .server-dot.problem { background: #ff9100; box-shadow: 0 0 10px #ff9100; }
+        .server-dot.failure { background: #ff1744; box-shadow: 0 0 10px #ff1744; }
+        .st-btn.st-good, .ui-btn.st-good {
+            background: #00c853 !important; border-color: #00e676 !important; color: #00320f !important;
+            box-shadow: 0 0 12px rgba(0,200,83,.45);
+        }
+        .st-btn.st-issue, .ui-btn.st-issue {
+            background: #ffd600 !important; border-color: #ffea00 !important; color: #3d2e00 !important;
+            box-shadow: 0 0 12px rgba(255,214,0,.4);
+        }
+        .st-btn.st-problem, .ui-btn.st-problem {
+            background: #ff9100 !important; border-color: #ffab40 !important; color: #3d2200 !important;
+            box-shadow: 0 0 12px rgba(255,145,0,.45);
+        }
+        .st-btn.st-failure, .ui-btn.st-failure {
+            background: #ff1744 !important; border-color: #ff5252 !important; color: #fff !important;
+            box-shadow: 0 0 14px rgba(255,23,68,.5);
+        }
+        .stack-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 8px; margin: 12px 0 4px;
+        }
+        .st-btn {
+            appearance: none; text-align: left; cursor: default;
+            border-radius: 10px; padding: 10px 12px; border: 1px solid transparent;
+            font: 700 12px/1.35 "Segoe UI", system-ui, sans-serif;
+        }
+        .st-btn .st-name { display: block; letter-spacing: .04em; }
+        .st-btn .st-detail { display: block; font-weight: 600; font-size: 10px; opacity: .88; margin-top: 4px; }
+        .st-legend { display: flex; flex-wrap: wrap; gap: 10px 14px; font-size: 10px; font-weight: 700; margin: 8px 0 0; }
+        .st-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
         .server-dot.attention {
             background: #ff4466; box-shadow: 0 0 10px #ff4466;
             animation: server-attn-flash 0.85s ease infinite;
@@ -1998,6 +2030,18 @@
                     <button class="ui-btn ghost" id="btnStopS2" style="font-size:11px;padding:4px 10px;" data-tip="Stop only S2 tagger">⏹ Stop S2</button>
                 </div>
             </div>
+        </div>
+        <div id="runtimeStackPanel" style="margin:4px 0 14px;">
+            <strong style="font-size:12px;color:var(--accent);letter-spacing:.06em;">LIVE STACK — servers, apps, runtimes</strong>
+            <p style="font-size:11px;color:var(--muted);margin:6px 0 8px;line-height:1.45;">
+                Glance colors: <span style="color:#00c853">green good</span> ·
+                <span style="color:#ffd600">yellow issue</span> ·
+                <span style="color:#ff9100">orange problem</span> ·
+                <span style="color:#ff1744">red failure</span>.
+                S1 powers HTML tools. S2 + Chrome power Ultimate Tab. Imagine Vault is the HAVE/MISS checker. FFmpeg is convert/VID TRIM. Git is Git Manager. Pinokio is Dock/FlashVSR.
+            </p>
+            <div class="stack-grid" id="runtimeStack"></div>
+            <div class="st-legend" id="runtimeStackLegend"></div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center;margin-bottom:12px;padding:10px 12px;background:rgba(124,92,255,0.08);border-radius:10px;border:1px solid rgba(124,92,255,0.22);">
             <strong style="font-size:12px;color:var(--text);">Launch with Windows</strong>
@@ -4720,10 +4764,10 @@
             }
             const running = !!wd.running;
             const attention = !!wd.attentionRequired;
-            setDot(dot, running && !attention);
-            if (dot && attention) {
-                dot.className = 'server-dot wait';
-            }
+            const wdLevel = attention ? 'problem' : (running ? 'good' : 'issue');
+            if (dot) dot.className = 'server-dot ' + (attention ? 'problem' : (running ? 'on' : 'off'));
+            paintStatusBtn('btnWatchdogStart', wdLevel);
+            paintStatusBtn('btnWatchdogStatus', running ? 'good' : 'issue');
             const rep = wd.report || {};
             const s = rep.servers || {};
             const s1 = s.s1_up ? 'S1 up' : 'S1 down';
@@ -5459,6 +5503,46 @@
             el.className = 'server-dot ' + (on ? 'on' : 'off');
         }
 
+        function paintStatusBtn(id, level) {
+            const n = document.getElementById(id);
+            if (!n) return;
+            n.classList.remove('st-good', 'st-issue', 'st-problem', 'st-failure');
+            if (level) n.classList.add('st-' + level);
+        }
+
+        function levelFromUp(up, required) {
+            if (up) return 'good';
+            return required ? 'failure' : 'issue';
+        }
+
+        function renderRuntimeStack(stack) {
+            const host = document.getElementById('runtimeStack');
+            const legend = document.getElementById('runtimeStackLegend');
+            if (!host) return;
+            const items = (stack && stack.items) || [];
+            if (!items.length) {
+                host.innerHTML = '<div style="font-size:12px;color:var(--muted)">Start S1 to load the live stack (or this page is already talking to it).</div>';
+                return;
+            }
+            host.innerHTML = items.map(function (it) {
+                const apps = (it.apps || []).slice(0, 3).join(' · ');
+                const tip = (it.how || '') + (apps ? ' | Apps: ' + (it.apps || []).join(', ') : '');
+                return '<button type="button" class="st-btn st-' + (it.level || 'issue') + '" title="' +
+                    String(tip).replace(/"/g, '&quot;') + '">' +
+                    '<span class="st-name">' + (it.name || it.id) + '</span>' +
+                    '<span class="st-detail">' + (it.detail || it.level) + (apps ? ' · ' + apps : '') + '</span>' +
+                    '</button>';
+            }).join('');
+            if (legend) {
+                legend.innerHTML =
+                    '<span><i style="background:#00c853"></i>good</span>' +
+                    '<span><i style="background:#ffd600"></i>issue</span>' +
+                    '<span><i style="background:#ff9100"></i>problem</span>' +
+                    '<span><i style="background:#ff1744"></i>failure</span>' +
+                    '<span style="opacity:.8">worst: ' + (stack.worst || '—') + '</span>';
+            }
+        }
+
         function applyLaunchStatus(st) {
             const hint = document.getElementById('launchPrefsHint');
             const pathHint = document.getElementById('fafoMetaPathHint');
@@ -5470,8 +5554,20 @@
             const meta = st.fafoMeta || {};
             const prefs = st.prefs || {};
             const win = st.windowsStartup || {};
-            setDot(document.getElementById('dotToolbox'), !!(tb.healthy || tb.listening));
-            setDot(document.getElementById('dotFafoMeta'), !!(meta.healthy || meta.listening));
+            const s1up = !!(tb.healthy || tb.listening);
+            const s2up = !!(meta.healthy || meta.listening);
+            setDot(document.getElementById('dotToolbox'), s1up);
+            setDot(document.getElementById('dotFafoMeta'), s2up);
+            const s1lvl = s1up ? 'good' : 'failure';
+            const s2lvl = s2up ? 'good' : ((st.chromeRunning) ? 'problem' : 'issue');
+            paintStatusBtn('btnStartS1', s1lvl);
+            paintStatusBtn('btnStopS1', s1up ? 'issue' : 'good');
+            paintStatusBtn('btnStartS2', s2lvl);
+            paintStatusBtn('btnStopS2', s2up ? 'issue' : 'good');
+            paintStatusBtn('btnStartServer', (st.stack && st.stack.worst) || (s1up && s2up ? 'good' : (s1up ? 'issue' : 'failure')));
+            paintStatusBtn('btnRelaunchServers', (st.stack && st.stack.worst) || 'issue');
+            paintStatusBtn('btnStartCompanions', s1up && s2up ? 'good' : 'issue');
+            renderRuntimeStack(st.stack);
             const txtTb = document.getElementById('txtToolbox');
             if (txtTb) {
                 const stLabel = (tb.healthy || tb.listening) ? 'online' : 'offline';
