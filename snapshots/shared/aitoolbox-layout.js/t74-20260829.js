@@ -172,15 +172,6 @@
   }
 
   function ensureChrome(panel) {
-    if (!panel) return;
-    // Hub iframe shells and other full-bleed workspaces: a title chrome
-    // sits on top of position:absolute children and steals toolbar clicks.
-    if (panel.getAttribute('data-fafo-chrome') === '0') {
-      const existing = panel.querySelector(':scope > .fafo-panel-chrome');
-      if (existing) existing.remove();
-      panel.classList.add('fafo-layout-panel');
-      return;
-    }
     if (panel.querySelector(':scope > .fafo-panel-chrome')) {
       panel.classList.add('fafo-layout-panel');
       return;

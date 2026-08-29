@@ -215,11 +215,6 @@
     function startTutorial(steps, storageKey, onStep, opts) {
         const force = opts === true || (opts && opts.force);
         if (!force && storageKey && isTutorialDone(storageKey)) return;
-        try {
-            // Hub iframes: a full-page dim covers Library/Duplicates/Organizer
-            // toolbars. First-run tour stays on the standalone window.
-            if (!force && window.self !== window.top) return;
-        } catch (_) { /* ignore */ }
         tutorialState = { steps, index: 0, storageKey, onStep };
         showTutorialStep();
     }
@@ -300,8 +295,6 @@
         window.addEventListener('resize', positionSpotlight);
 
         bg.querySelector('#tut-skip').onclick = endTutorial;
-        const dim = bg.querySelector('.ui-tutorial-dim');
-        if (dim) dim.addEventListener('click', endTutorial);
         bg.querySelector('#tut-next').onclick = () => {
             tutorialState.index++;
             showTutorialStep();

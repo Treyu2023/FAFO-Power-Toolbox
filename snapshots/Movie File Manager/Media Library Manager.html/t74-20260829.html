@@ -1542,31 +1542,27 @@
   <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         function el(id) {
-            try {
-                if (!id) return null;
-                return typeof id === 'string' ? document.getElementById(id) : id;
-            } catch (_) { return null; }
+            try { return el(id); } catch (_) { return null; }
         }
         function setText(node, text) {
             if (!node) return;
             try { node.textContent = text == null ? '' : String(text); } catch (_) {}
         }
         function bind(node, ev, fn) {
-            const n = typeof node === 'string' ? el(node) : node;
-            if (!n || !ev || typeof fn !== 'function') return;
-            try { n.addEventListener(ev, fn); } catch (_) {}
+            if (!node || !ev || typeof fn !== 'function') return;
+            try { node.addEventListener(ev, fn); } catch (_) {}
         }
         function lsGet(key, fallback) {
             try {
-                const v = localStorage.getItem(key);
+                const v = lsGet(key);
                 return v == null ? fallback : v;
             } catch (_) { return fallback; }
         }
         function lsSet(key, val) {
-            try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+            try { lsSet(key, val); return true; } catch (_) { return false; }
         }
         function lsDel(key) {
-            try { localStorage.removeItem(key); } catch (_) {}
+            try { lsDel(key); } catch (_) {}
         }
         function lsJson(key, fallback) {
             try {
@@ -1861,7 +1857,7 @@
             await applyFilters();
             await refreshSmartSearches();
             updateWorkflow();
-            if (window.self === window.top && !UI().isTutorialDone('library')) {
+            if (!UI().isTutorialDone('library')) {
                 setTimeout(() => { try { UI()?.startTutorial?.(LIBRARY_TUTORIAL, 'library'); } catch (_) {} }, 600);
             }
         }
@@ -3088,7 +3084,6 @@
             const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
             if (page >= totalPages) page = Math.max(0, totalPages - 1);
 
-            if (!els.mediaList) return;
             els.mediaList.innerHTML = '';
             if (!filtered.length) {
                 els.mediaList.innerHTML =
@@ -4347,7 +4342,6 @@
         }
 
         function renderMlTagSuggestions() {
-            if (!els.tagInput || !els.tagSuggestions) return;
             const q = els.tagInput.value.trim();
             const matches = mlMatchingTags(q);
             if (!matches.length) {
@@ -4378,7 +4372,6 @@
         }
 
         function wireMlSuggest() {
-            if (!els.tagSuggestions) return;
             els.tagSuggestions.querySelectorAll('[data-tag]').forEach(div => {
                 div.onmousedown = (e) => {
                     e.preventDefault();
@@ -4396,15 +4389,15 @@
             });
         }
 
-        els.tagInput?.addEventListener('input', () => {
+        els.tagInput.addEventListener('input', () => {
             mlTagSuggestIdx = -1;
             renderMlTagSuggestions();
         });
-        els.tagInput?.addEventListener('focus', async () => {
+        els.tagInput.addEventListener('focus', async () => {
             await refreshMlAllTags();
             renderMlTagSuggestions();
         });
-        els.tagInput?.addEventListener('keydown', e => {
+        els.tagInput.addEventListener('keydown', e => {
             const items = els.tagSuggestions.classList.contains('show')
                 ? [...els.tagSuggestions.querySelectorAll('[data-tag]')]
                 : [];
@@ -4442,7 +4435,7 @@
         });
         el('tagLibFilter')?.addEventListener('input', renderMlTagLibrary);
         document.addEventListener('click', e => {
-            if (!e.target.closest('.tag-input-wrap')) els.tagSuggestions?.classList.remove('show');
+            if (!e.target.closest('.tag-input-wrap')) els.tagSuggestions.classList.remove('show');
         });
         // Warm tag library on load
         refreshMlAllTags();
@@ -4475,8 +4468,8 @@
                 prompt('Copy report:', text);
             }
         });
-        bind(el('btnAddDir'), 'click', addDirectory);
-        bind(el('btnAddDir2'), 'click', addDirectory);
+        el('btnAddDir').onclick = addDirectory;
+        el('btnAddDir2').onclick = addDirectory;
         el('btnNativeDir').onclick = async () => {
             try {
                 const entry = await API().pickDirectoryNative();
@@ -4485,8 +4478,8 @@
                 await scanDir(entry);
             } catch (e) { alert(e.message); }
         };
-        bind(el('btnPathAdd'), 'click', () => addDirectoryByPath(el('pathInput').value));
-        bind(el('btnSuggest'), 'click', showSuggestPairs);
+        el('btnPathAdd').onclick = () => addDirectoryByPath(el('pathInput').value);
+        el('btnSuggest').onclick = showSuggestPairs;
         wirePairStudio();
         el('btnTwoDirPairs')?.addEventListener('click', openTwoDirModal);
         el('btnTwoDirClose')?.addEventListener('click', () => el('twoDirModal').classList.remove('active'));
@@ -4517,12 +4510,12 @@
             showToast('Presets saved', 'ok');
         });
         renderTagPresetButtons();
-        bind(el('btnRescan'), 'click', rescanAll);
-        bind(el('btnSaveDetail'), 'click', saveDetail);
-        els.searchInput?.addEventListener('input', () => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); });
-        els.filterType?.addEventListener('change', () => { page = 0; activePlaylist = null; applyFilters(); });
-        els.sortBy?.addEventListener('change', () => { page = 0; applyFilters(); });
-        els.groupBy?.addEventListener('change', () => { page = 0; applyFilters(); });
+        el('btnRescan').onclick = rescanAll;
+        el('btnSaveDetail').onclick = saveDetail;
+        els.searchInput.addEventListener('input', () => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); });
+        els.filterType.addEventListener('change', () => { page = 0; activePlaylist = null; applyFilters(); });
+        els.sortBy.addEventListener('change', () => { page = 0; applyFilters(); });
+        els.groupBy.addEventListener('change', () => { page = 0; applyFilters(); });
         el('filterPair')?.addEventListener('change', () => {
             page = 0; activePlaylist = null; activeSmartId = null;
             // Keep activeSmartQuery null so pair filter drives smart API via UI
@@ -4624,9 +4617,9 @@
                 showToast(e.message || 'Failed', 'warn');
             }
         });
-        bind(el('btnViewList'), 'click', () => setViewMode('list'));
-        bind(el('btnViewGrid'), 'click', () => setViewMode('grid'));
-        bind(el('btnViewGroup'), 'click', () => setViewMode('group'));
+        el('btnViewList').onclick = () => setViewMode('list');
+        el('btnViewGrid').onclick = () => setViewMode('grid');
+        el('btnViewGroup').onclick = () => setViewMode('group');
         el('btnPrevPage').onclick = async () => { if (page > 0) { page--; await applyFilters(); } };
         el('btnNextPage').onclick = async () => {
             const tp = Math.ceil(totalCount / PAGE_SIZE);
@@ -4637,14 +4630,14 @@
             renderPage();
         };
         el('btnClearSel').onclick = () => { selected.clear(); renderPage(); };
-        bind(el('btnBatchDelete'), 'click', () => deleteMediaItems(getSelectedIds(), 'Selected files'));
+        el('btnBatchDelete').onclick = () => deleteMediaItems(getSelectedIds(), 'Selected files');
         el('btnDeleteDetail').onclick = () => {
             if (currentItem) deleteMediaItems([currentItem.id], currentItem.name);
         };
-        bind(el('btnFindDup'), 'click', () => dupMode ? exitDupMode() : scanDuplicates());
-        bind(el('btnDupHere'), 'click', () => openDuplicateManager());
+        el('btnFindDup').onclick = () => dupMode ? exitDupMode() : scanDuplicates();
+        el('btnDupHere').onclick = () => openDuplicateManager();
         el('btnDupTop')?.addEventListener('click', () => openDuplicateManager());
-        bind(el('btnDupFileFolder'), 'click', async () => {
+        el('btnDupFileFolder').onclick = async () => {
             if (!currentItem) return;
             try {
                 const res = await API().resolvePaths([currentItem.id]);
@@ -4652,10 +4645,10 @@
                 if (!p) throw new Error('Could not resolve file path');
                 openDuplicateManager({ folder: parentFolderPath(p), label: currentItem.name });
             } catch (e) { showToast(e.message, 'warn'); }
-        });
-        bind(el('btnDupExit'), 'click', exitDupMode);
-        bind(el('btnDupMerge'), 'click', () => mergeDupGroup(activeDupGroup));
-        bind(el('btnDupDeleteMarked'), 'click', deleteMarkedDuplicates);
+        };
+        el('btnDupExit').onclick = exitDupMode;
+        el('btnDupMerge').onclick = () => mergeDupGroup(activeDupGroup);
+        el('btnDupDeleteMarked').onclick = deleteMarkedDuplicates;
 
         el('btnCopyPaths').onclick = async () => {
             if (!selected.size) return;
@@ -4708,7 +4701,7 @@
             if (!serverOn) { showToast('Playlists require server', 'warn'); return; }
             openPlaylistModal(true);
         };
-        bind(el('btnPlaylistCancel'), 'click', () => el('playlistModal').classList.remove('active'));
+        el('btnPlaylistCancel').onclick = () => el('playlistModal').classList.remove('active');
         el('btnPlaylistSave').onclick = async () => {
             const pick = el('playlistPick').value;
             const name = el('playlistName').value.trim();
@@ -4766,7 +4759,7 @@
             el('renameModal').classList.add('active');
             renameHistIdx = -1;
         };
-        bind(el('btnRenameCancel'), 'click', () => el('renameModal').classList.remove('active'));
+        el('btnRenameCancel').onclick = () => el('renameModal').classList.remove('active');
         el('btnRenameApply').onclick = async () => {
             const pattern = el('renamePattern').value.trim();
             if (!pattern) return;
@@ -4815,8 +4808,8 @@
             if (e.target.id === 'faqModal') e.target.classList.remove('active');
         });
 
-        bind(el('btnBatchTag'), 'click', () => el('tagModal').classList.add('active'));
-        bind(el('btnTagCancel'), 'click', () => el('tagModal').classList.remove('active'));
+        el('btnBatchTag').onclick = () => el('tagModal').classList.add('active');
+        el('btnTagCancel').onclick = () => el('tagModal').classList.remove('active');
         el('btnTagApply').onclick = async () => {
             const raw = el('batchTagInput').value;
             const tags = raw.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
@@ -4871,7 +4864,7 @@
             }
             el('pairModal').classList.add('active');
         };
-        bind(el('btnPairCancel'), 'click', () => el('pairModal').classList.remove('active'));
+        el('btnPairCancel').onclick = () => el('pairModal').classList.remove('active');
         el('btnPairSave').onclick = async () => {
             const ids = [...selected];
             const before = await API().getMedia(ids[0]);

@@ -34,21 +34,19 @@
       padding: 8px 12px;
       background: linear-gradient(180deg, #162033, #0c1422);
       border-bottom: 1px solid rgba(0, 229, 255, 0.28);
-      z-index: 30;
-      position: relative;
+      z-index: 5;
     }
     .hub-bar h1 {
       font-size: 14px; font-weight: 700; letter-spacing: 0.06em;
       color: var(--accent); margin-right: 6px;
     }
-    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 220px; }
+    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
     .hub-tab {
       appearance: none; border: 1px solid rgba(0, 229, 255, 0.32);
       background: transparent; color: var(--muted);
       padding: 7px 12px; border-radius: 999px; cursor: pointer;
       font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
       transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
-      flex-shrink: 0;
     }
     .hub-tab:hover { color: var(--accent); border-color: var(--accent); }
     .hub-tab.active {
@@ -68,8 +66,6 @@
       color: var(--accent); border-color: var(--accent);
     }
     .frame-wrap { flex: 1; min-height: 0; position: relative; background: #05080f; }
-    .frame-wrap .fafo-panel-chrome { display: none !important; }
-    .frame-wrap .fafo-panel-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
     .frame-wrap iframe {
       position: absolute; inset: 0; width: 100%; height: 100%;
       border: 0; background: #0a1020;
@@ -155,9 +151,8 @@
   <div class="frame-wrap"
        data-fafo-layout-root
        data-fafo-layout-app="media-hub"
-       data-fafo-layout-type="rows"
-       data-fafo-layout-pin="1">
-    <div data-fafo-panel="workspace" data-fafo-panel-title="Workspace" data-fafo-chrome="0" data-fafo-flex="1" style="display:flex;flex-direction:column;min-height:0;position:relative;flex:1">
+       data-fafo-layout-type="rows">
+    <div data-fafo-panel="workspace" data-fafo-panel-title="Workspace" data-fafo-flex="1" style="display:flex;flex-direction:column;min-height:0;position:relative;flex:1">
     <div class="loading" id="loading">Loading workspace…</div>
     <iframe id="hubFrame" title="Media workspace" allow="autoplay; fullscreen" style="flex:1;border:0;width:100%;min-height:0"></iframe>
     </div>
@@ -367,58 +362,59 @@
       }
 
       async function showTab(id, pushHash) {
-        if (!TABS[id]) id = 'library';
-        current = id;
-        syncTabChrome(id);
-        const t = TABS[id] || TABS.library;
-        document.title = (t.title || 'Media') + ' — Media Hub';
-        if (meta) meta.innerHTML = t.meta || '';
-        lsSet(LS_TAB, id);
-        if (pushHash !== false) {
-          const hash = id === 'library' ? 'library' : id;
-          if ((location.hash || '').replace(/^#/, '') !== hash) {
-            try { history.replaceState(null, '', '#' + hash); } catch (_) {}
+        await (async () => {
+          if (!TABS[id]) id = 'library';
+          current = id;
+          syncTabChrome(id);
+          const t = TABS[id] || TABS.library;
+          document.title = (t.title || 'Media') + ' — Media Hub';
+          if (meta) meta.innerHTML = t.meta || '';
+          lsSet(LS_TAB, id);
+          if (pushHash !== false) {
+            const hash = id === 'library' ? 'library' : id;
+            if ((location.hash || '').replace(/^#/, '') !== hash) {
+              try { history.replaceState(null, '', '#' + hash); } catch (_) {}
+            }
           }
-        }
-        if (!frame || !loading) return;
-        const gen = ++loadGen;
-        if (loadTimer) clearTimeout(loadTimer);
-        loading.classList.remove('hide', 'fail');
-        setText(loading, 'Loading ' + (t.title || 'workspace') + '…');
-        const src = await resolveSrc(id);
-        if (gen !== loadGen) return;
-        frame.onload = () => {
-          if (gen !== loadGen) return;
+          if (!frame || !loading) return;
+          const gen = ++loadGen;
           if (loadTimer) clearTimeout(loadTimer);
-          loading.classList.add('hide');
-          loading.classList.remove('fail');
-        };
-        frame.onerror = () => {
-          if (gen !== loadGen) return;
-          if (loadTimer) clearTimeout(loadTimer);
-          showLoadFail(t.title, src);
-        };
-        loadTimer = setTimeout(() => {
-          if (gen !== loadGen) return;
-          if (loading.classList.contains('hide')) return;
+          loading.classList.remove('hide', 'fail');
+          setText(loading, 'Loading ' + (t.title || 'workspace') + '…');
+          const src = await resolveSrc(id);
+          frame.onload = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            loading.classList.add('hide');
+            loading.classList.remove('fail');
+          };
+          frame.onerror = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            showLoadFail(t.title, src);
+          };
+          loadTimer = setTimeout(() => {
+            if (gen !== loadGen) return;
+            if (loading.classList.contains('hide')) return;
+            try {
+              const doc = frame.contentDocument;
+              if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+                loading.classList.add('hide');
+                return;
+              }
+            } catch (_) {
+              if (frame.getAttribute('src')) {
+                loading.classList.add('hide');
+                return;
+              }
+            }
+            showLoadFail(t.title, src);
+          }, 25000);
           try {
-            const doc = frame.contentDocument;
-            if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
-              loading.classList.add('hide');
-              return;
-            }
-          } catch (_) {
-            if (frame.getAttribute('src')) {
-              loading.classList.add('hide');
-              return;
-            }
-          }
-          showLoadFail(t.title, src);
-        }, 25000);
-        try {
-          revokeBlobUrl(frame.getAttribute('src'));
-        } catch (_) {}
-        frame.src = src;
+            revokeBlobUrl(frame.getAttribute('src'));
+          } catch (_) {}
+          frame.src = src;
+        });
       }
 
       async function copyHubReport() {

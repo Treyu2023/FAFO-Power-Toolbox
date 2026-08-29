@@ -33,21 +33,19 @@
       padding: 8px 12px;
       background: linear-gradient(180deg, #12101a, #0a0a10);
       border-bottom: 1px solid rgba(167, 139, 250, 0.35);
-      z-index: 30;
-      position: relative;
+      z-index: 5;
     }
     .hub-bar h1 {
       font-size: 14px; font-weight: 700; letter-spacing: 0.06em;
       color: var(--accent); margin-right: 6px;
     }
-    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 220px; }
+    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
     .hub-tab {
       appearance: none; border: 1px solid rgba(167, 139, 250, 0.35);
       background: transparent; color: var(--muted);
       padding: 7px 12px; border-radius: 999px; cursor: pointer;
       font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
       transition: 0.15s;
-      flex-shrink: 0;
     }
     .hub-tab:hover { color: var(--gold); border-color: var(--gold); }
     .hub-tab.active {
@@ -66,8 +64,6 @@
       color: var(--accent2); border-color: var(--accent2);
     }
     .frame-wrap { flex: 1; min-height: 0; position: relative; background: #000; }
-    .frame-wrap .fafo-panel-chrome { display: none !important; }
-    .frame-wrap .fafo-panel-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
     .frame-wrap iframe {
       position: absolute; inset: 0; width: 100%; height: 100%;
       border: 0; background: #050508;
@@ -109,7 +105,7 @@
   </style>
 </head>
 <body>
-<div data-fafo-layout-root data-fafo-layout-app="movie-file-manager-compare-hub" data-fafo-layout-type="rows" data-fafo-layout-pin="1" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
+<div data-fafo-layout-root data-fafo-layout-app="movie-file-manager-compare-hub" data-fafo-layout-type="rows" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
   <header class="hub-bar" data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
     <h1>⇄ COMPARE HUB</h1>
     <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
@@ -330,66 +326,67 @@
       }
 
       async function showTab(id, pushHash) {
-        if (!TABS[id]) id = 'match';
-        current = id;
-        document.querySelectorAll('.hub-tab').forEach((b) => {
-          const on = b.dataset.tab === id;
-          b.classList.toggle('active', on);
-          b.setAttribute('aria-selected', on ? 'true' : 'false');
-          b.tabIndex = on ? 0 : -1;
-        });
-        const t = TABS[id];
-        if (!t) return;
-        document.title = t.title + ' — Compare Hub';
-        setText(meta, t.meta);
-        lsSet(LS_TAB, id);
-        if (pushHash !== false) {
-          if (location.hash.replace(/^#/, '') !== id) {
-            try { history.replaceState(null, '', '#' + id); } catch (_) {}
+        return withBusy('show-tab', async () => {
+          if (!TABS[id]) id = 'match';
+          current = id;
+          document.querySelectorAll('.hub-tab').forEach((b) => {
+            const on = b.dataset.tab === id;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+          });
+          const t = TABS[id];
+          if (!t) return;
+          document.title = t.title + ' — Compare Hub';
+          setText(meta, t.meta);
+          lsSet(LS_TAB, id);
+          if (pushHash !== false) {
+            if (location.hash.replace(/^#/, '') !== id) {
+              try { history.replaceState(null, '', '#' + id); } catch (_) {}
+            }
           }
-        }
-        const gen = ++loadGen;
-        if (loadTimer) clearTimeout(loadTimer);
-        if (loading) {
-          loading.classList.remove('hide', 'fail');
-          setText(loading, 'Loading ' + t.title + '…');
-        }
-        const src = await resolveSrc(id);
-        if (gen !== loadGen) return;
-        if (!frame) return;
-        frame.onload = () => {
-          if (gen !== loadGen) return;
+          const gen = ++loadGen;
           if (loadTimer) clearTimeout(loadTimer);
           if (loading) {
-            loading.classList.add('hide');
-            loading.classList.remove('fail');
+            loading.classList.remove('hide', 'fail');
+            setText(loading, 'Loading ' + t.title + '…');
           }
-        };
-        frame.onerror = () => {
-          if (gen !== loadGen) return;
-          if (loadTimer) clearTimeout(loadTimer);
-          showLoadFail(t.title, src);
-        };
-        loadTimer = setTimeout(() => {
-          if (gen !== loadGen) return;
-          if (loading && loading.classList.contains('hide')) return;
-          try {
-            const doc = frame.contentDocument;
-            if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
-              if (loading) loading.classList.add('hide');
-              return;
+          const src = await resolveSrc(id);
+          if (!frame) return;
+          frame.onload = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            if (loading) {
+              loading.classList.add('hide');
+              loading.classList.remove('fail');
             }
-          } catch (_) {
-            if (frame.getAttribute('src')) {
-              if (loading) loading.classList.add('hide');
-              return;
+          };
+          frame.onerror = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            showLoadFail(t.title, src);
+          };
+          loadTimer = setTimeout(() => {
+            if (gen !== loadGen) return;
+            if (loading && loading.classList.contains('hide')) return;
+            try {
+              const doc = frame.contentDocument;
+              if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+                if (loading) loading.classList.add('hide');
+                return;
+              }
+            } catch (_) {
+              if (frame.getAttribute('src')) {
+                if (loading) loading.classList.add('hide');
+                return;
+              }
             }
-          }
-          showLoadFail(t.title, src);
-        }, 25000);
-        revokeUrl(lastFrameSrc);
-        lastFrameSrc = src || '';
-        frame.src = src || 'about:blank';
+            showLoadFail(t.title, src);
+          }, 25000);
+          revokeUrl(lastFrameSrc);
+          lastFrameSrc = src || '';
+          frame.src = src || 'about:blank';
+        });
       }
 
       async function copyHubReport() {
