@@ -3313,6 +3313,7 @@ import setup_ops
 import launch_ops
 import disk_ops as disk
 import hosts_ops as hosts
+import reg_qol_ops as reg_qol
 import ditto_ops as ditto
 import convert_ops as convert
 import health_ops as health
@@ -4353,6 +4354,11 @@ class HostsCustom(BaseModel):
     ip: str = "0.0.0.0"
 
 
+class RegQolApplyBody(BaseModel):
+    id: str
+    restart_explorer: bool = False
+
+
 class DittoGroupCreate(BaseModel):
     name: str
     parent_id: int = -1
@@ -5111,6 +5117,36 @@ def api_hosts_add(body: HostsCustom):
 def api_hosts_remove(body: HostsCustom):
     try:
         return hosts.remove_custom_block(body.host)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/reg-qol/status")
+def api_reg_qol_status():
+    try:
+        return reg_qol.status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/reg-qol/apply")
+def api_reg_qol_apply(body: RegQolApplyBody):
+    try:
+        return reg_qol.apply(body.id, restart_explorer=bool(body.restart_explorer))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except PermissionError:
+        raise HTTPException(403, "Administrator rights required for this tweak")
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/reg-qol/restart-explorer")
+def api_reg_qol_restart_explorer():
+    try:
+        return reg_qol.restart_explorer()
     except Exception as e:
         raise HTTPException(500, str(e))
 
