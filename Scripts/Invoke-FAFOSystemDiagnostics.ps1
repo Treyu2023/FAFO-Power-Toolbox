@@ -41,7 +41,7 @@ import json, sys
 sys.path.insert(0, r'''$serverDir''')
 import pc_diagnostics as d
 opts = dict(d.DEFAULT_OPTIONS)
-if $skipPy:
+if ${skipPy}:
     opts['event_log'] = False
 report = d.run_diagnostics(options=opts, event_log_days=$EventLogDays, persist=True)
 print(json.dumps({
