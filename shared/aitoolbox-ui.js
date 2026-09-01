@@ -1367,6 +1367,25 @@
             }
         };
 
+        function toolboxAssetVersion() {
+            if (global.AITOOLBOX_VERSION) return String(global.AITOOLBOX_VERSION);
+            try {
+                const scripts = document.getElementsByTagName('script');
+                for (let i = scripts.length - 1; i >= 0; i--) {
+                    const m = String(scripts[i].src || '').match(/[?&]v=([^&]+)/);
+                    if (m) return decodeURIComponent(m[1]);
+                }
+            } catch (_) { /* ignore */ }
+            return '1.16.46';
+        }
+
+        function withCacheBust(url) {
+            if (!url) return url;
+            const v = toolboxAssetVersion();
+            if (/[?&]v=/.test(url)) return url.replace(/([?&]v=)[^&]*/, '$1' + encodeURIComponent(v));
+            return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(v);
+        }
+
         function sharedScriptSrc(fileName) {
             let src = 'shared/' + fileName;
             try {
@@ -1374,19 +1393,19 @@
                 for (let i = scripts.length - 1; i >= 0; i--) {
                     const s = scripts[i].src || '';
                     if (s.includes('aitoolbox-ui.js')) {
-                        src = s.replace(/aitoolbox-ui\.js.*$/i, fileName);
+                        src = s.replace(/aitoolbox-ui\.js(?:\?.*)?$/i, fileName);
                         break;
                     }
                 }
             } catch (_) { /* ignore */ }
-            return src;
+            return withCacheBust(src);
         }
 
         function ensureChromeFix() {
             if (global.__fafoChromeFix || document.getElementById('fafoChromeFixScript')) return;
             const el = document.createElement('script');
             el.id = 'fafoChromeFixScript';
-            el.src = sharedScriptSrc('aitoolbox-chrome-fix.js') + '?v=' + (global.AITOOLBOX_VERSION || '1.16.45');
+            el.src = sharedScriptSrc('aitoolbox-chrome-fix.js');
             el.async = true;
             (document.head || document.documentElement).appendChild(el);
         }

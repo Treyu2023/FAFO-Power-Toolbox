@@ -5,6 +5,11 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+
+
+def vtag(path: str) -> str:
+    return f"{path}?v={VERSION}"
 
 TARGETS = [
     ("Movie File Manager/File Organizer.html", 1),
@@ -31,8 +36,8 @@ TARGETS = [
 
 def inject_assets(html: str, depth: int) -> str:
     prefix = "../" * depth
-    css_tag = f'<link rel="stylesheet" href="{prefix}shared/aitoolbox-layout.css">'
-    js_tag = f'<script src="{prefix}shared/aitoolbox-layout.js"></script>'
+    css_tag = f'<link rel="stylesheet" href="{vtag(prefix + "shared/aitoolbox-layout.css")}">'
+    js_tag = f'<script src="{vtag(prefix + "shared/aitoolbox-layout.js")}"></script>'
     if "aitoolbox-layout.css" not in html:
         html2, n = re.subn(
             r'(<link[^>]+aitoolbox-ui\.css"[^>]*>)',

@@ -364,7 +364,7 @@ def _resolve_toolbox_file(file_path: str) -> Path:
 # Serve toolbox HTML/tools from the same origin as the API so browsers do not
 # block fetch() (file:// → 127.x private network / CORS edge cases).
 @app.get("/toolbox/{file_path:path}")
-def toolbox_static(file_path: str):
+def toolbox_static(file_path: str, v: str | None = Query(default=None)):
     """Read-only static files under the toolbox root (HTML tools + shared JS)."""
     target = _resolve_toolbox_file(file_path)
     if not target.is_file():
@@ -389,15 +389,32 @@ def toolbox_static(file_path: str):
         media = "text/css; charset=utf-8"
     elif lower == ".json":
         media = "application/json; charset=utf-8"
-    # HTML/JS/CSS: never let the browser keep a stale mojibake copy of the launcher
-    headers = {}
-    if lower in {".html", ".js", ".css"}:
-        headers = {
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+    }
+    rel_parts = target.relative_to(ROOT.resolve()).parts
+    is_shared_asset = (
+        lower in {".js", ".css"}
+        and "shared" in rel_parts
+        and v is not None
+        and v.strip() == read_version()
+    )
+    if lower == ".html":
+        # HTML is the cache-bust source of truth (embeds ?v= on shared tags)
+        headers.update({
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
-            "X-Content-Type-Options": "nosniff",
-        }
+        })
+    elif is_shared_asset:
+        # Versioned shared kit: cache hard, bust by bumping VERSION + restamping HTML
+        headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif lower in {".js", ".css"}:
+        headers.update({
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
     return FileResponse(target, media_type=media, headers=headers)
 
 
