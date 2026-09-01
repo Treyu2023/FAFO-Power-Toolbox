@@ -2665,7 +2665,7 @@
             {
                 id: 'imagine-tracker',
                 name: 'Imagine Vault',
-                desc: 'HAVE/MISS catalog for Grok Imagine — cyan downloaded, magenta missing',
+                desc: 'Grok Imagine tracker — HAVE/MISS catalog, cyan downloaded, magenta missing',
                 tip: 'Toolbox desk for grok.com/imagine: HAVE vs MISS list, unique prompts, scrape log. Start the local vault, then the Chrome overlay paints neon on the Imagine site. Cyan = already on disk, magenta = seen but not saved.',
                 path: 'System Tools/ImagineTracker/Imagine Tracker.html',
                 category: 'Media',
@@ -2994,8 +2994,8 @@
                 name: 'Media Library & VSR',
                 emoji: '🗂️',
                 color: '#00f3ff',
-                desc: 'Catalog, rename, dedupe, and pair videos. Mismatched Source Companion is optional name-repair for scrambled upscale dumps — not the FlashVSR engine.',
-                categories: ['Library', 'Pipeline']
+                desc: 'Catalog, rename, dedupe, and pair videos. Imagine Vault is the Grok Imagine HAVE/MISS desk. Mismatched Source Companion is optional name-repair for scrambled upscale dumps — not the FlashVSR engine.',
+                categories: ['Library', 'Pipeline', 'Media']
             },
             {
                 id: 'av',
@@ -4217,7 +4217,16 @@
                 paintSectionTiles(sectionHub);
                 if (featuredGrid) {
                     featuredGrid.innerHTML = '';
-                    const featured = TOOLS.filter(t => t.featured && isToolVisible(t)).slice(0, 8);
+                    const featured = [];
+                    const seenFeat = new Set();
+                    const pin = TOOLS.find(t => t.id === 'imagine-tracker' && t.featured && isToolVisible(t));
+                    if (pin) { featured.push(pin); seenFeat.add(pin.id); }
+                    for (const t of TOOLS) {
+                        if (featured.length >= 8) break;
+                        if (!t.featured || !isToolVisible(t) || seenFeat.has(t.id)) continue;
+                        featured.push(t);
+                        seenFeat.add(t.id);
+                    }
                     for (const tool of featured) {
                         featuredGrid.appendChild(await buildToolCard(tool, true));
                     }
