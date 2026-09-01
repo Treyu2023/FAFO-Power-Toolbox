@@ -64,9 +64,6 @@
   ];
 
 
-  const UI_SCALE_MIN = 10;
-  const UI_SCALE_MAX = 400;
-
   const DEFAULTS = {
     // Layout — arrangement, not color
     layout: 'auto',          // auto | phone | desktop
@@ -108,29 +105,6 @@
     n = Number(n);
     if (!Number.isFinite(n)) return lo;
     return Math.max(lo, Math.min(hi, n));
-  }
-
-  function scaleToSlider(pct) {
-    const v = clamp(pct, UI_SCALE_MIN, UI_SCALE_MAX);
-    const min = Math.log(UI_SCALE_MIN);
-    const max = Math.log(UI_SCALE_MAX);
-    return Math.round(1000 * (Math.log(v) - min) / (max - min));
-  }
-
-  function sliderToScale(pos) {
-    const min = Math.log(UI_SCALE_MIN);
-    const max = Math.log(UI_SCALE_MAX);
-    const t = clamp(pos, 0, 1000) / 1000;
-    return Math.round(Math.exp(min + t * (max - min)));
-  }
-
-  function suggestTvScale() {
-    const w = Math.max(window.innerWidth || 0, screen.width || 0);
-    if (w >= 3600) return 48;
-    if (w >= 3000) return 58;
-    if (w >= 2500) return 72;
-    if (w >= 1900) return 88;
-    return 100;
   }
 
   function isHex(v) {
@@ -184,8 +158,7 @@
     if (!['auto', 'phone', 'desktop'].includes(out.layout)) out.layout = 'auto';
     if (!['comfortable', 'compact'].includes(out.density)) out.density = 'comfortable';
     out.uiScale = clamp(out.uiScale != null ? out.uiScale : 100, UI_SCALE_MIN, UI_SCALE_MAX);
-    out.textScale = clamp(out.textScale != null ? out.textScale : 100, UI_SCALE_MIN, UI_SCALE_MAX);
-    out.scaleChrome = out.scaleChrome !== false;
+    out.textScale = clamp(out.textScale != null ? out.textScale : 100, 25, 800);
     if (out.accent !== 'custom' && !ACCENTS[out.accent]) out.accent = 'cyan';
     out.accentCustom = normHex(out.accentCustom);
     out.glow = clamp(out.glow, 0, 100);
@@ -263,12 +236,10 @@
     html.style.setProperty('--atx-accent3', pal.accent3);
     html.style.setProperty('--atx-accent-rgb', pal.rgb);
     html.style.setProperty('--atx-glow-mul', String(glowMul));
-    const ui = clamp(p.uiScale != null ? p.uiScale : 100, UI_SCALE_MIN, UI_SCALE_MAX) / 100;
-    const tx = clamp(p.textScale != null ? p.textScale : 100, UI_SCALE_MIN, UI_SCALE_MAX) / 100;
-    const chrome = p.scaleChrome === false ? 1 : ui;
+    const ui = clamp(p.uiScale != null ? p.uiScale : 100, 25, 800) / 100;
+    const tx = clamp(p.textScale != null ? p.textScale : 100, 25, 800) / 100;
     html.style.setProperty('--atx-ui-scale', String(ui));
     html.style.setProperty('--atx-text-scale', String(tx));
-    html.style.setProperty('--atx-chrome-scale', String(chrome));
     html.style.setProperty('--ui-accent', pal.accent);
     html.style.setProperty('--ui-accent2', pal.accent2);
     html.style.setProperty('--ui-accent3', pal.accent3);
@@ -397,12 +368,9 @@ html[data-atx-layout="desktop"] #atx-pro-bar{
   flex-direction:row;
 }
 
-/* App shell scales. Chrome bars follow --atx-chrome-scale (Look panel stays 1:1). */
+/* Scale the app shell only. Overlays (Look, pro bar, modals) stay 1:1 with the viewport. */
 .fafo-scale-root {
   zoom: var(--atx-ui-scale, 1);
-}
-#atx-pro-bar, #tbSharedServerBar, #tbCompanionBar, .fafo-layout-float-dock, #atx-look-chip {
-  zoom: var(--atx-chrome-scale, 1);
 }
 html[data-atx-iframe="1"] .fafo-scale-root {
   zoom: 1 !important;
@@ -492,12 +460,6 @@ body.atx-ambient-off .amb-wash, body.atx-ambient-off .lx-wash{
 #atx-look .swatch{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle;box-shadow:0 0 8px currentColor}
 #atx-look .toggles{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:8px}
 #atx-look .toggles label{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#c5d0dc}
-#atx-look [data-scale-preset]{
-  appearance:none;border:1px solid rgba(0,243,255,.35);background:rgba(0,243,255,.08);
-  color:#d7f7ff;border-radius:999px;padding:5px 10px;cursor:pointer;
-  font:700 10px/1 "Segoe UI",system-ui,sans-serif;
-}
-#atx-look [data-scale-preset]:hover{border-color:#00f3ff;color:#fff}
 #atx-look .row-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:10px}
 #atx-look .row-btns button{
   border:1px solid rgba(var(--atx-accent-rgb,0,243,255),.4);
@@ -690,17 +652,9 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
           { v: 'comfortable', l: 'Comfortable' },
           { v: 'compact', l: 'Compact' },
         ], p.density) +
-        '<label class="row"><span>UI scale</span><input type="range" min="0" max="1000" step="1" id="atxUiScale" value="' + scaleToSlider(p.uiScale) + '"><input type="number" min="' + UI_SCALE_MIN + '" max="' + UI_SCALE_MAX + '" step="1" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"> <span id="atxUiScalePct">' + p.uiScale + '%</span></label>' +
-        '<label class="row"><span>Text scale</span><input type="range" min="0" max="1000" step="1" id="atxTextScale" value="' + scaleToSlider(p.textScale) + '"><input type="number" min="' + UI_SCALE_MIN + '" max="' + UI_SCALE_MAX + '" step="1" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
-        '<div class="toggles" style="margin:6px 0 4px">' +
-          '<button type="button" class="atx-chip" data-scale-preset="50">50%</button>' +
-          '<button type="button" class="atx-chip" data-scale-preset="75">75%</button>' +
-          '<button type="button" class="atx-chip" data-scale-preset="100">100%</button>' +
-          '<button type="button" class="atx-chip" data-scale-preset="125">125%</button>' +
-          '<button type="button" class="atx-chip" data-scale-preset="tv">4K TV</button>' +
-        '</div>' +
-        '<label><input type="checkbox" id="atxScaleChrome"' + (p.scaleChrome !== false ? ' checked' : '') + '> Scale docks &amp; bars with UI</label>' +
-        '<p class="atx-look-hint">Slider is finer below 100% (4K TV / Windows scaling). 100% = match Windows. 4K TV picks a starting size from this screen. Docks follow UI scale unless you uncheck that. Ctrl+wheel also changes UI scale. Type 10–400% in the box.</p>' +
+        '<label class="row"><span>UI scale</span><input type="range" min="25" max="800" step="5" id="atxUiScale" value="' + p.uiScale + '"><input type="number" min="25" max="800" step="5" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
+        '<label class="row"><span>Text scale</span><input type="range" min="25" max="800" step="5" id="atxTextScale" value="' + p.textScale + '"><input type="number" min="25" max="800" step="5" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
+        '<p class="atx-look-hint">UI scale resizes chrome, panels, and assets. Text scale is extra for copy inside panels. Drag panel edges as large as you want — no window-size cap. Ctrl+mouse-wheel also changes UI scale. Type up to 800% in the box.</p>' +
       '</div>' +
 
       '<div class="atx-look-sec">' +
@@ -800,32 +754,19 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
     function bindScale(rangeId, numId, key) {
       const r = panel.querySelector('#' + rangeId);
       const n = panel.querySelector('#' + numId);
-      const pct = panel.querySelector('#' + rangeId + 'Pct');
       function setBoth(v) {
-        v = clamp(v, UI_SCALE_MIN, UI_SCALE_MAX);
-        if (r) r.value = String(scaleToSlider(v));
+        v = clamp(v, 25, 800);
+        if (r) r.value = String(v);
         if (n) n.value = String(v);
-        if (pct) pct.textContent = v + '%';
         const patch = {};
         patch[key] = v;
         save(patch);
       }
-      r && r.addEventListener('input', function () { setBoth(sliderToScale(r.value)); });
+      r && r.addEventListener('input', function () { setBoth(r.value); if (n) n.value = r.value; });
       n && n.addEventListener('change', function () { setBoth(n.value); });
     }
     bindScale('atxUiScale', 'atxUiScaleN', 'uiScale');
     bindScale('atxTextScale', 'atxTextScaleN', 'textScale');
-    panel.querySelectorAll('[data-scale-preset]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        const raw = btn.getAttribute('data-scale-preset');
-        const v = raw === 'tv' ? suggestTvScale() : Number(raw);
-        save({ uiScale: clamp(v, UI_SCALE_MIN, UI_SCALE_MAX) });
-        renderPanel();
-      });
-    });
-    panel.querySelector('#atxScaleChrome')?.addEventListener('change', function () {
-      save({ scaleChrome: !!this.checked });
-    });
     bindColorPair('atxAccentCustom', 'atxAccentCustomHex', 'accentCustom', function (hex) {
       save({ accent: 'custom', accentCustom: hex });
       renderPanel();
@@ -948,12 +889,10 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
       let url = '';
       for (let i = nodes.length - 1; i >= 0; i--) {
         const src = nodes[i].getAttribute('src') || '';
-        if (/aitoolbox-prefs\.js/i.test(src)) { url = src.replace(/aitoolbox-prefs\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js$1'); break; }
-        if (/aitoolbox-pro\.js/i.test(src)) { url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js$1'); break; }
+        if (/aitoolbox-prefs\.js/i.test(src)) { url = src.replace(/aitoolbox-prefs\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js'); break; }
+        if (/aitoolbox-pro\.js/i.test(src)) { url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js'); break; }
       }
       if (!url) url = 'shared/aitoolbox-theme-fx.js';
-      if (typeof global.AIToolboxCacheBust === 'function') url = global.AIToolboxCacheBust(url);
-      else if (!/[?&]v=/.test(url) && global.AITOOLBOX_VERSION) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(global.AITOOLBOX_VERSION);
       const s = document.createElement('script');
       s.src = url;
       s.async = true;
@@ -992,9 +931,8 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
       if (/^(VIDEO|CANVAS|IMG|IFRAME)$/.test(tag)) return;
       if (e.target && e.target.closest && e.target.closest('video, canvas, .video-deck, .compare-content, .prompt-wrap, .prompt')) return;
       e.preventDefault();
-      const cur = Number(prefs.uiScale) || 100;
-      const step = (e.deltaY < 0 ? 1 : -1) * (cur <= 40 ? 2 : cur <= 120 ? 5 : 10);
-      save({ uiScale: clamp(cur + step, UI_SCALE_MIN, UI_SCALE_MAX) });
+      const step = e.deltaY < 0 ? 5 : -5;
+      save({ uiScale: clamp(prefs.uiScale + step, 25, 800) });
       if (document.getElementById('atx-look')?.classList.contains('open')) renderPanel();
     }, { passive: false });
     try {
