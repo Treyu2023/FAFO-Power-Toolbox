@@ -1,5 +1,7 @@
 /**
  * AI Toolbox UI — tooltips, confirm+trust, tutorial walkthrough, toasts.
+ * Snapshots: newest 5 copies of THIS file live in snapshots/shared/aitoolbox-ui.js/
+ * (per app, not a global pool). Never leave .bak next to live files. See snapshots/README.md
  */
 (function (global) {
     'use strict';
@@ -59,7 +61,8 @@
             document.body.appendChild(tooltipEl);
         }
 
-        root.querySelectorAll('[data-tip]').forEach(el => {
+        // Include multi-level tip attributes + title fallbacks
+        root.querySelectorAll('[data-tip], [data-tip-basic], [data-tip-pro], [data-tip-mid]').forEach(el => {
             if (el._tipBound) return;
             el._tipBound = true;
 
@@ -67,8 +70,16 @@
                 clearTimeout(tooltipTimer);
                 // Slightly snappy so users can skim cards before clicking
                 tooltipTimer = setTimeout(() => {
-                    const title = el.dataset.tipTitle || el.getAttribute('data-tip-title') || '';
-                    const text = el.dataset.tip || el.getAttribute('data-tip') || '';
+                    let title = el.dataset.tipTitle || el.getAttribute('data-tip-title') || '';
+                    let text = el.dataset.tip || el.getAttribute('data-tip') || '';
+                    // Skill-aware resolution (FAFOGuidance)
+                    try {
+                        if (global.FAFOGuidance?.resolveTip) {
+                            const r = global.FAFOGuidance.resolveTip(el);
+                            if (r.title) title = r.title;
+                            if (r.text) text = r.text;
+                        }
+                    } catch (_) { /* ignore */ }
                     if (!title && !text) return;
                     // Escape HTML so tool names/descriptions cannot inject markup
                     const esc = (s) => String(s || '')
@@ -87,8 +98,7 @@
                 if (tooltipEl && tooltipEl.classList.contains('visible')) positionTooltip(el);
             });
             el.addEventListener('mouseleave', () => {
-                clearTimeout(tooltipTimer);
-                tooltipEl.classList.remove('visible');
+                hideTooltip();
             });
             // Keyboard focus also shows tip (accessibility)
             el.addEventListener('focus', () => {
@@ -121,13 +131,22 @@
             t = document.createElement('div');
             t.id = 'ui-toast-global';
             t.className = 'ui-toast';
+            t.setAttribute('role', 'status');
+            t.addEventListener('click', () => t.classList.remove('show'));
             document.body.appendChild(t);
         }
         t.className = 'ui-toast' + (type ? ' ' + type : '');
         t.textContent = msg;
+        t.title = 'Click to dismiss';
         requestAnimationFrame(() => t.classList.add('show'));
         clearTimeout(t._hide);
-        t._hide = setTimeout(() => t.classList.remove('show'), 2800);
+        const ms = type === 'warn' || type === 'error' ? 5600 : 2800;
+        t._hide = setTimeout(() => t.classList.remove('show'), ms);
+    }
+
+    function hideTooltip() {
+        clearTimeout(tooltipTimer);
+        if (tooltipEl) tooltipEl.classList.remove('visible');
     }
 
     function confirmAction(opts) {
@@ -168,8 +187,8 @@
                     ${previewHtml}
                     ${trustKey ? `<label class="trust-row"><input type="checkbox" id="ui-trust-cb"${trustChecked}> ${trustLabel}</label>` : ''}
                     <div class="ui-modal-actions">
-                        <button class="ui-btn ghost" id="ui-cancel">${cancelText}</button>
-                        <button class="ui-btn primary" id="ui-confirm">${confirmText}</button>
+                        <button type="button" class="ui-btn ghost" id="ui-cancel">${cancelText}</button>
+                        <button type="button" class="ui-btn primary" id="ui-confirm">${confirmText}</button>
                     </div>
                 </div>`;
             document.body.appendChild(bg);
@@ -196,6 +215,11 @@
     function startTutorial(steps, storageKey, onStep, opts) {
         const force = opts === true || (opts && opts.force);
         if (!force && storageKey && isTutorialDone(storageKey)) return;
+        try {
+            // Hub iframes: a full-page dim covers Library/Duplicates/Organizer
+            // toolbars. First-run tour stays on the standalone window.
+            if (!force && window.self !== window.top) return;
+        } catch (_) { /* ignore */ }
         tutorialState = { steps, index: 0, storageKey, onStep };
         showTutorialStep();
     }
@@ -239,7 +263,18 @@
         const positionSpotlight = () => {
             const target = step.target ? document.querySelector(step.target) : null;
             if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (window.AIToolboxLayout && typeof window.AIToolboxLayout.scrollInsidePane === 'function') {
+                    window.AIToolboxLayout.scrollInsidePane(target, { behavior: 'smooth' });
+                } else {
+                    const pane = target.closest('.lx-tile-scroll, .fafo-panel-body, .fafo-section-body, .fafo-scroll-pane');
+                    if (pane) {
+                        const t = target.getBoundingClientRect();
+                        const p = pane.getBoundingClientRect();
+                        pane.scrollTop += (t.top + t.height / 2) - (p.top + p.height / 2);
+                    } else {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
                 setTimeout(() => {
                     const r = target.getBoundingClientRect();
                     const pad = 8;
@@ -265,6 +300,8 @@
         window.addEventListener('resize', positionSpotlight);
 
         bg.querySelector('#tut-skip').onclick = endTutorial;
+        const dim = bg.querySelector('.ui-tutorial-dim');
+        if (dim) dim.addEventListener('click', endTutorial);
         bg.querySelector('#tut-next').onclick = () => {
             tutorialState.index++;
             showTutorialStep();
@@ -502,6 +539,18 @@
         return (num < 0 ? '-' : '') + shown + ' ' + units[i];
     }
 
+    function isToolboxLauncherPage() {
+        try {
+            if (document.body && document.body.getAttribute('data-tb-chrome') === 'off') return true;
+            const raw = String(location.pathname || '') + ' ' + String(location.href || '');
+            let decoded = raw;
+            try { decoded = decodeURIComponent(raw.replace(/\+/g, '%20')); } catch (_) { /* ignore */ }
+            if (/Toolbox Launcher\.html/i.test(raw) || /Toolbox Launcher\.html/i.test(decoded)) return true;
+            if (/toolbox%20launcher\.html/i.test(raw)) return true;
+        } catch (_) { /* ignore */ }
+        return false;
+    }
+
     /**
      * Inject a consistent multi-server status bar (S1 HTML Toolbox + S2 FAFO Tagger)
      * with ← Toolbox escape hatch. OLED black + teal/neon accents.
@@ -509,8 +558,7 @@
      */
     function mountServerBar(opts = {}) {
         // Don't put a second bar on the launcher (it has its own full panel)
-        const isLauncher = /Toolbox Launcher\.html/i.test(location.pathname || location.href || '');
-        if (opts.skipOnLauncher !== false && isLauncher) {
+        if (opts.skipOnLauncher !== false && isToolboxLauncherPage()) {
             return null;
         }
 
@@ -581,8 +629,18 @@
                 }
                 .tb-pill.on{border-color:rgba(0,255,136,.45);color:#d8ffe8}
                 .tb-pill.on .tb-dot{background:#00ff88;box-shadow:0 0 8px #00ff88}
-                .tb-pill.wait{border-color:rgba(255,200,0,.4);color:#ffe9a8}
-                .tb-pill.wait .tb-dot{background:#ffc800;box-shadow:0 0 8px #ffc800;animation:ui-pulse-glow 1.2s ease infinite}
+                .tb-pill.wait{border-color:rgba(45,212,191,.5);color:#99f6e4}
+                .tb-pill.wait .tb-dot{background:#2dd4bf;box-shadow:0 0 8px #2dd4bf;animation:ui-pulse-glow 1.2s ease infinite}
+                .tb-pill.warn{border-color:rgba(255,159,26,.55);color:#ffd8a8}
+                .tb-pill.warn .tb-dot{background:#ff9f1a;box-shadow:0 0 8px #ff9f1a}
+                .tb-pill.attention{border-color:rgba(255,68,102,.55);color:#ffd0d8}
+                .tb-pill.attention .tb-dot{
+                    animation:tb-attn-flash .85s ease infinite;
+                }
+                @keyframes tb-attn-flash{
+                    0%,100%{background:#00ff88;box-shadow:0 0 8px #00ff88}
+                    50%{background:#ff4466;box-shadow:0 0 10px #ff4466}
+                }
                 .tb-pill.off{border-color:rgba(255,68,102,.35)}
                 .tb-bar-actions{display:flex;gap:6px;align-items:center}
                 .tb-btn{
@@ -590,6 +648,9 @@
                     background:rgba(0,243,255,.1);color:#00f3ff;cursor:pointer;font:600 11px system-ui,sans-serif;
                 }
                 .tb-btn.primary{background:rgba(0,243,255,.18);border-color:#00f3ff}
+                .tb-btn.primary.state-online{background:rgba(0,255,136,.2);border-color:#00ff88;color:#b7ffd9}
+                .tb-btn.primary.state-starting{background:rgba(45,212,191,.22);border-color:#2dd4bf;color:#99f6e4}
+                .tb-btn.primary.state-warn{background:rgba(255,159,26,.2);border-color:#ff9f1a;color:#ffd8a8}
                 .tb-btn.ghost{background:transparent;border-color:rgba(255,255,255,.18);color:#888}
                 .tb-btn:hover{box-shadow:0 0 12px rgba(0,243,255,.3)}
                 .tb-btn:disabled{opacity:.5;cursor:wait}
@@ -625,15 +686,47 @@
             if (ver) ver.textContent = 'v' + global.AITOOLBOX_VERSION;
         }
 
+        // Mark body so pages can hide legacy duplicate S1/S2 / Start Server chrome
+        try {
+            document.body?.classList.add('tb-has-companion-bar');
+            // Hide common page-local server pills when shared bar is present
+            document.querySelectorAll(
+                '#serverPill, #btnStartServer, #serverStatus, .server-pill.legacy-server, [data-legacy-server-chrome]'
+            ).forEach((el) => {
+                if (el.closest('#tbSharedServerBar')) return;
+                el.classList.add('tb-legacy-server-hidden');
+                el.style.display = 'none';
+            });
+            // Remove accidental second companion bars
+            document.querySelectorAll('#tbSharedServerBar').forEach((el, i) => {
+                if (i > 0) el.remove();
+            });
+        } catch (_) { /* ignore */ }
+
         return _wireCompanionBar(opts);
     }
 
     function _setPill(el, state, detail) {
         if (!el) return;
-        el.classList.remove('on', 'off', 'wait');
-        el.classList.add(state === 'on' ? 'on' : state === 'wait' ? 'wait' : 'off');
+        el.classList.remove('on', 'off', 'wait', 'warn', 'attention');
+        const cls = (
+            state === 'on' ? 'on'
+            : state === 'wait' ? 'wait'
+            : state === 'warn' ? 'warn'
+            : state === 'attention' ? 'attention'
+            : 'off'
+        );
+        el.classList.add(cls);
         const em = el.querySelector('em');
-        if (em) em.textContent = detail || (state === 'on' ? 'online' : state === 'wait' ? '…' : 'offline');
+        if (em) {
+            em.textContent = detail || (
+                state === 'on' ? 'online'
+                : state === 'wait' ? '…'
+                : state === 'warn' ? 'warn'
+                : state === 'attention' ? 'attn'
+                : 'offline'
+            );
+        }
     }
 
     function _wireCompanionBar(opts = {}) {
@@ -714,7 +807,17 @@
             if (startBtn) {
                 startBtn.style.display = (s1 && s2) ? 'none' : '';
                 startBtn.disabled = false;
-                startBtn.textContent = startBtn.dataset.label || '▶ Start';
+                startBtn.classList.remove('state-online', 'state-starting', 'state-warn', 'state-offline');
+                if (s1 && s2) {
+                    startBtn.classList.add('state-online');
+                    startBtn.textContent = '✓ Online';
+                } else if (s1 || s2) {
+                    startBtn.classList.add('state-warn');
+                    startBtn.textContent = startBtn.dataset.label || '▶ Start missing';
+                } else {
+                    startBtn.classList.add('state-offline');
+                    startBtn.textContent = startBtn.dataset.label || '▶ Start';
+                }
             }
             if (hintEl && !starting) {
                 const parts = [];
@@ -961,24 +1064,282 @@
         } catch { /* ignore */ }
     }
 
-    /** Esc (when not typing / in a modal) returns to Toolbox Launcher. */
+    /**
+     * Close transient UI before Esc→launcher (compare panes, menus, modals).
+     * Returns true if something was closed (caller should NOT leave the page).
+     */
+    function tryCloseTransientUi() {
+        try {
+            const ctx = document.getElementById('lxCtx');
+            if (ctx && ctx.classList.contains('open')) {
+                ctx.classList.remove('open');
+                ctx.hidden = true;
+                return true;
+            }
+            // Explicit close targets (Dup Manager compare, etc.)
+            const look = document.getElementById('atx-look');
+            if (look && look.classList.contains('open')) {
+                try { window.AIToolboxPrefs?.close?.(); } catch (_) { look.classList.remove('open'); }
+                return true;
+            }
+            const cmp = document.getElementById('comparePanel');
+            if (cmp && cmp.classList.contains('open')) {
+                const btn = document.getElementById('btnCloseCompare');
+                if (btn) { btn.click(); return true; }
+                cmp.classList.remove('open', 'active');
+                return true;
+            }
+            // data-esc-close elements that are open/visible
+            const escClose = document.querySelector(
+                '[data-esc-close].open, [data-esc-close].active, [data-esc-close][aria-hidden="false"]'
+            );
+            if (escClose) {
+                const b = escClose.querySelector('[data-close], .close, .btn-close, [aria-label="Close"]');
+                if (b) b.click();
+                else {
+                    escClose.classList.remove('open', 'active');
+                    escClose.setAttribute('aria-hidden', 'true');
+                    if (escClose.style) escClose.style.display = 'none';
+                }
+                return true;
+            }
+            // Open dropdown menus (Media Library Pairs/Tools menus)
+            const menus = document.querySelectorAll(
+                '.menu-wrap.open, .dropdown.open, .menu.open, .nav-menu.open, details[open].menu-details, .lx-ctx.open'
+            );
+            if (menus.length) {
+                menus.forEach((m) => {
+                    m.classList.remove('open');
+                    if (m.tagName === 'DETAILS') m.open = false;
+                });
+                return true;
+            }
+            // Visible modal overlays
+            const modal = document.querySelector(
+                '.ui-modal-bg.open, .modal.open, .ui-modal.open, .overlay.open, .overlay.visible, ' +
+                '.modal.show, .ui-modal.show, dialog[open], ' +
+                '.vis-modal-backdrop.open, .tile-modal-backdrop.open, .cmdk-backdrop.open, ' +
+                '.settings-drawer.open, #atx-pro-help.open, ' +
+                '[role="dialog"].open, [role="dialog"][aria-hidden="false"]'
+            );
+            if (modal) {
+                const b = modal.querySelector(
+                    '[data-close], .close, .btn-close, .modal-close, [aria-label="Close"], button.close'
+                );
+                if (b) { b.click(); return true; }
+                if (modal.tagName === 'DIALOG' && typeof modal.close === 'function') {
+                    modal.close();
+                    return true;
+                }
+                modal.classList.remove('open', 'show', 'visible', 'active');
+                modal.setAttribute('aria-hidden', 'true');
+                return true;
+            }
+            // Tutorial / walkthrough
+            const tut = document.querySelector(
+                '.ui-tutorial-bg, .tutorial-overlay, .cine-root, #tutorialRoot, [data-tutorial-open]'
+            );
+            if (tut && (tut.classList.contains('open') || tut.classList.contains('active') || getComputedStyle(tut).display !== 'none')) {
+                try { endTutorial?.(); } catch { /* ignore */ }
+                tut.classList.remove('open', 'active');
+                if (tut.style) tut.style.display = 'none';
+                return true;
+            }
+        } catch { /* ignore */ }
+        return false;
+    }
+
+    /**
+     * Esc closes overlays first; second Esc (or Esc with nothing open) → Toolbox Launcher.
+     * Pages can set body data-tb-esc="off" or cancel the `fafo:escape` event to keep control.
+     * Inside iframes (Media Hub / Compare Hub), Esc posts to parent instead of hijacking frame.
+     */
     function bindEscToLauncher() {
         if (typeof document === 'undefined' || document.documentElement.dataset.tbEsc === '1') return;
         document.documentElement.dataset.tbEsc = '1';
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') return;
             if (document.body?.dataset?.tbEsc === 'off') return;
-            // Don't steal Esc from typing trainer fields, dialogs, or pointer-lock games
+            // Don't steal Esc from typing fields, dialogs, or pointer-lock games
             const t = e.target;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-            if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal, .cine-root')) return;
+            if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal, .cine-root, dialog[open]')) {
+                // still try close helper, but don't navigate
+                if (tryCloseTransientUi()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                return;
+            }
             if (document.pointerLockElement) return;
             // Skip on launcher itself
-            if (/Toolbox Launcher/i.test(document.title) || /Toolbox Launcher\.html/i.test(location.pathname)) return;
+            if (/Toolbox Launcher/i.test(document.title) || /Toolbox Launcher\.html/i.test(location.pathname || '')) return;
+
+            // Layer 1: close open UI (compare panel, menus, modals)
+            if (tryCloseTransientUi()) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Layer 2: page-specific handler can cancel
+            try {
+                const ev = new CustomEvent('fafo:escape', { cancelable: true, bubbles: true });
+                if (!document.dispatchEvent(ev) || ev.defaultPrevented) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            } catch { /* ignore */ }
+
+            // Layer 3: embedded in hub iframe — don't dump user out of the hub shell
+            try {
+                if (window.self !== window.top) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.parent.postMessage({ type: 'fafo-escape', href: launcherHref() }, '*');
+                    return;
+                }
+            } catch { /* cross-origin — fall through to local leave */ }
+
+            // Layer 4: leave tool → launcher
+            e.preventDefault();
+            e.stopPropagation();
             try {
                 location.href = launcherHref();
             } catch { /* ignore */ }
         }, true);
+    }
+
+    /**
+     * Parse Media Hub / Compare Hub deep-link from an href.
+     * Returns { kind: 'media'|'compare'|'launcher'|null, tab, search, href }.
+     */
+    function parseToolboxDeepLink(href) {
+        const raw = String(href || '');
+        let abs = raw;
+        try { abs = new URL(raw, location.href).href; } catch { /* keep raw */ }
+        const media = /Media(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(abs) || /Media(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(raw);
+        if (media) {
+            return { kind: 'media', tab: decodeURIComponent(media[2] || '').split('?')[0].split('/')[0], search: media[1] || '', href: abs };
+        }
+        const compare = /Compare(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(abs) || /Compare(?:%20| )Hub\.html([^#]*)#([^?#]*)/i.exec(raw);
+        if (compare) {
+            return { kind: 'compare', tab: decodeURIComponent(compare[2] || '').split('?')[0].split('/')[0], search: compare[1] || '', href: abs };
+        }
+        if (/Toolbox(?:%20| )Launcher\.html/i.test(abs) || /Toolbox(?:%20| )Launcher\.html/i.test(raw)) {
+            return { kind: 'launcher', tab: '', search: '', href: abs };
+        }
+        if (/Media(?:%20| )Hub\.html/i.test(abs) || /Media(?:%20| )Hub\.html/i.test(raw)) {
+            return { kind: 'media', tab: '', search: '', href: abs };
+        }
+        if (/Compare(?:%20| )Hub\.html/i.test(abs) || /Compare(?:%20| )Hub\.html/i.test(raw)) {
+            return { kind: 'compare', tab: '', search: '', href: abs };
+        }
+        return null;
+    }
+
+    /**
+     * Navigate to a toolbox page. When this tool is framed by Media/Compare Hub,
+     * switch the parent tab (or break out to top) instead of nesting a hub in the iframe.
+     */
+    function navigateToolbox(href) {
+        const info = parseToolboxDeepLink(href);
+        const fallback = () => { location.href = href; };
+        if (!info) { fallback(); return; }
+        try {
+            if (window.self !== window.top) {
+                if (info.kind === 'media' && info.tab) {
+                    window.parent.postMessage({ type: 'fafo-hub-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                    return;
+                }
+                if (info.kind === 'compare' && info.tab) {
+                    window.parent.postMessage({ type: 'fafo-compare-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                    return;
+                }
+                try { window.top.location.href = info.href; return; } catch { /* cross-origin */ }
+                window.parent.postMessage({ type: 'fafo-escape', href: info.href }, '*');
+                return;
+            }
+        } catch { /* ignore */ }
+        location.href = info.href || href;
+    }
+
+    /** Intercept <a href="Media Hub.html#duplicates"> etc. so iframe children cannot nest a hub. */
+    function bindFramedHubLinks() {
+        if (typeof document === 'undefined' || document.documentElement.dataset.tbHubLinks === '1') return;
+        document.documentElement.dataset.tbHubLinks = '1';
+        document.addEventListener('click', (e) => {
+            if (e.defaultPrevented) return;
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const a = e.target?.closest?.('a[href]');
+            if (!a) return;
+            const href = a.getAttribute('href') || '';
+            if (!href || href.startsWith('javascript:') || href === '#') return;
+            const info = parseToolboxDeepLink(href) || parseToolboxDeepLink(a.href);
+            if (!info) return;
+            try {
+                if (window.self === window.top) return;
+            } catch { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            navigateToolbox(a.href || href);
+        }, true);
+    }
+
+    /**
+     * Shared QoL that every toolbox page gets for free:
+     *  / focuses the first search box
+     *  click [data-copy] copies text
+     *  scroll/click hides leftover tooltips
+     */
+    function installGlobalQol() {
+        if (typeof document === 'undefined' || document.documentElement.dataset.tbQol === '1') return;
+        document.documentElement.dataset.tbQol = '1';
+
+        const hideTip = () => { try { hideTooltip(); } catch { /* ignore */ } };
+        window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+        document.addEventListener('click', hideTip, true);
+        document.addEventListener('keydown', hideTip, true);
+
+        document.addEventListener('click', async (e) => {
+            const hit = e.target?.closest?.('[data-copy]');
+            if (!hit) return;
+            const text = hit.getAttribute('data-copy') || hit.textContent || '';
+            if (!text.trim()) return;
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text.trim());
+                else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text.trim();
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                }
+                toast('Copied', 'ok');
+            } catch {
+                toast('Copy failed', 'warn');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.defaultPrevented) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const t = e.target;
+            const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+            if (typing) return;
+            if (e.key !== '/') return;
+            const search = document.querySelector(
+                '#toolSearch, input[type="search"], input[name="q"], input[placeholder*="earch" i], input[placeholder*="filter" i]'
+            );
+            if (!search || search.disabled) return;
+            e.preventDefault();
+            search.focus();
+            if (typeof search.select === 'function') search.select();
+        });
     }
 
     // Auto-install on every page that loads the UI kit (low cost, high value)
@@ -988,13 +1349,41 @@
             try {
                 // Skip pure extension pages / about:blank noise
                 if (!document.body) return;
-                if (document.body.dataset.tbChrome === 'off') return;
+                if (document.body.dataset.tbChrome === 'off' || isToolboxLauncherPage()) return;
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
+                bindFramedHubLinks();
+                installGlobalQol();
+                // Guidance (PC score + skill tooltips) — load once
+                ensureGuidanceScript();
             } catch (e) {
                 console.warn('[AIToolbox] auto chrome', e);
             }
         };
+
+        function ensureGuidanceScript() {
+            if (global.FAFOGuidance) {
+                try { global.FAFOGuidance.installSkillControl?.(); } catch (_) { /* ignore */ }
+                return;
+            }
+            if (document.getElementById('fafoGuidanceScript')) return;
+            let src = 'shared/fafo-guidance.js';
+            try {
+                const scripts = document.getElementsByTagName('script');
+                for (let i = scripts.length - 1; i >= 0; i--) {
+                    const s = scripts[i].src || '';
+                    if (s.includes('aitoolbox-ui.js')) {
+                        src = s.replace(/aitoolbox-ui\.js.*$/i, 'fafo-guidance.js');
+                        break;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+            const el = document.createElement('script');
+            el.id = 'fafoGuidanceScript';
+            el.src = src;
+            el.async = true;
+            document.head.appendChild(el);
+        }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', autoMount, { once: true });
         } else {
@@ -1033,5 +1422,10 @@
         launcherHref,
         ensureToolboxBack,
         installStabilityGuards,
+        tryCloseTransientUi,
+        parseToolboxDeepLink,
+        navigateToolbox,
+        bindFramedHubLinks,
+        installGlobalQol,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

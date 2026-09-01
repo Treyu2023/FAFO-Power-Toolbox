@@ -1349,6 +1349,7 @@
             try {
                 // Skip pure extension pages / about:blank noise
                 if (!document.body) return;
+                ensureChromeFix();
                 if (document.body.dataset.tbChrome === 'off' || isToolboxLauncherPage()) return;
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
@@ -1361,26 +1362,39 @@
             }
         };
 
+        function sharedScriptSrc(fileName) {
+            let src = 'shared/' + fileName;
+            try {
+                const scripts = document.getElementsByTagName('script');
+                for (let i = scripts.length - 1; i >= 0; i--) {
+                    const s = scripts[i].src || '';
+                    if (s.includes('aitoolbox-ui.js')) {
+                        src = s.replace(/aitoolbox-ui\.js.*$/i, fileName);
+                        break;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+            return src;
+        }
+
+        function ensureChromeFix() {
+            if (global.__fafoChromeFix || document.getElementById('fafoChromeFixScript')) return;
+            const el = document.createElement('script');
+            el.id = 'fafoChromeFixScript';
+            el.src = sharedScriptSrc('aitoolbox-chrome-fix.js');
+            el.async = true;
+            (document.head || document.documentElement).appendChild(el);
+        }
+
         function ensureGuidanceScript() {
             if (global.FAFOGuidance) {
                 try { global.FAFOGuidance.installSkillControl?.(); } catch (_) { /* ignore */ }
                 return;
             }
             if (document.getElementById('fafoGuidanceScript')) return;
-            let src = 'shared/fafo-guidance.js';
-            try {
-                const scripts = document.getElementsByTagName('script');
-                for (let i = scripts.length - 1; i >= 0; i--) {
-                    const s = scripts[i].src || '';
-                    if (s.includes('aitoolbox-ui.js')) {
-                        src = s.replace(/aitoolbox-ui\.js.*$/i, 'fafo-guidance.js');
-                        break;
-                    }
-                }
-            } catch (_) { /* ignore */ }
             const el = document.createElement('script');
             el.id = 'fafoGuidanceScript';
-            el.src = src;
+            el.src = sharedScriptSrc('fafo-guidance.js');
             el.async = true;
             document.head.appendChild(el);
         }

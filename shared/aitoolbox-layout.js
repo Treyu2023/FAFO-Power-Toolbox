@@ -1130,8 +1130,38 @@
       const label = el('span', 'fafo-layout-float-label', { text: 'Layout' });
       host.appendChild(label);
       dock.appendChild(host);
+      restoreDockSize(host);
+      watchDockSize(host);
     }
     mountToolbar(host, appId, instance);
+  }
+
+  function restoreDockSize(host) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('fafo_layout_dock_size') || 'null');
+      if (!saved || !saved.w || !saved.h) return;
+      host.style.width = Math.max(160, saved.w) + 'px';
+      host.style.height = Math.max(36, saved.h) + 'px';
+    } catch (_) { /* ignore */ }
+  }
+
+  function watchDockSize(host) {
+    if (host.dataset.sizeWatch === '1' || typeof ResizeObserver !== 'function') return;
+    host.dataset.sizeWatch = '1';
+    let t = 0;
+    new ResizeObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const r = host.getBoundingClientRect();
+        if (r.width < 80 || r.height < 24) return;
+        try {
+          localStorage.setItem('fafo_layout_dock_size', JSON.stringify({
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+          }));
+        } catch (_) { /* ignore */ }
+      }, 180);
+    }).observe(host);
   }
 
   function wirePanelReset(panel, instance) {
