@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duplicate File Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.48">
-    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.48">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.49">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.49">
     <style>
         :root {
             --bg: #0a0e14; --panel: #121820; --panel2: #0d1218;
@@ -421,15 +421,22 @@
                     <div class="scan-status" id="scanStatus">Start the server (▶ Start Server above), pick a folder, then scan. Pause / Cancel live only in this left dock.</div>
                 </div>
                 <div class="cross-panel" id="crossPanel">
-                    <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer;">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer;"
+                           data-tip-title="Cross-source"
+                           data-tip-basic="Compare Inbox vs already-processed folders. Set a Before / Pre-scaled folder to keep that copy and recycle Inbox twins so you do not re-process."
+                           data-tip-pro="Inbox copies can be deleted. Before and After are locked. After is linked by _PID_xxxxxxxx from the Pre-scaled name, not size.">
                         <input type="checkbox" id="crossSourceOn">
                         Cross-source check (optional)
                     </label>
-                    <p class="hint" style="margin:8px 0 0">Inbox = Downloads / new files (can recycle). <strong>Before</strong> = Pre-scaled originals after processing (locked). <strong>After</strong> = 4K/96fps post-upgrade (locked, matched by <code>_PID_xxxxxxxx</code> from the pre-scaled name — not by size).</p>
+                    <p class="hint" style="margin:8px 0 0">Inbox = Downloads / new files (can recycle). <strong>Before</strong> = Pre-scaled originals after processing (locked — keep rule uses this). <strong>After</strong> = 4K/96fps post-upgrade (locked, matched by <code>_PID_xxxxxxxx</code> from the pre-scaled name — not by size). Leave Before empty to turn the keep-Pre-scaled rule off.</p>
                     <div id="crossSourceList"></div>
                     <div class="cross-actions">
-                        <button class="ui-btn ghost" type="button" id="btnAddSource" data-tip="Add another folder to cross-reference">+ Folder</button>
-                        <button class="ui-btn ghost" type="button" id="btnLoadPipelineFolders" data-tip="Fill Inbox / Pre-scaled / After from the FlashVSR profile when those folders exist">Load FlashVSR folders</button>
+                        <button class="ui-btn ghost" type="button" id="btnAddSource"
+                                data-tip-title="Add folder"
+                                data-tip="Add another Inbox, Before (Pre-scaled), or After folder. Role is set on the dropdown — hover it for what each role does.">+ Folder</button>
+                        <button class="ui-btn ghost" type="button" id="btnLoadPipelineFolders"
+                                data-tip-title="Load FlashVSR folders"
+                                data-tip="Fills Inbox = NEW DOWNLOADS, Before = Pre Scaled videos, After = post-upgrade. Before being set turns on Keep Pre-scaled (recycle Inbox copies of files you already processed).">Load FlashVSR folders</button>
                     </div>
                 </div>
             </div>
@@ -513,8 +520,8 @@
                 <div class="toolbar-merge">
                     <button class="ui-btn primary" id="btnMergeAllLowest" disabled
                             data-tip-title="Merge all using keep rules"
-                            data-tip-basic="For every group, keep the file that wins your ranked keep rules, recycle the rest."
-                            data-tip-pro="Uses the stacked criteria on the left (top wins). Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
+                            data-tip-basic="For every group, keep the file that wins your ranked keep rules, recycle the rest. If Keep Pre-scaled is on and a Before folder is set, Inbox twins of those files go to Recycle Bin."
+                            data-tip-pro="Top keep rule wins. Before / After copies stay locked. Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
                 </div>
             </div>
             <div class="groups-wrap" id="groupsWrap">
@@ -549,9 +556,11 @@
                  data-fafo-resizable="1" data-fafo-section-min="52" data-fafo-compact="1">
                 <h3 style="display:none">Actions</h3>
                 <button class="ui-btn" id="btnCompare" disabled data-tip="Side-by-side preview for two selected files">⇄ Compare</button>
-                <button class="ui-btn primary" id="btnMerge" disabled data-tip="Keep the selected file (defaults to ranked keep rules), send all other copies to Recycle Bin">⊕ Merge group</button>
-                <button class="ui-btn danger" id="btnDeleteSelected" disabled data-tip="Delete checked copies only">✕ Delete selected</button>
-                <p class="hint" style="margin:8px 0 0;font-size:10px;line-height:1.4">Default keeper follows the ranked <strong>Keep rules</strong> on the left (top wins). Override with the radio. <strong>Merge all</strong> uses the same stack.</p>
+                <button class="ui-btn primary" id="btnMerge" disabled
+                        data-tip-title="Merge group"
+                        data-tip="Keep the selected file (defaults to keep rules — Pre-scaled wins when a Before folder is set), send Inbox extras to Recycle Bin. Pre-scaled and After copies stay locked.">⊕ Merge group</button>
+                <button class="ui-btn danger" id="btnDeleteSelected" disabled data-tip="Delete checked copies only. Pre-scaled / After files cannot be deleted here.">✕ Delete selected</button>
+                <p class="hint" style="margin:8px 0 0;font-size:10px;line-height:1.4">Default keeper follows the ranked <strong>Keep rules</strong> on the left (top wins). If Before is set, Keep Pre-scaled recycles Inbox copies of already-processed files. Override with the radio. <strong>Merge all</strong> uses the same stack.</p>
             </div>
         </aside>
     </div>
@@ -574,15 +583,15 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=1.16.48"></script>
-    <script src="../shared/aitoolbox-version.js?v=1.16.48"></script>
-    <script src="../shared/aitoolbox-debug.js?v=1.16.48"></script>
-    <script src="../shared/aitoolbox-core.js?v=1.16.48"></script>
-    <script src="../shared/aitoolbox-api.js?v=1.16.48"></script>
-    <script src="../shared/aitoolbox-ui.js?v=1.16.48"></script>
-    <script src="../shared/fafo-ops-stats.js?v=1.16.48"></script>
-    <script src="../shared/aitoolbox-layout.js?v=1.16.48"></script>
-  <script src="../shared/aitoolbox-pro.js?v=1.16.48"></script>
+    <script src="../shared/aitoolbox-config.js?v=1.16.49"></script>
+    <script src="../shared/aitoolbox-version.js?v=1.16.49"></script>
+    <script src="../shared/aitoolbox-debug.js?v=1.16.49"></script>
+    <script src="../shared/aitoolbox-core.js?v=1.16.49"></script>
+    <script src="../shared/aitoolbox-api.js?v=1.16.49"></script>
+    <script src="../shared/aitoolbox-ui.js?v=1.16.49"></script>
+    <script src="../shared/fafo-ops-stats.js?v=1.16.49"></script>
+    <script src="../shared/aitoolbox-layout.js?v=1.16.49"></script>
+  <script src="../shared/aitoolbox-pro.js?v=1.16.49"></script>
     <script>
 
         function el(id){try{if(!id)return null;return typeof id==='string'?document.getElementById(id):id}catch(_){return null}}
@@ -630,7 +639,10 @@
         const LS_DUP_SCAN = 'fafo_duplicate_manager_scan_v1';
 
         const KEEP_CATALOG = {
-            prefer_prescaled: { label: 'Keep Pre-scaled, recycle Inbox copies' },
+            prefer_prescaled: {
+                label: 'Keep Pre-scaled, recycle Inbox copies',
+                tip: 'When a Before / Pre-scaled folder is set in Cross-source, keep that original and recycle Inbox / Downloads twins so you do not re-process. Leave Before empty (or uncheck this) to turn it off. Use Top / ▲ so it wins over other keep rules.',
+            },
             path_contains: { label: 'Prefer path containing…', needs: 'text', placeholder: 'D:\\Photos\\Keep', multi: true },
             path_not_contains: { label: 'Avoid path containing…', needs: 'text', placeholder: 'Downloads', multi: true },
             drive: { label: 'Prefer drive…', needs: 'text', placeholder: 'E:', multi: true },
@@ -659,6 +671,21 @@
             { path: '', role: 'before', label: 'Pre-scaled' },
             { path: '', role: 'after', label: 'After' },
         ];
+
+        const ROLE_HELP = {
+            inbox: {
+                title: 'Inbox',
+                tip: 'Downloads / new files. These copies can be recycled if the same file already lives in Pre-scaled, so you do not re-process it.',
+            },
+            before: {
+                title: 'Before / Pre-scaled',
+                tip: 'Originals after processing. Locked — cannot be deleted here. Setting this folder turns on Keep Pre-scaled: Merge keeps this copy and recycles Inbox twins. Leave the path empty to turn that rule off.',
+            },
+            after: {
+                title: 'After / post-upgrade',
+                tip: '4K / 96fps result. Locked. Matched by _PID_xxxxxxxx from the Pre-scaled filename, not by size. Cannot be deleted with this tool.',
+            },
+        };
 
         function isProtectedItem(item) {
             if (!item) return false;
@@ -917,13 +944,13 @@
             wrap.innerHTML = keepRules.map((rule, i) => {
                 const spec = KEEP_CATALOG[rule.id] || { label: rule.id };
                 const needs = spec.needs === 'text';
-                return `<div class="keep-rule${rule.on ? '' : ' off'}" data-i="${i}">
+                return `<div class="keep-rule${rule.on ? '' : ' off'}" data-i="${i}"${spec.tip ? ` data-tip-title="${attrEsc(spec.label)}" data-tip="${attrEsc(spec.tip)}"` : ''}>
                     <span class="ord">${i + 1}</span>
-                    <input type="checkbox" ${rule.on ? 'checked' : ''} data-keep-on="${i}" title="Use this rule">
+                    <input type="checkbox" ${rule.on ? 'checked' : ''} data-keep-on="${i}" title="${spec.tip ? attrEsc(spec.tip) : 'Use this rule'}">
                     <div class="rule-body">
                         <div class="rule-label">${escapeHtml(spec.label)}</div>
                         ${rule.id === 'prefer_prescaled'
-                            ? `<div class="hint" style="margin:4px 0 0">${roleFolders('before').length ? 'On — Before folder is set. Inbox copies of those files will be recycled.' : 'Idle — pick a Before / Pre-scaled folder in Cross-source to turn this on. Leave it empty to keep this off.'}</div>`
+                            ? `<div class="hint" style="margin:4px 0 0">${roleFolders('before').length ? 'On — Before folder is set. Inbox copies of those files will be recycled on Merge.' : 'Idle — pick folder type Before in Cross-source (or leave it empty to keep this off).'}</div>`
                             : ''}
                         ${needs ? `<input type="text" data-keep-val="${i}" value="${escapeHtml(rule.value || '')}" placeholder="${escapeHtml(spec.placeholder || '')}">` : ''}
                     </div>
@@ -988,9 +1015,10 @@
                 add.innerHTML = '<option value="">+ Add criterion…</option>' +
                     Object.entries(KEEP_CATALOG).map(([id, spec]) => {
                         if (!spec.multi && used.has(id)) return '';
-                        return `<option value="${id}">${escapeHtml(spec.label)}</option>`;
+                        return `<option value="${id}" title="${attrEsc(spec.tip || spec.label)}">${escapeHtml(spec.label)}</option>`;
                     }).join('');
             }
+            try { UI()?.initTooltips?.(wrap); } catch (_) { /* ignore */ }
         }
 
         function setLiveScanPill(on) {
@@ -2216,20 +2244,26 @@
                 wrap.innerHTML = '';
                 return;
             }
-            wrap.innerHTML = (crossSources || []).map((s, i) => `
+            wrap.innerHTML = (crossSources || []).map((s, i) => {
+                const help = ROLE_HELP[s.role] || ROLE_HELP.inbox;
+                return `
                 <div class="source-row" data-i="${i}">
-                    <select data-src-role="${i}" aria-label="Folder role">
-                        <option value="inbox"${s.role === 'inbox' ? ' selected' : ''}>Inbox</option>
-                        <option value="before"${s.role === 'before' ? ' selected' : ''}>Before</option>
-                        <option value="after"${s.role === 'after' ? ' selected' : ''}>After</option>
+                    <select data-src-role="${i}" aria-label="Folder role"
+                            data-tip-title="${attrEsc(help.title)}"
+                            data-tip="${attrEsc(help.tip)}">
+                        <option value="inbox" title="${attrEsc(ROLE_HELP.inbox.tip)}"${s.role === 'inbox' ? ' selected' : ''}>Inbox</option>
+                        <option value="before" title="${attrEsc(ROLE_HELP.before.tip)}"${s.role === 'before' ? ' selected' : ''}>Before</option>
+                        <option value="after" title="${attrEsc(ROLE_HELP.after.tip)}"${s.role === 'after' ? ' selected' : ''}>After</option>
                     </select>
-                    <input type="text" data-src-path="${i}" value="${escapeHtml(s.path || '')}" placeholder="${s.role === 'before' ? 'Pre-scaled originals' : (s.role === 'after' ? 'Post-upgrade 4K/96fps' : 'Downloads / new files')}">
+                    <input type="text" data-src-path="${i}" value="${escapeHtml(s.path || '')}" placeholder="${s.role === 'before' ? 'Pre-scaled originals' : (s.role === 'after' ? 'Post-upgrade 4K/96fps' : 'Downloads / new files')}"
+                           data-tip-title="${attrEsc(help.title)}" data-tip="${attrEsc(help.tip)}">
                     <div class="src-btns">
-                        <button type="button" data-src-pick="${i}" title="Pick folder">📂</button>
+                        <button type="button" data-src-pick="${i}" title="Pick folder" data-tip="Pick this ${attrEsc(help.title)} folder">📂</button>
                         <button type="button" data-src-del="${i}" title="Remove">✕</button>
                     </div>
                 </div>
-            `).join('');
+                <p class="hint" data-role-help="${i}" style="margin:2px 0 8px 0">${escapeHtml(help.tip)}</p>`;
+            }).join('');
             wrap.querySelectorAll('[data-src-role]').forEach((node) => {
                 node.onchange = () => {
                     const i = Number(node.dataset.srcRole);
@@ -2238,6 +2272,7 @@
                     crossSources[i].label = node.value === 'before' ? 'Pre-scaled' : (node.value === 'after' ? 'After' : 'Inbox');
                     saveDupSettings();
                     renderCrossSources();
+                    renderKeepRules();
                 };
             });
             wrap.querySelectorAll('[data-src-path]').forEach((node) => {
@@ -2246,6 +2281,7 @@
                     if (!crossSources[i]) return;
                     crossSources[i].path = node.value.trim();
                     saveDupSettings();
+                    renderKeepRules();
                 };
             });
             wrap.querySelectorAll('[data-src-pick]').forEach((node) => {
@@ -2257,6 +2293,7 @@
                             crossSources[i].path = r.path;
                             saveDupSettings();
                             renderCrossSources();
+                            renderKeepRules();
                         }
                     } catch (e) {
                         UI()?.toast?.(e.message, 'warn');
@@ -2272,8 +2309,10 @@
                     }
                     saveDupSettings();
                     renderCrossSources();
+                    renderKeepRules();
                 };
             });
+            try { UI()?.initTooltips?.(wrap); } catch (_) { /* ignore */ }
         }
 
         function saveDupSettings() {
