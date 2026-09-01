@@ -2,7 +2,7 @@
 
 Local browser-based tools for media cataloging, VSR pipeline renaming, and before/after comparison. No cloud — files stay on your machine.
 
-**Current version:** `1.16.46`
+**Current version:** `1.16.47`
 
 **Deep dive (pairs, Explorer tags, moves, storage Q&A):** [`MEDIA_LIBRARY_AND_PAIRS.md`](MEDIA_LIBRARY_AND_PAIRS.md)
 
