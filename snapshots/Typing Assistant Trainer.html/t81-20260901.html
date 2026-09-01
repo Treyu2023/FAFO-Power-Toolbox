@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Typing Assistant Trainer — AI HTML Toolbox</title>
+  <title>KEYFLARE — Neon typing arcade</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -366,14 +366,15 @@
     #fireRibbon {
       position: fixed;
       left: 0; right: 0; bottom: 0;
-      height: 120px;
+      height: 90px;
       pointer-events: none;
-      z-index: 38;
+      z-index: 12;
       opacity: 0;
-      transition: opacity 0.4s;
+      transition: opacity 0.4s, height 0.45s ease;
       background: linear-gradient(to top,
-        rgba(255, 40, 0, 0.35) 0%,
-        rgba(255, 120, 0, 0.12) 40%,
+        rgba(255, 40, 0, 0.45) 0%,
+        rgba(255, 90, 0, 0.22) 28%,
+        rgba(255, 160, 0, 0.10) 62%,
         transparent 100%);
       mix-blend-mode: screen;
     }
@@ -389,12 +390,13 @@
       to { filter: brightness(1.2) hue-rotate(-8deg); }
     }
 
-    /* Floating particles canvas */
+    /* Particles overlay the page but stay below HUD chrome.
+       Flames are drawn only in the bottom band so letters stay readable. */
     #fxCanvas {
       position: fixed;
       inset: 0;
       pointer-events: none;
-      z-index: 40;
+      z-index: 30;
     }
     #screenFlash {
       position: fixed;
@@ -441,7 +443,7 @@
       height: auto;
       max-height: none;
       min-height: 100%;
-      overflow-x: hidden;
+      overflow-x: auto;
       overflow-y: auto;
     }
     body {
@@ -520,8 +522,26 @@
       font-size: clamp(20px, 4vw, 28px);
       color: var(--accent);
       text-shadow: var(--glow);
-      /* titleGlow defined with ambient lighting */
     }
+    .kf-word {
+      font-family: Audiowide, Orbitron, "Segoe UI", sans-serif;
+      font-weight: 400;
+      letter-spacing: 0.22em;
+      background: linear-gradient(90deg, #00f3ff 0%, #7c5cff 38%, #ff4d6a 72%, #ffc800 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 12px rgba(0,243,255,0.35));
+      animation: kfWordPulse 4.2s ease-in-out infinite;
+    }
+    @keyframes kfWordPulse {
+      0%, 100% { filter: drop-shadow(0 0 10px rgba(0,243,255,0.32)); }
+      50% { filter: drop-shadow(0 0 22px rgba(255,77,106,0.55)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .kf-word { animation: none; }
+    }
+    .kf-sub { color: var(--muted); font-size: 13px; margin-top: 6px; letter-spacing: 0.04em; }
     header p { color: var(--muted); font-size: 13px; margin-top: 6px; }
 
     .panel {
@@ -875,7 +895,15 @@
       height: 0.35em;
     }
     .prompt .done { color: var(--ok); transition: color 0.1s; }
-    .prompt .done.wrong { color: var(--err); background: rgba(255, 77, 106, 0.12); border-radius: 2px; }
+    .prompt .done.wrong {
+      color: #e07030 !important;
+      -webkit-text-fill-color: #e07030 !important;
+      background: linear-gradient(180deg, rgba(90, 28, 8, 0.72), rgba(18, 8, 4, 0.92));
+      border-radius: 3px;
+      text-shadow: 0 0 8px rgba(255, 90, 20, 0.75), 0 1px 0 #1a0a04;
+      box-shadow: inset 0 -2px 0 rgba(255, 80, 16, 0.7);
+      filter: contrast(1.12) saturate(1.15);
+    }
     .prompt .current {
       background: rgba(0, 243, 255, 0.28);
       color: #fff;
@@ -1304,6 +1332,444 @@
       color: #000;
       background: var(--accent);
       border-color: var(--accent);
+    }
+
+    /* ——— Roster / progress / skill tree ——— */
+    .roster-row { align-items: flex-end; }
+    .roster-active {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .roster-active input { flex: 1; }
+    .roster-lv {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #1a1208;
+      background: linear-gradient(180deg, #ffe7a3, #d4a017);
+      border: 1px solid rgba(255, 220, 140, 0.7);
+      box-shadow: 0 0 14px rgba(255, 200, 80, 0.35), inset 0 1px 0 rgba(255,255,255,0.45);
+      padding: 7px 10px;
+      border-radius: 8px;
+    }
+    .roster-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .roster-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 4px;
+    }
+    .roster-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px 6px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,243,255,0.22);
+      background: rgba(8,10,18,0.7);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    }
+    .roster-chip:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .roster-chip.active {
+      border-color: #f5c542;
+      box-shadow: 0 0 0 1px rgba(245,197,66,0.45), 0 0 18px rgba(245,197,66,0.22);
+      background: linear-gradient(180deg, rgba(40,28,8,0.9), rgba(12,10,8,0.9));
+    }
+    .roster-ava {
+      width: 26px; height: 26px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 12px;
+      background: radial-gradient(circle at 30% 20%, #fff7, transparent 40%),
+        linear-gradient(135deg, #00f3ff, #7c5cff);
+      color: #061018;
+    }
+    .roster-chip.active .roster-ava {
+      background: radial-gradient(circle at 30% 20%, #fff, transparent 42%),
+        linear-gradient(135deg, #ffe08a, #c47a10);
+    }
+    .roster-chip .meta { display: flex; flex-direction: column; line-height: 1.15; }
+    .roster-chip .meta small { color: var(--muted); font-size: 10px; }
+
+    .xp-hud {
+      margin-top: 8px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(245,197,66,0.28);
+      background:
+        linear-gradient(180deg, rgba(40,28,8,0.45), rgba(8,8,12,0.55)),
+        radial-gradient(ellipse at 0% 0%, rgba(245,197,66,0.12), transparent 50%);
+      box-shadow: inset 0 1px 0 rgba(255,230,160,0.12), 0 0 24px rgba(245,197,66,0.08);
+    }
+    .xp-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .xp-meta strong { color: #ffe7a3; letter-spacing: 1px; font-size: 13px; }
+    .xp-bar {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(245,197,66,0.28);
+      overflow: hidden;
+      position: relative;
+    }
+    .xp-bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #c47a10, #ffe08a 55%, #fff4c8);
+      box-shadow: 0 0 12px rgba(255, 210, 80, 0.55);
+      transition: width 0.45s ease;
+    }
+    .xp-nums { margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .xp-nums b { color: #ffe7a3; }
+
+    .skill-tree {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .skill-node {
+      position: relative;
+      padding: 12px 12px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,243,255,0.16);
+      background:
+        linear-gradient(165deg, rgba(18,20,32,0.92), rgba(8,8,14,0.92));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+    .skill-node::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 12% 0%, rgba(255,255,255,0.07), transparent 42%);
+    }
+    .skill-node.ranked {
+      border-color: rgba(245,197,66,0.38);
+      box-shadow: inset 0 0 24px rgba(245,197,66,0.06), 0 0 16px rgba(245,197,66,0.08);
+    }
+    .skill-node.maxed {
+      border-color: rgba(0,255,136,0.45);
+      box-shadow: inset 0 0 20px rgba(0,255,136,0.08);
+    }
+    .skill-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .skill-ico {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: grid; place-items: center;
+      background: rgba(0,243,255,0.1);
+      border: 1px solid rgba(0,243,255,0.22);
+      font-size: 14px;
+    }
+    .skill-node.ranked .skill-ico {
+      background: rgba(245,197,66,0.14);
+      border-color: rgba(245,197,66,0.4);
+    }
+    .skill-name { font-weight: 700; font-size: 13px; letter-spacing: 0.3px; }
+    .skill-blurb { font-size: 11px; color: var(--muted); line-height: 1.4; min-height: 30px; }
+    .skill-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .skill-pips { display: flex; gap: 4px; }
+    .skill-pips i {
+      width: 12px; height: 8px; border-radius: 2px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .skill-pips i.on {
+      background: linear-gradient(180deg, #ffe08a, #c47a10);
+      border-color: #f5c542;
+      box-shadow: 0 0 8px rgba(245,197,66,0.55);
+    }
+    .skill-buy {
+      background: transparent;
+      border: 1px solid rgba(0,243,255,0.35);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .skill-buy:hover { background: rgba(0,243,255,0.12); }
+    .skill-buy:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .career-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .career-stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* Ghost racers */
+    .tat-ghost-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9;
+    }
+    .tat-ghost-mark {
+      position: absolute;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transform: translate(-50%, calc(-100% - 6px));
+      filter: drop-shadow(0 0 6px var(--gc, #e6c04a));
+      z-index: 12;
+    }
+    .tat-ghost-mark .gbeam {
+      width: 3px;
+      height: 1.15em;
+      border-radius: 2px;
+      background: var(--gc, #e6c04a);
+    }
+    .tat-ghost-mark.tape .gbeam {
+      box-shadow: 0 0 10px var(--gc, #e6c04a);
+    }
+    .tat-ghost-mark.pace .gbeam {
+      width: 11px;
+      height: 11px;
+      background: var(--gc, #ff4d6a);
+      border: 2px dashed rgba(255,255,255,0.78);
+      border-radius: 2px;
+      transform: rotate(45deg);
+      box-shadow: 0 0 10px var(--gc, #ff4d6a);
+      animation: ghostPaceBob 0.7s ease-in-out infinite;
+    }
+    .tat-ghost-mark.pace {
+      transform: translate(-50%, calc(-100% - 8px));
+    }
+    .tat-ghost-mark .gflag {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--gc, #ffe08a);
+      white-space: nowrap;
+      background: rgba(6,8,14,0.72);
+      border: 1px dashed var(--gc, #ff4d6a);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+    .tat-ghost-mark.tape .gflag {
+      border-style: solid;
+    }
+    @keyframes ghostPaceBob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(3px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tat-ghost-mark.pace .gbeam { animation: none; }
+    }
+    .ghost-slots {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .ghost-slot {
+      display: grid;
+      grid-template-columns: 22px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 8px;
+      border: 1px solid rgba(0,243,255,0.16);
+      border-radius: 8px;
+      background: rgba(8,10,16,0.5);
+    }
+    .ghost-slot .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--gc, #e6c04a);
+      box-shadow: 0 0 8px var(--gc, #e6c04a);
+    }
+    .ghost-slot select { font-size: 12px; }
+    .ghost-kind {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .ghost-kind.tape { color: #ffe08a; }
+    .ghost-kind.pace { color: #ff8aa0; }
+
+    .challenge-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .challenge-card {
+      text-align: left;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,243,255,0.2);
+      background: linear-gradient(165deg, rgba(18,20,32,0.95), rgba(8,8,14,0.95));
+      color: var(--text);
+      cursor: pointer;
+    }
+    .challenge-card:hover { border-color: var(--accent); }
+    .challenge-card .ch-emo { font-size: 18px; }
+    .challenge-card strong { display: block; margin: 4px 0 2px; }
+    .challenge-card small { color: var(--muted); font-size: 11px; line-height: 1.35; display: block; }
+    .challenge-card .ch-pb { margin-top: 6px; font-size: 11px; color: #ffe08a; font-weight: 700; }
+    .challenge-hud {
+      display: none;
+      margin: 6px 0 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,243,255,0.22);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .challenge-hud.show { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; }
+    .challenge-hud b { color: var(--accent); }
+
+    .wpm-chart {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,243,255,0.16);
+      background: rgba(6,8,14,0.45);
+    }
+    .wpm-chart svg { width: 100%; height: 120px; display: block; }
+    .wpm-chart .lbl { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .vault-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+    option[disabled] { color: #666; }
+    .lock-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+    #progressPanel {
+      display: flex !important;
+      flex-direction: column;
+    }
+    body.run-active #progressPanel { display: none !important; }
+    #nukeFlash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 36;
+      opacity: 0;
+      background:
+        radial-gradient(circle at var(--nuke-x, 50%) var(--nuke-y, 50%),
+          rgba(255,255,220,0.85) 0%,
+          rgba(255,160,40,0.45) 18%,
+          rgba(255,80,0,0.18) 42%,
+          transparent 70%);
+      mix-blend-mode: screen;
+      transition: opacity 0.12s linear;
+    }
+    #nukeFlash.on { opacity: 1; animation: nukePulse 0.7s ease-out; }
+    @keyframes nukePulse {
+      0% { opacity: 1; filter: brightness(1.4); }
+      40% { opacity: 0.7; }
+      100% { opacity: 0; }
+    }
+    body.tat-nuke .prompt-wrap { animation: nukeKick 0.55s ease; }
+    @media (prefers-reduced-motion: reduce) {
+      body.tat-nuke .prompt-wrap { animation: none; }
+      #nukeFlash.on { animation: none; opacity: 0.35; }
+    }
+    @keyframes nukeKick {
+      0%, 100% { transform: translate(0,0); }
+      20% { transform: translate(-6px, 3px) scale(1.01); }
+      40% { transform: translate(5px, -2px); }
+      60% { transform: translate(-3px, 2px); }
+      80% { transform: translate(2px, -1px); }
+    }
+
+    /* Premium frames / borders / lighting (skill-tree unlocks) */
+    .tat-frame[data-frame="filigree"] {
+      border: 2px solid rgba(245,197,66,0.55);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,232,160,0.25),
+        inset 0 0 28px rgba(180,120,20,0.18),
+        0 0 22px rgba(245,197,66,0.18);
+      background:
+        linear-gradient(90deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) top left / 48px 2px no-repeat,
+        linear-gradient(180deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) top left / 2px 48px no-repeat,
+        linear-gradient(90deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) top right / 48px 2px no-repeat,
+        linear-gradient(180deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) top right / 2px 48px no-repeat,
+        linear-gradient(90deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) bottom left / 48px 2px no-repeat,
+        linear-gradient(0deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) bottom left / 2px 48px no-repeat,
+        linear-gradient(90deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) bottom right / 48px 2px no-repeat,
+        linear-gradient(0deg, rgba(245,197,66,0.7) 0 14px, transparent 14px) bottom right / 2px 48px no-repeat;
+    }
+    .tat-frame[data-frame="obsidian"] {
+      border: 2px solid rgba(180, 160, 255, 0.35);
+      box-shadow: inset 0 0 40px rgba(10,0,30,0.65), 0 0 18px rgba(80,40,160,0.25);
+      background-image:
+        linear-gradient(135deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 12px);
+      background-size: 18px 18px;
+    }
+    .tat-frame[data-frame="crown"] {
+      border: 3px solid rgba(255, 214, 90, 0.7);
+      box-shadow:
+        inset 0 0 0 2px rgba(140, 80, 10, 0.45),
+        0 0 28px rgba(255, 200, 80, 0.28);
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255,220,120,0.28), transparent 36%);
+    }
+    .tat-frame[data-border="gold-filigree"] {
+      outline: 2px solid rgba(245,197,66,0.55);
+      outline-offset: -7px;
+      box-shadow: inset 0 0 0 6px rgba(80,50,8,0.35), 0 0 20px rgba(245,197,66,0.22);
+    }
+    .tat-frame[data-border="plasma-ribbon"] {
+      box-shadow:
+        inset 0 0 0 2px rgba(255,80,200,0.55),
+        inset 0 0 18px rgba(80,180,255,0.35),
+        0 0 22px rgba(180,80,255,0.3);
+      animation: plasmaRib 4.5s linear infinite;
+    }
+    @keyframes plasmaRib {
+      0% { filter: hue-rotate(0deg); }
+      100% { filter: hue-rotate(360deg); }
+    }
+    .tat-frame[data-border="crown-inlay"] {
+      outline: 3px double rgba(255, 214, 90, 0.7);
+      outline-offset: -8px;
+      box-shadow: 0 0 24px rgba(255,200,80,0.28);
+    }
+    .tat-light[data-lit="candle"] {
+      background: radial-gradient(ellipse at 50% 88%, rgba(255,140,40,0.28), transparent 50%);
+      box-shadow: inset 0 -30px 40px rgba(255,80,0,0.08);
+    }
+    .tat-light[data-lit="cathedral"] {
+      background:
+        linear-gradient(180deg, rgba(180,200,255,0.14), transparent 30%),
+        repeating-linear-gradient(90deg, transparent 0 46px, rgba(255,255,255,0.04) 46px 48px);
+    }
+    .tat-light[data-lit="gold-hour"] {
+      background: linear-gradient(135deg, rgba(255,180,60,0.18), transparent 42%, rgba(255,80,40,0.12));
+      box-shadow: inset 0 0 50px rgba(255,160,40,0.12);
     }
 
     /* ——— Campaign story / companion / mini-games ——— */
@@ -1884,32 +2350,47 @@
     }
 
     /* ——— Text animations ——— */
-    .prompt.anim-glint {
-      position: relative;
-    }
-    .prompt.anim-glint::after {
-      content: "";
-      pointer-events: none;
-      position: absolute;
-      inset: -8% -20%;
-      background: linear-gradient(
+    /* Glint rides the glyphs only (background-clip), never a full-box overlay */
+    .prompt.anim-glint .todo,
+    .prompt.anim-glint .done {
+      background-image: linear-gradient(
         105deg,
-        transparent 35%,
-        rgba(255,255,255,0.0) 40%,
-        rgba(255,255,255,0.35) 50%,
-        rgba(255,255,255,0.0) 60%,
-        transparent 65%
+        currentColor 0%,
+        currentColor 38%,
+        rgba(255,255,255,0.95) 50%,
+        currentColor 62%,
+        currentColor 100%
       );
-      transform: translateX(-60%);
-      animation: textGlint 3.6s ease-in-out infinite;
-      mix-blend-mode: screen;
+      background-size: 220% 100%;
+      background-repeat: no-repeat;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent !important;
+      -webkit-text-fill-color: transparent;
+      animation: textGlintClip 3.6s ease-in-out infinite;
     }
-    @keyframes textGlint {
-      0%, 55% { transform: translateX(-70%); opacity: 0; }
-      60% { opacity: 1; }
-      75% { transform: translateX(70%); opacity: 0.85; }
-      100% { transform: translateX(80%); opacity: 0; }
+    .prompt.anim-glint .current {
+      color: #fff !important;
+      -webkit-text-fill-color: #fff;
+      background-image: none;
+      animation: caret 1s steps(1) infinite;
     }
+    .prompt.anim-glint .done.wrong,
+    .prompt.anim-glint .done.charred,
+    .prompt.anim-glint .gone {
+      background-image: none !important;
+      -webkit-background-clip: border-box;
+      background-clip: border-box;
+      color: #e07030 !important;
+      -webkit-text-fill-color: #e07030 !important;
+      animation: none;
+    }
+    @keyframes textGlintClip {
+      0%, 52% { background-position: 120% 0; }
+      78% { background-position: -20% 0; }
+      100% { background-position: -20% 0; }
+    }
+    .prompt.anim-glint::after { content: none; display: none; }
     .prompt.anim-pulse .todo,
     .prompt.anim-pulse .done {
       animation: textPulse 2.4s ease-in-out infinite;
@@ -1972,13 +2453,59 @@
       0%, 100% { filter: saturate(1) brightness(1); }
       50% { filter: saturate(1.25) brightness(1.08); }
     }
+    .prompt.anim-ember .done,
+    .prompt.anim-ember .todo {
+      animation: textEmber 1.6s ease-in-out infinite;
+    }
+    .prompt.anim-ember .done.wrong {
+      animation: textEmberHot 0.7s ease-in-out infinite;
+    }
+    @keyframes textEmber {
+      0%, 100% { text-shadow: 0 0 4px rgba(255,120,40,0.15); filter: brightness(1); }
+      50% { text-shadow: 0 0 12px rgba(255,90,20,0.45); filter: brightness(1.12); }
+    }
+    @keyframes textEmberHot {
+      0%, 100% { text-shadow: 0 0 6px rgba(255,80,20,0.5); }
+      50% { text-shadow: 0 0 16px rgba(255,140,40,0.95), 0 0 28px rgba(255,60,0,0.5); }
+    }
+    .prompt.anim-flicker .todo,
+    .prompt.anim-flicker .done {
+      animation: textFlicker 0.18s steps(2) infinite;
+    }
+    @keyframes textFlicker {
+      0% { opacity: 1; }
+      40% { opacity: 0.82; }
+      70% { opacity: 1; }
+      85% { opacity: 0.9; }
+    }
+    .prompt.anim-sparkle .done {
+      animation: textSparkle 1.8s ease-in-out infinite;
+    }
+    .prompt.anim-sparkle .word:nth-child(odd) .done { animation-delay: 0.35s; }
+    @keyframes textSparkle {
+      0%, 100% { filter: brightness(1); }
+      40% { filter: brightness(1.05); }
+      48% { filter: brightness(1.45) saturate(1.3); }
+      56% { filter: brightness(1.05); }
+    }
+    .prompt.anim-slide .word {
+      display: inline-block;
+      animation: textSlide 3.4s ease-in-out infinite;
+    }
+    .prompt.anim-slide .word:nth-child(odd) { animation-delay: 0.4s; }
+    @keyframes textSlide {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(3px); }
+    }
 
-    /* Charred done letters briefly flash coal */
-    .prompt .done.charred {
-      color: #6b5b4a !important;
-      text-shadow: 0 0 6px rgba(255,120,40,0.45), 0 1px 0 #1a120c;
+    /* Charred missed letters PERSIST after the player corrects them */
+    .prompt .done.charred,
+    .prompt .done.wrong {
+      color: #c45a22 !important;
+      -webkit-text-fill-color: #c45a22 !important;
+      text-shadow: 0 0 6px rgba(255,90,20,0.7), 0 1px 0 #1a0c06;
       transition: color 0.35s ease, text-shadow 0.35s ease, filter 0.35s ease;
-      filter: contrast(1.1);
+      filter: contrast(1.12);
     }
     .prompt .done.charred-ash {
       color: #3a3530 !important;
@@ -1986,9 +2513,51 @@
       text-shadow: none;
       filter: grayscale(0.6);
     }
+    .prompt .done.wrong.charred {
+      color: #a84818 !important;
+      -webkit-text-fill-color: #a84818 !important;
+      background: linear-gradient(180deg, rgba(70, 22, 6, 0.8), rgba(12, 6, 4, 0.95));
+      box-shadow: inset 0 -2px 0 rgba(255, 70, 10, 0.75);
+    }
+    .prompt .current.miss-heat {
+      outline-color: #ff4d6a;
+      background: rgba(255, 77, 106, 0.38) !important;
+      box-shadow: 0 0 22px rgba(255,77,106,0.6), 0 0 40px rgba(255,90,20,0.25);
+    }
+    .prompt .current.miss-critical {
+      outline-color: #ff9a2a;
+      animation: missCritical 0.35s steps(2) infinite, caret 1s steps(1) infinite;
+    }
+    @keyframes missCritical {
+      0% { filter: brightness(1); }
+      100% { filter: brightness(1.35) saturate(1.4); }
+    }
+    .prompt .gone {
+      display: inline-block;
+      min-width: 0.42em;
+      position: relative;
+      color: transparent !important;
+      -webkit-text-fill-color: transparent !important;
+      background: linear-gradient(180deg, rgba(255, 90, 20, 0.08), rgba(40, 14, 6, 0.9));
+      border-bottom: 2px solid rgba(255, 110, 30, 0.8);
+      border-radius: 2px;
+      text-shadow: none;
+      vertical-align: baseline;
+    }
+    .prompt .gone::after {
+      content: "✶";
+      pointer-events: none;
+      position: absolute;
+      left: 50%;
+      top: 42%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 150, 50, 0.7);
+      font-size: 0.55em;
+      text-shadow: 0 0 8px rgba(255, 90, 20, 0.8);
+    }
   </style>
-  <link rel="stylesheet" href="shared/aitoolbox-ui.css">
-<link rel="stylesheet" href="shared/aitoolbox-layout.css">
+  <link rel="stylesheet" href="shared/aitoolbox-ui.css?v=1.16.50">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css?v=1.16.50">
 <style id="tat-t61-wheel">
   :focus-visible { outline: 2px solid var(--accent, #00f3ff); outline-offset: 2px; }
   /* Layout chrome must not un-hide mode panels or cage them at leftover height */
@@ -2066,6 +2635,160 @@
   opacity: 0.28;
   transform-origin: center;
   will-change: transform, filter, opacity;
+}
+.tat-stage-bg {
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0.62;
+  mix-blend-mode: screen;
+}
+.tat-stage-bg.stage-none { opacity: 0; }
+.tat-stage-bg::before,
+.tat-stage-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#promptWrap[data-tat-stage]:not([data-tat-stage="none"]) .tat-gutter {
+  background: rgba(5, 6, 12, 0.22);
+}
+.tat-stage-bg.stage-aurora {
+  background:
+    radial-gradient(ellipse 80% 50% at 18% 28%, rgba(0,255,180,0.42), transparent 55%),
+    radial-gradient(ellipse 70% 48% at 82% 18%, rgba(120,70,255,0.48), transparent 52%),
+    radial-gradient(ellipse 60% 42% at 48% 86%, rgba(0,170,255,0.32), transparent 50%),
+    #040612;
+  background-size: 160% 160%;
+  animation: stageAurora 16s ease-in-out infinite alternate;
+}
+.tat-stage-bg.stage-aurora::after {
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
+  animation: stageSweep 7s linear infinite;
+}
+@keyframes stageAurora {
+  from { background-position: 0% 20%, 100% 0%, 40% 100%; filter: hue-rotate(0deg); }
+  to { background-position: 80% 70%, 10% 80%, 20% 10%; filter: hue-rotate(28deg); }
+}
+.tat-stage-bg.stage-starfield {
+  background:
+    radial-gradient(1px 1px at 12% 22%, #fff, transparent),
+    radial-gradient(1px 1px at 44% 68%, #cde, transparent),
+    radial-gradient(1.5px 1.5px at 78% 18%, #fff, transparent),
+    radial-gradient(1px 1px at 62% 42%, #9cf, transparent),
+    radial-gradient(2px 2px at 28% 82%, #fff, transparent),
+    #02040c;
+  background-size: 220px 180px, 280px 240px, 190px 210px, 320px 160px, 260px 200px, auto;
+  animation: stageStars 40s linear infinite;
+  mix-blend-mode: normal;
+  opacity: 0.7;
+}
+.tat-stage-bg.stage-starfield::after {
+  background: radial-gradient(ellipse 50% 30% at 70% 30%, rgba(90,140,255,0.18), transparent 60%);
+  animation: stageDrift 22s ease-in-out infinite alternate;
+}
+@keyframes stageStars {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to { background-position: 220px 180px, -140px 240px, 90px -210px, -160px 80px, 130px -200px, 0 0; }
+}
+.tat-stage-bg.stage-embers {
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 120%, rgba(255,80,10,0.35), transparent 50%),
+    linear-gradient(180deg, #140806, #080404);
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-embers::before {
+  background-image:
+    radial-gradient(2px 2px at 20% 80%, rgba(255,160,40,0.9), transparent),
+    radial-gradient(2px 2px at 50% 90%, rgba(255,80,20,0.8), transparent),
+    radial-gradient(3px 3px at 75% 85%, rgba(255,200,80,0.7), transparent),
+    radial-gradient(2px 2px at 35% 70%, rgba(255,120,30,0.75), transparent);
+  background-size: 180px 140px;
+  animation: stageRise 7s linear infinite;
+}
+.tat-stage-bg.stage-rain {
+  background: linear-gradient(180deg, #071018, #04080e);
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-rain::before {
+  background: repeating-linear-gradient(185deg, transparent 0 12px, rgba(160,210,255,0.16) 12px 13px);
+  animation: stageFall 1.1s linear infinite;
+}
+.tat-stage-bg.stage-circuits {
+  background:
+    linear-gradient(90deg, rgba(0,243,255,0.08) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(0,243,255,0.08) 1px, transparent 1px),
+    #050814;
+  background-size: 28px 28px, 28px 28px, auto;
+  mix-blend-mode: normal;
+  animation: stageGrid 12s linear infinite;
+}
+.tat-stage-bg.stage-circuits::after {
+  background: linear-gradient(90deg, transparent, rgba(0,243,255,0.35), transparent);
+  width: 22%;
+  animation: stagePulse 3.2s ease-in-out infinite;
+}
+.tat-stage-bg.stage-ocean {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 110%, rgba(0,180,255,0.35), transparent 55%),
+    linear-gradient(180deg, #041018, #02080e);
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-ocean::before {
+  background: repeating-linear-gradient(180deg, transparent 0 18px, rgba(0,200,255,0.08) 18px 20px);
+  animation: stageWave 5s ease-in-out infinite;
+}
+.tat-stage-bg.stage-nebula {
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 40%, rgba(180,60,255,0.4), transparent 55%),
+    radial-gradient(ellipse 50% 45% at 75% 60%, rgba(255,40,140,0.32), transparent 50%),
+    radial-gradient(ellipse 40% 40% at 50% 20%, rgba(40,120,255,0.28), transparent 50%),
+    #080510;
+  background-size: 180% 180%;
+  animation: stageNebula 22s ease-in-out infinite alternate;
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-scan {
+  background: repeating-linear-gradient(0deg, rgba(0,255,160,0.05) 0 2px, transparent 2px 4px), #03140c;
+  mix-blend-mode: normal;
+}
+.tat-stage-bg.stage-scan::after {
+  background: linear-gradient(180deg, transparent, rgba(0,255,140,0.22), transparent);
+  height: 18%;
+  animation: stageScan 2.8s linear infinite;
+}
+.tat-stage-bg.stage-plasma {
+  background:
+    conic-gradient(from 40deg, #00f3ff, #7c5cff, #ff4d9a, #00ff88, #00f3ff);
+  filter: blur(18px) saturate(1.3);
+  opacity: 0.38;
+  animation: stageSpin 18s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes stageSweep { to { transform: translateX(40%); } }
+@keyframes stageDrift { from { transform: translate3d(-4%, -2%, 0); } to { transform: translate3d(4%, 3%, 0); } }
+@keyframes stageRise { from { transform: translateY(20%); opacity: 0.2; } to { transform: translateY(-40%); opacity: 0.9; } }
+@keyframes stageFall { to { background-position: 0 80px; } }
+@keyframes stageGrid { to { background-position: 28px 28px, 28px 28px, 0 0; } }
+@keyframes stagePulse { 0%, 100% { transform: translateX(-40%); opacity: 0; } 50% { transform: translateX(180%); opacity: 1; } }
+@keyframes stageWave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8%); } }
+@keyframes stageNebula { from { background-position: 0% 20%, 100% 80%, 40% 0%; } to { background-position: 80% 70%, 10% 10%, 70% 90%; } }
+@keyframes stageScan { from { transform: translateY(-20%); } to { transform: translateY(520%); } }
+@keyframes stageSpin { to { transform: rotate(360deg) scale(1.15); } }
+body.tat-rm-on .tat-stage-bg,
+body.tat-rm-on .tat-stage-bg::before,
+body.tat-rm-on .tat-stage-bg::after {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not(.tat-rm-off) .tat-stage-bg,
+  body:not(.tat-rm-off) .tat-stage-bg::before,
+  body:not(.tat-rm-off) .tat-stage-bg::after {
+    animation: none !important;
+  }
 }
 .tat-light {
   position: absolute;
@@ -2712,10 +3435,13 @@ body.run-active #campaignPanel,
 body.tat-stage #campaignPanel,
 body.run-active #miniPanel,
 body.tat-stage #miniPanel,
+body.run-active #challengePanel,
+body.tat-stage #challengePanel,
 body.run-active .wrap > [data-fafo-panel="block-4"],
 body.tat-stage .wrap > [data-fafo-panel="block-4"],
 body.run-active .wrap > .grid-2,
 body.tat-stage .wrap > .grid-2,
+body.run-active #progressPanel,
 body.run-active .footer-note,
 body.tat-stage .footer-note,
 body.run-active .fafo-split-handle,
@@ -2739,6 +3465,22 @@ body.run-active .toolbox-back,
 body.tat-stage .toolbox-back { opacity: 0.4; }
 body.run-active .toolbox-back:hover,
 body.tat-stage .toolbox-back:hover { opacity: 1; }
+body.run-active #atx-pro-bar,
+body.tat-stage #atx-pro-bar,
+body.run-active .fafo-layout-float-dock,
+body.tat-stage .fafo-layout-float-dock,
+body.run-active #atx-look-chip,
+body.tat-stage #atx-look-chip,
+body.run-active #tbSharedServerBar,
+body.tat-stage #tbSharedServerBar {
+  display: none !important;
+}
+body.run-active .fafo-scale-root,
+body.tat-stage .fafo-scale-root,
+html:fullscreen .fafo-scale-root,
+html:-webkit-full-screen .fafo-scale-root {
+  zoom: 1;
+}
 
 html:fullscreen,
 html:-webkit-full-screen {
@@ -2783,7 +3525,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
 }
 </style>
 </head>
-<body data-tb-esc="off" data-tat-ver="T69">
+<body data-tb-esc="off" data-tat-ver="T73">
   <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
   <div id="ambient" aria-hidden="true">
     <div class="amb-wash"></div>
@@ -2797,6 +3539,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
   <canvas id="fxCanvas"></canvas>
   <div id="fireRibbon" aria-hidden="true"></div>
   <div id="screenFlash"></div>
+  <div id="nukeFlash" aria-hidden="true"></div>
   <div id="comboToast"></div>
   <div id="reactionLayer"></div>
   <div class="bonus-overlay" id="bonusOverlay" role="dialog" aria-modal="true" aria-labelledby="bonusTitle" aria-describedby="bonusDesc" aria-hidden="true">
@@ -2815,8 +3558,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
   <div class="wrap" data-fafo-layout-root data-fafo-layout-app="typing-assistant-trainer" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
     <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
       <div class="fafo-panel-body fafo-scroll-pane">
-      <h1>⌨️ TYPING ASSISTANT TRAINER <span id="tatVer" class="tat-ver" title="PET-T69 full-viewport typing stage">T69</span></h1>
-      <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
+      <h1>⚡ <span class="kf-word">KEYFLARE</span> <span id="tatVer" class="tat-ver" title="T73 ghosts · challenges · player vault">T73</span></h1>
+      <p class="kf-sub">Neon typing arcade — lessons that light up, ghosts that race you, fireworks when you miss</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center">
         <a href="Bloodmoon Survivor.html" style="font-size:11px;font-weight:700;color:#c4b5fd;text-decoration:none;border:1px solid rgba(167,139,250,.4);padding:5px 10px;border-radius:999px" title="Break · Vampire survivors-style">🦇 Bloodmoon</a>
         <a href="Empire Seed.html" style="font-size:11px;font-weight:700;color:#fbbf24;text-decoration:none;border:1px solid rgba(251,191,36,.4);padding:5px 10px;border-radius:999px" title="Break · 4X empire builder">👑 Empire Seed</a>
@@ -2845,6 +3588,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
               <button type="button" class="pill" data-mode="boards" style="border-color:rgba(255,159,67,0.55);color:#ffb86b" title="Lives survival · clear story boards">❤️ Boards</button>
               <button type="button" class="pill campaign" data-mode="campaign">🗺️ Campaign</button>
               <button type="button" class="pill" data-mode="minigames" style="border-color:rgba(124,92,255,0.5);color:#c4b5fd">🎮 Mini-games</button>
+              <button type="button" class="pill" data-mode="challenges" style="border-color:rgba(255,200,0,0.5);color:#ffe08a" title="Alphabet, records, beat your log">⚡ Challenges</button>
             </div>
           </div>
         </div>
@@ -2888,12 +3632,23 @@ body:not(.run-active) .combo-bar { display: none !important; }
       <details class="tat-extra-setup" id="tatExtraSetup">
       <summary>More setup</summary>
       <div class="options-shell">
-      <div class="name-row">
-        <div class="field">
-          <label for="playerName">Your name (optional here — you can set it after a run too)</label>
-          <input type="text" id="playerName" placeholder="Ryan Key" maxlength="48" autocomplete="name" value="Ryan Key" data-tip-title="Player name" data-tip="Name used for high scores and Ops Stats (default Ryan Key). You can also set it after a run.">
+      <div class="name-row roster-row" id="rosterRow">
+        <div class="field" style="flex:1">
+          <label for="playerName">Active player</label>
+          <div class="roster-active">
+            <input type="text" id="playerName" placeholder="Ryan Key" maxlength="48" autocomplete="name" value="Ryan Key" data-tip-title="Player name" data-tip="This is the active roster slot. Rename here. High scores still save under this name.">
+            <span class="roster-lv" id="rosterLevelPill">Lv 1</span>
+          </div>
+        </div>
+        <div class="roster-actions">
+          <button type="button" class="btn ghost" id="btnRosterAdd" data-tip="Add another player slot with its own XP, skills, and cosmetics.">+ Player</button>
+          <button type="button" class="btn ghost" id="btnRosterDel" data-tip="Remove the active player. Last slot cannot be deleted.">Remove</button>
+          <button type="button" class="btn ghost" id="btnPlayerExport" data-tip="Download this player's vault as JSON. Take it to another machine and merge.">Export player</button>
+          <button type="button" class="btn ghost" id="btnPlayerImport" data-tip="Import a player vault JSON. Same id/name merges stats.">Import player</button>
+          <input type="file" id="playerImportFile" accept="application/json,.json" hidden>
         </div>
       </div>
+      <div class="roster-chips" id="rosterChips" aria-label="Player roster"></div>
         <div class="section-label">Practice options</div>
         <div class="toggles">
           <label class="toggle" title="Strip capitals to lowercase for simpler practice">
@@ -2916,18 +3671,48 @@ body:not(.run-active) .combo-bar { display: none !important; }
             <input type="checkbox" id="optAmbient" checked>
             <span><span class="hi">Ambient light</span> — soft shifts (anti burn-in)</span>
           </label>
-          <label class="toggle" title="Correct keys burn explosion shards into charcoal ash">
+          <label class="toggle" title="Missed keys stay burned after you correct them. Each miss: dust then fire then a boom. Five misses on the same glyph detonates a mushroom nuke that chain-blasts ±3 characters.">
             <input type="checkbox" id="optBurn" checked>
-            <span><span class="hi">Char burn</span> — sparks sear remnants to ash</span>
+            <span><span class="hi">Char burn</span> — misses stay ash; 5× is a nuke chain</span>
           </label>
+          <div class="field" style="min-width:200px">
+            <label for="optMissTone">Miss tone</label>
+            <select id="optMissTone" title="Audible feedback when you hit the wrong key" data-tip-title="Miss tone" data-tip="Pick the sound for a wrong character. Pulse skill unlocks richer voices.">
+              <option value="thud" selected>Thud</option>
+              <option value="buzz">Buzz</option>
+              <option value="click">Dry click</option>
+              <option value="glass">Glass crack</option>
+              <option value="horn">Horn</option>
+              <option value="kick">Kick drum</option>
+              <option value="warp">Warp</option>
+              <option value="laser">Laser</option>
+              <option value="chime">Minor chime</option>
+              <option value="growl">Growl</option>
+              <option value="choir">Choir sting</option>
+              <option value="rift">Rift</option>
+            </select>
+            <button type="button" class="btn ghost" id="btnPreviewMissTone" style="margin-top:6px" data-tip="Play the selected miss tone.">Preview tone</button>
+          </div>
           <label class="toggle" title="When a Novel chapter finishes, load the next one automatically">
             <input type="checkbox" id="optNovelAuto" checked>
             <span><span class="hi">Novel auto-next</span> — advance chapters</span>
           </label>
-          <label class="toggle" title="Replay your best-WPM caret tape on timed runs">
+          <label class="toggle" title="Replay ghost racers on this board">
             <input type="checkbox" id="optGhostReplay" checked>
-            <span><span class="hi">Ghost replay</span> — second caret from your best timed tape</span>
+            <span><span class="hi">Ghost racers</span> — last tape, or a pace diamond if they have no save for this board</span>
           </label>
+          <div class="field" style="min-width:160px">
+            <label for="optGhostCount">How many ghosts</label>
+            <select id="optGhostCount" data-tip-title="Ghost count" data-tip="0–4 racers. Each slot picks a roster player.">
+              <option value="0">None</option>
+              <option value="1" selected>1 racer</option>
+              <option value="2">2 racers</option>
+              <option value="3">3 racers</option>
+              <option value="4">4 racers</option>
+            </select>
+          </div>
+          <div class="ghost-slots" id="ghostSlots"></div>
+          <p class="lock-hint">Solid I-beam = that player's last run on this board. ◆ dashed diamond = pace ghost (no tape yet — rides their average WPM in their color).</p>
           <label class="toggle" title="Show a 3-row podium after 15/30/60 timed finishes">
             <input type="checkbox" id="optSprintPodium" checked>
             <span><span class="hi">Sprint podium</span> — top 3 after 15/30/60</span>
@@ -2986,13 +3771,32 @@ body:not(.run-active) .combo-bar { display: none !important; }
             <label for="optTextAnim">Text animation</label>
             <select id="optTextAnim">
               <option value="none">None</option>
-              <option value="glint">Glint sweep</option>
+              <option value="glint">Glint sweep (text only)</option>
               <option value="pulse">Brightness pulse</option>
               <option value="float">Soft float</option>
               <option value="shimmer">Shimmer</option>
               <option value="wave">Word wave</option>
               <option value="glitch">Caret glitch</option>
               <option value="breathe">Breathe / saturate</option>
+              <option value="ember">Ember glow</option>
+              <option value="flicker">Neon flicker</option>
+              <option value="sparkle">Sparkle hits</option>
+              <option value="slide">Soft slide</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="optStageBg">Stage background</label>
+            <select id="optStageBg" title="Moving plate backdrop behind the prompt">
+              <option value="none">None (skin only)</option>
+              <option value="aurora" selected>Aurora drift</option>
+              <option value="starfield">Starfield</option>
+              <option value="embers">Rising embers</option>
+              <option value="rain">Night rain</option>
+              <option value="circuits">Circuit grid</option>
+              <option value="ocean">Ocean swell</option>
+              <option value="nebula">Nebula clouds</option>
+              <option value="scan">Scanlines</option>
+              <option value="plasma">Plasma wash</option>
             </select>
           </div>
           <div class="field">
@@ -3099,7 +3903,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
             </label>
             <label class="toggle" for="skinFx_fire">
               <input type="checkbox" id="skinFx_fire">
-              <span><span class="hi">Fire</span> — ember tongues under the glyphs</span>
+              <span><span class="hi">Fire</span> — floor inferno + embers, never over the letters</span>
             </label>
             <label class="toggle" for="skinFx_lightning">
               <input type="checkbox" id="skinFx_lightning">
@@ -3185,6 +3989,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
               <option value="tape">Hazard tape</option>
               <option value="gothic">Gothic double</option>
               <option value="arcade">Arcade cabinet</option>
+              <option value="filigree">Gold filigree</option>
+              <option value="obsidian">Obsidian inlay</option>
+              <option value="crown">Crown rail</option>
             </select>
           </div>
           <div class="field">
@@ -3195,6 +4002,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
               <option value="neon-pipe">Neon pipe</option>
               <option value="dashed-orbit">Dashed orbit</option>
               <option value="hex-studs">Hex studs</option>
+              <option value="gold-filigree">Gold filigree</option>
+              <option value="plasma-ribbon">Plasma ribbon</option>
+              <option value="crown-inlay">Crown inlay</option>
             </select>
           </div>
           <div class="field">
@@ -3280,6 +4090,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
               <option value="underglow">Underglow</option>
               <option value="spotlight">Spotlight</option>
               <option value="scan">Scan sweep</option>
+              <option value="candle">Candle hearth</option>
+              <option value="cathedral">Cathedral shafts</option>
+              <option value="gold-hour">Gold hour</option>
             </select>
           </div>
             </div>
@@ -3435,6 +4248,17 @@ body:not(.run-active) .combo-bar { display: none !important; }
           </div>
 </div>
 
+    <!-- Challenges lobby -->
+    <div class="panel campaign-panel" id="challengePanel" data-fafo-panel="challenges" data-fafo-panel-title="Challenges" data-fafo-panel-min="80" data-fafo-panel-default="180">
+      <div class="fafo-panel-body fafo-scroll-pane">
+      <div class="section-title">Challenges — beat your log</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4">
+        Short drills with a personal record. Alphabet, digits, pangrams. Ghosts can race you. Chart lives on your player vault.
+      </p>
+      <div class="challenge-row" id="challengeRow"></div>
+          </div>
+</div>
+
     <!-- Main typing -->
     <div class="panel" id="mainPanel" data-fafo-panel="test-complete" data-fafo-panel-title="Typing stage" data-fafo-panel-min="320" data-fafo-panel-default="640" data-fafo-flex="1">
       <div class="fafo-panel-body fafo-scroll-pane">
@@ -3476,6 +4300,14 @@ body:not(.run-active) .combo-bar { display: none !important; }
         <div class="stat"><div class="val combo" id="statMult">×1</div><div class="lbl">Combo</div></div>
         <div class="stat"><div class="val" id="statTime">—</div><div class="lbl" id="statTimeLbl">Time</div></div>
         <div class="stat"><div class="val" id="statErr">0</div><div class="lbl">Errors</div></div>
+        <div class="stat" id="statXpBox" title="Persistent player level"><div class="val" id="statLevel">Lv 1</div><div class="lbl">Level</div></div>
+      </div>
+
+      <div class="challenge-hud" id="challengeHud">
+        <span id="challengeHudName">Challenge</span>
+        <span>Time <b id="challengeHudTime">0.0s</b></span>
+        <span>PB <b id="challengeHudPb">—</b></span>
+        <span id="challengeHudHint">Beat your record</span>
       </div>
 
       <div class="combo-bar" id="comboBar">
@@ -3516,6 +4348,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
 
       <div class="prompt-wrap" id="promptWrap">
         <div id="tatPlate" class="tat-plate" aria-hidden="true">
+          <div id="tatStage" class="tat-stage-bg stage-aurora" data-stage="aurora"></div>
           <div id="tatBg" class="tat-bg"></div>
           <div id="tatLight" class="tat-light" data-lit="rim"></div>
           <div id="tatGutter" class="tat-gutter"><div id="tatT63Layer" class="tat-t63-layer" aria-hidden="true"></div></div>
@@ -3529,6 +4362,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
         </div>
 
         <div class="prompt" id="prompt" aria-live="polite"></div>
+        <div id="tatGhostLayer" class="tat-ghost-layer" aria-hidden="true"></div>
         <input class="hidden-input" id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Typing input">
       </div>
       <div class="focus-hint" id="focusHint">Click the text (or press a key) to focus and start</div>
@@ -3539,6 +4373,31 @@ body:not(.run-active) .combo-bar { display: none !important; }
       <div class="fafo-panel-body fafo-scroll-pane">
       <div class="section-title">Keyboard guide</div>
       <div class="kb" id="keyboard" aria-hidden="true"></div>
+          </div>
+</div>
+
+    <div class="panel" id="progressPanel" data-fafo-panel="progress" data-fafo-panel-title="Progress" data-fafo-panel-min="80" data-fafo-panel-default="220">
+      <div class="fafo-panel-body fafo-scroll-pane">
+      <div class="section-title">Player roster · progress · skill tree</div>
+      <p class="lock-hint">XP and ranks live on the active player. Level up to unlock frames, borders, lighting, and miss tones — or buy Gilt / Lumen / Vault / Pulse to open them early.</p>
+      <div class="xp-hud" id="xpHud">
+        <div class="xp-meta">
+          <strong id="xpLevel">Lv 1</strong>
+          <span id="xpPlayerName">Ryan Key</span>
+        </div>
+        <div class="xp-bar" aria-hidden="true"><i id="xpFill"></i></div>
+        <div class="xp-nums"><b id="xpNow">0</b> / <span id="xpNeed">125</span> XP · <b id="xpPts">0</b> skill pts</div>
+      </div>
+      <div class="skill-tree" id="skillTree"></div>
+      <div class="career-stats" id="careerStats"></div>
+      <div class="wpm-chart" id="wpmChartBox">
+        <div class="lbl"><span>Improvement log</span><span id="chartHint">WPM over recent runs</span></div>
+        <svg id="wpmChart" viewBox="0 0 320 120" role="img" aria-label="WPM over time"></svg>
+      </div>
+      <div class="vault-row">
+        <button type="button" class="btn ghost" id="btnPlayerExport2">Export this player</button>
+        <button type="button" class="btn ghost" id="btnVaultExport">Export full vault</button>
+      </div>
           </div>
 </div>
 
@@ -3574,18 +4433,24 @@ body:not(.run-active) .combo-bar { display: none !important; }
         </div>
         <div id="tabTips" style="display:none">
           <div class="tips">
-            <p><strong>Campaign story</strong> — The Keystroke Chronicles. Conquer territories left-to-right, unlock journal entries, earn stars, and trigger <strong>bonus rounds</strong> when you crush the goals.</p>
+            <p style="margin-top:8px"><strong>KEYFLARE</strong> — neon typing arcade. Lessons, campaign, and fireworks, not a dry WPM test.</p>
+            <p style="margin-top:8px"><strong>Ghost racers</strong> — pick who and how many (0–4). Solid I-beam = that player's last tape on this board. ◆ dashed diamond = pace ghost (no tape yet) filled with their color at their average speed.</p>
+            <p style="margin-top:8px"><strong>Challenges</strong> — alphabet dash, pangrams, digit runs. Beat your personal best. The improvement chart lives on your player vault.</p>
+            <p style="margin-top:8px"><strong>Player vault</strong> — export/import a player JSON to merge stats across machines. Schema version + compatible list migrate backups across patches. Progress is independent of this game file.</p>
+            <p style="margin-top:8px"><strong>Campaign story</strong> — The Keystroke Chronicles. Conquer territories left-to-right, unlock journal entries, earn stars, and trigger <strong>bonus rounds</strong> when you crush the goals.</p>
             <p style="margin-top:8px"><strong>Mini-games</strong> — Word Rush, Perfect Path (lives), Storm Keys, Echo Phrase, and Ghost Pace. All pure typing practice with arcade pressure.</p>
             <p style="margin-top:8px"><strong>Combos</strong> tier often: <strong>2 · 5 · 8 · 12 · 16 · 20 · 25 · 30 · 35 · 40 · 50 · 60 · 75 · 100</strong>. Smoke &amp; flames build as you heat up.</p>
             <p style="margin-top:8px"><strong>❤️ Boards</strong> — 3 lives, <strong>−0.5</strong> per miss, <strong>+1 life every 30 clean chars</strong>. Clearing a board only advances you — run continues until <strong>lives = 0</strong> or the optional <strong>timer</strong> (pick <em>No limit</em> for lives-only). Boards cycle forever with unique themes/sounds. Timed mode also has <strong>5 / 10 min</strong>.</p>
             <p style="margin-top:8px"><strong>📖 Novel Mode</strong> — Type through short original novellas chapter by chapter. Pick a book and chapter, set pace (page / scene / full chapter), and use auto-next to keep reading. Serif “book” look applies while Novel is active.</p>
+            <p style="margin-top:8px"><strong>Roster & skills</strong> — multiple players, persistent XP, a skill tree (Focus, Flow, Armor, Ember, Gilt, Lumen, Vault, Pulse). Leveling unlocks fancier frames, borders, lighting, and miss tones. Scores still save on the high-score board.</p>
+            <p style="margin-top:8px"><strong>Miss FX</strong> — dust cloud → fire → explosion. Five misses on the same glyph: mushroom nuke that chain-blasts ±3 characters. Pick a miss tone in More setup.</p>
             <p style="margin-top:8px"><strong>Simplify</strong> with No capitals / No punctuation when learning. <kbd>Tab</kbd> restarts · scores stay in this browser only.</p>
           </div>
         </div>
               </div>
 </div>
     </div>
-    <p class="footer-note">Offline · localStorage only · soft Web Audio (no files)</p>
+    <p class="footer-note">Offline · KEYFLARE player vault travels with you · neon arcade</p>
   </div>
 
   <script>
@@ -3601,8 +4466,710 @@ body:not(.run-active) .combo-bar { display: none !important; }
     skinSlots: 'aitoolbox.typingTrainer.skinSlots.v1',
     libraryMeta: 'aitoolbox.typingTrainer.libraryMeta.v1',
     ghostReplay: 'aitoolbox.typingTrainer.ghostReplay.v1',
+    roster: 'aitoolbox.typingTrainer.roster.v1',
+    vault: 'fafo.playerVault.v2',
   };
   const DEFAULT_PLAYER_NAME = (window.FAFOOpsStats && window.FAFOOpsStats.DEFAULT_TYPING_ACTOR) || 'Ryan Key';
+
+  const SKILL_DEFS = [
+    { id: 'focus', name: 'Focus', ico: '◎', max: 5, blurb: 'Clean hits pay more. Accuracy XP +12%/rank, +1 score on every hit.' },
+    { id: 'flow',  name: 'Flow',   ico: '〰', max: 5, blurb: 'Combo floor rises. Base multiplier +0.04 per rank.' },
+    { id: 'armor', name: 'Armor',  ico: '🛡', max: 5, blurb: 'Miss sting fades. Life cost −0.06/rank. Streak grace at rank 3+.' },
+    { id: 'ember', name: 'Ember',  ico: '🔥', max: 5, blurb: 'Hotter FX. Particle count +15% per rank.' },
+    { id: 'gilt',  name: 'Gilt',   ico: '✦', max: 5, blurb: 'Ornate frames & borders unlock early with each rank.' },
+    { id: 'lumen', name: 'Lumen',  ico: '✧', max: 5, blurb: 'Stage lighting looks — rim through gold hour.' },
+    { id: 'vault', name: 'Vault',  ico: '◈', max: 5, blurb: 'Moving backdrops. Aurora through plasma, faster.' },
+    { id: 'pulse', name: 'Pulse',  ico: '♫', max: 5, blurb: 'Richer miss tones and extra text animations.' },
+  ];
+  const COSMETIC_GATES = {
+    frame: {
+      none: { lv: 1, skill: 'gilt', rank: 0 },
+      circuit: { lv: 1, skill: 'gilt', rank: 0 },
+      rune: { lv: 3, skill: 'gilt', rank: 1 },
+      chrome: { lv: 5, skill: 'gilt', rank: 2 },
+      tape: { lv: 6, skill: 'gilt', rank: 2 },
+      gothic: { lv: 7, skill: 'gilt', rank: 3 },
+      arcade: { lv: 8, skill: 'gilt', rank: 3 },
+      filigree: { lv: 9, skill: 'gilt', rank: 4 },
+      obsidian: { lv: 11, skill: 'gilt', rank: 4 },
+      crown: { lv: 13, skill: 'gilt', rank: 5 },
+    },
+    border: {
+      none: { lv: 1, skill: 'gilt', rank: 0 },
+      hairline: { lv: 1, skill: 'gilt', rank: 0 },
+      'neon-pipe': { lv: 2, skill: 'gilt', rank: 1 },
+      'dashed-orbit': { lv: 4, skill: 'gilt', rank: 2 },
+      'hex-studs': { lv: 6, skill: 'gilt', rank: 3 },
+      'gold-filigree': { lv: 8, skill: 'gilt', rank: 4 },
+      'plasma-ribbon': { lv: 10, skill: 'gilt', rank: 4 },
+      'crown-inlay': { lv: 12, skill: 'gilt', rank: 5 },
+    },
+    lighting: {
+      none: { lv: 1, skill: 'lumen', rank: 0 },
+      rim: { lv: 1, skill: 'lumen', rank: 0 },
+      stage: { lv: 3, skill: 'lumen', rank: 1 },
+      underglow: { lv: 4, skill: 'lumen', rank: 2 },
+      spotlight: { lv: 6, skill: 'lumen', rank: 3 },
+      scan: { lv: 8, skill: 'lumen', rank: 3 },
+      candle: { lv: 5, skill: 'lumen', rank: 2 },
+      cathedral: { lv: 9, skill: 'lumen', rank: 4 },
+      'gold-hour': { lv: 12, skill: 'lumen', rank: 5 },
+    },
+    stage: {
+      none: { lv: 1, skill: 'vault', rank: 0 },
+      aurora: { lv: 1, skill: 'vault', rank: 0 },
+      starfield: { lv: 2, skill: 'vault', rank: 1 },
+      embers: { lv: 3, skill: 'vault', rank: 1 },
+      rain: { lv: 4, skill: 'vault', rank: 2 },
+      circuits: { lv: 5, skill: 'vault', rank: 2 },
+      ocean: { lv: 6, skill: 'vault', rank: 3 },
+      nebula: { lv: 8, skill: 'vault', rank: 3 },
+      scan: { lv: 9, skill: 'vault', rank: 4 },
+      plasma: { lv: 11, skill: 'vault', rank: 5 },
+    },
+    tone: {
+      thud: { lv: 1, skill: 'pulse', rank: 0 },
+      buzz: { lv: 1, skill: 'pulse', rank: 0 },
+      click: { lv: 1, skill: 'pulse', rank: 0 },
+      glass: { lv: 2, skill: 'pulse', rank: 1 },
+      horn: { lv: 3, skill: 'pulse', rank: 1 },
+      kick: { lv: 4, skill: 'pulse', rank: 2 },
+      warp: { lv: 5, skill: 'pulse', rank: 2 },
+      laser: { lv: 6, skill: 'pulse', rank: 3 },
+      chime: { lv: 7, skill: 'pulse', rank: 3 },
+      growl: { lv: 8, skill: 'pulse', rank: 4 },
+      choir: { lv: 10, skill: 'pulse', rank: 4 },
+      rift: { lv: 12, skill: 'pulse', rank: 5 },
+    },
+  };
+
+  const PLAYER_SCHEMA = 2;
+  const VAULT_SCHEMA = 2;
+  const PLAYER_HUES = [48, 186, 280, 12, 142, 322, 204, 88];
+
+  function uidPlayer() {
+    return 'p_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+  }
+  function emptySkills() {
+    const o = {};
+    SKILL_DEFS.forEach((s) => { o[s.id] = 0; });
+    return o;
+  }
+  function makePlayer(name) {
+    return {
+      id: uidPlayer(),
+      name: (name || DEFAULT_PLAYER_NAME).trim() || DEFAULT_PLAYER_NAME,
+      createdAt: Date.now(),
+      lastAt: Date.now(),
+      xp: 0,
+      level: 1,
+      skills: emptySkills(),
+      stats: { runs: 0, chars: 0, errors: 0, bestWpm: 0, bestAcc: 0, bestStreak: 0, totalScore: 0, playMs: 0, nukes: 0 },
+      cosmetics: { frame: 'circuit', border: 'neon-pipe', lighting: 'rim', stage: 'aurora' },
+      missTone: 'thud',
+      color: '',
+      ghosts: {},
+      challenges: {},
+      history: [],
+      ghostCount: 1,
+      ghostPicks: [],
+      schema: 'fafo.player',
+      version: PLAYER_SCHEMA,
+    };
+  }
+  function defaultRoster() {
+    const p = makePlayer(DEFAULT_PLAYER_NAME);
+    return { v: 1, activeId: p.id, players: [p] };
+  }
+  function playerColor(p) {
+    if (p && p.color) return p.color;
+    const idx = Math.max(0, (ROSTER && ROSTER.players ? ROSTER.players.findIndex((x) => x.id === p.id) : 0));
+    const hue = PLAYER_HUES[idx % PLAYER_HUES.length];
+    const c = 'hsl(' + hue + ',90%,62%)';
+    if (p) p.color = c;
+    return c;
+  }
+  function migratePlayer(p) {
+    const d = makePlayer(p && p.name);
+    const out = Object.assign(d, p || {}, {
+      skills: Object.assign(emptySkills(), (p && p.skills) || {}),
+      stats: Object.assign(d.stats, (p && p.stats) || {}),
+      cosmetics: Object.assign(d.cosmetics, (p && p.cosmetics) || {}),
+      ghosts: (p && p.ghosts && typeof p.ghosts === 'object') ? p.ghosts : {},
+      challenges: (p && p.challenges && typeof p.challenges === 'object') ? p.challenges : {},
+      history: Array.isArray(p && p.history) ? p.history.slice(0, 80) : [],
+      ghostCount: Math.max(0, Math.min(4, (p && p.ghostCount) != null ? (p.ghostCount | 0) : 1)),
+      ghostPicks: Array.isArray(p && p.ghostPicks) ? p.ghostPicks.slice(0, 4) : [],
+    });
+    if (!out.id) out.id = uidPlayer();
+    if (!out.color) playerColor(out);
+    out.schema = 'fafo.player';
+    out.version = PLAYER_SCHEMA;
+    return out;
+  }
+  function loadRoster() {
+    const vault = loadJson(KEYS.vault, null);
+    if (vault && typeof vault === 'object' && Array.isArray(vault.players) && vault.players.length) {
+      const r = {
+        v: 1,
+        activeId: vault.activeId,
+        players: vault.players.map(migratePlayer),
+      };
+      if (!r.players.some((p) => p.id === r.activeId)) r.activeId = r.players[0].id;
+      return r;
+    }
+    const raw = loadJson(KEYS.roster, null);
+    if (!raw || typeof raw !== 'object' || !Array.isArray(raw.players) || !raw.players.length) {
+      const r = defaultRoster();
+      try {
+        const n = (localStorage.getItem(KEYS.name) || '').trim();
+        if (n) r.players[0].name = n;
+      } catch (_) {}
+      r.players = r.players.map(migratePlayer);
+      saveJson(KEYS.roster, r);
+      saveJson(KEYS.vault, {
+        schema: 'fafo.player-vault', version: VAULT_SCHEMA, app: 'keyflare',
+        compatible: [1, 2], savedAt: Date.now(), activeId: r.activeId, players: r.players,
+      });
+      return r;
+    }
+    raw.players = raw.players.map(migratePlayer);
+    if (!raw.players.some((p) => p.id === raw.activeId)) raw.activeId = raw.players[0].id;
+    return raw;
+  }
+  let ROSTER = null;
+  function saveRoster() {
+    if (!ROSTER) return;
+    ROSTER.players = ROSTER.players.map(migratePlayer);
+    saveJson(KEYS.roster, ROSTER);
+    saveJson(KEYS.vault, {
+      schema: 'fafo.player-vault',
+      version: VAULT_SCHEMA,
+      app: 'keyflare',
+      compatible: [1, 2],
+      savedAt: Date.now(),
+      activeId: ROSTER.activeId,
+      players: ROSTER.players,
+    });
+  }
+  function totalXp(p) {
+    let t = (p.xp | 0);
+    for (let lv = 1; lv < (p.level | 0); lv++) t += xpToNext(lv);
+    return t;
+  }
+  function applyTotalXp(p, total) {
+    p.level = 1;
+    p.xp = Math.max(0, total | 0);
+    applyLevelFromXp(p);
+  }
+  function mergePlayers(a, b) {
+    const out = migratePlayer(a);
+    const other = migratePlayer(b);
+    applyTotalXp(out, Math.max(totalXp(out), totalXp(other)));
+    SKILL_DEFS.forEach((s) => {
+      out.skills[s.id] = Math.max(out.skills[s.id] | 0, other.skills[s.id] | 0);
+    });
+    const st = out.stats, os = other.stats || {};
+    st.runs = (st.runs | 0) + (os.runs | 0);
+    st.chars = (st.chars | 0) + (os.chars | 0);
+    st.errors = (st.errors | 0) + (os.errors | 0);
+    st.bestWpm = Math.max(st.bestWpm | 0, os.bestWpm | 0);
+    st.bestAcc = Math.max(st.bestAcc | 0, os.bestAcc | 0);
+    st.bestStreak = Math.max(st.bestStreak | 0, os.bestStreak | 0);
+    st.totalScore = (st.totalScore | 0) + (os.totalScore | 0);
+    st.playMs = (st.playMs | 0) + (os.playMs | 0);
+    st.nukes = (st.nukes | 0) + (os.nukes | 0);
+    out.ghosts = out.ghosts || {};
+    Object.keys(other.ghosts || {}).forEach((k) => {
+      const A = out.ghosts[k];
+      const B = other.ghosts[k];
+      if (!B) return;
+      if (!A) { out.ghosts[k] = B; return; }
+      if (B.best && (!A.best || (B.best.wpm | 0) > (A.best.wpm | 0))) A.best = B.best;
+      if (B.last && (!A.last || (B.last.at | 0) > (A.last.at | 0))) A.last = B.last;
+    });
+    out.challenges = out.challenges || {};
+    Object.keys(other.challenges || {}).forEach((k) => {
+      const A = out.challenges[k] || { log: [], attempts: 0 };
+      const B = other.challenges[k] || {};
+      if (!A.bestMs || (B.bestMs && B.bestMs < A.bestMs)) {
+        A.bestMs = B.bestMs; A.bestWpm = B.bestWpm; A.bestAcc = B.bestAcc;
+      }
+      const seen = new Set((A.log || []).map((x) => x.at));
+      (B.log || []).forEach((x) => { if (x && !seen.has(x.at)) A.log.push(x); });
+      A.log = (A.log || []).sort((x, y) => (x.at | 0) - (y.at | 0)).slice(-60);
+      A.attempts = (A.attempts | 0) + (B.attempts | 0);
+      out.challenges[k] = A;
+    });
+    const hist = (out.history || []).concat(other.history || []);
+    const seenH = new Set();
+    out.history = hist.filter((h) => {
+      const k = (h.at || 0) + ':' + (h.wpm || 0) + ':' + (h.bucket || '');
+      if (seenH.has(k)) return false;
+      seenH.add(k);
+      return true;
+    }).sort((x, y) => (y.at | 0) - (x.at | 0)).slice(0, 80);
+    out.lastAt = Math.max(out.lastAt | 0, other.lastAt | 0);
+    out.name = out.name || other.name;
+    return out;
+  }
+  function downloadJson(filename, obj) {
+    const text = JSON.stringify(obj, null, 2);
+    const blob = new Blob([text], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2500);
+  }
+  function playerPackPayload(p) {
+    return {
+      schema: 'fafo.keyflare.player',
+      version: PLAYER_SCHEMA,
+      app: 'keyflare',
+      compatible: [1, 2],
+      exportedAt: new Date().toISOString(),
+      player: migratePlayer(p),
+    };
+  }
+  function exportActivePlayer() {
+    const p = activePlayer();
+    const slug = String(p.name || 'player').replace(/[^\w\-]+/g, '_').slice(0, 40);
+    downloadJson('keyflare-player-' + slug + '.json', playerPackPayload(p));
+    try { AIToolboxUI?.toast?.('Exported ' + p.name + ' — merge this file on another machine', 'ok'); } catch (_) {}
+  }
+  function exportFullVault() {
+    downloadJson('keyflare-vault.json', {
+      schema: 'fafo.player-vault',
+      version: VAULT_SCHEMA,
+      app: 'keyflare',
+      compatible: [1, 2],
+      exportedAt: new Date().toISOString(),
+      activeId: ROSTER.activeId,
+      players: ROSTER.players.map(migratePlayer),
+    });
+    try { AIToolboxUI?.toast?.('Full player vault downloaded', 'ok'); } catch (_) {}
+  }
+  function ingestPlayerPack(pack) {
+    if (!pack || typeof pack !== 'object') throw new Error('Not a player file');
+    const ver = pack.version | 0;
+    const okSchema = pack.schema === 'fafo.keyflare.player' || pack.schema === 'fafo.player' || pack.schema === 'fafo.player-vault';
+    const compat = Array.isArray(pack.compatible) ? pack.compatible : [ver || 1];
+    if (!okSchema && !pack.player && !pack.players) throw new Error('Unknown save format');
+    if (ver && ver > PLAYER_SCHEMA && compat.indexOf(PLAYER_SCHEMA) < 0 && compat.indexOf(VAULT_SCHEMA) < 0) {
+      throw new Error('This backup is from a newer Keyflare. Update the game, then import.');
+    }
+    const incoming = [];
+    if (Array.isArray(pack.players)) pack.players.forEach((p) => incoming.push(migratePlayer(p)));
+    if (pack.player) incoming.push(migratePlayer(pack.player));
+    if (!incoming.length) throw new Error('No player in file');
+    incoming.forEach((imp) => {
+      const byId = ROSTER.players.find((x) => x.id === imp.id);
+      const byName = ROSTER.players.find((x) => (x.name || '').toLowerCase() === (imp.name || '').toLowerCase());
+      if (byId) {
+        const i = ROSTER.players.indexOf(byId);
+        ROSTER.players[i] = mergePlayers(byId, imp);
+        ROSTER.players[i].id = byId.id;
+      } else if (byName) {
+        const merge = confirm('A player named "' + byName.name + '" already exists. Merge stats? (Cancel = add as a new slot)');
+        if (merge) {
+          const i = ROSTER.players.indexOf(byName);
+          const keepId = byName.id;
+          ROSTER.players[i] = mergePlayers(byName, imp);
+          ROSTER.players[i].id = keepId;
+        } else {
+          imp.id = uidPlayer();
+          ROSTER.players.push(imp);
+        }
+      } else {
+        ROSTER.players.push(imp);
+      }
+    });
+    saveRoster();
+    renderRoster();
+    try { renderGhostSlots(); } catch (_) {}
+    try { renderChallengeLobby(); } catch (_) {}
+    try { AIToolboxUI?.toast?.('Player vault imported · stats merged', 'ok'); } catch (_) {}
+  }
+  function importPlayerFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        ingestPlayerPack(JSON.parse(String(reader.result || '{}')));
+      } catch (err) {
+        try { AIToolboxUI?.toast?.(String(err.message || err).slice(0, 120), 'warn'); } catch (_) {}
+        alert(err.message || 'Could not import that file.');
+      }
+    };
+    reader.readAsText(file);
+  }
+  function activePlayer() {
+    if (!ROSTER) ROSTER = loadRoster();
+    return ROSTER.players.find((p) => p.id === ROSTER.activeId) || ROSTER.players[0];
+  }
+  function skillRank(id) {
+    const p = activePlayer();
+    return Math.max(0, (p.skills && p.skills[id]) | 0);
+  }
+  function spentSkillPts(p) {
+    p = p || activePlayer();
+    return SKILL_DEFS.reduce((n, s) => n + ((p.skills && p.skills[s.id]) | 0), 0);
+  }
+  function xpToNext(level) {
+    const lv = Math.max(1, level | 0);
+    return 80 + lv * 45 + Math.floor(lv * lv * 6);
+  }
+  function freeSkillPts(p) {
+    p = p || activePlayer();
+    return Math.max(0, (p.level | 0) - 1 - spentSkillPts(p));
+  }
+  function applyLevelFromXp(p) {
+    let gained = 0;
+    while (p.xp >= xpToNext(p.level)) {
+      p.xp -= xpToNext(p.level);
+      p.level += 1;
+      gained += 1;
+    }
+    return gained;
+  }
+  function isCosmeticUnlocked(kind, id) {
+    const gate = (COSMETIC_GATES[kind] || {})[id];
+    if (!gate) return true;
+    const p = activePlayer();
+    if ((p.level | 0) >= (gate.lv | 0)) return true;
+    if (gate.skill && skillRank(gate.skill) >= (gate.rank | 0) && gate.rank > 0) return true;
+    if (gate.rank === 0) return true;
+    return false;
+  }
+  function cosmeticNeed(kind, id) {
+    const gate = (COSMETIC_GATES[kind] || {})[id];
+    if (!gate) return '';
+    if (isCosmeticUnlocked(kind, id)) return '';
+    const bits = ['Lv ' + gate.lv];
+    if (gate.skill && gate.rank) bits.push(gate.skill + ' ' + gate.rank);
+    return bits.join(' / ');
+  }
+  function lockSelectOptions(selId, kind) {
+    const sel = $(selId);
+    if (!sel) return;
+    const opts = sel.querySelectorAll('option');
+    opts.forEach((opt) => {
+      const id = opt.value;
+      const ok = isCosmeticUnlocked(kind, id);
+      opt.disabled = !ok;
+      const base = (opt.getAttribute('data-label') || opt.textContent.replace(/\s·\s.*$/, '')).trim();
+      if (!opt.getAttribute('data-label')) opt.setAttribute('data-label', base);
+      opt.textContent = ok ? base : base + ' · ' + cosmeticNeed(kind, id);
+    });
+    if (sel.value && sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].disabled) {
+      const fallback = [...sel.options].find((o) => !o.disabled);
+      if (fallback) sel.value = fallback.value;
+    }
+  }
+  function lockAllCosmetics() {
+    lockSelectOptions('skinFrame', 'frame');
+    lockSelectOptions('skinBorder', 'border');
+    lockSelectOptions('skinLighting', 'lighting');
+    lockSelectOptions('optStageBg', 'stage');
+    lockSelectOptions('optMissTone', 'tone');
+  }
+  function renderRoster() {
+    const p = activePlayer();
+    const chips = $('rosterChips');
+    if (chips) {
+      chips.innerHTML = ROSTER.players.map((pl) => {
+        const av = escapeHtml((pl.name || '?').trim().charAt(0).toUpperCase() || '?');
+        const on = pl.id === ROSTER.activeId ? ' active' : '';
+        return '<button type="button" class="roster-chip' + on + '" data-pid="' + pl.id + '">'
+          + '<span class="roster-ava">' + av + '</span>'
+          + '<span class="meta"><strong>' + escapeHtml(pl.name) + '</strong>'
+          + '<small>Lv ' + (pl.level | 0) + ' · ' + ((pl.stats && pl.stats.runs) || 0) + ' runs</small></span></button>';
+      }).join('');
+    }
+    if ($('playerName') && document.activeElement !== $('playerName')) $('playerName').value = p.name;
+    if ($('rosterLevelPill')) $('rosterLevelPill').textContent = 'Lv ' + (p.level | 0);
+    renderProgressHud();
+    renderSkillTree();
+    lockAllCosmetics();
+    try { renderGhostSlots(); } catch (_) {}
+    try { drawWpmChart(); } catch (_) {}
+    try { renderChallengeLobby(); } catch (_) {}
+  }
+  function renderProgressHud() {
+    const p = activePlayer();
+    const need = xpToNext(p.level);
+    const pct = Math.max(0, Math.min(100, Math.round((p.xp / need) * 100)));
+    if ($('xpLevel')) $('xpLevel').textContent = 'Lv ' + p.level;
+    if ($('xpPlayerName')) $('xpPlayerName').textContent = p.name;
+    if ($('xpFill')) $('xpFill').style.width = pct + '%';
+    if ($('xpNow')) $('xpNow').textContent = String(p.xp | 0);
+    if ($('xpNeed')) $('xpNeed').textContent = String(need);
+    if ($('xpPts')) $('xpPts').textContent = String(freeSkillPts(p));
+    if ($('statLevel')) $('statLevel').textContent = 'Lv ' + p.level;
+    const st = p.stats || {};
+    const cs = $('careerStats');
+    if (cs) {
+      cs.innerHTML = [
+        ['Runs', st.runs || 0],
+        ['Chars', st.chars || 0],
+        ['Best WPM', st.bestWpm || 0],
+        ['Best acc', (st.bestAcc || 0) + '%'],
+        ['Best streak', st.bestStreak || 0],
+        ['Nukes', st.nukes || 0],
+        ['Score Σ', st.totalScore || 0],
+      ].map(([k, v]) => '<span>' + k + ' <b>' + v + '</b></span>').join('');
+    }
+  }
+  function renderSkillTree() {
+    const host = $('skillTree');
+    if (!host) return;
+    const p = activePlayer();
+    const pts = freeSkillPts(p);
+    host.innerHTML = SKILL_DEFS.map((s) => {
+      const r = (p.skills && p.skills[s.id]) | 0;
+      const maxed = r >= s.max;
+      const cls = maxed ? ' maxed' : (r ? ' ranked' : '');
+      const pips = Array.from({ length: s.max }, (_, i) => '<i class="' + (i < r ? 'on' : '') + '"></i>').join('');
+      const can = pts > 0 && !maxed;
+      return '<div class="skill-node' + cls + '" data-skill="' + s.id + '">'
+        + '<div class="skill-head"><span class="skill-ico">' + s.ico + '</span><span class="skill-name">' + s.name + '</span></div>'
+        + '<div class="skill-blurb">' + s.blurb + '</div>'
+        + '<div class="skill-foot"><span class="skill-pips">' + pips + '</span>'
+        + '<button type="button" class="skill-buy" data-buy="' + s.id + '"' + (can ? '' : ' disabled') + '>'
+        + (maxed ? 'MAX' : (can ? 'Buy · ' + pts + ' pts' : 'Need pts')) + '</button></div></div>';
+    }).join('');
+  }
+  function ghostBoardKey() {
+    if (challengeRun && challengeConfig) return 'challenge:' + (challengeConfig.id || 'run');
+    if (boardsRun || mode === 'boards') {
+      const b = STORY_BOARDS[boardIndex] || STORY_BOARDS[0];
+      return 'boards:' + (b && b.id ? b.id : String(boardIndex || 0));
+    }
+    try { return optionKey(); } catch (_) { return mode || 'timed'; }
+  }
+  function playerHasTape(p, board) {
+    const t = p && p.ghosts && p.ghosts[board] && p.ghosts[board].last;
+    return !!(t && Array.isArray(t.marks) && t.marks.length);
+  }
+  function playerPaceWpm(p) {
+    const st = (p && p.stats) || {};
+    if ((st.playMs | 0) > 15000 && (st.chars | 0) > 40) {
+      const w = (st.chars / 5) / (st.playMs / 60000);
+      return Math.max(8, Math.min(220, w));
+    }
+    if ((st.bestWpm | 0) > 0) return Math.max(12, Math.round(st.bestWpm * 0.72));
+    return 28;
+  }
+  function renderGhostSlots() {
+    const host = $('ghostSlots');
+    if (!host) return;
+    const p = activePlayer();
+    let n = $('optGhostCount') ? ($('optGhostCount').value | 0) : (p.ghostCount | 0);
+    n = Math.max(0, Math.min(4, n));
+    p.ghostCount = n;
+    if ($('optGhostCount') && $('optGhostCount').value !== String(n)) $('optGhostCount').value = String(n);
+    p.ghostPicks = Array.isArray(p.ghostPicks) ? p.ghostPicks.slice(0, n) : [];
+    const others = ROSTER.players.filter((x) => x.id !== p.id);
+    while (p.ghostPicks.length < n) {
+      const cand = others[p.ghostPicks.length] || p;
+      p.ghostPicks.push(cand.id);
+    }
+    const board = ghostBoardKey();
+    host.innerHTML = Array.from({ length: n }, (_, i) => {
+      const pid = p.ghostPicks[i];
+      const gp = ROSTER.players.find((x) => x.id === pid) || p;
+      const tape = playerHasTape(gp, board);
+      const opts = ROSTER.players.map((pl) =>
+        '<option value="' + pl.id + '"' + (pl.id === gp.id ? ' selected' : '') + '>' + escapeHtml(pl.name) + '</option>'
+      ).join('');
+      return '<div class="ghost-slot" style="--gc:' + playerColor(gp) + '">'
+        + '<span class="dot" title="' + (tape ? 'Last tape on this board' : 'Pace diamond — no tape yet') + '"></span>'
+        + '<select data-ghost-slot="' + i + '" aria-label="Ghost racer ' + (i + 1) + '">' + opts + '</select>'
+        + '<span class="ghost-kind ' + (tape ? 'tape' : 'pace') + '">' + (tape ? 'TAPE' : 'PACE ◆') + '</span>'
+        + '</div>';
+    }).join('');
+  }
+  function drawWpmChart() {
+    const svg = $('wpmChart');
+    if (!svg) return;
+    const p = activePlayer();
+    let pts = Array.isArray(p.history) ? p.history.slice() : [];
+    Object.keys(p.challenges || {}).forEach((id) => {
+      (p.challenges[id].log || []).forEach((row) => {
+        if (row && row.wpm) pts.push({ at: row.at, wpm: row.wpm, acc: row.acc, bucket: 'challenge:' + id });
+      });
+    });
+    pts = pts.filter((h) => h && (h.wpm | 0) >= 0 && (h.at | 0) > 0)
+      .sort((a, b) => (a.at | 0) - (b.at | 0))
+      .slice(-24);
+    if ($('chartHint')) {
+      $('chartHint').textContent = pts.length
+        ? pts.length + ' logged · best ' + Math.max.apply(null, pts.map((x) => x.wpm | 0)) + ' WPM'
+        : 'WPM over recent runs';
+    }
+    if (!pts.length) {
+      svg.innerHTML = '<text x="16" y="66" fill="#8b93a7" font-size="12">Finish runs and challenges to chart your climb</text>';
+      return;
+    }
+    const w = 320, h = 120, pad = 18;
+    const ys = pts.map((x) => x.wpm | 0);
+    const min = Math.min.apply(null, ys.concat([0]));
+    const max = Math.max.apply(null, ys.concat([40]));
+    const span = Math.max(1, max - min);
+    const xAt = (i) => pad + (i / Math.max(1, pts.length - 1)) * (w - pad * 2);
+    const yAt = (v) => h - pad - ((v - min) / span) * (h - pad * 2);
+    const line = pts.map((pt, i) => (i ? 'L' : 'M') + xAt(i).toFixed(1) + ',' + yAt(pt.wpm).toFixed(1)).join(' ');
+    const lastX = xAt(pts.length - 1).toFixed(1);
+    const firstX = xAt(0).toFixed(1);
+    const area = line + ' L' + lastX + ',' + (h - pad) + ' L' + firstX + ',' + (h - pad) + ' Z';
+    const dots = pts.map((pt, i) =>
+      '<circle cx="' + xAt(i).toFixed(1) + '" cy="' + yAt(pt.wpm).toFixed(1) + '" r="2.4" fill="#ffc800"><title>'
+      + (pt.wpm | 0) + ' WPM</title></circle>'
+    ).join('');
+    const last = pts[pts.length - 1];
+    svg.innerHTML =
+      '<defs><linearGradient id="kfFill" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0" stop-color="#00f3ff" stop-opacity="0.38"/>'
+      + '<stop offset="1" stop-color="#7c5cff" stop-opacity="0"/></linearGradient></defs>'
+      + '<path d="' + area + '" fill="url(#kfFill)"/>'
+      + '<path d="' + line + '" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linejoin="round"/>'
+      + dots
+      + '<text x="' + (w - 8) + '" y="14" text-anchor="end" fill="#ffe08a" font-size="11">' + (last.wpm | 0) + ' WPM</text>';
+  }
+  function buySkill(id) {
+    const def = SKILL_DEFS.find((s) => s.id === id);
+    if (!def) return;
+    const p = activePlayer();
+    if (freeSkillPts(p) <= 0) return;
+    const cur = (p.skills[id] | 0);
+    if (cur >= def.max) return;
+    p.skills[id] = cur + 1;
+    p.lastAt = Date.now();
+    saveRoster();
+    renderRoster();
+    showComboToast(def.name + ' ' + p.skills[id], 'Skill ranked up');
+    try { AIToolboxUI?.toast?.(def.name + ' → rank ' + p.skills[id], 'ok'); } catch (_) {}
+  }
+  function switchPlayer(id) {
+    if (!ROSTER.players.some((p) => p.id === id)) return;
+    capturePlayerLook();
+    ROSTER.activeId = id;
+    const p = activePlayer();
+    p.lastAt = Date.now();
+    saveRoster();
+    if ($('playerName')) $('playerName').value = p.name;
+    if ($('resultName')) $('resultName').value = p.name;
+    try { localStorage.setItem(KEYS.name, p.name); } catch (_) {}
+    applyPlayerLook(p);
+    renderRoster();
+    setCompanion('idle', p.name + ' is at the keys · Lv ' + p.level);
+  }
+  function addPlayer() {
+    const name = prompt('New player name', 'Player ' + (ROSTER.players.length + 1));
+    if (name == null) return;
+    capturePlayerLook();
+    const p = makePlayer(name);
+    ROSTER.players.push(p);
+    ROSTER.activeId = p.id;
+    saveRoster();
+    if ($('playerName')) $('playerName').value = p.name;
+    applyPlayerLook(p);
+    renderRoster();
+  }
+  function removePlayer() {
+    if (ROSTER.players.length <= 1) {
+      try { AIToolboxUI?.toast?.('Need at least one player on the roster', 'warn'); } catch (_) {}
+      return;
+    }
+    const p = activePlayer();
+    if (!confirm('Remove ' + p.name + ' and their progress from this browser?')) return;
+    ROSTER.players = ROSTER.players.filter((x) => x.id !== p.id);
+    ROSTER.activeId = ROSTER.players[0].id;
+    saveRoster();
+    applyPlayerLook(activePlayer());
+    if ($('playerName')) $('playerName').value = activePlayer().name;
+    renderRoster();
+  }
+  function capturePlayerLook() {
+    const p = activePlayer();
+    if (!p) return;
+    p.name = ($('playerName')?.value || p.name).trim() || p.name;
+    p.missTone = $('optMissTone')?.value || p.missTone || 'thud';
+    p.cosmetics = Object.assign({}, p.cosmetics, {
+      frame: $('skinFrame')?.value || p.cosmetics.frame,
+      border: $('skinBorder')?.value || p.cosmetics.border,
+      lighting: $('skinLighting')?.value || p.cosmetics.lighting,
+      stage: $('optStageBg')?.value || p.cosmetics.stage,
+    });
+    if ($('optGhostCount')) p.ghostCount = Math.max(0, Math.min(4, $('optGhostCount').value | 0));
+    p.lastAt = Date.now();
+    saveRoster();
+  }
+  function applyPlayerLook(p) {
+    p = p || activePlayer();
+    if ($('optMissTone') && p.missTone) $('optMissTone').value = p.missTone;
+    if ($('optGhostCount') && p.ghostCount != null) $('optGhostCount').value = String(Math.max(0, Math.min(4, p.ghostCount | 0)));
+    if (p.cosmetics) {
+      if ($('skinFrame') && p.cosmetics.frame) $('skinFrame').value = p.cosmetics.frame;
+      if ($('skinBorder') && p.cosmetics.border) $('skinBorder').value = p.cosmetics.border;
+      if ($('skinLighting') && p.cosmetics.lighting) $('skinLighting').value = p.cosmetics.lighting;
+      if ($('optStageBg') && p.cosmetics.stage) $('optStageBg').value = p.cosmetics.stage;
+    }
+    lockAllCosmetics();
+    try { applySkinLook(); } catch (_) {}
+    try { applyPromptStyle(); } catch (_) {}
+    try { renderGhostSlots(); } catch (_) {}
+    try { drawWpmChart(); } catch (_) {}
+  }
+  function awardRunProgress(wpm, acc, durationMs) {
+    const p = activePlayer();
+    const focus = skillRank('focus');
+    const flow = skillRank('flow');
+    let xp = Math.round(
+      (correctKeystrokes || 0) * (1 + focus * 0.12)
+      + (wpm || 0) * 0.85 * (1 + flow * 0.12)
+      + Math.max(0, (acc || 0) - 70) * 1.6
+      + (score || 0) / 42
+      + (bestStreak || 0) * 0.45
+    );
+    if (acc >= 98) xp += 20;
+    if (wpm >= 80) xp += 25;
+    p.xp += Math.max(4, xp);
+    const gained = applyLevelFromXp(p);
+    p.stats.runs = (p.stats.runs || 0) + 1;
+    p.stats.chars = (p.stats.chars || 0) + (correctKeystrokes || 0);
+    p.stats.errors = (p.stats.errors || 0) + (errors || 0);
+    p.stats.bestWpm = Math.max(p.stats.bestWpm || 0, wpm | 0);
+    p.stats.bestAcc = Math.max(p.stats.bestAcc || 0, acc | 0);
+    p.stats.bestStreak = Math.max(p.stats.bestStreak || 0, bestStreak | 0);
+    p.stats.totalScore = (p.stats.totalScore || 0) + (score | 0);
+    p.stats.playMs = (p.stats.playMs || 0) + (durationMs || 0);
+    p.history = Array.isArray(p.history) ? p.history : [];
+    p.history.unshift({
+      at: Date.now(),
+      wpm: wpm | 0,
+      acc: acc | 0,
+      score: score | 0,
+      ms: durationMs | 0,
+      bucket: (typeof optionKey === 'function' ? optionKey() : mode) || '',
+    });
+    p.history = p.history.slice(0, 80);
+    p.lastAt = Date.now();
+    saveRoster();
+    renderProgressHud();
+    renderSkillTree();
+    renderRoster();
+    try { drawWpmChart(); } catch (_) {}
+    if (gained) {
+      showComboToast('LEVEL UP', p.name + ' → Lv ' + p.level + ' · +' + gained + ' skill pt');
+      setCompanion('win', 'Level ' + p.level + ' — spend a skill point on the tree.');
+      sfxFinish(true);
+    } else {
+      showComboToast('+' + xp + ' XP', 'Lv ' + p.level + ' · ' + p.xp + '/' + xpToNext(p.level));
+    }
+    return xp;
+  }
 
   /** User document library (PDF / text) — in-memory + light meta in localStorage */
   let docLibrary = {
@@ -3651,6 +5218,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
     { at: 60,  mult: 6,    name: 'Solar',     color: '#fde68a', heat: 3 },
     { at: 75,  mult: 7.5,  name: 'Plasma',    color: '#fef08a', heat: 3 },
     { at: 100, mult: 10,   name: 'Singularity', color: '#fff7ed', heat: 3 },
+    { at: 125, mult: 12,   name: 'Eclipse',     color: '#ffb703', heat: 3 },
+    { at: 150, mult: 15,   name: 'Cataclysm',   color: '#ff6b1a', heat: 3 },
+    { at: 200, mult: 20,   name: 'Apocalypse',  color: '#ff4d1a', heat: 3 },
+    { at: 300, mult: 30,   name: 'Eternal Flame', color: '#fff',  heat: 3 },
   ];
 
   const TEXTS = {
@@ -3929,6 +5500,59 @@ body:not(.run-active) .combo-bar { display: none !important; }
     { id: 'ghost',    emoji: '👻', name: 'Ghost Pace', desc: '45s timed race vs a 50 WPM ghost', type: 'ghost', duration: 45, targetWpm: 50 },
   ];
 
+  const CHALLENGES = [
+    {
+      id: 'alphabet', emo: '🔤', name: 'Alphabet dash',
+      blurb: 'a → z as fast as you can. Then beat that time.',
+      text: () => 'abcdefghijklmnopqrstuvwxyz',
+    },
+    {
+      id: 'alphabet-rev', emo: '🔃', name: 'Z to A',
+      blurb: 'Reverse alphabet. Muscle memory in reverse.',
+      text: () => 'zyxwvutsrqponmlkjihgfedcba',
+    },
+    {
+      id: 'alphabet-caps', emo: '🔠', name: 'A–Z capitals',
+      blurb: 'Hold shift. Uppercase alphabet, one shot.',
+      text: () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    },
+    {
+      id: 'double-az', emo: '⚡', name: 'Double alphabet',
+      blurb: 'a–z then A–Z. One run, one personal best.',
+      text: () => 'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    },
+    {
+      id: 'digits', emo: '🔢', name: 'Digit run',
+      blurb: '0–9 three times. Keep the cadence.',
+      text: () => '0123456789 0123456789 0123456789',
+    },
+    {
+      id: 'pangram', emo: '🦊', name: 'Pangram blaze',
+      blurb: 'The quick brown fox. Then try to beat your record.',
+      text: () => 'The quick brown fox jumps over the lazy dog.',
+    },
+    {
+      id: 'home-sprint', emo: '🏠', name: 'Home-row sprint',
+      blurb: 'asdf jkl; four times. Plant and fire.',
+      text: () => 'asdf jkl; asdf jkl; asdf jkl; asdf jkl;',
+    },
+    {
+      id: 'num-row', emo: '⌨️', name: 'Top-row numbers',
+      blurb: '1234567890 then the reverse. No looking down.',
+      text: () => '1234567890 0987654321 1234567890',
+    },
+    {
+      id: 'punct', emo: '❗', name: 'Punctuation gauntlet',
+      blurb: 'Quotes, commas, dashes under fire.',
+      text: () => 'Wait, what? "Hello, world!" It\'s time: 3, 2, 1 — go!',
+    },
+    {
+      id: 'mixed-az', emo: '🌈', name: 'aA pairs',
+      blurb: 'aA bB cC … zZ. Shift discipline.',
+      text: () => 'aA bB cC dD eE fF gG hH iI jJ kK lL mM nN oO pP qQ rR sS tT uU vV wW xX yY zZ',
+    },
+  ];
+
   /**
    * Lives / Boards mode — start with 3 lives; −0.5 per miss; +1 life every 30 clean chars.
    * Clear each board's clean-char goal to progress (unique theme + sounds).
@@ -4108,6 +5732,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
   let finished = false;
   let running = false;
   let wrongFlags = [];
+  let missCounts = [];
+  let explodedFlags = [];
   let streak = 0;
   let bestStreak = 0;
   let score = 0;
@@ -4118,6 +5744,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
   let miniRun = false;
   let miniConfig = null; // active mini-game / bonus config
   let pendingBonus = null; // { territory, stars }
+  let challengeRun = false;
+  let challengeConfig = null;
   let lives = 0;
   let livesMax = 0;
   let wordRushList = [];
@@ -4137,10 +5765,42 @@ body:not(.run-active) .combo-bar { display: none !important; }
   let totalCleanRun = 0;
   /** After advanceBoard(), skip the normal index++ so we don't skip the first glyph */
   let skipNextIndexInc = false;
+  let missGraceLeft = 0;
 
   // Particles
   let particles = [];
+  let emberFuel = 0; // 0–1 coals piled at the bottom → inferno
+  let lastRibbonBlaze = -1;
   let rafId = null;
+  try {
+    window.__tatFx = {
+      count: () => particles.length,
+      fuel: () => emberFuel,
+      heat: () => fireHeatLevel,
+      kinds: () => {
+        const o = {};
+        for (let i = 0; i < particles.length; i++) {
+          const k = particles[i].kind || 'other';
+          o[k] = (o[k] || 0) + 1;
+        }
+        return o;
+      },
+      sparkY: () => {
+        const h = (fxCanvas && fxCanvas.height) || 0;
+        let min = 1e9, max = -1e9, n = 0, low = 0, falling = 0;
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          if (p.kind !== 'spark') continue;
+          n++;
+          if (p.y < min) min = p.y;
+          if (p.y > max) max = p.y;
+          if (p.y > h * 0.78) low++;
+          if (p.vy > 0) falling++;
+        }
+        return { n, min: Math.round(min), max: Math.round(max), low, falling, h };
+      },
+    };
+  } catch (_) {}
   let pendingTimers = [];
   let fxPaused = false;
   let pausedAt = 0;
@@ -4186,8 +5846,58 @@ body:not(.run-active) .combo-bar { display: none !important; }
     tone(base + Math.random() * 40, 0.045, 'sine', 0.028);
   }
   function sfxMiss() {
-    const base = boardSfx().miss || 180;
-    tone(base, 0.08, 'triangle', 0.03);
+    playMissTone($('optMissTone')?.value || activePlayer()?.missTone || 'thud');
+  }
+  function playMissTone(id) {
+    if (!$('optSound')?.checked) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const toneId = isCosmeticUnlocked('tone', id) ? id : 'thud';
+    const beep = (freq, dur, type, gain, when, slide) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type || 'triangle';
+      osc.frequency.setValueAtTime(freq, t0 + (when || 0));
+      if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, slide), t0 + (when || 0) + dur);
+      g.gain.setValueAtTime(0.0001, t0 + (when || 0));
+      g.gain.exponentialRampToValueAtTime(gain || 0.04, t0 + (when || 0) + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (when || 0) + dur);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(t0 + (when || 0));
+      osc.stop(t0 + (when || 0) + dur + 0.02);
+    };
+    const noise = (dur, gain, when) => {
+      const n = Math.max(1, Math.floor(ctx.sampleRate * dur));
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = 420;
+      g.gain.setValueAtTime(gain || 0.05, t0 + (when || 0));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (when || 0) + dur);
+      src.connect(f); f.connect(g); g.connect(ctx.destination);
+      src.start(t0 + (when || 0));
+    };
+    switch (toneId) {
+      case 'buzz': beep(140, 0.12, 'sawtooth', 0.03); beep(280, 0.08, 'square', 0.012, 0.02); break;
+      case 'click': noise(0.05, 0.06); beep(2100, 0.03, 'square', 0.02); break;
+      case 'glass': beep(1760, 0.18, 'sine', 0.04, 0, 620); beep(2480, 0.12, 'triangle', 0.02, 0.02); break;
+      case 'horn': beep(220, 0.22, 'sawtooth', 0.035); beep(277, 0.2, 'sawtooth', 0.02, 0.04); break;
+      case 'kick': beep(140, 0.16, 'sine', 0.07, 0, 42); noise(0.06, 0.04); break;
+      case 'warp': beep(420, 0.22, 'sawtooth', 0.03, 0, 90); beep(90, 0.18, 'triangle', 0.02, 0.05); break;
+      case 'laser': beep(1480, 0.14, 'square', 0.025, 0, 180); beep(880, 0.1, 'sawtooth', 0.015, 0.04); break;
+      case 'chime': beep(523, 0.16, 'sine', 0.035); beep(622, 0.18, 'sine', 0.028, 0.05); beep(415, 0.2, 'triangle', 0.02, 0.1); break;
+      case 'growl': beep(70, 0.22, 'sawtooth', 0.04, 0, 48); beep(95, 0.18, 'triangle', 0.025, 0.03); noise(0.1, 0.03); break;
+      case 'choir': beep(392, 0.28, 'sine', 0.03); beep(494, 0.3, 'sine', 0.022, 0.02); beep(587, 0.26, 'triangle', 0.018, 0.05); break;
+      case 'rift': beep(80, 0.28, 'sawtooth', 0.04, 0, 40); beep(640, 0.16, 'square', 0.018, 0.04, 120); noise(0.14, 0.05); break;
+      default: beep(180, 0.08, 'triangle', 0.03); break;
+    }
   }
   function sfxLifeGain() {
     const f = boardSfx().life || 990;
@@ -4342,7 +6052,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       target = (target + ' ' + simplifyText(next.text())).trim();
     }
     index = 0;
-    wrongFlags = new Array(target.length).fill(false);
+    resetErrorTrack(target.length);
     skipNextIndexInc = true; // caller already counted the clear keystroke
     renderPrompt();
     highlightNext();
@@ -4358,6 +6068,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
    */
   function advanceBoard() {
     if (finished || !boardsRun) return;
+    try { ghostCommit(calcWpm(), calcAccuracy()); ghostMarks = [{ tMs: elapsedMs(), idx: 0 }]; } catch (_) {}
     const b = STORY_BOARDS[boardIndex];
     boardsCleared++;
     score += Math.round(200 * currentMult());
@@ -4372,6 +6083,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       ? ` · lap ${Math.floor(boardsCleared / STORY_BOARDS.length) + 1}`
       : '';
     loadBoardIntoRun(nextIdx);
+    try { ghostBuild(); ghostPaint(); renderGhostSlots(); } catch (_) {}
     const next = STORY_BOARDS[boardIndex];
     showComboToast(
       `${b.emoji} Cleared! → ${next.emoji} ${next.name}`,
@@ -4435,14 +6147,313 @@ body:not(.run-active) .combo-bar { display: none !important; }
       comboBar?.classList.add('fire-lit');
     }
     if (fireHeatLevel >= 3) document.body.classList.add('fire-inferno');
+    syncFireRibbon(true);
+  }
+
+  function blazeLevel() {
+    return Math.max(fireHeatLevel / 3, emberFuel);
+  }
+
+  function flameCeiling() {
+    const h = (fxCanvas && fxCanvas.height) || window.innerHeight || 800;
+    // Bottom band only — never up through the letter rows.
+    const band = 0.10 + blazeLevel() * 0.10; // 10% → 20% of screen
+    return h * (1 - Math.min(0.20, band));
+  }
+
+  function syncFireRibbon(force) {
+    const el = $('fireRibbon');
+    if (!el) return;
+    const blaze = blazeLevel();
+    if (!force && Math.abs(blaze - lastRibbonBlaze) < 0.012) return;
+    lastRibbonBlaze = blaze;
+    el.style.opacity = blaze < 0.03 ? '0' : String(Math.min(1, 0.25 + blaze * 0.85));
+    el.style.height = Math.round(70 + blaze * 210) + 'px';
+  }
+
+  function syncHeatFromFuel() {
+    const fromStreak = heatFromStreak(streak);
+    const fromFuel = emberFuel >= 0.82 ? 3 : emberFuel >= 0.5 ? 2 : emberFuel >= 0.18 ? 1 : 0;
+    const next = Math.max(fromStreak, fromFuel);
+    if (next !== fireHeatLevel) setFireMode(next);
+    else syncFireRibbon(false);
+  }
+
+  const FX_PROTECT = { fwShell: 1, fwStar: 1, fwSparkle: 1, ember: 1, nukeStem: 1, nukeCap: 1, nukeRing: 1 };
+
+  function particleCap() {
+    const mul = fxLevelMul();
+    const reduced = typeof TAT62 !== 'undefined' && TAT62 && TAT62.reduced;
+    return Math.round((reduced ? 400 : 3800) * (0.7 + mul * 0.5));
+  }
+
+  function trimParticles() {
+    const cap = particleCap();
+    const keep = [];
+    const sparks = [];
+    const flames = [];
+    const other = [];
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const k = p.kind;
+      if (k === 'fwShell' || k === 'fwStar' || k === 'fwSparkle' || k === 'ember' || k === 'nukeStem' || k === 'nukeCap' || k === 'nukeRing') keep.push(p);
+      else if (k === 'spark') sparks.push(p);
+      else if (k === 'floorFlame' || k === 'flame' || k === 'missFire') flames.push(p);
+      else other.push(p);
+    }
+    const MAX_FLAME = 140;
+    const MAX_EMBER = 650;
+    const MAX_SHELL = 10;
+    const MAX_STAR = 900;
+    const MAX_OTHER = 360;
+    if (flames.length > MAX_FLAME) flames.splice(0, flames.length - MAX_FLAME);
+    if (other.length > MAX_OTHER) other.splice(0, other.length - MAX_OTHER);
+    let emberN = 0, shellN = 0, starN = 0;
+    const keep2 = [];
+    for (let i = 0; i < keep.length; i++) {
+      const p = keep[i];
+      if (p.kind === 'ember') {
+        emberN++;
+        if (emberN > MAX_EMBER) continue;
+      }
+      if (p.kind === 'fwShell') {
+        shellN++;
+        if (shellN > MAX_SHELL) {
+          burstFirework(p);
+          continue;
+        }
+      }
+      if (p.kind === 'fwStar' || p.kind === 'fwSparkle') {
+        starN++;
+        if (starN > MAX_STAR) continue;
+      }
+      keep2.push(p);
+    }
+    const used = keep2.length + flames.length;
+    const sparkRoom = Math.max(180, Math.min(1600, cap - used));
+    const h = (fxCanvas && fxCanvas.height) || 800;
+    const nearFloor = [];
+    const rest = [];
+    for (let i = 0; i < sparks.length; i++) {
+      if (sparks[i].y > h * 0.55) nearFloor.push(sparks[i]);
+      else rest.push(sparks[i]);
+    }
+    const floorKeep = nearFloor.length > 700 ? nearFloor.slice(nearFloor.length - 700) : nearFloor;
+    const restRoom = Math.max(0, sparkRoom - floorKeep.length);
+    const restKeep = rest.length > restRoom ? rest.slice(rest.length - restRoom) : rest;
+    particles = keep2.concat(restKeep, floorKeep, flames, other);
+  }
+
+  function settleSpark(p, h) {
+    p.kind = 'ember';
+    p.y = h - 3 - Math.random() * 12;
+    p.vy = -0.12 - Math.random() * 0.32;
+    p.vx *= 0.18;
+    p.grav = -0.0015;
+    p.decay = 0.0009 + Math.random() * 0.0016; // linger; hotter streaks last longer
+    if (p.streak) p.decay *= Math.max(0.35, 1 - Math.min(0.7, p.streak / 140));
+    p.size = Math.max(2.4, (p.size || 3) * 0.85);
+    const hot = Math.random();
+    p.color = hot > 0.66 ? '#ff4d1a' : hot > 0.33 ? '#ff9f43' : '#ffc800';
+    p.glow = true;
+    p.trail = 0;
+    p.drag = 0.96;
+    p.life = Math.max(0.78, p.life);
+    const add = 0.0022 + Math.min(0.006, (p.streak || streak || 0) * 0.00005);
+    emberFuel = Math.min(1, emberFuel + add);
+    try { if (window.__tatFx) window.__tatFx.settles = (window.__tatFx.settles || 0) + 1; } catch (_) {}
   }
 
   function fxLevelMul() {
     const v = $('optFxLevel')?.value || 'med';
-    if (v === 'low') return 0.55;
-    if (v === 'high') return 1.45;
-    if (v === 'insane') return 2.1;
-    return 1;
+    let m = 1;
+    if (v === 'low') m = 0.55;
+    else if (v === 'high') m = 1.45;
+    else if (v === 'insane') m = 2.1;
+    m *= 1 + skillRank('ember') * 0.15;
+    return m;
+  }
+
+  function resetErrorTrack(len) {
+    const n = Math.max(0, len | 0);
+    wrongFlags = new Array(n).fill(false);
+    missCounts = new Array(n).fill(0);
+    explodedFlags = new Array(n).fill(false);
+  }
+  function extendErrorTrack(extraLen) {
+    const n = Math.max(0, extraLen | 0);
+    wrongFlags = wrongFlags.concat(new Array(n).fill(false));
+    missCounts = missCounts.concat(new Array(n).fill(0));
+    explodedFlags = explodedFlags.concat(new Array(n).fill(false));
+  }
+  function nextLiveIndex(from) {
+    let i = Math.max(0, from | 0);
+    while (i < target.length && explodedFlags[i]) i++;
+    return i;
+  }
+  function prevLiveIndex(from) {
+    let i = from | 0;
+    while (i >= 0 && explodedFlags[i]) i--;
+    return i;
+  }
+  function glyphCenter(i) {
+    const el = promptEl && promptEl.querySelector('[data-i="' + i + '"]');
+    if (!el) return { x: window.innerWidth / 2, y: window.innerHeight * 0.42, ch: target[i] };
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, ch: target[i] };
+  }
+  function fwColor(hue, light) {
+    return 'hsl(' + ((hue % 360) + 360) % 360 + ',100%,' + (light == null ? 62 : light) + '%)';
+  }
+  function spawnChainFirework(x, y, hue0, generation) {
+    if (!$('optFx')?.checked) return;
+    let shells = 0;
+    for (let i = 0; i < particles.length; i++) if (particles[i].kind === 'fwShell') shells++;
+    if (shells >= 10) return;
+    const mul = fxLevelMul();
+    const gen = generation || 0;
+    particles.push({
+      kind: 'fwShell',
+      x, y,
+      vx: (Math.random() - 0.5) * (1.4 + gen * 0.4),
+      vy: -3.2 - Math.random() * 2.4 - gen * 0.4,
+      life: 1,
+      decay: 0.028 + Math.random() * 0.012,
+      size: 3.4 + mul,
+      hue: hue0,
+      hueSpeed: 50 + Math.random() * 90,
+      gen,
+      color: fwColor(hue0, 70),
+      glow: true,
+      grav: 0.045,
+      born: (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+    });
+  }
+  function burstFirework(shell) {
+    if (!shell) return;
+    const mul = fxLevelMul();
+    const n = Math.round((22 + 16 * mul) * (shell.gen ? 0.75 : 1));
+    const base = shell.hue || 0;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + Math.random() * 0.18;
+      const v = 1.4 + Math.random() * (3.6 + mul);
+      particles.push({
+        kind: 'fwStar',
+        x: shell.x,
+        y: shell.y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - 0.35,
+        life: 1,
+        decay: 0.009 + Math.random() * 0.012,
+        size: 1.5 + Math.random() * 2.6,
+        hue: (base + i * (360 / Math.max(8, n))) % 360,
+        hueSpeed: 70 + Math.random() * 160,
+        color: fwColor(base + i * 12, 64),
+        glow: true,
+        grav: 0.032,
+        trail: 0.55,
+        drag: 0.986,
+        settle: true,
+      });
+    }
+    const inner = Math.round(8 + 6 * mul);
+    for (let i = 0; i < inner; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 0.4 + Math.random() * 1.6;
+      particles.push({
+        kind: 'fwSparkle',
+        x: shell.x,
+        y: shell.y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v,
+        life: 1,
+        decay: 0.016 + Math.random() * 0.02,
+        size: 1 + Math.random() * 1.8,
+        hue: (base + 180 + Math.random() * 40) % 360,
+        hueSpeed: 120,
+        color: '#fff',
+        glow: true,
+        grav: -0.01,
+      });
+    }
+    if ((shell.gen || 0) < 2 && Math.random() < 0.72) {
+      const kids = 1 + ((Math.random() * 2) | 0);
+      for (let k = 0; k < kids; k++) {
+        later(() => {
+          spawnChainFirework(
+            shell.x + (Math.random() - 0.5) * 40,
+            shell.y + (Math.random() - 0.5) * 24,
+            (base + 70 + k * 55) % 360,
+            (shell.gen || 0) + 1
+          );
+        }, 80 + k * 70);
+      }
+    }
+  }
+  function detonateMissChain(center) {
+    const lo = Math.max(0, center - 3);
+    const hi = Math.min(target.length - 1, center + 3);
+    const victims = [];
+    for (let i = lo; i <= hi; i++) {
+      if (!explodedFlags[i]) {
+        explodedFlags[i] = true;
+        wrongFlags[i] = true;
+        victims.push(i);
+      }
+    }
+    victims.forEach((i, n) => {
+      later(() => {
+        const p = glyphCenter(i);
+        const hue = (n * 47 + (performance.now() * 0.07)) % 360;
+        spawnChainFirework(p.x, p.y, hue, 0);
+        spawnChainFirework(p.x + (Math.random() - 0.5) * 16, p.y - 10, (hue + 90) % 360, 1);
+        spawnCharredBits(p.x, p.y, target[i], 1.7);
+        spawnBurst(p.x, p.y, fwColor(hue, 60), 12, 3.4);
+        spawnFlames(p.x, (fxCanvas && fxCanvas.height) || window.innerHeight, 1.3);
+      }, n * 65);
+    });
+    flashScreen('rgba(255,150,40,0.26)');
+    showComboToast('NUKE CHAIN', victims.length + ' chars · mushroom cloud');
+    index = nextLiveIndex(hi + 1);
+    renderPrompt();
+    highlightNext();
+    updateStats();
+    if (index >= target.length) {
+      if (miniRun && miniConfig?.type === 'wordrush') {
+        advanceWordRush();
+        return true;
+      }
+      if (miniRun && miniConfig?.type === 'echo') {
+        echoRound++;
+        if (echoRound >= 3) {
+          finishTest('complete');
+          return true;
+        }
+        target = echoTarget;
+        index = 0;
+        resetErrorTrack(target.length);
+        renderPrompt();
+        highlightNext();
+        updateStats();
+        return true;
+      }
+      if (shouldKeepFeedingText()) {
+        let extra;
+        if (miniRun && miniConfig?.type === 'storm') extra = ' ' + buildMiniTarget({ type: 'storm' });
+        else if (miniRun && miniConfig?.type === 'ghost') extra = ' ' + pick(TEXTS.medium);
+        else if (boardsRun) extra = ' ' + simplifyText(STORY_BOARDS[boardIndex].text());
+        else extra = ' ' + getTargetText();
+        if (!extra || !String(extra).trim()) extra = ' keep going';
+        target += extra;
+        extendErrorTrack(extra.length);
+        index = nextLiveIndex(index);
+        renderPrompt();
+        highlightNext();
+      } else {
+        finishTest('complete');
+      }
+    }
+    return true;
   }
 
   function spawnBurst(x, y, color, count, speed) {
@@ -4463,8 +6474,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
         size: 2 + Math.random() * 3,
         color: color || '#00f3ff',
         glow: true,
-        grav: 0.04,
+        grav: 0.08,
         trail: 0.35,
+        settle: true,
+        streak: streak,
       });
     }
   }
@@ -4596,25 +6609,24 @@ body:not(.run-active) .combo-bar { display: none !important; }
   }
 
   /**
-   * Spark shower on every correct key — intensity ramps with streak.
-   * Low streak = light sprinkles; high streak = heavy fireworks shower.
+   * Spark shower on every correct key — many can overlap.
+   * Higher streak → more sparks, longer fall, they collect as coals at the floor.
    */
   function spawnSparkShower(x, y, streakVal, color) {
     if (!$('optFx')?.checked) return;
     const s = Math.max(1, streakVal | 0);
-    // 0→1 intensity curve (soft early, ramps hard after ~20)
-    const t = Math.min(1, s / 50);
-    const intensity = t * t * 0.55 + t * 0.45; // ease-in
+    const t = Math.min(1, s / 80);
+    const intensity = t * t * 0.4 + t * 0.6;
     const heat = heatFromStreak(s);
 
     const mul = fxLevelMul();
-    // Particle count: ~14 at streak 1 → ~90 at streak 50+ (scaled by FX level)
-    const count = Math.min(120, Math.floor((14 + s * 1.35 + intensity * 28) * mul));
-    // Spread cone (wider at high streak)
-    const spread = 0.55 + intensity * 1.1; // radians half-width around upward
-    const speedBase = 2.2 + intensity * 6.5 + heat * 1.2;
-    const sizeBase = 1.4 + intensity * 3.2;
-    const lifeSlow = 0.01 + (1 - intensity) * 0.012; // longer trails when hot
+    // Overlapping showers: do not globally wipe previous bursts.
+    const count = Math.min(96, Math.floor((12 + s * 1.15 + intensity * 32) * Math.min(1.3, mul)));
+    const spread = 0.7 + intensity * 1.25;
+    const speedBase = 1.8 + intensity * 5.2 + heat * 0.8;
+    const sizeBase = 1.3 + intensity * 2.8;
+    // Longer life at high streak (fall + collect). ~0.02 early → ~0.0035 at max.
+    const decayBase = 0.018 - intensity * 0.014;
 
     const palette = [
       color || '#00f3ff',
@@ -4627,66 +6639,80 @@ body:not(.run-active) .combo-bar { display: none !important; }
       heat >= 3 ? '#fff7ed' : '#e0e7ff',
     ];
 
+    const fallRatio = 0.42 + intensity * 0.48; // 42% fall → ~90% at high streak
+
     for (let i = 0; i < count; i++) {
-      // Mostly upward fountain with side spray; some fall as "shower"
-      const fountain = Math.random() < (0.72 + intensity * 0.12);
+      const falling = Math.random() < fallRatio;
       let a, v;
-      if (fountain) {
-        // up-facing cone (±spread around -PI/2)
-        a = -Math.PI / 2 + (Math.random() - 0.5) * 2 * spread;
-        v = speedBase * (0.45 + Math.random() * 0.9);
+      if (falling) {
+        // Downward / outward shower cone
+        a = Math.PI / 2 + (Math.random() - 0.5) * spread;
+        v = speedBase * (0.35 + Math.random() * 0.85);
       } else {
-        // falling spray / side glitter
-        a = (Math.random() - 0.5) * Math.PI; // left/right/down
-        v = speedBase * (0.25 + Math.random() * 0.55);
+        // Short pop then gravity takes them
+        a = -Math.PI / 2 + (Math.random() - 0.5) * 2 * spread;
+        v = speedBase * (0.3 + Math.random() * 0.7);
       }
       const col = palette[(Math.random() * palette.length) | 0];
       particles.push({
         kind: 'spark',
-        x: x + (Math.random() - 0.5) * (8 + intensity * 22),
-        y: y + (Math.random() - 0.5) * (6 + intensity * 14),
+        x: x + (Math.random() - 0.5) * (10 + intensity * 28),
+        y: y + (Math.random() - 0.5) * (8 + intensity * 16),
         vx: Math.cos(a) * v,
         vy: Math.sin(a) * v,
         life: 1,
-        decay: lifeSlow + Math.random() * 0.014,
-        size: sizeBase * (0.55 + Math.random() * 0.9),
+        decay: Math.max(0.0032, decayBase + Math.random() * 0.008),
+        size: sizeBase * (0.5 + Math.random() * 0.95),
         color: col,
         glow: true,
-        grav: fountain ? 0.055 + intensity * 0.04 : 0.09 + intensity * 0.05,
-        trail: 0.55 + intensity * 0.9, // draw as streak
-        drag: 0.985 - intensity * 0.01,
+        grav: 0.5 + intensity * 0.15,
+        trail: 0.45 + intensity * 0.85,
+        drag: 0.998,
+        streak: s,
+        settle: true,
       });
     }
 
-    // Extra secondary burst once intensity is warm
     if (s >= 8) {
-      const burstN = Math.min(36, 8 + Math.floor(s * 0.45));
-      spawnBurst(x, y, color || '#00f3ff', burstN, 2.5 + intensity * 4);
+      const burstN = Math.min(40, 8 + Math.floor(s * 0.5));
+      spawnBurst(x, y, color || '#00f3ff', burstN, 2.2 + intensity * 3.4);
     }
-    // White-hot core when blazing
     if (s >= 20) {
-      spawnBurst(x, y, '#ffffff', Math.min(28, 10 + Math.floor(s * 0.25)), 3.5 + intensity * 3);
+      spawnBurst(x, y, '#ffffff', Math.min(32, 10 + Math.floor(s * 0.28)), 3.2 + intensity * 2.6);
     }
-    // Ring pop every few hits at high streak
     if (s >= 12 && s % 3 === 0) {
-      const ring = Math.min(28, 10 + Math.floor(intensity * 18));
+      const ring = Math.min(32, 10 + Math.floor(intensity * 20));
       for (let i = 0; i < ring; i++) {
         const a = (Math.PI * 2 * i) / ring;
-        const v = 3.5 + intensity * 5;
+        const v = 3.2 + intensity * 4.5;
         particles.push({
           kind: 'spark',
           x, y,
           vx: Math.cos(a) * v,
-          vy: Math.sin(a) * v - 0.8,
+          vy: Math.sin(a) * v - 0.4,
           life: 1,
-          decay: 0.02 + Math.random() * 0.015,
-          size: 2 + intensity * 2.5,
+          decay: Math.max(0.004, 0.012 - intensity * 0.007),
+          size: 2 + intensity * 2.2,
           color: i % 2 ? '#fff' : (color || '#00f3ff'),
           glow: true,
-          grav: 0.06,
-          trail: 0.8 + intensity * 0.6,
-          drag: 0.98,
+          grav: 0.1 + intensity * 0.06,
+          trail: 0.75 + intensity * 0.5,
+          drag: 0.982,
+          streak: s,
+          settle: true,
         });
+      }
+    }
+    // Keep launching real fireworks at high streak so they never "do nothing".
+    if (s >= 10) {
+      const chance = s >= 80 ? 0.7 : s >= 40 ? 0.5 : s >= 20 ? 0.35 : 0.22;
+      if (Math.random() < chance) {
+        spawnChainFirework(
+          x + (Math.random() - 0.5) * 56,
+          y - 16 - Math.random() * 70,
+          ((typeof performance !== 'undefined' ? performance.now() : Date.now()) * 0.09 + s * 13) % 360,
+          0
+        );
       }
     }
   }
@@ -4708,16 +6734,20 @@ body:not(.run-active) .combo-bar { display: none !important; }
         size: 1.5 + Math.random() * 4,
         color: pick(['#00f3ff', '#7c5cff', '#00ff88', '#ff9f43', '#ffc800', '#fff']),
         glow: true,
-        grav: 0.03,
+        grav: 0.08,
         trail: 0.4,
+        settle: true,
+        streak: streak,
       });
     }
   }
 
-  /** Rising flame tongue particles (on-fire feedback) */
+  /** Rising flame tongue particles — stay in the floor band, never over letters. */
   function spawnFlames(x, y, intensity) {
     if (!$('optFx')?.checked) return;
-    const n = Math.min(28, 6 + Math.floor(intensity * 5));
+    const h = (fxCanvas && fxCanvas.height) || window.innerHeight;
+    const ceil = flameCeiling();
+    const n = Math.min(8, 2 + Math.floor(intensity * 2.5));
     for (let i = 0; i < n; i++) {
       const hot = Math.random();
       const color = hot > 0.72 ? '#fff7cc'
@@ -4725,32 +6755,35 @@ body:not(.run-active) .combo-bar { display: none !important; }
         : hot > 0.2 ? '#ff9f43'
         : '#ff4d1a';
       particles.push({
-        kind: 'flame',
-        x: x + (Math.random() - 0.5) * 18,
-        y: y + (Math.random() - 0.5) * 6,
+        kind: 'floorFlame',
+        x: x + (Math.random() - 0.5) * 28,
+        y: h - 4 - Math.random() * 14,
         vx: (Math.random() - 0.5) * 0.9,
-        vy: -(1.2 + Math.random() * 2.8 * intensity),
+        vy: -(1.1 + Math.random() * 2.4 * Math.min(2.4, intensity)),
         life: 1,
-        decay: 0.02 + Math.random() * 0.025,
-        size: 3 + Math.random() * 6 * Math.min(2, intensity),
+        decay: 0.016 + Math.random() * 0.02,
+        size: 4 + Math.random() * 8 * Math.min(2.2, intensity),
         color,
         glow: true,
         wobble: Math.random() * Math.PI * 2,
-        grav: -0.02,
+        grav: -0.025,
+        ceiling: ceil,
       });
     }
   }
 
-  /** Soft smoke puffs (warm → dense when blazing) */
+  /** Soft smoke puffs (warm → dense when blazing) — from the floor, drifting up as embers. */
   function spawnSmoke(x, y, intensity) {
     if (!$('optFx')?.checked) return;
+    const h = (fxCanvas && fxCanvas.height) || window.innerHeight;
+    const fromFloor = y == null || y > h * 0.72;
     const n = Math.min(16, 3 + Math.floor(intensity * 4));
     for (let i = 0; i < n; i++) {
       const g = 40 + Math.floor(Math.random() * 50);
       particles.push({
         kind: 'smoke',
         x: x + (Math.random() - 0.5) * 22,
-        y: y + (Math.random() - 0.5) * 8,
+        y: fromFloor ? (h - 8 - Math.random() * 12) : y + (Math.random() - 0.5) * 8,
         vx: (Math.random() - 0.5) * 0.5,
         vy: -(0.4 + Math.random() * 1.1),
         life: 1,
@@ -4763,23 +6796,206 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
   }
 
-  /** Floor jets of flame/smoke while heat is high */
+  function spawnDustCloud(x, y, intensity) {
+    if (!$('optFx')?.checked) return;
+    const n = Math.min(28, Math.floor(8 + intensity * 10 * fxLevelMul()));
+    for (let i = 0; i < n; i++) {
+      const dust = 90 + ((Math.random() * 70) | 0);
+      particles.push({
+        kind: 'dust',
+        x: x + (Math.random() - 0.5) * 18,
+        y: y + 6 + (Math.random() - 0.5) * 8,
+        vx: (Math.random() - 0.5) * (1.4 + intensity),
+        vy: -0.4 - Math.random() * 1.6,
+        life: 1,
+        decay: 0.014 + Math.random() * 0.018,
+        size: 5 + Math.random() * 10 * intensity,
+        color: 'rgba(' + dust + ',' + (dust - 18) + ',' + (dust - 36) + ',0.7)',
+        glow: false,
+        grav: 0.035,
+      });
+    }
+  }
+  function spawnMissFire(x, y, intensity) {
+    if (!$('optFx')?.checked) return;
+    const n = Math.min(16, Math.floor(4 + intensity * 6));
+    for (let i = 0; i < n; i++) {
+      const hot = Math.random();
+      const color = hot > 0.7 ? '#fff3c4' : hot > 0.4 ? '#ffc800' : '#ff6b1a';
+      particles.push({
+        kind: 'missFire',
+        x: x + (Math.random() - 0.5) * 12,
+        y: y + 4,
+        vx: (Math.random() - 0.5) * 1.1,
+        vy: -(1.6 + Math.random() * 2.6 * intensity),
+        life: 1,
+        decay: 0.022 + Math.random() * 0.02,
+        size: 5 + Math.random() * 9 * intensity,
+        color,
+        glow: true,
+        wobble: Math.random() * Math.PI * 2,
+        grav: -0.02,
+      });
+    }
+  }
+  function spawnMissBoom(x, y, intensity) {
+    if (!$('optFx')?.checked) return;
+    spawnBurst(x, y, '#ff6b1a', Math.round(8 + intensity * 10), 2.4 + intensity * 2);
+    spawnBurst(x, y, '#ffc800', Math.round(5 + intensity * 6), 3 + intensity);
+    spawnCharredBits(x, y, '·', intensity);
+  }
+  function spawnNukeCloud(x, y) {
+    if (!$('optFx')?.checked) return;
+    const mul = fxLevelMul();
+    for (let i = 0; i < Math.round(28 * mul); i++) {
+      particles.push({
+        kind: 'nukeStem',
+        x: x + (Math.random() - 0.5) * 10,
+        y: y + 8,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: -(2.2 + Math.random() * 3.4),
+        life: 1,
+        decay: 0.008 + Math.random() * 0.008,
+        size: 7 + Math.random() * 12,
+        color: Math.random() > 0.5 ? '#ff9f43' : '#ff4d1a',
+        glow: true,
+        grav: -0.012,
+      });
+    }
+    for (let i = 0; i < Math.round(36 * mul); i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 8 + Math.random() * 18;
+      particles.push({
+        kind: 'nukeCap',
+        x: x + Math.cos(a) * r,
+        y: y - 46 - Math.random() * 18,
+        vx: Math.cos(a) * (0.6 + Math.random() * 1.8),
+        vy: -0.3 - Math.random() * 0.8,
+        life: 1,
+        decay: 0.006 + Math.random() * 0.007,
+        size: 10 + Math.random() * 18,
+        color: Math.random() > 0.55 ? 'rgba(255,180,80,0.8)' : 'rgba(80,70,60,0.7)',
+        glow: Math.random() > 0.4,
+        grav: 0.008,
+      });
+    }
+    particles.push({
+      kind: 'nukeRing',
+      x, y,
+      vx: 0, vy: 0,
+      life: 1,
+      decay: 0.012,
+      size: 8,
+      color: '#ffe08a',
+      glow: true,
+      grav: 0,
+      grow: 7.5,
+    });
+    for (let i = 0; i < Math.round(40 * mul); i++) {
+      const a = (Math.PI * 2 * i) / Math.round(40 * mul);
+      const hue = (i * 17 + performance.now() * 0.1) % 360;
+      particles.push({
+        kind: 'fwSparkle',
+        x, y,
+        vx: Math.cos(a) * (2 + Math.random() * 5),
+        vy: Math.sin(a) * (2 + Math.random() * 5) - 1.5,
+        life: 1,
+        decay: 0.01 + Math.random() * 0.012,
+        size: 2 + Math.random() * 3,
+        hue,
+        hueSpeed: 80 + Math.random() * 120,
+        color: fwColor(hue, 70),
+        glow: true,
+        grav: 0.04,
+        trail: 0.4,
+      });
+    }
+    const flash = $('nukeFlash');
+    if (flash) {
+      flash.style.setProperty('--nuke-x', Math.round(x) + 'px');
+      flash.style.setProperty('--nuke-y', Math.round(y) + 'px');
+      flash.classList.add('on');
+      later(() => flash.classList.remove('on'), 700);
+    }
+    document.body.classList.add('tat-nuke');
+    later(() => document.body.classList.remove('tat-nuke'), 560);
+    flashScreen('rgba(255,200,80,0.38)');
+  }
+  function playMissBeat(index, missN) {
+    const p = glyphCenter(index);
+    const heat = Math.max(0.55, missN * 0.38);
+    spawnDustCloud(p.x, p.y, heat);
+    later(() => spawnMissFire(p.x, p.y, heat + 0.2), 80);
+    later(() => spawnMissBoom(p.x, p.y, heat + 0.35), 180);
+    if (missN >= 5) {
+      later(() => spawnNukeCloud(p.x, p.y), 260);
+      later(() => {
+        const pl = activePlayer();
+        if (pl && pl.stats) pl.stats.nukes = (pl.stats.nukes || 0) + 1;
+        saveRoster();
+        detonateMissChain(index);
+      }, 520);
+    }
+  }
+
+  /** Floor jets of flame + rising embers. Grows with piled spark fuel into an inferno. */
   function ambientFireTick() {
-    if (!$('optFx')?.checked || fireHeatLevel < 1 || finished) return;
+    if (!$('optFx')?.checked || finished) return;
+    const blaze = blazeLevel();
+    if (blaze < 0.04 && fireHeatLevel < 1) return;
     const w = fxCanvas.width || window.innerWidth;
     const h = fxCanvas.height || window.innerHeight;
-    const rate = fireHeatLevel === 1 ? 0.35 : fireHeatLevel === 2 ? 0.7 : 1.1;
+    let flames = 0;
+    for (let i = 0; i < particles.length; i++) {
+      const k = particles[i].kind;
+      if (k === 'floorFlame' || k === 'flame') flames++;
+    }
+    const maxFlames = Math.round(24 + blaze * 90);
+    const rate = 0.12 + blaze * 0.45;
     ambientFireTimer += rate;
     while (ambientFireTimer >= 1) {
       ambientFireTimer -= 1;
       const x = Math.random() * w;
-      const y = h - 4 - Math.random() * 10;
-      if (Math.random() < 0.55) spawnFlames(x, y, fireHeatLevel * 0.7);
-      else spawnSmoke(x, y, fireHeatLevel * 0.9);
-      if (fireHeatLevel >= 3 && Math.random() < 0.25) {
-        spawnFlames(w * 0.5 + (Math.random() - 0.5) * w * 0.4, h - 8, 2.2);
+      if (flames < maxFlames) {
+        spawnFlames(x, h - 4, 0.45 + blaze * 1.4);
+        flames += 4;
+      }
+      if (Math.random() < 0.35) spawnSmoke(x, h - 6, 0.35 + blaze);
+      // Rising embers (small — allowed to drift up; they don't blot letters)
+      if (Math.random() < 0.4 + blaze * 0.35) {
+        particles.push({
+          kind: 'spark',
+          x: x + (Math.random() - 0.5) * 18,
+          y: h - 8,
+          vx: (Math.random() - 0.5) * 0.7,
+          vy: -(0.6 + Math.random() * (1.4 + blaze * 2.2)),
+          life: 1,
+          decay: 0.008 + Math.random() * 0.01,
+          size: 1.2 + Math.random() * 2.2,
+          color: Math.random() > 0.5 ? '#ff9f43' : '#ffc800',
+          glow: true,
+          grav: -0.008,
+          trail: 0.35,
+          settle: false,
+          noSettle: true,
+        });
       }
     }
+  }
+
+  function drawFireBed(ctx, w, h) {
+    const blaze = blazeLevel();
+    if (blaze < 0.02 || !ctx) return;
+    const hh = 48 + blaze * 170;
+    const grd = ctx.createLinearGradient(0, h, 0, h - hh);
+    grd.addColorStop(0, `rgba(255, 30, 0, ${0.28 + blaze * 0.5})`);
+    grd.addColorStop(0.28, `rgba(255, 90, 0, ${0.16 + blaze * 0.32})`);
+    grd.addColorStop(0.62, `rgba(255, 180, 40, ${0.06 + blaze * 0.14})`);
+    grd.addColorStop(1, 'rgba(255, 80, 0, 0)');
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, h - hh, w, hh);
   }
 
   function flashScreen(color) {
@@ -4801,22 +7017,55 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (document.hidden) { rafId = null; return; }
     if (!fxCtx || !fxCanvas) { rafId = null; return; }
     fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    const fw = fxCanvas.width;
+    const fh = fxCanvas.height;
+    if (emberFuel > 0) {
+      emberFuel = Math.max(0, emberFuel - (streak > 0 ? 0.00007 : 0.00032));
+    }
+    syncHeatFromFuel();
+    drawFireBed(fxCtx, fw, fh);
     ambientFireTick();
+    const crowded = particles.length > 700;
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      if (p.kind === 'flame') {
+      if (p.kind === 'flame' || p.kind === 'floorFlame' || p.kind === 'missFire') {
         p.wobble = (p.wobble || 0) + 0.18;
         p.vx += Math.sin(p.wobble) * 0.08;
         p.x += p.vx;
         p.y += p.vy;
         p.vy += p.grav != null ? p.grav : -0.02;
         p.size *= 0.985;
-      } else if (p.kind === 'smoke') {
+        if (p.kind !== 'missFire') {
+          const ceil = p.ceiling || flameCeiling();
+          if (p.y < ceil) {
+            p.y = ceil + Math.random() * 3;
+            p.vy = Math.abs(p.vy) * 0.08;
+            p.decay = Math.min(0.09, (p.decay || 0.02) * 1.7);
+          }
+        }
+      } else if (p.kind === 'ember') {
+        p.wobble = (p.wobble || 0) + 0.14;
+        if (p.drag) { p.vx *= p.drag; p.vy *= p.drag; }
+        p.x += p.vx + Math.sin(p.wobble) * 0.18;
+        p.y += p.vy;
+        p.vy += p.grav != null ? p.grav : -0.002;
+        if (p.y > fh - 2) { p.y = fh - 3 - Math.random() * 6; p.vy = -0.05 - Math.random() * 0.2; }
+        if (p.y < fh - 36) p.vy = Math.abs(p.vy) * 0.2;
+        if (p.x < 0) p.x = 0;
+        if (p.x > fw) p.x = fw;
+      } else if (p.kind === 'smoke' || p.kind === 'dust') {
         p.x += p.vx;
         p.y += p.vy;
         p.vx *= 0.99;
         p.vy += p.grav != null ? p.grav : -0.015;
-        p.size *= 1.012;
+        p.size *= p.kind === 'dust' ? 1.02 : 1.012;
+      } else if (p.kind === 'nukeStem' || p.kind === 'nukeCap' || p.kind === 'nukeRing') {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.grav != null ? p.grav : 0;
+        if (p.kind === 'nukeStem') { p.size *= 1.01; p.vx *= 0.98; }
+        if (p.kind === 'nukeCap') { p.size *= 1.018; p.vx *= 0.995; }
+        if (p.kind === 'nukeRing') p.size += p.grow || 6;
       } else if (p.kind === 'shard' || p.kind === 'glyphBit' || p.kind === 'char' || p.kind === 'charGlyph') {
         if (p.drag) {
           p.vx *= p.drag;
@@ -4828,6 +7077,24 @@ body:not(.run-active) .combo-bar { display: none !important; }
         p.vy += p.grav != null ? p.grav : 0.12;
         p.rot = (p.rot || 0) + (p.spin || 0);
         p.size *= p.kind === 'char' || p.kind === 'charGlyph' ? 0.988 : 0.992;
+      } else if (p.kind === 'fwShell' || p.kind === 'fwStar' || p.kind === 'fwSparkle') {
+        if (p.kind === 'fwShell' && p.born && ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - p.born) > 520) {
+          burstFirework(p);
+          particles.splice(i, 1);
+          continue;
+        }
+        if (p.drag) {
+          p.vx *= p.drag;
+          p.vy *= p.drag;
+        }
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.grav != null ? p.grav : 0.03;
+        if (p.hue != null) {
+          p.hue = (p.hue + (p.hueSpeed || 40) * 0.016) % 360;
+          p.color = fwColor(p.hue, p.kind === 'fwShell' ? 72 : (p.kind === 'fwSparkle' ? 88 : 62));
+        }
+        if (p.kind !== 'fwShell' && p.y >= fh * 0.68 && p.vy > 0) settleSpark(p, fh);
       } else {
         // spark / default
         if (p.drag) {
@@ -4837,29 +7104,102 @@ body:not(.run-active) .combo-bar { display: none !important; }
         p.x += p.vx;
         p.y += p.vy;
         p.vy += p.grav != null ? p.grav : 0.04;
+        if (p.settle) p.vy += 0.2;
+        if (!p.noSettle && p.y >= fh * 0.68 && p.vy > 0) settleSpark(p, fh);
       }
       p.life -= p.decay;
       if (p.life <= 0 || p.size < 0.3) {
+        if (p.kind === 'fwShell') burstFirework(p);
+        else if ((p.kind === 'spark' || p.kind === 'fwStar' || p.kind === 'fwSparkle') && !p.noSettle && p.y > fh * 0.5) {
+          settleSpark(p, fh);
+          continue;
+        }
         particles.splice(i, 1);
         continue;
       }
-      const alpha = Math.max(0, p.kind === 'smoke' ? p.life * 0.55 : p.life);
+      const alpha = Math.max(0, p.kind === 'smoke' || p.kind === 'dust' || p.kind === 'nukeCap' ? p.life * 0.55 : p.kind === 'ember' ? Math.min(1, p.life * 1.2) : p.life);
       fxCtx.globalAlpha = alpha;
-      if (p.glow) {
-        fxCtx.shadowBlur = p.kind === 'flame' ? 18
+      if (p.glow && !crowded) {
+        fxCtx.shadowBlur = p.kind === 'flame' || p.kind === 'floorFlame' || p.kind === 'missFire' ? 18
+          : (p.kind === 'fwShell' || p.kind === 'fwStar' || p.kind === 'nukeRing') ? 22
+          : p.kind === 'ember' || p.kind === 'nukeStem' ? 16
           : (p.kind === 'shard' || p.kind === 'glyphBit') ? 16
           : (p.trail ? 14 : 12);
+        fxCtx.shadowColor = p.color;
+      } else if (p.glow && (p.kind === 'fwShell' || p.kind === 'fwStar' || p.kind === 'ember' || p.kind === 'floorFlame')) {
+        fxCtx.shadowBlur = 10;
         fxCtx.shadowColor = p.color;
       } else {
         fxCtx.shadowBlur = 0;
       }
       fxCtx.fillStyle = p.color;
-      if (p.kind === 'flame') {
+      if (p.kind === 'fwShell') {
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(1.4, p.size * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.fillStyle = '#fff';
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(0.6, p.size * 0.35 * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'fwStar') {
+        fxCtx.save();
+        fxCtx.translate(p.x, p.y);
+        const ang = Math.atan2(p.vy, p.vx);
+        fxCtx.rotate(ang);
+        const len = Math.max(4, p.size * (2.4 + (p.trail || 0) * 3) * p.life);
+        const grd = fxCtx.createLinearGradient(-len, 0, len * 0.2, 0);
+        grd.addColorStop(0, 'rgba(255,255,255,0)');
+        grd.addColorStop(0.4, p.color);
+        grd.addColorStop(1, '#ffffff');
+        fxCtx.fillStyle = grd;
+        fxCtx.beginPath();
+        fxCtx.moveTo(-len, 0);
+        fxCtx.lineTo(0, Math.max(0.5, p.size * 0.4));
+        fxCtx.lineTo(len * 0.15, 0);
+        fxCtx.lineTo(0, -Math.max(0.5, p.size * 0.4));
+        fxCtx.closePath();
+        fxCtx.fill();
+        fxCtx.fillStyle = '#fff';
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, Math.max(0.7, p.size * 0.55 * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'fwSparkle') {
+        const tw = 0.55 + 0.45 * Math.abs(Math.sin((p.hue || 0) * 0.2));
+        fxCtx.globalAlpha = alpha * tw;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(0.5, p.size * p.life), 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'flame' || p.kind === 'floorFlame' || p.kind === 'missFire') {
         fxCtx.beginPath();
         // elongated flame blob
         const rw = p.size * (0.55 + 0.45 * p.life);
         const rh = p.size * (1.1 + 0.9 * (1 - p.life));
         fxCtx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'nukeStem') {
+        fxCtx.beginPath();
+        fxCtx.ellipse(p.x, p.y, p.size * 0.35 * p.life, p.size * p.life, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'nukeCap') {
+        fxCtx.beginPath();
+        fxCtx.ellipse(p.x, p.y, p.size * (1.4 - p.life * 0.3), p.size * 0.55, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'nukeRing') {
+        fxCtx.strokeStyle = p.color;
+        fxCtx.lineWidth = Math.max(1.2, 5 * p.life);
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(6, p.size), 0, Math.PI * 2);
+        fxCtx.stroke();
+      } else if (p.kind === 'ember') {
+        fxCtx.beginPath();
+        const rw = Math.max(1.2, p.size * (0.7 + 0.5 * p.life));
+        const rh = Math.max(1, p.size * 0.55);
+        fxCtx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.fillStyle = 'rgba(255,230,160,0.7)';
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, Math.max(0.5, p.size * 0.28), 0, Math.PI * 2);
         fxCtx.fill();
       } else if (p.kind === 'shard') {
         // jagged triangular shard
@@ -4926,12 +7266,12 @@ body:not(.run-active) .combo-bar { display: none !important; }
         fxCtx.restore();
       } else {
         fxCtx.beginPath();
-        fxCtx.arc(p.x, p.y, Math.max(0.4, p.size * (p.kind === 'smoke' ? 1 : p.life)), 0, Math.PI * 2);
+        fxCtx.arc(p.x, p.y, Math.max(0.4, p.size * (p.kind === 'smoke' || p.kind === 'dust' ? 1 : p.life)), 0, Math.PI * 2);
         fxCtx.fill();
       }
     }
-    // Cap particle budget for smooth 60fps (higher when showering hard)
-    if (particles.length > 780) particles.splice(0, particles.length - 780);
+    // Cap cheap sparks only — fireworks and piled embers are never wiped.
+    trimParticles();
     fxCtx.globalAlpha = 1;
     fxCtx.shadowBlur = 0;
     tatSkinTick();
@@ -4959,8 +7299,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
     font: ['mono','jetbrains','space','orbitron','audiowide','cinzel','playfair','syne','righteous','press','pacifico','system'],
     color: ['cyan','neon','gold','parchment','emerald','violet','ice','fire','white'],
     fx: ['none','border','thick-border','shadow','double-shadow','emboss','neon','chrome','rainbow','outline-glow'],
-    anim: ['none','glint','pulse','float','shimmer','wave','glitch','breathe'],
+    anim: ['none','glint','pulse','float','shimmer','wave','glitch','breathe','ember','flicker','sparkle','slide'],
     fxLevel: ['low','med','high','insane'],
+    stage: ['none','aurora','starfield','embers','rain','circuits','ocean','nebula','scan','plasma'],
   };
   function allowedSelect(id, val, list, fallback) {
     const el = $(id);
@@ -4974,11 +7315,23 @@ body:not(.run-active) .combo-bar { display: none !important; }
     const color = allowedSelect('optColor', $('optColor')?.value, STYLE_ALLOW.color, 'cyan');
     const fx = allowedSelect('optTextFx', $('optTextFx')?.value, STYLE_ALLOW.fx, 'none');
     const anim = allowedSelect('optTextAnim', $('optTextAnim')?.value, STYLE_ALLOW.anim, 'none');
+    const stage = allowedSelect('optStageBg', $('optStageBg')?.value, STYLE_ALLOW.stage, 'aurora');
     promptEl.className = 'prompt'
       + ' font-' + font
       + ' color-' + color
       + (fx && fx !== 'none' ? ' fx-' + fx : '')
       + (anim && anim !== 'none' ? ' anim-' + anim : '');
+    applyStageBg(stage);
+  }
+  function applyStageBg(val) {
+    const stage = val || allowedSelect('optStageBg', $('optStageBg')?.value, STYLE_ALLOW.stage, 'aurora');
+    const el = $('tatStage');
+    if (el) {
+      el.dataset.stage = stage;
+      el.className = 'tat-stage-bg stage-' + stage;
+    }
+    const wrap = $('promptWrap');
+    if (wrap) wrap.setAttribute('data-tat-stage', stage);
   }
 
   // ——— Document library (PDF / text) + skill-based passages ———
@@ -5226,7 +7579,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
     for (const t of STREAK_TIERS) {
       if (streak >= t.at) m = t.mult;
     }
-    return m;
+    m += skillRank('flow') * 0.04;
+    return Math.round(m * 100) / 100;
   }
 
   function tierForStreak(s) {
@@ -5251,29 +7605,40 @@ body:not(.run-active) .combo-bar { display: none !important; }
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + Math.min(60, rect.height * 0.35);
     spawnSparkles(cx, cy, tier.mult);
+    const W = window.innerWidth;
+    const H = window.innerHeight;
     if (tier.heat >= 1) {
-      spawnSmoke(cx, cy + 20, 1 + tier.heat * 0.5);
-      spawnFlames(cx, cy + 10, 0.8 + tier.heat * 0.6);
+      spawnSmoke(Math.random() * W, H - 8, 1 + tier.heat * 0.5);
+      spawnFlames(W * 0.5, H - 8, 0.8 + tier.heat * 0.6);
     }
     if (tier.heat >= 2) {
-      spawnFlames(cx - 40, cy + 30, tier.heat);
-      spawnFlames(cx + 40, cy + 30, tier.heat);
-      spawnSmoke(cx, cy + 40, tier.heat);
+      spawnFlames(W * 0.28, H - 8, tier.heat);
+      spawnFlames(W * 0.72, H - 8, tier.heat);
+      spawnSmoke(W * 0.5, H - 8, tier.heat);
     }
     if (tier.heat >= 3) {
-      // screen-edge flare
-      for (let i = 0; i < 6; i++) {
-        spawnFlames(Math.random() * window.innerWidth, window.innerHeight - 8, 2.5);
+      for (let i = 0; i < 8; i++) {
+        spawnFlames(Math.random() * W, H - 8, 2.5);
       }
       flashScreen('rgba(255,80,0,0.28)');
     }
-    setFireMode(tier.heat || heatFromStreak(streak));
+    // Extra canvas fireworks at each milestone so high streaks keep bursting.
+    for (let k = 0; k < Math.min(4, 1 + (tier.heat || 0)); k++) {
+      spawnChainFirework(
+        40 + Math.random() * Math.max(80, W - 80),
+        80 + Math.random() * Math.max(60, H * 0.35),
+        (k * 70 + (typeof performance !== 'undefined' ? performance.now() : Date.now()) * 0.05) % 360,
+        0
+      );
+    }
+    emberFuel = Math.min(1, emberFuel + 0.04 + (tier.heat || 0) * 0.03);
+    setFireMode(Math.max(tier.heat || 0, heatFromStreak(streak)));
     updateComboUI(true);
   }
 
   function addScore(base) {
     const m = currentMult();
-    const gain = Math.round(base * m);
+    const gain = Math.round((base + skillRank('focus')) * m);
     score += gain;
     return gain;
   }
@@ -5388,8 +7753,19 @@ body:not(.run-active) .combo-bar { display: none !important; }
       .replace(/'/g, '&#39;');
   }
   function charClass(i) {
-    if (i < index) return 'done' + (wrongFlags[i] ? ' wrong' : '');
-    if (i === index) return 'current';
+    if (explodedFlags[i]) return 'gone';
+    if (i < index) {
+      let cls = 'done';
+      if (wrongFlags[i]) cls += ' wrong charred';
+      return cls;
+    }
+    if (i === index) {
+      let cls = 'current';
+      const misses = missCounts[i] || 0;
+      if (misses >= 3) cls += ' miss-critical';
+      else if (misses >= 1) cls += ' miss-heat';
+      return cls;
+    }
     return 'todo';
   }
 
@@ -5543,6 +7919,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
 
   // ——— Mode keys for high scores ———
   function optionKey() {
+    if (challengeRun && challengeConfig) {
+      return 'challenge:' + (challengeConfig.id || 'run');
+    }
     if (miniRun && miniConfig) {
       return 'mini:' + (miniConfig.id || miniConfig.type || 'game') + (miniConfig.fromBonus ? ':bonus' : '');
     }
@@ -5561,6 +7940,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (mode === 'boards' || boardsRun) return 'boards';
     if (mode === 'campaign') return 'campaign';
     if (mode === 'minigames') return 'minigames';
+    if (mode === 'challenges') return 'challenges';
     return mode;
   }
   function optionLabel(key) {
@@ -5576,6 +7956,11 @@ body:not(.run-active) .combo-bar { display: none !important; }
       const bonus = key.includes(':bonus') ? ' ★' : '';
       return '🎮 ' + (m ? m.name : id) + bonus;
     }
+    if (key.startsWith('challenge:')) {
+      const id = key.split(':')[1];
+      const c = CHALLENGES.find((x) => x.id === id);
+      return '⚡ ' + (c ? c.name : id);
+    }
     if (key.startsWith('novel:')) {
       const parts = key.split(':');
       const book = NOVEL_BOOKS.find((b) => b.id === parts[1]);
@@ -5587,6 +7972,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       custom: 'Custom',
       campaign: 'Campaign',
       minigames: 'Mini-games',
+      challenges: '⚡ Challenges',
       boards: '❤️ Boards (lives)',
       novel: '📖 Novel',
     };
@@ -5661,6 +8047,11 @@ body:not(.run-active) .combo-bar { display: none !important; }
   }
 
   function getRawText() {
+    if (challengeRun && challengeConfig) {
+      if ($('optNoCaps')) $('optNoCaps').checked = false;
+      if ($('optNoPunct')) $('optNoPunct').checked = false;
+      return challengeConfig.text() || 'abcdefghijklmnopqrstuvwxyz';
+    }
     if (miniRun && miniConfig) return buildMiniTarget(miniConfig);
     if (boardsRun || mode === 'boards') {
       const b = STORY_BOARDS[boardIndex] || STORY_BOARDS[0];
@@ -5769,6 +8160,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
     bestMult = 1;
     pendingHs = null;
     lastResultMeta = null;
+    emberFuel = 0;
+    particles = [];
+    missGraceLeft = skillRank('armor') >= 5 ? 2 : skillRank('armor') >= 3 ? 1 : 0;
     setFireMode(0);
     tatSkinNote('reset', 0);
     try { t63OnReset(); } catch (_) {}
@@ -5814,9 +8208,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (campaignRun && selectedTerritory?.duration) {
       durationSec = selectedTerritory.duration;
     }
+    if (challengeRun) durationSec = 0;
     skipNextIndexInc = false;
     if (!reuseText) target = getTargetText();
-    wrongFlags = new Array(target.length).fill(false);
+    resetErrorTrack(target.length);
     resultBanner && resultBanner.classList.remove('show', 'highscore');
     if ($('btnSaveHs')) $('btnSaveHs').style.display = 'none';
     if ($('btnResultBonus')) $('btnResultBonus').style.display = 'none';
@@ -5843,6 +8238,11 @@ body:not(.run-active) .combo-bar { display: none !important; }
       focusHint.textContent = `📖 ${book?.title || 'Novel'} — ${ch?.title || 'Chapter'} · type to turn the page`;
       focusHint.className = 'focus-hint';
       setCompanion('focus', 'Read with your fingers. Accuracy keeps the story alive.');
+    } else if (challengeRun && challengeConfig) {
+      focusHint.textContent = (challengeConfig.emo || '⚡') + ' ' + challengeConfig.name + ' — click & type. Beat your record.';
+      focusHint.className = 'focus-hint';
+      setCompanion('focus', challengeConfig.blurb);
+      try { updateChallengeHud(); } catch (_) {}
     } else {
       focusHint.textContent = miniRun
         ? `Mini-game: ${miniConfig?.title || miniConfig?.name || 'challenge'} — click & type`
@@ -5889,7 +8289,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
     target = wordRushList[wordRushIndex];
     index = 0;
-    wrongFlags = new Array(target.length).fill(false);
+    resetErrorTrack(target.length);
     renderPrompt();
     highlightNext();
     updateStats();
@@ -6041,6 +8441,22 @@ body:not(.run-active) .combo-bar { display: none !important; }
         sub += ' · End of this book — pick another or replay.';
         showComboToast('Book finished', book?.title || 'Novel');
       }
+    } else if (challengeRun && challengeConfig) {
+      const rec = recordChallengeResult(wpm, acc, elapsedMs()) || {};
+      title = rec.pb ? '⚡ New personal best!' : 'Challenge complete';
+      sub = challengeConfig.name + ' · ' + (elapsedMs() / 1000).toFixed(2) + 's · ' + wpm + ' WPM · ' + acc + '%';
+      if (rec.pb) {
+        setCompanion('win', 'Record smashed. Chart it. Race it again.');
+        sfxFinish(true);
+        flashScreen('rgba(255,200,0,0.22)');
+        spawnSparkles(window.innerWidth / 2, window.innerHeight / 3, 6);
+      } else {
+        setCompanion('good', rec.rec && rec.rec.bestMs
+          ? 'PB still ' + (rec.rec.bestMs / 1000).toFixed(2) + 's — go again.'
+          : 'Logged. Beat it next pass.');
+        sfxFinish(false);
+      }
+      try { renderChallengeLobby(); } catch (_) {}
     } else if (reason === 'time') {
       title = "Time's up";
       sub = `${durationSec >= 60 ? Math.round(durationSec / 60) + ' min' : durationSec + 's'} · ${wpm} WPM · score ${score}`;
@@ -6056,7 +8472,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     const bucket = optionKey();
     const isHs = isHighScore(bucket, score, wpm);
     if (isHs && score > 0) {
-      if (!conquered && !(miniRun && miniConfig)) title = '🏆 New high score!';
+      if (!conquered && !(miniRun && miniConfig) && !(challengeRun && challengeConfig)) title = '🏆 New high score!';
       sub += ' Confirm or edit your name below, then Save.';
       pendingHs = { bucket, score, wpm, acc, bestMult, errors, at: Date.now() };
       sfxFinish(true);
@@ -6094,8 +8510,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
       bestMult,
       bestStreak,
       durationMs: elapsedMs(),
+      player: getPlayerName(),
     });
     renderHistory();
+    try { awardRunProgress(wpm, acc, elapsedMs()); } catch (_) {}
     // Ops ledger: per-player (uses field name now; HS Save re-syncs name for next time)
     recordTypingOps(reason, wpm, acc, score);
     try { tatT65OnFinish(wpm, acc); } catch (_) {}
@@ -6160,9 +8578,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (key === 'Backspace') {
       if (index > 0) {
         index--;
+        index = Math.max(0, prevLiveIndex(index));
         if (correctKeystrokes > 0) correctKeystrokes--;
         if (totalKeystrokes > 0) totalKeystrokes--;
-        if (index < wrongFlags.length) wrongFlags[index] = false;
         try { tatT65OnIndex(); } catch (_) {}
         renderPrompt();
         highlightNext();
@@ -6236,26 +8654,26 @@ body:not(.run-active) .combo-bar { display: none !important; }
           later(() => burnExplosionRemnants(cx, cy, 110 + streak, burnI + 0.2), 40);
           later(() => burnExplosionRemnants(cx, cy, 140, burnI + 0.35), 90);
         }
-        // Briefly charcoal the completed glyph in the prompt
-        if ($('optBurn')?.checked) {
+        // Briefly charcoal a CLEAN hit (missed glyphs stay burned via charClass)
+        if ($('optBurn')?.checked && !wrongFlags[index]) {
           requestAnimationFrame(() => {
-            const dones = promptEl.querySelectorAll('.done');
+            const dones = promptEl.querySelectorAll('.done:not(.wrong)');
             const last = dones[dones.length - 1];
-            if (last) {
+            if (last && !last.classList.contains('wrong')) {
               last.classList.add('charred');
               later(() => {
                 last.classList.add('charred-ash');
                 later(() => {
-                  last.classList.remove('charred', 'charred-ash');
+                  if (!last.classList.contains('wrong')) last.classList.remove('charred', 'charred-ash');
                 }, 420);
               }, 180);
             }
           });
         }
-        if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, cy + 4, 0.5 + heat * 0.25);
-        if (heat >= 2) spawnFlames(cx, cy + 2, 0.55 + heat * 0.25);
+        if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, null, 0.5 + heat * 0.25);
+        if (heat >= 2 && streak % 2 === 0) spawnFlames(window.innerWidth * (0.2 + Math.random() * 0.6), window.innerHeight - 8, 0.7 + heat * 0.35);
         if (heat >= 3 && streak % 3 === 0) {
-          spawnFlames(cx, cy, 1.4);
+          spawnFlames(window.innerWidth * (0.15 + Math.random() * 0.7), window.innerHeight - 8, 1.6);
           flashScreen('rgba(255,90,0,0.12)');
         }
         if (streak >= 8 && streak % 4 === 0) flashScreen(color + '22');
@@ -6280,6 +8698,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
       } else {
         index++;
       }
+      index = nextLiveIndex(index);
       try { tatT65OnIndex(); } catch (_) {}
       if (gain && score % 100 < gain) popStat('statScore');
 
@@ -6307,7 +8726,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
           }
           target = echoTarget;
           index = 0;
-          wrongFlags = new Array(target.length).fill(false);
+          resetErrorTrack(target.length);
           renderPrompt();
           highlightNext();
           updateStats();
@@ -6329,7 +8748,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
           }
           if (!extra || !String(extra).trim()) extra = ' keep going';
           target += extra;
-          wrongFlags = wrongFlags.concat(new Array(extra.length).fill(false));
+          extendErrorTrack(extra.length);
+          index = nextLiveIndex(index);
           renderPrompt();
           highlightNext();
         } else {
@@ -6339,25 +8759,32 @@ body:not(.run-active) .combo-bar { display: none !important; }
     } else {
       errors++;
       if (index < wrongFlags.length) wrongFlags[index] = true;
-      streak = 0;
+      if (index >= missCounts.length) missCounts[index] = 0;
+      missCounts[index] = (missCounts[index] || 0) + 1;
+      const firstHitOnGlyph = missCounts[index] === 1;
+      if (firstHitOnGlyph && missGraceLeft > 0) {
+        missGraceLeft -= 1;
+      } else {
+        streak = 0;
+      }
       cleanSinceLife = 0;
-      setFireMode(0);
+      emberFuel *= 0.78;
+      syncHeatFromFuel();
       flashKey(got === '\n' ? ' ' : got, false);
       sfxMiss();
       setCompanion('miss');
       reactAtCaret('miss');
       tatSkinNote('miss', 0);
       try { t63OnMiss(); } catch (_) {}
-      // ash puff on miss
-      const curMiss = promptEl.querySelector('.current');
-      if (curMiss && $('optFx')?.checked) {
-        const r = curMiss.getBoundingClientRect();
-        spawnSmoke(r.left + r.width / 2, r.top, 1.2);
-        spawnBurst(r.left + r.width / 2, r.top, '#ff4d6a', 6, 2);
+      playMissBeat(index, missCounts[index]);
+      if (missCounts[index] >= 5) {
+        updateComboUI(false);
+        updateStats();
+      } else {
+        updateComboUI(false);
+        renderPrompt();
+        updateStats();
       }
-      updateComboUI(false);
-      renderPrompt();
-      updateStats();
       const wrap = $('promptWrap');
       if (wrap) {
         wrap.classList.remove('shake');
@@ -6369,17 +8796,18 @@ body:not(.run-active) .combo-bar { display: none !important; }
         cur.style.background = 'rgba(255,77,106,0.4)';
         later(() => { if (cur) cur.style.background = ''; }, 100);
       }
-      // Boards lives: −0.5 per miss
+      // Boards lives: −0.5 per miss (Armor reduces sting)
       if (boardsRun) {
-        lives = Math.max(0, Math.round((lives - MISS_LIFE_COST) * 10) / 10);
+        const cost = Math.max(0.2, Math.round((MISS_LIFE_COST - skillRank('armor') * 0.06) * 100) / 100);
+        lives = Math.max(0, Math.round((lives - cost) * 10) / 10);
         updateLivesUI();
         updateBoardHud();
         if (lives <= 0) {
           finishTest('lives');
           return;
         }
-        setCompanion('worried', `−0.5 life → ${lives.toFixed(1)} left`);
-        showComboToast('−0.5 LIFE', lives.toFixed(1) + ' remaining');
+        setCompanion('worried', '−' + cost.toFixed(2) + ' life → ' + lives.toFixed(1) + ' left');
+        showComboToast('−' + cost.toFixed(2) + ' LIFE', lives.toFixed(1) + ' remaining');
       }
       // Perfect Path mini-game: lose a full life
       if (miniRun && miniConfig?.type === 'perfect') {
@@ -6400,7 +8828,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if (!el) return false;
     if (el.id === 'typer') return false;
     const id = el.id || '';
-    if (id === 'playerName' || id === 'resultName' || id === 'customText') return true;
+    if (id === 'playerName' || id === 'resultName' || id === 'customText' || id === 'optMissTone') return true;
     const tag = (el.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'option') return true;
     if (el.isContentEditable) return true;
@@ -6421,6 +8849,16 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if ($('playerName') && from !== $('playerName')) $('playerName').value = v;
     if ($('resultName') && from !== $('resultName')) $('resultName').value = v;
     try { localStorage.setItem(KEYS.name, String(v || '').trim() || DEFAULT_PLAYER_NAME); } catch (_) {}
+    try {
+      const p = activePlayer();
+      if (p && v && v.trim()) {
+        p.name = v.trim();
+        p.lastAt = Date.now();
+        saveRoster();
+        if ($('xpPlayerName')) $('xpPlayerName').textContent = p.name;
+        if ($('rosterLevelPill')) $('rosterLevelPill').textContent = 'Lv ' + (p.level | 0);
+      }
+    } catch (_) {}
   }
 
   function showHsNamePrompt() {
@@ -6518,8 +8956,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
     keys.add('code');
     keys.add('custom');
     keys.add('boards');
+    keys.add('challenges');
     TERRITORIES.forEach((t) => keys.add('campaign:' + t.id));
     MINI_GAMES.forEach((g) => keys.add('mini:' + g.id));
+    CHALLENGES.forEach((c) => keys.add('challenge:' + c.id));
     // also any saved
     Object.keys(loadHighScores()).forEach((k) => keys.add(k));
     return [...keys];
@@ -6851,6 +9291,97 @@ body:not(.run-active) .combo-bar { display: none !important; }
     setCompanion('mini', cfg.desc || COMPANION.mini.line);
   }
 
+  function challengeRecord(id) {
+    const p = activePlayer();
+    p.challenges = p.challenges || {};
+    if (!p.challenges[id]) p.challenges[id] = { log: [], attempts: 0, bestMs: 0, bestWpm: 0, bestAcc: 0 };
+    return p.challenges[id];
+  }
+  function formatChallengePb(rec) {
+    if (!rec || !rec.bestMs) return 'No record yet';
+    return 'PB ' + (rec.bestMs / 1000).toFixed(2) + 's · ' + (rec.bestWpm | 0) + ' WPM';
+  }
+  function renderChallengeLobby() {
+    const row = $('challengeRow');
+    if (!row) return;
+    const p = activePlayer();
+    row.innerHTML = CHALLENGES.map((c) => {
+      const rec = (p.challenges && p.challenges[c.id]) || {};
+      return '<button type="button" class="challenge-card" data-challenge="' + escapeHtml(c.id) + '">'
+        + '<div class="ch-emo">' + c.emo + '</div>'
+        + '<strong>' + escapeHtml(c.name) + '</strong>'
+        + '<small>' + escapeHtml(c.blurb) + '</small>'
+        + '<div class="ch-pb">' + formatChallengePb(rec) + (rec.attempts ? ' · ' + rec.attempts + ' tries' : '') + '</div>'
+        + '</button>';
+    }).join('');
+    row.querySelectorAll('.challenge-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const c = CHALLENGES.find((x) => x.id === card.dataset.challenge);
+        if (c) startChallenge(c);
+      });
+    });
+  }
+  function updateChallengeHud() {
+    const hud = $('challengeHud');
+    if (!hud) return;
+    if (!(challengeRun && challengeConfig)) {
+      hud.classList.remove('show');
+      return;
+    }
+    hud.classList.add('show');
+    const rec = challengeRecord(challengeConfig.id);
+    if ($('challengeHudName')) $('challengeHudName').textContent = (challengeConfig.emo || '⚡') + ' ' + challengeConfig.name;
+    if ($('challengeHudTime')) $('challengeHudTime').textContent = (elapsedMs() / 1000).toFixed(1) + 's';
+    if ($('challengeHudPb')) $('challengeHudPb').textContent = rec.bestMs ? (rec.bestMs / 1000).toFixed(2) + 's' : '—';
+    if ($('challengeHudHint')) {
+      $('challengeHudHint').textContent = rec.bestMs
+        ? 'Beat ' + (rec.bestMs / 1000).toFixed(2) + 's'
+        : 'Set your first record';
+    }
+  }
+  function startChallenge(cfg) {
+    campaignRun = false;
+    miniRun = false;
+    miniConfig = null;
+    selectedTerritory = null;
+    boardsRun = false;
+    challengeRun = true;
+    challengeConfig = cfg;
+    mode = 'challenges';
+    document.querySelectorAll('#modePills .pill').forEach((p) => {
+      p.classList.toggle('active', p.dataset.mode === 'challenges');
+    });
+    $('campaignPanel')?.classList.remove('show');
+    $('miniPanel')?.classList.remove('show');
+    $('challengePanel')?.classList.add('show');
+    if ($('optNoCaps')) $('optNoCaps').checked = false;
+    if ($('optNoPunct')) $('optNoPunct').checked = false;
+    updateChallengeHud();
+    mainPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    newTest(false);
+    showComboToast((cfg.emo || '⚡') + ' ' + cfg.name, 'Beat your log. Ghosts can race you.');
+    setCompanion('focus', cfg.blurb || 'Challenge locked in.');
+  }
+  function recordChallengeResult(wpm, acc, ms) {
+    if (!challengeRun || !challengeConfig) return null;
+    const rec = challengeRecord(challengeConfig.id);
+    const row = { at: Date.now(), ms: ms | 0, wpm: wpm | 0, acc: acc | 0 };
+    rec.attempts = (rec.attempts | 0) + 1;
+    rec.log = Array.isArray(rec.log) ? rec.log : [];
+    rec.log.push(row);
+    rec.log = rec.log.sort((a, b) => (a.at | 0) - (b.at | 0)).slice(-60);
+    const pb = !rec.bestMs || (ms > 0 && ms < rec.bestMs);
+    if (pb) {
+      rec.bestMs = ms | 0;
+      rec.bestWpm = wpm | 0;
+      rec.bestAcc = acc | 0;
+    }
+    saveRoster();
+    try { renderChallengeLobby(); } catch (_) {}
+    try { drawWpmChart(); } catch (_) {}
+    return { pb: pb, rec: rec };
+  }
+
   // ——— Novel Mode ———
   function getNovelBook() {
     return NOVEL_BOOKS.find((b) => b.id === novelBookId) || NOVEL_BOOKS[0];
@@ -6976,6 +9507,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
     campaignRun = false;
     miniRun = false;
     miniConfig = null;
+    if (next !== 'challenges') {
+      challengeRun = false;
+      challengeConfig = null;
+    }
     boardsRun = mode === 'boards';
     lives = 0;
     livesMax = 0;
@@ -6995,15 +9530,18 @@ body:not(.run-active) .combo-bar { display: none !important; }
     customArea?.classList.toggle('show', mode === 'custom');
     $('campaignPanel')?.classList.toggle('show', mode === 'campaign');
     if ($('miniPanel')) $('miniPanel').classList.toggle('show', mode === 'minigames');
+    if ($('challengePanel')) $('challengePanel').classList.toggle('show', mode === 'challenges');
     if ($('novelPanel')) $('novelPanel').classList.toggle('show', mode === 'novel');
     document.body.classList.toggle('novel-mode', mode === 'novel');
     if ($('novelHud')) $('novelHud').classList.toggle('show', mode === 'novel');
+    if ($('challengeHud')) $('challengeHud').classList.toggle('show', !!(challengeRun && challengeConfig));
 
     if (mode === 'campaign') {
       renderCampaign();
       stopTimer();
       target = '';
       renderPrompt();
+      setStageMode(false);
       focusHint.textContent = 'Pick a territory and press Attack Territory';
       focusHint.className = 'focus-hint';
       setCompanion('focus', 'The map awaits, Keyseeker.');
@@ -7012,9 +9550,22 @@ body:not(.run-active) .combo-bar { display: none !important; }
       stopTimer();
       target = '';
       renderPrompt();
+      setStageMode(false);
       focusHint.textContent = 'Pick a mini-game card to start';
       focusHint.className = 'focus-hint';
       setCompanion('mini');
+    } else if (mode === 'challenges') {
+      challengeRun = false;
+      challengeConfig = null;
+      renderChallengeLobby();
+      stopTimer();
+      target = '';
+      renderPrompt();
+      setStageMode(false);
+      if ($('challengeHud')) $('challengeHud').classList.remove('show');
+      focusHint.textContent = 'Pick a challenge — beat your personal record';
+      focusHint.className = 'focus-hint';
+      setCompanion('focus', 'Challenges: alphabet, pangrams, beat your log.');
     } else if (mode === 'novel') {
       // Soft book defaults (user can still change)
       if ($('optFont') && (!$('optFont').dataset.userSet)) {
@@ -7054,8 +9605,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
   var TAT65_MARK_CAP = 8000;
   var TAT65_SPRINT = { 15: 1, 30: 1, 60: 1 };
   let ghostMarks = [];
-  let ghostTapeMarks = null;
-  let ghostLiveIdx = -1;
+  let ghostRacers = [];
 
   function tatT65GhostOn() {
     return !$('optGhostReplay') || !!$('optGhostReplay').checked;
@@ -7064,7 +9614,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     return !$('optSprintPodium') || !!$('optSprintPodium').checked;
   }
   function tatT65TimedBucket() {
-    if (mode !== 'timed' || miniRun || campaignRun || boardsRun) return '';
+    if (mode !== 'timed' || miniRun || campaignRun || boardsRun || challengeRun) return '';
     const k = optionKey();
     return (k && k.indexOf('timed:') === 0) ? k : '';
   }
@@ -7075,28 +9625,21 @@ body:not(.run-active) .combo-bar { display: none !important; }
     const box = $('tatPodium');
     if (box) box.hidden = true;
   }
-  function tatT65LoadTape() {
-    ghostTapeMarks = null;
-    ghostLiveIdx = -1;
-    if (!tatT65GhostOn()) return;
-    const bucket = tatT65TimedBucket();
-    if (!bucket) return;
-    const all = loadJson(KEYS.ghostReplay, {});
-    const rec = all && typeof all === 'object' && !Array.isArray(all) ? all[bucket] : null;
-    if (!rec || typeof rec !== 'object' || !Array.isArray(rec.marks)) return;
+  function ghostSanitizeMarks(raw) {
     const marks = [];
-    const n = Math.min(rec.marks.length, TAT65_MARK_CAP);
+    if (!Array.isArray(raw)) return marks;
+    const n = Math.min(raw.length, TAT65_MARK_CAP);
     for (let i = 0; i < n; i++) {
-      const m = rec.marks[i];
+      const m = raw[i];
       if (!m || typeof m !== 'object') continue;
       const tMs = Number(m.tMs);
       const idx = Number(m.idx);
       if (!Number.isFinite(tMs) || !Number.isFinite(idx)) continue;
       marks.push({ tMs: Math.max(0, tMs), idx: Math.max(0, idx | 0) });
     }
-    ghostTapeMarks = marks.length ? marks : null;
+    return marks;
   }
-  function tatT65Lookup(marks, tMs) {
+  function ghostLookup(marks, tMs) {
     if (!marks || !marks.length) return -1;
     let lo = 0, hi = marks.length - 1, ans = 0;
     while (lo <= hi) {
@@ -7106,52 +9649,158 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
     return marks[ans].idx | 0;
   }
-  function tatT65Paint() {
-    if (!promptEl) return;
-    const prev = promptEl.querySelectorAll('.tat-ghost-caret');
-    for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tat-ghost-caret');
-    if (!tatT65GhostOn() || ghostLiveIdx < 0) return;
-    const el = promptEl.querySelector('[data-i="' + ghostLiveIdx + '"]');
-    if (el) el.classList.add('tat-ghost-caret');
+  function ghostClearLayer() {
+    const layer = $('tatGhostLayer');
+    if (layer) layer.innerHTML = '';
+    ghostRacers = [];
   }
-  function tatT65Tick() {
-    if (!tatT65GhostOn() || !running || !ghostTapeMarks) {
-      if (ghostLiveIdx !== -1) { ghostLiveIdx = -1; tatT65Paint(); }
+  function ghostIdxFor(racer, tMs) {
+    if (racer.kind === 'tape' && racer.marks && racer.marks.length) {
+      return ghostLookup(racer.marks, tMs);
+    }
+    const wpm = racer.paceWpm || 28;
+    const chars = (wpm / 60) * (Math.max(0, tMs) / 1000) * 5;
+    const cap = target ? target.length : 0;
+    return Math.max(0, Math.min(cap, Math.floor(chars)));
+  }
+  function ghostBuild() {
+    ghostClearLayer();
+    if (!tatT65GhostOn()) return;
+    const layer = $('tatGhostLayer');
+    if (!layer) return;
+    const self = activePlayer();
+    const n = Math.max(0, Math.min(4, self.ghostCount | 0));
+    if (!n) return;
+    const board = ghostBoardKey();
+    const picks = (self.ghostPicks || []).slice(0, n);
+    const used = new Set();
+    picks.forEach((pid) => {
+      if (!pid || used.has(pid)) return;
+      used.add(pid);
+      const gp = ROSTER.players.find((x) => x.id === pid);
+      if (!gp) return;
+      const last = gp.ghosts && gp.ghosts[board] && gp.ghosts[board].last;
+      const marks = ghostSanitizeMarks(last && last.marks);
+      const kind = marks.length ? 'tape' : 'pace';
+      const el = document.createElement('div');
+      el.className = 'tat-ghost-mark ' + kind;
+      el.style.setProperty('--gc', playerColor(gp));
+      const nick = escapeHtml(String(gp.name || '?').slice(0, 10));
+      el.innerHTML = '<span class="gflag">' + nick + (kind === 'pace' ? ' ◆' : '') + '</span><span class="gbeam"></span>';
+      layer.appendChild(el);
+      ghostRacers.push({
+        pid: gp.id,
+        name: gp.name,
+        color: playerColor(gp),
+        kind: kind,
+        marks: marks,
+        paceWpm: playerPaceWpm(gp),
+        liveIdx: -1,
+        el: el,
+      });
+    });
+  }
+  function ghostPaint() {
+    const wrap = $('promptWrap');
+    if (!wrap) return;
+    if (promptEl) {
+      const prev = promptEl.querySelectorAll('.tat-ghost-caret');
+      for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tat-ghost-caret');
+    }
+    const wr = wrap.getBoundingClientRect();
+    ghostRacers.forEach((r) => {
+      if (!r.el) return;
+      if (r.liveIdx < 0 || !promptEl) {
+        r.el.style.opacity = '0';
+        return;
+      }
+      const glyph = promptEl.querySelector('[data-i="' + r.liveIdx + '"]');
+      if (!glyph) {
+        r.el.style.opacity = '0';
+        return;
+      }
+      const g = glyph.getBoundingClientRect();
+      r.el.style.opacity = '1';
+      r.el.style.left = (g.left - wr.left + g.width / 2 + wrap.scrollLeft) + 'px';
+      r.el.style.top = (g.top - wr.top + wrap.scrollTop) + 'px';
+    });
+  }
+  function ghostTick() {
+    if (!tatT65GhostOn() || !running || !ghostRacers.length) {
+      ghostPaint();
       return;
     }
-    const next = tatT65Lookup(ghostTapeMarks, elapsedMs());
-    if (next !== ghostLiveIdx) {
-      ghostLiveIdx = next;
-      tatT65Paint();
-    }
+    const t = elapsedMs();
+    ghostRacers.forEach((r) => { r.liveIdx = ghostIdxFor(r, t); });
+    ghostPaint();
   }
-  function tatT65Mark() {
+  function ghostMark() {
     if (!running || finished) return;
-    if (!tatT65TimedBucket()) return;
     if (ghostMarks.length >= TAT65_MARK_CAP) return;
     const t = elapsedMs();
     const last = ghostMarks.length ? ghostMarks[ghostMarks.length - 1] : null;
     if (last && last.idx === index && last.tMs === t) return;
     ghostMarks.push({ tMs: t, idx: index });
   }
-  function tatT65Commit(wpm, acc) {
-    if (!tatT65GhostOn()) return;
-    const bucket = tatT65TimedBucket();
-    if (!bucket) return;
+  function ghostCommit(wpm, acc) {
     if (!ghostMarks.length) return;
-    const nw = Number(wpm) || 0;
-    const allRaw = loadJson(KEYS.ghostReplay, {});
-    const all = allRaw && typeof allRaw === 'object' && !Array.isArray(allRaw) ? allRaw : {};
-    const prev = all[bucket];
-    if (prev && (Number(prev.wpm) || 0) >= nw) return;
-    all[bucket] = {
-      wpm: nw,
-      acc: Number(acc) || 0,
+    const p = activePlayer();
+    const board = ghostBoardKey();
+    const tape = {
       at: Date.now(),
-      name: getPlayerName() || DEFAULT_PLAYER_NAME,
+      wpm: Number(wpm) || 0,
+      acc: Number(acc) || 0,
+      name: p.name,
       marks: ghostMarks.slice(0, TAT65_MARK_CAP),
     };
-    saveJson(KEYS.ghostReplay, all);
+    p.ghosts = p.ghosts || {};
+    if (!p.ghosts[board]) p.ghosts[board] = {};
+    p.ghosts[board].last = tape;
+    if (!p.ghosts[board].best || tape.wpm > (p.ghosts[board].best.wpm || 0)) {
+      p.ghosts[board].best = tape;
+    }
+    saveRoster();
+    const bucket = tatT65TimedBucket();
+    if (bucket) {
+      const allRaw = loadJson(KEYS.ghostReplay, {});
+      const all = allRaw && typeof allRaw === 'object' && !Array.isArray(allRaw) ? allRaw : {};
+      const prev = all[bucket];
+      if (!prev || (Number(prev.wpm) || 0) < tape.wpm) {
+        all[bucket] = {
+          wpm: tape.wpm,
+          acc: tape.acc,
+          at: tape.at,
+          name: tape.name,
+          marks: tape.marks,
+        };
+        saveJson(KEYS.ghostReplay, all);
+      }
+    }
+  }
+  function migrateLegacyGhosts() {
+    const all = loadJson(KEYS.ghostReplay, {});
+    if (!all || typeof all !== 'object' || Array.isArray(all)) return;
+    const p = activePlayer();
+    p.ghosts = p.ghosts || {};
+    let moved = false;
+    Object.keys(all).forEach((k) => {
+      const rec = all[k];
+      if (!rec || !Array.isArray(rec.marks) || !rec.marks.length) return;
+      if (p.ghosts[k] && p.ghosts[k].last) return;
+      const tape = {
+        at: rec.at || 0,
+        wpm: rec.wpm || 0,
+        acc: rec.acc || 0,
+        name: rec.name || p.name,
+        marks: ghostSanitizeMarks(rec.marks),
+      };
+      if (!tape.marks.length) return;
+      if (!p.ghosts[k]) p.ghosts[k] = {};
+      p.ghosts[k].last = tape;
+      if (!p.ghosts[k].best) p.ghosts[k].best = tape;
+      moved = true;
+    });
+    if (moved) saveRoster();
   }
   function tatT65ShowPodium() {
     const box = $('tatPodium');
@@ -7185,23 +9834,25 @@ body:not(.run-active) .combo-bar { display: none !important; }
   }
   function tatT65OnNewTest() {
     ghostMarks = [];
-    ghostTapeMarks = null;
-    ghostLiveIdx = -1;
     tatT65HidePodium();
-    tatT65LoadTape();
-    tatT65Paint();
+    ghostBuild();
+    ghostPaint();
+    try { renderGhostSlots(); } catch (_) {}
+    try { updateChallengeHud(); } catch (_) {}
   }
   function tatT65OnBegin() {
     ghostMarks = [{ tMs: 0, idx: index }];
-    tatT65LoadTape();
-    tatT65Tick();
+    if (!ghostRacers.length) ghostBuild();
+    ghostTick();
   }
-  function tatT65OnRender() { tatT65Paint(); }
-  function tatT65OnStats() { tatT65Tick(); }
-  function tatT65OnIndex() { tatT65Mark(); }
+  function tatT65OnRender() { ghostPaint(); }
+  function tatT65OnStats() { ghostTick(); try { updateChallengeHud(); } catch (_) {} }
+  function tatT65OnIndex() { ghostMark(); }
   function tatT65OnFinish(wpm, acc) {
-    tatT65Commit(wpm, acc);
+    ghostCommit(wpm, acc);
     tatT65ShowPodium();
+    try { renderGhostSlots(); } catch (_) {}
+    try { drawWpmChart(); } catch (_) {}
   }
 
   // ——— Prefs ———
@@ -7224,6 +9875,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     allowedSelect('optTextFx', prefs.textFx, STYLE_ALLOW.fx, 'none');
     allowedSelect('optTextAnim', prefs.textAnim, STYLE_ALLOW.anim, 'none');
     allowedSelect('optFxLevel', prefs.fxLevel, STYLE_ALLOW.fxLevel, 'med');
+    allowedSelect('optStageBg', prefs.stageBg, STYLE_ALLOW.stage, 'aurora');
     if (prefs.novelBookId && NOVEL_BOOKS.some((b) => b.id === prefs.novelBookId)) novelBookId = prefs.novelBookId;
     if (Number.isFinite(prefs.novelChapterIndex)) novelChapterIndex = Math.max(0, prefs.novelChapterIndex | 0);
     if (prefs.novelDone && typeof prefs.novelDone === 'object') novelDoneChapters = prefs.novelDone;
@@ -7233,6 +9885,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     allowedSelect('optReducedMotion', prefs.reducedMotion, ['auto','on','off'], 'auto');
     if (prefs.ghostReplay === false && $('optGhostReplay')) $('optGhostReplay').checked = false;
     if (prefs.sprintPodium === false && $('optSprintPodium')) $('optSprintPodium').checked = false;
+    allowedSelect('optMissTone', prefs.missTone, Object.keys(COSMETIC_GATES.tone), 'thud');
     applySkinPrefs(prefs.skin);
     TAT64_MASTER = skinPick(prefs.masterProfile, ['custom','calm','arcade','chaos'], 'custom');
     try { tatPaintMaster(); } catch (_) {}
@@ -7246,7 +9899,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
     if ($('playerName')) $('playerName').value = name;
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
-  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium'];
+  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','stageBg','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium','missTone'];
   function pickAllowed(obj, allow) {
     const out = {};
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
@@ -7272,17 +9925,20 @@ body:not(.run-active) .combo-bar { display: none !important; }
       textFx: $('optTextFx')?.value || 'none',
       textAnim: $('optTextAnim')?.value || 'none',
       fxLevel: $('optFxLevel')?.value || 'med',
+      stageBg: $('optStageBg')?.value || 'aurora',
       skin: collectSkinPrefs(),
       reducedMotion: skinPick($('optReducedMotion') && $('optReducedMotion').value, ['auto','on','off'], 'auto'),
       masterProfile: (TAT64_MASTER === 'calm' || TAT64_MASTER === 'arcade' || TAT64_MASTER === 'chaos') ? TAT64_MASTER : 'custom',
       ghostReplay: $('optGhostReplay') ? !!$('optGhostReplay').checked : true,
       sprintPodium: $('optSprintPodium') ? !!$('optSprintPodium').checked : true,
+      missTone: $('optMissTone')?.value || 'thud',
       novelBookId,
       novelChapterIndex,
       novelDone: novelDoneChapters,
       novelPace: $('novelPace')?.value || 'chapter',
     });
     try { localStorage.setItem(KEYS.name, getPlayerName()); } catch (_) {}
+    try { capturePlayerLook(); } catch (_) {}
     applyAmbientPref();
     applyPromptStyle();
     applySkinLook();
@@ -7328,6 +9984,9 @@ body:not(.run-active) .combo-bar { display: none !important; }
         focusHint.textContent = 'Pick a mini-game card first';
         focusHint.className = 'focus-hint warn';
       }
+    } else if (mode === 'challenges') {
+      if (challengeConfig) startChallenge(challengeConfig);
+      else if (CHALLENGES[0]) startChallenge(CHALLENGES[0]);
     } else if (mode === 'novel') {
       campaignRun = false;
       miniRun = false;
@@ -7380,6 +10039,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
   $('btnRestart')?.addEventListener('click', () => newTest(true));
   $('btnAgain')?.addEventListener('click', () => {
     if (miniRun && miniConfig) startMiniGame(miniConfig);
+    else if (challengeRun && challengeConfig) startChallenge(challengeConfig);
     else if (mode === 'campaign' || campaignRun) startCampaignAttack();
     else if (mode === 'boards') {
       boardIndex = 0;
@@ -7434,11 +10094,13 @@ body:not(.run-active) .combo-bar { display: none !important; }
   ['optSound', 'optFx', 'optAmbient', 'optBurn', 'optGhostReplay', 'optSprintPodium'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
   });
-  ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel'].forEach((id) => {
+  ['optFont', 'optColor', 'optTextFx', 'optTextAnim', 'optFxLevel', 'optStageBg'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', () => {
       if (id === 'optFxLevel') tatMarkCustom();
+      try { capturePlayerLook(); } catch (_) {}
       savePrefs();
       applyPromptStyle();
+      lockAllCosmetics();
     });
   });
   $('pdfFile')?.addEventListener('change', (e) => {
@@ -7475,6 +10137,54 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
   });
   $('playerName')?.addEventListener('keydown', (e) => { e.stopPropagation(); });
+  $('btnRosterAdd')?.addEventListener('click', addPlayer);
+  $('btnRosterDel')?.addEventListener('click', removePlayer);
+  $('rosterChips')?.addEventListener('click', (e) => {
+    const chip = e.target.closest?.('.roster-chip');
+    if (chip && chip.dataset.pid) switchPlayer(chip.dataset.pid);
+  });
+  $('btnPlayerExport')?.addEventListener('click', exportActivePlayer);
+  $('btnPlayerExport2')?.addEventListener('click', exportActivePlayer);
+  $('btnVaultExport')?.addEventListener('click', exportFullVault);
+  $('btnPlayerImport')?.addEventListener('click', () => $('playerImportFile')?.click());
+  $('playerImportFile')?.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    importPlayerFile(f);
+    e.target.value = '';
+  });
+  $('optGhostCount')?.addEventListener('change', () => {
+    const p = activePlayer();
+    p.ghostCount = Math.max(0, Math.min(4, $('optGhostCount').value | 0));
+    saveRoster();
+    renderGhostSlots();
+  });
+  $('optGhostReplay')?.addEventListener('change', () => {
+    savePrefs();
+    ghostBuild();
+    ghostPaint();
+    renderGhostSlots();
+  });
+  $('ghostSlots')?.addEventListener('change', (e) => {
+    const sel = e.target.closest?.('select[data-ghost-slot]');
+    if (!sel) return;
+    const i = sel.dataset.ghostSlot | 0;
+    const p = activePlayer();
+    p.ghostPicks = p.ghostPicks || [];
+    p.ghostPicks[i] = sel.value;
+    saveRoster();
+    renderGhostSlots();
+  });
+  $('skillTree')?.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('[data-buy]');
+    if (btn && btn.dataset.buy) buySkill(btn.dataset.buy);
+  });
+  $('optMissTone')?.addEventListener('change', () => {
+    capturePlayerLook();
+    savePrefs();
+  });
+  $('btnPreviewMissTone')?.addEventListener('click', () => {
+    playMissTone($('optMissTone')?.value || 'thud');
+  });
   $('hsFilter')?.addEventListener('change', renderHighScores);
   $('btnClearHist')?.addEventListener('click', () => {
     if (confirm('Clear recent run history?')) {
@@ -7593,6 +10303,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      try { capturePlayerLook(); } catch (_) {}
       if (running && !pausedAt) pausedAt = Date.now();
       stopTimer();
       fxPaused = true;
@@ -7647,14 +10358,14 @@ body:not(.run-active) .combo-bar { display: none !important; }
   // ===== PET-T62 Skin / FX (mixable, behind glyphs) =====
   const SKIN_ALLOW = {
     fx: ['ice','fire','lightning','neon','invert','bloom','void','aurora','plasma','prism','static','comet','mycelium','hologram','magma','pixelstorm','gravitywell','chromeoil'],
-    frame: ['none','circuit','rune','chrome','tape','gothic','arcade'],
-    border: ['none','hairline','neon-pipe','dashed-orbit','hex-studs'],
+    frame: ['none','circuit','rune','chrome','tape','gothic','arcade','filigree','obsidian','crown'],
+    border: ['none','hairline','neon-pipe','dashed-orbit','hex-studs','gold-filigree','plasma-ribbon','crown-inlay'],
     deco: ['none','stars','runes','bolts','petals'],
     theme: ['cyan','ember','ice','void','acid','gold'],
     bgPattern: ['none','grid','hex','dots','circuit','noise','chevron','carbon','constellation','brick','scan','wave'],
     bgBlend: ['normal','multiply','screen','overlay','soft-light','color-dodge','difference','lighten'],
     bgTile: ['cover','repeat','repeat-x','repeat-y','no-repeat','space','round'],
-    lighting: ['none','rim','stage','underglow','spotlight','scan'],
+    lighting: ['none','rim','stage','underglow','spotlight','scan','candle','cathedral','gold-hour'],
     preset: ['keep','clean','inferno','blizzard','storm','voidrave','grok','paper'],
   };
   const SKIN_DEFAULT = {
@@ -7739,8 +10450,8 @@ body:not(.run-active) .combo-bar { display: none !important; }
   }
   function particleBudget() {
     const mul = fxLevelMul();
-    let cap = TAT62.reduced ? 48 : 160;
-    cap = Math.round(cap * Math.min(1.35, 0.7 + mul * 0.3));
+    let cap = TAT62.reduced ? 64 : 280;
+    cap = Math.round(cap * Math.min(1.5, 0.7 + mul * 0.4));
     return cap;
   }
   function moodBias(id) {
@@ -8296,7 +11007,13 @@ body:not(.run-active) .combo-bar { display: none !important; }
     const x = TAT62.caret.x * c.width;
     const y = TAT62.caret.y * c.height;
     const inten = skinIntensity(now);
-    enabledFx().forEach((id) => spawnFxBurst(id, x, y, familyI(id) || inten, kind));
+    enabledFx().forEach((id) => {
+      if (id === 'fire' || id === 'magma') {
+        spawnFxBurst(id, (0.15 + Math.random() * 0.7) * c.width, c.height - 8, familyI(id) || inten, kind);
+      } else {
+        spawnFxBurst(id, x, y, familyI(id) || inten, kind);
+      }
+    });
   }
   function drawBolt(ctx, b) {
     ctx.save();
@@ -8522,7 +11239,13 @@ body:not(.run-active) .combo-bar { display: none !important; }
     }
     const bind = ['skinLive','skinFrame','skinCorners','skinRails','skinBorder','skinDeco','skinTheme','skinBgPattern','skinBgBlend','skinBgTile','skinLighting','skinIdleBreath'];
     bind.forEach((id) => {
-      $(id)?.addEventListener('change', () => { tatMarkCustom(); applySkinLook(); savePrefs(); });
+      $(id)?.addEventListener('change', () => {
+        tatMarkCustom();
+        try { lockAllCosmetics(); } catch (_) {}
+        applySkinLook();
+        try { capturePlayerLook(); } catch (_) {}
+        savePrefs();
+      });
     });
     SKIN_ALLOW.fx.forEach((id) => {
       $('skinFx_' + id)?.addEventListener('change', () => { tatMarkCustom(); applySkinLook(); savePrefs(); });
@@ -8644,7 +11367,13 @@ body:not(.run-active) .combo-bar { display: none !important; }
   function t63CapLive() {
     const layer = t63Layer();
     if (!layer) return;
-    while (layer.childElementCount > 18) layer.removeChild(layer.firstChild);
+    const kids = [...layer.children];
+    const extras = kids.filter((el) => !el.classList.contains('tat-t63-fw'));
+    while (extras.length > 28) {
+      const el = extras.shift();
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+    // Fireworks persist until their own timer removes them — never flushed by ripples.
   }
   function t63Spawn(cls, x, y, ms, extra) {
     const layer = t63Layer();
@@ -8760,8 +11489,15 @@ body:not(.run-active) .combo-bar { display: none !important; }
 
   // Init
   buildKeyboard();
+  try { ROSTER = loadRoster(); } catch (_) { ROSTER = defaultRoster(); }
+  try { migrateLegacyGhosts(); } catch (_) {}
   loadPrefs();
   applyPromptStyle();
+  try { applyPlayerLook(activePlayer()); } catch (_) {}
+  try { renderRoster(); } catch (_) {}
+  try { renderGhostSlots(); } catch (_) {}
+  try { drawWpmChart(); } catch (_) {}
+  try { renderChallengeLobby(); } catch (_) {}
   tatSkinInit();
   try { t63Init(); } catch (_) {}
   updateLibStatus();
@@ -8772,8 +11508,24 @@ body:not(.run-active) .combo-bar { display: none !important; }
   updateComboUI(false);
   updateLivesUI();
   setCompanion('idle');
-  // Hide mini panel until selected (setMode will toggle)
   if ($('miniPanel')) $('miniPanel').classList.remove('show');
+  if ($('challengePanel')) $('challengePanel').classList.remove('show');
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (_) {}
+  window.addEventListener('pagehide', () => { try { saveRoster(); } catch (_) {} });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { try { saveRoster(); } catch (_) {} }
+  });
+  window.addEventListener('resize', () => { try { ghostPaint(); } catch (_) {} });
+  try {
+    window.__keyflare = {
+      version: 'T73',
+      roster: () => ROSTER,
+      active: () => activePlayer(),
+      ghosts: () => ghostRacers.map((g) => ({ pid: g.pid, kind: g.kind, wpm: g.paceWpm, idx: g.liveIdx })),
+      challenges: () => CHALLENGES.map((c) => c.id),
+      vaultKey: KEYS.vault,
+    };
+  } catch (_) {}
   setMode('timed');
 })();
   </script>
@@ -8783,7 +11535,7 @@ body:not(.run-active) .combo-bar { display: none !important; }
 (function(){
   if (window.__tbToolPolish) return; window.__tbToolPolish = true;
   const TOOL_ID = "typing-assistant-trainer";
-  const TOOL_NAME = "Typing Assistant Trainer";
+  const TOOL_NAME = "KEYFLARE";
   try { document.body.dataset.tbEsc = 'off'; } catch(_){}
   function launcherHref(){
     try {
@@ -8845,10 +11597,10 @@ body:not(.run-active) .combo-bar { display: none !important; }
   } catch(_){}
 })();
 </script>
-  <script src="shared/fafo-ops-stats.js"></script>
-  <script src="shared/aitoolbox-layout.js"></script>
-<script src="shared/aitoolbox-api.js"></script>
-<script src="shared/aitoolbox-ui.js"></script>
-<script src="shared/aitoolbox-pro.js"></script>
+  <script src="shared/fafo-ops-stats.js?v=1.16.50"></script>
+  <script src="shared/aitoolbox-layout.js?v=1.16.50"></script>
+<script src="shared/aitoolbox-api.js?v=1.16.50"></script>
+<script src="shared/aitoolbox-ui.js?v=1.16.50"></script>
+<script src="shared/aitoolbox-pro.js?v=1.16.50"></script>
 </body>
 </html>
