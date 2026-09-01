@@ -1518,6 +1518,9 @@
         async listDuplicateDrives() {
             return api('/duplicates/drives');
         },
+        async duplicatePipelineDefaults() {
+            return api('/duplicates/pipeline-defaults');
+        },
         async scanDuplicates(folder, deep = false, opts = {}) {
             const p = new URLSearchParams({
                 folder: folder || '',
@@ -1595,7 +1598,86 @@
             return promise;
         },
 
-        async deleteDuplicateFiles({ keepPath, deletePaths, toTrash = true, dryRun = false }) {
+        /**
+         * Cross-source scan: Inbox (deletable) vs Before/pre-scaled (locked)
+         * vs optional After/post-upgrade (locked, PID match only).
+         * sources: [{path, role: 'inbox'|'before'|'after', label?, recursive?}]
+         */
+        scanDuplicatesCrossStream(sources, opts = {}, onProgress) {
+            let closed = false;
+            const handle = {
+                jobId: null,
+                es: null,
+                async pause() {
+                    if (!handle.jobId) return;
+                    return api('/duplicates/scan/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id: handle.jobId, action: 'pause' }),
+                    });
+                },
+                async resume() {
+                    if (!handle.jobId) return;
+                    return api('/duplicates/scan/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id: handle.jobId, action: 'resume' }),
+                    });
+                },
+                async cancel() {
+                    closed = true;
+                    if (!handle.jobId) return;
+                    return api('/duplicates/scan/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id: handle.jobId, action: 'cancel' }),
+                    });
+                },
+            };
+            if (typeof opts.onHandle === 'function') opts.onHandle(handle);
+            const promise = (async () => {
+                const started = await api('/duplicates/cross-scan/start', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        sources: (sources || []).map((s) => ({
+                            path: s.path,
+                            role: s.role || 'inbox',
+                            label: s.label || s.role || '',
+                            recursive: s.recursive !== false,
+                        })),
+                        deep: !!opts.deep,
+                        match_mode: opts.matchMode || 'quick',
+                        file_types: opts.fileTypes || 'video',
+                        recursive: opts.recursive !== false,
+                    }),
+                });
+                handle.jobId = started?.job_id;
+                if (typeof opts.onJob === 'function') opts.onJob(handle.jobId, started);
+                if (!handle.jobId) throw new Error('Cross-source scan did not start');
+                const es = new EventSource(`${apiBase()}/duplicates/scan/stream?job_id=${encodeURIComponent(handle.jobId)}`);
+                handle.es = es;
+                return new Promise((resolve, reject) => {
+                    es.onmessage = (e) => {
+                        let d;
+                        try { d = JSON.parse(e.data); } catch { return; }
+                        if (d.job_id && !d.done) {
+                            handle.jobId = d.job_id;
+                            if (typeof opts.onJob === 'function') opts.onJob(d.job_id, d);
+                        }
+                        if (d.state && typeof opts.onState === 'function') opts.onState(d.state, d);
+                        if (d.error) { es.close(); reject(new Error(d.error)); }
+                        else if (d.done) { es.close(); resolve(d.result); }
+                        else if (onProgress && (d.count != null || d.groups)) onProgress(d.count, d.file, d);
+                    };
+                    es.onerror = () => {
+                        if (closed) return;
+                        es.close();
+                        reject(new Error('Cross-source scan stream failed'));
+                    };
+                });
+            })();
+            promise.handle = handle;
+            return promise;
+        },
+
+        async deleteDuplicateFiles({ keepPath, deletePaths, toTrash = true, dryRun = false, protectedRoots = null }) {
             return api('/duplicates/delete', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -1603,11 +1685,12 @@
                     delete_paths: deletePaths,
                     to_trash: toTrash,
                     dry_run: dryRun,
+                    protected_roots: protectedRoots || [],
                 }),
             });
         },
 
-        async mergeDuplicateGroup({ keepPath, groupPaths, toTrash = true, dryRun = false }) {
+        async mergeDuplicateGroup({ keepPath, groupPaths, toTrash = true, dryRun = false, protectedRoots = null }) {
             return api('/duplicates/merge', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -1615,6 +1698,7 @@
                     group_paths: groupPaths,
                     to_trash: toTrash,
                     dry_run: dryRun,
+                    protected_roots: protectedRoots || [],
                 }),
             });
         },
