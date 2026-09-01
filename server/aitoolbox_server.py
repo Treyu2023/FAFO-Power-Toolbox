@@ -3361,6 +3361,7 @@ class DupDelete(BaseModel):
     delete_paths: list[str]
     to_trash: bool = True
     dry_run: bool = False
+    protected_roots: list[str] | None = None
 
 
 class DupMerge(BaseModel):
@@ -3368,6 +3369,22 @@ class DupMerge(BaseModel):
     group_paths: list[str]
     to_trash: bool = True
     dry_run: bool = False
+    protected_roots: list[str] | None = None
+
+
+class DupCrossSource(BaseModel):
+    path: str
+    role: str = "inbox"
+    label: str | None = None
+    recursive: bool | None = None
+
+
+class DupCrossScan(BaseModel):
+    sources: list[DupCrossSource]
+    deep: bool = False
+    match_mode: str = "quick"
+    file_types: str = "video"
+    recursive: bool = True
 
 
 @app.get("/api/vsr/config")
@@ -3429,25 +3446,7 @@ def api_dup_scan(
         raise HTTPException(404, str(e))
 
 
-@app.get("/api/duplicates/scan/stream")
-def api_dup_scan_stream(
-    folder: str = "",
-    deep: bool = False,
-    match_mode: str = "quick",
-    file_types: str = "all",
-    recursive: bool = True,
-    whole_system: bool = False,
-):
-    """SSE scan stream. Emits path progress and live `groups` as duplicates appear."""
-    job = dup.start_scan_job(
-        folder,
-        deep=deep,
-        match_mode=match_mode,
-        file_types=file_types,
-        recursive=recursive,
-        whole_system=whole_system,
-    )
-
+def _dup_sse(job: dup.DupScanJob):
     def gen():
         yield f"data: {json.dumps({'job_id': job.id, 'state': job.state})}\n\n"
         try:
@@ -3466,6 +3465,80 @@ def api_dup_scan_stream(
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
+@app.get("/api/duplicates/scan/stream")
+def api_dup_scan_stream(
+    folder: str = "",
+    deep: bool = False,
+    match_mode: str = "quick",
+    file_types: str = "all",
+    recursive: bool = True,
+    whole_system: bool = False,
+    job_id: str = "",
+):
+    """SSE scan stream. Emits path progress and live `groups` as duplicates appear.
+
+    Pass job_id to attach to a job started via POST /api/duplicates/cross-scan/start.
+    """
+    if job_id:
+        job = dup.get_scan_job(job_id)
+        if not job:
+            raise HTTPException(404, "Scan job not found")
+        return _dup_sse(job)
+    job = dup.start_scan_job(
+        folder,
+        deep=deep,
+        match_mode=match_mode,
+        file_types=file_types,
+        recursive=recursive,
+        whole_system=whole_system,
+    )
+    return _dup_sse(job)
+
+
+@app.get("/api/duplicates/pipeline-defaults")
+def api_dup_pipeline_defaults():
+    """Suggested Inbox / Pre-scaled / After folders for the cross-source scan."""
+    return {"ok": True, **dup.default_pipeline_sources()}
+
+
+@app.post("/api/duplicates/cross-scan")
+def api_dup_cross_scan(body: DupCrossScan):
+    """Blocking cross-source scan (Inbox vs Pre-scaled vs optional After via PID)."""
+    try:
+        sources = [s.model_dump() for s in body.sources]
+        return dup.scan_cross_source_duplicates(
+            sources,
+            deep=body.deep,
+            match_mode=body.match_mode,
+            file_types=body.file_types,
+            recursive=body.recursive,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/duplicates/cross-scan/start")
+def api_dup_cross_scan_start(body: DupCrossScan):
+    """Start a streaming cross-source scan. Attach with GET /scan/stream?job_id=."""
+    try:
+        sources = [s.model_dump() for s in body.sources]
+        dup.normalize_sources(sources)
+        job = dup.start_cross_scan_job(
+            sources,
+            deep=body.deep,
+            match_mode=body.match_mode,
+            file_types=body.file_types,
+            recursive=body.recursive,
+        )
+        return {"ok": True, "job_id": job.id, "state": job.state}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/api/duplicates/scan/control")
 def api_dup_scan_control(body: DupScanControl):
     ok = dup.control_scan_job(body.job_id, body.action)
@@ -3482,6 +3555,7 @@ def api_dup_delete(body: DupDelete):
             delete_paths_list=body.delete_paths,
             to_trash=body.to_trash,
             dry_run=body.dry_run,
+            protected_roots=body.protected_roots,
         )
     except Exception as e:
         raise HTTPException(400, str(e))
@@ -3495,6 +3569,7 @@ def api_dup_merge(body: DupMerge):
             group_paths=body.group_paths,
             to_trash=body.to_trash,
             dry_run=body.dry_run,
+            protected_roots=body.protected_roots,
         )
     except Exception as e:
         raise HTTPException(400, str(e))

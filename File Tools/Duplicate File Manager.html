@@ -134,6 +134,42 @@
         .dup-group:hover { border-color: var(--accent2); }
         .dup-group.active { border-color: var(--accent); box-shadow: var(--glow); transform: translateY(-1px); }
         .dup-group.provisional { border-style: dashed; border-color: rgba(251,191,36,.5); }
+        .dup-group.cross { border-color: rgba(103,232,249,.4); }
+        .dup-group.has-after { box-shadow: inset 0 0 0 1px rgba(255,209,102,.25); }
+        .role-pill, .match-pill {
+            display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 800;
+            padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+            text-transform: uppercase; letter-spacing: .04em;
+        }
+        .role-pill.inbox { color: #67e8f9; border: 1px solid rgba(103,232,249,.45); background: rgba(103,232,249,.12); }
+        .role-pill.before { color: #4ade80; border: 1px solid rgba(74,222,128,.45); background: rgba(74,222,128,.12); }
+        .role-pill.after { color: #ffd166; border: 1px solid rgba(255,209,102,.45); background: rgba(255,209,102,.12); }
+        .match-pill { color: var(--accent2); border: 1px solid rgba(255,209,102,.35); background: rgba(255,209,102,.08); }
+        .file-row.protected { opacity: 0.95; border-left: 3px solid rgba(74,222,128,.6); }
+        .file-row.protected.after { border-left-color: rgba(255,209,102,.7); }
+        .file-row.protected .lock-note { font-size: 9px; color: var(--ok); margin-top: 3px; }
+        .file-row.protected.after .lock-note { color: var(--accent2); }
+        .cross-panel {
+            margin-top: 12px; padding: 10px; border-radius: 8px;
+            border: 1px solid rgba(103,232,249,.22); background: rgba(0,20,28,.35);
+        }
+        .cross-panel.off { opacity: 0.85; }
+        .cross-panel.off .hint,
+        .cross-panel.off .cross-actions { display: none; }
+        .source-row {
+            display: grid; grid-template-columns: 86px 1fr auto auto; gap: 6px; align-items: center;
+            margin-top: 6px;
+        }
+        .source-row select { padding: 5px 6px; font-size: 11px; }
+        .source-row input[type="text"] { padding: 5px 8px; font-size: 11px; }
+        .source-row .src-btns { display: flex; gap: 4px; }
+        .source-row .src-btns button {
+            appearance: none; background: transparent; color: var(--muted);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
+            font-size: 11px; padding: 4px 7px; cursor: pointer; min-height: 24px;
+        }
+        .source-row .src-btns button:hover { color: var(--accent); border-color: var(--accent); }
+        .cross-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
         .dup-group .prov-badge {
             display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 800;
             padding: 1px 6px; border-radius: 999px; vertical-align: middle;
@@ -347,7 +383,7 @@
                data-fafo-panel-default="300">
             <div class="section" data-fafo-section="scan" data-fafo-section-title="Scan folder">
                 <h3>Scan folder</h3>
-                <p class="hint">Find exact and near-exact duplicates across common Windows file types — images, video, audio, documents, archives, and code.</p>
+                <p class="hint">Find exact and near-exact duplicates across common Windows file types — images, video, audio, documents, archives, and code. Optional <strong>cross-source</strong> check compares Downloads against already-processed Pre-scaled / After folders without allowing those processed copies to be deleted.</p>
                 <label class="field-label">Folder path</label>
                 <input type="text" id="folderPath" placeholder="C:\Users\You\Downloads">
                 <div style="display:flex;gap:8px;margin-top:8px;">
@@ -383,6 +419,18 @@
                     </div>
                     <div class="progress-bar"><span id="scanProgress"></span></div>
                     <div class="scan-status" id="scanStatus">Start the server (▶ Start Server above), pick a folder, then scan. Pause / Cancel live only in this left dock.</div>
+                </div>
+                <div class="cross-panel" id="crossPanel">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer;">
+                        <input type="checkbox" id="crossSourceOn">
+                        Cross-source check (optional)
+                    </label>
+                    <p class="hint" style="margin:8px 0 0">Inbox = Downloads / new files (can recycle). <strong>Before</strong> = Pre-scaled originals after processing (locked). <strong>After</strong> = 4K/96fps post-upgrade (locked, matched by <code>_PID_xxxxxxxx</code> from the pre-scaled name — not by size).</p>
+                    <div id="crossSourceList"></div>
+                    <div class="cross-actions">
+                        <button class="ui-btn ghost" type="button" id="btnAddSource" data-tip="Add another folder to cross-reference">+ Folder</button>
+                        <button class="ui-btn ghost" type="button" id="btnLoadPipelineFolders" data-tip="Fill Inbox / Pre-scaled / After from the FlashVSR profile when those folders exist">Load FlashVSR folders</button>
+                    </div>
                 </div>
             </div>
             <div class="section"
@@ -604,6 +652,27 @@
             { id: 'oldest', on: true, value: '' },
         ];
         let groupSort = 'wasted';
+        let crossSourceOn = false;
+        let crossSources = [
+            { path: '', role: 'inbox', label: 'Inbox' },
+            { path: '', role: 'before', label: 'Pre-scaled' },
+            { path: '', role: 'after', label: 'After' },
+        ];
+
+        function isProtectedItem(item) {
+            if (!item) return false;
+            if (item.protected) return true;
+            const role = String(item.role || '').toLowerCase();
+            return role === 'before' || role === 'after';
+        }
+
+        function protectedRootsFromScan() {
+            const roots = scanResult?.protected_roots;
+            if (Array.isArray(roots) && roots.length) return roots;
+            return (crossSources || [])
+                .filter((s) => s && s.path && (s.role === 'before' || s.role === 'after'))
+                .map((s) => s.path);
+        }
 
         /** Copy-number rank: no suffix wins, then lowest (N). Returns [tier, n] lower = better for lowest_copy. */
         function copyNumberRank(name) {
@@ -714,7 +783,7 @@
             return 0;
         }
 
-        function pickKeeper(items) {
+        function pickKeeperByRules(items) {
             if (!items || !items.length) return null;
             let best = items[0];
             let bestKey = keeperKey(best);
@@ -727,6 +796,15 @@
                 }
             }
             return best.path || null;
+        }
+
+        function pickKeeper(items) {
+            if (!items || !items.length) return null;
+            const before = items.filter((it) => String(it.role || '').toLowerCase() === 'before');
+            if (before.length) return pickKeeperByRules(before);
+            const locked = items.filter(isProtectedItem);
+            if (locked.length) return pickKeeperByRules(locked);
+            return pickKeeperByRules(items);
         }
 
         function pickLowestCountKeeper(items) {
@@ -750,7 +828,10 @@
             const keep = pickKeeper(items) || items[0].path;
             const total = items.reduce((a, it) => a + (Number(it.size) || 0), 0);
             const keepItem = items.find((it) => it.path === keep) || items[0];
-            const wasted = Math.max(0, total - (Number(keepItem.size) || 0));
+            const deletable = items.filter((it) => !isProtectedItem(it) && it.path !== keep);
+            const wasted = scanResult?.cross_source
+                ? deletable.reduce((a, it) => a + (Number(it.size) || 0), 0)
+                : Math.max(0, total - (Number(keepItem.size) || 0));
             const sorted = items.slice().sort((a, b) => cmpKeys(keeperKey(a), keeperKey(b)));
             return {
                 ...g,
@@ -1280,12 +1361,19 @@
                 const perFile = sample.size != null ? sample.size : Math.round((g.total_bytes || 0) / Math.max(1, g.count || 1));
                 const folder = parentFolder(keepPath);
                 const prov = !!g.provisional;
+                const kinds = (g.match_kinds || []).map((k) => `<span class="match-pill">${escapeHtml(k)}</span>`).join('');
+                const flags = [
+                    g.has_inbox ? '<span class="role-pill inbox">inbox</span>' : '',
+                    g.has_before ? '<span class="role-pill before">pre-scaled</span>' : '',
+                    g.has_after ? '<span class="role-pill after">after</span>' : '',
+                ].join('');
                 return `
-                    <div class="dup-group${i === activeGroupIndex ? ' active' : ''}${prov ? ' provisional' : ''}" data-index="${i}">
+                    <div class="dup-group${i === activeGroupIndex ? ' active' : ''}${prov ? ' provisional' : ''}${g.cross_source ? ' cross' : ''}${g.has_after ? ' has-after' : ''}" data-index="${i}">
                         ${thumbHtml(sample.path, sample.kind || g.kind, 'dup-thumb')}
                         <div>
                             <h4>${escapeHtml(sample.name || 'group')} <span style="color:var(--muted);font-weight:400;">+${(g.count || g.items.length) - 1} copies</span>
-                            ${prov ? '<span class="prov-badge" title="Same file size — hash confirm still running">likely</span>' : ''}</h4>
+                            ${prov ? '<span class="prov-badge" title="Same file size — hash confirm still running">likely</span>' : ''}
+                            ${flags}${kinds}</h4>
                             <div class="dup-meta">
                                 <span>${g.count || g.items.length} files</span>
                                 <span title="Per-file size">${fmtBytesFull(perFile)}</span>
@@ -1293,6 +1381,7 @@
                                 <span>${fmtBytesFull(g.wasted_bytes)} recoverable</span>
                                 <span title="Keeper from ranked keep rules">keep: ${escapeHtml(sample.name || '')}</span>
                                 <span>${escapeHtml(g.kind || sample.kind || 'file')}</span>
+                                ${g.deletable_count != null ? `<span>${g.deletable_count} deletable</span>` : ''}
                                 ${prov ? '<span style="color:var(--warn)">size match</span>' : '<span style="color:var(--ok)">hashed</span>'}
                                 <span class="dup-folder" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
                             </div>
@@ -1451,18 +1540,27 @@
             if (!list) return;
             const rows = group.items.map(item => {
                 const isKeeper = item.path === keeperPath;
+                const locked = isProtectedItem(item);
+                const role = String(item.role || '').toLowerCase();
                 const rank = copyNumberRank(item.name);
                 const rankLabel = rank[0] === 0 ? 'no #' : `(${rank[1]})`;
                 const cmpChecked = compareSelection.has(item.path) ? 'checked' : '';
                 const delChecked = deleteSelection.has(item.path) ? 'checked' : '';
+                const rolePill = role ? `<span class="role-pill ${escapeHtml(role)}">${escapeHtml(role === 'before' ? 'pre-scaled' : role)}</span>` : '';
+                const pidNote = item.pid ? `<span class="match-pill" title="Pair id">PID ${escapeHtml(item.pid)}</span>` : '';
+                const lockNote = locked
+                    ? `<div class="lock-note">${role === 'after' ? 'Post-upgrade — locked (PID evidence only)' : 'Pre-scaled original — locked'}</div>`
+                    : '';
                 return `
-                    <div class="file-row${isKeeper ? ' keeper' : ''}" data-path="${encodeURIComponent(item.path)}">
-                        <input type="radio" name="keeper" ${isKeeper ? 'checked' : ''} data-keeper="${encodeURIComponent(item.path)}">
+                    <div class="file-row${isKeeper ? ' keeper' : ''}${locked ? ' protected' : ''}${role === 'after' ? ' after' : ''}" data-path="${encodeURIComponent(item.path)}">
+                        <input type="radio" name="keeper" ${isKeeper ? 'checked' : ''} data-keeper="${encodeURIComponent(item.path)}" ${locked && role === 'after' ? 'title="After files stay; keeper is for Inbox cleanup"' : ''}>
                         ${rowThumbHtml(item)}
                         <label>
                             ${escapeHtml(item.name)}
                             <span class="pill" style="margin-left:6px;font-size:9px;opacity:.85" title="Copy-number rank">${rankLabel}${isKeeper ? ' · keep' : ''}</span>
+                            ${rolePill}${pidNote}
                             <div class="file-path">${escapeHtml(item.path)}</div>
+                            ${lockNote}
                         </label>
                         <div class="file-meta">
                             <div class="size-exact" title="Exact size in bytes">${fmtBytesFull(item.size)}</div>
@@ -1472,7 +1570,7 @@
                                     <input type="checkbox" class="cmp-chk" data-path="${encodeURIComponent(item.path)}" ${cmpChecked}> cmp
                                 </label>
                                 <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:4px;">
-                                    <input type="checkbox" class="del-chk" data-path="${encodeURIComponent(item.path)}" ${delChecked}${isKeeper ? ' disabled' : ''}> del
+                                    <input type="checkbox" class="del-chk" data-path="${encodeURIComponent(item.path)}" ${delChecked}${(isKeeper || locked) ? ' disabled' : ''}> ${locked ? 'lock' : 'del'}
                                 </label>
                             </div>
                         </div>
@@ -1569,11 +1667,38 @@
             } catch (_) { /* server offline */ }
         }
 
+        function collectCrossSources() {
+            const rows = (crossSources || [])
+                .map((s) => ({
+                    path: String(s.path || '').trim(),
+                    role: s.role || 'inbox',
+                    label: s.label || s.role || '',
+                    recursive: el('scanSubfolders')?.checked !== false,
+                }))
+                .filter((s) => s.path);
+            const main = (el('folderPath')?.value || '').trim();
+            if (main && !rows.some((s) => s.path.toLowerCase() === main.toLowerCase())) {
+                rows.unshift({ path: main, role: 'inbox', label: 'Inbox', recursive: el('scanSubfolders')?.checked !== false });
+            }
+            return rows;
+        }
+
         async function runScan() {
             return withBusy('scan', async () => {
             const whole = isWholeSystemScan();
             const folder = (el('folderPath')?.value || '').trim();
-            if (!whole && !folder) {
+            const cross = !!crossSourceOn && !whole;
+            const crossList = cross ? collectCrossSources() : [];
+            if (cross) {
+                if (!crossList.some((s) => s.role === 'inbox')) {
+                    UI()?.toast?.('Cross-source needs at least one Inbox folder (Downloads / new files)', 'warn');
+                    return;
+                }
+                if (!crossList.some((s) => s.role === 'before' || s.role === 'after')) {
+                    UI()?.toast?.('Add a Pre-scaled (before) and/or After folder to cross-check, or turn cross-source off', 'warn');
+                    return;
+                }
+            } else if (!whole && !folder) {
                 UI()?.toast?.('Enter or pick a folder, or turn on Scan whole system', 'warn');
                 return;
             }
@@ -1606,22 +1731,25 @@
                 },
             };
             scanResult = {
-                folder: whole ? 'This PC' : folder,
+                folder: cross ? 'Cross-source' : (whole ? 'This PC' : folder),
                 scanned: 0,
                 groups: [],
                 duplicate_groups: 0,
                 wasted_bytes: 0,
                 partial: true,
+                cross_source: cross,
             };
             setHtml('detailList', '');
             setDisabled('btnScan', true);
             setDisabled('btnMergeAllLowest', true);
             setStyle('scanProgress', 'width', '0%');
-            setText('scanStatus', whole
-                ? 'Whole system: walking all local drives (Windows / Program Files skipped)…'
-                : (opts.recursive === false
-                    ? 'This folder only (no subfolders) — quick size pass…'
-                    : 'Phase 1: quick size pass — groups appear immediately, then hashes confirm…'));
+            setText('scanStatus', cross
+                ? 'Cross-source: Inbox vs Pre-scaled (size/hash) + After via PID…'
+                : (whole
+                    ? 'Whole system: walking all local drives (Windows / Program Files skipped)…'
+                    : (opts.recursive === false
+                        ? 'This folder only (no subfolders) — quick size pass…'
+                        : 'Phase 1: quick size pass — groups appear immediately, then hashes confirm…')));
             setText('toolbarInfo', 'Quick scan…');
             setLiveScanPill(true);
             updateScanDock();
@@ -1632,7 +1760,10 @@
             let lastUiGroups = 0;
             let lastPhase = '';
             try {
-                const finalResult = await API().scanDuplicatesStream(whole ? '*' : folder, opts, (count, file, evt) => {
+                const streamFn = (cross && API().scanDuplicatesCrossStream)
+                    ? (cb) => API().scanDuplicatesCrossStream(crossList, opts, cb)
+                    : (cb) => API().scanDuplicatesStream(whole ? '*' : folder, opts, cb);
+                const finalResult = await streamFn((count, file, evt) => {
                     const phase = evt?.phase || '';
                     const total = evt?.total || 0;
                     let pct;
@@ -1725,8 +1856,15 @@
             freezeForInteraction();
             const group = scanResult?.groups?.[activeGroupIndex];
             if (!group || !keeperPath) return;
-            const others = group.items.map(i => i.path).filter(p => p !== keeperPath);
-            const preview = `Keep (keep-rules winner):\n${keeperPath}\n\nSend to Recycle Bin (${others.length}):\n${others.slice(0, 8).join('\n')}${others.length > 8 ? '\n…' : ''}`;
+            const others = group.items
+                .filter((i) => i.path !== keeperPath && !isProtectedItem(i))
+                .map((i) => i.path);
+            if (!others.length) {
+                UI()?.toast?.('Nothing deletable in this group — Pre-scaled / After copies stay locked', 'warn');
+                return;
+            }
+            const lockedN = group.items.filter((i) => isProtectedItem(i)).length;
+            const preview = `Keep (keep-rules winner):\n${keeperPath}\n\nSend to Recycle Bin (${others.length}):\n${others.slice(0, 8).join('\n')}${others.length > 8 ? '\n…' : ''}${lockedN ? `\n\n${lockedN} pre-scaled / after file(s) stay locked.` : ''}`;
             const r = await UI().confirmAction({
                 title: 'Merge duplicate group',
                 body: `<pre style="font-size:11px;white-space:pre-wrap;color:#ccc">${escapeHtml(preview)}</pre>`,
@@ -1742,6 +1880,7 @@
                     groupPaths: group.items.map(i => i.path),
                     toTrash: true,
                     dryRun: false,
+                    protectedRoots: protectedRootsFromScan(),
                 });
                 const deleted = result.deleted || 0;
                 const freed = result.bytes_freed || 0;
@@ -1776,7 +1915,9 @@
             let totalOthers = 0;
             const plan = groups.map((g) => {
                 const keep = pickKeeper(g.items) || g.suggested_keep || g.items[0]?.path;
-                const others = (g.items || []).map((i) => i.path).filter((p) => p && p !== keep);
+                const others = (g.items || [])
+                    .filter((i) => i.path && i.path !== keep && !isProtectedItem(i))
+                    .map((i) => i.path);
                 totalOthers += others.length;
                 const keepName = (g.items || []).find((i) => i.path === keep)?.name || keep;
                 return { keep, paths: (g.items || []).map((i) => i.path), others, sample: keepName };
@@ -1819,6 +1960,7 @@
                             groupPaths: step.paths,
                             toTrash: true,
                             dryRun: false,
+                            protectedRoots: protectedRootsFromScan(),
                         });
                         deleted += result.deleted || 0;
                         freed += result.bytes_freed || 0;
@@ -1852,7 +1994,11 @@
 
         async function deleteSelected() {
             freezeForInteraction();
-            const paths = [...deleteSelection].filter(p => p !== keeperPath);
+            const paths = [...deleteSelection].filter((p) => {
+                if (p === keeperPath) return false;
+                const item = (scanResult?.groups || []).flatMap((g) => g.items || []).find((it) => it.path === p);
+                return !isProtectedItem(item);
+            });
             if (!paths.length) return;
             // Estimate bytes from scan items before delete (API also returns bytes_freed)
             const sizeMap = new Map();
@@ -1873,6 +2019,7 @@
                     keepPath: keeperPath,
                     deletePaths: paths,
                     toTrash: true,
+                    protectedRoots: protectedRootsFromScan(),
                 });
                 const deleted = result.deleted || 0;
                 const freed = result.bytes_freed != null ? result.bytes_freed : estBytes;
@@ -2015,6 +2162,80 @@
             }
         }
 
+        function renderCrossSources() {
+            const wrap = el('crossSourceList');
+            const panel = el('crossPanel');
+            if (panel) panel.classList.toggle('off', !crossSourceOn);
+            if (wrap) wrap.style.display = crossSourceOn ? '' : 'none';
+            const addBtn = el('btnAddSource');
+            const loadBtn = el('btnLoadPipelineFolders');
+            if (addBtn) addBtn.disabled = !crossSourceOn;
+            if (loadBtn) loadBtn.disabled = !crossSourceOn;
+            if (!wrap) return;
+            if (!crossSourceOn) {
+                wrap.innerHTML = '';
+                return;
+            }
+            wrap.innerHTML = (crossSources || []).map((s, i) => `
+                <div class="source-row" data-i="${i}">
+                    <select data-src-role="${i}" aria-label="Folder role">
+                        <option value="inbox"${s.role === 'inbox' ? ' selected' : ''}>Inbox</option>
+                        <option value="before"${s.role === 'before' ? ' selected' : ''}>Before</option>
+                        <option value="after"${s.role === 'after' ? ' selected' : ''}>After</option>
+                    </select>
+                    <input type="text" data-src-path="${i}" value="${escapeHtml(s.path || '')}" placeholder="${s.role === 'before' ? 'Pre-scaled originals' : (s.role === 'after' ? 'Post-upgrade 4K/96fps' : 'Downloads / new files')}">
+                    <div class="src-btns">
+                        <button type="button" data-src-pick="${i}" title="Pick folder">📂</button>
+                        <button type="button" data-src-del="${i}" title="Remove">✕</button>
+                    </div>
+                </div>
+            `).join('');
+            wrap.querySelectorAll('[data-src-role]').forEach((node) => {
+                node.onchange = () => {
+                    const i = Number(node.dataset.srcRole);
+                    if (!crossSources[i]) return;
+                    crossSources[i].role = node.value;
+                    crossSources[i].label = node.value === 'before' ? 'Pre-scaled' : (node.value === 'after' ? 'After' : 'Inbox');
+                    saveDupSettings();
+                    renderCrossSources();
+                };
+            });
+            wrap.querySelectorAll('[data-src-path]').forEach((node) => {
+                node.onchange = () => {
+                    const i = Number(node.dataset.srcPath);
+                    if (!crossSources[i]) return;
+                    crossSources[i].path = node.value.trim();
+                    saveDupSettings();
+                };
+            });
+            wrap.querySelectorAll('[data-src-pick]').forEach((node) => {
+                node.onclick = async () => {
+                    const i = Number(node.dataset.srcPick);
+                    try {
+                        const r = await API()?.pickFolderOnly?.();
+                        if (r?.path && crossSources[i]) {
+                            crossSources[i].path = r.path;
+                            saveDupSettings();
+                            renderCrossSources();
+                        }
+                    } catch (e) {
+                        UI()?.toast?.(e.message, 'warn');
+                    }
+                };
+            });
+            wrap.querySelectorAll('[data-src-del]').forEach((node) => {
+                node.onclick = () => {
+                    const i = Number(node.dataset.srcDel);
+                    crossSources.splice(i, 1);
+                    if (!crossSources.length) {
+                        crossSources = [{ path: '', role: 'inbox', label: 'Inbox' }];
+                    }
+                    saveDupSettings();
+                    renderCrossSources();
+                };
+            });
+        }
+
         function saveDupSettings() {
             try {
                 lsSet(LS_DUP, JSON.stringify({
@@ -2026,6 +2247,8 @@
                     wholeSystem: !!el('scanWholeSystem')?.checked,
                     keepRules,
                     groupSort,
+                    crossSourceOn,
+                    crossSources,
                 }));
             } catch (_) {}
         }
@@ -2059,9 +2282,22 @@
                     groupSort = raw.groupSort;
                     el('groupSort').value = raw.groupSort;
                 }
+                if (typeof raw.crossSourceOn === 'boolean') {
+                    crossSourceOn = raw.crossSourceOn;
+                    if (el('crossSourceOn')) el('crossSourceOn').checked = crossSourceOn;
+                }
+                if (Array.isArray(raw.crossSources) && raw.crossSources.length) {
+                    crossSources = raw.crossSources.map((s) => ({
+                        path: String(s.path || ''),
+                        role: ['inbox', 'before', 'after'].includes(s.role) ? s.role : 'inbox',
+                        label: s.label || s.role || 'Inbox',
+                    }));
+                }
             } catch (_) {}
         }
         restoreDupSettings();
+        if (el('crossSourceOn')) el('crossSourceOn').checked = crossSourceOn;
+        renderCrossSources();
         renderKeepRules();
         syncScanScopeUi();
         refreshDriveHint();
@@ -2243,6 +2479,56 @@
             }
         }
 
+        el('crossSourceOn')?.addEventListener('change', (e) => {
+            crossSourceOn = !!e.target.checked;
+            if (crossSourceOn && el('scanWholeSystem')) {
+                el('scanWholeSystem').checked = false;
+                syncScanScopeUi();
+            }
+            renderCrossSources();
+            saveDupSettings();
+        });
+        el('btnAddSource')?.addEventListener('click', () => {
+            crossSources.push({ path: '', role: 'inbox', label: 'Inbox' });
+            renderCrossSources();
+            saveDupSettings();
+        });
+        el('btnLoadPipelineFolders')?.addEventListener('click', async () => {
+            if (!(await API()?.isOnline?.(true))) {
+                UI()?.toast?.('Start server first to load FlashVSR folders', 'warn');
+                return;
+            }
+            try {
+                const r = await API().duplicatePipelineDefaults();
+                const next = [];
+                (r.inbox || []).forEach((row) => next.push({ path: row.path, role: 'inbox', label: 'Inbox' }));
+                (r.before || []).forEach((row) => next.push({ path: row.path, role: 'before', label: 'Pre-scaled' }));
+                (r.after || []).forEach((row) => next.push({ path: row.path, role: 'after', label: 'After' }));
+                if (!next.length) {
+                    UI()?.toast?.('No pipeline folders found', 'warn');
+                    return;
+                }
+                crossSources = next;
+                crossSourceOn = true;
+                if (el('crossSourceOn')) el('crossSourceOn').checked = true;
+                const firstInbox = next.find((s) => s.role === 'inbox' && s.path);
+                if (firstInbox && el('folderPath')) el('folderPath').value = firstInbox.path;
+                renderCrossSources();
+                saveDupSettings();
+                const missing = next.filter((s) => {
+                    const hit = (r.inbox || []).concat(r.before || []).concat(r.after || []).find((x) => x.path === s.path);
+                    return hit && hit.exists === false;
+                });
+                UI()?.toast?.(
+                    missing.length
+                        ? `Loaded ${next.length} folders · ${missing.length} not on disk yet`
+                        : `Loaded ${next.length} FlashVSR folders`,
+                    missing.length ? 'warn' : 'ok'
+                );
+            } catch (e) {
+                UI()?.toast?.(e.message || 'Could not load pipeline folders', 'warn');
+            }
+        });
         el('btnStartServer')?.addEventListener('click', () => launchServerFromApp());
         el('serverStatus')?.addEventListener('click', () => {
             if (!serverStarting) launchServerFromApp();
