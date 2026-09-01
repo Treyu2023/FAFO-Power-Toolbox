@@ -112,6 +112,7 @@ Cross-tool quality work lives mainly in:
 - `shared/aitoolbox-api.js` — timeouts, offline errors, health  
 - `shared/aitoolbox-ui.js` — global error toasts, back-link helpers, server bar, cache-bust of late-loaded scripts  
 - `Toolbox Launcher.html` — needsServer / offline badges, soft offline warn  
-- `VERSION` + `Scripts/stamp_shared_cachebust.py` — `?v=` on every shared JS/CSS tag so a pull is visible after a normal refresh (HTML itself stays no-cache; versioned `/shared/` assets are immutable)
+- `VERSION` + `Scripts/stamp_shared_cachebust.py` — `?v=` on every shared JS/CSS tag so a pull is visible after a normal refresh  
+- `AI Creator/Font Foundry.html` — local type foundry: trace/open a font, edit glyphs (including emoji & symbols), always **Save copy** as a new .ttf
 
 Deep per-tool refactors (every HTML file) stay incremental; prefer shared hardening over copy-paste IIFEs.

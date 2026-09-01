@@ -309,6 +309,11 @@
       path: 'Solar System Debris Tracker.html',
       counterparts: ['launcher'],
     },
+    'font foundry': {
+      id: 'font-foundry', title: 'Font Foundry', emoji: 'Aa',
+      path: 'AI Creator/Font Foundry.html',
+      counterparts: ['style-bible', 'image-cropper', 'prompt-queue'],
+    },
   };
 
   const BY_ID = {};
