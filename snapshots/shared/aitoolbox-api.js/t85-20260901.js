@@ -33,22 +33,10 @@
 
     // Page keepalive: while any toolbox HTML page is open, auto-recover offline backend
     let keepAliveTimer = null;
-    let keepAliveBootTimer = null;
     let keepAliveHealing = false;
     let keepAliveLastHeal = 0;
     const KEEP_ALIVE_MS = 15000;
     const KEEP_ALIVE_COOLDOWN_MS = 25000;
-
-    function skipKeepAlive() {
-        try {
-            if (global.AITOOLBOX_SKIP_KEEPALIVE || global.AITOOLBOX_STANDALONE) return true;
-            if (typeof document !== 'undefined' && document.body && (
-                document.body.classList.contains('kf-standalone') ||
-                document.body.getAttribute('data-tb-chrome') === 'off'
-            )) return true;
-        } catch { /* ignore */ }
-        return false;
-    }
 
     async function probeHealthOnce(timeoutMs) {
         refreshApiBase();
@@ -438,11 +426,9 @@
      * Pairs with the tray watchdog — minimal effort, no folder hunting.
      */
     function startKeepAlive(opts = {}) {
-        if (skipKeepAlive()) return null;
         const intervalMs = opts.intervalMs != null ? opts.intervalMs : KEEP_ALIVE_MS;
         if (keepAliveTimer) return keepAliveTimer;
         keepAliveTimer = setInterval(async () => {
-            if (skipKeepAlive()) { stopKeepAlive(); return; }
             if (serverLaunching || keepAliveHealing) return;
             if (typeof document !== 'undefined' && document.hidden) return;
             try {
@@ -463,9 +449,7 @@
             } catch { /* ignore poll errors */ }
         }, intervalMs);
         // First check soon after load (don't wait full interval)
-        keepAliveBootTimer = setTimeout(async () => {
-            keepAliveBootTimer = null;
-            if (skipKeepAlive()) return;
+        setTimeout(async () => {
             try {
                 if (!(await checkServer(true, 1500)) && !serverLaunching) {
                     keepAliveLastHeal = Date.now();
@@ -480,10 +464,6 @@
         if (keepAliveTimer) {
             clearInterval(keepAliveTimer);
             keepAliveTimer = null;
-        }
-        if (keepAliveBootTimer) {
-            clearTimeout(keepAliveBootTimer);
-            keepAliveBootTimer = null;
         }
     }
 
@@ -1830,10 +1810,7 @@
     // Auto-keep servers alive while any toolbox page is open (no user action needed)
     if (typeof document !== 'undefined') {
         const bootKeepAlive = () => {
-            try {
-                if (skipKeepAlive()) return;
-                startKeepAlive();
-            } catch { /* ignore */ }
+            try { startKeepAlive(); } catch { /* ignore */ }
         };
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', bootKeepAlive, { once: true });
