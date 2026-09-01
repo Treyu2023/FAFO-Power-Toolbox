@@ -888,10 +888,12 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
       let url = '';
       for (let i = nodes.length - 1; i >= 0; i--) {
         const src = nodes[i].getAttribute('src') || '';
-        if (/aitoolbox-prefs\.js/i.test(src)) { url = src.replace(/aitoolbox-prefs\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js'); break; }
-        if (/aitoolbox-pro\.js/i.test(src)) { url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js'); break; }
+        if (/aitoolbox-prefs\.js/i.test(src)) { url = src.replace(/aitoolbox-prefs\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js$1'); break; }
+        if (/aitoolbox-pro\.js/i.test(src)) { url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-theme-fx.js$1'); break; }
       }
       if (!url) url = 'shared/aitoolbox-theme-fx.js';
+      if (typeof global.AIToolboxCacheBust === 'function') url = global.AIToolboxCacheBust(url);
+      else if (!/[?&]v=/.test(url) && global.AITOOLBOX_VERSION) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(global.AITOOLBOX_VERSION);
       const s = document.createElement('script');
       s.src = url;
       s.async = true;

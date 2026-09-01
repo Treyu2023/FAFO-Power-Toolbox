@@ -29,7 +29,7 @@
       const cur = document.currentScript;
       const src = (cur && (cur.src || cur.getAttribute('src'))) || '';
       if (!src) return;
-      const url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-prefs.js');
+      const url = src.replace(/aitoolbox-pro\.js(\?.*)?$/i, 'aitoolbox-prefs.js$1');
       if (url === src) return;
       const s = document.createElement('script');
       s.src = url;

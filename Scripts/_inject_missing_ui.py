@@ -6,7 +6,12 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 SKIP = {".venv", "mcps", "node_modules", "Reports", "device-local", "site-packages"}
+
+
+def vsrc(path: str) -> str:
+    return f"{path}?v={VERSION}"
 
 
 def depth_prefix(rel: str) -> str:
@@ -19,8 +24,8 @@ def inject(html: str, rel: str) -> tuple[str, list[str]]:
     if "aitoolbox-ui.js" in html:
         return html, notes
     prefix = depth_prefix(rel)
-    ui = f'<script src="{prefix}shared/aitoolbox-ui.js"></script>'
-    api = f'<script src="{prefix}shared/aitoolbox-api.js"></script>'
+    ui = f'<script src="{vsrc(prefix + "shared/aitoolbox-ui.js")}"></script>'
+    api = f'<script src="{vsrc(prefix + "shared/aitoolbox-api.js")}"></script>'
 
     # Prefer after api
     if "aitoolbox-api.js" in html and "aitoolbox-ui.js" not in html:

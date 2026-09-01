@@ -101,6 +101,7 @@ Not required if one README + badges already separate “offline OK” vs “need
 3. No other machine’s `%LOCALAPPDATA%\FAFO\...` dumps committed  
 4. README states: local-only, loopback bind, optional server  
 5. Prefer MIT/your license + “use at your own risk” for system tools  
+6. After bumping `VERSION`, run `python Scripts/stamp_shared_cachebust.py` so HTML `?v=` tags match  
 
 ---
 
@@ -109,7 +110,8 @@ Not required if one README + badges already separate “offline OK” vs “need
 Cross-tool quality work lives mainly in:
 
 - `shared/aitoolbox-api.js` — timeouts, offline errors, health  
-- `shared/aitoolbox-ui.js` — global error toasts, back-link helpers, server bar  
+- `shared/aitoolbox-ui.js` — global error toasts, back-link helpers, server bar, cache-bust of late-loaded scripts  
 - `Toolbox Launcher.html` — needsServer / offline badges, soft offline warn  
+- `VERSION` + `Scripts/stamp_shared_cachebust.py` — `?v=` on every shared JS/CSS tag so a pull is visible after a normal refresh (HTML itself stays no-cache; versioned `/shared/` assets are immutable)
 
 Deep per-tool refactors (every HTML file) stay incremental; prefer shared hardening over copy-paste IIFEs.
