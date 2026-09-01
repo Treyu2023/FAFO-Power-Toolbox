@@ -435,12 +435,12 @@
   color:#00f3ff;letter-spacing:.08em;text-transform:uppercase;font-size:10px;
   white-space:nowrap;
 }
-#atx-pro-bar .atx-chips{display:flex;gap:6px;flex-wrap:nowrap;flex:1;min-width:0;overflow-x:auto}
+#atx-pro-bar .atx-chips{display:flex;gap:6px;flex-wrap:nowrap;flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden}
 #atx-pro-bar a.atx-chip, #atx-pro-bar button.atx-chip{
   appearance:none;border:1px solid rgba(0,243,255,.28);background:rgba(0,243,255,.06);
-  color:#d7f7ff;border-radius:999px;padding:6px 12px;cursor:pointer;text-decoration:none;
+  color:#d7f7ff;border-radius:999px;padding:0 10px;cursor:pointer;text-decoration:none;
   font:600 10px/1 "Segoe UI",system-ui,sans-serif;white-space:nowrap;
-  min-height:32px;display:inline-flex;align-items:center;
+  min-height:28px;height:28px;display:inline-flex;align-items:center;flex:0 0 auto;
 }
 #atx-pro-bar a.atx-chip:hover, #atx-pro-bar button.atx-chip:hover{
   border-color:#00f3ff;background:rgba(0,243,255,.14);color:#fff;
@@ -449,7 +449,7 @@
   background:linear-gradient(135deg,rgba(0,243,255,.25),rgba(124,92,255,.25));
   border-color:rgba(0,243,255,.55);
 }
-#atx-pro-bar .atx-actions{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}
+#atx-pro-bar .atx-actions{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;flex:0 1 auto;min-width:0;overflow-x:auto}
 #atx-pro-bar .atx-kbd{
   opacity:.65;font-size:9px;border:1px solid rgba(255,255,255,.12);
   border-radius:4px;padding:1px 4px;margin-left:4px;

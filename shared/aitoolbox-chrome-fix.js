@@ -8,13 +8,22 @@
   global.__fafoChromeFix = true;
 
   var CSS = [
-    '#atx-pro-bar{flex-wrap:nowrap!important;max-height:44px!important;overflow-x:auto!important;overflow-y:hidden!important;padding:4px 10px!important}',
-    '#atx-pro-bar .atx-chips,#atx-pro-bar .atx-actions{flex-wrap:nowrap!important}',
-    'body.atx-pro-pad{padding-bottom:var(--atx-pro-h,44px)!important}',
+    '#atx-pro-bar{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:8px!important;max-height:48px!important;height:48px!important;overflow-x:auto!important;overflow-y:hidden!important;padding:4px 10px!important}',
+    'html[data-atx-layout="phone"] #atx-pro-bar{flex-direction:row!important;align-items:center!important}',
+    '#atx-pro-bar .atx-brand{flex:0 0 auto!important;max-width:16ch!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}',
+    '#atx-pro-bar .atx-chips,#atx-pro-bar .atx-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:6px!important;min-width:0!important;overflow-x:auto!important;overflow-y:hidden!important}',
+    '#atx-pro-bar .atx-chips{flex:1 1 auto!important}',
+    '#atx-pro-bar .atx-actions{flex:0 1 auto!important}',
+    '#atx-pro-bar a.atx-chip,#atx-pro-bar button.atx-chip{flex:0 0 auto!important;position:relative!important;z-index:1!important;min-height:28px!important;height:28px!important;padding:0 10px!important;white-space:nowrap!important}',
+    'body.atx-pro-pad{padding-bottom:var(--atx-pro-h,48px)!important}',
     'body.atx-pro-min #atx-pro-bar{transform:translateY(calc(100% - 8px))!important}',
     'body.atx-pro-min.atx-pro-pad{padding-bottom:8px!important}',
-    '.fafo-layout-float-dock{max-height:min(36vh,220px)!important;pointer-events:none}',
+    '.fafo-layout-float-dock{left:10px!important;bottom:calc(var(--atx-pro-h,48px) + 10px)!important;max-height:min(42vh,280px)!important;pointer-events:none}',
+    'body.tb-has-companion-bar .fafo-layout-float-dock,body.atx-pro-pad .fafo-layout-float-dock{bottom:calc(var(--atx-pro-h,48px) + 10px)!important}',
+    'body.atx-pro-min .fafo-layout-float-dock{bottom:12px!important}',
+    '.fafo-layout-float-host{resize:both!important;overflow:auto!important;min-width:160px!important;min-height:32px!important;max-width:min(72vw,760px)!important;max-height:min(42vh,280px)!important}',
     '.tb-companion-bar,#tbSharedServerBar{flex-wrap:nowrap!important;max-height:42px!important;overflow-x:auto!important;overflow-y:hidden!important;padding:4px 10px!important}',
+    '.tb-companion-bar .tb-pill,.tb-companion-bar .tb-btn,.tb-companion-bar .tb-bar-back{flex:0 0 auto!important}',
     '.fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"],',
     '.fafo-layout-panel[data-fafo-flex="1"]{flex:1 1 auto!important;min-height:0!important}',
     '.fafo-body-split > [data-fafo-section].fafo-section-flex{flex:1 1 auto!important;min-height:0!important}',
@@ -39,7 +48,7 @@
     if (pro && pro.style.display !== 'none' && !document.body.classList.contains('atx-pro-min')) {
       try {
         var h = Math.ceil(pro.getBoundingClientRect().height) || 0;
-        bottom = Math.min(56, Math.max(0, h));
+        bottom = Math.min(48, Math.max(0, h));
       } catch (_) { bottom = 44; }
     } else if (document.body.classList.contains('atx-pro-min')) {
       bottom = 8;
