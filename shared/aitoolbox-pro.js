@@ -421,8 +421,9 @@
     css.textContent = `
 #atx-pro-bar{
   position:fixed;left:0;right:0;bottom:0;z-index:99980;
-  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:6px 10px 8px;
+  display:flex;align-items:center;gap:8px;flex-wrap:nowrap;
+  padding:4px 10px;
+  max-height:44px;overflow-x:auto;overflow-y:hidden;
   background:linear-gradient(180deg,rgba(10,12,18,.92),rgba(6,8,12,.97));
   border-top:1px solid rgba(0,243,255,.22);
   backdrop-filter:blur(10px);
@@ -434,7 +435,7 @@
   color:#00f3ff;letter-spacing:.08em;text-transform:uppercase;font-size:10px;
   white-space:nowrap;
 }
-#atx-pro-bar .atx-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:120px}
+#atx-pro-bar .atx-chips{display:flex;gap:6px;flex-wrap:nowrap;flex:1;min-width:0;overflow-x:auto}
 #atx-pro-bar a.atx-chip, #atx-pro-bar button.atx-chip{
   appearance:none;border:1px solid rgba(0,243,255,.28);background:rgba(0,243,255,.06);
   color:#d7f7ff;border-radius:999px;padding:6px 12px;cursor:pointer;text-decoration:none;
@@ -448,12 +449,12 @@
   background:linear-gradient(135deg,rgba(0,243,255,.25),rgba(124,92,255,.25));
   border-color:rgba(0,243,255,.55);
 }
-#atx-pro-bar .atx-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#atx-pro-bar .atx-actions{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}
 #atx-pro-bar .atx-kbd{
   opacity:.65;font-size:9px;border:1px solid rgba(255,255,255,.12);
   border-radius:4px;padding:1px 4px;margin-left:4px;
 }
-body.atx-pro-pad{padding-bottom:var(--atx-pro-h, 52px) !important}
+body.atx-pro-pad{padding-bottom:var(--atx-pro-h, 44px) !important}
 body.run-active #atx-pro-bar,
 body.tat-stage #atx-pro-bar,
 body.run-active .fafo-layout-float-dock,
@@ -463,10 +464,11 @@ html:-webkit-full-screen #atx-pro-bar {
   display:none !important;
 }
 body.run-active, body.tat-stage { padding-bottom:0 !important }
-body.atx-pro-min #atx-pro-bar{transform:translateY(72%);opacity:.45}
+body.atx-pro-min #atx-pro-bar{transform:translateY(calc(100% - 8px));opacity:.7}
 body.atx-pro-min #atx-pro-bar:hover, body.atx-pro-min #atx-pro-bar:focus-within{
   transform:none;opacity:1
 }
+body.atx-pro-min.atx-pro-pad{padding-bottom:8px !important}
 body.atx-focus #atx-pro-bar{opacity:.18;transform:translateY(70%);transition:.25s}
 body.atx-focus #atx-pro-bar:hover, body.atx-focus #atx-pro-bar:focus-within{
   opacity:1;transform:none
@@ -616,7 +618,7 @@ body.atx-dense{--ui-ease:linear}
       return;
     }
     try {
-      const h = Math.ceil(bar.getBoundingClientRect().height) || 52;
+      const h = Math.min(56, Math.ceil(bar.getBoundingClientRect().height) || 44);
       document.documentElement.style.setProperty('--atx-pro-h', h + 'px');
     } catch (_) { /* ignore */ }
   }
@@ -785,7 +787,7 @@ body.atx-dense{--ui-ease:linear}
     // Launcher has its own chrome — light mode only (recents + help still ok)
     const tool = detectTool();
     pushRecent(tool);
-    if (tool.id === 'launcher') {
+    if (tool.id === 'launcher' || tool.id === 'media-hub' || tool.id === 'compare-hub') {
       ensureStyles();
       bindKeys(tool);
       return;

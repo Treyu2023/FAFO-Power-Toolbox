@@ -1090,6 +1090,12 @@
 
   /** Always-visible floating dock when a page has no toolbar host. */
   function ensureFloatingToolbar(appId, instance) {
+    try {
+      if (window.self !== window.top) return;
+    } catch (_) { return; }
+    const root = document.querySelector('[data-fafo-layout-root]');
+    if (root && root.getAttribute('data-fafo-layout-dock') === '0') return;
+    if (document.body && document.body.getAttribute('data-fafo-layout-dock') === '0') return;
     let dock = document.getElementById('fafo-layout-float-dock');
     if (!dock) {
       dock = el('div', 'fafo-layout-float-dock');
@@ -1331,16 +1337,18 @@
         top = Math.max(0, Math.round(r.top));
       } catch (_) { /* ignore */ }
       let bottom = 0;
-      ['atx-pro-bar', 'tbSharedServerBar', 'tbCompanionBar', 'fafo-layout-float-dock'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
+      // Only the fixed bottom pro bar reserves layout space. The LAYOUT dock
+      // and S1/S2 companion bar are overlays / top chrome — counting them here
+      // was eating a third of the viewport on every tool page.
+      const pro = document.getElementById('atx-pro-bar');
+      if (pro && pro.style.display !== 'none' && !document.body.classList.contains('atx-pro-min')) {
         try {
-          const br = el.getBoundingClientRect();
-          if (br.height > 0 && br.top >= window.innerHeight * 0.6) {
-            bottom = Math.max(bottom, Math.round(window.innerHeight - br.top));
-          }
+          const br = pro.getBoundingClientRect();
+          if (br.height > 0) bottom = Math.min(56, Math.max(0, Math.round(br.height)));
         } catch (_) { /* ignore */ }
-      });
+      } else if (document.body.classList.contains('atx-pro-min')) {
+        bottom = 8;
+      }
       html.style.setProperty('--fafo-chrome-top', top + 'px');
       html.style.setProperty('--fafo-chrome-bottom', bottom + 'px');
     }

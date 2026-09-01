@@ -561,6 +561,10 @@
         if (opts.skipOnLauncher !== false && isToolboxLauncherPage()) {
             return null;
         }
+        // Hub iframes already show the parent toolbox chrome
+        try {
+            if (window.self !== window.top) return null;
+        } catch (_) { return null; }
 
         if (document.getElementById('tbSharedServerBar')) {
             return _wireCompanionBar(opts);
@@ -602,12 +606,13 @@
             style.id = 'tbCompanionBarCss';
             style.textContent = `
                 .tb-companion-bar{
-                    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
-                    padding:8px 14px;font:600 12px/1.3 system-ui,Segoe UI,sans-serif;
+                    display:flex;flex-wrap:nowrap;gap:8px;align-items:center;
+                    padding:4px 10px;font:600 12px/1.3 system-ui,Segoe UI,sans-serif;
                     background:linear-gradient(180deg,#050508 0%,#0a0a10 100%);
                     border-bottom:1px solid rgba(0,243,255,.22);
                     box-shadow:0 0 24px rgba(0,243,255,.06), inset 0 1px 0 rgba(0,243,255,.08);
                     color:#c8d0d8;position:sticky;top:0;z-index:9990;
+                    max-height:42px;overflow-x:auto;overflow-y:hidden;
                 }
                 .tb-bar-back{
                     color:#00e5ff;text-decoration:none;padding:5px 10px;border-radius:8px;
@@ -1381,7 +1386,7 @@
             if (global.__fafoChromeFix || document.getElementById('fafoChromeFixScript')) return;
             const el = document.createElement('script');
             el.id = 'fafoChromeFixScript';
-            el.src = sharedScriptSrc('aitoolbox-chrome-fix.js');
+            el.src = sharedScriptSrc('aitoolbox-chrome-fix.js') + '?v=' + (global.AITOOLBOX_VERSION || '1.16.45');
             el.async = true;
             (document.head || document.documentElement).appendChild(el);
         }
