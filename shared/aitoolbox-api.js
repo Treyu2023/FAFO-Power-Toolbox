@@ -826,6 +826,10 @@
                 tryProtocolLaunch('ghost');
                 return { ok: true, via: 'protocol', id, action: 'ghost' };
             }
+            if (/imagine/i.test(id)) {
+                try { window.location.href = 'imaginevault://start'; } catch (_) {}
+                return { ok: true, via: 'protocol', id, action: 'imagine-vault' };
+            }
             throw new Error('Could not launch local tool (server offline and no protocol match)');
         },
 

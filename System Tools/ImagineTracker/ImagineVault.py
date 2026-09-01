@@ -1062,5 +1062,124 @@ def main() -> None:
         httpd.server_close()
 
 
+def _pid_alive(pid: int) -> bool:
+    if int(pid or 0) <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            handle = ctypes.windll.kernel32.OpenProcess(0x100000, False, int(pid))
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return True
+            return False
+        except Exception:
+            return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _health_ok(timeout: float = 1.5) -> bool:
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"http://{HOST}:{PORT}/health", timeout=timeout) as res:
+            return int(getattr(res, "status", 200) or 200) < 400
+    except Exception:
+        return False
+
+
+def _no_window_flags() -> int:
+    if os.name != "nt":
+        return 0
+    return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+
+
+def run_watch() -> None:
+    """Keep the vault HTTP server up. Separate process from the server itself."""
+    DATA.mkdir(parents=True, exist_ok=True)
+    mutex = None
+    if os.name == "nt":
+        try:
+            import ctypes
+            mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Local\\FAFOImagineVaultWatch")
+            if ctypes.windll.kernel32.GetLastError() == 183:
+                return
+        except Exception:
+            mutex = None
+    lock = DATA / "vault-watch.pid"
+    stop = DATA / "stop.flag"
+    me = os.getpid()
+    if lock.is_file():
+        try:
+            old = int((lock.read_text(encoding="utf-8") or "0").strip() or 0)
+        except ValueError:
+            old = 0
+        if old and old != me and _pid_alive(old):
+            return
+    lock.write_text(str(me), encoding="utf-8")
+    if stop.is_file():
+        try:
+            stop.unlink()
+        except OSError:
+            pass
+    script = Path(__file__).resolve()
+    cwd = str(script.parent)
+    py = sys.executable
+    stdout = DATA / "stdout.log"
+    stderr = DATA / "stderr.log"
+    child = None
+    try:
+        while not stop.is_file():
+            if _health_ok():
+                time.sleep(3)
+                continue
+            if child is not None and child.poll() is None:
+                try:
+                    child.kill()
+                except Exception:
+                    pass
+                child = None
+                time.sleep(0.4)
+            with stdout.open("a", encoding="utf-8") as out, stderr.open("a", encoding="utf-8") as err:
+                child = subprocess.Popen(
+                    [py, "-u", script.name],
+                    cwd=cwd,
+                    stdout=out,
+                    stderr=err,
+                    creationflags=_no_window_flags(),
+                )
+            (DATA / "vault-server.pid").write_text(str(child.pid), encoding="utf-8")
+            for _ in range(50):
+                if _health_ok() or child.poll() is not None or stop.is_file():
+                    break
+                time.sleep(0.2)
+            while child.poll() is None and not stop.is_file():
+                time.sleep(3)
+                if not _health_ok():
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+                    break
+            time.sleep(1)
+    finally:
+        if child is not None and child.poll() is None:
+            try:
+                child.terminate()
+            except Exception:
+                pass
+        try:
+            if lock.is_file() and lock.read_text(encoding="utf-8").strip() == str(me):
+                lock.unlink()
+        except OSError:
+            pass
+
+
 if __name__ == "__main__":
-    main()
+    if "--watch" in sys.argv:
+        run_watch()
+    else:
+        main()
