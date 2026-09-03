@@ -1,11 +1,12 @@
 /* FAFO Imagine HAVE/MISS painter
- * Run on grok.com/imagine (bookmarklet from Imagine Vault, or paste in console).
+ * Run on grok.com/imagine/saved (bookmarklet from Imagine Vault, or paste in console).
+ * Also paints every version tile when a post is opened.
  * Talks only to the local vault. Cyan = on disk, magenta = seen but not saved.
  */
 (function fafoImaginePaint(global) {
   'use strict';
   const VAULT = 'http://127.0.0.1:18767';
-  const UUID_RE = /(?:grok-video-|grok-image-|share-videos\/|share-images\/|generated\/|\/imagine\/(?:post\/)?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+  const UUID_RE = /(?:grok-video-|grok-image-|share-videos\/|share-images\/|generated\/|\/imagine\/(?:post\/|saved\/)?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
   const BARE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
   const CSS = `
     .fafo-im-hud{position:fixed;right:16px;bottom:16px;z-index:2147483646;font:700 12px/1.3 Segoe UI,system-ui,sans-serif;
@@ -18,6 +19,7 @@
       letter-spacing:.08em;padding:5px 8px;border-radius:999px;pointer-events:none}
     .fafo-im-stamp.have{color:#001018;background:#00f0ff;box-shadow:0 0 12px #00f0ff}
     .fafo-im-stamp.miss{color:#fff;background:#ff2bd6;box-shadow:0 0 12px #ff2bd6}
+    .fafo-im-compact>.fafo-im-stamp{font-size:8px;padding:3px 5px;top:4px;left:4px}
   `;
 
   function idsFrom(text) {
@@ -49,12 +51,28 @@
   }
 
   function closestCard(el) {
-    return el.closest('article, a, [role="listitem"], [data-testid], button, li, div') || el;
+    if (!el) return el;
+    const mediaRect = el.getBoundingClientRect();
+    let n = el;
+    let best = el;
+    for (let i = 0; i < 14 && n && n !== document.body; i += 1, n = n.parentElement) {
+      const r = n.getBoundingClientRect();
+      if (r.width < 36 || r.height < 36) continue;
+      if (r.width > window.innerWidth * 0.94 && r.height > window.innerHeight * 0.72) break;
+      const mw = Math.max(mediaRect.width, 36);
+      const mh = Math.max(mediaRect.height, 36);
+      if (r.width > mw * 2.6 && r.height > mh * 2.8 && r.width > 280) break;
+      best = n;
+      if (r.width <= 880 && r.height <= 1100) return n;
+    }
+    return best.closest('article, a, [role="listitem"], figure, li') || best;
   }
 
   function stamp(card, have) {
     card.classList.toggle('fafo-im-have', !!have);
     card.classList.toggle('fafo-im-miss', !have);
+    const box = card.getBoundingClientRect();
+    card.classList.toggle('fafo-im-compact', box.width < 150 || box.height < 150);
     card.style.position = card.style.position || 'relative';
     let badge = card.querySelector(':scope > .fafo-im-stamp');
     if (!badge) {
@@ -75,7 +93,7 @@
   function paint(map) {
     const seen = new Set();
     let have = 0, miss = 0, marked = 0;
-    const nodes = document.querySelectorAll('img, video, source, a[href], [style*="background"]');
+    const nodes = document.querySelectorAll('img, video, source, a[href], [style*="background"], [poster]');
     nodes.forEach((node) => {
       const id = harvestNode(node);
       if (!id || seen.has(id + node.tagName)) return;
