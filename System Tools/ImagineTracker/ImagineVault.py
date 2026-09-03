@@ -28,7 +28,7 @@ PORT = 18767
 DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "FAFO" / "ImagineTracker"
 DEFAULT_LIBRARY = Path.home() / "Downloads" / "GrokImagine"
 UUID_RE = re.compile(
-    r"(?:grok-video-|grok-image-|share-videos/|share-images/|generated/|/imagine/(?:post/)?)"
+    r"(?:grok-video-|grok-image-|share-videos/|share-images/|generated/|/imagine/(?:post/|saved/)?)"
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     re.I,
 )
@@ -796,7 +796,7 @@ def delta_since(since: str | None, limit: int = 200) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ImagineVault/2.2"
+    server_version = "ImagineVault/2.3"
 
     def log_message(self, fmt: str, *args) -> None:
         if "/health" in str(args[:1]):
@@ -953,6 +953,13 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/item", "/api/item"):
             iid = str((q.get("id") or [""])[0]).lower()
             self._send(200, {"ok": True, "item": _state["catalog"].get(iid)})
+            return
+        if u.path in ("/overlay.js", "/api/overlay.js"):
+            overlay = Path(__file__).resolve().parent / "imagine-overlay.js"
+            if overlay.is_file():
+                self._send_text(overlay.read_text(encoding="utf-8"), "application/javascript; charset=utf-8")
+            else:
+                self._send(404, {"ok": False, "error": "no-overlay"})
             return
         self._send(404, {"ok": False, "error": "not-found"})
 
