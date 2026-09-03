@@ -6,6 +6,30 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $work = Join-Path $env:LOCALAPPDATA 'FAFO\ImagineTracker'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
+function Test-VaultUpEarly {
+    try {
+        $r = Invoke-WebRequest -Uri 'http://127.0.0.1:18767/health' -UseBasicParsing -TimeoutSec 1
+        return ($r.StatusCode -eq 200)
+    } catch { return $false }
+}
+
+$lock = $null
+try {
+    $lock = [System.IO.File]::Open(
+        (Join-Path $work 'launch.lock'),
+        [System.IO.FileMode]::OpenOrCreate,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::None
+    )
+} catch {
+    $waitUntil = (Get-Date).AddSeconds(14)
+    do {
+        if (Test-VaultUpEarly) { exit 0 }
+        Start-Sleep -Milliseconds 300
+    } while ((Get-Date) -lt $waitUntil)
+    exit 0
+}
+
 $srcPy = @(
     (Join-Path $here 'ImagineVault.py'),
     (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\System Tools\ImagineTracker\ImagineVault.py'),
@@ -15,7 +39,7 @@ $srcPy = @(
 if (-not $srcPy) { throw 'ImagineVault.py not found' }
 
 Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
-foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat')) {
+foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
     $src = Join-Path $here $name
     if (Test-Path -LiteralPath $src) {
         Copy-Item -LiteralPath $src -Destination (Join-Path $work $name) -Force
@@ -76,10 +100,20 @@ function Test-WatchAlive {
     return [bool](Get-Process -Id $wpid -ErrorAction SilentlyContinue)
 }
 
+$stop = Join-Path $work 'stop.flag'
+if (Test-Path -LiteralPath $stop) { Remove-Item -LiteralPath $stop -Force -ErrorAction SilentlyContinue }
+
+if ((Test-WatchAlive) -and -not (Test-VaultUp)) {
+    $pidFile = Join-Path $work 'vault-watch.pid'
+    $raw = (Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $wpid = 0
+    [void][int]::TryParse($raw, [ref]$wpid)
+    if ($wpid -gt 0) { Stop-Process -Id $wpid -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 400
+}
+
+# Supervisor starts the HTTP server. Script name only — never a path with spaces.
 if (-not (Test-WatchAlive)) {
-    $stop = Join-Path $work 'stop.flag'
-    if (Test-Path -LiteralPath $stop) { Remove-Item -LiteralPath $stop -Force -ErrorAction SilentlyContinue }
-    # Script name only — never pass a path that contains spaces.
     Start-Process -FilePath $pyw -ArgumentList @('-u', 'ImagineVault.py', '--watch') -WorkingDirectory $work -WindowStyle Hidden | Out-Null
 }
 
