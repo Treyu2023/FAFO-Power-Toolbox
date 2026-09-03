@@ -107,13 +107,27 @@ def sentence_parts(text: str) -> list[str]:
     return parts
 
 
+def safe_is_dir(path) -> bool:
+    try:
+        return Path(path).is_dir()
+    except OSError:
+        return False
+
+
+def safe_is_file(path) -> bool:
+    try:
+        return Path(path).is_file()
+    except OSError:
+        return False
+
+
 def default_config() -> dict:
     watch = [
-        str(NEW_DOWNLOADS) if NEW_DOWNLOADS.is_dir() else str(DEFAULT_LIBRARY),
+        str(NEW_DOWNLOADS) if safe_is_dir(NEW_DOWNLOADS) else str(DEFAULT_LIBRARY),
         str(Path.home() / "Downloads"),
     ]
     deep = []
-    if X_GROK.is_dir():
+    if safe_is_dir(X_GROK):
         deep = [str(X_GROK)]
     return {
         "libraryDir": str(NEW_DOWNLOADS if NEW_DOWNLOADS.is_dir() else DEFAULT_LIBRARY),
@@ -150,9 +164,9 @@ def init_state() -> None:
             cfg[k] = v
     # Only seed the D:\OUTPUTS defaults on first run. Never overwrite a saved library.
     if not had_user:
-        if X_GROK.is_dir() and str(X_GROK) not in (cfg.get("deepIndexDirs") or []):
+        if safe_is_dir(X_GROK) and str(X_GROK) not in (cfg.get("deepIndexDirs") or []):
             cfg.setdefault("deepIndexDirs", []).append(str(X_GROK))
-        if NEW_DOWNLOADS.is_dir() and str(NEW_DOWNLOADS) not in (cfg.get("watchDirs") or []):
+        if safe_is_dir(NEW_DOWNLOADS) and str(NEW_DOWNLOADS) not in (cfg.get("watchDirs") or []):
             cfg.setdefault("watchDirs", []).insert(0, str(NEW_DOWNLOADS))
             cfg["libraryDir"] = str(NEW_DOWNLOADS)
     cfg["copyIntoLibrary"] = False
@@ -596,67 +610,72 @@ def scan_once(deep: bool = False) -> dict:
             "totalHint": 0,
             "message": "deep index" if deep else "watch folders",
         }
-    if deep:
-        with _lock:
-            for v in _state["catalog"].values():
-                v["copies"] = 0
-        for root in [Path(p) for p in (_state["config"].get("deepIndexDirs") or [])]:
-            if not root.is_dir():
+    try:
+        if deep:
+            with _lock:
+                for v in _state["catalog"].values():
+                    v["copies"] = 0
+            for root in [Path(p) for p in (_state["config"].get("deepIndexDirs") or [])]:
+                try:
+                    if not safe_is_dir(root):
+                        continue
+                    for dirpath, dirnames, filenames in os.walk(root):
+                        dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
+                        for name in filenames:
+                            ext = os.path.splitext(name)[1].lower()
+                            if ext not in MEDIA_EXT:
+                                continue
+                            if not extract_ids(name):
+                                continue
+                            pth = Path(dirpath) / name
+                            if fast_index_file(pth):
+                                added += 1
+                            with _lock:
+                                _state["scan"]["done"] += 1
+                                _state["scan"]["added"] = added
+                            if _state["scan"]["done"] % 500 == 0:
+                                persist()
+                except OSError as exc:
+                    log_activity("deep-scan-error", root=str(root), error=str(exc)[-300:])
+                    continue
+            persist()
+            import_loose_prompts()
+            return {"added": added, "updated": 0, "recovered": 0, "total": len(_state["catalog"])}
+
+        for f in iter_watch_files(deep=False):
+            if f.suffix.lower() == ".json":
+                try:
+                    obj = json.loads(f.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if isinstance(obj, dict) and (obj.get("id") or obj.get("prompt")):
+                    r = upsert_item(obj, source="sidecar")
+                    if r.get("ok"):
+                        recovered += 1
                 continue
-            for dirpath, dirnames, filenames in os.walk(root):
-                dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
-                for name in filenames:
-                    ext = os.path.splitext(name)[1].lower()
-                    if ext not in MEDIA_EXT:
-                        continue
-                    if not extract_ids(name):
-                        continue
-                    pth = Path(dirpath) / name
-                    if fast_index_file(pth):
-                        added += 1
-                    with _lock:
-                        _state["scan"]["done"] += 1
-                        _state["scan"]["added"] = added
-                    if _state["scan"]["done"] % 500 == 0:
-                        persist()
+            before = _state["catalog"].get((extract_ids(f.name) or [""])[0])
+            r = ingest_file(f, source="scan")
+            if not r or not r.get("ok"):
+                continue
+            if not before:
+                added += 1
+            else:
+                updated += 1
+                if r.get("item", {}).get("prompt") and not (before or {}).get("prompt"):
+                    recovered += 1
+            with _lock:
+                _state["scan"]["done"] += 1
+                _state["scan"]["added"] = added
         persist()
-        import_loose_prompts()
+        return {"added": added, "updated": updated, "recovered": recovered, "total": len(_state["catalog"])}
+    except OSError as exc:
+        log_activity("scan-error", error=str(exc)[-300:])
+        return {"added": added, "updated": updated, "recovered": recovered, "total": len(_state["catalog"]), "error": str(exc)}
+    finally:
         with _lock:
             _state["scan"]["running"] = False
-            _state["scan"]["message"] = "deep done"
+            _state["scan"]["message"] = "deep done" if deep else "idle"
             _state["last_scan"] = time.time()
-        return {"added": added, "updated": 0, "recovered": 0, "total": len(_state["catalog"])}
-
-    for f in iter_watch_files(deep=False):
-        if f.suffix.lower() == ".json":
-            try:
-                obj = json.loads(f.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            if isinstance(obj, dict) and (obj.get("id") or obj.get("prompt")):
-                r = upsert_item(obj, source="sidecar")
-                if r.get("ok"):
-                    recovered += 1
-            continue
-        before = _state["catalog"].get((extract_ids(f.name) or [""])[0])
-        r = ingest_file(f, source="scan")
-        if not r or not r.get("ok"):
-            continue
-        if not before:
-            added += 1
-        else:
-            updated += 1
-            if r.get("item", {}).get("prompt") and not (before or {}).get("prompt"):
-                recovered += 1
-        with _lock:
-            _state["scan"]["done"] += 1
-            _state["scan"]["added"] = added
-    persist()
-    with _lock:
-        _state["scan"]["running"] = False
-        _state["scan"]["message"] = "idle"
-        _state["last_scan"] = time.time()
-    return {"added": added, "updated": updated, "recovered": recovered, "total": len(_state["catalog"])}
 
 
 def import_loose_prompts() -> int:
@@ -669,7 +688,7 @@ def import_loose_prompts() -> int:
     ]
     n = 0
     for path in candidates:
-        if not path.is_file():
+        if not safe_is_file(path):
             continue
         try:
             raw = path.read_text(encoding="utf-8", errors="replace")
@@ -796,7 +815,7 @@ def delta_since(since: str | None, limit: int = 200) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ImagineVault/2.3"
+    server_version = "ImagineVault/2.3.1"
 
     def log_message(self, fmt: str, *args) -> None:
         if "/health" in str(args[:1]):
@@ -956,10 +975,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if u.path in ("/overlay.js", "/api/overlay.js"):
             overlay = Path(__file__).resolve().parent / "imagine-overlay.js"
-            if overlay.is_file():
-                self._send_text(overlay.read_text(encoding="utf-8"), "application/javascript; charset=utf-8")
-            else:
-                self._send(404, {"ok": False, "error": "no-overlay"})
+            try:
+                if overlay.is_file():
+                    self._send_text(overlay.read_text(encoding="utf-8"), "application/javascript; charset=utf-8")
+                    return
+            except OSError:
+                pass
+            self._send(404, {"ok": False, "error": "no-overlay"})
             return
         self._send(404, {"ok": False, "error": "not-found"})
 
@@ -1053,13 +1075,41 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"ok": False, "error": "not-found"})
 
 
+class VaultServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+
+def _win_mutex(name: str):
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.CreateMutexW(None, True, name)
+        if ctypes.get_last_error() == 183:
+            return False
+        return handle
+    except Exception:
+        return None
+
+
+def _acquire_http_mutex():
+    return _win_mutex("Local\\FAFOImagineVaultHttp")
+
+
 def main() -> None:
+    mutex = _acquire_http_mutex()
+    if mutex is False:
+        print(f"[imagine-vault] already running on port {PORT}", flush=True)
+        return
     init_state()
-    t = threading.Thread(target=scan_loop, name="imagine-scan", daemon=True)
-    t.start()
-    threading.Thread(target=lambda: scan_once(deep=True), name="imagine-deep", daemon=True).start()
-    httpd = ThreadingHTTPServer((HOST, PORT), Handler)
+    try:
+        httpd = VaultServer((HOST, PORT), Handler)
+    except OSError as exc:
+        print(f"[imagine-vault] port {PORT} in use — {exc}", flush=True)
+        return
     print(f"[imagine-vault] http://{HOST}:{PORT}  data={DATA}", flush=True)
+    threading.Thread(target=scan_loop, name="imagine-scan", daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -1107,15 +1157,9 @@ def _no_window_flags() -> int:
 def run_watch() -> None:
     """Keep the vault HTTP server up. Separate process from the server itself."""
     DATA.mkdir(parents=True, exist_ok=True)
-    mutex = None
-    if os.name == "nt":
-        try:
-            import ctypes
-            mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Local\\FAFOImagineVaultWatch")
-            if ctypes.windll.kernel32.GetLastError() == 183:
-                return
-        except Exception:
-            mutex = None
+    mutex = _win_mutex("Local\\FAFOImagineVaultWatch")
+    if mutex is False:
+        return
     lock = DATA / "vault-watch.pid"
     stop = DATA / "stop.flag"
     me = os.getpid()
