@@ -1,6 +1,25 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.0** (+ media desk pass **3.0.1** / per-app harden **3.0.2**).
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.4**.
+
+## Media desks (3.0.4) — combine + remaining P0/P1
+
+- Shared `aitoolbox-dom.js` (el / bind / withBusy / escapeHtml / recent folders) and `aitoolbox-hub.js` (one iframe controller)
+- Media Hub + Compare Hub are thin configs over `AIToolboxHub.mount` — tab switch aborts the previous iframe
+- Library catalog scan is a job (`POST /scan/{id}/start` + stream `?job_id=`). Cancel skips missing-file prune. SSE disconnect cancels the walk
+- Library scan pill has Cancel. `queryMedia` cap 2000 (was a silent 200)
+- `list_pairs` batch-enriches (no 2N `get_media`). Pair health reports occupancy overlap and self-pairs
+- `delete_pair` strips UP-#### / role tags so Relink cannot resurrect. Unmarked names no longer default to “before”
+- Video + Image comparators save by path first (`AIToolboxHub.saveComparatorPair`), then name+size
+- Library: j/k selection, `/` focuses search, recent folders, XSS on `data-del`
+- Dead inline Library dup scanner removed (deep-link only)
+
+## Media desks (3.0.3)
+
+- Library Find Dup and Companion Scan Duplicates open Media Hub → Duplicates
+- `/api/vsr/apply-selected` wired
+- Rename keeps rank/category/status/playlists. Scan prune cleans pairs + playlists
+- `save_pair` refuses self-pairs and reuses an existing before/after row
 
 ## Media desks (3.0.2) — each app
 

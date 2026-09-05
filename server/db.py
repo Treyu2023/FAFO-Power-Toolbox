@@ -55,6 +55,10 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_pairs_code ON pairs(pair_code) WHERE pair_code IS NOT NULL AND pair_code != ''"
     )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_pairs_ends ON pairs(before_media_id, after_media_id) "
+        "WHERE before_media_id IS NOT NULL AND after_media_id IS NOT NULL"
+    )
 
 
 def init_db() -> None:

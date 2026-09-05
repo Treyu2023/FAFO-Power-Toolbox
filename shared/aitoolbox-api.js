@@ -925,23 +925,36 @@
         async scanDirectory(dirId, onProgress) {
             if (await checkServer()) {
                 if (onProgress) {
+                    const started = await api(`/scan/${encodeURIComponent(dirId)}/start`, { method: 'POST' });
+                    const jobId = started && started.job_id;
+                    const qs = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
                     return new Promise((resolve, reject) => {
-                        const es = new EventSource(`${apiBase()}/scan/${encodeURIComponent(dirId)}/stream`);
+                        const es = new EventSource(`${apiBase()}/scan/${encodeURIComponent(dirId)}/stream${qs}`);
                         let errCount = 0;
-                        const onHide = () => { try { es.close(); } catch { /* ignore */ } };
-                        try { window.addEventListener('pagehide', onHide); } catch { /* ignore */ }
+                        let closed = false;
+                        let onHide = function () {};
                         const finish = (fn, arg) => {
+                            if (closed) return;
+                            closed = true;
                             try { window.removeEventListener('pagehide', onHide); } catch { /* ignore */ }
                             try { es.close(); } catch { /* ignore */ }
                             fn(arg);
                         };
+                        onHide = () => {
+                            try { es.close(); } catch { /* ignore */ }
+                            if (jobId) {
+                                api(`/scan/${encodeURIComponent(dirId)}/cancel?job_id=${encodeURIComponent(jobId)}`, { method: 'POST' }).catch(() => {});
+                            }
+                            finish(resolve, { indexed: 0, cancelled: true });
+                        };
+                        try { window.addEventListener('pagehide', onHide); } catch { /* ignore */ }
                         es.onmessage = e => {
                             let d;
                             try { d = JSON.parse(e.data); }
                             catch (_) { return; }
                             if (d.error) { finish(reject, new Error(d.error)); }
-                            else if (d.done) { finish(resolve, { indexed: d.count }); }
-                            else onProgress(d.count, d.file);
+                            else if (d.done) { finish(resolve, { indexed: d.count, cancelled: !!d.cancelled }); }
+                            else if (d.count != null) onProgress(d.count, d.file);
                         };
                         es.onerror = () => {
                             errCount += 1;
@@ -959,6 +972,11 @@
             return { indexed: n };
         },
 
+        async cancelScan(dirId, jobId) {
+            const q = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
+            return api(`/scan/${encodeURIComponent(dirId)}/cancel${q}`, { method: 'POST' });
+        },
+
         async listFolderIndex(dirId, subpath = '') {
             if (await checkServer()) {
                 const p = new URLSearchParams();
@@ -968,9 +986,26 @@
             return { path: subpath, breadcrumb: [], subfolders: [], files_count: 0 };
         },
 
+        async queryMediaAll(opts = {}) {
+            const pageSize = 200;
+            let page = 0;
+            let items = [];
+            let total = Infinity;
+            while (items.length < total && page < 40) {
+                const res = await this.queryMedia({ ...opts, page, limit: pageSize });
+                const batch = res.items || [];
+                total = Number(res.total != null ? res.total : items.length + batch.length);
+                items = items.concat(batch);
+                if (!batch.length) break;
+                page += 1;
+            }
+            return { items, total, page: 0, limit: items.length };
+        },
+
         async queryMedia(opts = {}) {
             const rawLimit = opts.limit == null ? 80 : Number(opts.limit);
-            const limit = Math.max(1, Math.min(200, Number.isFinite(rawLimit) ? rawLimit : 80));
+            const cap = Math.max(1, Math.min(2000, Number(opts.cap) || 2000));
+            const limit = Math.max(1, Math.min(cap, Number.isFinite(rawLimit) ? rawLimit : 80));
             if (await checkServer()) {
                 const p = new URLSearchParams();
                 if (opts.search) p.set('search', opts.search);
@@ -985,6 +1020,7 @@
                 if (opts.rankMin != null) p.set('rank_min', opts.rankMin);
                 if (opts.sort) p.set('sort', opts.sort);
                 if (opts.page != null) p.set('page', opts.page);
+                if (opts.pairFilter) p.set('pair_filter', opts.pairFilter);
                 p.set('limit', String(limit));
                 const res = await api(`/media?${p}`);
                 if (res.items) res.items = res.items.map(normalizeMedia);
@@ -1646,6 +1682,7 @@
                 },
                 async cancel() {
                     closed = true;
+                    try { es.close(); } catch { /* ignore */ }
                     if (!handle.jobId) return;
                     return api('/duplicates/scan/control', {
                         method: 'POST',
@@ -1654,6 +1691,8 @@
                 },
             };
             if (typeof opts.onHandle === 'function') opts.onHandle(handle);
+            const onHide = () => { closed = true; try { es.close(); } catch { /* ignore */ } };
+            try { window.addEventListener('pagehide', onHide); } catch { /* ignore */ }
             const promise = new Promise((resolve, reject) => {
                 es.onmessage = e => {
                     let d;
@@ -1667,12 +1706,10 @@
                     else if (d.done) { es.close(); resolve(d.result); }
                     else if (onProgress && (d.count != null || d.groups)) onProgress(d.count, d.file, d);
                 };
-                let esErrs = 0;
                 es.onerror = () => {
                     if (closed) return;
-                    esErrs += 1;
-                    if (esErrs < 3) return;
-                    es.close();
+                    closed = true;
+                    try { es.close(); } catch { /* ignore */ }
                     reject(new Error('Duplicate scan stream failed'));
                 };
             });
@@ -1706,6 +1743,7 @@
                 },
                 async cancel() {
                     closed = true;
+                    try { if (handle.es) handle.es.close(); } catch { /* ignore */ }
                     if (!handle.jobId) return;
                     return api('/duplicates/scan/control', {
                         method: 'POST',
@@ -1714,6 +1752,9 @@
                 },
             };
             if (typeof opts.onHandle === 'function') opts.onHandle(handle);
+            try {
+                window.addEventListener('pagehide', () => { try { handle.cancel(); } catch { /* ignore */ } });
+            } catch { /* ignore */ }
             const promise = (async () => {
                 const started = await api('/duplicates/cross-scan/start', {
                     method: 'POST',

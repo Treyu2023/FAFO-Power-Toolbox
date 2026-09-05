@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compare Hub — Pairs · Video · Image</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⇄</text></svg>">
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.0">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.0">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
   <style>
     :root {
       --bg: #0b1220; --panel: #121820; --navy: #0b1220; --charcoal: #1a2230;
@@ -144,349 +144,58 @@
     <iframe id="hubFrame" title="Compare workspace" allow="autoplay; fullscreen"></iframe>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.0"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
   <script>
     (function () {
-      const TABS = {
-        match: {
-          path: 'Guided Pair Match.html',
-          toolboxPath: 'Movie File Manager/Guided Pair Match.html',
-          title: 'Guided Pair Match',
-          meta: 'One unpaired file at a time · up to 10 candidates · Y match / N next · process of elimination with you at the helm.'
+      if (!window.AIToolboxHub || !AIToolboxHub.mount) {
+        document.getElementById('loading').textContent = 'Hub runtime failed to load.';
+        return;
+      }
+      AIToolboxHub.mount({
+        hubName: 'Compare Hub',
+        tabs: {
+          match: {
+            path: 'Guided Pair Match.html',
+            toolboxPath: 'Movie File Manager/Guided Pair Match.html',
+            title: 'Guided Pair Match',
+            meta: 'One unpaired file at a time · up to 10 candidates · Y match / N next · process of elimination with you at the helm.'
+          },
+          pairs: {
+            path: 'Pair Review Queue.html',
+            toolboxPath: 'Movie File Manager/Pair Review Queue.html',
+            title: 'Pair Review',
+            meta: 'Review before/after pairs, accept or reject, batch-fix catalog links — then jump to a comparator.'
+          },
+          video: {
+            path: '../Video Tools/Video Comparison Slider Tool.html',
+            toolboxPath: 'Video Tools/Video Comparison Slider Tool.html',
+            title: 'Video Comparator',
+            meta: 'Side-by-side / slider sync playback for upscaled vs source video pairs.'
+          },
+          image: {
+            path: '../Image tools/Image Comparitor With Slider.html',
+            toolboxPath: 'Image tools/Image Comparitor With Slider.html',
+            title: 'Image Comparator',
+            meta: 'Before/after image slider with blend & loupe.'
+          }
         },
-        pairs: {
-          path: 'Pair Review Queue.html',
-          toolboxPath: 'Movie File Manager/Pair Review Queue.html',
-          title: 'Pair Review',
-          meta: 'Review before/after pairs, accept or reject, batch-fix catalog links — then jump to a comparator.'
-        },
-        video: {
-          path: '../Video Tools/Video Comparison Slider Tool.html',
-          toolboxPath: 'Video Tools/Video Comparison Slider Tool.html',
-          title: 'Video Comparator',
-          meta: 'Side-by-side / slider sync playback for upscaled vs source video pairs.'
-        },
-        image: {
-          path: '../Image tools/Image Comparitor With Slider.html',
-          toolboxPath: 'Image tools/Image Comparitor With Slider.html',
-          title: 'Image Comparator',
-          meta: 'Before/after image slider with blend & loupe.'
-        }
-      };
-
-      const frame = document.getElementById('hubFrame');
-      const loading = document.getElementById('loading');
-      const meta = document.getElementById('hubMeta');
-      const LS_TAB = 'fafo_compare_hub_last_tab';
-      let current = 'match';
-      let loadTimer = null;
-      let loadGen = 0;
-      let lastFrameSrc = '';
-
-      function el(id) {
-        try {
-          if (!id) return null;
-          return typeof id === 'string' ? document.getElementById(id) : id;
-        } catch (_) { return null; }
-      }
-      function setText(n, txt) {
-        const node = typeof n === 'string' ? el(n) : n;
-        if (!node) return null;
-        node.textContent = txt == null ? '' : String(txt);
-        return node;
-      }
-      function bind(n, ev, fn) {
-        const node = typeof n === 'string' ? el(n) : n;
-        if (!node || !ev || typeof fn !== 'function') return null;
-        node.addEventListener(ev, fn);
-        return node;
-      }
-      function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
-      function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
-      const _busy = new Set();
-      async function withBusy(key, fn, btn) {
-        if (!key || _busy.has(key)) return;
-        _busy.add(key);
-        const b = typeof btn === 'string' ? el(btn) : btn;
-        if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
-        try { return await fn(); }
-        finally {
-          _busy.delete(key);
-          if (b) { b.disabled = false; b.removeAttribute('aria-busy'); }
-        }
-      }
-      function revokeUrl(u) { try { if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u); } catch (_) {} }
-      function escapeHtml(s) {
-        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      }
-
-      function normalizeTab(raw) {
-        let h = String(raw || '').replace(/^#/, '').toLowerCase();
-        h = h.split('?')[0].split('/')[0].trim();
-        if (h === 'match' || h === 'guided' || h === 'elim' || h === 'studio') return 'match';
-        if (h === 'pair' || h === 'pairs' || h === 'review' || h === 'queue') return 'pairs';
-        if (h === 'video' || h === 'vid' || h === 'vc') return 'video';
-        if (h === 'image' || h === 'img' || h === 'ic') return 'image';
-        if (TABS[h]) return h;
-        return '';
-      }
-
-      function tabFromHash() {
-        let h = (location.hash || '').replace(/^#/, '');
-        if (!h) {
-          try {
-            const m = /#([^#]*)$/.exec(location.href || '');
-            if (m) h = decodeURIComponent(m[1]);
-          } catch (_) {}
-        }
-        const tab = normalizeTab(h);
-        if (tab) return tab;
-        if (!h || h === 'compare') {
-          const last = lsGet(LS_TAB, '');
-          if (last && TABS[last]) return last;
-        }
-        return 'match';
-      }
-
-      function launcherHref() {
-        try {
-          if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
-        } catch (_) {}
-        return '../Toolbox Launcher.html';
-      }
-
-      async function pingServer() {
-        const badge = el('serverBadge');
-        if (!badge) return;
-        try {
-          const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
-          setText(badge, on ? '● Online' : '○ Offline — click ▶ Start');
-          badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
-          badge.title = on ? 'Toolbox server online' : 'Server offline — click to start from this page';
-        } catch (_) {
-          setText(badge, '○ Offline');
-          badge.className = 'server-badge bad';
-        }
-      }
-
-      async function startServerFromHub() {
-        return withBusy('start-server', async () => {
-          try {
-            window.AIToolboxUI?.toast?.('Starting toolbox server…', 'ok');
-            if (window.AIToolboxAPI?.startServer) {
-              await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
-            } else {
-              location.href = launcherHref();
-              return;
-            }
-            await pingServer();
-            window.AIToolboxUI?.toast?.('Server ready — reloading workspace', 'ok');
-            await showTab(current, false);
-          } catch (e) {
-            window.AIToolboxUI?.toast?.(e?.message || 'Start failed — open Launcher', 'warn');
-          }
-        }, 'btnStartServer');
-      }
-
-      async function resolveSrc(tab) {
-        const t = TABS[tab] || TABS.match;
-        if (!t) return '';
-        let src = t.path;
-        const qs = location.search || '';
-        try {
-          if (window.AIToolboxAPI?.isOnline && window.AIToolboxAPI?.toolPageUrl) {
-            const on = await AIToolboxAPI.isOnline(false, 1500).catch(() => false);
-            if (on) src = AIToolboxAPI.toolPageUrl(t.toolboxPath);
-          }
-        } catch (_) { /* ignore */ }
-        if (qs) {
-          src += (String(src).includes('?') ? '&' : '?') + qs.replace(/^\?/, '');
-        }
-        return src;
-      }
-
-      function showLoadFail(title, src) {
-        if (!loading) return;
-        loading.classList.remove('hide');
-        loading.classList.add('fail');
-        const safeTitle = escapeHtml(title || 'Workspace');
-        const safeSrc = escapeHtml(src || '');
-        const safeLaunch = escapeHtml(launcherHref());
-        loading.innerHTML =
-          '<div><strong style="color:#fff">' + safeTitle + ' didn’t load</strong></div>' +
-          '<div style="max-width:420px;color:var(--muted);font-size:12px;line-height:1.45">' +
-          'Workspace tab timed out or failed. Retry, open full-window, or return to the Launcher.</div>' +
-          '<div class="actions">' +
-          '<button type="button" id="hubRetry">↻ Retry</button>' +
-          '<a href="' + safeSrc + '" target="_blank" rel="noopener">↗ Open full window</a>' +
-          '<a class="ghost" href="' + safeLaunch + '">← Launcher</a>' +
-          '<button type="button" class="ghost" id="hubStartFromFail">▶ Start Server</button>' +
-          '</div>';
-        bind('hubRetry', 'click', () => showTab(current, false));
-        bind('hubStartFromFail', 'click', startServerFromHub);
-      }
-
-      async function showTab(id, pushHash) {
-        if (!TABS[id]) id = 'match';
-        current = id;
-        document.querySelectorAll('.hub-tab').forEach((b) => {
-          const on = b.dataset.tab === id;
-          b.classList.toggle('active', on);
-          b.setAttribute('aria-selected', on ? 'true' : 'false');
-          b.tabIndex = on ? 0 : -1;
-        });
-        const t = TABS[id];
-        if (!t) return;
-        document.title = t.title + ' — Compare Hub';
-        setText(meta, t.meta);
-        lsSet(LS_TAB, id);
-        if (pushHash !== false) {
-          if (location.hash.replace(/^#/, '') !== id) {
-            try { history.replaceState(null, '', '#' + id); } catch (_) {}
-          }
-        }
-        const gen = ++loadGen;
-        if (loadTimer) clearTimeout(loadTimer);
-        if (loading) {
-          loading.classList.remove('hide', 'fail');
-          setText(loading, 'Loading ' + t.title + '…');
-        }
-        const src = await resolveSrc(id);
-        if (gen !== loadGen) return;
-        if (!frame) return;
-        frame.onload = () => {
-          if (gen !== loadGen) return;
-          if (loadTimer) clearTimeout(loadTimer);
-          if (loading) {
-            loading.classList.add('hide');
-            loading.classList.remove('fail');
-          }
-        };
-        frame.onerror = () => {
-          if (gen !== loadGen) return;
-          if (loadTimer) clearTimeout(loadTimer);
-          showLoadFail(t.title, src);
-        };
-        loadTimer = setTimeout(() => {
-          if (gen !== loadGen) return;
-          if (loading && loading.classList.contains('hide')) return;
-          try {
-            const doc = frame.contentDocument;
-            if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
-              if (loading) loading.classList.add('hide');
-              return;
-            }
-          } catch (_) {
-            // Cross-origin: onload already hid the overlay if it succeeded.
-            // Reaching the timeout without onload is a real fail.
-            showLoadFail(t.title, src);
-            return;
-          }
-          showLoadFail(t.title, src);
-        }, 25000);
-        revokeUrl(lastFrameSrc);
-        lastFrameSrc = src || '';
-        frame.src = src || 'about:blank';
-      }
-
-      async function copyHubReport() {
-        return withBusy('copy-report', async () => {
-          const t = TABS[current] || TABS.match || { title: current };
-          const text = [
-            'FAFO Compare Hub — session report',
-            'Time: ' + new Date().toISOString(),
-            'Active workspace: ' + (t.title || current),
-            'URL: ' + location.href,
-            'Server: ' + (el('serverBadge')?.textContent || 'unknown'),
-            '',
-            'Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator',
-            'Counterparts: Media Hub · VSR · Pair Review · Guided Match',
-          ].join('\n');
-          try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              await navigator.clipboard.writeText(text);
-              window.AIToolboxUI?.toast?.('Compare report copied', 'ok');
-            } else {
-              prompt('Copy report:', text);
-            }
-          } catch (_) { try { prompt('Copy report:', text); } catch (__) {} }
-        }, 'btnCopyReport');
-      }
-
-      bind('hubTabs', 'click', (e) => {
-        const btn = e.target && e.target.closest ? e.target.closest('.hub-tab') : null;
-        if (!btn) return;
-        showTab(btn.dataset.tab, true);
-      });
-      bind('hubTabs', 'keydown', (e) => {
-        const tabs = Array.from(document.querySelectorAll('.hub-tab'));
-        if (!tabs.length) return;
-        const i = tabs.indexOf(document.activeElement);
-        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-          e.preventDefault();
-          const dir = e.key === 'ArrowRight' ? 1 : -1;
-          const next = tabs[(Math.max(i, 0) + dir + tabs.length) % tabs.length];
-          if (next) next.focus();
-          if (next && next.dataset && next.dataset.tab) showTab(next.dataset.tab, true);
-        }
-      });
-
-      bind('btnPopout', 'click', async () => {
-        const src = await resolveSrc(current);
-        if (src) window.open(src, '_blank', 'noopener');
-      });
-      bind('btnCopyReport', 'click', copyHubReport);
-      bind('btnStartServer', 'click', startServerFromHub);
-      bind('serverBadge', 'click', () => {
-        const badge = el('serverBadge');
-        if (badge && badge.classList.contains('bad')) startServerFromHub();
-        else pingServer();
-      });
-
-      window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
-      window.addEventListener('pageshow', (e) => {
-        if (e.persisted) showTab(tabFromHash(), false);
-      });
-      showTab(tabFromHash(), true);
-      if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
-        AIToolboxMedia.watchServer(pingServer, { onlineMs: 20000, offlineMs: 8000, iframeMs: 30000 });
-      } else {
-        pingServer();
-        setInterval(pingServer, 20000);
-      }
-      document.addEventListener('keydown', function hubTabKeys(e){
-        if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
-        const map = { '1':'match', '2':'pairs', '3':'video', '4':'image' };
-        if (map[e.key]) showTab(map[e.key], true);
-        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyHubReport(); }
-      });
-      window.addEventListener('message', function (ev) {
-        if (ev.origin !== location.origin) return;
-        const data = ev?.data;
-        if (!data || typeof data !== 'object') return;
-        if (data.type === 'fafo-compare-tab') {
-          const tab = normalizeTab(data.tab);
-          if (!tab) return;
-          if (data.search && String(data.search).startsWith('?')) {
-            try { history.replaceState(null, '', data.search + '#' + tab); } catch (_) {}
-          }
-          showTab(tab, true);
-          return;
-        }
-        if (data.type === 'fafo-escape') {
-          try {
-            location.href = (window.AIToolboxUI?.launcherHref?.() || data.href || '../Toolbox Launcher.html');
-          } catch (_) {
-            location.href = '../Toolbox Launcher.html';
-          }
-        }
+        order: ['match', 'pairs', 'video', 'image'],
+        aliases: { guided: 'match', elim: 'match', studio: 'match', pair: 'pairs', review: 'pairs', queue: 'pairs', vid: 'video', vc: 'video', img: 'image', ic: 'image' },
+        defaultTab: 'match',
+        lsKey: 'fafo_compare_hub_last_tab',
+        messageType: 'fafo-compare-tab',
+        keyMap: { '1': 'match', '2': 'pairs', '3': 'video', '4': 'image' },
+        reportTitle: 'FAFO Compare Hub',
+        reportLines: ['Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator', 'Counterparts: Media Hub · VSR · Pair Review · Guided Match'],
       });
     })();
   </script>

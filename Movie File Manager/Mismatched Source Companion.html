@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mismatched Source Companion — match dumps to originals</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.0">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.0">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
     <style>
         :root { --bg:#0b1220; --panel:#121a28; --border:rgba(0,243,255,.22); --accent:#00f3ff; --accent2:#e879f9; --gold:#f5d76e; --ok:#4ade80; --warn:#fbbf24; --danger:#f87171; --text:#e8eef8; --muted:#94a3b8; }
         :focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
@@ -189,17 +189,18 @@ _interp.*$</textarea>
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
     <script>
         const API = () => window.AIToolboxAPI;
         const UI = () => window.AIToolboxUI;
@@ -647,23 +648,16 @@ _interp.*$</textarea>
             } catch (e) { toast('Learn failed: ' + (e.message || e), 'warn'); }
         }, 'btnLearn'));
 
-        bind('btnDupScan', 'click', () => withBusy(async () => {
-            try {
-                const r = await API()?.scanDuplicates?.(val('dup_folder'), checked('dup_deep')) || {};
-                const gb = ((Number(r.wasted_bytes)||0)/1024/1024/1024).toFixed(2);
-                let html = '<div class="status-box warn">' + escHtml(r.duplicate_groups||0) + ' groups \u00b7 ' + escHtml(r.scanned||0) + ' files \u00b7 ~' + escHtml(gb) + ' GB duplicate data</div>';
-                (r.groups||[]).forEach(g => {
-                    g = g || {};
-                    html += '<div class="dup-group"><strong>' + escHtml(g.count) + '\u00d7 duplicate</strong> (' + escHtml(((g.total_bytes||0)/1e6).toFixed(0)) + ' MB)<ul style="margin-top:6px;font-size:11px">';
-                    (g.items||[]).forEach(i => {
-                        html += '<li>' + escHtml(i && i.name) + ' \u2014 ' + escHtml(i && i.res) + ' \u00b7 ' + escHtml(i && i.duration) + 's</li>';
-                    });
-                    html += '</ul></div>';
-                });
-                const box = el('dupResults');
-                if (box) box.innerHTML = html;
-            } catch (e) { toast('Dup scan failed: ' + (e.message || e), 'warn'); }
-        }, 'btnDupScan'));
+        bind('btnDupScan', 'click', () => {
+            const folder = val('dup_folder');
+            const params = new URLSearchParams({ from: 'companion' });
+            if (folder) {
+                params.set('folder', folder);
+                params.set('scan', '1');
+                if (checked('dup_deep')) params.set('deep', '1');
+            }
+            location.href = 'Media Hub.html?' + params.toString() + '#duplicates';
+        });
 
         bind('btnSaveTags', 'click', () => withBusy(async () => {
             try {
