@@ -1,6 +1,15 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.4**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.5**.
+
+## Media desks (3.0.5) — workspace tabs, durable scans, highlight-to-match
+
+- Command-center media strip: Library / Duplicates / Organizer / Match / Review / Video / Image / Name match. Keys 1-8. Same-hub tab changes set hash instead of remounting the iframe.
+- Media Hub + Compare Hub both mount `AIToolboxHub.mediaWorkspaceTabs()` (eight tabs). `hub-embedded` hides hub tabs when the command-center strip is showing.
+- `aitoolbox-scan-cache.js` IndexedDB. Duplicate Manager persists full groups (no 1.5MB localStorage drop). Restore on load + pagehide save.
+- Library `scanDir` skips folders with `last_scanned > 0`. Rescan is explicit (force). Age chip next to Rescan.
+- `aitoolbox-catalog-pick.js` on Video + Image comparators: catalog search per slot, both filenames visible, highlight-on-before live-refines after search, restore last pair.
+- `escapeHtml` in dom/hub actually escapes (amp/lt/gt/quot) — was identity-replaced.
 
 ## Media desks (3.0.4) — combine + remaining P0/P1
 

@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duplicate File Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
-    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
     <style>
         :root {
             --bg: #0a0e14; --panel: #121820; --panel2: #0d1218;
@@ -583,18 +583,19 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-scan-cache.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
     <script>
 
         function el(id){try{if(!id)return null;return typeof id==='string'?document.getElementById(id):id}catch(_){return null}}
@@ -1073,9 +1074,13 @@
         }
 
         function persistScan() {
+            persistScanAsync().catch(function () { /* IDB/LS optional */ });
+        }
+
+        async function persistScanAsync() {
             if (!scanResult) return;
             const payload = {
-                v: 1,
+                v: 2,
                 savedAt: Date.now(),
                 folder: (el('folderPath')?.value || '').trim(),
                 types: el('fileTypes')?.value || '',
@@ -1087,80 +1092,108 @@
                 keeperPath,
                 result: scanResult,
             };
-            const raw = JSON.stringify(payload);
-            const MAX = 1.5 * 1024 * 1024;
-            if (raw.length > MAX) {
-                const summary = {
-                    v: 1,
-                    savedAt: payload.savedAt,
-                    folder: payload.folder,
-                    types: payload.types,
-                    match: payload.match,
-                    deep: payload.deep,
-                    recursive: payload.recursive,
-                    wholeSystem: payload.wholeSystem,
-                    activeGroupIndex,
-                    keeperPath,
-                    summaryOnly: true,
-                    result: {
-                        scanned: scanResult.scanned,
-                        duplicate_groups: scanResult.duplicate_groups || (scanResult.groups || []).length,
-                        wasted_bytes: scanResult.wasted_bytes,
-                        groups: [],
-                        folder: scanResult.folder,
-                    },
-                };
-                const small = JSON.stringify(summary);
-                ssSet(LS_DUP_SCAN, small);
-                lsSet(LS_DUP_SCAN, small);
-            } else {
-                ssSet(LS_DUP_SCAN, raw);
-                lsSet(LS_DUP_SCAN, raw);
+            const Cache = window.AIToolboxScanCache;
+            let storedIdb = false;
+            if (Cache && Cache.put) {
+                try {
+                    await Cache.put(LS_DUP_SCAN, payload);
+                    storedIdb = true;
+                } catch (e) {
+                    console.warn('scan cache put failed', e);
+                }
             }
+            const groups = (scanResult.groups || []).length;
+            const pointer = {
+                v: 2,
+                savedAt: payload.savedAt,
+                folder: payload.folder,
+                types: payload.types,
+                match: payload.match,
+                deep: payload.deep,
+                recursive: payload.recursive,
+                wholeSystem: payload.wholeSystem,
+                activeGroupIndex,
+                keeperPath,
+                idb: storedIdb,
+                summaryOnly: !storedIdb,
+                result: {
+                    scanned: scanResult.scanned,
+                    duplicate_groups: scanResult.duplicate_groups || groups,
+                    wasted_bytes: scanResult.wasted_bytes,
+                    groups: storedIdb ? [] : (function () {
+                        try {
+                            const raw = JSON.stringify(payload);
+                            if (raw.length <= 1.5 * 1024 * 1024) return scanResult.groups;
+                        } catch (_) {}
+                        return [];
+                    })(),
+                    folder: scanResult.folder,
+                },
+            };
+            if (!storedIdb && pointer.result.groups && pointer.result.groups.length) {
+                pointer.summaryOnly = false;
+                pointer.result = scanResult;
+                pointer.activeGroupIndex = activeGroupIndex;
+                pointer.keeperPath = keeperPath;
+            }
+            const small = JSON.stringify(pointer);
+            ssSet(LS_DUP_SCAN, small);
+            lsSet(LS_DUP_SCAN, small);
             const pill = el('persistPill');
             if (pill) {
                 pill.style.display = '';
-                pill.textContent = '💾 Scan kept · ' + new Date(payload.savedAt).toLocaleTimeString();
+                const when = new Date(payload.savedAt).toLocaleTimeString();
+                const age = Cache && Cache.relativeTime ? Cache.relativeTime(payload.savedAt) : when;
+                pill.textContent = storedIdb
+                    ? ('Scan kept · ' + groups + ' groups · ' + age)
+                    : (pointer.summaryOnly
+                        ? ('Scan summary kept · groups too large for this browser — ' + age)
+                        : ('Scan kept · ' + groups + ' groups · ' + age));
             }
             setDisabled('btnClearScan', false);
             setDisabled('btnRefresh', false);
             setDisabled('btnOpenFolder', !payload.folder);
         }
 
-        function loadPersistedScan() {
-            let raw = null;
-            raw = ssGet(LS_DUP_SCAN, null);
-            if (!raw) raw = lsGet(LS_DUP_SCAN, null);
-            if (!raw) return false;
-            try {
-                const data = JSON.parse(raw);
-                if (!data || !data.result || !Array.isArray(data.result.groups)) return false;
-                // Prefer restoring folder/options so UI matches the kept scan
-                if (data.folder && el('folderPath')) el('folderPath').value = data.folder;
-                if (typeof data.recursive === 'boolean' && el('scanSubfolders')) {
-                    el('scanSubfolders').checked = data.recursive;
-                }
-                if (typeof data.wholeSystem === 'boolean' && el('scanWholeSystem')) {
-                    el('scanWholeSystem').checked = data.wholeSystem;
-                }
-                if (data.types) el('fileTypes').value = data.types;
-                if (data.match) el('matchMode').value = data.match;
-                if (typeof data.deep === 'boolean') el('deepVideo').checked = data.deep;
-                scanResult = data.result;
-                activeGroupIndex = Number.isInteger(data.activeGroupIndex) ? data.activeGroupIndex : -1;
-                keeperPath = data.keeperPath || null;
-                compareSelection.clear();
-                deleteSelection.clear();
-                applyScanToUi({ restored: true, savedAt: data.savedAt });
-                if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
-                    selectGroup(activeGroupIndex);
-                } else if (scanResult.groups.length) {
-                    selectGroup(0);
-                }
-                return true;
-            } catch (_) {
-                return false;
+        async function loadPersistedScan() {
+            const Cache = window.AIToolboxScanCache;
+            let data = null;
+            if (Cache && Cache.get) {
+                try { data = await Cache.get(LS_DUP_SCAN); } catch (_) { data = null; }
             }
+            if (!data || !data.result) {
+                let raw = ssGet(LS_DUP_SCAN, null);
+                if (!raw) raw = lsGet(LS_DUP_SCAN, null);
+                if (!raw) return false;
+                try { data = JSON.parse(raw); } catch (_) { return false; }
+            }
+            if (!data || !data.result) return false;
+            if (!Array.isArray(data.result.groups)) data.result.groups = [];
+            if (data.folder && el('folderPath')) el('folderPath').value = data.folder;
+            if (typeof data.recursive === 'boolean' && el('scanSubfolders')) {
+                el('scanSubfolders').checked = data.recursive;
+            }
+            if (typeof data.wholeSystem === 'boolean' && el('scanWholeSystem')) {
+                el('scanWholeSystem').checked = data.wholeSystem;
+            }
+            if (data.types) el('fileTypes').value = data.types;
+            if (data.match) el('matchMode').value = data.match;
+            if (typeof data.deep === 'boolean') el('deepVideo').checked = data.deep;
+            scanResult = data.result;
+            activeGroupIndex = Number.isInteger(data.activeGroupIndex) ? data.activeGroupIndex : -1;
+            keeperPath = data.keeperPath || null;
+            compareSelection.clear();
+            deleteSelection.clear();
+            applyScanToUi({ restored: true, savedAt: data.savedAt });
+            if (data.summaryOnly && !(scanResult.groups || []).length) {
+                UI()?.toast?.('Last scan summary restored — groups were too large; Rescan to refill the list', 'warn');
+            }
+            if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
+                selectGroup(activeGroupIndex);
+            } else if (scanResult.groups.length) {
+                selectGroup(0);
+            }
+            return true;
         }
 
         function clearPersistedScan({ toastMsg } = {}) {
@@ -1174,6 +1207,7 @@
             deleteSelection.clear();
             ssDel(LS_DUP_SCAN);
             lsDel(LS_DUP_SCAN);
+            try { window.AIToolboxScanCache && AIToolboxScanCache.del && AIToolboxScanCache.del(LS_DUP_SCAN); } catch (_) {}
             const pill = el('persistPill');
             if (pill) pill.style.display = 'none';
             setLiveScanPill(false);
@@ -2679,12 +2713,19 @@
             window.addEventListener('fafo-ops-stats', refreshOpsTally);
         } catch (_) { /* stats optional */ }
         // Restore last scan first (survives Media Hub tab switches / reloads)
-        const restored = loadPersistedScan();
-        if (restored) {
-            UI()?.toast?.('Restored previous duplicate scan — no rescan needed', 'ok');
-        }
-        // Launch params may still auto-scan when ?scan=1 (explicit)
-        applyLaunchParams();
+        window.addEventListener('pagehide', function () {
+            try { persistScan(); } catch (_) {}
+        });
+        (async function restoreDupScan() {
+            const restored = await loadPersistedScan();
+            if (restored) {
+                const g = (scanResult && scanResult.groups || []).length;
+                UI()?.toast?.(g
+                    ? ('Restored previous duplicate scan — ' + g + ' groups, no rescan')
+                    : 'Restored last scan folder — groups empty, rescan if you need the list', 'ok');
+            }
+            applyLaunchParams();
+        })();
     </script>
 <script data-extra-polish="dup"></script></body>
 </html>

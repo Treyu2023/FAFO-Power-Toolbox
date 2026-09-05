@@ -424,8 +424,8 @@
             transition: opacity 0.3s;
         }
     </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
 </head>
 <body>
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
@@ -617,19 +617,20 @@
         <button class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-hub.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-catalog-pick.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
     <script>
 
         function el(id) {
@@ -851,8 +852,10 @@
             });
         }
 
+        const catalogHold = { before: null, after: null };
         function ingestFile(slot, file, name) {
             if (!file) return;
+            if (slot === 'before' || slot === 'after') catalogHold[slot] = null;
             const st = el(`status-${slot}`);
             setText(st, `Loaded: ${name || file.name}`);
             if (st) st.style.color = 'var(--neon-accent)';
@@ -860,6 +863,7 @@
             if (slot === 'before') { fileCacheBefore = file; checkSeparateReady(); }
             else if (slot === 'after') { fileCacheAfter = file; checkSeparateReady(); }
             else processSbsFile(file);
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(fileCacheBefore && fileCacheBefore.name, fileCacheAfter && fileCacheAfter.name); } catch (_) {}
         }
 
         // --- UI toggles ---
@@ -904,10 +908,44 @@
 
         setupDropZone('dz-before', 'before', 'file-before', file => ingestFile('before', file));
         setupDropZone('dz-after', 'after', 'file-after', file => ingestFile('after', file));
+        (function attachCatalogPickImage() {
+            if (!window.AIToolboxCatalogPick || !AIToolboxCatalogPick.attach) return;
+            const ui = AIToolboxCatalogPick.attach({
+                beforeZone: '#dz-before',
+                afterZone: '#dz-after',
+                type: 'image',
+                onPick: function (slot, item) {
+                    if (!item) return;
+                    catalogHold[slot] = item;
+                    const name = item.name || 'file';
+                    const path = item.path || item.rel_path || '';
+                    if (slot === 'before') {
+                        knownBeforePath = path || knownBeforePath;
+                        fileCacheBefore = { name: name, size: item.size || 0 };
+                    } else {
+                        knownAfterPath = path || knownAfterPath;
+                        fileCacheAfter = { name: name, size: item.size || 0 };
+                    }
+                    const st = el('status-' + slot);
+                    setText(st, 'Loaded: ' + name);
+                    if (st) st.style.color = 'var(--neon-accent)';
+                    ui.setNames(catalogHold.before && catalogHold.before.name || (fileCacheBefore && fileCacheBefore.name),
+                                catalogHold.after && catalogHold.after.name || (fileCacheAfter && fileCacheAfter.name));
+                    const A = window.AIToolboxAPI;
+                    const b = catalogHold.before, a = catalogHold.after;
+                    const bUrl = b && A ? A.mediaFileUrl(b.id) : (fileCacheBefore instanceof Blob ? URL.createObjectURL(fileCacheBefore) : null);
+                    const aUrl = a && A ? A.mediaFileUrl(a.id) : (fileCacheAfter instanceof Blob ? URL.createObjectURL(fileCacheAfter) : null);
+                    if (bUrl && aUrl) {
+                        loadImagesFromUrls(bUrl, aUrl, (b && b.name) || (fileCacheBefore && fileCacheBefore.name), (a && a.name) || (fileCacheAfter && fileCacheAfter.name));
+                        ui.remember(b || catalogHold.before, a || catalogHold.after);
+                    }
+                }
+            });
+        })();
         setupDropZone('dz-sbs', 'sbs', 'file-sbs', file => processSbsFile(file));
 
         function checkSeparateReady() {
-            if (fileCacheBefore && fileCacheAfter) {
+            if (fileCacheBefore instanceof Blob && fileCacheAfter instanceof Blob) {
                 revokeLiveBlobs();
                 const urlB = trackBlob(URL.createObjectURL(fileCacheBefore));
                 const urlA = trackBlob(URL.createObjectURL(fileCacheAfter));
@@ -1297,6 +1335,7 @@
             if (!urlB || !urlA) { showToast('Pair URLs missing'); return; }
             setText('status-before', `Loaded: ${nameB || 'Before'}`);
             setText('status-after', `Loaded: ${nameA || 'After'}`);
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(nameB, nameA); } catch (_) {}
             const sb = el('status-before'), sa = el('status-after');
             if (sb) sb.style.color = 'var(--neon-accent)';
             if (sa) sa.style.color = 'var(--neon-accent)';

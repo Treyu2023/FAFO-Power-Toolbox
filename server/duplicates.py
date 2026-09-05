@@ -1636,6 +1636,7 @@ class DupScanJob:
         self.error: str | None = None
         self.finished = False
         self.created_at = time.time()
+        self.folder = ""
         self._got_event = threading.Event()
 
     def emit(self, payload: dict[str, Any]) -> None:
@@ -1684,6 +1685,17 @@ def get_scan_job(job_id: str) -> DupScanJob | None:
         return _JOBS.get(job_id)
 
 
+def find_active_scan_job(folder: str | None = None) -> DupScanJob | None:
+    with _JOBS_LOCK:
+        for job in _JOBS.values():
+            if job.finished:
+                continue
+            if folder is not None and job.folder != folder:
+                continue
+            return job
+    return None
+
+
 def job_state(job_id: str) -> str | None:
     job = get_scan_job(job_id)
     if not job:
@@ -1726,12 +1738,14 @@ def start_scan_job(
 ) -> DupScanJob:
     _prune_jobs()
     job = DupScanJob()
+    job.folder = folder or ""
     with _JOBS_LOCK:
         _JOBS[job.id] = job
+    job.emit({"job_id": job.id, "state": "running"})
 
     def run() -> None:
         def on_progress(count, file_path, **kw):
-            payload = {"count": count, "file": file_path, "state": job.state}
+            payload = {"count": count, "file": file_path, "state": job.state, "job_id": job.id}
             payload.update({k: v for k, v in kw.items() if v is not None})
             job.emit(payload)
 
