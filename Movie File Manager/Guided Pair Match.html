@@ -783,6 +783,7 @@
   <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
   <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
   <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
   <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
   <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
@@ -1599,14 +1600,14 @@
       // crossOrigin anonymous helps canvas PiP when page is served over http
       box.innerHTML = isImage
         ? `<img alt="" src="${esc(url)}" draggable="false" crossorigin="anonymous">`
-        : `<video controls muted playsinline preload="auto" src="${esc(url)}" crossorigin="anonymous"></video>`;
+        : `<video controls muted playsinline preload="metadata" src="${esc(url)}" crossorigin="anonymous"></video>`;
       const m = box.querySelector('img,video');
       if (!m) return;
       m.onerror = () => {
         // retry without crossorigin (some file:// / auth setups)
         box.innerHTML = isImage
           ? `<img alt="" src="${esc(url)}" draggable="false">`
-          : `<video controls muted playsinline preload="auto" src="${esc(url)}"></video>`;
+          : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
         const m2 = box.querySelector('img,video');
         if (!m2) return;
         m2.onerror = () => { box.innerHTML = '<div class="empty">Preview failed</div>'; };
@@ -1960,7 +1961,9 @@
       if (viewState.mode === 'overlay') rebuildOverlayMedia();
     }
 
+    let _candGen = 0;
     async function loadCandidatesForAnchor() {
+      const gen = ++_candGen;
       const anchor = currentAnchor();
       if (!anchor) return;
       const exclude = rejectedFor(anchor.id).slice();
@@ -1972,6 +1975,7 @@
         beforeDirId: fo.beforeDirId || undefined,
         afterDirId: fo.afterDirId || undefined,
       });
+      if (gen !== _candGen) return;
       // Client-side safety: drop same-size / not-larger when option is on
       let cands = data?.candidates || [];
       if (fo.requireLarger) {
@@ -2154,7 +2158,7 @@
     }
 
     function rejectCandidate() {
-      if (busy) return;
+      return withBusy(async () => {
       const cand = currentCandidate();
       const anchor = currentAnchor();
       if (!cand || !anchor) return;
@@ -2193,11 +2197,12 @@
           render();
           return;
         }
-        loadCandidatesForAnchor().then(() => {
+        try {
+          await loadCandidatesForAnchor();
           if (historyCursor >= 0 && history[historyCursor]?.type === 'exhaust') {
             history[historyCursor].after = snapshotCore();
           }
-        }).catch(e => toast(e.message || String(e), 'warn'));
+        } catch (e) { toast(e.message || String(e), 'warn'); }
         return;
       }
 
@@ -2211,10 +2216,11 @@
         pairPayload: null,
       });
       render();
+      });
     }
 
     function skipAnchor() {
-      if (busy) return;
+      return withBusy(async () => {
       const anchor = currentAnchor();
       if (!anchor) return;
       const before = snapshotCore();
@@ -2237,11 +2243,13 @@
         render();
         return;
       }
-      loadCandidatesForAnchor().then(() => {
+      try {
+        await loadCandidatesForAnchor();
         if (historyCursor >= 0 && history[historyCursor]?.type === 'skip') {
           history[historyCursor].after = snapshotCore();
         }
-      }).catch(e => toast(e.message || String(e), 'warn'));
+      } catch (e) { toast(e.message || String(e), 'warn'); }
+      });
     }
 
     /**

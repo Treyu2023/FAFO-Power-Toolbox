@@ -102,6 +102,7 @@ kbd{font:11px Consolas;color:var(--gold)}
 <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
 <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
 <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
 <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
 <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
@@ -155,7 +156,10 @@ function revokeBlobs() {
     try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
   }
 }
-window.addEventListener('pagehide', revokeBlobs);
+window.addEventListener('pagehide', function () {
+  revokeBlobs();
+  try { stopConvert(); } catch (_) {}
+});
 
 let files = [];
 let sel = new Set();
@@ -292,7 +296,9 @@ bind('chkAll', 'change', e => {
   render();
 });
 
-bind('filter', 'input', render);
+bind('filter', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch)
+  ? AIToolboxMedia.bindSearch(render, 160)
+  : render);
 
 async function scanFolder() {
   return withBusy(async () => {
@@ -332,7 +338,9 @@ bind('btnEmptyStartSrv', 'click', async () => {
 });
 ['folder', 'outDir', 'preset'].forEach(id => bind(id, 'change', saveBconvSettings));
 
+let convertStopped = false;
 function stopConvert() {
+  convertStopped = true;
   if (es) { try { es.close(); } catch (_) {} es = null; }
   const conv = el('btnConvert');
   if (conv) conv.disabled = sel.size === 0;
@@ -370,23 +378,40 @@ function startConvert() {
     if (bar) bar.style.width = '0%';
     if (eta) eta.textContent = 'ETA: calculating…';
 
-    let url = apiBase() + '/convert/stream?files=' + encodeURIComponent(chosen.join('|')) + '&preset=' + encodeURIComponent(preset);
+    convertStopped = false;
+    let remaining = chosen.slice();
+    let pass = 0;
+    let okSum = 0, failSum = 0;
+    while (remaining.length && !convertStopped) {
+    pass += 1;
+    let batch = remaining.slice();
+    let url = apiBase() + '/convert/stream?files=' + encodeURIComponent(batch.join('|')) + '&preset=' + encodeURIComponent(preset);
     if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
+    while (url.length > 1800 && batch.length > 1) {
+      batch = batch.slice(0, Math.max(1, Math.floor(batch.length / 2)));
+      url = apiBase() + '/convert/stream?files=' + encodeURIComponent(batch.join('|')) + '&preset=' + encodeURIComponent(preset);
+      if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
+    }
+    remaining = remaining.slice(batch.length);
+    if (remaining.length) log('Pass ' + pass + ' — ' + batch.length + ' files (URL cap). ' + remaining.length + ' queued next.');
     if (es) try { es.close(); } catch (_) {}
     es = new EventSource(url);
     await new Promise(resolve => {
       convertWaitResolve = resolve;
-      const finish = () => { try { stopConvert(); } catch (_) {} };
+      const finish = () => { try { if (es) { es.close(); es = null; } } catch (_) {} try { resolve(); } catch (_) {} convertWaitResolve = null; };
       es.onmessage = ev => {
         let d;
         try { d = JSON.parse(ev.data); } catch (_) { return; }
         if (!d || typeof d !== 'object') return;
-        if (d.error) { log('Error: ' + d.error); finish(); return; }
+        if (d.error) { log('Error: ' + d.error); convertStopped = true; finish(); return; }
         if (d.done) {
           const r = d.result || {};
           const elapsed = ((Date.now() - convertStartedAt) / 1000).toFixed(1);
-          log('Done: ' + (r.succeeded || 0) + '/' + (r.total || chosen.length) + ' succeeded'
-            + (r.failed ? ' · ' + r.failed + ' failed' : '') + ' · ' + elapsed + 's');
+          okSum += Number(r.succeeded) || 0;
+          failSum += Number(r.failed) || 0;
+          log('Pass ' + pass + ' done: ' + (r.succeeded || 0) + '/' + (r.total || batch.length) + ' succeeded'
+            + (r.failed ? ' · ' + r.failed + ' failed' : '') + ' · ' + elapsed + 's'
+            + (remaining.length ? ' · ' + remaining.length + ' left' : ''));
           if (bar) bar.style.width = '100%';
           if (eta) eta.textContent = 'Finished in ' + elapsed + 's';
           try {
@@ -418,9 +443,15 @@ function startConvert() {
       };
       es.onerror = () => {
         log('Convert stream failed — is the server online and ffmpeg installed?');
+        convertStopped = true;
         finish();
       };
     });
+    } // while remaining
+    if (!convertStopped && (okSum || failSum)) {
+      log('All passes: ' + okSum + ' succeeded' + (failSum ? ' · ' + failSum + ' failed' : '') + ' of ' + chosen.length);
+    }
+    try { stopConvert(); } catch (_) {}
   }, 'btnConvert');
 }
 

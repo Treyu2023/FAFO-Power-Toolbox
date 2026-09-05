@@ -428,6 +428,7 @@
     <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
     <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
@@ -496,8 +497,12 @@
 
         async function init() {
             try { safeUI()?.initTooltips?.(); } catch (_) {}
-            await updateServer();
-            setInterval(updateServer, 5000);
+            if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
+                AIToolboxMedia.watchServer(updateServer);
+            } else {
+                await updateServer();
+                setInterval(updateServer, 5000);
+            }
             await refreshVirtualFolders();
             await refreshFacets();
             await loadItems();
@@ -695,7 +700,9 @@
             setText('vfSources', srcHtml ? `Sources: ${srcHtml}` : '');
         }
 
+        let _loadGen = 0;
         async function loadItems() {
+            const gen = ++_loadGen;
             try {
                 const res = await API()?.queryMedia?.({
                     search: el('searchInput')?.value || '',
@@ -709,6 +716,7 @@
                     sort: el('sortBy')?.value || 'rank',
                     page, limit: PAGE_SIZE,
                 }) || {};
+                if (gen !== _loadGen) return;
                 items = Array.isArray(res.items) ? res.items : [];
                 total = Number(res.total) || 0;
                 let dirs = [];
@@ -744,6 +752,7 @@
                 if (!item) return;
                 const tr = document.createElement('tr');
                 tr.tabIndex = 0;
+                tr.dataset.id = item.id;
                 tr.className = (selected.has(item.id) ? 'selected ' : '') + (current?.id === item.id ? 'active-row' : '');
                 const rel = item.relativePath || item.rel_path || '';
                 const src = dirNames[item.dirId || item.dir_id] || '?';
@@ -791,7 +800,16 @@
 
         function toggleSel(id) {
             if (selected.has(id)) selected.delete(id); else selected.add(id);
-            renderTable();
+            const body = el('fileTableBody');
+            const safe = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(String(id)) : String(id).replace(/"/g, '');
+            const tr = body && body.querySelector('tr[data-id="' + safe + '"]');
+            if (tr) {
+                tr.classList.toggle('selected', selected.has(id));
+                const cb = tr.querySelector('input[type="checkbox"]');
+                if (cb) cb.checked = selected.has(id);
+            } else {
+                renderTable();
+            }
         }
 
         async function setRank(id, rank) {
@@ -1115,7 +1133,9 @@
             } catch (_) {}
         }
         restoreOrgSettings();
-        bind('searchInput', 'input', () => { page = 0; saveOrgSettings(); loadItems(); });
+        bind('searchInput', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch)
+            ? AIToolboxMedia.bindSearch(() => { page = 0; saveOrgSettings(); loadItems(); }, 280)
+            : (() => { page = 0; saveOrgSettings(); loadItems(); }));
         bind('filterType', 'change', () => { page = 0; saveOrgSettings(); loadItems(); });
         bind('sortBy', 'change', () => { page = 0; saveOrgSettings(); loadItems(); });
         bind('btnPrev', 'click', () => { if (page > 0) { page--; loadItems(); } });

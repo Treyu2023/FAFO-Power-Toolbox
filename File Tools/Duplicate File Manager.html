@@ -588,6 +588,7 @@
     <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
     <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
@@ -1375,7 +1376,7 @@
             if (serverStarting) return false;
             const statusEl = el('serverStatus');
             const btn = el('btnStartServer');
-            const on = await (API()?.isOnline?.() ?? false);
+            const on = await (API()?.isOnline?.(false, 1500) ?? false);
             if (statusEl) {
                 statusEl.textContent = on ? '● Server online' : '○ Offline — click to start';
                 statusEl.className = 'server-pill ' + (on ? 'online' : 'offline');
@@ -1400,9 +1401,9 @@
                 return;
             }
             serverStarting = true;
-            const el = el('serverStatus');
+            const statusEl = el('serverStatus');
             const btn = el('btnStartServer');
-            el.textContent = '◌ Starting…';
+            if (statusEl) statusEl.textContent = '◌ Starting…';
             if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
             try {
                 const result = await API().startServer({ mode: 'tray', waitMs: 90000 });
@@ -2157,8 +2158,8 @@
         }
 
         function refreshOpsTally() {
-            const el = el('opsTally');
-            if (!el || !window.FAFOOpsStats) return;
+            const tally = el('opsTally');
+            if (!tally || !window.FAFOOpsStats) return;
             try {
                 const snap = FAFOOpsStats.snapshot({ limit: 1 });
                 const open = snap.openSession && snap.openSession.tool === 'duplicate-file-manager'
@@ -2167,10 +2168,10 @@
                 const life = snap.lifetime || {};
                 const sessFiles = open ? (open.filesRemoved || 0) : 0;
                 const sessBytes = open ? (open.bytesFreed || 0) : 0;
-                el.textContent = sessFiles || sessBytes
+                tally.textContent = sessFiles || sessBytes
                     ? `Session ${sessFiles} · ${FAFOOpsStats.formatBytes(sessBytes)}  ·  Σ ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)}`
                     : `Σ freed ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)}`;
-                el.title = `This session: ${sessFiles} files, ${FAFOOpsStats.formatBytes(sessBytes)}\nLifetime: ${(life.filesRemoved || 0)} files, ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)} — open Ops Stats for charts`;
+                tally.title = `This session: ${sessFiles} files, ${FAFOOpsStats.formatBytes(sessBytes)}\nLifetime: ${(life.filesRemoved || 0)} files, ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)} — open Ops Stats for charts`;
             } catch (_) { /* ignore */ }
         }
 
@@ -2605,6 +2606,7 @@
                     if (await tryScan()) clearInterval(iv);
                 }, 2000);
                 setTimeout(() => clearInterval(iv), 120000);
+                window.addEventListener('pagehide', () => clearInterval(iv), { once: true });
             }
         }
 
@@ -2662,8 +2664,12 @@
         el('serverStatus')?.addEventListener('click', () => {
             if (!serverStarting) launchServerFromApp();
         });
-        pollServer();
-        setInterval(pollServer, 5000);
+        if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
+            AIToolboxMedia.watchServer(pollServer);
+        } else {
+            pollServer();
+            setInterval(pollServer, 5000);
+        }
         UI()?.initTooltips?.();
         updateStats();
         try {

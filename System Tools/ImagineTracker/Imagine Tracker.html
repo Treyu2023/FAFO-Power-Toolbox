@@ -214,6 +214,7 @@
   <script src="../../shared/aitoolbox-config.js?v=3.0.0"></script>
     <script src="../../shared/aitoolbox-version.js?v=3.0.0"></script>
     <script src="../../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../../shared/aitoolbox-api.js?v=3.0.0"></script>
   <script src="../../shared/aitoolbox-ui.js?v=3.0.0"></script>
   <script src="../../shared/aitoolbox-layout.js?v=3.0.0"></script>
@@ -454,7 +455,7 @@
           if ((it.mediaType || '') === 'image' || /\.(png|jpe?g|webp|gif)$/i.test(it.filename || '')) {
             return '<img alt="" src="' + esc(src) + '">';
           }
-          return '<video muted loop playsinline autoplay preload="metadata" src="' + esc(src) + '"></video>';
+          return '<video muted loop playsinline preload="none" src="' + esc(src) + '"></video>';
         }
         return '<img alt="" src="' + esc(svgThumb(it)) + '">';
       }
@@ -605,7 +606,7 @@
           renderList();
         });
       });
-      bind('search', 'input', renderList);
+      bind('search', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch) ? AIToolboxMedia.bindSearch(renderList, 200) : renderList);
       bind('typeFilter', 'change', renderList);
       bind('btnStart', 'click', startVault);
       bind('btnScan', 'click', scanDisk);
@@ -649,10 +650,12 @@
       renderKpis();
       renderList();
       startVault();
-      setInterval(function () {
-        if (vaultOn) refresh();
-        else startVault();
-      }, 12000);
+      const vaultTick = function () { if (vaultOn) refresh(); else startVault(); };
+      if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
+        AIToolboxMedia.watchServer(vaultTick, { onlineMs: 20000, offlineMs: 8000, iframeMs: 40000 });
+      } else {
+        setInterval(vaultTick, 12000);
+      }
     })();
   </script>
 </body>
