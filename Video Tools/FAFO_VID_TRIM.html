@@ -5,8 +5,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FAFO VID ŦRIM — AI HTML Toolbox</title>
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
 <style>
 :root {
   --bg: #070b12; --panel: #0c0f16; --navy: #0a1020; --charcoal: #10141c;
@@ -550,11 +550,15 @@ body { background-color: var(--navy); }
 
 <a id="dl" class="hidden"></a>
 
-<script src="../shared/aitoolbox-config.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-version.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
+<script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
 <script>
 (function () {
   'use strict';
@@ -849,7 +853,7 @@ body { background-color: var(--navy); }
   }
 
   function refreshVidMeta() {
-    const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+    const maxSide = Math.min(1920, parseInt(maxSideEl.value, 10) || 1920);
     const fmt = currentFmt();
     const outDir = (outDirEl.value || '').trim();
     const srcPath = (srcPathEl.value || '').trim();
@@ -1229,7 +1233,9 @@ body { background-color: var(--navy); }
     return false;
   }
 
+  let browserExportAbort = false;
   async function exportBrowser(fileOverride, opts = {}) {
+    browserExportAbort = false;
     const file = fileOverride || vidSourceFile;
     let objectUrl = vidObjectUrl;
     let localUrl = false;
@@ -1240,7 +1246,7 @@ body { background-color: var(--navy); }
     if (!file || !objectUrl) {
       throw new Error('Load a video file for browser export (or use S1 + source path)');
     }
-    const maxSide = parseInt(maxSideEl.value, 10) || 3840;
+    const maxSide = Math.min(1920, parseInt(maxSideEl.value, 10) || 1920);
     const wantMp4 = currentFmt() === 'mp4';
     const mime = pickRecorderMime(wantMp4);
     if (!mime) throw new Error('MediaRecorder not supported — use S1 + ffmpeg');
@@ -1317,6 +1323,7 @@ body { background-color: var(--navy); }
     await new Promise((resolve) => {
       let last = 0;
       const draw = () => {
+        if (browserExportAbort) { try { v.pause(); } catch (_) {} resolve(); return; }
         try { ctx.drawImage(v, 0, 0, t.w, t.h); } catch (_) { /* frame skip */ }
         if (duration) {
           const p = clamp(v.currentTime / duration, 0, 1);
@@ -1340,6 +1347,7 @@ body { background-color: var(--navy); }
     if (rec.state !== 'inactive') rec.stop();
     await done;
 
+    if (browserExportAbort) throw new Error('Export cancelled');
     const blob = new Blob(chunks, { type: mime.split(';')[0] || 'video/webm' });
     if (!blob.size) throw new Error('Export produced empty file');
     const base = (file.name || 'video').replace(/\.[^.]+$/, '');
@@ -1924,9 +1932,11 @@ body { background-color: var(--navy); }
   btnQStop?.addEventListener('click', () => {
     if (!queueRunning) return;
     queueStopAfter = true;
-    toast('Pausing after the current job — remaining stay queued', 'ok');
+    browserExportAbort = true;
+    toast('Stopping current encode — remaining stay queued', 'ok');
     renderQueue();
   });
+  window.addEventListener('pagehide', () => { browserExportAbort = true; });
 
   el('btnQRequeueFail')?.addEventListener('click', () => {
     const n = requeueJobs((j) => j.status === 'error' || j.status === 'paused');

@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FAFO Video Wall — AI HTML Toolbox</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html {
@@ -291,8 +291,11 @@
             return pool[Math.floor(Math.random() * pool.length)];
         }
 
-        async function collectVideos(dirHandle, prefix = '', out = []) {
+        const WALL_FILE_CAP = 1500;
+        async function collectVideos(dirHandle, prefix = '', out = [], depth = 0) {
+            if (out.length >= WALL_FILE_CAP || depth > 12) return out;
             for await (const entry of dirHandle.values()) {
+                if (out.length >= WALL_FILE_CAP) break;
                 if (entry.kind === 'file') {
                     if (VIDEO_EXT.has(extOf(entry.name))) {
                         out.push({ handle: entry, label: prefix ? prefix + '/' + entry.name : entry.name });
@@ -300,7 +303,7 @@
                 } else if (entry.kind === 'directory') {
                     if (/^(node_modules|\.git|\.venv|__pycache__|thumbnails)$/i.test(entry.name)) continue;
                     try {
-                        await collectVideos(entry, prefix ? prefix + '/' + entry.name : entry.name, out);
+                        await collectVideos(entry, prefix ? prefix + '/' + entry.name : entry.name, out, depth + 1);
                     } catch (_) { /* permission / locked */ }
                 }
             }
@@ -384,7 +387,10 @@
                 videoEl.style.objectFit = objectFit;
                 videoEl.src = fileUrl;
                 slotRetries[slotId] = 0;
-                videoEl.play().catch(() => { /* autoplay policy */ });
+                videoEl.preload = 'metadata';
+                videoEl.dataset.fafoWantPlay = '1';
+                const playing = Array.from(document.querySelectorAll('#wallGrid video')).filter((v) => !v.paused && v !== videoEl).length;
+                if (playing < 4) videoEl.play().catch(() => { /* autoplay policy */ });
             } catch (error) {
                 const n = (slotRetries[slotId] || 0) + 1;
                 slotRetries[slotId] = n;
@@ -401,8 +407,12 @@
             videoEl.onerror = () => {
                 const n = (slotRetries[slotId] || 0) + 1;
                 slotRetries[slotId] = n;
+                if (videoEl.error && videoEl.error.code === 4) {
+                    if (labelEl) labelEl.textContent = 'Unsupported codec';
+                    return;
+                }
                 if (n >= MAX_SLOT_RETRIES) return;
-                setupPlayer(slotId);
+                setTimeout(() => setupPlayer(slotId), 350 * n);
             };
         }
 
@@ -554,10 +564,15 @@
   });
 })();
 </script>
-  <script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-pro.js?v=1.16.50"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
 </div>
 </body>
 </html>

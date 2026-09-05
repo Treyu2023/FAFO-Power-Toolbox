@@ -42,6 +42,13 @@
     function skipKeepAlive() {
         try {
             if (global.AITOOLBOX_SKIP_KEEPALIVE || global.AITOOLBOX_STANDALONE) return true;
+            try {
+                if (typeof window !== 'undefined' && window.self !== window.top) return true;
+            } catch { return true; }
+            try {
+                const ka = localStorage.getItem('aitoolbox.keepalive') || localStorage.getItem('aitoolbox_keepalive');
+                if (ka === 'off' || ka === '0') return true;
+            } catch { /* ignore */ }
             if (typeof document !== 'undefined' && document.body && (
                 document.body.classList.contains('kf-standalone') ||
                 document.body.getAttribute('data-tb-chrome') === 'off'
@@ -314,11 +321,13 @@
             };
             if (opts.toolbox === false) body.toolbox = false;
             if (opts.fafoMeta === false) body.fafoMeta = false;
-            return await api('/launch/companions/start', {
+            const r = await api('/launch/companions/start', {
                 method: 'POST',
                 body: JSON.stringify(body),
                 timeoutMs: 20000,
             });
+            try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
+            return r;
         } catch {
             return null;
         }
@@ -337,11 +346,13 @@
             toolbox: opts.toolbox !== false,
             fafoMeta: opts.fafoMeta !== false,
         };
-        return api('/launch/companions/stop', {
+        const r = await api('/launch/companions/stop', {
             method: 'POST',
             body: JSON.stringify(body),
             timeoutMs: 15000,
         });
+        try { localStorage.setItem('aitoolbox.keepalive', 'off'); } catch { /* ignore */ }
+        return r;
     }
 
     async function getLaunchStatus() {
@@ -537,6 +548,7 @@
                 onStatus?.('Starting companion servers…');
                 await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
             }
+            try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
             return { ok: true, alreadyOnline: true };
         }
         if (serverLaunching) {
@@ -556,6 +568,7 @@
             if (ok) {
                 onStatus?.('Server online');
                 try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
                 if (alsoCompanions) {
                     onStatus?.('Ensuring FAFO tagging companion…');
                     await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
@@ -570,6 +583,7 @@
             if (ok) {
                 onStatus?.('Server online');
                 try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
                 if (alsoCompanions) {
                     await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
                 }
@@ -583,6 +597,7 @@
                 ok = await waitForServer(Math.min(20000, waitMs), 1000);
                 if (ok) {
                     onStatus?.('Server online');
+                    try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
                     if (alsoCompanions) {
                         await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
                     }
@@ -629,12 +644,31 @@
         };
     }
 
+    const inFlight = new Map();
+
     /**
      * Fetch toolbox API with timeout + clearer offline errors.
      * opts.timeoutMs — default 30000 (use 0 to disable).
      * opts.signal — optional AbortSignal (combined with timeout).
      */
     async function api(path, opts = {}) {
+        const method = String(opts.method || 'GET').toUpperCase();
+        const bodyKey = opts.body == null ? '' : String(opts.body);
+        const flightKey = method + '\0' + path + '\0' + bodyKey;
+        if (method === 'GET' && inFlight.has(flightKey)) {
+            return inFlight.get(flightKey);
+        }
+        const p = apiUncached(path, opts);
+        if (method === 'GET') {
+            inFlight.set(flightKey, p);
+            const clear = () => { if (inFlight.get(flightKey) === p) inFlight.delete(flightKey); };
+            if (typeof p.finally === 'function') p.finally(clear);
+            else p.then(clear, clear);
+        }
+        return p;
+    }
+
+    async function apiUncached(path, opts = {}) {
         const method = opts.method || 'GET';
         const t0 = Date.now();
         const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 30000;
@@ -642,7 +676,12 @@
 
         // Don't send custom fields to fetch()
         const { timeoutMs: _tm, ...fetchOpts } = opts;
-        const headers = { 'Content-Type': 'application/json', ...(fetchOpts.headers || {}) };
+        const headers = { ...(fetchOpts.headers || {}) };
+        if (fetchOpts.body != null && fetchOpts.body !== '') {
+            if (!headers['Content-Type'] && !headers['content-type']) {
+                headers['Content-Type'] = 'application/json';
+            }
+        }
 
         let timeoutCtrl = null;
         let timeoutTimer = null;
@@ -729,6 +768,7 @@
     }
 
     const API = {
+        api,
         async isOnline(force, timeoutMs) { return checkServer(force, timeoutMs); },
         async waitForServer(maxMs, intervalMs) { return waitForServer(maxMs, intervalMs); },
         async health() { return api('/health'); },
@@ -885,15 +925,42 @@
         async scanDirectory(dirId, onProgress) {
             if (await checkServer()) {
                 if (onProgress) {
+                    const started = await api(`/scan/${encodeURIComponent(dirId)}/start`, { method: 'POST' });
+                    const jobId = started && started.job_id;
+                    const qs = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
                     return new Promise((resolve, reject) => {
-                        const es = new EventSource(`${apiBase()}/scan/${encodeURIComponent(dirId)}/stream`);
-                        es.onmessage = e => {
-                            const d = JSON.parse(e.data);
-                            if (d.error) { es.close(); reject(new Error(d.error)); }
-                            else if (d.done) { es.close(); resolve({ indexed: d.count }); }
-                            else onProgress(d.count, d.file);
+                        const es = new EventSource(`${apiBase()}/scan/${encodeURIComponent(dirId)}/stream${qs}`);
+                        let errCount = 0;
+                        let closed = false;
+                        let onHide = function () {};
+                        const finish = (fn, arg) => {
+                            if (closed) return;
+                            closed = true;
+                            try { window.removeEventListener('pagehide', onHide); } catch { /* ignore */ }
+                            try { es.close(); } catch { /* ignore */ }
+                            fn(arg);
                         };
-                        es.onerror = () => { es.close(); reject(new Error('Scan stream failed')); };
+                        onHide = () => {
+                            try { es.close(); } catch { /* ignore */ }
+                            if (jobId) {
+                                api(`/scan/${encodeURIComponent(dirId)}/cancel?job_id=${encodeURIComponent(jobId)}`, { method: 'POST' }).catch(() => {});
+                            }
+                            finish(resolve, { indexed: 0, cancelled: true });
+                        };
+                        try { window.addEventListener('pagehide', onHide); } catch { /* ignore */ }
+                        es.onmessage = e => {
+                            let d;
+                            try { d = JSON.parse(e.data); }
+                            catch (_) { return; }
+                            if (d.error) { finish(reject, new Error(d.error)); }
+                            else if (d.done) { finish(resolve, { indexed: d.count, cancelled: !!d.cancelled }); }
+                            else if (d.count != null) onProgress(d.count, d.file);
+                        };
+                        es.onerror = () => {
+                            errCount += 1;
+                            if (errCount <= 2) return;
+                            finish(reject, new Error('Scan stream failed'));
+                        };
                     });
                 }
                 return api(`/scan/${encodeURIComponent(dirId)}`, { method: 'POST' });
@@ -905,6 +972,11 @@
             return { indexed: n };
         },
 
+        async cancelScan(dirId, jobId) {
+            const q = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
+            return api(`/scan/${encodeURIComponent(dirId)}/cancel${q}`, { method: 'POST' });
+        },
+
         async listFolderIndex(dirId, subpath = '') {
             if (await checkServer()) {
                 const p = new URLSearchParams();
@@ -914,7 +986,26 @@
             return { path: subpath, breadcrumb: [], subfolders: [], files_count: 0 };
         },
 
+        async queryMediaAll(opts = {}) {
+            const pageSize = 200;
+            let page = 0;
+            let items = [];
+            let total = Infinity;
+            while (items.length < total && page < 40) {
+                const res = await this.queryMedia({ ...opts, page, limit: pageSize });
+                const batch = res.items || [];
+                total = Number(res.total != null ? res.total : items.length + batch.length);
+                items = items.concat(batch);
+                if (!batch.length) break;
+                page += 1;
+            }
+            return { items, total, page: 0, limit: items.length };
+        },
+
         async queryMedia(opts = {}) {
+            const rawLimit = opts.limit == null ? 80 : Number(opts.limit);
+            const cap = Math.max(1, Math.min(2000, Number(opts.cap) || 2000));
+            const limit = Math.max(1, Math.min(cap, Number.isFinite(rawLimit) ? rawLimit : 80));
             if (await checkServer()) {
                 const p = new URLSearchParams();
                 if (opts.search) p.set('search', opts.search);
@@ -929,7 +1020,8 @@
                 if (opts.rankMin != null) p.set('rank_min', opts.rankMin);
                 if (opts.sort) p.set('sort', opts.sort);
                 if (opts.page != null) p.set('page', opts.page);
-                if (opts.limit) p.set('limit', opts.limit);
+                if (opts.pairFilter) p.set('pair_filter', opts.pairFilter);
+                p.set('limit', String(limit));
                 const res = await api(`/media?${p}`);
                 if (res.items) res.items = res.items.map(normalizeMedia);
                 return res;
@@ -939,7 +1031,6 @@
                 dirId: opts.dirId, sort: opts.sort,
             });
             const page = opts.page || 0;
-            const limit = opts.limit || 80;
             const start = page * limit;
             return { items: items.slice(start, start + limit), total: items.length, page, limit };
         },
@@ -1591,6 +1682,7 @@
                 },
                 async cancel() {
                     closed = true;
+                    try { es.close(); } catch { /* ignore */ }
                     if (!handle.jobId) return;
                     return api('/duplicates/scan/control', {
                         method: 'POST',
@@ -1599,6 +1691,8 @@
                 },
             };
             if (typeof opts.onHandle === 'function') opts.onHandle(handle);
+            const onHide = () => { closed = true; try { es.close(); } catch { /* ignore */ } };
+            try { window.addEventListener('pagehide', onHide); } catch { /* ignore */ }
             const promise = new Promise((resolve, reject) => {
                 es.onmessage = e => {
                     let d;
@@ -1614,7 +1708,8 @@
                 };
                 es.onerror = () => {
                     if (closed) return;
-                    es.close();
+                    closed = true;
+                    try { es.close(); } catch { /* ignore */ }
                     reject(new Error('Duplicate scan stream failed'));
                 };
             });
@@ -1648,6 +1743,7 @@
                 },
                 async cancel() {
                     closed = true;
+                    try { if (handle.es) handle.es.close(); } catch { /* ignore */ }
                     if (!handle.jobId) return;
                     return api('/duplicates/scan/control', {
                         method: 'POST',
@@ -1656,6 +1752,9 @@
                 },
             };
             if (typeof opts.onHandle === 'function') opts.onHandle(handle);
+            try {
+                window.addEventListener('pagehide', () => { try { handle.cancel(); } catch { /* ignore */ } });
+            } catch { /* ignore */ }
             const promise = (async () => {
                 const started = await api('/duplicates/cross-scan/start', {
                     method: 'POST',

@@ -424,8 +424,8 @@
             transition: opacity 0.3s;
         }
     </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
 </head>
 <body>
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
@@ -617,15 +617,20 @@
         <button class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-version.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-debug.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-core.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-  <script src="../shared/aitoolbox-pro.js?v=1.16.50"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-catalog-pick.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
     <script>
 
         function el(id) {
@@ -847,8 +852,10 @@
             });
         }
 
+        const catalogHold = { before: null, after: null };
         function ingestFile(slot, file, name) {
             if (!file) return;
+            if (slot === 'before' || slot === 'after') catalogHold[slot] = null;
             const st = el(`status-${slot}`);
             setText(st, `Loaded: ${name || file.name}`);
             if (st) st.style.color = 'var(--neon-accent)';
@@ -856,6 +863,7 @@
             if (slot === 'before') { fileCacheBefore = file; checkSeparateReady(); }
             else if (slot === 'after') { fileCacheAfter = file; checkSeparateReady(); }
             else processSbsFile(file);
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(fileCacheBefore && fileCacheBefore.name, fileCacheAfter && fileCacheAfter.name); } catch (_) {}
         }
 
         // --- UI toggles ---
@@ -900,10 +908,44 @@
 
         setupDropZone('dz-before', 'before', 'file-before', file => ingestFile('before', file));
         setupDropZone('dz-after', 'after', 'file-after', file => ingestFile('after', file));
+        (function attachCatalogPickImage() {
+            if (!window.AIToolboxCatalogPick || !AIToolboxCatalogPick.attach) return;
+            const ui = AIToolboxCatalogPick.attach({
+                beforeZone: '#dz-before',
+                afterZone: '#dz-after',
+                type: 'image',
+                onPick: function (slot, item) {
+                    if (!item) return;
+                    catalogHold[slot] = item;
+                    const name = item.name || 'file';
+                    const path = item.path || item.rel_path || '';
+                    if (slot === 'before') {
+                        knownBeforePath = path || knownBeforePath;
+                        fileCacheBefore = { name: name, size: item.size || 0 };
+                    } else {
+                        knownAfterPath = path || knownAfterPath;
+                        fileCacheAfter = { name: name, size: item.size || 0 };
+                    }
+                    const st = el('status-' + slot);
+                    setText(st, 'Loaded: ' + name);
+                    if (st) st.style.color = 'var(--neon-accent)';
+                    ui.setNames(catalogHold.before && catalogHold.before.name || (fileCacheBefore && fileCacheBefore.name),
+                                catalogHold.after && catalogHold.after.name || (fileCacheAfter && fileCacheAfter.name));
+                    const A = window.AIToolboxAPI;
+                    const b = catalogHold.before, a = catalogHold.after;
+                    const bUrl = b && A ? A.mediaFileUrl(b.id) : (fileCacheBefore instanceof Blob ? URL.createObjectURL(fileCacheBefore) : null);
+                    const aUrl = a && A ? A.mediaFileUrl(a.id) : (fileCacheAfter instanceof Blob ? URL.createObjectURL(fileCacheAfter) : null);
+                    if (bUrl && aUrl) {
+                        loadImagesFromUrls(bUrl, aUrl, (b && b.name) || (fileCacheBefore && fileCacheBefore.name), (a && a.name) || (fileCacheAfter && fileCacheAfter.name));
+                        ui.remember(b || catalogHold.before, a || catalogHold.after);
+                    }
+                }
+            });
+        })();
         setupDropZone('dz-sbs', 'sbs', 'file-sbs', file => processSbsFile(file));
 
         function checkSeparateReady() {
-            if (fileCacheBefore && fileCacheAfter) {
+            if (fileCacheBefore instanceof Blob && fileCacheAfter instanceof Blob) {
                 revokeLiveBlobs();
                 const urlB = trackBlob(URL.createObjectURL(fileCacheBefore));
                 const urlA = trackBlob(URL.createObjectURL(fileCacheAfter));
@@ -1257,8 +1299,11 @@
             else if (e.target.value === 'dark') { root.setProperty('--bg-color', '#0b1220'); root.setProperty('--dark-panel', '#111827'); }
             else { root.setProperty('--bg-color', '#0b0c10'); root.setProperty('--dark-panel', '#1f2833'); }
         });
+        const applyFiltersLive = (window.AIToolboxMedia && AIToolboxMedia.rafify)
+            ? AIToolboxMedia.rafify(applyImageFilters)
+            : applyImageFilters;
         ['set-sharpen', 'set-contrast', 'set-saturate'].forEach(id => {
-            document.getElementById(id).addEventListener('input', applyImageFilters);
+            document.getElementById(id).addEventListener('input', applyFiltersLive);
         });
 
         async function resolvePairUrls(pair) {
@@ -1290,6 +1335,7 @@
             if (!urlB || !urlA) { showToast('Pair URLs missing'); return; }
             setText('status-before', `Loaded: ${nameB || 'Before'}`);
             setText('status-after', `Loaded: ${nameA || 'After'}`);
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(nameB, nameA); } catch (_) {}
             const sb = el('status-before'), sa = el('status-after');
             if (sb) sb.style.color = 'var(--neon-accent)';
             if (sa) sa.style.color = 'var(--neon-accent)';
@@ -1322,14 +1368,14 @@
             const pinned = document.getElementById('chkLockPair')?.checked !== false;
             try {
                 if (await AIToolboxAPI.isOnline()) {
-                    const bq = await AIToolboxAPI.queryMedia({ search: fileCacheBefore.name, limit: 10 });
-                    const aq = await AIToolboxAPI.queryMedia({ search: fileCacheAfter.name, limit: 10 });
-                    const bm = (bq.items || []).find(m => m.name === fileCacheBefore.name);
-                    const am = (aq.items || []).find(m => m.name === fileCacheAfter.name);
                     let pair;
-                    if (bm && am) {
-                        pair = await AIToolboxAPI.savePair({
-                            name, kind: 'image', beforeMediaId: bm.id, afterMediaId: am.id, pinned,
+                    const saver = window.AIToolboxHub && AIToolboxHub.saveComparatorPair;
+                    if (saver) {
+                        pair = await saver(AIToolboxAPI, {
+                            name, kind: 'image', pinned,
+                            beforePath: knownBeforePath, afterPath: knownAfterPath,
+                            beforeName: fileCacheBefore.name, afterName: fileCacheAfter.name,
+                            beforeSize: fileCacheBefore.size, afterSize: fileCacheAfter.size,
                         });
                     } else if (knownBeforePath && knownAfterPath) {
                         pair = await AIToolboxAPI.savePairFromPaths({
@@ -1421,11 +1467,12 @@
                 const p = normalizePair(pair);
                 const div = document.createElement('div');
                 div.className = 'pair-item' + (p.id === activePairId ? ' active' : '') + (p.pinned ? ' pinned' : '');
-                const code = p.pairCode ? `<div class="pair-code">${p.pinned ? '★ ' : ''}${p.pairCode}</div>` : '';
+                const eh = escapeHtml;
+                const code = p.pairCode ? `<div class="pair-code">${p.pinned ? '★ ' : ''}${eh(p.pairCode)}</div>` : '';
                 div.innerHTML = `
                     ${code}
-                    <div class="pair-name">${p.name}</div>
-                    <div class="pair-files">B: ${p.beforeName || '—'}<br>A: ${p.afterName || '—'}</div>
+                    <div class="pair-name">${eh(p.name)}</div>
+                    <div class="pair-files">B: ${eh(p.beforeName || '—')}<br>A: ${eh(p.afterName || '—')}</div>
                     <div class="pair-actions">
                         <button class="btn load-btn">Load</button>
                         <button class="btn pin-btn">${p.pinned ? 'Unpin' : 'Pin'}</button>
@@ -1525,7 +1572,7 @@
       const btn = document.getElementById('tbBtnStartServer');
       const hint = document.getElementById('tbServerHint');
       async function refresh(){
-        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(false, 1500) : false;
         pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
         pill.style.color = on ? '#4ade80' : '#fbbf24';
         btn.style.display = on ? 'none' : '';
@@ -1540,7 +1587,8 @@
         if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
       };
       pill.onclick = () => btn.click();
-      refresh(); setInterval(refresh, 8000);
+      if (window.AIToolboxMedia && AIToolboxMedia.watchServer) AIToolboxMedia.watchServer(refresh);
+      else { refresh(); setInterval(refresh, 20000); }
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);

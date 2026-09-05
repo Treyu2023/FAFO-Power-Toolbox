@@ -286,8 +286,8 @@
         .slider-line { width: 2px; }
         .collapse-tab { font-family: inherit; }
     </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
 </head>
 <body data-fx="none">
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
@@ -475,14 +475,19 @@
         <button type="button" class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-version.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-debug.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-core.js?v=1.16.50"></script>
-  <script src="../shared/aitoolbox-pro.js?v=1.16.50"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-catalog-pick.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
     <script>
         const DB_NAME = 'AIVideoComparator';
         const DB_VER = 1;
@@ -720,12 +725,15 @@
             document.getElementById(slot === 'before' ? 'file-before' : 'file-after').click();
         }
 
+        const catalogHold = { before: null, after: null };
         function ingestFile(slot, file, name, handle) {
+            catalogHold[slot] = null;
             const st = document.getElementById(`status-${slot}`);
             st.innerText = `Loaded: ${name || file.name}`;
             st.style.color = 'var(--neon-accent)';
             if (slot === 'before') { fileCacheBefore = file; handleBefore = handle || null; checkReady(); }
             else { fileCacheAfter = file; handleAfter = handle || null; checkReady(); }
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(fileCacheBefore && fileCacheBefore.name, fileCacheAfter && fileCacheAfter.name); } catch (_) {}
         }
 
         // --- Pair Library (persisted on server when online) ---
@@ -766,14 +774,14 @@
 
             try {
                 if (await AIToolboxAPI.isOnline()) {
-                    const bq = await AIToolboxAPI.queryMedia({ search: fileCacheBefore.name, limit: 10 });
-                    const aq = await AIToolboxAPI.queryMedia({ search: fileCacheAfter.name, limit: 10 });
-                    const bm = (bq.items || []).find(m => m.name === fileCacheBefore.name);
-                    const am = (aq.items || []).find(m => m.name === fileCacheAfter.name);
                     let pair;
-                    if (bm && am) {
-                        pair = await AIToolboxAPI.savePair({
-                            name, kind: 'video', beforeMediaId: bm.id, afterMediaId: am.id, pinned,
+                    const saver = window.AIToolboxHub && AIToolboxHub.saveComparatorPair;
+                    if (saver) {
+                        pair = await saver(AIToolboxAPI, {
+                            name, kind: 'video', pinned,
+                            beforePath: knownBeforePath, afterPath: knownAfterPath,
+                            beforeName: fileCacheBefore.name, afterName: fileCacheAfter.name,
+                            beforeSize: fileCacheBefore.size, afterSize: fileCacheAfter.size,
                         });
                     } else if (knownBeforePath && knownAfterPath) {
                         pair = await AIToolboxAPI.savePairFromPaths({
@@ -1142,8 +1150,10 @@
             } catch (e) { console.warn(e); }
         }
 
+        let audioFxRaf = 0;
         function audioFXLoop() {
-            requestAnimationFrame(audioFXLoop);
+            audioFxRaf = requestAnimationFrame(audioFXLoop);
+            if (document.hidden) return;
             const mode = document.body.getAttribute('data-fx');
             if (!audioCtx || !elAfter || elAfter.paused || mode === 'none') {
                 document.documentElement.style.setProperty('--audio-mult', 1);
@@ -1184,7 +1194,7 @@
         });
         window.addEventListener('pagehide', tearDownVideos);
 
-        function checkReady() { if (fileCacheBefore && fileCacheAfter) loadVideos(fileCacheBefore, fileCacheAfter); }
+        function checkReady() { if (fileCacheBefore instanceof Blob && fileCacheAfter instanceof Blob) loadVideos(fileCacheBefore, fileCacheAfter); }
 
         function loadVideosFromUrls(urlB, urlA, nameB, nameA) {
             tearDownVideos();
@@ -1212,6 +1222,7 @@
             boxAfter.appendChild(elAfter);
             document.getElementById('status-before').innerText = `Loaded: ${nameB || 'Before'}`;
             document.getElementById('status-after').innerText = `Loaded: ${nameA || 'After'}`;
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(nameB, nameA); } catch (_) {}
         }
 
         function loadVideos(fileB, fileA) {
@@ -1385,14 +1396,26 @@
             else { elAfter.pause(); elBefore.pause(); }
         });
 
+        const applyTimeline = (window.AIToolboxMedia && AIToolboxMedia.rafify)
+            ? AIToolboxMedia.rafify(() => {
+                if (!elAfter || !elBefore || !elAfter.duration) return;
+                const t = (timeline.value / 100) * elAfter.duration;
+                elAfter.currentTime = t;
+                elBefore.currentTime = t;
+                formatTime();
+            })
+            : (() => {
+                if (!elAfter || !elBefore || !elAfter.duration) return;
+                const t = (timeline.value / 100) * elAfter.duration;
+                elAfter.currentTime = t;
+                elBefore.currentTime = t;
+                formatTime();
+            });
         timeline.addEventListener('input', () => {
             if (!elAfter || !elBefore || !elAfter.duration) return;
             isTimelineDragging = true;
             stopReversePlay();
-            const t = (timeline.value / 100) * elAfter.duration;
-            elAfter.currentTime = t;
-            elBefore.currentTime = t;
-            formatTime();
+            applyTimeline();
         });
         timeline.addEventListener('change', () => isTimelineDragging = false);
 
@@ -1427,7 +1450,9 @@
                 e.target.classList.add('active');
                 document.getElementById('btn-play').innerText = 'Play';
                 let last = performance.now();
-                reverseInterval = setInterval(() => {
+                const stepRev = () => {
+                    if (!reverseInterval) return;
+                    if (document.hidden) { reverseInterval = requestAnimationFrame(stepRev); return; }
                     const dt = (performance.now() - last) / 1000;
                     last = performance.now();
                     let t = elAfter.currentTime - dt * parseFloat(document.getElementById('sel-speed').value);
@@ -1436,13 +1461,15 @@
                     elBefore.currentTime = t;
                     timeline.value = (t / elAfter.duration) * 100;
                     formatTime();
-                }, 1000 / 60);
+                    reverseInterval = requestAnimationFrame(stepRev);
+                };
+                reverseInterval = requestAnimationFrame(stepRev);
             }
         });
 
         function stopReversePlay() {
             if (reverseInterval) {
-                clearInterval(reverseInterval);
+                try { cancelAnimationFrame(reverseInterval); } catch (_) { try { clearInterval(reverseInterval); } catch (__) {} }
                 reverseInterval = null;
                 document.getElementById('btn-rev-play').classList.remove('active');
             }
@@ -1689,6 +1716,40 @@
             showToast('Screenshot saved!');
         });
 
+        (function attachCatalogPickVideo() {
+            if (!window.AIToolboxCatalogPick || !AIToolboxCatalogPick.attach) return;
+            const ui = AIToolboxCatalogPick.attach({
+                beforeZone: '#dz-before',
+                afterZone: '#dz-after',
+                type: 'video',
+                onPick: function (slot, item) {
+                    if (!item) return;
+                    catalogHold[slot] = item;
+                    const name = item.name || 'file';
+                    const path = item.path || item.rel_path || '';
+                    if (slot === 'before') {
+                        knownBeforePath = path || knownBeforePath;
+                        fileCacheBefore = { name: name, size: item.size || 0 };
+                    } else {
+                        knownAfterPath = path || knownAfterPath;
+                        fileCacheAfter = { name: name, size: item.size || 0 };
+                    }
+                    const st = document.getElementById('status-' + slot);
+                    if (st) { st.innerText = 'Loaded: ' + name; st.style.color = 'var(--neon-accent)'; }
+                    ui.setNames(catalogHold.before && catalogHold.before.name || (fileCacheBefore && fileCacheBefore.name),
+                                catalogHold.after && catalogHold.after.name || (fileCacheAfter && fileCacheAfter.name));
+                    const A = window.AIToolboxAPI;
+                    const b = catalogHold.before, a = catalogHold.after;
+                    const bUrl = b && A ? A.mediaFileUrl(b.id) : (fileCacheBefore instanceof Blob ? URL.createObjectURL(fileCacheBefore) : null);
+                    const aUrl = a && A ? A.mediaFileUrl(a.id) : (fileCacheAfter instanceof Blob ? URL.createObjectURL(fileCacheAfter) : null);
+                    if (bUrl && aUrl) {
+                        loadVideosFromUrls(bUrl, aUrl, (b && b.name) || (fileCacheBefore && fileCacheBefore.name), (a && a.name) || (fileCacheAfter && fileCacheAfter.name));
+                        ui.remember(b || catalogHold.before, a || catalogHold.after);
+                    }
+                }
+            });
+        })();
+
         // --- Keyboard shortcuts ---
         document.addEventListener('keydown', e => {
             const tag = (e.target.tagName || '').toUpperCase();
@@ -1748,7 +1809,7 @@
       const btn = document.getElementById('tbBtnStartServer');
       const hint = document.getElementById('tbServerHint');
       async function refresh(){
-        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(true) : false;
+        const on = window.AIToolboxAPI ? await AIToolboxAPI.isOnline(false, 1500) : false;
         pill.textContent = on ? ('● Online @ ' + ep()) : '○ Offline — click Start';
         pill.style.color = on ? '#4ade80' : '#fbbf24';
         btn.style.display = on ? 'none' : '';
@@ -1763,7 +1824,8 @@
         if (!r.ok) alert('Start failed — try START SERVER.bat in the toolbox folder');
       };
       pill.onclick = () => btn.click();
-      refresh(); setInterval(refresh, 8000);
+      if (window.AIToolboxMedia && AIToolboxMedia.watchServer) AIToolboxMedia.watchServer(refresh);
+      else { refresh(); setInterval(refresh, 20000); }
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureBar);
