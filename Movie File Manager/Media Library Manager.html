@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Library Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.0">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.0">
     <style>
         :root {
             --bg: #070b12; --panel: #10161f; --panel2: #161d28;
@@ -1540,15 +1540,16 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-version.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-debug.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-core.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-    <script src="../shared/fafo-ops-stats.js?v=1.16.50"></script>
-<script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
-  <script src="../shared/aitoolbox-pro.js?v=1.16.50"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.0"></script>
     <script>
         function el(id) {
             try {
@@ -4542,7 +4543,16 @@
         renderTagPresetButtons();
         bind(el('btnRescan'), 'click', rescanAll);
         bind(el('btnSaveDetail'), 'click', saveDetail);
-        els.searchInput?.addEventListener('input', () => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); });
+        const _onSearchInput = (window.AIToolboxRuntime && typeof window.AIToolboxRuntime.debounce === 'function')
+            ? window.AIToolboxRuntime.debounce(() => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); }, 280)
+            : (function () {
+                let _searchTimer = 0;
+                return () => {
+                    clearTimeout(_searchTimer);
+                    _searchTimer = setTimeout(() => { page = 0; activePlaylist = null; if (dupMode) exitDupMode(); else applyFilters(); }, 280);
+                };
+            })();
+        els.searchInput?.addEventListener('input', _onSearchInput);
         els.filterType?.addEventListener('change', () => { page = 0; activePlaylist = null; applyFilters(); });
         els.sortBy?.addEventListener('change', () => { page = 0; applyFilters(); });
         els.groupBy?.addEventListener('change', () => { page = 0; applyFilters(); });

@@ -711,7 +711,8 @@
       // content height on every save froze panels and made neighbors shrink.
       if (type === 'rows' && p.getAttribute('data-fafo-sized') !== '1') return;
       const rect = p.getBoundingClientRect();
-      const px = type === 'columns' ? rect.width : rect.height;
+      const scale = readUiScale() || 1;
+      const px = (type === 'columns' ? rect.width : rect.height) / scale;
       if (px > 0) sizes[id] = Math.round(px);
     });
     const sections = {};
@@ -729,7 +730,7 @@
         if (s.getAttribute('data-fafo-resizable') !== '1') return;
         if (s.getAttribute('data-fafo-user-sized') !== '1') return;
         if (s.getAttribute('data-fafo-collapsed') === '1') return;
-        const h = Math.round(s.getBoundingClientRect().height);
+        const h = Math.round(s.getBoundingClientRect().height / (readUiScale() || 1));
         if (sid && h > 0) sectionHeights[sid] = h;
       });
     });
@@ -1693,6 +1694,9 @@
       }
     }
     const save = debounce(saveNow, 180);
+    let onResize = null;
+    let flush = null;
+    let onVis = null;
 
     const api = {
       appId,
@@ -1809,26 +1813,18 @@
         toast(on ? 'Section collapsed' : 'Section expanded');
       },
       destroy() {
+        if (onResize) try { window.removeEventListener('resize', onResize); } catch (_) {}
+        if (flush) {
+          try { window.removeEventListener('pagehide', flush); } catch (_) {}
+          try { window.removeEventListener('beforeunload', flush); } catch (_) {}
+        }
+        if (onVis) try { document.removeEventListener('visibilitychange', onVis); } catch (_) {}
         instances.delete(appId);
       },
     };
 
     function rebindAll() {
-      // re-query handles after DOM reorder
-      root.querySelectorAll('.fafo-split-handle').forEach((h) => {
-        h._fafoBound = false;
-      });
-      root.querySelectorAll('.fafo-section-resize').forEach((h) => {
-        h._fafoBound = false;
-      });
-      panelEls(root).forEach((p) => {
-        const c = p.querySelector(':scope > .fafo-panel-chrome');
-        if (c) c._fafoDrag = false;
-        sectionEls(p).forEach((s) => {
-          const sc = s.querySelector(':scope > .fafo-section-chrome');
-          if (sc) sc._fafoDrag = false;
-        });
-      });
+      // Do not clear _fafoBound / _fafoDrag — those flags are the listener guard.
       bindSplitResize(root, opts, save);
       bindSectionResize(root, save);
       bindPanelDrag(root, opts, save, rebindAll);
@@ -1888,10 +1884,7 @@
     ensureFloatingToolbar(appId, api);
 
     // Persist when window resizes (flex panels change absolute sizes)
-    window.addEventListener(
-      'resize',
-      debounce(() => {
-        // Re-clamp if viewport shrank under a huge saved panel
+    onResize = debounce(() => {
         pinViewport(root);
         const cur = sanitizeState(root, captureState(root, opts), opts);
         applyState(root, cur, opts);
@@ -1899,20 +1892,16 @@
         wireResets();
         markScrollPanes(root);
         saveNow();
-      }, 400)
-    );
+      }, 400);
+    window.addEventListener('resize', onResize);
 
-    // Always remember last position — flush on leave / hide
-    const flush = () => {
-      try {
-        saveNow();
-      } catch (_) { /* ignore */ }
+    flush = () => {
+      try { saveNow(); } catch (_) { /* ignore */ }
     };
+    onVis = () => { if (document.hidden) flush(); };
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', flush);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) flush();
-    });
+    document.addEventListener('visibilitychange', onVis);
 
     instances.set(appId, api);
     return api;

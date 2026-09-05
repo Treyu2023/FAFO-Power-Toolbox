@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duplicate File Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.0">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.0">
     <style>
         :root {
             --bg: #0a0e14; --panel: #121820; --panel2: #0d1218;
@@ -583,15 +583,16 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-version.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-debug.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-core.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-    <script src="../shared/fafo-ops-stats.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
-  <script src="../shared/aitoolbox-pro.js?v=1.16.50"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.0"></script>
     <script>
 
         function el(id){try{if(!id)return null;return typeof id==='string'?document.getElementById(id):id}catch(_){return null}}
@@ -1085,8 +1086,35 @@
                 result: scanResult,
             };
             const raw = JSON.stringify(payload);
-            ssSet(LS_DUP_SCAN, raw);
-            lsSet(LS_DUP_SCAN, raw);
+            const MAX = 1.5 * 1024 * 1024;
+            if (raw.length > MAX) {
+                const summary = {
+                    v: 1,
+                    savedAt: payload.savedAt,
+                    folder: payload.folder,
+                    types: payload.types,
+                    match: payload.match,
+                    deep: payload.deep,
+                    recursive: payload.recursive,
+                    wholeSystem: payload.wholeSystem,
+                    activeGroupIndex,
+                    keeperPath,
+                    summaryOnly: true,
+                    result: {
+                        scanned: scanResult.scanned,
+                        duplicate_groups: scanResult.duplicate_groups || (scanResult.groups || []).length,
+                        wasted_bytes: scanResult.wasted_bytes,
+                        groups: [],
+                        folder: scanResult.folder,
+                    },
+                };
+                const small = JSON.stringify(summary);
+                ssSet(LS_DUP_SCAN, small);
+                lsSet(LS_DUP_SCAN, small);
+            } else {
+                ssSet(LS_DUP_SCAN, raw);
+                lsSet(LS_DUP_SCAN, raw);
+            }
             const pill = el('persistPill');
             if (pill) {
                 pill.style.display = '';
@@ -1398,7 +1426,7 @@
             setText('statSelected', activeGroupIndex >= 0 ? `#${activeGroupIndex + 1}` : '—');
         }
 
-        function renderGroups() {
+        function renderGroupsNow() {
             const wrap = el('groupsWrap');
             if (!wrap) return;
             const groups = scanResult?.groups || [];
@@ -1464,6 +1492,26 @@
                     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectGroup(Number(card.dataset.index)); }
                 };
             });
+        }
+
+        let _rgLast = 0;
+        let _rgTimer = null;
+        const _rgThrottled = (window.AIToolboxRuntime && typeof window.AIToolboxRuntime.throttle === 'function')
+            ? window.AIToolboxRuntime.throttle(function () { renderGroupsNow(); }, 250)
+            : null;
+        function renderGroups() {
+            if (scanning) {
+                if (_rgThrottled) return _rgThrottled();
+                const now = Date.now();
+                const wait = 250 - (now - _rgLast);
+                if (wait > 0) {
+                    if (_rgTimer) return;
+                    _rgTimer = setTimeout(() => { _rgTimer = null; _rgLast = Date.now(); renderGroupsNow(); }, wait);
+                    return;
+                }
+                _rgLast = now;
+            }
+            renderGroupsNow();
         }
 
         function selectGroup(index, opts) {

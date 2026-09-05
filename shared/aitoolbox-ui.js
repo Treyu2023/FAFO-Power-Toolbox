@@ -175,15 +175,15 @@
             bg.className = 'ui-modal-bg';
             const previewHtml = preview.length
                 ? `<div class="preview-list">${preview.slice(0, 8).map(p =>
-                    `<div><span style="color:#888">${p.from}</span> → <span style="color:var(--ui-accent)">${p.to}</span></div>`
+                    `<div><span style="color:#888">${escapeHtml(p.from)}</span> → <span style="color:var(--ui-accent)">${escapeHtml(p.to)}</span></div>`
                 ).join('')}${preview.length > 8 ? `<div style="color:#666">…and ${preview.length - 8} more</div>` : ''}</div>`
                 : '';
 
             const trustChecked = trustDefaultChecked ? ' checked' : '';
             bg.innerHTML = `
                 <div class="ui-modal">
-                    <h3>${title}</h3>
-                    <div class="ui-modal-body">${body}${safetyHtml}</div>
+                    <h3>${escapeHtml(title)}</h3>
+                    <div class="ui-modal-body">${escapeHtml(body)}${safetyHtml}</div>
                     ${previewHtml}
                     ${trustKey ? `<label class="trust-row"><input type="checkbox" id="ui-trust-cb"${trustChecked}> ${trustLabel}</label>` : ''}
                     <div class="ui-modal-actions">
@@ -250,8 +250,8 @@
 
         card.innerHTML = `
             <div class="ui-tutorial-progress">${dots}</div>
-            <h4>${step.title}</h4>
-            <p>${step.body}</p>
+            <h4>${escapeHtml(step.title)}</h4>
+            <p>${escapeHtml(step.body)}</p>
             <div class="ui-tutorial-actions">
                 <button class="ui-btn ghost" id="tut-skip">Skip tour</button>
                 <div style="display:flex;gap:8px">
@@ -937,13 +937,20 @@
      * Fetch JSON from toolbox API with clearer offline errors.
      */
     async function apiFetch(path, opts = {}) {
+        if (global.AIToolboxAPI && typeof global.AIToolboxAPI.api === 'function' && !/^https?:/i.test(String(path || ''))) {
+            return global.AIToolboxAPI.api(path, { timeoutMs: 30000, ...opts });
+        }
         const base = getApiBase();
         const url = path.startsWith('http') ? path : base + path;
         let r;
         try {
+            const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
+                ? AbortSignal.timeout(opts.timeoutMs || 30000)
+                : undefined;
             r = await fetch(url, {
                 headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
                 ...opts,
+                signal: opts.signal || ctrl,
             });
         } catch (e) {
             const err = new Error('Server offline — use ▶ Start Server (backend ' + (
@@ -1202,7 +1209,7 @@
                 if (window.self !== window.top) {
                     e.preventDefault();
                     e.stopPropagation();
-                    window.parent.postMessage({ type: 'fafo-escape', href: launcherHref() }, '*');
+                    window.parent.postMessage({ type: 'fafo-escape', href: launcherHref() }, location.origin);
                     return;
                 }
             } catch { /* cross-origin — fall through to local leave */ }
@@ -1255,15 +1262,15 @@
         try {
             if (window.self !== window.top) {
                 if (info.kind === 'media' && info.tab) {
-                    window.parent.postMessage({ type: 'fafo-hub-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                    window.parent.postMessage({ type: 'fafo-hub-tab', tab: info.tab, search: info.search, href: info.href }, location.origin);
                     return;
                 }
                 if (info.kind === 'compare' && info.tab) {
-                    window.parent.postMessage({ type: 'fafo-compare-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                    window.parent.postMessage({ type: 'fafo-compare-tab', tab: info.tab, search: info.search, href: info.href }, location.origin);
                     return;
                 }
                 try { window.top.location.href = info.href; return; } catch { /* cross-origin */ }
-                window.parent.postMessage({ type: 'fafo-escape', href: info.href }, '*');
+                window.parent.postMessage({ type: 'fafo-escape', href: info.href }, location.origin);
                 return;
             }
         } catch { /* ignore */ }
@@ -1376,7 +1383,7 @@
                     if (m) return decodeURIComponent(m[1]);
                 }
             } catch (_) { /* ignore */ }
-            return '1.16.47';
+            return String(global.AITOOLBOX_VERSION || '3.0.0');
         }
 
         function withCacheBust(url) {
