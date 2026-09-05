@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guided Pair Match — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.6">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.6">
   <style>
     :root {
       --bg: #0b1220; --panel: #121a28; --border: rgba(0,229,255,.28);
@@ -445,6 +445,48 @@
     }
     .empty-cta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 
+    .pid-strip {
+      background: rgba(245,200,76,.07);
+      border: 1px solid rgba(245,200,76,.34);
+      border-radius: 10px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+    }
+    body.is-matching .pid-strip { padding: 6px 10px; margin-bottom: 4px; }
+    .pid-strip-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .pid-badge {
+      font: 800 10px Consolas, monospace;
+      color: #1a1200;
+      background: var(--gold);
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: .05em;
+    }
+    .pid-list { max-height: 172px; overflow: auto; margin-top: 6px; }
+    body.is-matching .pid-list { max-height: 96px; }
+    .pid-row {
+      display: grid;
+      grid-template-columns: 92px minmax(0,1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 2px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      font-size: 12px;
+    }
+    .pid-row.ambiguous { opacity: .9; }
+    .pid-hex { font: 700 11px Consolas, monospace; color: var(--gold); }
+    .pid-names { min-width: 0; overflow: hidden; }
+    .pid-names .from, .pid-names .to {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .pid-names .to { color: var(--accent2); }
+    .pid-empty { font-size: 11px; color: var(--muted); padding: 6px 0 2px; }
+    .score.pid {
+      color: #1a1200;
+      background: var(--gold);
+      border-color: var(--gold);
+    }
+
     @media (max-width: 1100px) {
       .pip-canvas-wrap { height: 110px; }
       #activeUI { height: calc(100vh - var(--legend-h) - 100px); }
@@ -541,6 +583,7 @@
         Tip: set both folders for VSR-style pairing. Matching only looks in After for each Before file.
         <strong style="color:var(--warn)">Same size = duplicate, not a pair</strong> — after must be larger.
         Stage-2 intermediates (huge leftovers) are skipped; matching learns from locked pairs.
+        Files stamped with <code>_PID_xxxxxxxx</code> auto-link first — Approve each, or Trust all unique 1:1 matches.
       </div>
       <div id="learnPanel" style="width:100%;margin-top:8px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-radius:10px;padding:8px 12px;font-size:11px;line-height:1.45">
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:4px">
@@ -562,6 +605,21 @@
         <button type="button" class="preset-chip" data-preset="video" title="Video only">Video only</button>
         <button type="button" class="preset-chip" data-preset="image" title="Image only">Image only</button>
       </div>
+    </div>
+
+    <div class="pid-strip" id="pidStrip">
+      <div class="pid-strip-h">
+        <span class="pid-badge">PID</span>
+        <strong style="font-size:12px">Auto-link by pair id</strong>
+        <span id="pidStats" style="font-size:11px;color:var(--muted)">Finds files that share <code>_PID_xxxxxxxx</code></span>
+        <button type="button" class="ui-btn ghost" id="btnPidRefresh" style="padding:4px 8px;font-size:11px"
+                data-tip-title="Find PIDs" data-tip="Scan the catalog for matching _PID_xxxxxxxx stamps.">↻ Find PIDs</button>
+        <button type="button" class="ui-btn primary" id="btnPidTrust" style="padding:4px 10px;font-size:11px;margin-left:auto" disabled
+                data-tip-title="Trust all unique (T)"
+                data-tip-basic="Lock every unique 1:1 PID match without reviewing each one."
+                data-tip-pro="POST /pairs/trust-pids — unique groups only. Ambiguous 3+ groups stay for Approve.">Trust all unique</button>
+      </div>
+      <div id="pidList" class="pid-list"></div>
     </div>
 
     <div class="progress" id="progressBox">
@@ -749,6 +807,14 @@
         <div class="key-glyph"><kbd>Y</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>⏎</kbd></div>
         <div class="key-label">Match</div>
       </div>
+      <div class="key-chip clickable" data-action="pid-approve" data-keys="p" title="Approve this PID match (or jump to the PID candidate)">
+        <div class="key-glyph"><kbd>P</kbd></div>
+        <div class="key-label">Approve PID</div>
+      </div>
+      <div class="key-chip clickable" data-action="pid-trust" data-keys="t" title="Trust all unique 1:1 PID matches">
+        <div class="key-glyph"><kbd>T</kbd></div>
+        <div class="key-label">Trust all PIDs</div>
+      </div>
       <div class="key-chip clickable" data-action="reject" data-keys="n,x,arrowright" title="Reject this candidate">
         <div class="key-glyph"><kbd>N</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>X</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>→</kbd></div>
         <div class="key-label">Not this</div>
@@ -780,16 +846,16 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-runtime.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.0.6"></script>
+  <script src="../shared/fafo-ops-stats.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.6"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -1952,10 +2018,11 @@
       setText('pairTitle', `${cand.before_name || '?'}  →  ${cand.after_name || '?'}`);
       const pill = el('scorePill');
       if (pill) {
-        pill.textContent = scoreLabel(cand.confidence);
-        pill.className = 'score ' + scoreClass(cand.confidence);
+        const isPid = !!(cand.pid || String(cand.reason || '').startsWith('pid'));
+        pill.textContent = (isPid ? 'PID · ' : '') + scoreLabel(cand.confidence);
+        pill.className = 'score ' + (isPid ? 'pid' : scoreClass(cand.confidence));
       }
-      setText('reasonVal', (cand.reason || '—') + ' · roles: before/after proposed');
+      setText('reasonVal', (cand.reason || '—') + (cand.pid ? ' · PID ' + cand.pid : '') + ' · roles: before/after proposed');
       setText('rolesVal', `Before: ${cand.before_name || '—'} · After: ${cand.after_name || '—'}`);
       setText('typeVal', cand.type || anchor.type || '—');
       fillUniformMeta(anchor, cand);
@@ -1981,6 +2048,7 @@
       let cands = data?.candidates || [];
       if (fo.requireLarger) {
         cands = cands.filter((c) => {
+          if (c.pid || String(c.reason || '').startsWith('pid')) return true;
           const a = Number(c.anchor_size || anchor.size || 0);
           const b = Number(c.candidate_size || 0);
           if (a > 0 && b > 0 && b <= a) return false;
@@ -2029,6 +2097,173 @@
       });
     }
 
+    let pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
+
+    function pidFolderOpts() {
+      const fo = folderOpts();
+      const kind = el('kindFilter')?.value || null;
+      return {
+        kind: kind || undefined,
+        beforeDirId: fo.beforeDirId || undefined,
+        afterDirId: fo.afterDirId || undefined,
+        limit: 400,
+      };
+    }
+
+    function renderPidStrip() {
+      const list = el('pidList');
+      const stats = el('pidStats');
+      const trustBtn = el('btnPidTrust');
+      const rows = pidState.matches || [];
+      const u = pidState.uniqueCount || 0;
+      const a = pidState.ambiguousCount || 0;
+      if (stats) {
+        stats.textContent = rows.length
+          ? `${u} unique · ${a} need a look · ${rows.length} PID group${rows.length === 1 ? '' : 's'}`
+          : 'No shared _PID_xxxxxxxx stamps in unpaired catalog files';
+      }
+      if (trustBtn) trustBtn.disabled = u < 1;
+      if (!list) return;
+      if (!rows.length) {
+        list.innerHTML = '<div class="pid-empty">Start the server, then Find PIDs. Unique 1:1 matches can Trust all — ambiguous groups stay for Approve.</div>';
+        return;
+      }
+      list.innerHTML = rows.map((m) => {
+        const hex = esc(m.pid || '');
+        const uniq = !!m.unique;
+        return `<div class="pid-row${uniq ? '' : ' ambiguous'}" data-pid="${hex}">
+          <span class="pid-hex" title="${uniq ? 'Unique 1:1' : (m.members || '?') + ' files share this PID'}">${hex}${uniq ? '' : ' · ' + (m.members || '?')}</span>
+          <div class="pid-names">
+            <div class="from">${esc(m.before_name || '')}</div>
+            <div class="to">${esc(m.after_name || '')}</div>
+          </div>
+          <button type="button" class="ui-btn primary" data-pid-approve="${hex}" style="padding:4px 10px;font-size:11px">Approve</button>
+          <button type="button" class="ui-btn ghost" data-pid-skip="${hex}" style="padding:4px 10px;font-size:11px">Skip</button>
+        </div>`;
+      }).join('');
+    }
+
+    async function loadPidMatches() {
+      const api = API();
+      if (!api?.listPidMatches) {
+        pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
+        renderPidStrip();
+        return pidState;
+      }
+      try {
+        if (!(await api.isOnline?.(false, 1500))) {
+          pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
+          renderPidStrip();
+          const stats = el('pidStats');
+          if (stats) stats.textContent = 'Server offline — start it to find PID matches';
+          return pidState;
+        }
+        const data = await api.listPidMatches(pidFolderOpts());
+        pidState = {
+          matches: data.matches || [],
+          uniqueCount: data.unique_count || 0,
+          ambiguousCount: data.ambiguous_count || 0,
+        };
+        renderPidStrip();
+        return pidState;
+      } catch (e) {
+        pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
+        renderPidStrip();
+        const stats = el('pidStats');
+        if (stats) stats.textContent = e.message || String(e);
+        return pidState;
+      }
+    }
+
+    async function approvePidRow(pidHex, { silent } = {}) {
+      const row = (pidState.matches || []).find((m) => String(m.pid || '').toLowerCase() === String(pidHex || '').toLowerCase());
+      if (!row) return false;
+      if (busy) return false;
+      busy = true;
+      try {
+        const r = await API()?.trustPidMatches?.({
+          pids: [row.pid],
+          includeAmbiguous: !row.unique,
+          pin: true,
+          ...pidFolderOpts(),
+        });
+        const n = r?.created || 0;
+        if (!n) throw new Error('Could not lock PID ' + row.pid);
+        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== row.pid);
+        pidState.uniqueCount = (pidState.matches || []).filter((m) => m.unique).length;
+        pidState.ambiguousCount = (pidState.matches || []).filter((m) => !m.unique).length;
+        state.matched += n;
+        renderPidStrip();
+        if (!silent) toast('PID ' + row.pid + ' locked', 'ok');
+        logLine('PID MATCH ' + row.before_name + ' ↔ ' + row.after_name + ' (' + row.pid + ')');
+        try { refreshLearnPanel(); } catch (_) {}
+        return true;
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+        return false;
+      } finally {
+        busy = false;
+      }
+    }
+
+    async function trustAllPids() {
+      const n = pidState.uniqueCount || 0;
+      if (n < 1) {
+        toast('No unique PID matches to trust', 'warn');
+        return;
+      }
+      let ok = false;
+      if (UI()?.confirmAction) {
+        const conf = await UI().confirmAction({
+          title: 'Trust all unique PID matches?',
+          body: `<strong>${n}</strong> unique <code>_PID_xxxxxxxx</code> pair${n === 1 ? '' : 's'} will lock as catalog pairs. Ambiguous groups (3+ files) stay for Approve.`,
+          confirmText: `Trust ${n}`,
+          cancelText: 'Cancel',
+          showSafetyNote: true,
+        });
+        ok = !!conf?.confirmed;
+      } else {
+        ok = window.confirm('Lock ' + n + ' unique PID pair(s)?');
+      }
+      if (!ok) return;
+      if (busy) return;
+      busy = true;
+      const trustBtn = el('btnPidTrust');
+      if (trustBtn) trustBtn.disabled = true;
+      try {
+        const r = await API()?.trustPidMatches?.({
+          pin: true,
+          includeAmbiguous: false,
+          ...pidFolderOpts(),
+        });
+        const created = r?.created || 0;
+        state.matched += created;
+        toast('Trusted ' + created + ' PID pair' + (created === 1 ? '' : 's'), created ? 'ok' : 'warn');
+        logLine('TRUST PID · ' + created + ' locked');
+        await loadPidMatches();
+        try { refreshLearnPanel(); } catch (_) {}
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      } finally {
+        busy = false;
+        renderPidStrip();
+      }
+    }
+
+    function approveCurrentPid() {
+      const cand = currentCandidate();
+      if (cand && (cand.pid || String(cand.reason || '').startsWith('pid'))) {
+        runAction('match');
+        return;
+      }
+      const first = (pidState.matches || [])[0];
+      if (first?.pid) {
+        approvePidRow(first.pid);
+        return;
+      }
+      toast('No PID match on this candidate', 'warn');
+    }
+
     async function startQueue(forceReload) {
       return withBusy(async () => {
       const btnStart = el('btnStart');
@@ -2075,6 +2310,7 @@
         ].join(' → ');
         logLine(`Loaded ${state.anchors.length} unpaired anchors (${scope})`);
         toast(`${state.anchors.length} unpaired · ${scope}`, 'ok');
+        loadPidMatches().catch(() => {});
         await loadCandidatesForAnchor();
       } catch (e) {
         toast(e.message || String(e), 'warn');
@@ -2098,7 +2334,9 @@
         name: `${cand.before_name} ↔ ${cand.after_name}`,
         kind: cand.type || anchor.type || 'video',
         pinned: true,
-        notes: 'guided-pair-match',
+        notes: (cand.pid || String(cand.reason || '').startsWith('pid'))
+          ? ('guided-pair-match · pid ' + (cand.pid || ''))
+          : 'guided-pair-match',
       };
       try {
         const pair = await API()?.savePair(pairPayload);
@@ -2420,10 +2658,31 @@
       }
       else if (action === 'undo') requestBack();
       else if (action === 'redo') redoSteps(1);
+      else if (action === 'pid-approve') approveCurrentPid();
+      else if (action === 'pid-trust') trustAllPids();
     }
 
     // Wire buttons
     bind('btnStart', 'click', () => startQueue(false));
+    bind('btnPidRefresh', 'click', () => loadPidMatches());
+    bind('btnPidTrust', 'click', () => trustAllPids());
+    bind('pidList', 'click', (e) => {
+      const approve = e.target.closest('[data-pid-approve]');
+      if (approve) {
+        e.preventDefault();
+        approvePidRow(approve.getAttribute('data-pid-approve'));
+        return;
+      }
+      const skip = e.target.closest('[data-pid-skip]');
+      if (skip) {
+        e.preventDefault();
+        const hex = skip.getAttribute('data-pid-skip');
+        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== hex);
+        pidState.uniqueCount = (pidState.matches || []).filter((m) => m.unique).length;
+        pidState.ambiguousCount = (pidState.matches || []).filter((m) => !m.unique).length;
+        renderPidStrip();
+      }
+    });
     bind('btnEmptyStart', 'click', () => startQueue(false));
     bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
     bind('btnReset', 'click', () => {
@@ -2529,6 +2788,14 @@
         e.preventDefault();
         runAction('redo');
       }
+      else if (key === 'p') {
+        e.preventDefault();
+        runAction('pid-approve');
+      }
+      else if (key === 't') {
+        e.preventDefault();
+        runAction('pid-trust');
+      }
     });
 
     document.addEventListener('keyup', (e) => {
@@ -2548,8 +2815,10 @@
 
     bindCompareInteraction();
     loadSession();
-    document.getElementById('beforeDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
-    document.getElementById('afterDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
+    renderPidStrip();
+    loadPidMatches().catch(() => {});
+    document.getElementById('beforeDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); loadPidMatches().catch(() => {}); });
+    document.getElementById('afterDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); loadPidMatches().catch(() => {}); });
     document.getElementById('requireLarger')?.addEventListener('change', saveSession);
     document.getElementById('btnPickBefore')?.addEventListener('click', () => pickAndRegisterFolder('before'));
     document.getElementById('btnPickAfter')?.addEventListener('click', () => pickAndRegisterFolder('after'));

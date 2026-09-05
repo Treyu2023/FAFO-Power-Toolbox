@@ -1,6 +1,16 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.5**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.6**.
+
+## Media desks (3.0.6) — PID auto-link in matching
+
+- `pair_id_from_name` lives in `media_ops` (`_PID_xxxxxxxx`, legacy `GT-` folder, `PID-xxxxxxxx`)
+- Suggest / two-dir / guided candidates score PID as 0.99–1.0 and skip the “after must be larger” gate
+- `GET /api/pairs/pid-matches` groups unpaired files; unique = exactly two files share the id
+- `POST /api/pairs/trust-pids` locks unique groups (`source=pid-trust`). Pass `pids` to approve one; `include_ambiguous` stays off unless asked
+- Guided Match: PID strip with Approve / Skip / Trust all unique. Keys **P** and **T**
+- Pair Review: PID queue source + Trust all unique PIDs. **P** accepts the current PID item; **T** trusts unique
+- Library Pairs menu: Trust all unique PIDs
 
 ## Media desks (3.0.5) — workspace tabs, durable scans, highlight-to-match
 

@@ -1021,6 +1021,42 @@ UPSCALE_MARKERS = (
     "_interp", "_out", "scaled_", "x4_", "x2_", "_chunked",
 )
 
+# Same stamp Duplicate File Manager uses: `_PID_xxxxxxxx` (or legacy GT- folder).
+_PID_IN_NAME_RE = re.compile(r"_PID_([0-9a-f]{8})(?:_|$)", re.I)
+_PAIR_FOLDER_RE = re.compile(r"^GT-([0-9a-f]{8})__", re.I)
+_PID_TITLE_RE = re.compile(r"(?<![a-z0-9])PID[_-]([0-9a-f]{8})(?![a-z0-9])", re.I)
+
+
+def pair_id_from_name(path_or_name: str) -> str | None:
+    """8-char hex pair id from `_PID_xxxxxxxx` in the filename (or legacy GT- folder)."""
+    text = str(path_or_name or "")
+    if not text:
+        return None
+    m = _PID_IN_NAME_RE.search(text)
+    if m:
+        return m.group(1).lower()
+    m4 = _PID_TITLE_RE.search(text)
+    if m4:
+        return m4.group(1).lower()
+    # Slash-agnostic folder stamp: GT-xxxxxxxx__
+    for part in text.replace("\\", "/").split("/"):
+        if not part:
+            continue
+        m2 = _PAIR_FOLDER_RE.search(part)
+        if m2:
+            return m2.group(1).lower()
+    return None
+
+
+def _media_pid(m: dict[str, Any] | None) -> str | None:
+    if not m:
+        return None
+    return (
+        pair_id_from_name(m.get("name") or "")
+        or pair_id_from_name(m.get("rel_path") or "")
+        or pair_id_from_name(str(m.get("path") or ""))
+    )
+
 
 def _next_pair_code() -> str:
     with connect() as conn:
@@ -1782,6 +1818,12 @@ def _pair_confidence(a: dict, b: dict, *, method: str, tail_len: int = 5) -> tup
     conf = base
     reason = method
 
+    if method == "pid":
+        conf = 0.99
+        if _is_upscaled_name(after["name"]) and not _is_upscaled_name(before["name"]):
+            conf = 1.0
+        reason = "pid_exact"
+        return before, after, float(min(1.0, conf)), reason
     if method == "stem":
         conf = max(base, 0.92 if a_stem and a_stem == b_stem else stem_r)
         reason = "upscale_suffix" if _is_upscaled_name(after["name"]) else "stem_exact"
@@ -1849,6 +1891,9 @@ def _append_suggestion(
                 return False
         return False
     seen.add(key)
+    pid_val = _media_pid(before) if str(reason or "").startswith("pid") else None
+    if not pid_val and str(reason or "").startswith("pid"):
+        pid_val = _media_pid(after)
     suggestions.append({
         "before_id": before["id"],
         "after_id": after["id"],
@@ -1860,8 +1905,34 @@ def _append_suggestion(
         "stem": stem,
         "reason": reason,
         "tail": _tail_key(before["name"]),
+        "pid": pid_val,
+        "unique": True if pid_val else None,
     })
     return True
+
+
+def _pid_pair_from_group(group: list[dict]) -> tuple[dict, dict, bool] | None:
+    """Pick (before, after, unique) from files sharing one PID. Unique = exactly two files."""
+    uniq: dict[str, dict] = {m["id"]: m for m in group if m.get("id")}
+    members = list(uniq.values())
+    if len(members) < 2:
+        return None
+    plains = [m for m in members if not _is_upscaled_name(m.get("name") or "")]
+    ups = [m for m in members if _is_upscaled_name(m.get("name") or "")]
+    unique = len(members) == 2
+    if len(plains) == 1 and len(ups) == 1 and plains[0]["id"] != ups[0]["id"]:
+        return plains[0], ups[0], unique
+    if unique:
+        before, after, _ = _pick_before_after(members[0], members[1])
+        if before["id"] == after["id"]:
+            return None
+        return before, after, True
+    if plains and ups:
+        before = min(plains, key=lambda m: int(m.get("size") or 0))
+        after = max(ups, key=lambda m: int(m.get("size") or 0))
+        if before["id"] != after["id"]:
+            return before, after, False
+    return None
 
 
 def suggest_pairs(
@@ -1945,6 +2016,27 @@ def _suggest_pairs_multi(
 ) -> list[dict]:
     suggestions: list[dict] = []
     seen: set[frozenset[str]] = set()
+
+    # Pass 0: `_PID_xxxxxxxx` identity stamp — highest confidence, ignores size.
+    by_pid: dict[str, list[dict]] = {}
+    for m in items:
+        pid_key = _media_pid(m)
+        if pid_key:
+            by_pid.setdefault(pid_key, []).append(m)
+    for pid_key, group in by_pid.items():
+        picked = _pid_pair_from_group(group)
+        if not picked:
+            continue
+        before, after, unique = picked
+        conf = 0.99 if unique else 0.88
+        reason = "pid_exact" if unique else "pid_group"
+        _append_suggestion(
+            suggestions, seen, before, after, conf, reason, pid_key, min(min_ratio, 0.5),
+        )
+        if suggestions:
+            suggestions[-1]["pid"] = pid_key
+            suggestions[-1]["unique"] = unique
+            suggestions[-1]["members"] = len({m["id"] for m in group})
 
     # Pass 1: exact normalized stem
     stems: dict[str, list[dict]] = {}
@@ -2077,6 +2169,7 @@ def _suggest_pairs_cross_dirs(
     after_by_stem: dict[str, list[dict]] = {}
     after_by_tail: dict[str, list[dict]] = {}
     after_by_digit: dict[str, list[dict]] = {}
+    after_by_pid: dict[str, list[dict]] = {}
     for a in after_items:
         after_by_stem.setdefault(_pair_stem(a["name"]), []).append(a)
         t = _tail_key(a["name"], tail_len)
@@ -2084,6 +2177,9 @@ def _suggest_pairs_cross_dirs(
             after_by_tail.setdefault(t, []).append(a)
         for dig in _digit_ids(a["name"]):
             after_by_digit.setdefault(dig, []).append(a)
+        pid_key = _media_pid(a)
+        if pid_key:
+            after_by_pid.setdefault(pid_key, []).append(a)
 
     suggestions: list[dict] = []
     used_after: set[str] = set()
@@ -2114,6 +2210,19 @@ def _suggest_pairs_cross_dirs(
             })
             return True
         return False
+
+    # Pass 0: PID identity (Before folder × After folder sharing `_PID_xxxxxxxx`)
+    for b in before_items:
+        if b["id"] in used_before:
+            continue
+        pid_key = _media_pid(b)
+        if not pid_key:
+            continue
+        if try_candidates(b, after_by_pid.get(pid_key) or [], "pid"):
+            if suggestions:
+                suggestions[-1]["pid"] = pid_key
+                suggestions[-1]["unique"] = True
+                suggestions[-1]["reason"] = "pid_exact"
 
     # Pass 1: exact stem
     for b in before_items:
@@ -2280,42 +2389,52 @@ def candidates_for_media(
         skipped_intermediate = 0
 
     scored: list[dict[str, Any]] = []
-    methods = ("stem", "tail", "digit_id", "folder", "fuzzy")
+    methods = ("pid", "stem", "tail", "digit_id", "folder", "fuzzy")
     skipped_same_size = 0
     skipped_not_larger = 0
+    anchor_pid = _media_pid(anchor)
 
     for peer in peers:
         sa = int(anchor.get("size") or 0)
         sp = int(peer.get("size") or 0)
+        peer_pid = _media_pid(peer)
+        pid_hit = bool(anchor_pid and peer_pid and anchor_pid == peer_pid)
 
-        # Same size → duplicate, not a before/after pair
-        if require_larger_after and sa > 0 and sp > 0 and sa == sp:
+        # Same size → duplicate, not a before/after pair. PID identity still counts.
+        if not pid_hit and require_larger_after and sa > 0 and sp > 0 and sa == sp:
             skipped_same_size += 1
             continue
 
         if two_folder:
             # Fixed roles: anchor = before (source), peer = after (upscale/output)
             best_before, best_after = anchor, peer
-            if require_larger_after and sp <= sa:
+            if not pid_hit and require_larger_after and sp <= sa:
                 skipped_not_larger += 1
                 continue
             best_conf = 0.0
             best_reason = "fuzzy"
-            for method in methods:
-                # Score with forced order (still uses name signals on the pair)
-                _b, _a, conf, reason = _pair_confidence(
-                    anchor, peer, method=method, tail_len=tail_len
-                )
-                # Prefer scores that already ordered anchor as before
-                if _b["id"] == anchor["id"] and _a["id"] == peer["id"]:
-                    conf = min(1.0, conf + 0.04)
-                # Size boost when after is meaningfully larger
-                if sa > 0 and sp > sa * 1.05:
-                    conf = min(1.0, conf + 0.05)
-                if conf > best_conf:
-                    best_conf, best_reason = conf, reason
+            if pid_hit:
+                best_conf, best_reason = 0.99, "pid_exact"
+                if _is_upscaled_name(peer.get("name") or "") and not _is_upscaled_name(anchor.get("name") or ""):
+                    best_conf = 1.0
+            else:
+                for method in methods:
+                    if method == "pid":
+                        continue
+                    # Score with forced order (still uses name signals on the pair)
+                    _b, _a, conf, reason = _pair_confidence(
+                        anchor, peer, method=method, tail_len=tail_len
+                    )
+                    # Prefer scores that already ordered anchor as before
+                    if _b["id"] == anchor["id"] and _a["id"] == peer["id"]:
+                        conf = min(1.0, conf + 0.04)
+                    # Size boost when after is meaningfully larger
+                    if sa > 0 and sp > sa * 1.05:
+                        conf = min(1.0, conf + 0.05)
+                    if conf > best_conf:
+                        best_conf, best_reason = conf, reason
             learn_tags: list[str] = []
-            if adjust_confidence:
+            if adjust_confidence and not pid_hit:
                 best_conf, learn_tags = adjust_confidence(
                     best_conf,
                     before_name=anchor.get("name") or "",
@@ -2324,7 +2443,7 @@ def candidates_for_media(
                     after_size=sp,
                     model=_learn,
                 )
-            if best_conf < min_ratio:
+            if best_conf < min_ratio and not pid_hit:
                 continue
             best_before, best_after = anchor, peer
             anchor_is_before = True
@@ -2334,17 +2453,24 @@ def candidates_for_media(
             best_reason = "fuzzy"
             best_before, best_after = anchor, peer
             learn_tags = []
-            for method in methods:
-                before, after, conf, reason = _pair_confidence(
-                    anchor, peer, method=method, tail_len=tail_len
+            if pid_hit:
+                best_before, best_after, best_conf, best_reason = _pair_confidence(
+                    anchor, peer, method="pid", tail_len=tail_len
                 )
-                if conf > best_conf:
-                    best_conf, best_reason = conf, reason
-                    best_before, best_after = before, after
-            # Enforce after strictly larger (re-order or reject)
+            else:
+                for method in methods:
+                    if method == "pid":
+                        continue
+                    before, after, conf, reason = _pair_confidence(
+                        anchor, peer, method=method, tail_len=tail_len
+                    )
+                    if conf > best_conf:
+                        best_conf, best_reason = conf, reason
+                        best_before, best_after = before, after
+            # Enforce after strictly larger (re-order or reject). PID skips size gate.
             bsz = int(best_before.get("size") or 0)
             asz = int(best_after.get("size") or 0)
-            if require_larger_after and bsz > 0 and asz > 0:
+            if not pid_hit and require_larger_after and bsz > 0 and asz > 0:
                 if asz == bsz:
                     skipped_same_size += 1
                     continue
@@ -2358,7 +2484,7 @@ def candidates_for_media(
             else:
                 bsz = int(best_before.get("size") or 0)
                 asz = int(best_after.get("size") or 0)
-            if adjust_confidence:
+            if adjust_confidence and not pid_hit:
                 best_conf, learn_tags = adjust_confidence(
                     best_conf,
                     before_name=best_before.get("name") or "",
@@ -2367,7 +2493,7 @@ def candidates_for_media(
                     after_size=asz,
                     model=_learn,
                 )
-            if best_conf < min_ratio:
+            if best_conf < min_ratio and not pid_hit:
                 continue
             anchor_is_before = best_before["id"] == media_id
             candidate = best_after if anchor_is_before else best_before
@@ -2400,9 +2526,10 @@ def candidates_for_media(
             "learn_tags": learn_tags if learn_tags else [],
             "type": candidate.get("type") or anchor.get("type") or "video",
             "size_ok": int(best_after.get("size") or 0) > int(best_before.get("size") or 0),
+            "pid": (anchor_pid if pid_hit else None) or _media_pid(best_before) or _media_pid(best_after),
         })
 
-    scored.sort(key=lambda x: (-x["confidence"], x["candidate_name"]))
+    scored.sort(key=lambda x: (0 if x.get("pid") and str(x.get("reason") or "").startswith("pid") else 1, -x["confidence"], x["candidate_name"]))
     top = scored[: max(1, min(50, int(limit or 10)))]
 
     return {
@@ -2414,6 +2541,7 @@ def candidates_for_media(
             "size": int(anchor.get("size") or 0),
             "path": _media_abs_path(anchor, dir_paths),
             "is_upscaled_name": _is_upscaled_name(anchor["name"]),
+            "pid": anchor_pid,
         },
         "candidates": top,
         "candidate_count": len(top),
@@ -2498,6 +2626,7 @@ def list_unpaired_anchors(
             "path": abs_path,
             "rel_path": m.get("rel_path") or "",
             "is_upscaled_name": _is_upscaled_name(m["name"]),
+            "pid": _media_pid(m),
         })
     if prefer_sources:
         def _anchor_key(a: dict) -> tuple:
@@ -2573,6 +2702,200 @@ def auto_pair_upscaled(
         "mode": "two_dir" if two_dir else "global",
         "before_dir_id": before_dir_id,
         "after_dir_id": after_dir_id,
+    }
+
+
+def _pid_catalog_items(
+    *,
+    media_type: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if unpaired_only:
+        clauses.append("pair_id IS NULL")
+    if media_type in ("video", "image"):
+        clauses.append("type=?")
+        params.append(media_type)
+    else:
+        clauses.append("type IN ('video', 'image')")
+    if before_dir_id and after_dir_id and before_dir_id != after_dir_id:
+        clauses.append("dir_id IN (?, ?)")
+        params.extend([before_dir_id, after_dir_id])
+    elif before_dir_id and not after_dir_id:
+        clauses.append("dir_id=?")
+        params.append(before_dir_id)
+    elif after_dir_id and not before_dir_id:
+        clauses.append("dir_id=?")
+        params.append(after_dir_id)
+    where = " AND ".join(clauses) if clauses else "1=1"
+    with connect() as conn:
+        rows = conn.execute(f"SELECT * FROM media WHERE {where}", params).fetchall()
+    items = [row_to_media(r) for r in rows]
+    if before_dir_id and after_dir_id and before_dir_id != after_dir_id:
+        # Keep only rows that actually have a PID so the two-folder filter
+        # does not drop a source that lives outside After but shares the stamp.
+        return items
+    return items
+
+
+def list_pid_matches(
+    *,
+    media_type: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+    limit: int = 400,
+) -> dict[str, Any]:
+    """Group unpaired catalog files by `_PID_xxxxxxxx` and propose before/after links.
+
+    Unique = exactly two files share the id (safe for Trust all).
+    Ambiguous = 3+ files share the id (quick-approve one at a time).
+    """
+    limit = max(1, min(2000, int(limit or 400)))
+    items = _pid_catalog_items(
+        media_type=media_type,
+        before_dir_id=before_dir_id,
+        after_dir_id=after_dir_id,
+        unpaired_only=unpaired_only,
+    )
+    two_dir = bool(before_dir_id and after_dir_id and before_dir_id != after_dir_id)
+    by_pid: dict[str, list[dict]] = {}
+    for m in items:
+        if two_dir and m.get("dir_id") not in (before_dir_id, after_dir_id):
+            continue
+        pid_key = _media_pid(m)
+        if pid_key:
+            by_pid.setdefault(pid_key, []).append(m)
+
+    matches: list[dict[str, Any]] = []
+    loners = 0
+    for pid_key, group in sorted(by_pid.items(), key=lambda kv: kv[0]):
+        ids = {m["id"] for m in group}
+        if len(ids) < 2:
+            loners += 1
+            continue
+        if two_dir:
+            befores = [m for m in group if m.get("dir_id") == before_dir_id]
+            afters = [m for m in group if m.get("dir_id") == after_dir_id]
+            if not befores or not afters:
+                loners += 1
+                continue
+            unique = len(befores) == 1 and len(afters) == 1
+            before = befores[0]
+            after = afters[0] if unique else max(afters, key=lambda m: int(m.get("size") or 0))
+        else:
+            picked = _pid_pair_from_group(group)
+            if not picked:
+                loners += 1
+                continue
+            before, after, unique = picked
+        if before["id"] == after["id"]:
+            continue
+        matches.append({
+            "pid": pid_key,
+            "before_id": before["id"],
+            "after_id": after["id"],
+            "before_name": before.get("name"),
+            "after_name": after.get("name"),
+            "before_dir_id": before.get("dir_id"),
+            "after_dir_id": after.get("dir_id"),
+            "before_size": int(before.get("size") or 0),
+            "after_size": int(after.get("size") or 0),
+            "type": before.get("type") or after.get("type") or "video",
+            "confidence": 0.99 if unique else 0.88,
+            "reason": "pid_exact" if unique else "pid_group",
+            "unique": unique,
+            "members": len(ids),
+            "member_names": [m.get("name") or "" for m in group][:8],
+        })
+        if len(matches) >= limit:
+            break
+
+    unique_rows = [m for m in matches if m.get("unique")]
+    ambiguous_rows = [m for m in matches if not m.get("unique")]
+    return {
+        "ok": True,
+        "matches": matches,
+        "unique": unique_rows,
+        "ambiguous": ambiguous_rows,
+        "unique_count": len(unique_rows),
+        "ambiguous_count": len(ambiguous_rows),
+        "loners": loners,
+        "scanned": len(items),
+        "pid_groups": len(by_pid),
+        "before_dir_id": before_dir_id,
+        "after_dir_id": after_dir_id,
+    }
+
+
+def trust_pid_matches(
+    *,
+    dry_run: bool = False,
+    pin: bool = True,
+    kind: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    include_ambiguous: bool = False,
+    limit: int = 400,
+    pids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Lock unique (or selected) PID matches as catalog pairs. Source = pid-trust."""
+    data = list_pid_matches(
+        media_type=kind if kind in ("video", "image") else None,
+        before_dir_id=before_dir_id,
+        after_dir_id=after_dir_id,
+        unpaired_only=True,
+        limit=limit,
+    )
+    wanted = {str(p).lower() for p in (pids or []) if p}
+    rows = list(data.get("matches") or [])
+    if wanted:
+        rows = [r for r in rows if str(r.get("pid") or "").lower() in wanted]
+    elif not include_ambiguous:
+        rows = [r for r in rows if r.get("unique")]
+    created: list[dict[str, Any]] = []
+    skipped = 0
+    errors: list[str] = []
+    for s in rows:
+        if len(created) >= max(1, min(2000, int(limit or 400))):
+            break
+        if dry_run:
+            created.append(s)
+            continue
+        try:
+            before = get_media(s["before_id"])
+            pair_kind = (before or {}).get("type") or s.get("type") or "video"
+            if pair_kind not in ("video", "image"):
+                pair_kind = "video"
+            stem = _pair_stem(s.get("before_name") or "") or Path(s.get("before_name") or "pair").stem
+            pair = save_pair(
+                f"{stem} — PID {s.get('pid')}",
+                s["before_id"],
+                s["after_id"],
+                pair_kind,
+                pinned=pin,
+                notes=f"pid-trust {s.get('pid')}",
+                source="pid-trust",
+            )
+            pair["confidence"] = s.get("confidence")
+            pair["pid"] = s.get("pid")
+            created.append(pair)
+        except (FileNotFoundError, ValueError) as e:
+            skipped += 1
+            errors.append(str(e)[:160])
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "created": len(created),
+        "skipped": skipped,
+        "pairs": created,
+        "errors": errors[:12],
+        "unique_count": data.get("unique_count") or 0,
+        "ambiguous_count": data.get("ambiguous_count") or 0,
+        "mode": "pid-trust",
     }
 
 

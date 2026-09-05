@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pair Review Queue — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.6">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.6">
   <style>
     :root {
       --bg: #0b1220;
@@ -116,6 +116,14 @@
     .score-pill.high { color: var(--ok); border-color: rgba(74,222,128,.4); }
     .score-pill.mid { color: var(--warn); border-color: rgba(251,191,36,.4); }
     .score-pill.low { color: var(--danger); border-color: rgba(248,113,113,.4); }
+    .score-pill.pid { color: #1a1200; background: var(--gold); border-color: var(--gold); }
+    .pid-trust-bar {
+      display: none; flex-wrap: wrap; gap: 8px; align-items: center;
+      background: rgba(245,200,76,.08); border: 1px solid rgba(245,200,76,.32);
+      border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px;
+    }
+    .pid-trust-bar.on { display: flex; }
+    .pid-hex { font: 700 11px Consolas, monospace; color: var(--gold); }
     .rename-line {
       margin-top: 12px; padding: 10px 12px; border-radius: 10px;
       background: rgba(0,0,0,.3); border: 1px solid var(--border); font-size: 12px;
@@ -193,6 +201,7 @@
     <div class="source-bar" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
       <label style="font-size:11px;color:var(--muted)">Queue source</label>
       <select id="sourceSelect">
+        <option value="pid">PID stamps — _PID_xxxxxxxx auto-link</option>
         <option value="vsr1">VSR Stage I — upscale matches</option>
         <option value="vsr2">VSR Stage II — interp matches</option>
         <option value="catalog">Catalog pairs (saved)</option>
@@ -206,6 +215,13 @@
         <input type="number" id="minScore" min="0" max="1" step="0.05" value="0" style="width:64px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text)">
       </label>
       <button class="ui-btn primary" id="btnLoad" type="button">↻ Load queue</button>
+      <button class="ui-btn primary" id="btnPidTrust" type="button" disabled
+              title="Lock every unique 1:1 PID match">Trust all unique PIDs</button>
+    </div>
+
+    <div class="pid-trust-bar" id="pidTrustBar">
+      <span class="pid-hex">PID</span>
+      <span id="pidTrustStats">Unique 1:1 stamps can lock in one click. Ambiguous groups stay in the queue for Approve.</span>
     </div>
 
     <div class="progress-wrap" id="progressWrap" style="display:none">
@@ -270,6 +286,8 @@
           <kbd>A</kbd> / <kbd>Enter</kbd> Accept ·
           <kbd>R</kbd> / <kbd>X</kbd> Reject ·
           <kbd>S</kbd> Skip ·
+          <kbd>P</kbd> Accept PID ·
+          <kbd>T</kbd> Trust all unique PIDs ·
           <kbd>←</kbd> <kbd>→</kbd> Prev / Next ·
           <kbd>N</kbd> Next + play ·
           <kbd>Space</kbd> Play/pause both ·
@@ -324,17 +342,17 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-debug.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-runtime.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.0.6"></script>
+  <script src="../shared/fafo-ops-stats.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.6"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -544,8 +562,9 @@
 
       const pill = el('scorePill');
       if (pill) {
-        pill.textContent = scoreLabel(item.score);
-        pill.className = 'score-pill ' + scoreClass(item.score || 0);
+        const isPid = !!(item.pid || String(item.mode || '').startsWith('pid'));
+        pill.textContent = (isPid ? 'PID · ' : '') + scoreLabel(item.score);
+        pill.className = 'score-pill ' + (isPid ? 'pid' : scoreClass(item.score || 0));
       }
 
       const dec = el('decisionVal');
@@ -838,7 +857,37 @@
             }
             items = items.map(it => Object.assign({}, it, { _useMediaId: true }));
             setText('modeHint', 'Suggestions (multi-signal) · ' + items.length);
+          } else if (source === 'pid') {
+            const data = api.listPidMatches ? await api.listPidMatches({ limit: 400 }) : { matches: [] };
+            const rows = Array.isArray(data.matches) ? data.matches : [];
+            for (const s of rows) {
+              items.push({
+                id: 'pid-' + (s.pid || '') + '-' + (s.before_id || ''),
+                mode: s.unique ? 'pid-unique' : 'pid-group',
+                kind: s.type || 'video',
+                score: Number(s.confidence) || (s.unique ? 0.99 : 0.88),
+                beforePath: '',
+                afterPath: '',
+                beforeName: s.before_name || '',
+                afterName: s.after_name || '',
+                beforeMediaId: s.before_id,
+                afterMediaId: s.after_id,
+                pid: s.pid,
+                unique: !!s.unique,
+                members: s.members,
+                decision: 'pending',
+                label: 'PID ' + (s.pid || '') + ' · ' + (s.before_name || '') + ' ↔ ' + (s.after_name || '')
+                  + (s.unique ? '' : ' (' + (s.members || '?') + ' files)'),
+                _useMediaId: true,
+              });
+            }
+            const u = data.unique_count || rows.filter(r => r.unique).length;
+            const a = data.ambiguous_count || rows.filter(r => !r.unique).length;
+            setText('modeHint', 'PID · ' + u + ' unique · ' + a + ' need a look');
+            updatePidTrustBar(u, a);
           }
+
+          if (source !== 'pid') updatePidTrustBar(0, 0);
 
           if (minScore > 0) {
             items = items.filter(i => (i.score || 0) >= minScore || (i.score > 1 && i.score / 100 >= minScore));
@@ -1017,8 +1066,67 @@
       });
     }
 
+    function updatePidTrustBar(uniqueCount, ambiguousCount) {
+      const bar = el('pidTrustBar');
+      const stats = el('pidTrustStats');
+      const btn = el('btnPidTrust');
+      const u = Number(uniqueCount) || 0;
+      const a = Number(ambiguousCount) || 0;
+      if (btn) btn.disabled = u < 1;
+      if (bar) bar.classList.toggle('on', u > 0 || a > 0 || ((el('sourceSelect') && el('sourceSelect').value) === 'pid'));
+      if (stats) {
+        stats.textContent = (u || a)
+          ? (u + ' unique 1:1 · ' + a + ' ambiguous (Approve each). Trust all locks unique only.')
+          : 'No shared _PID_xxxxxxxx stamps in unpaired files. Load the PID source after a catalog scan.';
+      }
+    }
+
+    async function trustAllPidMatches() {
+      const pendingUnique = queue.filter(q => q.pid && q.unique !== false && q.decision === 'pending' && (q.unique || q.mode === 'pid-unique'));
+      const n = pendingUnique.length || queue.filter(q => q.mode === 'pid-unique' && q.decision === 'pending').length;
+      if (!n) {
+        toast('No unique PID matches to trust', 'warn');
+        return;
+      }
+      let ok = false;
+      if (UI()?.confirmAction) {
+        const conf = await UI().confirmAction({
+          title: 'Trust all unique PID matches?',
+          body: `<strong>${n}</strong> unique <code>_PID_xxxxxxxx</code> pair${n === 1 ? '' : 's'} will lock as catalog pairs. Ambiguous groups stay pending.`,
+          confirmText: 'Trust ' + n,
+          cancelText: 'Cancel',
+          showSafetyNote: true,
+        });
+        ok = !!conf?.confirmed;
+      } else {
+        ok = window.confirm('Lock ' + n + ' unique PID pair(s)?');
+      }
+      if (!ok) return;
+      await withBusy(async () => {
+        try {
+          const r = await API()?.trustPidMatches?.({ pin: true, includeAmbiguous: false, limit: 400 });
+          const created = r?.created || 0;
+          const locked = new Set((r?.pairs || []).map(p => String(p.pid || '').toLowerCase()));
+          for (const q of queue) {
+            if (q.pid && (locked.has(String(q.pid).toLowerCase()) || (q.unique && q.decision === 'pending'))) {
+              q.decision = 'accept';
+              if (r?.pairs) {
+                const hit = r.pairs.find(p => String(p.pid || '').toLowerCase() === String(q.pid).toLowerCase());
+                if (hit && hit.id) q.pairId = hit.id;
+              }
+            }
+          }
+          toast('Trusted ' + created + ' PID pair' + (created === 1 ? '' : 's'), created ? 'ok' : 'warn');
+          renderItem();
+        } catch (e) {
+          toast(e.message || String(e), 'warn');
+        }
+      });
+    }
+
     // Wire buttons
     bind('btnLoad', 'click', () => loadQueue());
+    bind('btnPidTrust', 'click', () => trustAllPidMatches());
     bind('btnEmptyLoad', 'click', () => loadQueue());
     bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
     bind('btnAccept', 'click', () => setDecision('accept'));
@@ -1121,11 +1229,21 @@
           flushItemFilesToDisk(current()).then(() => { index++; renderItem(); });
         }
       }
-      else if (k === 'ArrowLeft' || k === 'p' || k === 'P') {
+      else if (k === 'ArrowLeft') {
         e.preventDefault();
         if (index > 0) {
           flushItemFilesToDisk(current()).then(() => { index--; renderItem(); });
         }
+      }
+      else if (k === 'p' || k === 'P') {
+        e.preventDefault();
+        const cur = current();
+        if (cur && (cur.pid || String(cur.mode || '').startsWith('pid'))) setDecision('accept');
+        else toast('This item is not a PID match — load the PID source', 'warn');
+      }
+      else if (k === 't' || k === 'T') {
+        e.preventDefault();
+        trustAllPidMatches();
       }
       else if (k === ' ') { e.preventDefault(); togglePlay(); }
       else if (k === 'c' || k === 'C') { e.preventDefault(); openComparator(); }

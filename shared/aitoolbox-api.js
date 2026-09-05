@@ -1395,6 +1395,44 @@
             });
         },
 
+        /**
+         * Catalog files grouped by `_PID_xxxxxxxx` (or GT- folder).
+         * Unique 1:1 groups are safe for Trust all.
+         */
+        async listPidMatches(opts = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            const p = new URLSearchParams();
+            if (opts.kind) p.set('kind', opts.kind);
+            const beforeDirId = opts.beforeDirId || opts.before_dir_id || null;
+            const afterDirId = opts.afterDirId || opts.after_dir_id || null;
+            if (beforeDirId) p.set('before_dir_id', beforeDirId);
+            if (afterDirId) p.set('after_dir_id', afterDirId);
+            if (opts.unpairedOnly === false) p.set('unpaired_only', 'false');
+            if (opts.limit) p.set('limit', String(opts.limit));
+            return api(`/pairs/pid-matches?${p}`);
+        },
+
+        /**
+         * Lock unique PID matches. Pass `pids` to lock a subset (quick-approve).
+         * Set `includeAmbiguous: true` only when the user explicitly trusts 3+ groups.
+         */
+        async trustPidMatches(opts = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pairs/trust-pids', {
+                method: 'POST',
+                body: JSON.stringify({
+                    dry_run: !!opts.dryRun,
+                    pin: opts.pin !== false,
+                    kind: opts.kind || null,
+                    before_dir_id: opts.beforeDirId || opts.before_dir_id || null,
+                    after_dir_id: opts.afterDirId || opts.after_dir_id || null,
+                    include_ambiguous: !!opts.includeAmbiguous,
+                    limit: opts.limit ?? 400,
+                    pids: Array.isArray(opts.pids) ? opts.pids : null,
+                }),
+            });
+        },
+
         async getPair(id) {
             if (await checkServer()) return this.normalizePair(await api(`/pairs/${encodeURIComponent(id)}`));
             return global.AIToolbox.getPair(id);
