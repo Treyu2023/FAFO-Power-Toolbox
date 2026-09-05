@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Library Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.0">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.0">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
     <style>
         :root {
             --bg: #070b12; --panel: #10161f; --panel2: #161d28;
@@ -1540,17 +1540,18 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
     <script>
         function el(id) {
             try {
@@ -2241,6 +2242,7 @@
                 updateWorkflow();
             };
             if (els.dirList) els.dirList.appendChild(allBtn);
+            try { renderRecentFolders(); } catch (_) {}
 
             for (const d of dirs) {
                 const q = await API().queryMedia({ dirId: d.id, limit: 1, page: 0 });
@@ -2702,7 +2704,7 @@
                     </div>
                 </div>
                 <span class="type-badge type-${escHtml(item.type)}">${escHtml(item.type)}</span>
-                <button type="button" class="row-del" title="Delete" data-del="${item.id}">🗑</button>`;
+                <button type="button" class="row-del" title="Delete" data-del="${escHtml(item.id)}">🗑</button>`;
             wireItemSelect(row, item);
             row.querySelector('.row-del')?.addEventListener('click', e => {
                 e.stopPropagation();
@@ -2852,64 +2854,15 @@
         }
 
         async function scanDuplicates() {
-
-            if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
-            let folder = null;
-            if (activeDir) {
-                const d = watchedDirs.find(x => x.id === activeDir);
-                folder = d?.path;
-            } else if (watchedDirs.length === 1) {
-                folder = watchedDirs[0].path;
-            } else if (watchedDirs.length > 1) {
-                const names = watchedDirs.map((d, i) => `${i + 1}. ${escHtml(d.name)}`).join('\n');
-                const pick = prompt(`Scan which folder?\n${names}\n\nEnter number (1-${watchedDirs.length}) or paste a path:`);
-                if (!pick) return;
-                const n = parseInt(pick, 10);
-                folder = !isNaN(n) && n >= 1 && n <= watchedDirs.length
-                    ? watchedDirs[n - 1].path : pick.trim();
-            } else {
-                folder = prompt('Folder path to scan for duplicates:');
-            }
-            if (!folder) return;
-
-            dupMode = true;
-            viewMode = 'list';
-            els.mediaList.classList.remove('grid-mode');
-            el('btnFindDup').classList.add('active');
-            els.mediaList.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Scanning for duplicates…</div>';
-            updateDupBar();
-
-            try {
-                dupScanResult = await API().scanDuplicatesStream(folder, {
-                    deep: true,
-                    matchMode: 'quick',
-                    fileTypes: 'media',
-                }, (count, file) => {
-                    el('dupSummary').textContent = `Scanning… ${count} files — ${file?.split(/[/\\]/).pop() || ''}`;
-                });
-                activeDupGroup = dupScanResult.groups?.length ? 0 : -1;
-                if (activeDupGroup >= 0) {
-                    const g = dupScanResult.groups[0];
-                    dupKeeperPath = g.suggested_keep || g.items[0]?.path;
-                }
-                dupDeletePaths.clear();
-                await buildPathIndex();
-                renderDuplicates();
-                updateDupBar();
-                showToast(`Found ${dupScanResult.duplicate_groups || 0} duplicate groups`, 'ok');
-            } catch (e) {
-                dupMode = false;
-                updateDupBar();
-                showToast('Duplicate scan failed: ' + e.message, 'warn');
-                await applyFilters();
-            }
+            return openDuplicateManager({ scan: true });
         }
 
         async function buildPathIndex() {
             pathToMediaItem.clear();
             if (!serverOn) return;
             try {
-                const res = await API().queryMedia({ dirId: activeDir || undefined, limit: 10000, page: 0 });
+                const qfn = API().queryMediaAll || API().queryMedia;
+                const res = await qfn.call(API(), { dirId: activeDir || undefined, limit: 200, page: 0 });
                 const items = res.items || [];
                 if (!items.length) return;
                 const resolved = await API().resolvePaths(items.map(m => m.id));
@@ -3061,7 +3014,7 @@
                             tab: 'duplicates',
                             search: '?' + params.toString(),
                             href: rel,
-                        }, '*');
+                        }, location.origin);
                     } else {
                         location.href = rel;
                     }
@@ -3746,31 +3699,76 @@
             if (!path?.trim()) return;
             try {
                 const entry = await API().addDirectory(path.trim());
+                try { window.AIToolboxDom?.pushRecentFolder?.(entry.path || path.trim(), entry.name); } catch (_) {}
                 showToast(`Added: ${entry.name}`);
                 await refreshDirs();
                 await scanDir(entry);
             } catch (e) { alert(e.message); }
         }
 
+        function renderRecentFolders() {
+            const host = el('dirList');
+            if (!host || !window.AIToolboxDom?.recentFolders) return;
+            const recents = AIToolboxDom.recentFolders();
+            const watched = new Set((watchedDirs || []).map(d => String(d.path || '').toLowerCase()));
+            const fresh = recents.filter(r => r.path && !watched.has(String(r.path).toLowerCase()));
+            if (!fresh.length) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'recent-folders';
+            wrap.style.cssText = 'padding:6px 8px 10px;font-size:11px;color:var(--muted);';
+            wrap.innerHTML = '<div style="font-weight:700;margin-bottom:4px;letter-spacing:.04em;text-transform:uppercase;">Recent folders</div>';
+            fresh.slice(0, 6).forEach(r => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'btn';
+                b.style.cssText = 'display:block;width:100%;text-align:left;margin:3px 0;font-size:11px;';
+                b.textContent = r.label || r.path;
+                b.title = r.path;
+                b.addEventListener('click', () => addDirectoryByPath(r.path));
+                wrap.appendChild(b);
+            });
+            host.appendChild(wrap);
+        }
+
         async function scanDir(entry) {
             const prog = document.createElement('div');
-            prog.style.cssText = 'position:fixed;bottom:calc(var(--atx-pro-h, 52px) + 16px);left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--accent);padding:12px 20px;border-radius:8px;z-index:100050;font-size:12px;';
-            prog.textContent = 'Scanning… 0 files';
+            prog.style.cssText = 'position:fixed;bottom:calc(var(--atx-pro-h, 52px) + 16px);left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--accent);padding:12px 20px;border-radius:8px;z-index:100050;font-size:12px;display:flex;gap:10px;align-items:center;';
+            const label = document.createElement('span');
+            label.textContent = 'Scanning… 0 files';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.addEventListener('click', () => {
+                cancelBtn.disabled = true;
+                label.textContent = 'Cancelling…';
+                API().cancelScan?.(entry.id).catch(() => {});
+            });
+            prog.appendChild(label);
+            prog.appendChild(cancelBtn);
             document.body.appendChild(prog);
             try {
-                const r = await API().scanDirectory(entry.id, (c) => { prog.textContent = `Scanning… ${c.toLocaleString()} files`; });
-                prog.textContent = `Done — ${(r.indexed ?? r).toLocaleString()} media files indexed`;
+                const r = await API().scanDirectory(entry.id, (c) => { label.textContent = `Scanning… ${c.toLocaleString()} files`; });
+                if (r && r.cancelled) {
+                    label.textContent = 'Scan cancelled — catalog left as-is';
+                    cancelBtn.remove();
+                    setTimeout(() => prog.remove(), 2500);
+                    return;
+                }
+                label.textContent = `Done — ${(r.indexed ?? r).toLocaleString()} media files indexed`;
+                cancelBtn.remove();
                 if (serverOn) {
                     try {
                         const tr = await API().applyTagRules(entry.id);
-                        if (tr.applied) prog.textContent += ` · ${tr.applied} tags re-applied`;
+                        if (tr.applied) label.textContent += ` · ${tr.applied} tags re-applied`;
                     } catch (e) { /* optional */ }
                 }
                 setTimeout(() => prog.remove(), 3500);
                 await refreshDirs();
                 await applyFilters();
             } catch (e) {
-                prog.textContent = 'Scan failed: ' + e.message;
+                label.textContent = 'Scan failed: ' + e.message;
+                cancelBtn.remove();
                 setTimeout(() => prog.remove(), 3000);
             }
         }
@@ -4360,7 +4358,7 @@
                 selected.clear();
                 selected.add(item.id);
                 await selectItem(item);
-                document.querySelector(`[data-id="${item.id}"]`)?.scrollIntoView({ block: 'nearest' });
+                document.querySelector(`[data-id="${(window.CSS && CSS.escape) ? CSS.escape(String(item.id)) : String(item.id).replace(/"/g, '')}"]`)?.scrollIntoView({ block: 'nearest' });
             }
         }
 
@@ -4702,7 +4700,7 @@
         el('btnDeleteDetail').onclick = () => {
             if (currentItem) deleteMediaItems([currentItem.id], currentItem.name);
         };
-        bind(el('btnFindDup'), 'click', () => dupMode ? exitDupMode() : scanDuplicates());
+        bind(el('btnFindDup'), 'click', () => dupMode ? exitDupMode() : openDuplicateManager({ scan: true }));
         bind(el('btnDupHere'), 'click', () => openDuplicateManager());
         el('btnDupTop')?.addEventListener('click', () => openDuplicateManager());
         bind(el('btnDupFileFolder'), 'click', async () => {
@@ -5255,14 +5253,19 @@
                 applyTagPreset(Number(e.key) - 1);
                 return;
             }
-            if (e.key === '[' || e.key === 'ArrowUp') {
+            if (e.key === '[' || e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
                 e.preventDefault();
                 selectAdjacentMedia(-1);
                 return;
             }
-            if (e.key === ']' || e.key === 'ArrowDown') {
+            if (e.key === ']' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J') {
                 e.preventDefault();
                 selectAdjacentMedia(1);
+                return;
+            }
+            if (e.key === '/' ) {
+                e.preventDefault();
+                (el('searchInput') || el('q') || document.querySelector('input[type="search"]'))?.focus();
                 return;
             }
             if (e.key === 'c' || e.key === 'C') {

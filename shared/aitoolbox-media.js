@@ -199,5 +199,12 @@
         rafify: rafify,
         observeVideos: observeVideos,
         isIframe: isIframe,
+        // aliases once aitoolbox-dom.js is present
+        get el() { return (global.AIToolboxDom && AIToolboxDom.el) || null; },
+        get bind() { return (global.AIToolboxDom && AIToolboxDom.bind) || null; },
+        get escapeHtml() { return (global.AIToolboxDom && AIToolboxDom.escapeHtml) || null; },
+        get withBusy() { return (global.AIToolboxDom && AIToolboxDom.withBusy) || null; },
+        get recentFolders() { return (global.AIToolboxDom && AIToolboxDom.recentFolders) || (function () { return []; }); },
+        get pushRecentFolder() { return (global.AIToolboxDom && AIToolboxDom.pushRecentFolder) || (function () { return []; }); },
     };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2641,32 +2641,120 @@ def api_scan(dir_id: str, recursive: bool = True):
         raise HTTPException(404, str(e))
 
 
-@app.get("/api/scan/{dir_id}/stream")
-def api_scan_stream(dir_id: str, recursive: bool = True):
-    progress: list[str] = []
+_LIB_SCANS: dict[str, dict] = {}
+_LIB_SCANS_BY_DIR: dict[str, str] = {}
+_LIB_SCANS_LOCK = threading.Lock()
 
-    def run():
-        try:
-            ops.scan_directory(dir_id, recursive, on_progress=lambda c, r: progress.append(json.dumps({"count": c, "file": r})))
-            progress.append(json.dumps({"done": True, "count": len(progress)}))
-        except Exception as e:
-            progress.append(json.dumps({"error": str(e)}))
 
-    threading.Thread(target=run, daemon=True).start()
+def _lib_scan_start(dir_id: str, recursive: bool = True) -> dict:
+    with _LIB_SCANS_LOCK:
+        active_id = _LIB_SCANS_BY_DIR.get(dir_id)
+        if active_id:
+            job = _LIB_SCANS.get(active_id)
+            if job and not job.get("done"):
+                return job
+        import uuid
+        job_id = "scan-" + uuid.uuid4().hex[:12]
+        progress: list[str] = []
+        job = {
+            "id": job_id,
+            "dir_id": dir_id,
+            "progress": progress,
+            "done": False,
+            "cancel": False,
+            "lock": threading.Lock(),
+        }
+        _LIB_SCANS[job_id] = job
+        _LIB_SCANS_BY_DIR[dir_id] = job_id
+
+        def emit(obj: dict) -> None:
+            with job["lock"]:
+                progress.append(json.dumps(obj))
+
+        def run():
+            try:
+                n = ops.scan_directory(
+                    dir_id,
+                    recursive,
+                    on_progress=lambda c, r: emit({"count": c, "file": r, "job_id": job_id}),
+                    should_cancel=lambda: bool(job.get("cancel")),
+                )
+                emit({"done": True, "count": n, "job_id": job_id, "cancelled": bool(job.get("cancel"))})
+            except Exception as e:
+                emit({"error": str(e), "job_id": job_id})
+            finally:
+                job["done"] = True
+
+        threading.Thread(target=run, daemon=True).start()
+        return job
+
+
+def _lib_scan_sse(job: dict):
+    progress = job["progress"]
 
     def gen():
         sent = 0
         import time
-        while True:
-            while sent < len(progress):
-                yield f"data: {progress[sent]}\n\n"
-                sent += 1
-                item = json.loads(progress[sent - 1])
-                if "done" in item or "error" in item:
+        idle = 0
+        yield f"data: {json.dumps({'job_id': job.get('id'), 'state': 'running' if not job.get('done') else 'done'})}\n\n"
+        try:
+            while True:
+                with job.get("lock") or threading.Lock():
+                    chunk = progress[sent:]
+                for raw in chunk:
+                    yield f"data: {raw}\n\n"
+                    sent += 1
+                    idle = 0
+                    try:
+                        item = json.loads(raw)
+                    except Exception:
+                        continue
+                    if "done" in item or "error" in item:
+                        return
+                if job.get("done"):
                     return
-            time.sleep(0.15)
+                time.sleep(0.15)
+                idle += 1
+                if idle > 8000:
+                    return
+        except GeneratorExit:
+            job["cancel"] = True
+            raise
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.post("/api/scan/{dir_id}/start")
+def api_scan_start(dir_id: str, recursive: bool = True):
+    job = _lib_scan_start(dir_id, recursive)
+    return {"ok": True, "job_id": job["id"], "dir_id": dir_id}
+
+
+@app.post("/api/scan/{dir_id}/cancel")
+def api_scan_cancel(dir_id: str, job_id: str = ""):
+    with _LIB_SCANS_LOCK:
+        jid = job_id or _LIB_SCANS_BY_DIR.get(dir_id) or ""
+        job = _LIB_SCANS.get(jid)
+    if not job:
+        raise HTTPException(404, "Scan job not found")
+    job["cancel"] = True
+    return {"ok": True, "job_id": job.get("id")}
+
+
+@app.get("/api/scan/{dir_id}/stream")
+def api_scan_stream(dir_id: str, recursive: bool = True, job_id: str = ""):
+    """SSE attach. Pass job_id from POST /start. Reconnect never starts a new walk."""
+    with _LIB_SCANS_LOCK:
+        job = _LIB_SCANS.get(job_id) if job_id else None
+        if job is None:
+            active_id = _LIB_SCANS_BY_DIR.get(dir_id)
+            job = _LIB_SCANS.get(active_id) if active_id else None
+    if job is None:
+        # Backward compat for old EventSource clients: start once.
+        job = _lib_scan_start(dir_id, recursive)
+    return _lib_scan_sse(job)
+
+
 
 
 @app.get("/api/media")
@@ -2684,6 +2772,7 @@ def api_query_media(
     sort: str = "name",
     page: int = 0,
     limit: int = 80,
+    pair_filter: str | None = None,
 ):
     tag_list = [t for t in tags.split(",") if t.strip()] if tags else []
     prefix = path_prefix if path_prefix or folder_only else None
@@ -2691,10 +2780,13 @@ def api_query_media(
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 80
-    limit = max(1, min(200, limit or 80))
+    cap = 2000
+    limit = max(1, min(cap, limit or 80))
     return ops.query_media(
         search, tag_list, type, dir_id, prefix, folder_only,
         virtual_root, category, status, rank_min, sort, page, limit,
+        pair_filter=pair_filter,
+        cap=cap,
     )
 
 
@@ -3412,6 +3504,11 @@ class ApplyStage(BaseModel):
     dry_run: bool = False
 
 
+class ApplySelected(BaseModel):
+    renames: list[dict] = []
+    dry_run: bool = False
+
+
 class DupScan(BaseModel):
     folder: str
     deep: bool = False
@@ -3478,6 +3575,13 @@ def api_vsr_learn(body: LearnPairs):
 @app.post("/api/vsr/apply")
 def api_vsr_apply(body: ApplyStage):
     return vsr.apply_pipeline_stage(body.stage, dry_run=body.dry_run)
+
+
+@app.post("/api/vsr/apply-selected")
+def api_vsr_apply_selected(body: ApplySelected):
+    results = vsr.apply_renames(body.renames or [], dry_run=body.dry_run)
+    failed = sum(1 for r in results if not r.get("ok"))
+    return {"ok": failed == 0, "count": len(results), "failed": failed, "results": results}
 
 
 @app.post("/api/vsr/match")
@@ -3552,6 +3656,9 @@ def api_dup_scan_stream(
         if not job:
             raise HTTPException(404, "Scan job not found")
         return _dup_sse(job)
+    active = dup.find_active_scan_job(folder=folder)
+    if active:
+        return _dup_sse(active)
     job = dup.start_scan_job(
         folder,
         deep=deep,

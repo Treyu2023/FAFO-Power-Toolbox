@@ -137,31 +137,40 @@ def pair_health_report(*, relink: bool = False) -> dict[str, Any]:
     partial = []
     broken = []
 
+    occupancy: dict[str, str] = {}
+    duplicate_occupancy: list[dict[str, Any]] = []
+    self_pairs: list[dict[str, Any]] = []
     for p in pairs:
         bid = p.get("before_media_id")
         aid = p.get("after_media_id")
-        before = _ops().get_media(bid) if bid else None
-        after = _ops().get_media(aid) if aid else None
         before_ok = False
         after_ok = False
         before_path = p.get("before_path") or ""
         after_path = p.get("after_path") or ""
         try:
-            if before:
-                before_path = str(_ops().resolve_path(before))
-                before_ok = Path(before_path).is_file()
-            elif before_path:
+            if before_path:
                 before_ok = Path(before_path).is_file()
         except Exception:
             before_ok = False
         try:
-            if after:
-                after_path = str(_ops().resolve_path(after))
-                after_ok = Path(after_path).is_file()
-            elif after_path:
+            if after_path:
                 after_ok = Path(after_path).is_file()
         except Exception:
             after_ok = False
+        if bid and aid and bid == aid:
+            self_pairs.append({"id": p.get("id"), "pair_code": p.get("pair_code"), "media_id": bid})
+        for mid in (bid, aid):
+            if not mid:
+                continue
+            prev = occupancy.get(mid)
+            if prev and prev != p.get("id"):
+                duplicate_occupancy.append({
+                    "media_id": mid,
+                    "pair_a": prev,
+                    "pair_b": p.get("id"),
+                })
+            else:
+                occupancy[mid] = p.get("id")
 
         entry = {
             "id": p.get("id"),
@@ -208,12 +217,16 @@ def pair_health_report(*, relink: bool = False) -> dict[str, Any]:
             "orphan_tagged": len(orphans),
             "unpaired_upscale_named": len(looks_upscaled),
             "total_pairs": len(pairs),
+            "duplicate_occupancy": len(duplicate_occupancy),
+            "self_pairs": len(self_pairs),
         },
         "complete": complete,
         "partial": partial,
         "broken": broken,
         "orphan_tagged": orphans,
         "unpaired_upscale_named": looks_upscaled[:100],
+        "duplicate_occupancy": duplicate_occupancy[:50],
+        "self_pairs": self_pairs[:50],
     }
 
 
@@ -568,17 +581,26 @@ def run_smart_search(query: dict, page: int = 0, limit: int = 80) -> dict:
         tags = [t.strip() for t in tags.split(",") if t.strip()]
 
     if query.get("unpaired_upscale"):
-        items = []
-        for m in _ops().get_all_media():
-            if m.get("pair_id"):
-                continue
-            if _ops()._is_upscaled_name(m.get("name") or ""):
-                items.append(m)
+        res = _ops().query_media(
+            pair_filter="unpaired",
+            page=0,
+            limit=2000,
+            cap=2000,
+            sort="name",
+        )
+        items = [
+            m for m in (res.get("items") or [])
+            if _ops()._is_upscaled_name(m.get("name") or "")
+        ]
         return {"items": items[page * limit:(page + 1) * limit], "total": len(items), "page": page}
 
+    pair_filter = None
     if query.get("has_pair") is True:
-        # filter after query
-        res = _ops().query_media(
+        pair_filter = "paired"
+    elif query.get("has_pair") is False:
+        pair_filter = "unpaired"
+    if pair_filter:
+        return _ops().query_media(
             search=query.get("search") or "",
             tags=tags,
             media_type=query.get("type"),
@@ -586,28 +608,11 @@ def run_smart_search(query: dict, page: int = 0, limit: int = 80) -> dict:
             status=query.get("status"),
             rank_min=query.get("rank_min"),
             sort=query.get("sort") or "name",
-            page=0,
-            limit=5000,
+            page=page,
+            limit=limit,
+            pair_filter=pair_filter,
+            cap=2000,
         )
-        items = [m for m in (res.get("items") or []) if m.get("pair_id")]
-        total = len(items)
-        return {"items": items[page * limit:(page + 1) * limit], "total": total, "page": page}
-
-    if query.get("has_pair") is False:
-        res = _ops().query_media(
-            search=query.get("search") or "",
-            tags=tags,
-            media_type=query.get("type"),
-            category=query.get("category"),
-            status=query.get("status"),
-            rank_min=query.get("rank_min"),
-            sort=query.get("sort") or "name",
-            page=0,
-            limit=5000,
-        )
-        items = [m for m in (res.get("items") or []) if not m.get("pair_id")]
-        total = len(items)
-        return {"items": items[page * limit:(page + 1) * limit], "total": total, "page": page}
 
     return _ops().query_media(
         search=query.get("search") or "",

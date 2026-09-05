@@ -424,8 +424,8 @@
             transition: opacity 0.3s;
         }
     </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.0">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.0">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
 </head>
 <body>
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
@@ -617,17 +617,19 @@
         <button class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
     <script>
 
         function el(id) {
@@ -1327,14 +1329,14 @@
             const pinned = document.getElementById('chkLockPair')?.checked !== false;
             try {
                 if (await AIToolboxAPI.isOnline()) {
-                    const bq = await AIToolboxAPI.queryMedia({ search: fileCacheBefore.name, limit: 10 });
-                    const aq = await AIToolboxAPI.queryMedia({ search: fileCacheAfter.name, limit: 10 });
-                    const bm = (bq.items || []).find(m => m.name === fileCacheBefore.name);
-                    const am = (aq.items || []).find(m => m.name === fileCacheAfter.name);
                     let pair;
-                    if (bm && am) {
-                        pair = await AIToolboxAPI.savePair({
-                            name, kind: 'image', beforeMediaId: bm.id, afterMediaId: am.id, pinned,
+                    const saver = window.AIToolboxHub && AIToolboxHub.saveComparatorPair;
+                    if (saver) {
+                        pair = await saver(AIToolboxAPI, {
+                            name, kind: 'image', pinned,
+                            beforePath: knownBeforePath, afterPath: knownAfterPath,
+                            beforeName: fileCacheBefore.name, afterName: fileCacheAfter.name,
+                            beforeSize: fileCacheBefore.size, afterSize: fileCacheAfter.size,
                         });
                     } else if (knownBeforePath && knownAfterPath) {
                         pair = await AIToolboxAPI.savePairFromPaths({

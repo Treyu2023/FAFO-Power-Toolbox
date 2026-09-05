@@ -179,6 +179,7 @@ def scan_directory(
     dir_id: str,
     recursive: bool = True,
     on_progress: Callable[[int, str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> int:
     with connect() as conn:
         row = conn.execute("SELECT * FROM directories WHERE id=?", (dir_id,)).fetchone()
@@ -200,6 +201,8 @@ def scan_directory(
                 if recursive and not should_skip_entry(entry.name, True, rel):
                     walk(entry, rel)
             elif entry.is_file():
+                if should_cancel and should_cancel():
+                    raise InterruptedError("scan cancelled")
                 if should_skip_entry(entry.name, False, prefix):
                     continue
                 ft = file_type(entry.name)
@@ -209,7 +212,11 @@ def scan_directory(
                     if on_progress:
                         on_progress(count, rel)
 
-    walk(root)
+    cancelled = False
+    try:
+        walk(root)
+    except InterruptedError:
+        cancelled = True
     now = time.time()
     seen_ids: set[str] = set()
 
@@ -281,13 +288,29 @@ def scan_directory(
                     tags, notes, thumb, pair_id, pair_role, file_tags_json, rank,
                 ),
             )
-        all_in_dir = conn.execute("SELECT id FROM media WHERE dir_id=?", (dir_id,)).fetchall()
-        for r in all_in_dir:
-            if r["id"] not in seen_ids:
-                # File left this folder (moved/deleted). Pair DB rows may go stale;
-                # relink_pairs_from_metadata() re-attaches via UP-#### tags on disk.
-                conn.execute("DELETE FROM media WHERE id=?", (r["id"],))
-        conn.execute("UPDATE directories SET last_scanned=? WHERE id=?", (now, dir_id))
+        if cancelled:
+            # Incomplete walk — never prune unseen rows or we wipe the catalog.
+            pass
+        else:
+            all_in_dir = conn.execute("SELECT id FROM media WHERE dir_id=?", (dir_id,)).fetchall()
+            for r in all_in_dir:
+                if r["id"] not in seen_ids:
+                    mid = r["id"]
+                    conn.execute(
+                        "UPDATE media SET pair_id=NULL, pair_role=NULL WHERE pair_id IN "
+                        "(SELECT id FROM pairs WHERE before_media_id=? OR after_media_id=?)",
+                        (mid, mid),
+                    )
+                    conn.execute(
+                        "DELETE FROM pairs WHERE before_media_id=? OR after_media_id=?",
+                        (mid, mid),
+                    )
+                    conn.execute("DELETE FROM playlist_items WHERE media_id=?", (mid,))
+                    conn.execute("DELETE FROM media WHERE id=?", (mid,))
+        if not cancelled:
+            conn.execute("UPDATE directories SET last_scanned=? WHERE id=?", (now, dir_id))
+    if cancelled:
+        return count
     # Heal before/after pairs using UP-#### tags written into the files / sidecars
     try:
         relink_pairs_from_metadata()
@@ -481,12 +504,19 @@ def query_media(
     sort: str = "name",
     page: int = 0,
     limit: int = 80,
+    pair_filter: str | None = None,
+    cap: int = 200,
 ) -> dict[str, Any]:
     try:
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 80
-    limit = max(1, min(200, limit or 80))
+    try:
+        cap_n = int(cap)
+    except (TypeError, ValueError):
+        cap_n = 200
+    cap_n = max(1, min(2000, cap_n))
+    limit = max(1, min(cap_n, limit or 80))
     try:
         page = max(0, int(page or 0))
     except (TypeError, ValueError):
@@ -516,6 +546,11 @@ def query_media(
     if rank_min is not None and rank_min > 0:
         clauses.append("rank >= ?")
         params.append(rank_min)
+    pf = (pair_filter or "").strip().lower()
+    if pf in {"paired", "has_pair", "in_pair"}:
+        clauses.append("pair_id IS NOT NULL AND TRIM(pair_id) != ''")
+    elif pf in {"unpaired", "no_pair"}:
+        clauses.append("(pair_id IS NULL OR TRIM(pair_id) = '')")
     if virtual_root:
         vr = _norm_subpath(virtual_root)
         clauses.append("(rel_path LIKE ? OR rel_path LIKE ?)")
@@ -561,11 +596,19 @@ def query_media(
 
 def get_all_tags() -> list[str]:
     with connect() as conn:
-        rows = conn.execute("SELECT tags FROM media").fetchall()
+        rows = conn.execute(
+            "SELECT DISTINCT tags FROM media WHERE tags IS NOT NULL AND tags != '[]' AND tags != ''"
+        ).fetchall()
     tags: set[str] = set()
     for r in rows:
-        for t in json.loads(r["tags"] or "[]"):
-            tags.add(t)
+        try:
+            blob = json.loads(r["tags"] or "[]")
+        except Exception:
+            continue
+        if isinstance(blob, list):
+            for t in blob:
+                if t:
+                    tags.add(str(t))
     return sorted(tags, key=str.lower)
 
 
@@ -639,25 +682,16 @@ def rename_media(mid: str, new_name: str) -> dict:
     if new_rel.startswith("./"):
         new_rel = new_rel[2:]
     new_id = media_id(media["dir_id"], new_rel)
+    new_mtime = dst.stat().st_mtime
     with connect() as conn:
-        conn.execute("DELETE FROM media WHERE id=?", (mid,))
-        media["id"] = new_id
-        media["rel_path"] = new_rel
-        media["name"] = new_name
-        media["mtime"] = dst.stat().st_mtime
         conn.execute(
-            """INSERT INTO media (id, dir_id, rel_path, name, ext, type, size, mtime, tags, notes, thumb_path, pair_id, pair_role, file_tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                new_id, media["dir_id"], new_rel, new_name, media["ext"], media["type"],
-                media["size"], media["mtime"], json.dumps(media["tags"]), media["notes"],
-                media["thumb_path"], media["pair_id"], media["pair_role"],
-                json.dumps(media.get("file_tags", [])),
-            ),
+            "UPDATE media SET id=?, rel_path=?, name=?, mtime=? WHERE id=?",
+            (new_id, new_rel, new_name, new_mtime, mid),
         )
         conn.execute("UPDATE pairs SET before_media_id=? WHERE before_media_id=?", (new_id, mid))
         conn.execute("UPDATE pairs SET after_media_id=? WHERE after_media_id=?", (new_id, mid))
-    return get_media(new_id) or media
+        conn.execute("UPDATE playlist_items SET media_id=? WHERE media_id=?", (new_id, mid))
+    return get_media(new_id) or {**media, "id": new_id, "rel_path": new_rel, "name": new_name, "mtime": new_mtime}
 
 
 def batch_rename(ids: list[str], pattern: str) -> list[dict]:
@@ -990,12 +1024,13 @@ UPSCALE_MARKERS = (
 
 def _next_pair_code() -> str:
     with connect() as conn:
-        rows = conn.execute(
-            "SELECT pair_code FROM pairs WHERE pair_code LIKE 'UP-%' ORDER BY pair_code DESC LIMIT 1"
-        ).fetchall()
-    if rows and rows[0]["pair_code"]:
+        row = conn.execute(
+            "SELECT pair_code FROM pairs WHERE pair_code LIKE 'UP-%' "
+            "ORDER BY CAST(substr(pair_code, 4) AS INTEGER) DESC LIMIT 1"
+        ).fetchone()
+    if row and row["pair_code"]:
         try:
-            n = int(str(rows[0]["pair_code"]).split("-", 1)[1])
+            n = int(str(row["pair_code"]).split("-", 1)[1])
             return f"UP-{n + 1:04d}"
         except (ValueError, IndexError):
             pass
@@ -1034,8 +1069,21 @@ def _tail_key(name: str, n: int = 5) -> str:
 
 
 def _digit_ids(name: str) -> list[str]:
-    """Long digit runs often act as stable ids when prefixes differ."""
-    return re.findall(r"\d{4,}", Path(name or "").stem)
+    """Long digit runs often act as stable ids when prefixes differ.
+
+    Skip resolution/year tokens so `clip_1080p` does not pair with unrelated 1080p files.
+    """
+    noise = {
+        "720", "1080", "1440", "2160", "1920", "3840", "4320", "1280", "2560", "4096",
+    }
+    out: list[str] = []
+    for d in re.findall(r"\d{4,}", Path(name or "").stem):
+        if d in noise:
+            continue
+        if len(d) == 4 and d.startswith("20"):
+            continue
+        out.append(d)
+    return out
 
 
 def _parent_folder_hint(m: dict) -> str:
@@ -1046,23 +1094,61 @@ def _parent_folder_hint(m: dict) -> str:
     return ""
 
 
-def _enrich_pair(row: dict | None) -> dict | None:
+def _media_map(ids: list[str]) -> dict[str, dict]:
+    clean = [i for i in ids if i]
+    if not clean:
+        return {}
+    out: dict[str, dict] = {}
+    with connect() as conn:
+        chunk = 400
+        for i in range(0, len(clean), chunk):
+            part = clean[i:i + chunk]
+            q = f"SELECT * FROM media WHERE id IN ({','.join('?' * len(part))})"
+            for r in conn.execute(q, part):
+                m = row_to_media(r)
+                out[m["id"]] = m
+    return out
+
+
+def _dir_paths(dir_ids: list[str]) -> dict[str, str]:
+    clean = [i for i in dir_ids if i]
+    if not clean:
+        return {}
+    out: dict[str, str] = {}
+    with connect() as conn:
+        q = f"SELECT id, path FROM directories WHERE id IN ({','.join('?' * len(clean))})"
+        for r in conn.execute(q, clean):
+            out[r["id"]] = r["path"]
+    return out
+
+
+def _enrich_pair(row: dict | None, media_map: dict[str, dict] | None = None, dir_map: dict[str, str] | None = None) -> dict | None:
     if not row:
         return None
     pair = dict(row)
     pair["pinned"] = bool(pair.get("pinned"))
-    before = get_media(pair.get("before_media_id") or "")
-    after = get_media(pair.get("after_media_id") or "")
+    bid = pair.get("before_media_id") or ""
+    aid = pair.get("after_media_id") or ""
+    if media_map is None:
+        media_map = _media_map([bid, aid])
+    before = media_map.get(bid)
+    after = media_map.get(aid)
     pair["before_name"] = before["name"] if before else Path(pair.get("before_path") or "").name
     pair["after_name"] = after["name"] if after else Path(pair.get("after_path") or "").name
     if before and not pair.get("before_path"):
         try:
-            pair["before_path"] = str(resolve_path(before))
+            if dir_map is not None and before.get("dir_id") in dir_map:
+                pair["before_path"] = str(Path(dir_map[before["dir_id"]]) / before["rel_path"])
+            else:
+                pair["before_path"] = str(resolve_path(before))
         except FileNotFoundError:
             pass
     if after and not pair.get("after_path"):
         try:
-            pair["after_path"] = str(resolve_path(after))
+            if dir_map is not None and after.get("dir_id") in dir_map:
+                pair["after_path"] = str(Path(dir_map[after["dir_id"]]) / after["rel_path"])
+            else:
+                pair["after_path"] = str(resolve_path(after))
         except FileNotFoundError:
             pass
     return pair
@@ -1099,7 +1185,14 @@ def list_pairs(kind: str | None = None, pinned_only: bool = False) -> list[dict]
             f"SELECT * FROM pairs {where} ORDER BY pinned DESC, created_at DESC",
             params,
         ).fetchall()
-    return [p for r in rows if (p := _enrich_pair(dict(r)))]
+    raw = [dict(r) for r in rows]
+    ids = []
+    for r in raw:
+        ids.append(r.get("before_media_id") or "")
+        ids.append(r.get("after_media_id") or "")
+    mmap = _media_map(ids)
+    dmap = _dir_paths([m.get("dir_id") or "" for m in mmap.values()])
+    return [p for r in raw if (p := _enrich_pair(r, mmap, dmap))]
 
 
 # Role tags applied per side when a pair is created — not copied across as "shared" project tags
@@ -1275,6 +1368,8 @@ def save_pair(
     after = get_media(after_id)
     if not before or not after:
         raise FileNotFoundError("Media items not found")
+    if before_id == after_id:
+        raise ValueError("Cannot pair a file with itself")
     pid = f"pair-{uuid.uuid4().hex[:10]}"
     if not name:
         name = f"{before['name']} ↔ {after['name']}"
@@ -1282,6 +1377,18 @@ def save_pair(
     before_path = str(resolve_path(before))
     after_path = str(resolve_path(after))
     with connect() as conn:
+        existing = conn.execute(
+            """SELECT * FROM pairs WHERE
+               (before_media_id=? AND after_media_id=?)
+            OR (before_media_id=? AND after_media_id=?)""",
+            (before_id, after_id, after_id, before_id),
+        ).fetchone()
+        if existing:
+            return _enrich_pair(dict(existing)) or dict(existing)
+        conn.execute(
+            "DELETE FROM pairs WHERE before_media_id IN (?,?) OR after_media_id IN (?,?)",
+            (before_id, after_id, before_id, after_id),
+        )
         conn.execute(
             """INSERT INTO pairs (
                 id, name, kind, before_media_id, after_media_id, created_at,
@@ -1439,8 +1546,8 @@ def infer_pair_role_from_tags(tags: list | None, filename: str = "") -> str | No
     if tagset & before_marks and tagset & after_marks:
         # Prefer filename if both present (messy tags)
         return "after" if _is_upscaled_name(filename) else "before"
-    if filename:
-        return "after" if _is_upscaled_name(filename) else "before"
+    if filename and _is_upscaled_name(filename):
+        return "after"
     return None
 
 
@@ -1615,9 +1722,29 @@ def relink_pairs_from_metadata() -> dict:
 
 
 def delete_pair(pid: str) -> None:
+    pair = get_pair(pid)
+    sides: list[str] = []
+    if pair:
+        for key in ("before_media_id", "after_media_id"):
+            mid = pair.get(key)
+            if mid:
+                sides.append(mid)
     with connect() as conn:
         conn.execute("UPDATE media SET pair_id=NULL, pair_role=NULL WHERE pair_id=?", (pid,))
         conn.execute("DELETE FROM pairs WHERE id=?", (pid,))
+    # Strip UP-#### / role tags so relink does not resurrect the pair.
+    for mid in sides:
+        media = get_media(mid)
+        if not media:
+            continue
+        kept = [
+            t for t in (media.get("tags") or [])
+            if t and not _is_pair_code_tag(str(t)) and str(t).strip().lower() not in PAIR_ROLE_TAGS
+        ]
+        try:
+            update_media_meta(mid, tags=kept, write_file_tags=True)
+        except Exception:
+            pass
 
 
 def pair_file_paths(pid: str) -> dict[str, str]:
@@ -1969,10 +2096,10 @@ def _suggest_pairs_cross_dirs(
         for a in candidates:
             if a["id"] in used_after or a["id"] == b["id"]:
                 continue
-            before, after, conf, reason = _pair_confidence(b, a, method=method, tail_len=tail_len)
+            _before, _after, conf, reason = _pair_confidence(b, a, method=method, tail_len=tail_len)
             if conf > best_conf:
-                best_conf, best, best_reason = conf, after, reason
-        if best and best_conf >= min_ratio:
+                best_conf, best, best_reason = conf, a, reason
+        if best and best["id"] != b["id"] and best_conf >= min_ratio:
             used_after.add(best["id"])
             used_before.add(b["id"])
             suggestions.append({
@@ -2455,9 +2582,23 @@ def backfill_pair_codes() -> int:
         rows = conn.execute(
             "SELECT id FROM pairs WHERE pair_code IS NULL OR pair_code=''"
         ).fetchall()
-        for row in rows:
-            code = _next_pair_code()
-            conn.execute("UPDATE pairs SET pair_code=? WHERE id=?", (code, row["id"]))
+        if not rows:
+            return 0
+        cur = conn.execute(
+            "SELECT pair_code FROM pairs WHERE pair_code LIKE 'UP-%' "
+            "ORDER BY CAST(substr(pair_code, 4) AS INTEGER) DESC LIMIT 1"
+        ).fetchone()
+        start = 0
+        if cur and cur["pair_code"]:
+            try:
+                start = int(str(cur["pair_code"]).split("-", 1)[1])
+            except (ValueError, IndexError):
+                start = 0
+        for i, row in enumerate(rows, 1):
+            conn.execute(
+                "UPDATE pairs SET pair_code=? WHERE id=?",
+                (f"UP-{start + i:04d}", row["id"]),
+            )
             n += 1
     return n
 
