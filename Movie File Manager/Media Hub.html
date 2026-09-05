@@ -167,6 +167,7 @@
   <script src="../shared/aitoolbox-config.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-version.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
   <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
   <script src="../shared/aitoolbox-layout.js?v=3.0.0"></script>
@@ -412,10 +413,10 @@
               return;
             }
           } catch (_) {
-            if (frame.getAttribute('src')) {
-              loading.classList.add('hide');
-              return;
-            }
+            // Cross-origin: onload already hid the overlay if it succeeded.
+            // Reaching the timeout without onload is a real fail.
+            showLoadFail(t.title, src);
+            return;
           }
           showLoadFail(t.title, src);
         }, 25000);
@@ -492,8 +493,12 @@
       });
 
       showTab(tabFromHash(), true);
-      pingServer();
-      setInterval(pingServer, 20000);
+      if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
+        AIToolboxMedia.watchServer(pingServer, { onlineMs: 20000, offlineMs: 8000, iframeMs: 30000 });
+      } else {
+        pingServer();
+        setInterval(pingServer, 20000);
+      }
       document.addEventListener('keydown', function hubTabKeys(e){
         if (isTypingTarget(e.target)) return;
         const map = { '1':'library', '2':'duplicates', '3':'organizer' };

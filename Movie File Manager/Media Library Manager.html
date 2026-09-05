@@ -1545,6 +1545,7 @@
     <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
     <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
@@ -1860,8 +1861,12 @@
             initResizeHandles();
             initLayoutControls();
             DBG()?.log('library', 'info', 'Media Library init v' + (window.AITOOLBOX_VERSION || '?'));
-            await updateServerStatus();
-            setInterval(updateServerStatus, 5000);
+            if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
+                AIToolboxMedia.watchServer(updateServerStatus);
+            } else {
+                await updateServerStatus();
+                setInterval(updateServerStatus, 5000);
+            }
             settings = await API().getSettings();
             renameHistory = await API().getRenameHistory();
             await refreshDirs();
@@ -2311,7 +2316,7 @@
                     const code = p.pairCode || p.pair_code || '';
                     const div = document.createElement('div');
                     div.className = 'playlist-item';
-                    div.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;"><span style="color:#ffb347">${code || 'pair'}</span> ${p.before_name || '?'} ↔ ${p.after_name || '?'}</span>`;
+                    div.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;"><span style="color:#ffb347">${escHtml(code || 'pair')}</span> ${escHtml(p.before_name || '?')} ↔ ${escHtml(p.after_name || '?')}</span>`;
                     div.title = 'Click = select both · Double-click = compare';
                     div.onclick = async () => {
                         selected.clear();
@@ -2379,7 +2384,9 @@
 
         let activeSmartQuery = null; // when set, applyFilters uses smart-search API
 
+        let _filterGen = 0;
         async function applyFilters() {
+            const gen = ++_filterGen;
             updatePathHint();
             const searching = els.searchInput.value.trim().length > 0;
             const inGroup = viewMode === 'group';
@@ -2419,9 +2426,11 @@
                         page: usePage, limit
                     });
                 }
+                if (gen !== _filterGen) return;
                 filtered = result.items || [];
                 totalCount = result.total || 0;
                 await refreshTags();
+                if (gen !== _filterGen) return;
                 renderPage();
                 updateBatchBar();
             } catch (e) {
@@ -2447,7 +2456,7 @@
                         q.has_pair === false && 'unpaired',
                         q.rank_min && `rank≥${q.rank_min}`,
                     ].filter(Boolean).join(' · ') || 'saved filter';
-                    return `<button type="button" class="smart-chip ${activeSmartId === s.id ? 'active' : ''}" data-ss="${s.id}" title="${tip.replace(/"/g, '&quot;')}">${s.name}</button>`;
+                    return `<button type="button" class="smart-chip ${activeSmartId === s.id ? 'active' : ''}" data-ss="${escHtml(s.id)}" title="${escHtml(tip)}">${escHtml(s.name)}</button>`;
                 }).join('') +
                     `<button type="button" class="smart-chip add" id="btnBuildSmartBar">🧠 Build…</button>` +
                     `<button type="button" class="smart-chip add" id="btnSaveSmart">+ Save current</button>` +
@@ -2757,7 +2766,7 @@
                 const isActive = gi === activeDupGroup;
                 if (isActive) card.style.borderColor = 'rgba(0,243,255,0.4)';
                 card.innerHTML = `
-                    <h4><span>${group.items[0]?.name || 'Group'} · ${group.count} copies</span>
+                    <h4><span>${escHtml(group.items[0]?.name || 'Group')} · ${group.count} copies</span>
                     <span style="font-weight:400;color:var(--muted)">${fmtBytes(group.wasted_bytes)} recoverable</span></h4>`;
                 group.items.forEach(item => {
                     const isKeeper = item.path === dupKeeperPath;
@@ -2765,7 +2774,7 @@
                     row.className = 'dup-file-row' + (isKeeper ? ' keeper' : '');
                     row.innerHTML = `
                         <input type="radio" name="dup-keep-${gi}" ${isKeeper ? 'checked' : ''}>
-                        <div><div>${escHtml(item.name)}</div><div class="dup-path">${item.path}</div></div>
+                        <div><div>${escHtml(item.name)}</div><div class="dup-path">${escHtml(item.path)}</div></div>
                         <span style="color:var(--muted)">${fmtBytes(item.size)}</span>
                         <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:3px;">
                             <input type="checkbox" class="dup-del-chk" ${dupDeletePaths.has(item.path) ? 'checked' : ''}${isKeeper ? ' disabled' : ''}> del
@@ -3134,7 +3143,7 @@
                 for (const [label, items] of groups) {
                     const hdr = document.createElement('div');
                     hdr.className = 'group-header';
-                    hdr.innerHTML = `<span>${label}</span><span class="group-count">${items.length} files</span>`;
+                    hdr.innerHTML = `<span>${escHtml(label)}</span><span class="group-count">${items.length} files</span>`;
                     els.mediaList.appendChild(hdr);
                     for (const item of items) {
                         const tile = makeGridTile(item);
@@ -3280,7 +3289,22 @@
             if (selected.has(id)) selected.delete(id);
             else selected.add(id);
             DBG()?.log('library', 'event', `Select toggle ${id} (${selected.size} selected)`);
-            renderPage();
+            const root = els.mediaList;
+            const safe = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(String(id)) : String(id).replace(/\\/g, '\\\\').replace(/"/g, '');
+            const node = root && root.querySelector('[data-id="' + safe + '"]');
+            if (node) {
+                node.classList.toggle('selected', selected.has(id));
+                const cb = node.querySelector('input[type="checkbox"]');
+                if (cb) cb.checked = selected.has(id);
+                const selOrder = [...selected];
+                root.querySelectorAll('.media-row, .grid-tile').forEach(row => {
+                    row.classList.toggle('select-1', row.dataset.id === selOrder[0]);
+                    row.classList.toggle('select-2', row.dataset.id === selOrder[1]);
+                });
+                updateBatchBar();
+            } else {
+                renderPage();
+            }
         }
 
         function updateBatchBar() {
@@ -3323,7 +3347,7 @@
                     const code = pair?.pairCode || pair?.pair_code;
                     if (code) {
                         badge.style.display = 'block';
-                        badge.innerHTML = `★ Locked pair <strong>${code}</strong> — shared tags can apply to both sides`;
+                        badge.innerHTML = `★ Locked pair <strong>${escHtml(code)}</strong> — shared tags can apply to both sides`;
                     } else badge.style.display = 'none';
                 } catch { badge.style.display = 'none'; }
             } else badge.style.display = 'none';
@@ -3332,7 +3356,7 @@
                 els.pairsSection.style.display = 'block';
                 els.miniPairs.innerHTML = pairs.slice(0, 12).map(p => {
                     const code = p.pairCode || p.pair_code || '';
-                    return `<div data-pair="${p.id}">${code ? `<span style="color:#ffb347">${code}</span> · ` : ''}${p.name}</div>`;
+                    return `<div data-pair="${escHtml(p.id)}">${code ? `<span style="color:#ffb347">${escHtml(code)}</span> · ` : ''}${escHtml(p.name)}</div>`;
                 }).join('');
                 els.miniPairs.querySelectorAll('[data-pair]').forEach(el => {
                     el.onclick = () => openComparator(el.dataset.pair);
@@ -3403,7 +3427,7 @@
                 const empty = !p.tags.length;
                 btn.classList.toggle('empty', empty);
                 const preview = empty ? 'Click Edit or set tags…' : p.tags.slice(0, 6).join(', ') + (p.tags.length > 6 ? '…' : '');
-                btn.innerHTML = `${p.name || ('Preset ' + (i + 1))}<small>${preview}</small>`;
+                btn.innerHTML = `${escHtml(p.name || ('Preset ' + (i + 1)))}<small>${escHtml(preview)}</small>`;
             }
         }
         async function applyTagPreset(idx) {
@@ -3454,7 +3478,11 @@
             tags.forEach((t, i) => {
                 const span = document.createElement('span');
                 span.className = 'tag';
-                span.innerHTML = `${t} <button type="button">×</button>`;
+                span.appendChild(document.createTextNode(String(t) + ' '));
+                const rm = document.createElement('button');
+                rm.type = 'button';
+                rm.textContent = '×';
+                span.appendChild(rm);
                 span.querySelector('button').onclick = () => {
                     tags.splice(i, 1);
                     renderDetailTags(tags);
@@ -4376,7 +4404,7 @@
             const matches = mlMatchingTags(q);
             if (!matches.length) {
                 if (q) {
-                    els.tagSuggestions.innerHTML = `<div class="hint">Press Enter to create “${q}”</div>`;
+                    els.tagSuggestions.innerHTML = `<div class="hint">Press Enter to create “${escHtml(q)}”</div>`;
                     els.tagSuggestions.classList.add('show');
                 } else {
                     // Show top unused tags when field focused empty
@@ -4387,7 +4415,7 @@
                         return;
                     }
                     els.tagSuggestions.innerHTML = top.map((t, i) =>
-                        `<div data-tag="${t}" class="${i === mlTagSuggestIdx ? 'active' : ''}">${t}</div>`
+                        `<div data-tag="${escHtml(t)}" class="${i === mlTagSuggestIdx ? 'active' : ''}">${escHtml(t)}</div>`
                     ).join('');
                     wireMlSuggest();
                     els.tagSuggestions.classList.add('show');
@@ -4395,7 +4423,7 @@
                 return;
             }
             els.tagSuggestions.innerHTML = matches.map((t, i) =>
-                `<div data-tag="${t}" class="${i === mlTagSuggestIdx ? 'active' : ''}">${t}</div>`
+                `<div data-tag="${escHtml(t)}" class="${i === mlTagSuggestIdx ? 'active' : ''}">${escHtml(t)}</div>`
             ).join('');
             wireMlSuggest();
             els.tagSuggestions.classList.add('show');
@@ -4963,14 +4991,14 @@
                 ['Unpaired ↑', s.unpaired_upscale_named, '#aaa'],
             ].map(([label, n, c]) => `<div class="health-stat"><b style="color:${c}">${n ?? 0}</b><span>${label}</span></div>`).join('');
             const row = (p, extra = '') =>
-                `<div><strong>${p.pair_code || p.id || ''}</strong> ${p.before_name || '?'} ↔ ${p.after_name || '?'} ${extra}
-                ${p.id ? `<button class="btn btn-sm" data-open="${p.id}">Compare</button>` : ''}
-                ${p.id ? `<button class="btn btn-sm orange" data-arch="${p.id}">Archive…</button>` : ''}</div>`;
+                `<div><strong>${escHtml(p.pair_code || p.id || '')}</strong> ${escHtml(p.before_name || '?')} ↔ ${escHtml(p.after_name || '?')} ${extra}
+                ${p.id ? `<button class="btn btn-sm" data-open="${escHtml(p.id)}">Compare</button>` : ''}
+                ${p.id ? `<button class="btn btn-sm orange" data-arch="${escHtml(p.id)}">Archive…</button>` : ''}</div>`;
             el('healthPartial').innerHTML = (data.partial || []).map(p => row(p, '⚠️')).join('') || '<div class="hint-box">None</div>';
             el('healthBroken').innerHTML = (data.broken || []).map(p => row(p, '❌')).join('') || '<div class="hint-box">None</div>';
             const orphans = [
-                ...(data.orphan_tagged || []).map(o => `<div>Orphan <code>${o.pair_code}</code> · ${o.name} (${o.role || '?'})</div>`),
-                ...(data.unpaired_upscale_named || []).slice(0, 40).map(o => `<div>Unpaired upscale name · ${o.name}</div>`),
+                ...(data.orphan_tagged || []).map(o => `<div>Orphan <code>${escHtml(o.pair_code)}</code> · ${escHtml(o.name)} (${escHtml(o.role || '?')})</div>`),
+                ...(data.unpaired_upscale_named || []).slice(0, 40).map(o => `<div>Unpaired upscale name · ${escHtml(o.name)}</div>`),
             ].join('') || '<div class="hint-box">None</div>';
             el('healthOrphans').innerHTML = orphans;
             el('healthModal').querySelectorAll('[data-open]').forEach(b => {
@@ -5025,12 +5053,16 @@
             if (!serverOn) return;
             const ids = selected.size ? [...selected] : null;
             showToast('Checking tags…');
+            try {
             const r = await API().verifyTags({ ids, limit: 400, fix: false });
             el('verifySummary').textContent =
                 `Checked ${r.checked}: ${r.match_count} match, ${r.mismatch_count} mismatch, ${r.missing_count} missing files`;
             el('verifyList').innerHTML = (r.mismatches || []).slice(0, 80).map(m =>
-                `<div><strong>${m.name}</strong><br>cat: ${(m.catalog_tags||[]).join(', ')||'—'} ★${m.catalog_rank}<br>disk: ${(m.disk_tags||[]).join(', ')||'—'} ★${m.disk_rank}${m.has_sidecar ? ' · sidecar' : ''}</div>`
+                `<div><strong>${escHtml(m.name)}</strong><br>cat: ${escHtml((m.catalog_tags||[]).join(', ')||'—')} ★${escHtml(m.catalog_rank)}<br>disk: ${escHtml((m.disk_tags||[]).join(', ')||'—')} ★${escHtml(m.disk_rank)}${m.has_sidecar ? ' · sidecar' : ''}</div>`
             ).join('') || '<div class="hint-box">No mismatches in sample</div>';
+            } catch (e) {
+                showToast(e.message || 'Verify failed', 'warn');
+            }
         });
         el('btnVerifyFix')?.addEventListener('click', async () => {
             if (!serverOn) return;
@@ -5041,7 +5073,7 @@
             el('verifySummary').textContent =
                 `Fixed ${r.fixed_count}. Still mismatched sample: ${r.mismatch_count}`;
             el('verifyList').innerHTML = (r.fixed || []).slice(0, 40).map(m =>
-                `<div>Fixed <strong>${m.name}</strong></div>`
+                `<div>Fixed <strong>${escHtml(m.name)}</strong></div>`
             ).join('') || '<div class="hint-box">Nothing fixed</div>';
         });
 

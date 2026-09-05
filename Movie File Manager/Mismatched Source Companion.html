@@ -194,6 +194,7 @@ _interp.*$</textarea>
     <script src="../shared/aitoolbox-debug.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-core.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-runtime.js?v=3.0.0"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-api.js?v=3.0.0"></script>
     <script src="../shared/aitoolbox-ui.js?v=3.0.0"></script>
     <script src="../shared/fafo-ops-stats.js?v=3.0.0"></script>
@@ -374,7 +375,7 @@ _interp.*$</textarea>
 
         async function checkServer() {
             if (serverStarting) return false;
-            const on = await API().isOnline();
+            const on = await API().isOnline(false, 1500);
             const statusEl = el('serverStatus');
             const btn = el('btnStartServer');
             if (statusEl) {
@@ -481,6 +482,16 @@ _interp.*$</textarea>
 
         function renderPreview(data) {
             data = data || {};
+            if (data.error) {
+                lastPreview = null;
+                const stErr = el('previewStatus');
+                if (stErr) {
+                    stErr.className = 'status-box warn';
+                    stErr.textContent = String(data.error);
+                }
+                toast(String(data.error), 'warn');
+                return;
+            }
             lastPreview = data;
             const t1 = el('tbl_s1');
             if (t1) t1.innerHTML = (data.stage1||[]).map(r => rowHtml(r,'var(--accent)')).join('') ||
@@ -523,7 +534,14 @@ _interp.*$</textarea>
             });
             if (!result || !result.confirmed) return;
 
-            const r = await API()?.vsrApply?.(stage, false) || {};
+            let r = {};
+            try {
+                r = await API()?.vsrApply?.(stage, false) || {};
+            } catch (e) {
+                toast('Apply failed: ' + (e.message || e), 'warn');
+                return;
+            }
+            if (r.error) { toast(String(r.error), 'warn'); return; }
             toast(
                 result.skipped ? `✓ ${r.count||0} renamed (trusted — no prompt)` : `✓ ${r.count||0} files renamed`,
                 result.skipped ? 'warn' : 'ok'
@@ -680,7 +698,11 @@ _interp.*$</textarea>
                 try { cfgToForm(await API()?.vsrGetConfig?.() || {}); } catch (_) {}
             }
             updateVsrWorkflow();
-            setInterval(checkServer, 5000);
+            if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
+                AIToolboxMedia.watchServer(checkServer);
+            } else {
+                setInterval(checkServer, 5000);
+            }
             if (!UI()?.isTutorialDone?.('vsr')) {
                 setTimeout(startVsrTutorial, 600);
             }
