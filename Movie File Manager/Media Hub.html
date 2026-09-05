@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Media Hub — Library · Duplicates · Organizer</title>
+  <title>Media Hub — Library · Duplicates · Match · Compare</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>">
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
   <style>
     :root {
       --bg: #0a1020;
@@ -123,11 +123,14 @@
         scroll-behavior: auto !important;
       }
     }
+
+    html.hub-embedded .hub-tabs { display: none; }
+    html.hub-embedded .kbd-hint { display: none; }
   </style>
 </head>
 <body>
   <header class="hub-bar">
-    <h1>🗂️ MEDIA HUB</h1>
+    <h1>🗂️ MEDIA</h1>
     <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
     <span class="server-badge" id="pairHealth" title="Pair health — complete / broken">Pairs …</span>
     <div class="hub-tabs" id="hubTabs" role="tablist">
@@ -137,9 +140,19 @@
               data-tip-title="Duplicates" data-tip="Find and clean duplicate files (full Duplicate Manager).">Duplicates</button>
       <button type="button" class="hub-tab" data-tab="organizer" role="tab" aria-selected="false" tabindex="-1"
               data-tip-title="Organizer" data-tip="Batch tag, rank, and rename catalog items.">Organizer</button>
+      <button type="button" class="hub-tab" data-tab="match" role="tab" aria-selected="false" tabindex="-1"
+              data-tip-title="Guided Match" data-tip="Try candidates one-by-one per source file until you lock a pair.">Match</button>
+      <button type="button" class="hub-tab" data-tab="pairs" role="tab" aria-selected="false" tabindex="-1"
+              data-tip-title="Pair Review" data-tip="Keyboard accept/reject queue before renames.">Review</button>
+      <button type="button" class="hub-tab" data-tab="video" role="tab" aria-selected="false" tabindex="-1"
+              data-tip-title="Video Comparator" data-tip="Side-by-side / slider sync. Catalog search + highlight-to-match.">Video</button>
+      <button type="button" class="hub-tab" data-tab="image" role="tab" aria-selected="false" tabindex="-1"
+              data-tip-title="Image Comparator" data-tip="Slider compare for stills. Catalog search + highlight-to-match.">Image</button>
+      <button type="button" class="hub-tab" data-tab="companion" role="tab" aria-selected="false" tabindex="-1"
+              data-tip-title="Name match" data-tip="Match dumps whose names no longer match the originals.">Name match</button>
     </div>
     <div class="hub-meta" id="hubMeta">Browse &amp; tag here · pair with <strong>Guided Match</strong> in Compare Hub · dups &amp; rename in tabs.</div>
-    <span class="kbd-hint" title="Keyboard"><kbd>1</kbd> Lib · <kbd>2</kbd> Dups · <kbd>3</kbd> Org · <kbd>←</kbd><kbd>→</kbd> tabs · <kbd>R</kbd> report</span>
+    <span class="kbd-hint" title="Keyboard"><kbd>1</kbd>–<kbd>8</kbd> tabs · <kbd>←</kbd><kbd>→</kbd> · <kbd>R</kbd> report</span>
     <div class="hub-actions">
       <span data-fafo-layout-toolbar></span>
       <a href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Launcher</a>
@@ -165,51 +178,36 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-hub.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
   <script>
     (function () {
       if (!window.AIToolboxHub || !AIToolboxHub.mount) {
         document.getElementById('loading').textContent = 'Hub runtime failed to load.';
         return;
       }
+      const WS = AIToolboxHub.mediaWorkspaceTabs();
       AIToolboxHub.mount({
         hubName: 'Media Hub',
-        tabs: {
-          library: {
-            path: 'Media Library Manager.html',
-            title: 'Media Library',
-            meta: 'Catalog, preview, pair & search. Use <strong>Duplicates</strong> tab for full cleanup.'
-          },
-          duplicates: {
-            path: '../File Tools/Duplicate File Manager.html',
-            title: 'Duplicates',
-            meta: 'Scan, compare, merge & recycle exact/near duplicates — same library server.'
-          },
-          organizer: {
-            path: 'File Organizer.html',
-            title: 'File Organizer',
-            meta: 'Rename, tag, rank, merge same-named folders — metadata-first (no grid).'
-          }
-        },
-        order: ['library', 'duplicates', 'organizer'],
-        aliases: { dupes: 'duplicates', duplicate: 'duplicates', org: 'organizer', organize: 'organizer', lib: 'library' },
+        tabs: WS,
+        order: AIToolboxHub.MEDIA_WORKSPACE_ORDER.slice(),
+        aliases: AIToolboxHub.MEDIA_WORKSPACE_ALIASES,
         defaultTab: 'library',
         lsKey: 'fafo_media_hub_last_tab',
         pairHealthId: 'pairHealth',
         forwardSearchOnTab: 'duplicates',
         messageType: 'fafo-hub-tab',
-        keyMap: { '1': 'library', '2': 'duplicates', '3': 'organizer' },
+        keyMap: AIToolboxHub.mediaWorkspaceKeyMap(),
         reportTitle: 'FAFO Media Hub',
-        reportLines: ['Counterparts: Compare Hub · Guided Match · VSR · Duplicates · Organizer'],
+        reportLines: ['Workspace: Library · Duplicates · Organizer · Match · Review · Video · Image · Name match'],
       });
     })();
   </script>

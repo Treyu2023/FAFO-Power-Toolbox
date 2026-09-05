@@ -286,8 +286,8 @@
         .slider-line { width: 2px; }
         .collapse-tab { font-family: inherit; }
     </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
 </head>
 <body data-fx="none">
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
@@ -475,18 +475,19 @@
         <button type="button" class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-hub.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-hub.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-catalog-pick.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
     <script>
         const DB_NAME = 'AIVideoComparator';
         const DB_VER = 1;
@@ -724,12 +725,15 @@
             document.getElementById(slot === 'before' ? 'file-before' : 'file-after').click();
         }
 
+        const catalogHold = { before: null, after: null };
         function ingestFile(slot, file, name, handle) {
+            catalogHold[slot] = null;
             const st = document.getElementById(`status-${slot}`);
             st.innerText = `Loaded: ${name || file.name}`;
             st.style.color = 'var(--neon-accent)';
             if (slot === 'before') { fileCacheBefore = file; handleBefore = handle || null; checkReady(); }
             else { fileCacheAfter = file; handleAfter = handle || null; checkReady(); }
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(fileCacheBefore && fileCacheBefore.name, fileCacheAfter && fileCacheAfter.name); } catch (_) {}
         }
 
         // --- Pair Library (persisted on server when online) ---
@@ -1190,7 +1194,7 @@
         });
         window.addEventListener('pagehide', tearDownVideos);
 
-        function checkReady() { if (fileCacheBefore && fileCacheAfter) loadVideos(fileCacheBefore, fileCacheAfter); }
+        function checkReady() { if (fileCacheBefore instanceof Blob && fileCacheAfter instanceof Blob) loadVideos(fileCacheBefore, fileCacheAfter); }
 
         function loadVideosFromUrls(urlB, urlA, nameB, nameA) {
             tearDownVideos();
@@ -1218,6 +1222,7 @@
             boxAfter.appendChild(elAfter);
             document.getElementById('status-before').innerText = `Loaded: ${nameB || 'Before'}`;
             document.getElementById('status-after').innerText = `Loaded: ${nameA || 'After'}`;
+            try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(nameB, nameA); } catch (_) {}
         }
 
         function loadVideos(fileB, fileA) {
@@ -1710,6 +1715,40 @@
             a.click();
             showToast('Screenshot saved!');
         });
+
+        (function attachCatalogPickVideo() {
+            if (!window.AIToolboxCatalogPick || !AIToolboxCatalogPick.attach) return;
+            const ui = AIToolboxCatalogPick.attach({
+                beforeZone: '#dz-before',
+                afterZone: '#dz-after',
+                type: 'video',
+                onPick: function (slot, item) {
+                    if (!item) return;
+                    catalogHold[slot] = item;
+                    const name = item.name || 'file';
+                    const path = item.path || item.rel_path || '';
+                    if (slot === 'before') {
+                        knownBeforePath = path || knownBeforePath;
+                        fileCacheBefore = { name: name, size: item.size || 0 };
+                    } else {
+                        knownAfterPath = path || knownAfterPath;
+                        fileCacheAfter = { name: name, size: item.size || 0 };
+                    }
+                    const st = document.getElementById('status-' + slot);
+                    if (st) { st.innerText = 'Loaded: ' + name; st.style.color = 'var(--neon-accent)'; }
+                    ui.setNames(catalogHold.before && catalogHold.before.name || (fileCacheBefore && fileCacheBefore.name),
+                                catalogHold.after && catalogHold.after.name || (fileCacheAfter && fileCacheAfter.name));
+                    const A = window.AIToolboxAPI;
+                    const b = catalogHold.before, a = catalogHold.after;
+                    const bUrl = b && A ? A.mediaFileUrl(b.id) : (fileCacheBefore instanceof Blob ? URL.createObjectURL(fileCacheBefore) : null);
+                    const aUrl = a && A ? A.mediaFileUrl(a.id) : (fileCacheAfter instanceof Blob ? URL.createObjectURL(fileCacheAfter) : null);
+                    if (bUrl && aUrl) {
+                        loadVideosFromUrls(bUrl, aUrl, (b && b.name) || (fileCacheBefore && fileCacheBefore.name), (a && a.name) || (fileCacheAfter && fileCacheAfter.name));
+                        ui.remember(b || catalogHold.before, a || catalogHold.after);
+                    }
+                }
+            });
+        })();
 
         // --- Keyboard shortcuts ---
         document.addEventListener('keydown', e => {

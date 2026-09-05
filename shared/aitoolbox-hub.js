@@ -42,8 +42,8 @@
         const d = D();
         if (d && d.escapeHtml) return d.escapeHtml(s);
         return String(s == null ? '' : s)
-            .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
-            .replace(/"/g, '"').replace(/'/g, '&#39;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function withBusy(key, fn, btn) {
         const d = D();
@@ -99,6 +99,14 @@
         const reportTitle = opts.reportTitle || 'FAFO Hub';
         const reportLines = opts.reportLines || [];
         const loadTimeoutMs = opts.loadTimeoutMs || 25000;
+
+        try {
+            if (global.parent !== global) {
+                document.documentElement.classList.add('hub-embedded');
+            }
+        } catch (_) {
+            document.documentElement.classList.add('hub-embedded');
+        }
 
         let current = defaultTab;
         let loadTimer = null;
@@ -445,9 +453,79 @@
         throw new Error('Add files to Media Library first, or load a server pair to save by path.');
     }
 
+
+    const MEDIA_WORKSPACE_ORDER = ['library', 'duplicates', 'organizer', 'match', 'pairs', 'video', 'image', 'companion'];
+    const MEDIA_WORKSPACE_ALIASES = {
+        dupes: 'duplicates', duplicate: 'duplicates', org: 'organizer', organize: 'organizer', lib: 'library',
+        guided: 'match', elim: 'match', studio: 'match', pair: 'pairs', review: 'pairs', queue: 'pairs',
+        vid: 'video', vc: 'video', img: 'image', ic: 'image',
+        name: 'companion', vsr: 'companion', mismatch: 'companion',
+    };
+    function mediaWorkspaceTabs() {
+        return {
+            library: {
+                path: 'Media Library Manager.html',
+                toolboxPath: 'Movie File Manager/Media Library Manager.html',
+                title: 'Media Library',
+                meta: 'Catalog, preview, pair and search. Stay on these tabs — no trip back to Home.'
+            },
+            duplicates: {
+                path: '../File Tools/Duplicate File Manager.html',
+                toolboxPath: 'File Tools/Duplicate File Manager.html',
+                title: 'Duplicates',
+                meta: 'Scan, compare, merge and recycle exact/near duplicates. Results persist across tab switches.'
+            },
+            organizer: {
+                path: 'File Organizer.html',
+                toolboxPath: 'Movie File Manager/File Organizer.html',
+                title: 'File Organizer',
+                meta: 'Rename, tag, rank, merge same-named folders — metadata-first (no grid).'
+            },
+            match: {
+                path: 'Guided Pair Match.html',
+                toolboxPath: 'Movie File Manager/Guided Pair Match.html',
+                title: 'Guided Pair Match',
+                meta: 'One unpaired file at a time · up to 10 candidates · Y match / N next.'
+            },
+            pairs: {
+                path: 'Pair Review Queue.html',
+                toolboxPath: 'Movie File Manager/Pair Review Queue.html',
+                title: 'Pair Review',
+                meta: 'Review before/after pairs, accept or reject, then jump to a comparator.'
+            },
+            video: {
+                path: '../Video Tools/Video Comparison Slider Tool.html',
+                toolboxPath: 'Video Tools/Video Comparison Slider Tool.html',
+                title: 'Video Comparator',
+                meta: 'Search the catalog, highlight a slice of the before name, load the after match.'
+            },
+            image: {
+                path: '../Image tools/Image Comparitor With Slider.html',
+                toolboxPath: 'Image tools/Image Comparitor With Slider.html',
+                title: 'Image Comparator',
+                meta: 'Before/after image slider with catalog search and highlight-to-match.'
+            },
+            companion: {
+                path: 'Mismatched Source Companion.html',
+                toolboxPath: 'Movie File Manager/Mismatched Source Companion.html',
+                title: 'Name match',
+                meta: 'Match and rename dumps whose names no longer match the originals. Not FlashVSR.'
+            }
+        };
+    }
+    function mediaWorkspaceKeyMap() {
+        const o = {};
+        MEDIA_WORKSPACE_ORDER.forEach(function (id, i) { o[String(i + 1)] = id; });
+        return o;
+    }
+
     global.AIToolboxHub = {
         mount: mount,
         abortFrame: abortFrame,
         saveComparatorPair: saveComparatorPair,
+        mediaWorkspaceTabs: mediaWorkspaceTabs,
+        mediaWorkspaceKeyMap: mediaWorkspaceKeyMap,
+        MEDIA_WORKSPACE_ORDER: MEDIA_WORKSPACE_ORDER,
+        MEDIA_WORKSPACE_ALIASES: MEDIA_WORKSPACE_ALIASES,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

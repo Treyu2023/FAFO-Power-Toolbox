@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Library Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.4">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.4">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
     <style>
         :root {
             --bg: #070b12; --panel: #10161f; --panel2: #161d28;
@@ -1540,18 +1540,19 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.4"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.4"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.4"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.4"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.4"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-scan-cache.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.5"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
     <script>
         function el(id) {
             try {
@@ -2249,7 +2250,10 @@
                 const count = q.total ?? q.items?.length ?? 0;
                 const div = document.createElement('div');
                 div.className = 'dir-item' + (activeDir === d.id ? ' active' : '');
+                const age = folderScanAge(d);
                 div.innerHTML = `<span>📁 ${escHtml(d.name)}</span><span class="count">${count}</span>`;
+                if (age) div.title = (d.path || d.name) + ' · indexed ' + age;
+                else div.title = (d.path || d.name) + ' · never scanned';
                 div.onclick = () => {
                     activeDir = d.id;
                     activeSubpath = '';
@@ -3730,7 +3734,39 @@
             host.appendChild(wrap);
         }
 
-        async function scanDir(entry) {
+        function scanStampMs(v) {
+            const n = Number(v || 0);
+            if (!n) return 0;
+            return n < 1e12 ? n * 1000 : n;
+        }
+        function folderScanAge(entry) {
+            const Cache = window.AIToolboxScanCache;
+            const last = scanStampMs(entry && (entry.last_scanned || entry.lastScanned));
+            if (!last) return '';
+            if (Cache && Cache.relativeTime) return Cache.relativeTime(last);
+            try { return new Date(last).toLocaleString(); } catch (_) { return ''; }
+        }
+        function showScanAgeChip(entry, last) {
+            let chip = el('scanAgeChip');
+            if (!chip) {
+                chip = document.createElement('span');
+                chip.id = 'scanAgeChip';
+                chip.style.cssText = 'font-size:10px;color:var(--muted);padding:4px 8px;border:1px solid rgba(255,255,255,.12);border-radius:999px;white-space:nowrap';
+                el('btnRescan')?.insertAdjacentElement('afterend', chip);
+            }
+            const age = folderScanAge({ last_scanned: last }) || 'indexed';
+            chip.textContent = (entry && entry.name ? entry.name + ' · ' : '') + 'Indexed ' + age + ' — Rescan only if files changed';
+            chip.title = 'Catalog already has this folder. ↻ Rescan walks it again.';
+        }
+
+        async function scanDir(entry, opts) {
+            opts = opts || {};
+            const last = scanStampMs(entry && (entry.last_scanned || entry.lastScanned));
+            if (!opts.force && last > 0) {
+                showScanAgeChip(entry, last);
+                try { showToast((entry.name || 'Folder') + ' already indexed ' + folderScanAge(entry) + ' — skipped walk. Rescan if files changed.', 'ok'); } catch (_) {}
+                return { skipped: true, last_scanned: last };
+            }
             const prog = document.createElement('div');
             prog.style.cssText = 'position:fixed;bottom:calc(var(--atx-pro-h, 52px) + 16px);left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--accent);padding:12px 20px;border-radius:8px;z-index:100050;font-size:12px;display:flex;gap:10px;align-items:center;';
             const label = document.createElement('span');
@@ -3774,9 +3810,8 @@
         }
 
         async function rescanAll() {
-
             const dirs = await API().listDirectories();
-            for (const d of dirs) await scanDir(d);
+            for (const d of dirs) await scanDir(d, { force: true });
         }
 
         async function saveDetail() {
