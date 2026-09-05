@@ -42,6 +42,13 @@
     function skipKeepAlive() {
         try {
             if (global.AITOOLBOX_SKIP_KEEPALIVE || global.AITOOLBOX_STANDALONE) return true;
+            try {
+                if (typeof window !== 'undefined' && window.self !== window.top) return true;
+            } catch { return true; }
+            try {
+                const ka = localStorage.getItem('aitoolbox.keepalive') || localStorage.getItem('aitoolbox_keepalive');
+                if (ka === 'off' || ka === '0') return true;
+            } catch { /* ignore */ }
             if (typeof document !== 'undefined' && document.body && (
                 document.body.classList.contains('kf-standalone') ||
                 document.body.getAttribute('data-tb-chrome') === 'off'
@@ -314,11 +321,13 @@
             };
             if (opts.toolbox === false) body.toolbox = false;
             if (opts.fafoMeta === false) body.fafoMeta = false;
-            return await api('/launch/companions/start', {
+            const r = await api('/launch/companions/start', {
                 method: 'POST',
                 body: JSON.stringify(body),
                 timeoutMs: 20000,
             });
+            try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
+            return r;
         } catch {
             return null;
         }
@@ -337,11 +346,13 @@
             toolbox: opts.toolbox !== false,
             fafoMeta: opts.fafoMeta !== false,
         };
-        return api('/launch/companions/stop', {
+        const r = await api('/launch/companions/stop', {
             method: 'POST',
             body: JSON.stringify(body),
             timeoutMs: 15000,
         });
+        try { localStorage.setItem('aitoolbox.keepalive', 'off'); } catch { /* ignore */ }
+        return r;
     }
 
     async function getLaunchStatus() {
@@ -537,6 +548,7 @@
                 onStatus?.('Starting companion servers…');
                 await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
             }
+            try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
             return { ok: true, alreadyOnline: true };
         }
         if (serverLaunching) {
@@ -556,6 +568,7 @@
             if (ok) {
                 onStatus?.('Server online');
                 try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
                 if (alsoCompanions) {
                     onStatus?.('Ensuring FAFO tagging companion…');
                     await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
@@ -570,6 +583,7 @@
             if (ok) {
                 onStatus?.('Server online');
                 try { localStorage.setItem('aitoolbox_protocol_ok', '1'); } catch { /* ignore */ }
+                try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
                 if (alsoCompanions) {
                     await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
                 }
@@ -583,6 +597,7 @@
                 ok = await waitForServer(Math.min(20000, waitMs), 1000);
                 if (ok) {
                     onStatus?.('Server online');
+                    try { localStorage.removeItem('aitoolbox.keepalive'); } catch { /* ignore */ }
                     if (alsoCompanions) {
                         await startCompanionServers({ toolbox: true, fafoMeta: true, waitSec: 6 });
                     }
@@ -629,12 +644,31 @@
         };
     }
 
+    const inFlight = new Map();
+
     /**
      * Fetch toolbox API with timeout + clearer offline errors.
      * opts.timeoutMs — default 30000 (use 0 to disable).
      * opts.signal — optional AbortSignal (combined with timeout).
      */
     async function api(path, opts = {}) {
+        const method = String(opts.method || 'GET').toUpperCase();
+        const bodyKey = opts.body == null ? '' : String(opts.body);
+        const flightKey = method + '\0' + path + '\0' + bodyKey;
+        if (method === 'GET' && inFlight.has(flightKey)) {
+            return inFlight.get(flightKey);
+        }
+        const p = apiUncached(path, opts);
+        if (method === 'GET') {
+            inFlight.set(flightKey, p);
+            const clear = () => { if (inFlight.get(flightKey) === p) inFlight.delete(flightKey); };
+            if (typeof p.finally === 'function') p.finally(clear);
+            else p.then(clear, clear);
+        }
+        return p;
+    }
+
+    async function apiUncached(path, opts = {}) {
         const method = opts.method || 'GET';
         const t0 = Date.now();
         const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 30000;
@@ -642,7 +676,12 @@
 
         // Don't send custom fields to fetch()
         const { timeoutMs: _tm, ...fetchOpts } = opts;
-        const headers = { 'Content-Type': 'application/json', ...(fetchOpts.headers || {}) };
+        const headers = { ...(fetchOpts.headers || {}) };
+        if (fetchOpts.body != null && fetchOpts.body !== '') {
+            if (!headers['Content-Type'] && !headers['content-type']) {
+                headers['Content-Type'] = 'application/json';
+            }
+        }
 
         let timeoutCtrl = null;
         let timeoutTimer = null;
@@ -729,6 +768,7 @@
     }
 
     const API = {
+        api,
         async isOnline(force, timeoutMs) { return checkServer(force, timeoutMs); },
         async waitForServer(maxMs, intervalMs) { return waitForServer(maxMs, intervalMs); },
         async health() { return api('/health'); },
@@ -887,13 +927,27 @@
                 if (onProgress) {
                     return new Promise((resolve, reject) => {
                         const es = new EventSource(`${apiBase()}/scan/${encodeURIComponent(dirId)}/stream`);
+                        let errCount = 0;
+                        const onHide = () => { try { es.close(); } catch { /* ignore */ } };
+                        try { window.addEventListener('pagehide', onHide); } catch { /* ignore */ }
+                        const finish = (fn, arg) => {
+                            try { window.removeEventListener('pagehide', onHide); } catch { /* ignore */ }
+                            try { es.close(); } catch { /* ignore */ }
+                            fn(arg);
+                        };
                         es.onmessage = e => {
-                            const d = JSON.parse(e.data);
-                            if (d.error) { es.close(); reject(new Error(d.error)); }
-                            else if (d.done) { es.close(); resolve({ indexed: d.count }); }
+                            let d;
+                            try { d = JSON.parse(e.data); }
+                            catch (_) { return; }
+                            if (d.error) { finish(reject, new Error(d.error)); }
+                            else if (d.done) { finish(resolve, { indexed: d.count }); }
                             else onProgress(d.count, d.file);
                         };
-                        es.onerror = () => { es.close(); reject(new Error('Scan stream failed')); };
+                        es.onerror = () => {
+                            errCount += 1;
+                            if (errCount <= 2) return;
+                            finish(reject, new Error('Scan stream failed'));
+                        };
                     });
                 }
                 return api(`/scan/${encodeURIComponent(dirId)}`, { method: 'POST' });
@@ -915,6 +969,8 @@
         },
 
         async queryMedia(opts = {}) {
+            const rawLimit = opts.limit == null ? 80 : Number(opts.limit);
+            const limit = Math.max(1, Math.min(200, Number.isFinite(rawLimit) ? rawLimit : 80));
             if (await checkServer()) {
                 const p = new URLSearchParams();
                 if (opts.search) p.set('search', opts.search);
@@ -929,7 +985,7 @@
                 if (opts.rankMin != null) p.set('rank_min', opts.rankMin);
                 if (opts.sort) p.set('sort', opts.sort);
                 if (opts.page != null) p.set('page', opts.page);
-                if (opts.limit) p.set('limit', opts.limit);
+                p.set('limit', String(limit));
                 const res = await api(`/media?${p}`);
                 if (res.items) res.items = res.items.map(normalizeMedia);
                 return res;
@@ -939,7 +995,6 @@
                 dirId: opts.dirId, sort: opts.sort,
             });
             const page = opts.page || 0;
-            const limit = opts.limit || 80;
             const start = page * limit;
             return { items: items.slice(start, start + limit), total: items.length, page, limit };
         },
@@ -1612,8 +1667,11 @@
                     else if (d.done) { es.close(); resolve(d.result); }
                     else if (onProgress && (d.count != null || d.groups)) onProgress(d.count, d.file, d);
                 };
+                let esErrs = 0;
                 es.onerror = () => {
                     if (closed) return;
+                    esErrs += 1;
+                    if (esErrs < 3) return;
                     es.close();
                     reject(new Error('Duplicate scan stream failed'));
                 };

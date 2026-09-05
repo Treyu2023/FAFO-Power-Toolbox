@@ -24,6 +24,9 @@
         if (on) boot(); else shutdown();
     }
 
+    let origError = console.error;
+    var _inConsole = false;
+
     function fmtEntry(e) {
         const lv = (e.level || 'info').toUpperCase().padEnd(5);
         return `[${e.ts || ''}] ${lv} ${e.source || '?'}: ${e.message}`;
@@ -48,8 +51,10 @@
             extra: extra ?? null,
         };
         push(entry);
-        if (level === 'error') console.error(`[${source}]`, message, extra || '');
-        else if (level === 'warn') console.warn(`[${source}]`, message);
+        if (level === 'error') {
+            try { origError.call(console, '[' + source + ']', message, extra || ''); }
+            catch (_) { /* ignore */ }
+        } else if (level === 'warn') console.warn(`[${source}]`, message);
         flushToServer(entry);
         return entry;
     }
@@ -133,10 +138,17 @@
         global.addEventListener('unhandledrejection', e => {
             log('promise', 'error', e.reason?.message || String(e.reason), e.reason);
         });
-        const orig = console.error;
+        origError = console.error;
+        const orig = origError;
         console.error = function (...args) {
-            log('console', 'error', args.map(a => (a?.message || String(a))).join(' '));
-            orig.apply(console, args);
+            if (_inConsole) return orig.apply(console, args);
+            _inConsole = true;
+            try {
+                log('console', 'error', args.map(a => (a?.message || String(a))).join(' '));
+                orig.apply(console, args);
+            } finally {
+                _inConsole = false;
+            }
         };
     }
 

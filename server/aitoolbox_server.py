@@ -11,6 +11,8 @@ import json
 import os
 import threading
 import time
+import traceback
+import uuid
 import webbrowser
 from pathlib import Path
 
@@ -81,12 +83,26 @@ def load_bind() -> tuple[str, int]:
 TOOLBOX_VERSION = read_version()
 BIND_HOST, BIND_PORT = load_bind()
 
+ALLOWED_CORS_ORIGINS = [
+    "http://127.0.0.87:18765",
+    "http://127.0.0.1:18765",
+    "null",
+]
+
+
+def _origin_allows_pna(origin: str | None) -> bool:
+    """Private-Network-Access: only echo for loopback toolbox origins or missing (file://)."""
+    if origin is None or origin == "":
+        return True
+    return origin in ALLOWED_CORS_ORIGINS
+
+
 app = FastAPI(title="AI Toolbox Server", version=TOOLBOX_VERSION)
 # allow_credentials=True + allow_origins=["*"] is invalid CORS and breaks
 # fetch() from file:// (Origin: null) and some Chromium private-network cases.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(ALLOWED_CORS_ORIGINS),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -102,25 +118,30 @@ except Exception:
 
 @app.middleware("http")
 async def debug_request_middleware(request: Request, call_next):
+    origin = request.headers.get("origin")
+    pna_ok = _origin_allows_pna(origin)
     # Chromium Private Network Access preflight (file:// / http → 127.x)
     if request.method == "OPTIONS" and request.headers.get(
         "access-control-request-private-network"
     ):
         from starlette.responses import Response
 
-        return Response(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": request.headers.get("origin") or "*",
-                "Access-Control-Allow-Methods": "*",
-                "Access-Control-Allow-Headers": request.headers.get(
-                    "access-control-request-headers", "*"
-                ),
-                "Access-Control-Allow-Private-Network": "true",
-            },
-        )
+        headers = {
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": request.headers.get(
+                "access-control-request-headers", "*"
+            ),
+        }
+        if origin in ALLOWED_CORS_ORIGINS:
+            headers["Access-Control-Allow-Origin"] = origin
+        elif not origin:
+            headers["Access-Control-Allow-Origin"] = "null"
+        if pna_ok:
+            headers["Access-Control-Allow-Private-Network"] = "true"
+        return Response(status_code=204, headers=headers)
     response = await call_next(request)
-    response.headers.setdefault("Access-Control-Allow-Private-Network", "true")
+    if pna_ok:
+        response.headers.setdefault("Access-Control-Allow-Private-Network", "true")
     if response.status_code >= 500:
         dbg.log("server", "error", f"{request.method} {request.url.path} → {response.status_code}")
     elif response.status_code >= 400:
@@ -137,8 +158,19 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_exception(request: Request, exc: Exception):
-    dbg.log("server", "error", str(exc), {"path": request.url.path, "type": type(exc).__name__})
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    err_id = uuid.uuid4().hex[:12]
+    dbg.log(
+        "server",
+        "error",
+        str(exc),
+        {
+            "path": request.url.path,
+            "type": type(exc).__name__,
+            "id": err_id,
+            "trace": traceback.format_exc(),
+        },
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal error", "id": err_id})
 
 
 class DirAdd(BaseModel):
@@ -291,12 +323,21 @@ class PlaylistItemsAdd(BaseModel):
 
 
 @app.get("/api/health")
-def health():
+def health(probe: int = 0):
+    if not probe:
+        try:
+            import launch_ops as _launch_ops
+            _launch_ops.note_demand("s1", app="html-toolbox")
+        except Exception:
+            pass
+    db_ok = False
     try:
-        import launch_ops as _launch_ops
-        _launch_ops.note_demand("s1", app="html-toolbox")
+        from db import connect as _db_connect
+        with _db_connect() as conn:
+            conn.execute("SELECT 1")
+        db_ok = True
     except Exception:
-        pass
+        db_ok = False
     return {
         "ok": True,
         "ffmpeg": ops.find_ffmpeg() is not None,
@@ -306,6 +347,7 @@ def health():
         "uptime_s": int(time.time() - _STARTED_AT),
         "pid": os.getpid(),
         "endpoint": f"http://{BIND_HOST}:{BIND_PORT}",
+        "db_ok": db_ok,
         "features": [
             "vsr_pipeline",
             "duplicates",
@@ -374,10 +416,14 @@ def toolbox_static(file_path: str, v: str | None = Query(default=None)):
         )
     # Skip sensitive trees
     blocked = {".git", ".venv", "node_modules", "__pycache__"}
-    if any(part in blocked for part in target.relative_to(ROOT.resolve()).parts):
+    rel_parts = target.relative_to(ROOT.resolve()).parts
+    if any(part in blocked for part in rel_parts):
         raise HTTPException(403, "Forbidden")
-    # Never serve the SQLite DBs or secrets
-    if target.suffix.lower() in {".db", ".db-wal", ".db-shm", ".env"}:
+    # Never serve source, SQLite DBs, secrets, or scripts
+    blocked_suffixes = {".db", ".db-wal", ".db-shm", ".env", ".py", ".pyc", ".pyo", ".ps1"}
+    if target.suffix.lower() in blocked_suffixes:
+        raise HTTPException(403, "Forbidden")
+    if target.name.lower() == ".env" or target.name.lower().startswith(".env."):
         raise HTTPException(403, "Forbidden")
     media = None
     lower = target.suffix.lower()
@@ -1869,7 +1915,7 @@ import fleet_tech_ops as fleet_tech
 
 
 @app.get("/api/verifone/fleet-tech-defaults")
-def verifone_fleet_tech_defaults(include_password: bool = True):
+def verifone_fleet_tech_defaults(include_password: bool = False):
     """PuTTY/SSH maint credentials + playbooks stored under %LOCALAPPDATA%\\FAFO (not git)."""
     return fleet_tech.get_defaults(include_password=include_password)
 
@@ -2641,6 +2687,11 @@ def api_query_media(
 ):
     tag_list = [t for t in tags.split(",") if t.strip()] if tags else []
     prefix = path_prefix if path_prefix or folder_only else None
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 80
+    limit = max(1, min(200, limit or 80))
     return ops.query_media(
         search, tag_list, type, dir_id, prefix, folder_only,
         virtual_root, category, status, rank_min, sort, page, limit,
@@ -3006,7 +3057,7 @@ class SmartSearchRun(BaseModel):
 
 class VerifyTagsBody(BaseModel):
     ids: list[str] | None = None
-    limit: int = 500
+    limit: int = 200
     fix: bool = False
 
 
@@ -3592,12 +3643,49 @@ def api_dup_merge(body: DupMerge):
         raise HTTPException(400, str(e))
 
 
+def _assert_allowed_file_path(path: str) -> Path:
+    """GET /api/files/* may only read under ROOT or a registered media directory."""
+    raw = str(path or "").strip()
+    if not raw:
+        raise HTTPException(400, "path required")
+    norm = raw.replace("\\", "/")
+    if ".." in Path(norm).parts or any(seg == ".." for seg in norm.split("/")):
+        raise HTTPException(400, "Invalid path")
+    try:
+        p = Path(raw).expanduser().resolve()
+    except OSError as e:
+        raise HTTPException(400, "Invalid path") from e
+    name_l = p.name.lower()
+    suf = p.suffix.lower()
+    if suf in {".db", ".env"} or name_l == ".env" or name_l.startswith(".env."):
+        raise HTTPException(403, "Forbidden")
+    if not p.is_file():
+        raise HTTPException(404, "File not found")
+    allowed: list[Path] = [ROOT.resolve()]
+    try:
+        for d in ops.list_directories():
+            dp = str(d.get("path") or "").strip()
+            if not dp:
+                continue
+            try:
+                allowed.append(Path(dp).expanduser().resolve())
+            except OSError:
+                continue
+    except Exception:
+        pass
+    for base in allowed:
+        try:
+            p.relative_to(base)
+            return p
+        except ValueError:
+            continue
+    raise HTTPException(403, "Path not under toolbox or a registered media directory")
+
+
 @app.get("/api/files/serve")
 def api_files_serve(path: str = Query(...)):
     import mimetypes
-    p = Path(path)
-    if not p.is_file():
-        raise HTTPException(404, "File not found")
+    p = _assert_allowed_file_path(path)
     mime, _ = mimetypes.guess_type(str(p))
     return FileResponse(p, media_type=mime or "application/octet-stream", filename=p.name)
 
@@ -3605,6 +3693,7 @@ def api_files_serve(path: str = Query(...)):
 @app.get("/api/files/preview")
 def api_files_preview(path: str = Query(...), t: float = Query(0.5, ge=0, le=36000)):
     """Still preview for duplicate browser: image as-is, video = first frame (ffmpeg)."""
+    _assert_allowed_file_path(path)
     try:
         img_path, media_type = dup.file_preview_image(path, timestamp=float(t or 0.5))
         return FileResponse(
@@ -3625,16 +3714,18 @@ def api_files_preview(path: str = Query(...), t: float = Query(0.5, ge=0, le=360
 
 @app.get("/api/files/info")
 def api_files_info(path: str = Query(...)):
+    p = _assert_allowed_file_path(path)
     try:
-        return dup.file_info(path)
+        return dup.file_info(str(p))
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
 
 
 @app.get("/api/files/text")
 def api_files_text(path: str = Query(...), max_bytes: int = 65536):
+    p = _assert_allowed_file_path(path)
     try:
-        return dup.read_text_preview(path, max_bytes=max_bytes)
+        return dup.read_text_preview(str(p), max_bytes=max_bytes)
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(400, str(e))
 
@@ -5881,7 +5972,17 @@ def main():
     print(f"  (dedicated bind - not 127.0.0.1:8765 / FAFO companion)", flush=True)
     print(f"  FFmpeg: {'yes' if ops.find_ffmpeg() else 'install ffmpeg for pro thumbnails'}", flush=True)
     print("  Press Ctrl+C to stop\n", flush=True)
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    try:
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+    except OSError as exc:
+        if host == "127.0.0.87":
+            alt = "127.0.0.1"
+            print(f"  Bind {host}:{port} failed ({exc}) — retrying {alt}:{port}", flush=True)
+            BIND_HOST = alt
+            print(f"  AI Toolbox Server -> http://{alt}:{port}", flush=True)
+            uvicorn.run(app, host=alt, port=port, log_level="warning")
+        else:
+            raise
 
 
 if __name__ == "__main__":

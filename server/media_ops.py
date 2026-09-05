@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 import uuid
@@ -129,13 +130,37 @@ def add_directory(path: str) -> dict[str, Any]:
     p = Path(path).resolve()
     if not p.is_dir():
         raise FileNotFoundError(f"Not a directory: {path}")
-    did = f"dir-{uuid.uuid4().hex[:10]}"
     with connect() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO directories (id, path, name, added_at) VALUES (?, ?, ?, ?)",
-            (did, str(p), p.name, time.time()),
-        )
-        row = conn.execute("SELECT * FROM directories WHERE id=?", (did,)).fetchone()
+        existing = conn.execute(
+            "SELECT * FROM directories WHERE path=?", (str(p),)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE directories SET name=? WHERE id=?",
+                (p.name, existing["id"]),
+            )
+            row = conn.execute(
+                "SELECT * FROM directories WHERE id=?", (existing["id"],)
+            ).fetchone()
+            return dict(row)
+        did = f"dir-{uuid.uuid4().hex[:10]}"
+        try:
+            conn.execute(
+                "INSERT INTO directories (id, path, name, added_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(path) DO UPDATE SET name=excluded.name",
+                (did, str(p), p.name, time.time()),
+            )
+        except sqlite3.OperationalError:
+            existing = conn.execute(
+                "SELECT * FROM directories WHERE path=?", (str(p),)
+            ).fetchone()
+            if existing:
+                return dict(existing)
+            conn.execute(
+                "INSERT INTO directories (id, path, name, added_at) VALUES (?, ?, ?, ?)",
+                (did, str(p), p.name, time.time()),
+            )
+        row = conn.execute("SELECT * FROM directories WHERE path=?", (str(p),)).fetchone()
     return dict(row)
 
 
@@ -457,6 +482,15 @@ def query_media(
     page: int = 0,
     limit: int = 80,
 ) -> dict[str, Any]:
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 80
+    limit = max(1, min(200, limit or 80))
+    try:
+        page = max(0, int(page or 0))
+    except (TypeError, ValueError):
+        page = 0
     clauses: list[str] = []
     params: list[Any] = []
 
