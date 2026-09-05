@@ -270,6 +270,17 @@ class AutoPairRequest(BaseModel):
     require_upscale_name: bool | None = None
 
 
+class TrustPidRequest(BaseModel):
+    dry_run: bool = False
+    pin: bool = True
+    kind: str | None = None
+    before_dir_id: str | None = None
+    after_dir_id: str | None = None
+    include_ambiguous: bool = False
+    limit: int = 400
+    pids: list[str] | None = None
+
+
 class SuggestPairsRequest(BaseModel):
     """Optional two-folder mode + multi-signal matching knobs."""
     limit: int = 50
@@ -3098,6 +3109,45 @@ def api_auto_pair_upscale(body: AutoPairRequest):
         )
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+@app.get("/api/pairs/pid-matches")
+def api_pid_matches(
+    kind: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+    limit: int = 400,
+):
+    """Unpaired catalog files grouped by `_PID_xxxxxxxx` (quick-approve / trust-all)."""
+    try:
+        return ops.list_pid_matches(
+            media_type=kind if kind in ("video", "image") else None,
+            before_dir_id=before_dir_id or None,
+            after_dir_id=after_dir_id or None,
+            unpaired_only=unpaired_only,
+            limit=max(1, min(2000, int(limit or 400))),
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
+
+
+@app.post("/api/pairs/trust-pids")
+def api_trust_pids(body: TrustPidRequest):
+    """Lock unique PID matches (or a selected pid list) as catalog pairs."""
+    try:
+        return ops.trust_pid_matches(
+            dry_run=body.dry_run,
+            pin=body.pin,
+            kind=body.kind,
+            before_dir_id=body.before_dir_id,
+            after_dir_id=body.after_dir_id,
+            include_ambiguous=body.include_ambiguous,
+            limit=max(1, min(2000, int(body.limit or 400))),
+            pids=body.pids,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
 
 
 @app.patch("/api/pairs/{pid}")

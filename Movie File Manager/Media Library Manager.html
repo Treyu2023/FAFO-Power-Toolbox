@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Library Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.5">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.5">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.6">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.6">
     <style>
         :root {
             --bg: #070b12; --panel: #10161f; --panel2: #161d28;
@@ -768,6 +768,7 @@
                     <div class="menu-hint">Advanced pairing &amp; review — primary Pair + Pair Studio stay on the bar.</div>
                     <button type="button" id="btnTwoDirPairs" data-tip-title="Two-folder pairs" data-tip="Match files between a Before folder and an After folder.">📁 Two-folder pairs</button>
                     <button type="button" id="btnAutoPair" data-tip-title="Auto-link" data-tip="Automatically link files that look like source ↔ upscale.">⚡ Auto-link upscale pairs</button>
+                    <button type="button" id="btnTrustPids" data-tip-title="Trust PIDs" data-tip="Lock every unique 1:1 _PID_xxxxxxxx match. Ambiguous groups stay for Guided Match.">🏷️ Trust all unique PIDs</button>
                     <button type="button" id="btnRelinkPairs" data-tip-title="Relink" data-tip="Reconnect pairs using UP-#### tags after files moved.">🔗 Relink pairs from tags</button>
                     <button type="button" id="btnPairHealth" data-tip-title="Pair health" data-tip="Find broken pairs and leftover unmatched files.">🩺 Pair health</button>
                     <button type="button" id="btnPairMap" data-tip-title="Pair map" data-tip="Export or import a pair map JSON for backup/transfer.">🗺️ Pair map export/import</button>
@@ -1540,19 +1541,19 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-scan-cache.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.5"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.5"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.5"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.5"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.5"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-scan-cache.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.6"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.6"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.6"></script>
     <script>
         function el(id) {
             try {
@@ -4997,6 +4998,26 @@
             showToast(`Created ${result.created} locked pairs (tagged for video + image)`, 'ok');
             await applyFilters();
         };
+
+        el('btnTrustPids')?.addEventListener('click', async () => {
+            if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
+            try {
+                const preview = await API().listPidMatches({ limit: 400 });
+                const n = preview.unique_count || (preview.unique || []).length || 0;
+                const amb = preview.ambiguous_count || 0;
+                if (!n) {
+                    showToast(amb ? (amb + ' PID groups need a look in Guided Match — none are unique 1:1') : 'No _PID_xxxxxxxx matches in unpaired files', 'warn');
+                    return;
+                }
+                const ok = confirm('Found ' + n + ' unique PID pair(s)' + (amb ? (' · ' + amb + ' ambiguous left for Approve') : '') + '.\n\nLock them all?');
+                if (!ok) return;
+                const result = await API().trustPidMatches({ pin: true, includeAmbiguous: false });
+                showToast('Trusted ' + (result.created || 0) + ' PID pair(s)', 'ok');
+                await applyFilters();
+            } catch (e) {
+                showToast(e.message || 'PID trust failed', 'warn');
+            }
+        });
 
         el('btnRelinkPairs')?.addEventListener('click', async () => {
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }

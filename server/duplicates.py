@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from db import IMAGE_EXT, VIDEO_EXT
-from media_ops import find_ffmpeg, should_skip_entry
+from media_ops import find_ffmpeg, should_skip_entry, pair_id_from_name
 from video_probe import probe_video
 
 HASH_READ_BYTES = 1024 * 1024
@@ -164,22 +164,6 @@ def classify_file(path: Path) -> str:
     if ext in CODE_EXT:
         return "code"
     return "other"
-
-
-def pair_id_from_name(path_or_name: str) -> str | None:
-    """8-char hex PID from `_PID_xxxxxxxx` in the filename (or legacy GT- folder)."""
-    text = str(path_or_name or "")
-    p = Path(text)
-    m = _PID_IN_NAME_RE.search(p.stem)
-    if m:
-        return m.group(1).lower()
-    m2 = _PAIR_FOLDER_RE.search(p.name)
-    if m2:
-        return m2.group(1).lower()
-    m3 = _PAIR_FOLDER_RE.search(p.parent.name)
-    if m3:
-        return m3.group(1).lower()
-    return None
 
 
 def extract_grok_ids(name: str) -> list[str]:
