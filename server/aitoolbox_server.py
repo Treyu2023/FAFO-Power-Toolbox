@@ -4147,6 +4147,20 @@ class TmproRefresh(BaseModel):
     only_seen_since_days: int | None = 7
 
 
+class TmproModesBody(BaseModel):
+    names: dict[str, str] | None = None
+    members: dict[str, dict[str, bool]] | None = None
+    skipUnsafe: bool | None = None
+    forceKill: bool | None = None
+    launchProfile: str | None = None
+    activeProfile: str | None = None
+
+
+class TmproWindowsStartupBody(BaseModel):
+    enabled: bool
+    launchProfile: str | None = None
+
+
 @app.get("/api/tmpro/overview")
 def api_tmpro_overview():
     try:
@@ -4222,6 +4236,43 @@ def api_tmpro_refresh(body: TmproRefresh = TmproRefresh()):
             only_seen_since_days=body.only_seen_since_days,
             api_key=key,
         )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/modes")
+def api_tmpro_modes_get():
+    try:
+        return tmpro.load_modes()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/tmpro/modes")
+def api_tmpro_modes_save(body: TmproModesBody = TmproModesBody()):
+    try:
+        payload = body.model_dump(exclude_none=True)
+        return tmpro.save_modes(payload)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tmpro/windows-startup")
+def api_tmpro_windows_startup_get():
+    try:
+        return tmpro.windows_startup_status()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/tmpro/windows-startup")
+def api_tmpro_windows_startup_set(body: TmproWindowsStartupBody):
+    try:
+        return tmpro.set_windows_startup(bool(body.enabled), launch_profile=body.launchProfile)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
     except Exception as e:
         raise HTTPException(500, str(e))
 

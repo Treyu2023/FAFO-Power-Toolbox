@@ -616,3 +616,165 @@ def overview() -> dict[str, Any]:
         "ratings_summary": ratings.get("summary"),
         "knowledge": stats,
     }
+
+
+# --- Efficiency-mode lists + optional Windows login kill ---
+
+STARTUP_LINK_NAME = "FAFO Task Manager Pro.lnk"
+MODE_IDS = ("m1", "m2", "m3")
+
+
+def _modes_path() -> Path:
+    return _store_dir() / "modes.json"
+
+
+def _default_modes() -> dict[str, Any]:
+    return {
+        "names": {"m1": "Focus", "m2": "Gaming", "m3": "Deep clean"},
+        "members": {},
+        "skipUnsafe": True,
+        "forceKill": False,
+        "launchProfile": "",
+        "activeProfile": "m1",
+        "windowsStartup": False,
+    }
+
+
+def _shortcut_on() -> bool:
+    try:
+        from launch_ops import startup_folder
+        return (startup_folder() / STARTUP_LINK_NAME).is_file()
+    except Exception:
+        return False
+
+
+def load_modes() -> dict[str, Any]:
+    raw = _load_json(_modes_path(), {})
+    out = _default_modes()
+    if not isinstance(raw, dict):
+        raw = {}
+    names = raw.get("names") if isinstance(raw.get("names"), dict) else {}
+    for mid in MODE_IDS:
+        val = str(names.get(mid) or out["names"][mid]).strip()
+        if val:
+            out["names"][mid] = val[:48]
+    members_in = raw.get("members") if isinstance(raw.get("members"), dict) else {}
+    cleaned: dict[str, dict[str, bool]] = {}
+    for k, v in members_in.items():
+        key = _norm_proc_key(str(k))
+        if not key or not isinstance(v, dict):
+            continue
+        flags = {mid: bool(v.get(mid)) for mid in MODE_IDS}
+        if any(flags.values()):
+            cleaned[key] = flags
+    out["members"] = cleaned
+    out["skipUnsafe"] = raw.get("skipUnsafe", True) is not False
+    out["forceKill"] = bool(raw.get("forceKill"))
+    lp = str(raw.get("launchProfile") or "").strip().lower()
+    out["launchProfile"] = lp if lp in MODE_IDS else ""
+    ap = str(raw.get("activeProfile") or "m1").strip().lower()
+    out["activeProfile"] = ap if ap in MODE_IDS else "m1"
+    out["windowsStartup"] = _shortcut_on()
+    out["store"] = str(_store_dir())
+    return out
+
+
+def save_modes(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    cur = load_modes()
+    body = body if isinstance(body, dict) else {}
+    if isinstance(body.get("names"), dict):
+        for mid in MODE_IDS:
+            if mid in body["names"]:
+                val = str(body["names"].get(mid) or "").strip()[:48]
+                if val:
+                    cur["names"][mid] = val
+    if isinstance(body.get("members"), dict):
+        cleaned: dict[str, dict[str, bool]] = {}
+        for k, v in body["members"].items():
+            key = _norm_proc_key(str(k))
+            if not key or not isinstance(v, dict):
+                continue
+            flags = {mid: bool(v.get(mid)) for mid in MODE_IDS}
+            if any(flags.values()):
+                cleaned[key] = flags
+        cur["members"] = cleaned
+    if "skipUnsafe" in body:
+        cur["skipUnsafe"] = body.get("skipUnsafe") is not False
+    if "forceKill" in body:
+        cur["forceKill"] = bool(body.get("forceKill"))
+    if "launchProfile" in body:
+        lp = str(body.get("launchProfile") or "").strip().lower()
+        cur["launchProfile"] = lp if lp in MODE_IDS else ""
+    if "activeProfile" in body:
+        ap = str(body.get("activeProfile") or "m1").strip().lower()
+        cur["activeProfile"] = ap if ap in MODE_IDS else "m1"
+    disk = {
+        "names": cur["names"],
+        "members": cur["members"],
+        "skipUnsafe": cur["skipUnsafe"],
+        "forceKill": cur["forceKill"],
+        "launchProfile": cur["launchProfile"],
+        "activeProfile": cur["activeProfile"],
+        "updated": _utc_now(),
+    }
+    _save_json(_modes_path(), disk)
+    return load_modes()
+
+
+def windows_startup_status() -> dict[str, Any]:
+    modes = load_modes()
+    try:
+        from launch_ops import startup_folder
+        folder = startup_folder()
+        link = folder / STARTUP_LINK_NAME
+        folder_s = str(folder)
+        path_s = str(link)
+    except Exception:
+        folder_s = ""
+        path_s = ""
+        link = None
+    return {
+        "ok": True,
+        "enabled": bool(link and link.is_file()) if link is not None else False,
+        "path": path_s,
+        "folder": folder_s,
+        "name": STARTUP_LINK_NAME,
+        "launchProfile": modes.get("launchProfile") or "",
+        "names": modes.get("names") or {},
+    }
+
+
+def set_windows_startup(enabled: bool, launch_profile: str | None = None) -> dict[str, Any]:
+    import launch_ops as launch
+
+    if not launch.IS_WINDOWS:
+        raise RuntimeError("Windows startup is only supported on Windows")
+    if launch_profile is not None:
+        save_modes({"launchProfile": launch_profile})
+    root = launch.toolbox_root()
+    folder = launch.startup_folder()
+    link = folder / STARTUP_LINK_NAME
+    ps1 = root / "Scripts" / "Start-FAFOTaskManager.ps1"
+    if enabled:
+        if not ps1.is_file():
+            raise FileNotFoundError(f"Missing {ps1}")
+        powershell = str(
+            Path(os.environ.get("SystemRoot", r"C:\Windows"))
+            / "System32"
+            / "WindowsPowerShell"
+            / "v1.0"
+            / "powershell.exe"
+        )
+        launch._create_shortcut(
+            link,
+            target=powershell,
+            workdir=str(root),
+            description="FAFO Task Manager Pro — optional login kill profile",
+            args=(
+                '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden '
+                f'-File "{ps1}" -ToolboxRoot "{root}"'
+            ),
+        )
+    else:
+        launch._remove_shortcut(link)
+    return windows_startup_status()
