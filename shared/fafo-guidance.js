@@ -462,7 +462,7 @@
       tip(q('#btnSavePairs'), 'Save accepted pairs',
         'Store accepted before/after links in the catalog.',
         'savePair / savePairFromPaths for accepted rows.',
-        'Pins pairs for Compare Hub.');
+        'Pins pairs for Media Hub Review / sliders.');
       tip(q('#btnDeleteRejected'), 'Delete rejected pair links',
         'Remove bad pair links from the catalog (files stay).',
         'deletePair for rejected catalog pairs.',

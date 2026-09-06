@@ -288,6 +288,11 @@ class PipelineSetRequest(BaseModel):
     register: bool = True
 
 
+class PipelineRefreshLiveRequest(BaseModel):
+    roles: list[str] | None = None
+    force: bool = False
+
+
 class LeftoverSaveRequest(BaseModel):
     unique_trusted: int = 0
     ambiguous: list = []
@@ -2686,6 +2691,14 @@ def api_scan(dir_id: str, recursive: bool = True):
         raise HTTPException(404, str(e))
 
 
+@app.get("/api/scan/{dir_id}/probe")
+def api_scan_probe(dir_id: str, recursive: bool = True):
+    try:
+        return ops.probe_directory(dir_id, recursive=recursive)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+
 _LIB_SCANS: dict[str, dict] = {}
 _LIB_SCANS_BY_DIR: dict[str, str] = {}
 _LIB_SCANS_LOCK = threading.Lock()
@@ -3198,6 +3211,15 @@ def api_pipeline_set(body: PipelineSetRequest):
     return pws.set_pipeline(
         inbox=body.inbox, before=body.before, after=body.after, register=body.register,
     )
+
+
+@app.post("/api/pipeline/refresh-live")
+def api_pipeline_refresh_live(body: PipelineRefreshLiveRequest = PipelineRefreshLiveRequest()):
+    roles = None
+    if body.roles:
+        allow = {"inbox", "before", "after"}
+        roles = [r for r in body.roles if r in allow]
+    return pws.refresh_live(roles=roles or None, force=bool(body.force))
 
 
 @app.get("/api/pipeline/leftover")

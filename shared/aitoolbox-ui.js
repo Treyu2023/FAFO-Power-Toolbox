@@ -1261,12 +1261,13 @@
         if (!info) { fallback(); return; }
         try {
             if (window.self !== window.top) {
-                if (info.kind === 'media' && info.tab) {
-                    window.parent.postMessage({ type: 'fafo-hub-tab', tab: info.tab, search: info.search, href: info.href }, location.origin);
-                    return;
-                }
-                if (info.kind === 'compare' && info.tab) {
-                    window.parent.postMessage({ type: 'fafo-compare-tab', tab: info.tab, search: info.search, href: info.href }, location.origin);
+                if ((info.kind === 'media' || info.kind === 'compare') && (info.tab || info.kind === 'compare')) {
+                    window.parent.postMessage({
+                        type: 'fafo-hub-tab',
+                        tab: info.tab || 'match',
+                        search: info.search,
+                        href: info.href,
+                    }, location.origin);
                     return;
                 }
                 try { window.top.location.href = info.href; return; } catch { /* cross-origin */ }
