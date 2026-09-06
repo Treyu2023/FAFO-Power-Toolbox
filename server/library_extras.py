@@ -349,13 +349,28 @@ def export_pair_map() -> dict[str, Any]:
             "kind": p.get("kind"),
             "pinned": bool(p.get("pinned")),
             "notes": p.get("notes") or "",
+            "file_pid": p.get("file_pid") or "",
+            "match_method": p.get("match_method") or "",
+            "confidence": p.get("confidence"),
             "before": snap(before, bp),
             "after": snap(after, ap),
         })
+    pid_n = sum(1 for row in out if row.get("file_pid"))
+    up_n = sum(1 for row in out if row.get("pair_code"))
+    methods: dict[str, int] = {}
+    for row in out:
+        m = (row.get("match_method") or "unknown").strip() or "unknown"
+        methods[m] = methods.get(m, 0) + 1
     return {
-        "version": 1,
+        "version": 2,
         "exported_at": time.time(),
         "pairs": out,
+        "summary": {
+            "total": len(out),
+            "with_pid": pid_n,
+            "with_up_code": up_n,
+            "methods": methods,
+        },
     }
 
 

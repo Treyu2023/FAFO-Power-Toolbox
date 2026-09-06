@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Library Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.6">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.6">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.7">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.7">
     <style>
         :root {
             --bg: #070b12; --panel: #10161f; --panel2: #161d28;
@@ -769,6 +769,8 @@
                     <button type="button" id="btnTwoDirPairs" data-tip-title="Two-folder pairs" data-tip="Match files between a Before folder and an After folder.">📁 Two-folder pairs</button>
                     <button type="button" id="btnAutoPair" data-tip-title="Auto-link" data-tip="Automatically link files that look like source ↔ upscale.">⚡ Auto-link upscale pairs</button>
                     <button type="button" id="btnTrustPids" data-tip-title="Trust PIDs" data-tip="Lock every unique 1:1 _PID_xxxxxxxx match. Ambiguous groups stay for Guided Match.">🏷️ Trust all unique PIDs</button>
+                    <button type="button" id="btnUndoPair" data-tip-title="Undo pair op" data-tip="Undo the last lock, unlock, rename, or Trust all (up to 50 steps).">↩ Undo last pair op</button>
+                    <button type="button" id="btnImagineImport" data-tip-title="Imagine HAVE" data-tip="Register Imagine Vault HAVE files into Inbox so they join the PID/UP pipeline. Catalog only — no copy.">✦ Imagine HAVE → Inbox</button>
                     <button type="button" id="btnRelinkPairs" data-tip-title="Relink" data-tip="Reconnect pairs using UP-#### tags after files moved.">🔗 Relink pairs from tags</button>
                     <button type="button" id="btnPairHealth" data-tip-title="Pair health" data-tip="Find broken pairs and leftover unmatched files.">🩺 Pair health</button>
                     <button type="button" id="btnPairMap" data-tip-title="Pair map" data-tip="Export or import a pair map JSON for backup/transfer.">🗺️ Pair map export/import</button>
@@ -1298,8 +1300,9 @@
     <!-- Pair Map Modal -->
     <div class="modal-bg" id="pairMapModal">
         <div class="modal faq-modal">
-            <h2>🗺️ Pair Map Export / Import</h2>
-            <p class="faq-lead">JSON backup of all UP-#### pairs (paths, sizes, tags). Import on a new machine after scanning folders.</p>
+            <h2>🗺️ Pair Map — identity file</h2>
+            <p class="faq-lead">Catalog of pairs, PIDs, and UP-codes. This is the backup you restore after a disk move.</p>
+            <div id="pairMapSummary" style="font-size:12px;color:var(--muted);margin-bottom:10px">Open to load counts…</div>
             <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;">
                 <button class="btn orange" id="btnExportPairMap">⬇️ Export JSON</button>
                 <button class="btn" id="btnImportPairMap">⬆️ Import JSON</button>
@@ -1541,19 +1544,20 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-scan-cache.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.6"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.6"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.6"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.6"></script>
+    <script src="../shared/aitoolbox-config.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-debug.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-core.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-scan-cache.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-pipeline.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-ui.js?v=3.0.7"></script>
+    <script src="../shared/fafo-ops-stats.js?v=3.0.7"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.7"></script>
     <script>
         function el(id) {
             try {
@@ -5003,19 +5007,52 @@
             if (!serverOn) { showToast('Start server first (▶ Start Server on this page)', 'warn'); return; }
             try {
                 const preview = await API().listPidMatches({ limit: 400 });
-                const n = preview.unique_count || (preview.unique || []).length || 0;
+                const unique = preview.unique || (preview.matches || []).filter((m) => m.unique);
+                const n = preview.unique_count || unique.length || 0;
                 const amb = preview.ambiguous_count || 0;
                 if (!n) {
                     showToast(amb ? (amb + ' PID groups need a look in Guided Match — none are unique 1:1') : 'No _PID_xxxxxxxx matches in unpaired files', 'warn');
                     return;
                 }
-                const ok = confirm('Found ' + n + ' unique PID pair(s)' + (amb ? (' · ' + amb + ' ambiguous left for Approve') : '') + '.\n\nLock them all?');
-                if (!ok) return;
-                const result = await API().trustPidMatches({ pin: true, includeAmbiguous: false });
+                const P = window.AIToolboxPipeline;
+                let pids = unique.map((m) => m.pid);
+                if (P && P.dryRunTrust) {
+                    const dry = await P.dryRunTrust(unique, { title: 'Trust unique PID matches?' });
+                    if (!dry.confirmed) return;
+                    pids = dry.pids || [];
+                    if (!pids.length) { showToast('Nothing selected', 'warn'); return; }
+                } else {
+                    const ok = confirm('Found ' + n + ' unique PID pair(s)' + (amb ? (' · ' + amb + ' ambiguous left for Approve') : '') + '.\n\nLock them all?');
+                    if (!ok) return;
+                }
+                const result = await API().trustPidMatches({ pin: true, includeAmbiguous: false, pids });
                 showToast('Trusted ' + (result.created || 0) + ' PID pair(s)', 'ok');
                 await applyFilters();
             } catch (e) {
                 showToast(e.message || 'PID trust failed', 'warn');
+            }
+        });
+
+        el('btnUndoPair')?.addEventListener('click', async () => {
+            if (!serverOn) { showToast('Start server first', 'warn'); return; }
+            try {
+                const r = await API().undoLastPair();
+                if (!r.ok) { showToast(r.error || 'Nothing to undo', 'warn'); return; }
+                showToast('Undid ' + (r.undid || 'pair op'), 'ok');
+                await applyFilters();
+            } catch (e) {
+                showToast(e.message || 'Undo failed', 'warn');
+            }
+        });
+        el('btnImagineImport')?.addEventListener('click', async () => {
+            if (!serverOn) { showToast('Start server first', 'warn'); return; }
+            try {
+                const r = await API().importImagineHave({ limit: 400 });
+                if (!r.ok) { showToast(r.error || 'Imagine Vault not reachable', 'warn'); return; }
+                showToast('Imported ' + (r.imported || 0) + ' HAVE file(s) into catalog' + (r.skipped ? (' · ' + r.skipped + ' skipped') : ''), 'ok');
+                await applyFilters();
+            } catch (e) {
+                showToast(e.message || 'Imagine import failed', 'warn');
             }
         });
 
@@ -5131,9 +5168,24 @@
             ).join('') || '<div class="hint-box">Nothing fixed</div>';
         });
 
-        el('btnPairMap')?.addEventListener('click', () => {
+        el('btnPairMap')?.addEventListener('click', async () => {
             el('pairMapModal').classList.add('active');
             el('pairMapPreview').style.display = 'none';
+            const sum = el('pairMapSummary');
+            if (sum) sum.textContent = 'Loading pair map…';
+            try {
+                const data = await API().exportPairMap();
+                const s = data.summary || {};
+                if (sum) {
+                    sum.textContent = (s.total || (data.pairs || []).length) + ' pairs · ' +
+                        (s.with_pid || 0) + ' with PID · ' +
+                        (s.with_up_code || 0) + ' with UP-code';
+                }
+                el('pairMapPreview').style.display = 'block';
+                el('pairMapPreview').textContent = JSON.stringify({ summary: s, sample: (data.pairs || []).slice(0, 8) }, null, 2);
+            } catch (e) {
+                if (sum) sum.textContent = e.message || 'Could not load pair map';
+            }
         });
         el('btnPairMapClose')?.addEventListener('click', () => el('pairMapModal').classList.remove('active'));
         el('btnExportPairMap')?.addEventListener('click', async () => {

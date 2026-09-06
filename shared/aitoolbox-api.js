@@ -1433,6 +1433,78 @@
             });
         },
 
+        async getPipeline() {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline');
+        },
+        async setPipeline(data) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline', {
+                method: 'POST',
+                body: JSON.stringify({
+                    inbox: data.inbox || null,
+                    before: data.before || null,
+                    after: data.after || null,
+                    register: data.register !== false,
+                }),
+            });
+        },
+        async getLeftover() {
+            if (!(await checkServer())) return { unique_trusted: 0, ambiguous: [], fuzzy_ids: [], rejected: 0 };
+            return api('/pipeline/leftover');
+        },
+        async saveLeftover(data) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline/leftover', { method: 'POST', body: JSON.stringify(data || {}) });
+        },
+        async rebuildLeftover(opts = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline/leftover/rebuild', {
+                method: 'POST',
+                body: JSON.stringify({
+                    before_dir_id: opts.beforeDirId || opts.before_dir_id || null,
+                    after_dir_id: opts.afterDirId || opts.after_dir_id || null,
+                    kind: opts.kind || null,
+                }),
+            });
+        },
+        async rejectCandidate(anchorId, candidateId, extra = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline/rejects', {
+                method: 'POST',
+                body: JSON.stringify({
+                    anchor_id: anchorId,
+                    candidate_id: candidateId,
+                    pid: extra.pid || '',
+                    stem: extra.stem || '',
+                    reason: extra.reason || 'guided-reject',
+                }),
+            });
+        },
+        async listRejects(limit = 2000) {
+            if (!(await checkServer())) return { rejects: [] };
+            return api('/pipeline/rejects?limit=' + encodeURIComponent(limit));
+        },
+        async clearRejects() {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline/rejects', { method: 'DELETE' });
+        },
+        async listPairUndo() {
+            if (!(await checkServer())) return { count: 0, items: [] };
+            return api('/pipeline/undo');
+        },
+        async undoLastPair() {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline/undo', { method: 'POST', body: '{}' });
+        },
+        async importImagineHave(opts = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api('/pipeline/imagine-import', {
+                method: 'POST',
+                body: JSON.stringify({ dest: opts.dest || null, limit: opts.limit ?? 400 }),
+            });
+        },
+
         async getPair(id) {
             if (await checkServer()) return this.normalizePair(await api(`/pairs/${encodeURIComponent(id)}`));
             return global.AIToolbox.getPair(id);
