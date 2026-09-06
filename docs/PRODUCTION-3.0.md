@@ -1,6 +1,13 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.8**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.9**.
+
+## Task Manager Pro (3.0.9)
+
+- Optional **Start with Windows** (current-user Startup shortcut) plus **On login run** profile (none / Focus / Gaming / Deep clean)
+- Kill lists persist on disk (`%LOCALAPPDATA%\FAFO\Devices\<PC>\TaskManagerPro\modes.json`) so login runs the same lists
+- Right-click a process (or a name chip) to add/remove from any profile; click a profile card to select the list you are editing
+- Type a name or **From running…** to add into the selected profile
 
 ## Media desks (3.0.8) — live Inbox/After, warm hubs, one workspace
 

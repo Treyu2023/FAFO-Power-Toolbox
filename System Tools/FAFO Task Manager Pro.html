@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FAFO Task Manager Pro — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.8">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.8">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.9">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.9">
   <style>
     :root {
       --bg: #05060c; --panel: #0c101c; --panel2: #121826;
@@ -199,6 +199,49 @@
     .chip-list .chip button {
       border: none; background: none; color: var(--danger); cursor: pointer; margin-left: 4px; font-weight: 800;
     }
+    .chip-list .chip { cursor: context-menu; }
+    .mode-card { cursor: pointer; }
+    .mode-card.selected {
+      box-shadow: 0 0 0 2px var(--gold);
+      background: linear-gradient(160deg, rgba(245,197,66,.12), rgba(0,243,255,.08));
+    }
+    .mode-add {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;
+    }
+    .mode-add .inp { min-width: 140px; flex: 1; }
+    .ctx-menu {
+      position: fixed; z-index: 80; min-width: 220px; display: none;
+      background: #0c101c; border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(0,0,0,.55); padding: 6px; font-size: 12px;
+    }
+    .ctx-menu.open { display: block; }
+    .ctx-menu .ctx-h {
+      font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); padding: 6px 10px 4px;
+    }
+    .ctx-menu button {
+      display: flex; width: 100%; text-align: left; align-items: center; gap: 8px;
+      background: transparent; border: 0; color: var(--text); cursor: pointer;
+      padding: 7px 10px; border-radius: 7px; font-size: 12px;
+    }
+    .ctx-menu button:hover { background: rgba(0,243,255,.1); color: var(--accent); }
+    .ctx-menu button .mark { width: 14px; color: var(--ok); font-weight: 800; }
+    .ctx-menu .sep { height: 1px; background: var(--border); margin: 4px 6px; }
+    .pick-bg {
+      display: none; position: fixed; inset: 0; z-index: 70;
+      background: rgba(0,0,0,.55); align-items: center; justify-content: center;
+    }
+    .pick-bg.open { display: flex; }
+    .pick-box {
+      width: min(420px, 94vw); max-height: 80vh; overflow: auto;
+      background: #0c101c; border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    }
+    .pick-box h3 { color: var(--accent); font-size: 14px; margin-bottom: 8px; }
+    .pick-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 0;
+      font-size: 12px; border-bottom: 1px solid rgba(255,255,255,.04); cursor: pointer;
+    }
+    #procBody tr { cursor: context-menu; }
 
     .nav-btn:focus-visible, .btn:focus-visible, .inp:focus-visible, .sel:focus-visible,
     .nav a:focus-visible, a:focus-visible, input:focus-visible, button:focus-visible, select:focus-visible {
@@ -276,7 +319,7 @@
       <section class="view" id="view-procs">
         <h1>Processes + Intel</h1>
         <p class="sub">Click a row for purpose, disable guidance, efficiency, and any cached CVE flags.
-          Use <strong>M1 / M2 / M3</strong> toggles to put a process into one or more efficiency kill profiles (overlap allowed).</p>
+          Use <strong>M1 / M2 / M3</strong> toggles, or <strong>right-click a row</strong> to add/remove from any profile. Click a profile card to select which list you are editing.</p>
         <div class="mode-bar" id="procModeBar"></div>
         <div class="panel">
           <div class="panel-h">
@@ -312,7 +355,7 @@
       <!-- EFFICIENCY MODES -->
       <section class="view" id="view-modes">
         <h1>Efficiency modes</h1>
-        <p class="sub">Three kill profiles. Assign processes with the M1/M2/M3 toggles on the process list — the same process can sit in all three modes. Press a mode button to end every matching running process in that list.</p>
+        <p class="sub">Three kill profiles. <strong>Click a profile card to select it</strong>, then right-click any running process to add or remove it. Same process can sit in all three. Press Run to end matching processes.</p>
         <div class="callout">
           <strong>Safety:</strong> Hard-protected system processes (csrss, lsass, services, …) are never killed.
           By default, processes marked <em>not safe to disable</em> in the knowledge base are also skipped unless you enable force below.
@@ -335,7 +378,23 @@
             </div>
           </div>
           <div class="panel-b">
-            <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Mode membership is stored in this browser (by process name, not PID). Overlap is intentional — e.g. Discord can be in Focus + Gaming + Deep clean.</p>
+            <div class="toolbar" style="margin-bottom:12px;gap:12px;align-items:center">
+              <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="chkWinStart" data-tip-title="Start with Windows" data-tip="Create a current-user Startup shortcut. At login, S1 starts and Task Manager Pro opens. Optionally runs the launch profile.">
+                Start with Windows
+              </label>
+              <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
+                On login run
+                <select class="sel" id="selLaunchProfile" data-tip-title="Launch profile" data-tip="Which kill list to run after Windows login. None = just open the app.">
+                  <option value="">None (open only)</option>
+                  <option value="m1">M1</option>
+                  <option value="m2">M2</option>
+                  <option value="m3">M3</option>
+                </select>
+              </label>
+              <span id="winStartHint" style="font-size:11px;color:var(--muted)"></span>
+            </div>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Lists are saved on this PC (not just this browser). Click a profile card to select it — right-click processes to add/remove. Overlap is intentional.</p>
             <div id="modeListsDetail"></div>
           </div>
         </div>
@@ -451,13 +510,26 @@
     </div>
   </aside>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.8"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.0.8"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.8"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.8"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.8"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.8"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.8"></script>
+  <div class="ctx-menu" id="ctxMenu" hidden></div>
+  <div class="pick-bg" id="pickBg" role="dialog" aria-modal="true">
+    <div class="pick-box">
+      <h3 id="pickTitle">Add running processes</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px" id="pickLead"></p>
+      <div id="pickList"></div>
+      <div class="toolbar" style="margin-top:12px;justify-content:flex-end">
+        <button class="btn sm" type="button" id="btnPickCancel">Cancel</button>
+        <button class="btn sm" type="button" id="btnPickApply">Add selected</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/aitoolbox-config.js?v=3.0.9"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.0.9"></script>
+  <script src="../shared/aitoolbox-runtime.js?v=3.0.9"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.9"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.0.9"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.9"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.9"></script>
   <script>
   (() => {
     'use strict';
@@ -537,6 +609,8 @@
         members: {}, // key -> { m1, m2, m3 }
         skipUnsafe: true,
         forceKill: false,
+        launchProfile: '',
+        activeProfile: 'm1',
       };
     }
 
@@ -544,19 +618,59 @@
       try {
         const raw = JSON.parse(lsGet(MODES_KEY, 'null'));
         if (!raw || !raw.names || !raw.members) return defaultModesState();
+        const ap = raw.activeProfile;
+        const lp = raw.launchProfile;
         return {
           names: { ...defaultModesState().names, ...raw.names },
           members: raw.members || {},
           skipUnsafe: raw.skipUnsafe !== false,
           forceKill: !!raw.forceKill,
+          launchProfile: (lp === 'm1' || lp === 'm2' || lp === 'm3') ? lp : '',
+          activeProfile: (ap === 'm1' || ap === 'm2' || ap === 'm3') ? ap : 'm1',
         };
       } catch {
         return defaultModesState();
       }
     }
 
+    let modesSaveTimer = null;
     function saveModesState(st) {
       lsSet(MODES_KEY, JSON.stringify(st));
+      clearTimeout(modesSaveTimer);
+      modesSaveTimer = setTimeout(() => {
+        if (!online) return;
+        const body = {
+          names: st.names,
+          members: st.members,
+          skipUnsafe: st.skipUnsafe !== false,
+          forceKill: !!st.forceKill,
+          launchProfile: st.launchProfile || '',
+          activeProfile: st.activeProfile || 'm1',
+        };
+        api('/tmpro/modes', { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
+      }, 350);
+    }
+
+    async function hydrateModesFromServer() {
+      if (!online) return;
+      try {
+        const remote = await api('/tmpro/modes');
+        if (!remote || typeof remote !== 'object') return;
+        const base = defaultModesState();
+        modesState = {
+          names: { ...base.names, ...(remote.names || {}) },
+          members: remote.members || {},
+          skipUnsafe: remote.skipUnsafe !== false,
+          forceKill: !!remote.forceKill,
+          launchProfile: (remote.launchProfile === 'm1' || remote.launchProfile === 'm2' || remote.launchProfile === 'm3')
+            ? remote.launchProfile : '',
+          activeProfile: (remote.activeProfile === 'm1' || remote.activeProfile === 'm2' || remote.activeProfile === 'm3')
+            ? remote.activeProfile : 'm1',
+        };
+        lsSet(MODES_KEY, JSON.stringify(modesState));
+        renderModeBars();
+        await refreshWinStartUi();
+      } catch (_) {}
     }
 
     let modesState = loadModesState();
@@ -574,14 +688,24 @@
 
     function setInMode(name, modeId, on) {
       const k = procKey(name);
-      if (!k) return;
+      if (!k || !MODE_IDS.includes(modeId)) return;
       if (!modesState.members[k]) modesState.members[k] = { m1: false, m2: false, m3: false };
       modesState.members[k][modeId] = !!on;
-      // drop empty
       if (!modesState.members[k].m1 && !modesState.members[k].m2 && !modesState.members[k].m3) {
         delete modesState.members[k];
       }
       saveModesState(modesState);
+    }
+
+    function toggleInMode(name, modeId) {
+      setInMode(name, modeId, !isInMode(name, modeId));
+    }
+
+    function setActiveProfile(mid) {
+      if (!MODE_IDS.includes(mid)) return;
+      modesState.activeProfile = mid;
+      saveModesState(modesState);
+      renderModeBars();
     }
 
     function countMode(modeId) {
@@ -626,10 +750,11 @@
       const html = MODE_IDS.map(mid => {
         const n = countMode(mid);
         const name = modesState.names[mid] || mid;
-        return `<div class="mode-card ${mid}">
-          <h3>⚡ ${esc(mid.toUpperCase())}</h3>
+        const sel = modesState.activeProfile === mid ? ' selected' : '';
+        return `<div class="mode-card ${mid}${sel}" data-select-mode="${mid}" title="Click to select this profile for add/remove">
+          <h3>⚡ ${esc(mid.toUpperCase())}${sel ? ' · editing' : ''}</h3>
           <input class="rename" data-rename="${mid}" value="${esc(name)}" title="Rename mode">
-          <div class="meta">${n} process name${n === 1 ? '' : 's'} assigned · overlap OK</div>
+          <div class="meta">${n} process name${n === 1 ? '' : 's'} assigned · click to edit this list</div>
           <button class="btn danger" type="button" data-run-mode="${mid}">Run — kill list</button>
         </div>`;
       }).join('');
@@ -638,25 +763,37 @@
         if (!el) return;
         el.innerHTML = html;
         el.querySelectorAll('[data-run-mode]').forEach(b => {
-          b.onclick = () => runEfficiencyMode(b.dataset.runMode);
+          b.onclick = (ev) => { ev.stopPropagation(); runEfficiencyMode(b.dataset.runMode); };
         });
         el.querySelectorAll('input.rename').forEach(inp => {
+          inp.onclick = (ev) => ev.stopPropagation();
           inp.onchange = () => {
             const mid = inp.dataset.rename;
             modesState.names[mid] = inp.value.trim() || mid;
             saveModesState(modesState);
             updateNavModeLabels();
             renderModeDetailLists();
+            refreshWinStartUi();
           };
+        });
+        el.querySelectorAll('[data-select-mode]').forEach(card => {
+          card.onclick = () => setActiveProfile(card.dataset.selectMode);
         });
       });
       updateNavModeLabels();
       renderModeDetailLists();
-      // options checkboxes
       const skip = $('modeSkipUnsafe');
       const force = $('modeForceKill');
       if (skip) { skip.checked = modesState.skipUnsafe !== false; }
       if (force) { force.checked = !!modesState.forceKill; }
+      const selLp = $('selLaunchProfile');
+      if (selLp) {
+        MODE_IDS.forEach(mid => {
+          const opt = selLp.querySelector(`option[value="${mid}"]`);
+          if (opt) opt.textContent = `${mid.toUpperCase()} — ${modesState.names[mid] || mid}`;
+        });
+        selLp.value = modesState.launchProfile || '';
+      }
     }
 
     function updateNavModeLabels() {
@@ -676,20 +813,62 @@
       if (!box) return;
       box.innerHTML = MODE_IDS.map(mid => {
         const keys = listModeKeys(mid);
+        const editing = modesState.activeProfile === mid;
         const chips = keys.length
-          ? keys.map(k => `<span class="chip">${esc(k)}<button type="button" data-rm="${mid}" data-k="${esc(k)}" title="Remove from mode">×</button></span>`).join('')
-          : '<span style="font-size:11px;color:var(--muted)">Empty — toggle M1/M2/M3 on the process list</span>';
-        return `<div style="margin-bottom:14px">
-          <strong style="color:var(--accent)">${esc(modesState.names[mid])} (${mid.toUpperCase()})</strong>
+          ? keys.map(k => `<span class="chip" data-chip-k="${esc(k)}" data-chip-m="${mid}" title="Right-click for profile actions">${esc(k)}<button type="button" data-rm="${mid}" data-k="${esc(k)}" title="Remove from this profile">×</button></span>`).join('')
+          : '<span style="font-size:11px;color:var(--muted)">Empty — right-click a process, or add a name below</span>';
+        return `<div style="margin-bottom:16px;padding:8px;border-radius:10px;border:1px solid ${editing ? 'rgba(245,197,66,.45)' : 'transparent'}">
+          <strong style="color:var(--accent);cursor:pointer" data-select-mode="${mid}">${esc(modesState.names[mid])} (${mid.toUpperCase()})${editing ? ' · selected' : ''}</strong>
           <div class="chip-list">${chips}</div>
+          <div class="mode-add">
+            <input class="inp" data-add-name="${mid}" placeholder="Add process name…" spellcheck="false">
+            <button class="btn sm" type="button" data-add-btn="${mid}">Add</button>
+            <button class="btn sm" type="button" data-pick-btn="${mid}">From running…</button>
+          </div>
         </div>`;
       }).join('');
+      box.querySelectorAll('[data-select-mode]').forEach(n => {
+        n.onclick = () => setActiveProfile(n.dataset.selectMode);
+      });
       box.querySelectorAll('button[data-rm]').forEach(b => {
-        b.onclick = () => {
+        b.onclick = (ev) => {
+          ev.stopPropagation();
           setInMode(b.dataset.k, b.dataset.rm, false);
           renderModeBars();
           if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
         };
+      });
+      box.querySelectorAll('[data-chip-k]').forEach(chip => {
+        chip.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          showProfileCtx(ev.clientX, ev.clientY, chip.dataset.chipK);
+        };
+      });
+      box.querySelectorAll('[data-add-btn]').forEach(b => {
+        b.onclick = () => {
+          const mid = b.dataset.addBtn;
+          const inp = box.querySelector(`[data-add-name="${mid}"]`);
+          const name = (inp && inp.value || '').trim();
+          if (!name) { AIToolboxUI?.toast?.('Type a process name first', 'warn'); return; }
+          setInMode(name, mid, true);
+          if (inp) inp.value = '';
+          renderModeBars();
+          if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+          AIToolboxUI?.toast?.('Added ' + procKey(name) + ' to ' + (modesState.names[mid] || mid), 'ok');
+        };
+      });
+      box.querySelectorAll('[data-add-name]').forEach(inp => {
+        inp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const mid = inp.dataset.addName;
+            box.querySelector(`[data-add-btn="${mid}"]`)?.click();
+          }
+        });
+      });
+      box.querySelectorAll('[data-pick-btn]').forEach(b => {
+        b.onclick = () => openPickRunning(b.dataset.pickBtn);
       });
     }
 
@@ -698,7 +877,8 @@
       return NEVER_KILL.has(k) || NEVER_KILL.has(k + '.exe') || NEVER_KILL.has(String(name || '').toLowerCase());
     }
 
-    async function runEfficiencyMode(modeId) {
+    async function runEfficiencyMode(modeId, opts) {
+      opts = opts || {};
       return withBusy(async () => {
       if (!online) {
         AIToolboxUI?.toast?.('Start server first', 'warn');
@@ -707,7 +887,7 @@
       const keys = listModeKeys(modeId);
       const label = modesState.names[modeId] || modeId;
       if (!keys.length) {
-        AIToolboxUI?.toast?.(label + ' list is empty — toggle processes into this mode first', 'warn');
+        AIToolboxUI?.toast?.(label + ' list is empty — right-click processes to add them', 'warn');
         selectView('procs');
         return;
       }
@@ -715,16 +895,18 @@
       modesState.forceKill = $('modeForceKill') ? $('modeForceKill').checked : !!modesState.forceKill;
       saveModesState(modesState);
 
-      const conf = await (window.AIToolboxUI?.confirmAction
-        ? AIToolboxUI.confirmAction({
-            title: `Run efficiency mode “${label}”?`,
-            body: `Will attempt to end <strong>${keys.length}</strong> process name(s) currently running:<br><code style="font-size:11px">${keys.slice(0, 24).map(esc).join(', ')}${keys.length > 24 ? '…' : ''}</code>`,
-            confirmText: 'Kill matching processes',
-            cancelText: 'Cancel',
-            showSafetyNote: true,
-          })
-        : Promise.resolve({ confirmed: confirm(`Run ${label} and kill ${keys.length} process name(s)?`) }));
-      if (!conf.confirmed) return;
+      if (!opts.silent) {
+        const conf = await (window.AIToolboxUI?.confirmAction
+          ? AIToolboxUI.confirmAction({
+              title: `Run efficiency mode “${label}”?`,
+              body: `Will attempt to end <strong>${keys.length}</strong> process name(s) currently running:<br><code style="font-size:11px">${keys.slice(0, 24).map(esc).join(', ')}${keys.length > 24 ? '…' : ''}</code>`,
+              confirmText: 'Kill matching processes',
+              cancelText: 'Cancel',
+              showSafetyNote: true,
+            })
+          : Promise.resolve({ confirmed: confirm(`Run ${label} and kill ${keys.length} process name(s)?`) }));
+        if (!conf.confirmed) return;
+      }
 
       const data = await api('/tmpro/processes?sort_by=cpu&limit=400');
       const running = data.processes || [];
@@ -789,6 +971,187 @@
       renderModeBars();
       AIToolboxUI?.toast?.('Seeded common optional apps into M1/M2/M3 (edit freely)', 'ok');
       if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+    }
+
+    function hideCtxMenu() {
+      const m = $('ctxMenu');
+      if (m) { m.classList.remove('open'); m.hidden = true; m.innerHTML = ''; }
+    }
+
+    function showProfileCtx(x, y, name) {
+      const k = procKey(name);
+      if (!k) return;
+      const m = $('ctxMenu');
+      if (!m) return;
+      const bits = [];
+      bits.push(`<div class="ctx-h">${esc(k)}</div>`);
+      MODE_IDS.forEach(mid => {
+        const on = isInMode(k, mid);
+        const lab = modesState.names[mid] || mid;
+        bits.push(`<button type="button" data-ctx-toggle="${mid}" data-ctx-name="${esc(k)}"><span class="mark">${on ? '✓' : ''}</span>${on ? 'Remove from' : 'Add to'} ${esc(lab)}</button>`);
+      });
+      bits.push('<div class="sep"></div>');
+      bits.push(`<button type="button" data-ctx-active="${esc(k)}">Add to selected (${esc(modesState.names[modesState.activeProfile] || 'M1')})</button>`);
+      m.innerHTML = bits.join('');
+      m.hidden = false;
+      m.classList.add('open');
+      const w = m.offsetWidth || 220, h = m.offsetHeight || 160;
+      m.style.left = Math.min(x, window.innerWidth - w - 8) + 'px';
+      m.style.top = Math.min(y, window.innerHeight - h - 8) + 'px';
+      m.querySelectorAll('[data-ctx-toggle]').forEach(b => {
+        b.onclick = (ev) => {
+          ev.stopPropagation();
+          toggleInMode(b.dataset.ctxName, b.dataset.ctxToggle);
+          hideCtxMenu();
+          renderModeBars();
+          if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+        };
+      });
+      m.querySelector('[data-ctx-active]')?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        setInMode(k, modesState.activeProfile || 'm1', true);
+        hideCtxMenu();
+        renderModeBars();
+        if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+        AIToolboxUI?.toast?.('Added to ' + (modesState.names[modesState.activeProfile] || 'profile'), 'ok');
+      });
+    }
+
+    function showProcCtx(x, y, p) {
+      const name = p && p.name;
+      const k = procKey(name);
+      if (!k) return;
+      const m = $('ctxMenu');
+      if (!m) return;
+      const bits = [];
+      bits.push(`<div class="ctx-h">${esc(p.name || k)} · PID ${esc(p.pid)}</div>`);
+      bits.push(`<div class="ctx-h">Profiles — selected: ${esc(modesState.names[modesState.activeProfile] || 'M1')}</div>`);
+      MODE_IDS.forEach(mid => {
+        const on = isInMode(k, mid);
+        const lab = modesState.names[mid] || mid;
+        const sel = modesState.activeProfile === mid ? ' · editing' : '';
+        bits.push(`<button type="button" data-ctx-toggle="${mid}" data-ctx-name="${esc(k)}"><span class="mark">${on ? '✓' : ''}</span>${on ? 'Remove from' : 'Add to'} ${esc(lab)}${sel}</button>`);
+      });
+      bits.push('<div class="sep"></div>');
+      bits.push(`<button type="button" data-ctx-end="${esc(p.pid)}">End process</button>`);
+      bits.push(`<button type="button" data-ctx-force="${esc(p.pid)}">Force kill</button>`);
+      m.innerHTML = bits.join('');
+      m.hidden = false;
+      m.classList.add('open');
+      const w = m.offsetWidth || 240, h = m.offsetHeight || 220;
+      m.style.left = Math.min(x, window.innerWidth - w - 8) + 'px';
+      m.style.top = Math.min(y, window.innerHeight - h - 8) + 'px';
+      m.querySelectorAll('[data-ctx-toggle]').forEach(b => {
+        b.onclick = (ev) => {
+          ev.stopPropagation();
+          toggleInMode(b.dataset.ctxName, b.dataset.ctxToggle);
+          hideCtxMenu();
+          renderModeBars();
+          loadProcs();
+        };
+      });
+      m.querySelector('[data-ctx-end]')?.addEventListener('click', () => {
+        hideCtxMenu();
+        selectedPid = +p.pid;
+        killSel(false);
+      });
+      m.querySelector('[data-ctx-force]')?.addEventListener('click', () => {
+        hideCtxMenu();
+        selectedPid = +p.pid;
+        killSel(true);
+      });
+    }
+
+    let pickTargetMode = 'm1';
+    function openPickRunning(modeId) {
+      pickTargetMode = MODE_IDS.includes(modeId) ? modeId : (modesState.activeProfile || 'm1');
+      const bg = $('pickBg');
+      const list = $('pickList');
+      const title = $('pickTitle');
+      const lead = $('pickLead');
+      const names = {};
+      (lastProcs || []).forEach(p => {
+        const k = procKey(p.name);
+        if (!k || isNeverKill(p.name)) return;
+        if (!names[k]) names[k] = p.name;
+      });
+      const keys = Object.keys(names).sort();
+      if (title) title.textContent = 'Add to ' + (modesState.names[pickTargetMode] || pickTargetMode);
+      if (lead) lead.textContent = keys.length
+        ? 'Check names to add. Already in this profile stay checked.'
+        : 'No running processes loaded — open Processes first.';
+      if (list) {
+        list.innerHTML = keys.map(k => {
+          const on = isInMode(k, pickTargetMode);
+          return `<label class="pick-row"><input type="checkbox" data-pick-k="${esc(k)}" ${on ? 'checked' : ''}> ${esc(names[k])}</label>`;
+        }).join('') || '<p style="color:var(--muted);font-size:12px">Nothing to pick.</p>';
+      }
+      if (bg) bg.classList.add('open');
+    }
+
+    function closePick() {
+      $('pickBg')?.classList.remove('open');
+    }
+
+    async function refreshWinStartUi() {
+      const chk = $('chkWinStart');
+      const sel = $('selLaunchProfile');
+      const hint = $('winStartHint');
+      if (sel) {
+        MODE_IDS.forEach(mid => {
+          const opt = sel.querySelector(`option[value="${mid}"]`);
+          if (opt) opt.textContent = `${mid.toUpperCase()} — ${modesState.names[mid] || mid}`;
+        });
+        sel.value = modesState.launchProfile || '';
+      }
+      if (!online) {
+        if (chk) chk.disabled = true;
+        if (hint) hint.textContent = 'Start S1 to change Windows login.';
+        return;
+      }
+      try {
+        const st = await api('/tmpro/windows-startup');
+        if (chk) {
+          chk.disabled = false;
+          chk.checked = !!st.enabled;
+        }
+        if (sel && (st.launchProfile === 'm1' || st.launchProfile === 'm2' || st.launchProfile === 'm3' || st.launchProfile === '')) {
+          sel.value = st.launchProfile || '';
+          modesState.launchProfile = st.launchProfile || '';
+        }
+        if (hint) {
+          const lab = st.launchProfile && modesState.names[st.launchProfile]
+            ? modesState.names[st.launchProfile]
+            : 'open only';
+          hint.textContent = st.enabled ? ('On at login · ' + lab) : 'Off';
+        }
+      } catch (e) {
+        if (hint) hint.textContent = e.message || 'Could not read Startup shortcut';
+      }
+    }
+
+    async function applyWinStart() {
+      if (!online) { AIToolboxUI?.toast?.('Start server first', 'warn'); return; }
+      const enabled = !!$('chkWinStart')?.checked;
+      const launchProfile = $('selLaunchProfile')?.value || '';
+      modesState.launchProfile = launchProfile;
+      saveModesState(modesState);
+      try {
+        const st = await api('/tmpro/windows-startup', {
+          method: 'POST',
+          body: JSON.stringify({ enabled, launchProfile }),
+        });
+        AIToolboxUI?.toast?.(
+          st.enabled
+            ? ('Will start with Windows' + (launchProfile ? ' · run ' + (modesState.names[launchProfile] || launchProfile) : ''))
+            : 'Removed from Windows Startup',
+          'ok'
+        );
+        await refreshWinStartUi();
+      } catch (e) {
+        AIToolboxUI?.toast?.(e.message || String(e), 'warn');
+        await refreshWinStartUi();
+      }
     }
 
     async function api(path, opts = {}) {
@@ -930,7 +1293,7 @@
           i.vulnerabilities?.flagged ? `<span class="tag vuln">CVE×${i.vulnerabilities.count}</span>` : '',
           i.in_knowledge_base ? '<span class="tag kb">KB</span>' : '<span class="tag unk">?</span>',
         ].filter(Boolean).join(' ');
-        return `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'sel' : ''}">
+        return `<tr data-pid="${p.pid}" data-name="${esc(p.name || '')}" class="${selectedPid === p.pid ? 'sel' : ''}">
           <td class="mono">${p.pid}</td>
           <td><strong>${esc(p.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(i.title || '')}</div></td>
           <td>${Number(p.cpu_percent || 0).toFixed(1)}</td>
@@ -948,6 +1311,11 @@
       }).join('');
       tb.querySelectorAll('tr[data-pid]').forEach(tr => {
         tr.onclick = () => openDrawer(+tr.dataset.pid);
+        tr.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          const p = lastProcs.find(x => String(x.pid) === String(tr.dataset.pid)) || { pid: tr.dataset.pid, name: tr.dataset.name };
+          showProcCtx(ev.clientX, ev.clientY, p);
+        };
       });
       bindModeToggleClicks(tb);
       renderModeBars();
@@ -1031,6 +1399,11 @@
       `).join('');
       $('rateBody').querySelectorAll('tr[data-pid]').forEach(tr => {
         tr.onclick = () => openDrawer(+tr.dataset.pid);
+        tr.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          const p = { pid: tr.dataset.pid, name: tr.querySelector('strong')?.textContent || '' };
+          showProcCtx(ev.clientX, ev.clientY, p);
+        };
       });
       } catch (e) { console.warn('loadRatings', e); }
     }
@@ -1204,6 +1577,28 @@
       saveModesState(modesState);
     });
     $('btnSeedCommonHogs')?.addEventListener('click', seedCommonHogs);
+    $('chkWinStart')?.addEventListener('change', () => applyWinStart());
+    $('selLaunchProfile')?.addEventListener('change', () => applyWinStart());
+    $('btnPickCancel')?.addEventListener('click', closePick);
+    $('pickBg')?.addEventListener('click', (e) => { if (e.target === $('pickBg')) closePick(); });
+    $('btnPickApply')?.addEventListener('click', () => {
+      const boxes = [...document.querySelectorAll('#pickList input[data-pick-k]')];
+      boxes.forEach(cb => setInMode(cb.dataset.pickK, pickTargetMode, !!cb.checked));
+      closePick();
+      renderModeBars();
+      if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
+      AIToolboxUI?.toast?.('Updated ' + (modesState.names[pickTargetMode] || pickTargetMode), 'ok');
+    });
+    document.addEventListener('click', (e) => {
+      const m = $('ctxMenu');
+      if (m && m.classList.contains('open') && !m.contains(e.target)) hideCtxMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideCtxMenu();
+        closePick();
+      }
+    });
     $('btnClearAllModes')?.addEventListener('click', () => {
       if (!confirm('Clear all M1/M2/M3 process lists?')) return;
       modesState.members = {};
@@ -1232,14 +1627,34 @@
       AIToolboxUI.bindServerControls({
         statusEl: '#serverPill',
         startBtn: '#btnStart',
-        onOnline: () => { online = true; selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash'); },
+        onOnline: () => { online = true; hydrateModesFromServer().catch(() => {}); selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash'); },
         onOffline: () => { online = false; },
       });
     }
 
     (async () => {
       await checkServer();
-      if (online) loadDash();
+      if (online) {
+        await hydrateModesFromServer();
+        loadDash();
+      }
+      try {
+        const q = new URLSearchParams(location.search || '');
+        if (q.get('autostart') === '1' || q.get('run') === '1') {
+          let tries = 0;
+          while (!online && tries < 40) {
+            await new Promise(r => setTimeout(r, 750));
+            await checkServer();
+            tries++;
+          }
+          if (online) await hydrateModesFromServer();
+          const mode = String(q.get('runMode') || modesState.launchProfile || '').toLowerCase();
+          if (MODE_IDS.includes(mode) && online) {
+            AIToolboxUI?.toast?.('Windows start: running ' + (modesState.names[mode] || mode), 'ok');
+            await runEfficiencyMode(mode, { silent: true });
+          }
+        }
+      } catch (_) {}
       // Adaptive poll: pause when tab hidden; slower when idle views; normal for live process list
       let pollMs = 8000;
       let pollTimer = null;
