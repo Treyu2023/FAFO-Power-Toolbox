@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 import uuid
@@ -129,13 +130,37 @@ def add_directory(path: str) -> dict[str, Any]:
     p = Path(path).resolve()
     if not p.is_dir():
         raise FileNotFoundError(f"Not a directory: {path}")
-    did = f"dir-{uuid.uuid4().hex[:10]}"
     with connect() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO directories (id, path, name, added_at) VALUES (?, ?, ?, ?)",
-            (did, str(p), p.name, time.time()),
-        )
-        row = conn.execute("SELECT * FROM directories WHERE id=?", (did,)).fetchone()
+        existing = conn.execute(
+            "SELECT * FROM directories WHERE path=?", (str(p),)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE directories SET name=? WHERE id=?",
+                (p.name, existing["id"]),
+            )
+            row = conn.execute(
+                "SELECT * FROM directories WHERE id=?", (existing["id"],)
+            ).fetchone()
+            return dict(row)
+        did = f"dir-{uuid.uuid4().hex[:10]}"
+        try:
+            conn.execute(
+                "INSERT INTO directories (id, path, name, added_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(path) DO UPDATE SET name=excluded.name",
+                (did, str(p), p.name, time.time()),
+            )
+        except sqlite3.OperationalError:
+            existing = conn.execute(
+                "SELECT * FROM directories WHERE path=?", (str(p),)
+            ).fetchone()
+            if existing:
+                return dict(existing)
+            conn.execute(
+                "INSERT INTO directories (id, path, name, added_at) VALUES (?, ?, ?, ?)",
+                (did, str(p), p.name, time.time()),
+            )
+        row = conn.execute("SELECT * FROM directories WHERE path=?", (str(p),)).fetchone()
     return dict(row)
 
 
@@ -154,6 +179,7 @@ def scan_directory(
     dir_id: str,
     recursive: bool = True,
     on_progress: Callable[[int, str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> int:
     with connect() as conn:
         row = conn.execute("SELECT * FROM directories WHERE id=?", (dir_id,)).fetchone()
@@ -175,6 +201,8 @@ def scan_directory(
                 if recursive and not should_skip_entry(entry.name, True, rel):
                     walk(entry, rel)
             elif entry.is_file():
+                if should_cancel and should_cancel():
+                    raise InterruptedError("scan cancelled")
                 if should_skip_entry(entry.name, False, prefix):
                     continue
                 ft = file_type(entry.name)
@@ -184,7 +212,11 @@ def scan_directory(
                     if on_progress:
                         on_progress(count, rel)
 
-    walk(root)
+    cancelled = False
+    try:
+        walk(root)
+    except InterruptedError:
+        cancelled = True
     now = time.time()
     seen_ids: set[str] = set()
 
@@ -256,13 +288,29 @@ def scan_directory(
                     tags, notes, thumb, pair_id, pair_role, file_tags_json, rank,
                 ),
             )
-        all_in_dir = conn.execute("SELECT id FROM media WHERE dir_id=?", (dir_id,)).fetchall()
-        for r in all_in_dir:
-            if r["id"] not in seen_ids:
-                # File left this folder (moved/deleted). Pair DB rows may go stale;
-                # relink_pairs_from_metadata() re-attaches via UP-#### tags on disk.
-                conn.execute("DELETE FROM media WHERE id=?", (r["id"],))
-        conn.execute("UPDATE directories SET last_scanned=? WHERE id=?", (now, dir_id))
+        if cancelled:
+            # Incomplete walk — never prune unseen rows or we wipe the catalog.
+            pass
+        else:
+            all_in_dir = conn.execute("SELECT id FROM media WHERE dir_id=?", (dir_id,)).fetchall()
+            for r in all_in_dir:
+                if r["id"] not in seen_ids:
+                    mid = r["id"]
+                    conn.execute(
+                        "UPDATE media SET pair_id=NULL, pair_role=NULL WHERE pair_id IN "
+                        "(SELECT id FROM pairs WHERE before_media_id=? OR after_media_id=?)",
+                        (mid, mid),
+                    )
+                    conn.execute(
+                        "DELETE FROM pairs WHERE before_media_id=? OR after_media_id=?",
+                        (mid, mid),
+                    )
+                    conn.execute("DELETE FROM playlist_items WHERE media_id=?", (mid,))
+                    conn.execute("DELETE FROM media WHERE id=?", (mid,))
+        if not cancelled:
+            conn.execute("UPDATE directories SET last_scanned=? WHERE id=?", (now, dir_id))
+    if cancelled:
+        return count
     # Heal before/after pairs using UP-#### tags written into the files / sidecars
     try:
         relink_pairs_from_metadata()
@@ -456,7 +504,23 @@ def query_media(
     sort: str = "name",
     page: int = 0,
     limit: int = 80,
+    pair_filter: str | None = None,
+    cap: int = 200,
 ) -> dict[str, Any]:
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 80
+    try:
+        cap_n = int(cap)
+    except (TypeError, ValueError):
+        cap_n = 200
+    cap_n = max(1, min(2000, cap_n))
+    limit = max(1, min(cap_n, limit or 80))
+    try:
+        page = max(0, int(page or 0))
+    except (TypeError, ValueError):
+        page = 0
     clauses: list[str] = []
     params: list[Any] = []
 
@@ -482,6 +546,11 @@ def query_media(
     if rank_min is not None and rank_min > 0:
         clauses.append("rank >= ?")
         params.append(rank_min)
+    pf = (pair_filter or "").strip().lower()
+    if pf in {"paired", "has_pair", "in_pair"}:
+        clauses.append("pair_id IS NOT NULL AND TRIM(pair_id) != ''")
+    elif pf in {"unpaired", "no_pair"}:
+        clauses.append("(pair_id IS NULL OR TRIM(pair_id) = '')")
     if virtual_root:
         vr = _norm_subpath(virtual_root)
         clauses.append("(rel_path LIKE ? OR rel_path LIKE ?)")
@@ -527,11 +596,19 @@ def query_media(
 
 def get_all_tags() -> list[str]:
     with connect() as conn:
-        rows = conn.execute("SELECT tags FROM media").fetchall()
+        rows = conn.execute(
+            "SELECT DISTINCT tags FROM media WHERE tags IS NOT NULL AND tags != '[]' AND tags != ''"
+        ).fetchall()
     tags: set[str] = set()
     for r in rows:
-        for t in json.loads(r["tags"] or "[]"):
-            tags.add(t)
+        try:
+            blob = json.loads(r["tags"] or "[]")
+        except Exception:
+            continue
+        if isinstance(blob, list):
+            for t in blob:
+                if t:
+                    tags.add(str(t))
     return sorted(tags, key=str.lower)
 
 
@@ -587,7 +664,7 @@ def get_rename_history() -> list[str]:
     return [r["pattern"] for r in rows]
 
 
-def rename_media(mid: str, new_name: str) -> dict:
+def rename_media(mid: str, new_name: str, *, record_undo: bool = True) -> dict:
     media = get_media(mid)
     if not media:
         raise FileNotFoundError("Media not found")
@@ -600,30 +677,35 @@ def rename_media(mid: str, new_name: str) -> dict:
     dst = src.parent / new_name
     if dst.exists() and dst != src:
         raise FileExistsError(f"Already exists: {new_name}")
+    old_name = media.get("name") or ""
     src.rename(dst)
     new_rel = str(Path(media["rel_path"]).parent / new_name).replace("\\", "/")
     if new_rel.startswith("./"):
         new_rel = new_rel[2:]
     new_id = media_id(media["dir_id"], new_rel)
+    new_mtime = dst.stat().st_mtime
     with connect() as conn:
-        conn.execute("DELETE FROM media WHERE id=?", (mid,))
-        media["id"] = new_id
-        media["rel_path"] = new_rel
-        media["name"] = new_name
-        media["mtime"] = dst.stat().st_mtime
         conn.execute(
-            """INSERT INTO media (id, dir_id, rel_path, name, ext, type, size, mtime, tags, notes, thumb_path, pair_id, pair_role, file_tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                new_id, media["dir_id"], new_rel, new_name, media["ext"], media["type"],
-                media["size"], media["mtime"], json.dumps(media["tags"]), media["notes"],
-                media["thumb_path"], media["pair_id"], media["pair_role"],
-                json.dumps(media.get("file_tags", [])),
-            ),
+            "UPDATE media SET id=?, rel_path=?, name=?, mtime=? WHERE id=?",
+            (new_id, new_rel, new_name, new_mtime, mid),
         )
         conn.execute("UPDATE pairs SET before_media_id=? WHERE before_media_id=?", (new_id, mid))
         conn.execute("UPDATE pairs SET after_media_id=? WHERE after_media_id=?", (new_id, mid))
-    return get_media(new_id) or media
+        conn.execute("UPDATE playlist_items SET media_id=? WHERE media_id=?", (new_id, mid))
+    result = get_media(new_id) or {**media, "id": new_id, "rel_path": new_rel, "name": new_name, "mtime": new_mtime}
+    if record_undo and result and (result.get("name") != old_name or result.get("id") != mid):
+        try:
+            from pair_workspace import push_undo
+            push_undo({
+                "type": "rename",
+                "media_id": mid,
+                "new_id": result.get("id"),
+                "old_name": old_name,
+                "new_name": result.get("name"),
+            })
+        except Exception:
+            pass
+    return result
 
 
 def batch_rename(ids: list[str], pattern: str) -> list[dict]:
@@ -953,15 +1035,76 @@ UPSCALE_MARKERS = (
     "_interp", "_out", "scaled_", "x4_", "x2_", "_chunked",
 )
 
+# Same stamp Duplicate File Manager uses: `_PID_xxxxxxxx` (or legacy GT- folder).
+_PID_IN_NAME_RE = re.compile(r"_PID_([0-9a-f]{8})(?:_|$)", re.I)
+_PAIR_FOLDER_RE = re.compile(r"^GT-([0-9a-f]{8})__", re.I)
+_PID_TITLE_RE = re.compile(r"(?<![a-z0-9])PID[_-]([0-9a-f]{8})(?![a-z0-9])", re.I)
+
+
+def pair_id_from_name(path_or_name: str) -> str | None:
+    """8-char hex pair id from `_PID_xxxxxxxx` in the filename (or legacy GT- folder)."""
+    text = str(path_or_name or "")
+    if not text:
+        return None
+    m = _PID_IN_NAME_RE.search(text)
+    if m:
+        return m.group(1).lower()
+    m4 = _PID_TITLE_RE.search(text)
+    if m4:
+        return m4.group(1).lower()
+    # Slash-agnostic folder stamp: GT-xxxxxxxx__
+    for part in text.replace("\\", "/").split("/"):
+        if not part:
+            continue
+        m2 = _PAIR_FOLDER_RE.search(part)
+        if m2:
+            return m2.group(1).lower()
+    return None
+
+
+def _media_pid(m: dict[str, Any] | None) -> str | None:
+    if not m:
+        return None
+    return (
+        pair_id_from_name(m.get("name") or "")
+        or pair_id_from_name(m.get("rel_path") or "")
+        or pair_id_from_name(str(m.get("path") or ""))
+    )
+
+
+def stamp_pid_on_name(name: str, pid_hex: str) -> str:
+    """Insert `_PID_xxxxxxxx` before the extension if the name does not already carry it."""
+    pid_hex = str(pid_hex or "").lower().strip()
+    if not re.fullmatch(r"[0-9a-f]{8}", pid_hex):
+        return name
+    p = Path(name)
+    stem, ext = p.stem, p.suffix
+    existing = pair_id_from_name(name)
+    if existing == pid_hex:
+        return name
+    stem = _PID_IN_NAME_RE.sub("", stem)
+    stem = _PID_TITLE_RE.sub("", stem)
+    stem = stem.rstrip("._- ") or "clip"
+    return f"{stem}_PID_{pid_hex}{ext}"
+
+
+def _mint_file_pid(before: dict, after: dict) -> str:
+    return (
+        _media_pid(before)
+        or _media_pid(after)
+        or uuid.uuid4().hex[:8]
+    )
+
 
 def _next_pair_code() -> str:
     with connect() as conn:
-        rows = conn.execute(
-            "SELECT pair_code FROM pairs WHERE pair_code LIKE 'UP-%' ORDER BY pair_code DESC LIMIT 1"
-        ).fetchall()
-    if rows and rows[0]["pair_code"]:
+        row = conn.execute(
+            "SELECT pair_code FROM pairs WHERE pair_code LIKE 'UP-%' "
+            "ORDER BY CAST(substr(pair_code, 4) AS INTEGER) DESC LIMIT 1"
+        ).fetchone()
+    if row and row["pair_code"]:
         try:
-            n = int(str(rows[0]["pair_code"]).split("-", 1)[1])
+            n = int(str(row["pair_code"]).split("-", 1)[1])
             return f"UP-{n + 1:04d}"
         except (ValueError, IndexError):
             pass
@@ -1000,8 +1143,21 @@ def _tail_key(name: str, n: int = 5) -> str:
 
 
 def _digit_ids(name: str) -> list[str]:
-    """Long digit runs often act as stable ids when prefixes differ."""
-    return re.findall(r"\d{4,}", Path(name or "").stem)
+    """Long digit runs often act as stable ids when prefixes differ.
+
+    Skip resolution/year tokens so `clip_1080p` does not pair with unrelated 1080p files.
+    """
+    noise = {
+        "720", "1080", "1440", "2160", "1920", "3840", "4320", "1280", "2560", "4096",
+    }
+    out: list[str] = []
+    for d in re.findall(r"\d{4,}", Path(name or "").stem):
+        if d in noise:
+            continue
+        if len(d) == 4 and d.startswith("20"):
+            continue
+        out.append(d)
+    return out
 
 
 def _parent_folder_hint(m: dict) -> str:
@@ -1012,23 +1168,61 @@ def _parent_folder_hint(m: dict) -> str:
     return ""
 
 
-def _enrich_pair(row: dict | None) -> dict | None:
+def _media_map(ids: list[str]) -> dict[str, dict]:
+    clean = [i for i in ids if i]
+    if not clean:
+        return {}
+    out: dict[str, dict] = {}
+    with connect() as conn:
+        chunk = 400
+        for i in range(0, len(clean), chunk):
+            part = clean[i:i + chunk]
+            q = f"SELECT * FROM media WHERE id IN ({','.join('?' * len(part))})"
+            for r in conn.execute(q, part):
+                m = row_to_media(r)
+                out[m["id"]] = m
+    return out
+
+
+def _dir_paths(dir_ids: list[str]) -> dict[str, str]:
+    clean = [i for i in dir_ids if i]
+    if not clean:
+        return {}
+    out: dict[str, str] = {}
+    with connect() as conn:
+        q = f"SELECT id, path FROM directories WHERE id IN ({','.join('?' * len(clean))})"
+        for r in conn.execute(q, clean):
+            out[r["id"]] = r["path"]
+    return out
+
+
+def _enrich_pair(row: dict | None, media_map: dict[str, dict] | None = None, dir_map: dict[str, str] | None = None) -> dict | None:
     if not row:
         return None
     pair = dict(row)
     pair["pinned"] = bool(pair.get("pinned"))
-    before = get_media(pair.get("before_media_id") or "")
-    after = get_media(pair.get("after_media_id") or "")
+    bid = pair.get("before_media_id") or ""
+    aid = pair.get("after_media_id") or ""
+    if media_map is None:
+        media_map = _media_map([bid, aid])
+    before = media_map.get(bid)
+    after = media_map.get(aid)
     pair["before_name"] = before["name"] if before else Path(pair.get("before_path") or "").name
     pair["after_name"] = after["name"] if after else Path(pair.get("after_path") or "").name
     if before and not pair.get("before_path"):
         try:
-            pair["before_path"] = str(resolve_path(before))
+            if dir_map is not None and before.get("dir_id") in dir_map:
+                pair["before_path"] = str(Path(dir_map[before["dir_id"]]) / before["rel_path"])
+            else:
+                pair["before_path"] = str(resolve_path(before))
         except FileNotFoundError:
             pass
     if after and not pair.get("after_path"):
         try:
-            pair["after_path"] = str(resolve_path(after))
+            if dir_map is not None and after.get("dir_id") in dir_map:
+                pair["after_path"] = str(Path(dir_map[after["dir_id"]]) / after["rel_path"])
+            else:
+                pair["after_path"] = str(resolve_path(after))
         except FileNotFoundError:
             pass
     return pair
@@ -1065,7 +1259,14 @@ def list_pairs(kind: str | None = None, pinned_only: bool = False) -> list[dict]
             f"SELECT * FROM pairs {where} ORDER BY pinned DESC, created_at DESC",
             params,
         ).fetchall()
-    return [p for r in rows if (p := _enrich_pair(dict(r)))]
+    raw = [dict(r) for r in rows]
+    ids = []
+    for r in raw:
+        ids.append(r.get("before_media_id") or "")
+        ids.append(r.get("after_media_id") or "")
+    mmap = _media_map(ids)
+    dmap = _dir_paths([m.get("dir_id") or "" for m in mmap.values()])
+    return [p for r in raw if (p := _enrich_pair(r, mmap, dmap))]
 
 
 # Role tags applied per side when a pair is created — not copied across as "shared" project tags
@@ -1236,11 +1437,34 @@ def save_pair(
     notes: str = "",
     source: str = "manual",
     pair_code: str | None = None,
+    confidence: float | None = None,
+    match_method: str | None = None,
+    mint_pid: bool = True,
+    record_undo: bool = True,
 ) -> dict:
     before = get_media(before_id)
     after = get_media(after_id)
     if not before or not after:
         raise FileNotFoundError("Media items not found")
+    if before_id == after_id:
+        raise ValueError("Cannot pair a file with itself")
+    file_pid = _mint_file_pid(before, after)
+    method = (match_method or "").strip() or (
+        "pid_exact" if (_media_pid(before) and _media_pid(before) == _media_pid(after)) else (source or "manual")
+    )
+    conf_val = None if confidence is None else max(0.0, min(1.0, float(confidence)))
+    if mint_pid:
+        for side in (before, after):
+            new_name = stamp_pid_on_name(side.get("name") or "", file_pid)
+            if new_name and new_name != side.get("name"):
+                try:
+                    updated = rename_media(side["id"], new_name, record_undo=False)
+                    if side is before:
+                        before, before_id = updated, updated["id"]
+                    else:
+                        after, after_id = updated, updated["id"]
+                except (FileExistsError, FileNotFoundError, OSError):
+                    pass
     pid = f"pair-{uuid.uuid4().hex[:10]}"
     if not name:
         name = f"{before['name']} ↔ {after['name']}"
@@ -1248,14 +1472,36 @@ def save_pair(
     before_path = str(resolve_path(before))
     after_path = str(resolve_path(after))
     with connect() as conn:
+        existing = conn.execute(
+            """SELECT * FROM pairs WHERE
+               (before_media_id=? AND after_media_id=?)
+            OR (before_media_id=? AND after_media_id=?)""",
+            (before_id, after_id, after_id, before_id),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE pairs SET confidence=COALESCE(?, confidence),
+                   match_method=CASE WHEN ? != '' THEN ? ELSE match_method END,
+                   file_pid=CASE WHEN ? != '' THEN ? ELSE file_pid END
+                   WHERE id=?""",
+                (conf_val, method, method, file_pid, file_pid, existing["id"]),
+            )
+            row = conn.execute("SELECT * FROM pairs WHERE id=?", (existing["id"],)).fetchone()
+            return _enrich_pair(dict(row)) or dict(row)
+        conn.execute(
+            "DELETE FROM pairs WHERE before_media_id IN (?,?) OR after_media_id IN (?,?)",
+            (before_id, after_id, before_id, after_id),
+        )
         conn.execute(
             """INSERT INTO pairs (
                 id, name, kind, before_media_id, after_media_id, created_at,
-                pair_code, pinned, notes, before_path, after_path, source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                pair_code, pinned, notes, before_path, after_path, source,
+                confidence, match_method, file_pid
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 pid, name, kind, before_id, after_id, time.time(),
                 code, 1 if pinned else 0, notes, before_path, after_path, source,
+                conf_val, method, file_pid,
             ),
         )
         conn.execute("UPDATE media SET pair_id=?, pair_role='before' WHERE id=?", (pid, before_id))
@@ -1263,7 +1509,19 @@ def save_pair(
         row = conn.execute("SELECT * FROM pairs WHERE id=?", (pid,)).fetchone()
     enriched = _enrich_pair(dict(row)) or {}
     _tag_linked_media(before_id, after_id, code, kind)
-    # Learn naming scheme from confirmed pairs (guided match + manual)
+    if record_undo:
+        try:
+            from pair_workspace import push_undo
+            push_undo({
+                "type": "lock",
+                "pair_id": pid,
+                "before_id": before_id,
+                "after_id": after_id,
+                "file_pid": file_pid,
+                "match_method": method,
+            })
+        except Exception:
+            pass
     try:
         from pair_learn import observe_pair
         observe_pair(
@@ -1405,8 +1663,8 @@ def infer_pair_role_from_tags(tags: list | None, filename: str = "") -> str | No
     if tagset & before_marks and tagset & after_marks:
         # Prefer filename if both present (messy tags)
         return "after" if _is_upscaled_name(filename) else "before"
-    if filename:
-        return "after" if _is_upscaled_name(filename) else "before"
+    if filename and _is_upscaled_name(filename):
+        return "after"
     return None
 
 
@@ -1580,10 +1838,50 @@ def relink_pairs_from_metadata() -> dict:
     }
 
 
-def delete_pair(pid: str) -> None:
+def delete_pair(pid: str, *, record_undo: bool = True) -> None:
+    pair = get_pair(pid)
+    sides: list[str] = []
+    if pair:
+        for key in ("before_media_id", "after_media_id"):
+            mid = pair.get(key)
+            if mid:
+                sides.append(mid)
+        if record_undo:
+            try:
+                from pair_workspace import push_undo
+                push_undo({
+                    "type": "unlock",
+                    "pair_id": pid,
+                    "snapshot": {
+                        "name": pair.get("name"),
+                        "before_id": pair.get("before_media_id"),
+                        "after_id": pair.get("after_media_id"),
+                        "kind": pair.get("kind") or "video",
+                        "pinned": pair.get("pinned"),
+                        "notes": pair.get("notes"),
+                        "pair_code": pair.get("pair_code"),
+                        "confidence": pair.get("confidence"),
+                        "match_method": pair.get("match_method"),
+                    },
+                })
+            except Exception:
+                pass
     with connect() as conn:
         conn.execute("UPDATE media SET pair_id=NULL, pair_role=NULL WHERE pair_id=?", (pid,))
         conn.execute("DELETE FROM pairs WHERE id=?", (pid,))
+    # Strip UP-#### / role tags so relink does not resurrect the pair.
+    for mid in sides:
+        media = get_media(mid)
+        if not media:
+            continue
+        kept = [
+            t for t in (media.get("tags") or [])
+            if t and not _is_pair_code_tag(str(t)) and str(t).strip().lower() not in PAIR_ROLE_TAGS
+        ]
+        try:
+            update_media_meta(mid, tags=kept, write_file_tags=True)
+        except Exception:
+            pass
 
 
 def pair_file_paths(pid: str) -> dict[str, str]:
@@ -1621,6 +1919,12 @@ def _pair_confidence(a: dict, b: dict, *, method: str, tail_len: int = 5) -> tup
     conf = base
     reason = method
 
+    if method == "pid":
+        conf = 0.99
+        if _is_upscaled_name(after["name"]) and not _is_upscaled_name(before["name"]):
+            conf = 1.0
+        reason = "pid_exact"
+        return before, after, float(min(1.0, conf)), reason
     if method == "stem":
         conf = max(base, 0.92 if a_stem and a_stem == b_stem else stem_r)
         reason = "upscale_suffix" if _is_upscaled_name(after["name"]) else "stem_exact"
@@ -1688,6 +1992,9 @@ def _append_suggestion(
                 return False
         return False
     seen.add(key)
+    pid_val = _media_pid(before) if str(reason or "").startswith("pid") else None
+    if not pid_val and str(reason or "").startswith("pid"):
+        pid_val = _media_pid(after)
     suggestions.append({
         "before_id": before["id"],
         "after_id": after["id"],
@@ -1699,8 +2006,34 @@ def _append_suggestion(
         "stem": stem,
         "reason": reason,
         "tail": _tail_key(before["name"]),
+        "pid": pid_val,
+        "unique": True if pid_val else None,
     })
     return True
+
+
+def _pid_pair_from_group(group: list[dict]) -> tuple[dict, dict, bool] | None:
+    """Pick (before, after, unique) from files sharing one PID. Unique = exactly two files."""
+    uniq: dict[str, dict] = {m["id"]: m for m in group if m.get("id")}
+    members = list(uniq.values())
+    if len(members) < 2:
+        return None
+    plains = [m for m in members if not _is_upscaled_name(m.get("name") or "")]
+    ups = [m for m in members if _is_upscaled_name(m.get("name") or "")]
+    unique = len(members) == 2
+    if len(plains) == 1 and len(ups) == 1 and plains[0]["id"] != ups[0]["id"]:
+        return plains[0], ups[0], unique
+    if unique:
+        before, after, _ = _pick_before_after(members[0], members[1])
+        if before["id"] == after["id"]:
+            return None
+        return before, after, True
+    if plains and ups:
+        before = min(plains, key=lambda m: int(m.get("size") or 0))
+        after = max(ups, key=lambda m: int(m.get("size") or 0))
+        if before["id"] != after["id"]:
+            return before, after, False
+    return None
 
 
 def suggest_pairs(
@@ -1784,6 +2117,27 @@ def _suggest_pairs_multi(
 ) -> list[dict]:
     suggestions: list[dict] = []
     seen: set[frozenset[str]] = set()
+
+    # Pass 0: `_PID_xxxxxxxx` identity stamp — highest confidence, ignores size.
+    by_pid: dict[str, list[dict]] = {}
+    for m in items:
+        pid_key = _media_pid(m)
+        if pid_key:
+            by_pid.setdefault(pid_key, []).append(m)
+    for pid_key, group in by_pid.items():
+        picked = _pid_pair_from_group(group)
+        if not picked:
+            continue
+        before, after, unique = picked
+        conf = 0.99 if unique else 0.88
+        reason = "pid_exact" if unique else "pid_group"
+        _append_suggestion(
+            suggestions, seen, before, after, conf, reason, pid_key, min(min_ratio, 0.5),
+        )
+        if suggestions:
+            suggestions[-1]["pid"] = pid_key
+            suggestions[-1]["unique"] = unique
+            suggestions[-1]["members"] = len({m["id"] for m in group})
 
     # Pass 1: exact normalized stem
     stems: dict[str, list[dict]] = {}
@@ -1916,6 +2270,7 @@ def _suggest_pairs_cross_dirs(
     after_by_stem: dict[str, list[dict]] = {}
     after_by_tail: dict[str, list[dict]] = {}
     after_by_digit: dict[str, list[dict]] = {}
+    after_by_pid: dict[str, list[dict]] = {}
     for a in after_items:
         after_by_stem.setdefault(_pair_stem(a["name"]), []).append(a)
         t = _tail_key(a["name"], tail_len)
@@ -1923,6 +2278,9 @@ def _suggest_pairs_cross_dirs(
             after_by_tail.setdefault(t, []).append(a)
         for dig in _digit_ids(a["name"]):
             after_by_digit.setdefault(dig, []).append(a)
+        pid_key = _media_pid(a)
+        if pid_key:
+            after_by_pid.setdefault(pid_key, []).append(a)
 
     suggestions: list[dict] = []
     used_after: set[str] = set()
@@ -1935,10 +2293,10 @@ def _suggest_pairs_cross_dirs(
         for a in candidates:
             if a["id"] in used_after or a["id"] == b["id"]:
                 continue
-            before, after, conf, reason = _pair_confidence(b, a, method=method, tail_len=tail_len)
+            _before, _after, conf, reason = _pair_confidence(b, a, method=method, tail_len=tail_len)
             if conf > best_conf:
-                best_conf, best, best_reason = conf, after, reason
-        if best and best_conf >= min_ratio:
+                best_conf, best, best_reason = conf, a, reason
+        if best and best["id"] != b["id"] and best_conf >= min_ratio:
             used_after.add(best["id"])
             used_before.add(b["id"])
             suggestions.append({
@@ -1953,6 +2311,19 @@ def _suggest_pairs_cross_dirs(
             })
             return True
         return False
+
+    # Pass 0: PID identity (Before folder × After folder sharing `_PID_xxxxxxxx`)
+    for b in before_items:
+        if b["id"] in used_before:
+            continue
+        pid_key = _media_pid(b)
+        if not pid_key:
+            continue
+        if try_candidates(b, after_by_pid.get(pid_key) or [], "pid"):
+            if suggestions:
+                suggestions[-1]["pid"] = pid_key
+                suggestions[-1]["unique"] = True
+                suggestions[-1]["reason"] = "pid_exact"
 
     # Pass 1: exact stem
     for b in before_items:
@@ -2064,6 +2435,14 @@ def candidates_for_media(
     dir_paths = _dir_path_map()
     two_folder = bool(before_dir_id and after_dir_id and before_dir_id != after_dir_id)
 
+    rejected = set()
+    try:
+        from pair_workspace import reject_set as _reject_set
+        rejected = _reject_set()
+    except Exception:
+        rejected = set()
+
+
     clauses = ["type IN ('video', 'image')"]
     params: list[Any] = []
     if unpaired_only:
@@ -2119,42 +2498,56 @@ def candidates_for_media(
         skipped_intermediate = 0
 
     scored: list[dict[str, Any]] = []
-    methods = ("stem", "tail", "digit_id", "folder", "fuzzy")
+    methods = ("pid", "stem", "tail", "digit_id", "folder", "fuzzy")
     skipped_same_size = 0
     skipped_not_larger = 0
+    skipped_rejected = 0
+    anchor_pid = _media_pid(anchor)
 
     for peer in peers:
+        if (media_id, peer["id"]) in rejected or (peer["id"], media_id) in rejected:
+            skipped_rejected += 1
+            continue
         sa = int(anchor.get("size") or 0)
         sp = int(peer.get("size") or 0)
+        peer_pid = _media_pid(peer)
+        pid_hit = bool(anchor_pid and peer_pid and anchor_pid == peer_pid)
 
-        # Same size → duplicate, not a before/after pair
-        if require_larger_after and sa > 0 and sp > 0 and sa == sp:
+        # Same size → duplicate, not a before/after pair. PID identity still counts.
+        if not pid_hit and require_larger_after and sa > 0 and sp > 0 and sa == sp:
             skipped_same_size += 1
             continue
 
         if two_folder:
             # Fixed roles: anchor = before (source), peer = after (upscale/output)
             best_before, best_after = anchor, peer
-            if require_larger_after and sp <= sa:
+            if not pid_hit and require_larger_after and sp <= sa:
                 skipped_not_larger += 1
                 continue
             best_conf = 0.0
             best_reason = "fuzzy"
-            for method in methods:
-                # Score with forced order (still uses name signals on the pair)
-                _b, _a, conf, reason = _pair_confidence(
-                    anchor, peer, method=method, tail_len=tail_len
-                )
-                # Prefer scores that already ordered anchor as before
-                if _b["id"] == anchor["id"] and _a["id"] == peer["id"]:
-                    conf = min(1.0, conf + 0.04)
-                # Size boost when after is meaningfully larger
-                if sa > 0 and sp > sa * 1.05:
-                    conf = min(1.0, conf + 0.05)
-                if conf > best_conf:
-                    best_conf, best_reason = conf, reason
+            if pid_hit:
+                best_conf, best_reason = 0.99, "pid_exact"
+                if _is_upscaled_name(peer.get("name") or "") and not _is_upscaled_name(anchor.get("name") or ""):
+                    best_conf = 1.0
+            else:
+                for method in methods:
+                    if method == "pid":
+                        continue
+                    # Score with forced order (still uses name signals on the pair)
+                    _b, _a, conf, reason = _pair_confidence(
+                        anchor, peer, method=method, tail_len=tail_len
+                    )
+                    # Prefer scores that already ordered anchor as before
+                    if _b["id"] == anchor["id"] and _a["id"] == peer["id"]:
+                        conf = min(1.0, conf + 0.04)
+                    # Size boost when after is meaningfully larger
+                    if sa > 0 and sp > sa * 1.05:
+                        conf = min(1.0, conf + 0.05)
+                    if conf > best_conf:
+                        best_conf, best_reason = conf, reason
             learn_tags: list[str] = []
-            if adjust_confidence:
+            if adjust_confidence and not pid_hit:
                 best_conf, learn_tags = adjust_confidence(
                     best_conf,
                     before_name=anchor.get("name") or "",
@@ -2163,7 +2556,7 @@ def candidates_for_media(
                     after_size=sp,
                     model=_learn,
                 )
-            if best_conf < min_ratio:
+            if best_conf < min_ratio and not pid_hit:
                 continue
             best_before, best_after = anchor, peer
             anchor_is_before = True
@@ -2173,17 +2566,24 @@ def candidates_for_media(
             best_reason = "fuzzy"
             best_before, best_after = anchor, peer
             learn_tags = []
-            for method in methods:
-                before, after, conf, reason = _pair_confidence(
-                    anchor, peer, method=method, tail_len=tail_len
+            if pid_hit:
+                best_before, best_after, best_conf, best_reason = _pair_confidence(
+                    anchor, peer, method="pid", tail_len=tail_len
                 )
-                if conf > best_conf:
-                    best_conf, best_reason = conf, reason
-                    best_before, best_after = before, after
-            # Enforce after strictly larger (re-order or reject)
+            else:
+                for method in methods:
+                    if method == "pid":
+                        continue
+                    before, after, conf, reason = _pair_confidence(
+                        anchor, peer, method=method, tail_len=tail_len
+                    )
+                    if conf > best_conf:
+                        best_conf, best_reason = conf, reason
+                        best_before, best_after = before, after
+            # Enforce after strictly larger (re-order or reject). PID skips size gate.
             bsz = int(best_before.get("size") or 0)
             asz = int(best_after.get("size") or 0)
-            if require_larger_after and bsz > 0 and asz > 0:
+            if not pid_hit and require_larger_after and bsz > 0 and asz > 0:
                 if asz == bsz:
                     skipped_same_size += 1
                     continue
@@ -2197,7 +2597,7 @@ def candidates_for_media(
             else:
                 bsz = int(best_before.get("size") or 0)
                 asz = int(best_after.get("size") or 0)
-            if adjust_confidence:
+            if adjust_confidence and not pid_hit:
                 best_conf, learn_tags = adjust_confidence(
                     best_conf,
                     before_name=best_before.get("name") or "",
@@ -2206,7 +2606,7 @@ def candidates_for_media(
                     after_size=asz,
                     model=_learn,
                 )
-            if best_conf < min_ratio:
+            if best_conf < min_ratio and not pid_hit:
                 continue
             anchor_is_before = best_before["id"] == media_id
             candidate = best_after if anchor_is_before else best_before
@@ -2239,9 +2639,10 @@ def candidates_for_media(
             "learn_tags": learn_tags if learn_tags else [],
             "type": candidate.get("type") or anchor.get("type") or "video",
             "size_ok": int(best_after.get("size") or 0) > int(best_before.get("size") or 0),
+            "pid": (anchor_pid if pid_hit else None) or _media_pid(best_before) or _media_pid(best_after),
         })
 
-    scored.sort(key=lambda x: (-x["confidence"], x["candidate_name"]))
+    scored.sort(key=lambda x: (0 if x.get("pid") and str(x.get("reason") or "").startswith("pid") else 1, -x["confidence"], x["candidate_name"]))
     top = scored[: max(1, min(50, int(limit or 10)))]
 
     return {
@@ -2253,6 +2654,7 @@ def candidates_for_media(
             "size": int(anchor.get("size") or 0),
             "path": _media_abs_path(anchor, dir_paths),
             "is_upscaled_name": _is_upscaled_name(anchor["name"]),
+            "pid": anchor_pid,
         },
         "candidates": top,
         "candidate_count": len(top),
@@ -2260,6 +2662,7 @@ def candidates_for_media(
         "skipped_same_size": skipped_same_size,
         "skipped_not_larger": skipped_not_larger,
         "skipped_intermediate": skipped_intermediate,
+        "skipped_rejected": skipped_rejected,
         "before_dir_id": before_dir_id,
         "after_dir_id": after_dir_id,
         "require_larger_after": require_larger_after,
@@ -2337,6 +2740,7 @@ def list_unpaired_anchors(
             "path": abs_path,
             "rel_path": m.get("rel_path") or "",
             "is_upscaled_name": _is_upscaled_name(m["name"]),
+            "pid": _media_pid(m),
         })
     if prefer_sources:
         def _anchor_key(a: dict) -> tuple:
@@ -2415,15 +2819,252 @@ def auto_pair_upscaled(
     }
 
 
+def _pid_catalog_items(
+    *,
+    media_type: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if unpaired_only:
+        clauses.append("pair_id IS NULL")
+    if media_type in ("video", "image"):
+        clauses.append("type=?")
+        params.append(media_type)
+    else:
+        clauses.append("type IN ('video', 'image')")
+    if before_dir_id and after_dir_id and before_dir_id != after_dir_id:
+        clauses.append("dir_id IN (?, ?)")
+        params.extend([before_dir_id, after_dir_id])
+    elif before_dir_id and not after_dir_id:
+        clauses.append("dir_id=?")
+        params.append(before_dir_id)
+    elif after_dir_id and not before_dir_id:
+        clauses.append("dir_id=?")
+        params.append(after_dir_id)
+    where = " AND ".join(clauses) if clauses else "1=1"
+    with connect() as conn:
+        rows = conn.execute(f"SELECT * FROM media WHERE {where}", params).fetchall()
+    items = [row_to_media(r) for r in rows]
+    if before_dir_id and after_dir_id and before_dir_id != after_dir_id:
+        # Keep only rows that actually have a PID so the two-folder filter
+        # does not drop a source that lives outside After but shares the stamp.
+        return items
+    return items
+
+
+def list_pid_matches(
+    *,
+    media_type: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    unpaired_only: bool = True,
+    limit: int = 400,
+) -> dict[str, Any]:
+    """Group unpaired catalog files by `_PID_xxxxxxxx` and propose before/after links.
+
+    Unique = exactly two files share the id (safe for Trust all).
+    Ambiguous = 3+ files share the id (quick-approve one at a time).
+    """
+    limit = max(1, min(2000, int(limit or 400)))
+    items = _pid_catalog_items(
+        media_type=media_type,
+        before_dir_id=before_dir_id,
+        after_dir_id=after_dir_id,
+        unpaired_only=unpaired_only,
+    )
+    two_dir = bool(before_dir_id and after_dir_id and before_dir_id != after_dir_id)
+    by_pid: dict[str, list[dict]] = {}
+    for m in items:
+        if two_dir and m.get("dir_id") not in (before_dir_id, after_dir_id):
+            continue
+        pid_key = _media_pid(m)
+        if pid_key:
+            by_pid.setdefault(pid_key, []).append(m)
+
+    matches: list[dict[str, Any]] = []
+    loners = 0
+    for pid_key, group in sorted(by_pid.items(), key=lambda kv: kv[0]):
+        ids = {m["id"] for m in group}
+        if len(ids) < 2:
+            loners += 1
+            continue
+        if two_dir:
+            befores = [m for m in group if m.get("dir_id") == before_dir_id]
+            afters = [m for m in group if m.get("dir_id") == after_dir_id]
+            if not befores or not afters:
+                loners += 1
+                continue
+            unique = len(befores) == 1 and len(afters) == 1
+            before = befores[0]
+            after = afters[0] if unique else max(afters, key=lambda m: int(m.get("size") or 0))
+        else:
+            picked = _pid_pair_from_group(group)
+            if not picked:
+                loners += 1
+                continue
+            before, after, unique = picked
+        if before["id"] == after["id"]:
+            continue
+        matches.append({
+            "pid": pid_key,
+            "before_id": before["id"],
+            "after_id": after["id"],
+            "before_name": before.get("name"),
+            "after_name": after.get("name"),
+            "before_dir_id": before.get("dir_id"),
+            "after_dir_id": after.get("dir_id"),
+            "before_size": int(before.get("size") or 0),
+            "after_size": int(after.get("size") or 0),
+            "type": before.get("type") or after.get("type") or "video",
+            "confidence": 0.99 if unique else 0.88,
+            "reason": "pid_exact" if unique else "pid_group",
+            "unique": unique,
+            "members": len(ids),
+            "member_names": [m.get("name") or "" for m in group][:8],
+            "member_list": [
+                {
+                    "id": m.get("id"),
+                    "name": m.get("name") or "",
+                    "size": int(m.get("size") or 0),
+                    "dir_id": m.get("dir_id"),
+                    "path": m.get("rel_path") or m.get("path") or "",
+                    "role": (
+                        "before" if m.get("dir_id") == before_dir_id
+                        else "after" if m.get("dir_id") == after_dir_id
+                        else ""
+                    ),
+                }
+                for m in group[:12]
+            ],
+        })
+        if len(matches) >= limit:
+            break
+
+    unique_rows = [m for m in matches if m.get("unique")]
+    ambiguous_rows = [m for m in matches if not m.get("unique")]
+    return {
+        "ok": True,
+        "matches": matches,
+        "unique": unique_rows,
+        "ambiguous": ambiguous_rows,
+        "unique_count": len(unique_rows),
+        "ambiguous_count": len(ambiguous_rows),
+        "loners": loners,
+        "scanned": len(items),
+        "pid_groups": len(by_pid),
+        "before_dir_id": before_dir_id,
+        "after_dir_id": after_dir_id,
+    }
+
+
+def trust_pid_matches(
+    *,
+    dry_run: bool = False,
+    pin: bool = True,
+    kind: str | None = None,
+    before_dir_id: str | None = None,
+    after_dir_id: str | None = None,
+    include_ambiguous: bool = False,
+    limit: int = 400,
+    pids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Lock unique (or selected) PID matches as catalog pairs. Source = pid-trust."""
+    data = list_pid_matches(
+        media_type=kind if kind in ("video", "image") else None,
+        before_dir_id=before_dir_id,
+        after_dir_id=after_dir_id,
+        unpaired_only=True,
+        limit=limit,
+    )
+    wanted = {str(p).lower() for p in (pids or []) if p}
+    rows = list(data.get("matches") or [])
+    if wanted:
+        rows = [r for r in rows if str(r.get("pid") or "").lower() in wanted]
+    elif not include_ambiguous:
+        rows = [r for r in rows if r.get("unique")]
+    created: list[dict[str, Any]] = []
+    skipped = 0
+    errors: list[str] = []
+    for s in rows:
+        if len(created) >= max(1, min(2000, int(limit or 400))):
+            break
+        if dry_run:
+            created.append(s)
+            continue
+        try:
+            before = get_media(s["before_id"])
+            pair_kind = (before or {}).get("type") or s.get("type") or "video"
+            if pair_kind not in ("video", "image"):
+                pair_kind = "video"
+            stem = _pair_stem(s.get("before_name") or "") or Path(s.get("before_name") or "pair").stem
+            pair = save_pair(
+                f"{stem} — PID {s.get('pid')}",
+                s["before_id"],
+                s["after_id"],
+                pair_kind,
+                pinned=pin,
+                notes=f"pid-trust {s.get('pid')}",
+                source="pid-trust",
+                confidence=s.get("confidence"),
+                match_method=s.get("reason") or "pid_exact",
+                mint_pid=True,
+                record_undo=False,
+            )
+            pair["confidence"] = s.get("confidence")
+            pair["pid"] = s.get("pid")
+            created.append(pair)
+        except (FileNotFoundError, ValueError) as e:
+            skipped += 1
+            errors.append(str(e)[:160])
+    if not dry_run and created:
+        try:
+            from pair_workspace import push_undo
+            push_undo({
+                "type": "pid-trust",
+                "pair_ids": [p.get("id") for p in created if p.get("id")],
+                "count": len(created),
+            })
+        except Exception:
+            pass
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "created": len(created),
+        "skipped": skipped,
+        "pairs": created,
+        "errors": errors[:12],
+        "unique_count": data.get("unique_count") or 0,
+        "ambiguous_count": data.get("ambiguous_count") or 0,
+        "mode": "pid-trust",
+    }
+
+
 def backfill_pair_codes() -> int:
     n = 0
     with connect() as conn:
         rows = conn.execute(
             "SELECT id FROM pairs WHERE pair_code IS NULL OR pair_code=''"
         ).fetchall()
-        for row in rows:
-            code = _next_pair_code()
-            conn.execute("UPDATE pairs SET pair_code=? WHERE id=?", (code, row["id"]))
+        if not rows:
+            return 0
+        cur = conn.execute(
+            "SELECT pair_code FROM pairs WHERE pair_code LIKE 'UP-%' "
+            "ORDER BY CAST(substr(pair_code, 4) AS INTEGER) DESC LIMIT 1"
+        ).fetchone()
+        start = 0
+        if cur and cur["pair_code"]:
+            try:
+                start = int(str(cur["pair_code"]).split("-", 1)[1])
+            except (ValueError, IndexError):
+                start = 0
+        for i, row in enumerate(rows, 1):
+            conn.execute(
+                "UPDATE pairs SET pair_code=? WHERE id=?",
+                (f"UP-{start + i:04d}", row["id"]),
+            )
             n += 1
     return n
 
@@ -2459,7 +3100,17 @@ def get_settings() -> dict:
         "auto_pair_after_scan": "false",
         "comparator_video": "../Video Tools/Video Comparison Slider Tool.html",
         "comparator_image": "../Image tools/Image Comparitor With Slider.html",
+        "pipeline_inbox": "",
+        "pipeline_before": "",
+        "pipeline_after": "",
     }
+    try:
+        from duplicates import DEFAULT_PIPELINE_AFTER, DEFAULT_PIPELINE_BEFORE, DEFAULT_PIPELINE_INBOX
+        defaults["pipeline_inbox"] = DEFAULT_PIPELINE_INBOX
+        defaults["pipeline_before"] = DEFAULT_PIPELINE_BEFORE
+        defaults["pipeline_after"] = DEFAULT_PIPELINE_AFTER
+    except Exception:
+        pass
     for r in rows:
         defaults[r["key"]] = r["value"]
     return defaults

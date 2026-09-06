@@ -1,45 +1,17 @@
 # Milestone freeze pointer
 
-**Last freeze date:** 2026-07-10  
-**Frozen archive version:** `1.04.00`  
-**Live working tree (edit this):** currently **`1.06.00`** and beyond — do **not** treat this freeze as the live feature set.
+**Do not edit this freeze.**
 
-## Snapshot location (read-only archive)
+## Frozen archive (git-disconnected)
 
-```
-C:\Users\rkey2\OneDrive\Desktop\AI LOCAL Proj Bin\
-  AI_HTML_TOOLBOX_MILESTONE_v1.04.00_2026-07-10_2015\
-  FAFO_Ultimate_Tab_MILESTONE_v5.2.1_2026-07-10_2015\
-  MILESTONE_README_v1.04.00_2026-07-10_2015.md
-```
+Frozen milestone **2.0** is a **git-disconnected archive** of toolbox **1.16.51** at commit:
 
-## Live working trees (edit these)
+`9f90266932d68dbe00976955515734d6ef55b419`
 
-| Project | Path |
-|---------|------|
-| Toolbox | `C:\Users\rkey2\OneDrive\Desktop\AI HTML TOOLBOX\` |
-| FAFO | `C:\Users\rkey2\FAFO_Ultimate_Tab\` |
+It lives outside this working tree (see `/workspace/milestones`). Treat it as read-only history. Do not copy it forward, do not recreate it here, and do not edit files under that archive.
 
-## What was frozen (v1.04.00 archive only)
+## Live tree (edit this)
 
-- Explorer Tags + Rating write (pywin32)
-- Pair dual-tag + `UP-####` on disk
-- Relink pairs after folder moves
-- Media Library Q&A + tooltips
-- Docs: `MEDIA_LIBRARY_AND_PAIRS.md`
-- FAFO on-play tags + `explorer-meta` companion
+The live toolbox tree is **`3.0.0`** — a production P0/P1 pass (keepalive/iframe, debug recursion, CORS, path guards, layout zoom, HTML cache-bust, runtime helpers).
 
-## Shipped on live tree since freeze (do not re-implement from scratch)
-
-| Version | Highlights |
-|---------|------------|
-| **1.05.00** | Pair Health, Verify Tags, Pair Map, Archive Pair, smart searches, `.fafo.json` sidecars |
-| **1.05.01** | **▶ Start Server** in-app (Media Library / VSR / File Organizer / Launcher), offline banner, shared `AIToolboxAPI.startServer()` |
-| **1.06.00** | Unique bind **`127.0.0.87:18765`**, tool parity (system tools + Git + Start Server), no FAFO port clash |
-
-See **`README.md`** and **`MEDIA_LIBRARY_AND_PAIRS.md`** for the current user-facing guides and tooltips.
-
-## Restore
-
-See `MILESTONE_README_*.md` in **AI LOCAL Proj Bin**.  
-Copy snapshot over live only if the live tree is broken and you accept losing post-freeze edits (including 1.05.x).
+See `README.md` and `docs/PRODUCTION-3.0.md` for the current feature set and what 3.0 fixed.
