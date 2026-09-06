@@ -18,6 +18,6 @@ Treat that worktree as read-only history. Do not copy it forward into production
 
 ## Live tree (edit this)
 
-The live toolbox tree is **`3.0.7`** on `main` (merged from `origin/release/3.0`). Going forward, push and pull **production `main`**.
+The live toolbox tree is **`3.0.8`** on `main` (merged from `origin/release/3.0`). Going forward, push and pull **production `main`**.
 
 See `README.md` and `docs/PRODUCTION-3.0.md` for the current feature set and what 3.0 fixed.

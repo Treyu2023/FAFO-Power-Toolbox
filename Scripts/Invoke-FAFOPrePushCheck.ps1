@@ -162,6 +162,9 @@ if (Test-Path -LiteralPath $secCfg) {
 if ($hasGit) {
     Push-Location $ToolboxRoot
     try {
+        # git writes CRLF hints to stderr; with $ErrorActionPreference=Stop that becomes a terminating error
+        $gitEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         $stagedAll = @(git diff --cached --name-only 2>$null | Where-Object { $_ })
         # Files that will remain/appear after commit (exclude pure deletions — untracking sensitive packs is good)
         $stagedKeep = @(git diff --cached --name-only --diff-filter=ACMR 2>$null | Where-Object { $_ })
@@ -171,6 +174,7 @@ if ($hasGit) {
         $trackedAfter = @($tracked | Where-Object { $stagedDeleted -notcontains $_ }) + @($stagedKeep) | Select-Object -Unique
         $unstaged = @(git diff --name-only 2>$null | Where-Object { $_ })
         $untracked = @(git ls-files --others --exclude-standard 2>$null | Where-Object { $_ })
+        $ErrorActionPreference = $gitEap
 
         $toScan = @($stagedKeep + $trackedAfter + $unstaged + $untracked | Select-Object -Unique)
         Write-Host "Scanning paths (stagedKeep=$($stagedKeep.Count) stagedDel=$($stagedDeleted.Count) trackedAfter=$($trackedAfter.Count) untracked=$($untracked.Count))" -ForegroundColor Gray
@@ -216,6 +220,7 @@ if ($hasGit) {
         }
     }
     finally {
+        if ($null -ne $gitEap) { $ErrorActionPreference = $gitEap }
         Pop-Location
     }
 }

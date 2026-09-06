@@ -170,6 +170,69 @@ def list_directories() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def probe_directory(dir_id: str, recursive: bool = True) -> dict[str, Any]:
+    """Cheap disk-vs-catalog check. No writes. Inbox/After use this to decide a real scan."""
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM directories WHERE id=?", (dir_id,)).fetchone()
+        if not row:
+            raise FileNotFoundError("Directory not registered")
+        catalog_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM media WHERE dir_id=?", (dir_id,)
+        ).fetchone()["c"]
+        last_scanned = float(row["last_scanned"] or 0)
+    root = Path(row["path"])
+    disk_count = 0
+    newest_mtime = 0.0
+    exists = root.is_dir()
+    if exists:
+        def walk(folder: Path, prefix: str = "") -> None:
+            nonlocal disk_count, newest_mtime
+            try:
+                entries = folder.iterdir()
+            except (PermissionError, OSError):
+                return
+            for entry in entries:
+                rel = f"{prefix}/{entry.name}" if prefix else entry.name
+                try:
+                    is_dir = entry.is_dir()
+                except OSError:
+                    continue
+                if is_dir:
+                    if recursive and not should_skip_entry(entry.name, True, rel):
+                        walk(entry, rel)
+                    continue
+                if not entry.is_file():
+                    continue
+                if should_skip_entry(entry.name, False, prefix):
+                    continue
+                if not file_type(entry.name):
+                    continue
+                disk_count += 1
+                try:
+                    mt = entry.stat().st_mtime
+                    if mt > newest_mtime:
+                        newest_mtime = mt
+                except OSError:
+                    pass
+        walk(root)
+    catalog_n = int(catalog_count or 0)
+    delta = disk_count - catalog_n
+    stale = (not exists) or delta != 0 or (newest_mtime > 0 and newest_mtime > last_scanned + 0.5)
+    return {
+        "ok": True,
+        "dir_id": dir_id,
+        "path": str(root),
+        "name": row["name"],
+        "exists": exists,
+        "disk_count": disk_count,
+        "catalog_count": catalog_n,
+        "newest_mtime": newest_mtime,
+        "last_scanned": last_scanned,
+        "delta": delta,
+        "stale": bool(stale),
+    }
+
+
 def remove_directory(dir_id: str) -> None:
     with connect() as conn:
         conn.execute("DELETE FROM directories WHERE id=?", (dir_id,))

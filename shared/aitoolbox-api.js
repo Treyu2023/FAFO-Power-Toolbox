@@ -977,6 +977,11 @@
             return api(`/scan/${encodeURIComponent(dirId)}/cancel${q}`, { method: 'POST' });
         },
 
+        async probeDirectory(dirId) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            return api(`/scan/${encodeURIComponent(dirId)}/probe`);
+        },
+
         async listFolderIndex(dirId, subpath = '') {
             if (await checkServer()) {
                 const p = new URLSearchParams();
@@ -1436,6 +1441,27 @@
         async getPipeline() {
             if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
             return api('/pipeline');
+        },
+        async refreshLivePipeline(opts = {}) {
+            if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');
+            const now = Date.now();
+            if (!opts.force && this._liveRefreshAt && (now - this._liveRefreshAt) < 15000 && this._liveRefreshLast) {
+                return this._liveRefreshLast;
+            }
+            if (!this._liveRefreshInflight) {
+                this._liveRefreshInflight = api('/pipeline/refresh-live', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        roles: Array.isArray(opts.roles) ? opts.roles : null,
+                        force: !!opts.force,
+                    }),
+                }).then((live) => {
+                    this._liveRefreshAt = Date.now();
+                    this._liveRefreshLast = live;
+                    return live;
+                }).finally(() => { this._liveRefreshInflight = null; });
+            }
+            return this._liveRefreshInflight;
         },
         async setPipeline(data) {
             if (!(await checkServer())) throw new Error('Start server first (▶ Start Server)');

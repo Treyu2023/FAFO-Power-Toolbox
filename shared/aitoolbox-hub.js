@@ -1,6 +1,6 @@
 /**
- * Shared iframe hub controller for Media Hub + Compare Hub.
- * One showTab / ping / load-fail / abort-on-switch implementation.
+ * Shared iframe hub controller for the Media workspace.
+ * Warm LRU of desks — tab hops do not remount unless evicted or forced.
  *
  * AIToolboxHub.mount({ tabs, order, aliases, defaultTab, lsKey, ... })
  */
@@ -120,12 +120,79 @@
         const reportTitle = opts.reportTitle || 'FAFO Hub';
         const reportLines = opts.reportLines || [];
         const loadTimeoutMs = opts.loadTimeoutMs || 25000;
+        const WARM_MAX = Math.max(1, Math.min(8, opts.warmMax == null ? 3 : opts.warmMax));
 
         markEmbedded();
         let current = defaultTab;
         let loadTimer = null;
         let loadGen = 0;
-        let lastSrc = '';
+        const wrap = frame && frame.parentElement;
+        const slots = new Map();
+        const lru = [];
+        if (frame) {
+            frame.classList.add('warm-frame');
+            try { frame.style.display = 'none'; } catch (_) {}
+        }
+
+        function pingFocus(iframe, tabId) {
+            try {
+                iframe && iframe.contentWindow && iframe.contentWindow.postMessage(
+                    { type: 'fafo-hub-focus', tab: tabId },
+                    location.origin
+                );
+            } catch (_) {}
+        }
+
+        function hideWarmFrames() {
+            slots.forEach((s) => {
+                try { s.iframe.classList.remove('on'); } catch (_) {}
+            });
+        }
+
+        function touchLru(id) {
+            const i = lru.indexOf(id);
+            if (i >= 0) lru.splice(i, 1);
+            lru.push(id);
+        }
+
+        function evictWarm(keepId) {
+            while (lru.length >= WARM_MAX) {
+                let victim = '';
+                for (let i = 0; i < lru.length; i++) {
+                    if (lru[i] !== keepId && lru[i] !== current) { victim = lru[i]; break; }
+                }
+                if (!victim) victim = lru[0];
+                if (!victim || victim === keepId) break;
+                const s = slots.get(victim);
+                if (s) {
+                    abortFrame(s.iframe);
+                    try { s.iframe.remove(); } catch (_) {}
+                    slots.delete(victim);
+                }
+                const ix = lru.indexOf(victim);
+                if (ix >= 0) lru.splice(ix, 1);
+            }
+        }
+
+        function makeWarmFrame(tabId) {
+            const f = document.createElement('iframe');
+            f.className = 'warm-frame';
+            f.title = (TABS[tabId] || {}).title || 'workspace';
+            f.setAttribute('allow', 'autoplay; fullscreen');
+            if (wrap) wrap.appendChild(f);
+            else if (frame && frame.parentNode) frame.parentNode.appendChild(f);
+            return f;
+        }
+
+        function dropSlot(tabId) {
+            const s = slots.get(tabId);
+            if (!s) return;
+            abortFrame(s.iframe);
+            try { s.iframe.remove(); } catch (_) {}
+            slots.delete(tabId);
+            const ix = lru.indexOf(tabId);
+            if (ix >= 0) lru.splice(ix, 1);
+        }
 
         function normalizeTab(raw) {
             let h = String(raw || '').replace(/^#/, '').toLowerCase();
@@ -211,7 +278,7 @@
                     }
                     await pingServer();
                     toast('Server ready — reloading workspace', 'ok');
-                    showTab(current, false);
+                    showTab(current, false, true);
                 } catch (e) {
                     toast((e && e.message) || 'Start failed — open Launcher', 'warn');
                 } finally {
@@ -265,11 +332,11 @@
                 '<a class="ghost" href="' + safeLaunch + '">← Launcher</a>' +
                 '<button type="button" class="ghost" id="hubStartFromFail">▶ Start Server</button>' +
                 '</div>';
-            bind(el('hubRetry'), 'click', () => showTab(current, false));
+            bind(el('hubRetry'), 'click', () => showTab(current, false, true));
             bind(el('hubStartFromFail'), 'click', startServerFromHub);
         }
 
-        async function showTab(id, pushHash) {
+        async function showTab(id, pushHash, force) {
             if (!TABS[id]) id = defaultTab;
             current = id;
             syncTabChrome(id);
@@ -283,20 +350,37 @@
                     try { history.replaceState(null, '', '#' + hash); } catch (_) {}
                 }
             }
-            if (!frame || !loading) return;
+            if (!loading) return;
+            hideWarmFrames();
+            if (force) dropSlot(id);
+            const existing = slots.get(id);
+            if (existing && existing.iframe && !force) {
+                existing.iframe.classList.add('on');
+                loading.classList.add('hide');
+                loading.classList.remove('fail');
+                touchLru(id);
+                pingFocus(existing.iframe, id);
+                return;
+            }
+            if (!wrap && !frame) return;
+            evictWarm(id);
             const gen = ++loadGen;
             if (loadTimer) clearTimeout(loadTimer);
             loading.classList.remove('hide', 'fail');
             setText(loading, 'Loading ' + (t.title || 'workspace') + '…');
             const src = await resolveSrc(id);
             if (gen !== loadGen) return;
-            frame.onload = () => {
+            const slotFrame = makeWarmFrame(id);
+            slots.set(id, { iframe: slotFrame, src: src || '' });
+            touchLru(id);
+            slotFrame.onload = () => {
                 if (gen !== loadGen) return;
                 if (loadTimer) clearTimeout(loadTimer);
                 loading.classList.add('hide');
                 loading.classList.remove('fail');
+                pingFocus(slotFrame, id);
             };
-            frame.onerror = () => {
+            slotFrame.onerror = () => {
                 if (gen !== loadGen) return;
                 if (loadTimer) clearTimeout(loadTimer);
                 showLoadFail(t.title, src);
@@ -305,9 +389,10 @@
                 if (gen !== loadGen) return;
                 if (loading.classList.contains('hide')) return;
                 try {
-                    const doc = frame.contentDocument;
+                    const doc = slotFrame.contentDocument;
                     if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
                         loading.classList.add('hide');
+                        pingFocus(slotFrame, id);
                         return;
                     }
                 } catch (_) {
@@ -316,9 +401,8 @@
                 }
                 showLoadFail(t.title, src);
             }, loadTimeoutMs);
-            abortFrame(frame);
-            lastSrc = src || '';
-            frame.src = src || 'about:blank';
+            slotFrame.classList.add('on');
+            slotFrame.src = src || 'about:blank';
         }
 
         async function copyHubReport() {
@@ -383,7 +467,7 @@
 
         window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
         window.addEventListener('pageshow', (e) => {
-            if (e.persisted) showTab(tabFromHash(), false);
+            if (e.persisted) showTab(tabFromHash(), false, true);
         });
         document.addEventListener('keydown', function hubTabKeys(e) {
             if (isTypingTarget(e.target)) return;
@@ -394,7 +478,7 @@
             if (ev.origin !== location.origin) return;
             const data = ev && ev.data;
             if (!data || typeof data !== 'object') return;
-            if (data.type === messageType) {
+            if (data.type === messageType || data.type === 'fafo-hub-tab' || data.type === 'fafo-compare-tab') {
                 const tab = normalizeTab(data.tab);
                 if (!tab) return;
                 if (data.search && String(data.search).indexOf('?') === 0) {

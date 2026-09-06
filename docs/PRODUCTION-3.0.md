@@ -1,6 +1,14 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.7**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.8**.
+
+## Media desks (3.0.8) — live Inbox/After, warm hubs, one workspace
+
+- Inbox and After are live drop folders: probe disk vs catalog, scan only when stale (`POST /api/pipeline/refresh-live`, `GET /api/scan/{id}/probe`)
+- Library no longer skips those folders just because they were indexed once; age chip still skips deep library dirs
+- Media Hub keeps the last 3 desks warm (no iframe teardown on every tab hop); focus pings the child to refresh
+- Compare Hub is a redirect into Media Hub (`#match` by default). Same eight tabs, one shell
+- Pipeline bar HTML-escape fallback actually escapes `& < > "` (was a no-op)
 
 ## Media desks (3.0.7) — pipeline, leftover, mint PID, chrome
 

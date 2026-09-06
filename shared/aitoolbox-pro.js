@@ -57,22 +57,22 @@
     'media hub': {
       id: 'media-hub', title: 'Media Hub', emoji: '🗂️',
       path: 'Movie File Manager/Media Hub.html',
-      counterparts: ['compare-hub', 'vsr-pipeline', 'duplicate-finder'],
+      counterparts: ['guided-pair-match', 'vsr-pipeline', 'duplicate-finder'],
     },
     'compare hub': {
-      id: 'compare-hub', title: 'Compare Hub', emoji: '⇄',
-      path: 'Movie File Manager/Compare Hub.html',
+      id: 'compare-hub', title: 'Media Hub', emoji: '⇄',
+      path: 'Movie File Manager/Media Hub.html#match',
       counterparts: ['media-hub', 'guided-pair-match', 'vsr-pipeline'],
     },
     'guided pair match': {
       id: 'guided-pair-match', title: 'Guided Pair Match', emoji: '🎯',
       path: 'Movie File Manager/Guided Pair Match.html',
-      counterparts: ['pair-review', 'compare-hub', 'media-hub'],
+      counterparts: ['pair-review', 'media-hub'],
     },
     'pair review': {
       id: 'pair-review', title: 'Pair Review Queue', emoji: '🔎',
       path: 'Movie File Manager/Pair Review Queue.html',
-      counterparts: ['guided-pair-match', 'compare-hub', 'video-compare'],
+      counterparts: ['guided-pair-match', 'media-hub', 'video-compare'],
     },
     'media library': {
       id: 'media-library', title: 'Media Library', emoji: '📚',

@@ -106,6 +106,66 @@ def apply_pipeline_to_dirs() -> dict[str, Any]:
     return {"ok": True, **{k: out[k] for k in out}}
 
 
+def refresh_live(
+    roles: tuple[str, ...] | list[str] | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Probe Inbox/After (live drop folders) and scan only when the catalog is stale."""
+    ops = _ops()
+    wanted = tuple(roles) if roles else ("inbox", "after")
+    pipe = apply_pipeline_to_dirs()
+    out: list[dict[str, Any]] = []
+    for role in wanted:
+        row = pipe.get(role) or {}
+        dir_id = row.get("dir_id")
+        item: dict[str, Any] = {
+            "role": role,
+            "path": row.get("path") or "",
+            "dir_id": dir_id,
+            "scanned": False,
+            "indexed": 0,
+        }
+        if not dir_id:
+            item["skipped"] = "no-dir"
+            out.append(item)
+            continue
+        try:
+            probe = ops.probe_directory(dir_id)
+        except Exception as e:
+            item["error"] = str(e)
+            out.append(item)
+            continue
+        item.update(probe)
+        if force or probe.get("stale"):
+            try:
+                n = ops.scan_directory(dir_id)
+                item["scanned"] = True
+                item["indexed"] = n
+                item["stale"] = False
+                item["catalog_count"] = n
+                item["delta"] = 0
+            except Exception as e:
+                item["error"] = str(e)
+        out.append(item)
+    bits: list[str] = []
+    for r in out:
+        if r.get("error"):
+            bits.append(f"{r['role']} error")
+            continue
+        if r.get("scanned"):
+            n = int(r.get("indexed") or 0)
+            bits.append(f"{r['role']} indexed {n}")
+        elif r.get("skipped"):
+            continue
+        else:
+            bits.append(f"{r['role']} current ({r.get('catalog_count') or 0})")
+    return {
+        "ok": True,
+        "roles": out,
+        "note": " · ".join(bits) if bits else "No live pipeline folders set",
+    }
+
+
 # --- reject memory ---
 
 def reject_candidate(

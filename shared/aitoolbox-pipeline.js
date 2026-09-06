@@ -20,8 +20,8 @@
         const d = D();
         if (d && d.escapeHtml) return d.escapeHtml(s);
         return String(s == null ? '' : s)
-            .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
-            .replace(/"/g, '"').replace(/'/g, '&#39;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function toast(msg, kind) {
         try { UI() && UI().toast && UI().toast(msg, kind || 'ok'); } catch (_) {}
@@ -109,9 +109,17 @@
             const row = pipe[r.key] || {};
             const path = row.path || '';
             const miss = path && row.exists === false;
+            const live = row.live || {};
+            const delta = Number(live.delta);
+            let liveBit = '';
+            if (miss) liveBit = '';
+            else if (live.scanned) liveBit = ' <span class="fafo-pipe-live">indexed ' + Number(live.indexed || live.catalog_count || 0) + '</span>';
+            else if (delta > 0) liveBit = ' <span class="fafo-pipe-stale">+' + delta + ' new</span>';
+            else if (delta < 0) liveBit = ' <span class="fafo-pipe-stale">' + delta + ' gone</span>';
+            else if (live.catalog_count != null) liveBit = ' <span class="fafo-pipe-live">current</span>';
             return '<div class="fafo-pipe-slot" data-role="' + r.key + '">' +
                 '<div class="fafo-pipe-k">' + esc(r.label) +
-                (miss ? ' <span class="fafo-pipe-miss">missing</span>' : '') + '</div>' +
+                (miss ? ' <span class="fafo-pipe-miss">missing</span>' : '') + liveBit + '</div>' +
                 '<div class="fafo-pipe-p" title="' + esc(r.hint) + '">' + esc(path || '— not set —') + '</div>' +
                 '</div>';
         }).join('') +
@@ -282,21 +290,88 @@
         try { await api.rejectCandidate(anchorId, candidateId, extra || {}); } catch (_) {}
     }
 
+    let lastLiveAt = 0;
+    const LIVE_COOLDOWN_MS = 20000;
+
+    function applyLiveToPipe(pipe, live) {
+        if (!pipe || !live || !Array.isArray(live.roles)) return pipe;
+        live.roles.forEach(function (r) {
+            if (!r || !r.role || !pipe[r.role]) return;
+            pipe[r.role].live = r;
+            if (r.dir_id) pipe[r.role].dir_id = r.dir_id;
+        });
+        pipe.liveNote = live.note || '';
+        return pipe;
+    }
+
+    async function refreshLive(opts) {
+        opts = opts || {};
+        const api = API();
+        if (!api || !api.refreshLivePipeline) return null;
+        const now = Date.now();
+        if (!opts.force && lastLiveAt && (now - lastLiveAt) < LIVE_COOLDOWN_MS) return null;
+        try {
+            if (!(await api.isOnline?.(false, 1500))) return null;
+            lastLiveAt = now;
+            const live = await api.refreshLivePipeline(opts);
+            lastLiveAt = Date.now();
+            applyLiveToPipe(opts.pipe, live);
+            const scanned = (live && live.roles || []).filter(function (r) { return r && r.scanned; });
+            if (scanned.length && !opts.quiet) toast(live.note || 'Inbox / After catalog updated', 'ok');
+            if (opts.host && opts.pipe) renderPipelineBar(opts.host, opts.pipe, opts);
+            if (typeof opts.onLive === 'function') opts.onLive(live, opts.pipe);
+            return live;
+        } catch (_) {
+            return null;
+        }
+    }
+
     async function boot(opts) {
         opts = opts || {};
         markEmbedded();
         const pipe = await inheritFolders(opts);
+        opts.pipe = pipe;
+        await refreshLive(opts);
         if (opts.leftoverHost) {
             try {
                 const left = await API()?.getLeftover?.();
                 if (left) renderLeftover(opts.leftoverHost, left, opts);
             } catch (_) {}
         }
+        try {
+            window.addEventListener('message', function (ev) {
+                try {
+                    if (ev.origin !== location.origin) return;
+                    const data = ev.data;
+                    if (!data || data.type !== 'fafo-hub-focus') return;
+                    refreshLive(Object.assign({}, opts, { pipe: pipe, quiet: true }));
+                } catch (_) {}
+            });
+        } catch (_) {}
         return pipe;
     }
 
+    function goTab(tab) {
+        tab = String(tab || '').replace(/^#/, '');
+        if (!tab) tab = 'library';
+        try {
+            if (global.parent && global.parent !== global) {
+                global.parent.postMessage({ type: 'fafo-hub-tab', tab: tab }, location.origin);
+                return;
+            }
+        } catch (_) {}
+        try {
+            const here = String(location.pathname || '');
+            if (/Media%20Hub\.html$/i.test(here) || /Media Hub\.html$/i.test(here)) {
+                location.hash = tab;
+                return;
+            }
+        } catch (_) {}
+        location.href = 'Media Hub.html#' + tab;
+    }
+
     global.AIToolboxPipeline = {
-        boot, markEmbedded, isEmbedded, inheritFolders,
+        boot, markEmbedded, isEmbedded, inheritFolders, refreshLive, goTab,
         renderPipelineBar, renderLeftover, leftoverSummary,
         dryRunTrust, filmstripHtml, paintMethodBadge, methodKind, methodLabel,
         persistReject, promptSetPipeline, fmtBytes, esc,
