@@ -664,7 +664,7 @@ def get_rename_history() -> list[str]:
     return [r["pattern"] for r in rows]
 
 
-def rename_media(mid: str, new_name: str) -> dict:
+def rename_media(mid: str, new_name: str, *, record_undo: bool = True) -> dict:
     media = get_media(mid)
     if not media:
         raise FileNotFoundError("Media not found")
@@ -677,6 +677,7 @@ def rename_media(mid: str, new_name: str) -> dict:
     dst = src.parent / new_name
     if dst.exists() and dst != src:
         raise FileExistsError(f"Already exists: {new_name}")
+    old_name = media.get("name") or ""
     src.rename(dst)
     new_rel = str(Path(media["rel_path"]).parent / new_name).replace("\\", "/")
     if new_rel.startswith("./"):
@@ -691,7 +692,20 @@ def rename_media(mid: str, new_name: str) -> dict:
         conn.execute("UPDATE pairs SET before_media_id=? WHERE before_media_id=?", (new_id, mid))
         conn.execute("UPDATE pairs SET after_media_id=? WHERE after_media_id=?", (new_id, mid))
         conn.execute("UPDATE playlist_items SET media_id=? WHERE media_id=?", (new_id, mid))
-    return get_media(new_id) or {**media, "id": new_id, "rel_path": new_rel, "name": new_name, "mtime": new_mtime}
+    result = get_media(new_id) or {**media, "id": new_id, "rel_path": new_rel, "name": new_name, "mtime": new_mtime}
+    if record_undo and result and (result.get("name") != old_name or result.get("id") != mid):
+        try:
+            from pair_workspace import push_undo
+            push_undo({
+                "type": "rename",
+                "media_id": mid,
+                "new_id": result.get("id"),
+                "old_name": old_name,
+                "new_name": result.get("name"),
+            })
+        except Exception:
+            pass
+    return result
 
 
 def batch_rename(ids: list[str], pattern: str) -> list[dict]:
@@ -1058,6 +1072,30 @@ def _media_pid(m: dict[str, Any] | None) -> str | None:
     )
 
 
+def stamp_pid_on_name(name: str, pid_hex: str) -> str:
+    """Insert `_PID_xxxxxxxx` before the extension if the name does not already carry it."""
+    pid_hex = str(pid_hex or "").lower().strip()
+    if not re.fullmatch(r"[0-9a-f]{8}", pid_hex):
+        return name
+    p = Path(name)
+    stem, ext = p.stem, p.suffix
+    existing = pair_id_from_name(name)
+    if existing == pid_hex:
+        return name
+    stem = _PID_IN_NAME_RE.sub("", stem)
+    stem = _PID_TITLE_RE.sub("", stem)
+    stem = stem.rstrip("._- ") or "clip"
+    return f"{stem}_PID_{pid_hex}{ext}"
+
+
+def _mint_file_pid(before: dict, after: dict) -> str:
+    return (
+        _media_pid(before)
+        or _media_pid(after)
+        or uuid.uuid4().hex[:8]
+    )
+
+
 def _next_pair_code() -> str:
     with connect() as conn:
         row = conn.execute(
@@ -1399,6 +1437,10 @@ def save_pair(
     notes: str = "",
     source: str = "manual",
     pair_code: str | None = None,
+    confidence: float | None = None,
+    match_method: str | None = None,
+    mint_pid: bool = True,
+    record_undo: bool = True,
 ) -> dict:
     before = get_media(before_id)
     after = get_media(after_id)
@@ -1406,6 +1448,23 @@ def save_pair(
         raise FileNotFoundError("Media items not found")
     if before_id == after_id:
         raise ValueError("Cannot pair a file with itself")
+    file_pid = _mint_file_pid(before, after)
+    method = (match_method or "").strip() or (
+        "pid_exact" if (_media_pid(before) and _media_pid(before) == _media_pid(after)) else (source or "manual")
+    )
+    conf_val = None if confidence is None else max(0.0, min(1.0, float(confidence)))
+    if mint_pid:
+        for side in (before, after):
+            new_name = stamp_pid_on_name(side.get("name") or "", file_pid)
+            if new_name and new_name != side.get("name"):
+                try:
+                    updated = rename_media(side["id"], new_name, record_undo=False)
+                    if side is before:
+                        before, before_id = updated, updated["id"]
+                    else:
+                        after, after_id = updated, updated["id"]
+                except (FileExistsError, FileNotFoundError, OSError):
+                    pass
     pid = f"pair-{uuid.uuid4().hex[:10]}"
     if not name:
         name = f"{before['name']} ↔ {after['name']}"
@@ -1420,7 +1479,15 @@ def save_pair(
             (before_id, after_id, after_id, before_id),
         ).fetchone()
         if existing:
-            return _enrich_pair(dict(existing)) or dict(existing)
+            conn.execute(
+                """UPDATE pairs SET confidence=COALESCE(?, confidence),
+                   match_method=CASE WHEN ? != '' THEN ? ELSE match_method END,
+                   file_pid=CASE WHEN ? != '' THEN ? ELSE file_pid END
+                   WHERE id=?""",
+                (conf_val, method, method, file_pid, file_pid, existing["id"]),
+            )
+            row = conn.execute("SELECT * FROM pairs WHERE id=?", (existing["id"],)).fetchone()
+            return _enrich_pair(dict(row)) or dict(row)
         conn.execute(
             "DELETE FROM pairs WHERE before_media_id IN (?,?) OR after_media_id IN (?,?)",
             (before_id, after_id, before_id, after_id),
@@ -1428,11 +1495,13 @@ def save_pair(
         conn.execute(
             """INSERT INTO pairs (
                 id, name, kind, before_media_id, after_media_id, created_at,
-                pair_code, pinned, notes, before_path, after_path, source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                pair_code, pinned, notes, before_path, after_path, source,
+                confidence, match_method, file_pid
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 pid, name, kind, before_id, after_id, time.time(),
                 code, 1 if pinned else 0, notes, before_path, after_path, source,
+                conf_val, method, file_pid,
             ),
         )
         conn.execute("UPDATE media SET pair_id=?, pair_role='before' WHERE id=?", (pid, before_id))
@@ -1440,7 +1509,19 @@ def save_pair(
         row = conn.execute("SELECT * FROM pairs WHERE id=?", (pid,)).fetchone()
     enriched = _enrich_pair(dict(row)) or {}
     _tag_linked_media(before_id, after_id, code, kind)
-    # Learn naming scheme from confirmed pairs (guided match + manual)
+    if record_undo:
+        try:
+            from pair_workspace import push_undo
+            push_undo({
+                "type": "lock",
+                "pair_id": pid,
+                "before_id": before_id,
+                "after_id": after_id,
+                "file_pid": file_pid,
+                "match_method": method,
+            })
+        except Exception:
+            pass
     try:
         from pair_learn import observe_pair
         observe_pair(
@@ -1757,7 +1838,7 @@ def relink_pairs_from_metadata() -> dict:
     }
 
 
-def delete_pair(pid: str) -> None:
+def delete_pair(pid: str, *, record_undo: bool = True) -> None:
     pair = get_pair(pid)
     sides: list[str] = []
     if pair:
@@ -1765,6 +1846,26 @@ def delete_pair(pid: str) -> None:
             mid = pair.get(key)
             if mid:
                 sides.append(mid)
+        if record_undo:
+            try:
+                from pair_workspace import push_undo
+                push_undo({
+                    "type": "unlock",
+                    "pair_id": pid,
+                    "snapshot": {
+                        "name": pair.get("name"),
+                        "before_id": pair.get("before_media_id"),
+                        "after_id": pair.get("after_media_id"),
+                        "kind": pair.get("kind") or "video",
+                        "pinned": pair.get("pinned"),
+                        "notes": pair.get("notes"),
+                        "pair_code": pair.get("pair_code"),
+                        "confidence": pair.get("confidence"),
+                        "match_method": pair.get("match_method"),
+                    },
+                })
+            except Exception:
+                pass
     with connect() as conn:
         conn.execute("UPDATE media SET pair_id=NULL, pair_role=NULL WHERE pair_id=?", (pid,))
         conn.execute("DELETE FROM pairs WHERE id=?", (pid,))
@@ -2334,6 +2435,14 @@ def candidates_for_media(
     dir_paths = _dir_path_map()
     two_folder = bool(before_dir_id and after_dir_id and before_dir_id != after_dir_id)
 
+    rejected = set()
+    try:
+        from pair_workspace import reject_set as _reject_set
+        rejected = _reject_set()
+    except Exception:
+        rejected = set()
+
+
     clauses = ["type IN ('video', 'image')"]
     params: list[Any] = []
     if unpaired_only:
@@ -2392,9 +2501,13 @@ def candidates_for_media(
     methods = ("pid", "stem", "tail", "digit_id", "folder", "fuzzy")
     skipped_same_size = 0
     skipped_not_larger = 0
+    skipped_rejected = 0
     anchor_pid = _media_pid(anchor)
 
     for peer in peers:
+        if (media_id, peer["id"]) in rejected or (peer["id"], media_id) in rejected:
+            skipped_rejected += 1
+            continue
         sa = int(anchor.get("size") or 0)
         sp = int(peer.get("size") or 0)
         peer_pid = _media_pid(peer)
@@ -2549,6 +2662,7 @@ def candidates_for_media(
         "skipped_same_size": skipped_same_size,
         "skipped_not_larger": skipped_not_larger,
         "skipped_intermediate": skipped_intermediate,
+        "skipped_rejected": skipped_rejected,
         "before_dir_id": before_dir_id,
         "after_dir_id": after_dir_id,
         "require_larger_after": require_larger_after,
@@ -2810,6 +2924,21 @@ def list_pid_matches(
             "unique": unique,
             "members": len(ids),
             "member_names": [m.get("name") or "" for m in group][:8],
+            "member_list": [
+                {
+                    "id": m.get("id"),
+                    "name": m.get("name") or "",
+                    "size": int(m.get("size") or 0),
+                    "dir_id": m.get("dir_id"),
+                    "path": m.get("rel_path") or m.get("path") or "",
+                    "role": (
+                        "before" if m.get("dir_id") == before_dir_id
+                        else "after" if m.get("dir_id") == after_dir_id
+                        else ""
+                    ),
+                }
+                for m in group[:12]
+            ],
         })
         if len(matches) >= limit:
             break
@@ -2879,6 +3008,10 @@ def trust_pid_matches(
                 pinned=pin,
                 notes=f"pid-trust {s.get('pid')}",
                 source="pid-trust",
+                confidence=s.get("confidence"),
+                match_method=s.get("reason") or "pid_exact",
+                mint_pid=True,
+                record_undo=False,
             )
             pair["confidence"] = s.get("confidence")
             pair["pid"] = s.get("pid")
@@ -2886,6 +3019,16 @@ def trust_pid_matches(
         except (FileNotFoundError, ValueError) as e:
             skipped += 1
             errors.append(str(e)[:160])
+    if not dry_run and created:
+        try:
+            from pair_workspace import push_undo
+            push_undo({
+                "type": "pid-trust",
+                "pair_ids": [p.get("id") for p in created if p.get("id")],
+                "count": len(created),
+            })
+        except Exception:
+            pass
     return {
         "ok": True,
         "dry_run": dry_run,
@@ -2957,7 +3100,17 @@ def get_settings() -> dict:
         "auto_pair_after_scan": "false",
         "comparator_video": "../Video Tools/Video Comparison Slider Tool.html",
         "comparator_image": "../Image tools/Image Comparitor With Slider.html",
+        "pipeline_inbox": "",
+        "pipeline_before": "",
+        "pipeline_after": "",
     }
+    try:
+        from duplicates import DEFAULT_PIPELINE_AFTER, DEFAULT_PIPELINE_BEFORE, DEFAULT_PIPELINE_INBOX
+        defaults["pipeline_inbox"] = DEFAULT_PIPELINE_INBOX
+        defaults["pipeline_before"] = DEFAULT_PIPELINE_BEFORE
+        defaults["pipeline_after"] = DEFAULT_PIPELINE_AFTER
+    except Exception:
+        pass
     for r in rows:
         defaults[r["key"]] = r["value"]
     return defaults

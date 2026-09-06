@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guided Pair Match — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.6">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.6">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.7">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.7">
   <style>
     :root {
       --bg: #0b1220; --panel: #121a28; --border: rgba(0,229,255,.28);
@@ -597,6 +597,8 @@
           skips stage-2 junk, and prefers source ↔ final (1 ↔ 3).
         </div>
       </div>
+      <div id="pipelineHost"></div>
+      <div id="leftoverHost"></div>
       <div class="preset-row" style="width:100%">
         <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Quick presets</span>
         <button type="button" class="preset-chip" data-preset="strict" title="Fewer tries, higher score">Strict 5 / 60%</button>
@@ -609,17 +611,21 @@
 
     <div class="pid-strip" id="pidStrip">
       <div class="pid-strip-h">
-        <span class="pid-badge">PID</span>
-        <strong style="font-size:12px">Auto-link by pair id</strong>
-        <span id="pidStats" style="font-size:11px;color:var(--muted)">Finds files that share <code>_PID_xxxxxxxx</code></span>
+        <span class="pid-badge">PID unique</span>
+        <strong style="font-size:12px">Trust-all layout</strong>
+        <span id="pidStats" style="font-size:11px;color:var(--muted)">Unique 1:1 stamps lock in one click. Everything else is leftover.</span>
         <button type="button" class="ui-btn ghost" id="btnPidRefresh" style="padding:4px 8px;font-size:11px"
                 data-tip-title="Find PIDs" data-tip="Scan the catalog for matching _PID_xxxxxxxx stamps.">↻ Find PIDs</button>
         <button type="button" class="ui-btn primary" id="btnPidTrust" style="padding:4px 10px;font-size:11px;margin-left:auto" disabled
                 data-tip-title="Trust all unique (T)"
-                data-tip-basic="Lock every unique 1:1 PID match without reviewing each one."
-                data-tip-pro="POST /pairs/trust-pids — unique groups only. Ambiguous 3+ groups stay for Approve.">Trust all unique</button>
+                data-tip-basic="Dry-run the unique 1:1 PID list, uncheck any you do not trust, then lock."
+                data-tip-pro="POST /pairs/trust-pids — unique groups only. Ambiguous 3+ groups stay in leftover.">Trust unique</button>
       </div>
       <div id="pidList" class="pid-list"></div>
+      <div id="ambiguousHost" style="display:none">
+        <div style="font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);font-weight:800;margin:8px 0 4px">Ambiguous PID — pick After</div>
+        <div id="ambiguousFilm"></div>
+      </div>
     </div>
 
     <div class="progress" id="progressBox">
@@ -737,6 +743,7 @@
 
       <div class="pair-title-row">
         <h2 id="pairTitle">—</h2>
+        <span class="fafo-method" id="methodBadge" hidden>—</span>
         <span class="score" id="scorePill">—</span>
         <span style="font-size:12px;color:var(--muted)" id="reasonVal">—</span>
       </div>
@@ -771,28 +778,31 @@
       <div class="actions">
         <button class="ui-btn match" type="button" id="btnYes"
                 data-tip-title="Match (Y)"
-                data-tip-basic="Yes — these are the same shot (source + upscale). Saves the pair."
-                data-tip-pro="savePair + learn naming tokens. After must be larger than before.">✓ Match (Y)</button>
+                data-tip-basic="Yes — these are the same shot (source + upscale). Saves the pair and stamps _PID_xxxxxxxx."
+                data-tip-pro="savePair + mint PID + learn naming tokens. After must be larger than before.">✓ Match (Y)</button>
         <button class="ui-btn nomatch" type="button" id="btnNo"
                 data-tip-title="Not this (N)"
-                data-tip="No match — try the next candidate for this file.">✗ Not this (N)</button>
-        <button class="ui-btn ghost" type="button" id="btnSkip"
-                data-tip-title="Skip file (S)"
-                data-tip="Skip this whole source file and move to the next unpaired item.">Skip anchor (S)</button>
-        <button class="ui-btn ghost" type="button" id="btnPlay"
-                data-tip-title="Play both"
-                data-tip="Play or pause both previews together (Space).">⏯ Play both</button>
-        <button class="ui-btn ghost" type="button" id="btnViewOverlay"
-                data-tip-title="Overlay sweep (O)"
-                data-tip-basic="Stack both images and wipe a line left/right to compare detail."
-                data-tip-pro="Clip-path sweeper limited to image content width (9:16 letterbox-aware).">⧉ Overlay (O)</button>
-        <button class="ui-btn undo-main" type="button" id="btnUndo" disabled
-                data-tip-title="Back (Z)"
-                data-tip="Undo last decision. Double-tap Z within 0.4s jumps back 5 steps.">↩ Back (Z)</button>
-        <button class="ui-btn ghost" type="button" id="btnRedo" disabled
-                data-tip-title="Forward (F)"
-                data-tip="Redo one step you undid.">↪ Forward (F)</button>
-        <span class="undo-hint" id="undoHint">History empty</span>
+                data-tip="No match — never again for this stem/PID. Try the next candidate.">✗ Not this (N)</button>
+        <details class="actions-overflow">
+          <summary>More</summary>
+          <button class="ui-btn ghost" type="button" id="btnSkip"
+                  data-tip-title="Skip file (S)"
+                  data-tip="Skip this whole source file and move to the next unpaired item.">Skip anchor (S)</button>
+          <button class="ui-btn ghost" type="button" id="btnPlay"
+                  data-tip-title="Play both"
+                  data-tip="Play or pause both previews together (Space).">⏯ Play both</button>
+          <button class="ui-btn ghost" type="button" id="btnViewOverlay"
+                  data-tip-title="Overlay sweep (O)"
+                  data-tip-basic="Stack both images and wipe a line left/right to compare detail."
+                  data-tip-pro="Clip-path sweeper limited to image content width (9:16 letterbox-aware).">⧉ Overlay (O)</button>
+          <button class="ui-btn undo-main" type="button" id="btnUndo" disabled
+                  data-tip-title="Back (Z)"
+                  data-tip="Undo last decision. Double-tap Z within 0.4s jumps back 5 steps.">↩ Back (Z)</button>
+          <button class="ui-btn ghost" type="button" id="btnRedo" disabled
+                  data-tip-title="Forward (F)"
+                  data-tip="Redo one step you undid.">↪ Forward (F)</button>
+          <span class="undo-hint" id="undoHint">History empty</span>
+        </details>
       </div>
     </div>
 
@@ -846,16 +856,17 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.6"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.0.6"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.6"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.6"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.6"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.0.6"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.6"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.6"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-runtime.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-media.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-dom.js?v=3.0.7"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-pipeline.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.0.7"></script>
+  <script src="../shared/fafo-ops-stats.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.0.7"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.0.7"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -2006,6 +2017,7 @@
         const pill0 = el('scorePill');
         if (pill0) pill0.className = 'score';
         setText('reasonVal', '—');
+        try { window.AIToolboxPipeline && AIToolboxPipeline.paintMethodBadge('methodBadge', ''); } catch (_) {}
         fillUniformMeta(anchor, null);
         updatePips();
         return;
@@ -2023,6 +2035,7 @@
         pill.className = 'score ' + (isPid ? 'pid' : scoreClass(cand.confidence));
       }
       setText('reasonVal', (cand.reason || '—') + (cand.pid ? ' · PID ' + cand.pid : '') + ' · roles: before/after proposed');
+      try { window.AIToolboxPipeline && AIToolboxPipeline.paintMethodBadge('methodBadge', cand.reason || (cand.pid ? 'pid_exact' : '')); } catch (_) {}
       setText('rolesVal', `Before: ${cand.before_name || '—'} · After: ${cand.after_name || '—'}`);
       setText('typeVal', cand.type || anchor.type || '—');
       fillUniformMeta(anchor, cand);
@@ -2061,6 +2074,7 @@
       if (data.skipped_same_size) skipBits.push(data.skipped_same_size + ' same-size');
       if (data.skipped_not_larger) skipBits.push(data.skipped_not_larger + ' not-larger');
       if (data.skipped_intermediate) skipBits.push(data.skipped_intermediate + ' stage2/junk');
+      if (data.skipped_rejected) skipBits.push(data.skipped_rejected + ' never-again');
       const skipNote = skipBits.length ? ' · skipped ' + skipBits.join(' / ') : '';
       setText('statusLine', `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers${skipNote}`);
       if (!state.candidates.length) {
@@ -2114,25 +2128,32 @@
       const list = el('pidList');
       const stats = el('pidStats');
       const trustBtn = el('btnPidTrust');
+      const ambHost = el('ambiguousHost');
+      const ambFilm = el('ambiguousFilm');
+      const P = window.AIToolboxPipeline;
       const rows = pidState.matches || [];
-      const u = pidState.uniqueCount || 0;
-      const a = pidState.ambiguousCount || 0;
+      const unique = rows.filter((m) => m.unique);
+      const ambiguous = rows.filter((m) => !m.unique);
+      const u = unique.length;
+      const a = ambiguous.length;
+      pidState.uniqueCount = u;
+      pidState.ambiguousCount = a;
       if (stats) {
         stats.textContent = rows.length
-          ? `${u} unique · ${a} need a look · ${rows.length} PID group${rows.length === 1 ? '' : 's'}`
+          ? `${u} unique → Trust · ${a} ambiguous → leftover · 10-try is leftover only`
           : 'No shared _PID_xxxxxxxx stamps in unpaired catalog files';
       }
       if (trustBtn) trustBtn.disabled = u < 1;
       if (!list) return;
-      if (!rows.length) {
-        list.innerHTML = '<div class="pid-empty">Start the server, then Find PIDs. Unique 1:1 matches can Trust all — ambiguous groups stay for Approve.</div>';
+      if (!unique.length && !ambiguous.length) {
+        list.innerHTML = '<div class="pid-empty">Start the server, then Find PIDs. Unique 1:1 matches Trust first — ambiguous groups and unpaired files stay leftover.</div>';
+        if (ambHost) ambHost.style.display = 'none';
         return;
       }
-      list.innerHTML = rows.map((m) => {
+      list.innerHTML = unique.map((m) => {
         const hex = esc(m.pid || '');
-        const uniq = !!m.unique;
-        return `<div class="pid-row${uniq ? '' : ' ambiguous'}" data-pid="${hex}">
-          <span class="pid-hex" title="${uniq ? 'Unique 1:1' : (m.members || '?') + ' files share this PID'}">${hex}${uniq ? '' : ' · ' + (m.members || '?')}</span>
+        return `<div class="pid-row" data-pid="${hex}">
+          <span class="pid-hex" title="Unique 1:1">${hex}</span>
           <div class="pid-names">
             <div class="from">${esc(m.before_name || '')}</div>
             <div class="to">${esc(m.after_name || '')}</div>
@@ -2140,7 +2161,29 @@
           <button type="button" class="ui-btn primary" data-pid-approve="${hex}" style="padding:4px 10px;font-size:11px">Approve</button>
           <button type="button" class="ui-btn ghost" data-pid-skip="${hex}" style="padding:4px 10px;font-size:11px">Skip</button>
         </div>`;
-      }).join('');
+      }).join('') || '<div class="pid-empty">No unique 1:1 PIDs — leftover queue below.</div>';
+      if (ambHost && ambFilm) {
+        if (!ambiguous.length) {
+          ambHost.style.display = 'none';
+          ambFilm.innerHTML = '';
+        } else {
+          ambHost.style.display = '';
+          ambFilm.innerHTML = ambiguous.map((m) => {
+            const hex = esc(m.pid || '');
+            const members = m.member_list || (m.member_names || []).map((n) => ({ name: n, size: 0 }));
+            return `<div class="pid-row ambiguous" data-pid="${hex}">
+              <span class="pid-hex" title="${m.members || members.length} files share this PID">${hex} · ${m.members || members.length}</span>
+              <div class="pid-names">
+                <div class="from">${esc(m.before_name || '')}</div>
+                <div class="to">${esc(m.after_name || '')}</div>
+              </div>
+              <button type="button" class="ui-btn primary" data-pid-approve="${hex}" style="padding:4px 10px;font-size:11px">Pick After</button>
+              <button type="button" class="ui-btn ghost" data-pid-skip="${hex}" style="padding:4px 10px;font-size:11px">Skip</button>
+              ${P && P.filmstripHtml ? P.filmstripHtml(members, m.pid) : ''}
+            </div>`;
+          }).join('');
+        }
+      }
     }
 
     async function loadPidMatches() {
@@ -2165,6 +2208,7 @@
           ambiguousCount: data.ambiguous_count || 0,
         };
         renderPidStrip();
+        persistLeftoverFromPid(data).catch(() => {});
         return pidState;
       } catch (e) {
         pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
@@ -2206,26 +2250,73 @@
       }
     }
 
+    async function persistLeftoverFromPid(data) {
+      const api = API();
+      if (!api?.saveLeftover) return;
+      const unique = (data.unique || []).length || data.unique_count || 0;
+      const amb = data.ambiguous || [];
+      try {
+        await api.saveLeftover({
+          unique_trusted: 0,
+          ambiguous: amb.slice(0, 400),
+          fuzzy_ids: [],
+          rejected: 0,
+          note: unique + ' unique ready · ' + amb.length + ' ambiguous · leftover queue',
+        });
+      } catch (_) {}
+      const P = window.AIToolboxPipeline;
+      if (P && P.renderLeftover) {
+        try {
+          const left = await api.getLeftover();
+          P.renderLeftover('leftoverHost', left, {
+            onResume: () => startQueue(false),
+            onRebuild: async () => {
+              const fo = folderOpts();
+              const r = await api.rebuildLeftover({ ...fo, kind: el('kindFilter')?.value || null });
+              P.renderLeftover('leftoverHost', r, { onResume: () => startQueue(false), onRebuild: () => {} });
+              toast(r.note || 'Leftover rebuilt', 'ok');
+            },
+          });
+        } catch (_) {}
+      }
+    }
+
     async function trustAllPids() {
-      const n = pidState.uniqueCount || 0;
+      const unique = (pidState.matches || []).filter((m) => m.unique);
+      const n = unique.length;
       if (n < 1) {
         toast('No unique PID matches to trust', 'warn');
         return;
       }
-      let ok = false;
-      if (UI()?.confirmAction) {
-        const conf = await UI().confirmAction({
-          title: 'Trust all unique PID matches?',
-          body: `<strong>${n}</strong> unique <code>_PID_xxxxxxxx</code> pair${n === 1 ? '' : 's'} will lock as catalog pairs. Ambiguous groups (3+ files) stay for Approve.`,
-          confirmText: `Trust ${n}`,
-          cancelText: 'Cancel',
-          showSafetyNote: true,
+      const P = window.AIToolboxPipeline;
+      let pids = unique.map((m) => m.pid);
+      if (P && P.dryRunTrust) {
+        const dry = await P.dryRunTrust(unique, {
+          title: 'Trust unique PID matches?',
+          body: 'Uncheck any pair you do not want locked. Ambiguous 3+ groups stay leftover.',
         });
-        ok = !!conf?.confirmed;
+        if (!dry.confirmed) return;
+        pids = dry.pids || [];
+        if (!pids.length) {
+          toast('Nothing selected', 'warn');
+          return;
+        }
       } else {
-        ok = window.confirm('Lock ' + n + ' unique PID pair(s)?');
+        let ok = false;
+        if (UI()?.confirmAction) {
+          const conf = await UI().confirmAction({
+            title: 'Trust all unique PID matches?',
+            body: `<strong>${n}</strong> unique <code>_PID_xxxxxxxx</code> pair${n === 1 ? '' : 's'} will lock as catalog pairs. Ambiguous groups (3+ files) stay leftover.`,
+            confirmText: `Trust ${n}`,
+            cancelText: 'Cancel',
+            showSafetyNote: true,
+          });
+          ok = !!conf?.confirmed;
+        } else {
+          ok = window.confirm('Lock ' + n + ' unique PID pair(s)?');
+        }
+        if (!ok) return;
       }
-      if (!ok) return;
       if (busy) return;
       busy = true;
       const trustBtn = el('btnPidTrust');
@@ -2234,6 +2325,7 @@
         const r = await API()?.trustPidMatches?.({
           pin: true,
           includeAmbiguous: false,
+          pids,
           ...pidFolderOpts(),
         });
         const created = r?.created || 0;
@@ -2242,6 +2334,14 @@
         logLine('TRUST PID · ' + created + ' locked');
         await loadPidMatches();
         try { refreshLearnPanel(); } catch (_) {}
+        try {
+          await API()?.saveLeftover?.({
+            unique_trusted: created,
+            ambiguous: pidState.matches.filter((m) => !m.unique),
+            fuzzy_ids: (state.anchors || []).map((a) => a.id).slice(0, 2000),
+            note: created + ' unique trusted · leftover remains',
+          });
+        } catch (_) {}
       } catch (e) {
         toast(e.message || String(e), 'warn');
       } finally {
@@ -2404,6 +2504,13 @@
 
       const before = snapshotCore();
       rejectedFor(anchor.id).push(cand.candidate_id);
+      try {
+        window.AIToolboxPipeline && AIToolboxPipeline.persistReject(anchor.id, cand.candidate_id, {
+          pid: cand.pid || '',
+          stem: (anchor.name || '').replace(/\.[^.]+$/, ''),
+          reason: 'guided-reject',
+        });
+      } catch (_) {}
       try {
         window.FAFOOpsStats?.record({
           tool: 'guided-pair-match',
@@ -2667,6 +2774,15 @@
     bind('btnPidRefresh', 'click', () => loadPidMatches());
     bind('btnPidTrust', 'click', () => trustAllPids());
     bind('pidList', 'click', (e) => {
+      const film = e.target.closest('[data-member-id]');
+      if (film) {
+        e.preventDefault();
+        const row = film.closest('[data-pid]');
+        const pidHex = row && row.getAttribute('data-pid');
+        const memberId = film.getAttribute('data-member-id');
+        if (pidHex && memberId) pickAmbiguousAfter(pidHex, memberId);
+        return;
+      }
       const approve = e.target.closest('[data-pid-approve]');
       if (approve) {
         e.preventDefault();
@@ -2683,6 +2799,68 @@
         renderPidStrip();
       }
     });
+    bind('ambiguousHost', 'click', (e) => {
+      const film = e.target.closest('[data-member-id]');
+      if (film) {
+        e.preventDefault();
+        const row = film.closest('[data-pid]');
+        const pidHex = row && row.getAttribute('data-pid');
+        const memberId = film.getAttribute('data-member-id');
+        if (pidHex && memberId) pickAmbiguousAfter(pidHex, memberId);
+        return;
+      }
+      const approve = e.target.closest('[data-pid-approve]');
+      if (approve) {
+        e.preventDefault();
+        approvePidRow(approve.getAttribute('data-pid-approve'));
+        return;
+      }
+      const skip = e.target.closest('[data-pid-skip]');
+      if (skip) {
+        e.preventDefault();
+        const hex = skip.getAttribute('data-pid-skip');
+        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== hex);
+        renderPidStrip();
+      }
+    });
+
+    async function pickAmbiguousAfter(pidHex, memberId) {
+      const row = (pidState.matches || []).find((m) => String(m.pid || '').toLowerCase() === String(pidHex || '').toLowerCase());
+      if (!row) return;
+      const members = row.member_list || [];
+      const picked = members.find((m) => m.id === memberId);
+      if (!picked) {
+        approvePidRow(pidHex);
+        return;
+      }
+      const beforeId = row.before_id;
+      const afterId = picked.id === beforeId ? row.after_id : picked.id;
+      if (!beforeId || !afterId || beforeId === afterId) {
+        toast('Pick a different After file', 'warn');
+        return;
+      }
+      if (busy) return;
+      busy = true;
+      try {
+        await API().savePair({
+          name: (row.before_name || 'pair') + ' — PID ' + row.pid,
+          beforeMediaId: beforeId,
+          afterMediaId: afterId,
+          kind: row.type || 'video',
+          pinned: true,
+          notes: 'pid-ambiguous ' + row.pid,
+        });
+        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== row.pid);
+        state.matched += 1;
+        renderPidStrip();
+        toast('PID ' + row.pid + ' locked with chosen After', 'ok');
+        logLine('PID PICK ' + row.before_name + ' ↔ ' + (picked.name || afterId));
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      } finally {
+        busy = false;
+      }
+    }
     bind('btnEmptyStart', 'click', () => startQueue(false));
     bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
     bind('btnReset', 'click', () => {
@@ -2860,6 +3038,30 @@
 
     refreshDirSelects().catch(() => {});
     refreshLearnPanel().catch(() => {});
+    (async () => {
+      try {
+        const P = window.AIToolboxPipeline;
+        if (!P || !P.boot) return;
+        await P.boot({
+          host: 'pipelineHost',
+          leftoverHost: 'leftoverHost',
+          beforeSelect: 'beforeDir',
+          afterSelect: 'afterDir',
+          onApply: (pipe) => {
+            if (pipe && pipe.before) P.inheritFolders({ beforeSelect: 'beforeDir', afterSelect: 'afterDir', host: 'pipelineHost' });
+            updateFolderPathLabels();
+            saveSession();
+            loadPidMatches().catch(() => {});
+          },
+          onResume: () => startQueue(false),
+          onRebuild: async () => {
+            const fo = folderOpts();
+            const r = await API()?.rebuildLeftover?.({ ...fo, kind: el('kindFilter')?.value || null });
+            P.renderLeftover('leftoverHost', r || {}, { onResume: () => startQueue(false) });
+          },
+        });
+      } catch (_) {}
+    })();
     render();
     if (new URLSearchParams(location.search).get('autoload') === '1') {
       startQueue(false);

@@ -70,6 +70,27 @@
         try { global.AIToolboxUI && AIToolboxUI.toast && AIToolboxUI.toast(msg, kind || 'ok'); } catch (_) {}
     }
 
+    function markEmbedded() {
+        try {
+            const q = new URLSearchParams((typeof location !== 'undefined' && location.search) || '');
+            if (q.get('embedded') === '1' || q.get('hub') === '1') {
+                document.documentElement.classList.add('hub-embedded');
+                return true;
+            }
+        } catch (_) {}
+        try {
+            if (global.parent !== global) {
+                document.documentElement.classList.add('hub-embedded');
+                return true;
+            }
+        } catch (_) {
+            document.documentElement.classList.add('hub-embedded');
+            return true;
+        }
+        return false;
+    }
+    markEmbedded();
+
     function abortFrame(frame) {
         if (!frame) return;
         try { frame.contentWindow && frame.contentWindow.stop && frame.contentWindow.stop(); } catch (_) {}
@@ -100,14 +121,7 @@
         const reportLines = opts.reportLines || [];
         const loadTimeoutMs = opts.loadTimeoutMs || 25000;
 
-        try {
-            if (global.parent !== global) {
-                document.documentElement.classList.add('hub-embedded');
-            }
-        } catch (_) {
-            document.documentElement.classList.add('hub-embedded');
-        }
-
+        markEmbedded();
         let current = defaultTab;
         let loadTimer = null;
         let loadGen = 0;
@@ -224,6 +238,12 @@
             } catch (_) { /* ignore */ }
             if (forwardSearchOnTab && tabId === forwardSearchOnTab && location.search) {
                 src += (String(src).indexOf('?') >= 0 ? '&' : '?') + location.search.replace(/^\?/, '');
+            }
+            if (src && src !== 'about:blank' && !/[?&]embedded=/.test(src)) {
+                const hashAt = src.indexOf('#');
+                const hash = hashAt >= 0 ? src.slice(hashAt) : '';
+                const base = hashAt >= 0 ? src.slice(0, hashAt) : src;
+                src = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'embedded=1' + hash;
             }
             return src || path;
         }

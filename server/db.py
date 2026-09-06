@@ -48,6 +48,9 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         ("before_path", "TEXT DEFAULT ''"),
         ("after_path", "TEXT DEFAULT ''"),
         ("source", "TEXT DEFAULT 'manual'"),
+        ("confidence", "REAL"),
+        ("match_method", "TEXT DEFAULT ''"),
+        ("file_pid", "TEXT DEFAULT ''"),
     ]
     for name, typedef in pair_migrations:
         if name not in pair_cols:
@@ -59,6 +62,18 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_pairs_ends ON pairs(before_media_id, after_media_id) "
         "WHERE before_media_id IS NOT NULL AND after_media_id IS NOT NULL"
     )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS pair_rejects (
+            anchor_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            pid TEXT DEFAULT '',
+            stem TEXT DEFAULT '',
+            reason TEXT DEFAULT '',
+            created_at REAL NOT NULL,
+            PRIMARY KEY (anchor_id, candidate_id)
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pair_rejects_pid ON pair_rejects(pid)")
 
 
 def init_db() -> None:

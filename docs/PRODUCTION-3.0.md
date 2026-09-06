@@ -1,6 +1,21 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.6**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.7**.
+
+## Media desks (3.0.7) — pipeline, leftover, mint PID, chrome
+
+- `save_pair` mints `_PID_xxxxxxxx` onto both filenames when missing; stores `confidence`, `match_method`, `file_pid`
+- Persistent `pair_rejects` table — Guided Match N/X is never-again across Rescan
+- Leftover queue in settings JSON (unique trusted / ambiguous / leftover) survives close
+- 50-step pair undo (lock / unlock / rename / Trust all)
+- Inbox / Pre-scaled / After workspace — Match, Review, Duplicates, Companion inherit
+- Ambiguous PID filmstrip: pick After, skip intermediates
+- Dry-run Trust unique (uncheck rows, then confirm)
+- Imagine HAVE → Inbox catalog import (no copy)
+- Pair map export includes PID / UP-code summary
+- Hub-embedded desks hide `.top` / hub bar; command-center strip is the nav (`?embedded=1`)
+- Method badge (PID gold / stem / fuzzy) on Match + Review
+- Health chip on the media strip
 
 ## Media desks (3.0.6) — PID auto-link in matching
 

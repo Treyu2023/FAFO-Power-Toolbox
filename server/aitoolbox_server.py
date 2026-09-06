@@ -281,6 +281,40 @@ class TrustPidRequest(BaseModel):
     pids: list[str] | None = None
 
 
+class PipelineSetRequest(BaseModel):
+    inbox: str | None = None
+    before: str | None = None
+    after: str | None = None
+    register: bool = True
+
+
+class LeftoverSaveRequest(BaseModel):
+    unique_trusted: int = 0
+    ambiguous: list = []
+    fuzzy_ids: list = []
+    rejected: int = 0
+    note: str = ""
+
+
+class LeftoverRebuildRequest(BaseModel):
+    before_dir_id: str | None = None
+    after_dir_id: str | None = None
+    kind: str | None = None
+
+
+class PairRejectRequest(BaseModel):
+    anchor_id: str
+    candidate_id: str
+    pid: str = ""
+    stem: str = ""
+    reason: str = "guided-reject"
+
+
+class ImagineImportRequest(BaseModel):
+    dest: str | None = None
+    limit: int = 400
+
+
 class SuggestPairsRequest(BaseModel):
     """Optional two-folder mode + multi-signal matching knobs."""
     limit: int = 50
@@ -3150,6 +3184,77 @@ def api_trust_pids(body: TrustPidRequest):
         raise HTTPException(500, str(e)) from e
 
 
+# --- Pipeline workspace (static paths MUST sit before /api/pairs/{pid}) ---
+import pair_workspace as pws
+
+
+@app.get("/api/pipeline")
+def api_pipeline_get():
+    return pws.get_pipeline()
+
+
+@app.post("/api/pipeline")
+def api_pipeline_set(body: PipelineSetRequest):
+    return pws.set_pipeline(
+        inbox=body.inbox, before=body.before, after=body.after, register=body.register,
+    )
+
+
+@app.get("/api/pipeline/leftover")
+def api_pipeline_leftover():
+    return {"ok": True, **pws.get_leftover()}
+
+
+@app.post("/api/pipeline/leftover")
+def api_pipeline_leftover_save(body: LeftoverSaveRequest):
+    return pws.save_leftover(body.model_dump())
+
+
+@app.post("/api/pipeline/leftover/rebuild")
+def api_pipeline_leftover_rebuild(body: LeftoverRebuildRequest):
+    return pws.rebuild_leftover(
+        before_dir_id=body.before_dir_id,
+        after_dir_id=body.after_dir_id,
+        kind=body.kind,
+    )
+
+
+@app.get("/api/pipeline/rejects")
+def api_pipeline_rejects(limit: int = 2000):
+    return {"ok": True, "rejects": pws.list_rejects(limit=limit)}
+
+
+@app.post("/api/pipeline/rejects")
+def api_pipeline_reject(body: PairRejectRequest):
+    try:
+        return pws.reject_candidate(
+            body.anchor_id, body.candidate_id,
+            pid=body.pid, stem=body.stem, reason=body.reason,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.delete("/api/pipeline/rejects")
+def api_pipeline_clear_rejects():
+    return pws.clear_rejects()
+
+
+@app.get("/api/pipeline/undo")
+def api_pipeline_undo_list():
+    return pws.list_undo()
+
+
+@app.post("/api/pipeline/undo")
+def api_pipeline_undo_last():
+    return pws.undo_last()
+
+
+@app.post("/api/pipeline/imagine-import")
+def api_pipeline_imagine_import(body: ImagineImportRequest):
+    return pws.import_imagine_have(dest=body.dest, limit=body.limit)
+
+
 @app.patch("/api/pairs/{pid}")
 def api_patch_pair(pid: str, body: PairPatch):
     try:
@@ -3722,8 +3827,33 @@ def api_dup_scan_stream(
 
 @app.get("/api/duplicates/pipeline-defaults")
 def api_dup_pipeline_defaults():
-    """Suggested Inbox / Pre-scaled / After folders for the cross-source scan."""
-    return {"ok": True, **dup.default_pipeline_sources()}
+    """Suggested Inbox / Pre-scaled / After folders — workspace pipeline first, then FlashVSR profile."""
+    base = dup.default_pipeline_sources()
+    try:
+        pipe = pws.get_pipeline()
+        def prepend(role: str) -> list:
+            row = pipe.get(role) or {}
+            path = (row.get("path") or "").strip()
+            existing = list(base.get(role) or [])
+            if not path:
+                return existing
+            head = [{
+                "path": path,
+                "role": role,
+                "exists": bool(row.get("exists")),
+                "protected": role in ("before", "after"),
+                "workspace": True,
+            }]
+            return head + [x for x in existing if (x.get("path") or "").strip() != path]
+        return {
+            "ok": True,
+            "inbox": prepend("inbox"),
+            "before": prepend("before"),
+            "after": prepend("after"),
+            "workspace": True,
+        }
+    except Exception:
+        return {"ok": True, **base}
 
 
 @app.post("/api/duplicates/cross-scan")
