@@ -83,7 +83,7 @@ GROK_ID_SIZE_TOLERANCE = 0.025
 
 DEFAULT_PIPELINE_INBOX = r"D:\OUTPUTS\__X_GROK\NEW DOWNLOADS"
 DEFAULT_PIPELINE_BEFORE = r"D:\OUTPUTS\__X_GROK\Upscaled Videos\Pre Scaled videos"
-DEFAULT_PIPELINE_AFTER = r"D:\OUTPUTS\__X_GROK\Upscaled Videos\Current\Ready for CIV"
+DEFAULT_PIPELINE_AFTER = r"D:\OUTPUTS\__X_GROK\Upscaled Videos\Post Scaling\Ready for CIV"
 
 # GetDriveTypeW: 2=removable, 3=fixed, 4=remote, 5=cdrom
 _DRIVE_FIXED = 3
