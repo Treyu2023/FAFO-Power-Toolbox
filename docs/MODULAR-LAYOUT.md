@@ -1,6 +1,6 @@
-# Modular layout (resize · reorder · save)
+# Modular layout (resize · reorder · persist)
 
-Every toolbox app can ship **resizable, reorderable sections** with **per-app layout memory**.
+Every toolbox app can ship **resizable, reorderable sections** with **per-app layout memory**. Layouts **open as last closed** — there is no Save layout button.
 
 ## User controls
 
@@ -10,6 +10,12 @@ In apps that adopt the layout engine you get a small toolbar:
 |---------|--------|
 | **Reset layout** | Restore *this* app’s default panel order/sizes |
 | **Reset all apps** | Clear every saved layout on this PC |
+
+Layouts persist automatically:
+
+- On every resize / reorder gesture
+- On tab hide, page hide, and window close
+- Every **10 minutes** while the app is open (dirty-shutdown safety)
 
 ### Gestures
 
@@ -28,7 +34,11 @@ Classic viewport-locked split (zero-sum) is opt-in with `data-fafo-layout-pin="1
 
 **Scale is uncapped.** Drag a panel or section as large as you want — the page scrolls instead of clamping to the window. Look → Layout also has **UI scale** (app shell) and **Text scale** (copy inside panels). Overlays (Look, pro bar, confirms) stay 1:1 with the screen. Type up to 800% or use Ctrl+mouse-wheel for UI scale (skipped while typing in Trainer play, or inside hub iframes).
 
-Layouts **auto-save** to `localStorage` under `fafo_layout_v2_<appId>`.
+Saved sizes are **CSS pixels**, not painted (zoomed) pixels, so UI scale does not grow or shrink panels on reload. Resize handles keep a usable hit target at small UI scale. A section is not clipped until you drag its height.
+
+List panes, tall forms, previews, and tables get a height handle automatically. Compact action/summary rows stay content-sized. Opt out with `data-fafo-resizable="0"`.
+
+Layouts persist to `localStorage` under `fafo_layout_v2_<appId>`.
 
 ## Adopting in a new app (required going forward)
 
@@ -90,7 +100,8 @@ Layouts **auto-save** to `localStorage` under `fafo_layout_v2_<appId>`.
 | `data-fafo-flex="1"` | panel | Fills remaining space |
 | `data-fafo-section` | section | Stable id inside panel |
 | `data-fafo-section-title` | section | Drag handle label |
-| `data-fafo-resizable="1"` | section | Height drag handle |
+| `data-fafo-resizable="1"` | section | Height drag handle (also auto-enabled for lists, tall forms, previews) |
+| `data-fafo-resizable="0"` | section | Opt out of auto-resize handle |
 | `data-fafo-section-min` / `default` | section | Height limits |
 
 ## JS API
