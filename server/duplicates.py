@@ -21,22 +21,28 @@ from video_probe import probe_video
 HASH_READ_BYTES = 1024 * 1024
 
 AUDIO_EXT = {".mp3", ".wav", ".flac", ".aac", ".m4a", ".ogg", ".wma", ".aiff", ".aif"}
+# Office / PDF only — plain text is its own bucket so Merge-all can drop Txt.
 DOCUMENT_EXT = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".txt", ".rtf", ".csv", ".md", ".odt", ".ods", ".odp",
+    ".odt", ".ods", ".odp",
 }
+PLAIN_TEXT_EXT = {".txt", ".rtf", ".csv", ".md", ".log", ".ini", ".cfg"}
 ARCHIVE_EXT = {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".cab", ".iso"}
 CODE_EXT = {
     ".html", ".htm", ".css", ".js", ".ts", ".json", ".xml", ".py", ".ps1", ".bat",
     ".cmd", ".cpp", ".c", ".h", ".hpp", ".java", ".cs", ".go", ".rs", ".sql", ".yaml", ".yml",
 }
-TEXT_EXT = {".txt", ".md", ".csv", ".json", ".xml", ".html", ".htm", ".css", ".js", ".ts", ".py", ".ps1", ".sql", ".yaml", ".yml", ".log", ".ini", ".cfg", ".bat", ".cmd"}
+TEXT_EXT = set(PLAIN_TEXT_EXT) | {
+    ".json", ".xml", ".html", ".htm", ".css", ".js", ".ts", ".py", ".ps1",
+    ".sql", ".yaml", ".yml", ".bat", ".cmd",
+}
 
 FILE_TYPE_GROUPS: dict[str, set[str]] = {
     "images": set(IMAGE_EXT) | {".ico", ".svg", ".heic", ".heif"},
     "video": set(VIDEO_EXT),
     "audio": set(AUDIO_EXT),
     "documents": set(DOCUMENT_EXT),
+    "text": set(PLAIN_TEXT_EXT),
     "archives": set(ARCHIVE_EXT),
     "code": set(CODE_EXT),
 }
@@ -140,10 +146,41 @@ def resolve_scan_roots(folder: str | None, *, whole_system: bool = False) -> tup
     return [root], str(root.resolve())
 
 
+_TYPE_ALIASES = {
+    "img": "images",
+    "image": "images",
+    "pics": "images",
+    "vid": "video",
+    "videos": "video",
+    "aud": "audio",
+    "doc": "documents",
+    "docs": "documents",
+    "txt": "text",
+    "texts": "text",
+    "zip": "archives",
+    "archive": "archives",
+}
+
+
 def extensions_for_type(file_types: str) -> set[str] | None:
-    key = (file_types or "all").strip().lower()
-    if key in ("", "all", "common"):
+    """Map a scan type (or comma-separated mix) to extensions.
+
+    ``all-except-text`` drops .txt/.md/.csv/etc so Merge-all is not blocked by notes.
+    """
+    raw = (file_types or "all").strip().lower()
+    if not raw or raw in ("all", "common"):
         return COMMON_FILE_EXTENSIONS
+    if raw in ("all-except-text", "notext", "no-text", "all_except_text"):
+        return COMMON_FILE_EXTENSIONS - FILE_TYPE_GROUPS["text"]
+    if "," in raw or "+" in raw:
+        parts = [p.strip() for p in raw.replace("+", ",").split(",") if p.strip()]
+        out: set[str] = set()
+        for part in parts:
+            got = extensions_for_type(part)
+            if got:
+                out |= got
+        return out or None
+    key = _TYPE_ALIASES.get(raw, raw)
     if key == "media":
         return FILE_TYPE_GROUPS["images"] | FILE_TYPE_GROUPS["video"] | FILE_TYPE_GROUPS["audio"]
     return FILE_TYPE_GROUPS.get(key)
@@ -157,6 +194,8 @@ def classify_file(path: Path) -> str:
         return "video"
     if ext in AUDIO_EXT:
         return "audio"
+    if ext in PLAIN_TEXT_EXT:
+        return "text"
     if ext in DOCUMENT_EXT:
         return "document"
     if ext in ARCHIVE_EXT:
