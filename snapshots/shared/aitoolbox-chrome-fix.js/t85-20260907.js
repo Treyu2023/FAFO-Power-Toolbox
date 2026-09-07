@@ -10,7 +10,6 @@
   var CSS = [
     '#atx-pro-bar{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:8px!important;max-height:48px!important;height:48px!important;overflow-x:auto!important;overflow-y:hidden!important;padding:4px 10px!important}',
     'html[data-atx-layout="phone"] #atx-pro-bar{flex-direction:row!important;align-items:center!important}',
-    '#atx-pro-bar .atx-nav{display:flex!important;flex:0 0 auto!important;align-items:center!important;gap:4px!important}',
     '#atx-pro-bar .atx-brand{flex:0 0 auto!important;max-width:16ch!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}',
     '#atx-pro-bar .atx-chips,#atx-pro-bar .atx-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:6px!important;min-width:0!important;overflow-x:auto!important;overflow-y:hidden!important}',
     '#atx-pro-bar .atx-chips{flex:1 1 auto!important}',
@@ -24,7 +23,7 @@
     'body.atx-pro-min .fafo-layout-float-dock{bottom:12px!important}',
     '.fafo-layout-float-host{resize:both!important;overflow:auto!important;min-width:160px!important;min-height:32px!important;max-width:min(72vw,760px)!important;max-height:min(42vh,280px)!important}',
     '.tb-companion-bar,#tbSharedServerBar{flex-wrap:nowrap!important;max-height:42px!important;overflow-x:auto!important;overflow-y:hidden!important;padding:4px 10px!important}',
-    '.tb-companion-bar .tb-pill,.tb-companion-bar .tb-btn,.tb-companion-bar .tb-bar-back,.tb-companion-bar .tb-nav-cluster,.tb-companion-bar .tb-nav-btn{flex:0 0 auto!important}',
+    '.tb-companion-bar .tb-pill,.tb-companion-bar .tb-btn,.tb-companion-bar .tb-bar-back{flex:0 0 auto!important}',
     '.fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"],',
     '.fafo-layout-panel[data-fafo-flex="1"]{flex:1 1 auto!important;min-height:0!important}',
     '.fafo-body-split > [data-fafo-section].fafo-section-flex{flex:1 1 auto!important;min-height:0!important}',

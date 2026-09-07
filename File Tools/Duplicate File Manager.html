@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duplicate File Manager</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.50">
-    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.50">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.52">
+    <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=1.16.52">
     <style>
         :root {
             --bg: #0a0e14; --panel: #121820; --panel2: #0d1218;
@@ -149,6 +149,36 @@
         .file-row.protected.after { border-left-color: rgba(255,209,102,.7); }
         .file-row.protected .lock-note { font-size: 9px; color: var(--ok); margin-top: 3px; }
         .file-row.protected.after .lock-note { color: var(--accent2); }
+        .file-row.user-lock { border-left: 3px solid rgba(167,139,250,.75); }
+        .dup-group.pair-protect { border-color: rgba(74,222,128,.55); box-shadow: inset 0 0 0 1px rgba(74,222,128,.18); }
+        .dup-group.pair-deny { opacity: 0.55; border-style: dashed; }
+        .group-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+        .group-actions button {
+            appearance: none; background: transparent; color: var(--muted);
+            border: 1px solid rgba(255,255,255,0.14); border-radius: 4px;
+            font-size: 10px; padding: 3px 7px; cursor: pointer; min-height: 22px;
+        }
+        .group-actions button:hover { color: var(--accent); border-color: var(--accent); }
+        .group-actions button.on-protect { color: var(--ok); border-color: rgba(74,222,128,.55); }
+        .group-actions button.on-deny { color: var(--danger); border-color: rgba(248,113,113,.5); }
+        .type-chips, .result-type-chips {
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+        }
+        .type-chip {
+            appearance: none; cursor: pointer;
+            font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+            padding: 4px 8px; border-radius: 999px;
+            border: 1px solid rgba(255,255,255,.16); background: rgba(0,0,0,.28); color: var(--muted);
+        }
+        .type-chip.on { color: var(--accent); border-color: rgba(0,243,255,.45); background: rgba(0,243,255,.12); }
+        .type-chip.off { opacity: 0.45; text-decoration: line-through; }
+        .pair-pill {
+            display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 800;
+            padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+            text-transform: uppercase; letter-spacing: .04em;
+        }
+        .pair-pill.protect { color: #4ade80; border: 1px solid rgba(74,222,128,.45); background: rgba(74,222,128,.12); }
+        .pair-pill.deny { color: #f87171; border: 1px solid rgba(248,113,113,.45); background: rgba(248,113,113,.12); }
         .cross-panel {
             margin-top: 12px; padding: 10px; border-radius: 8px;
             border: 1px solid rgba(103,232,249,.22); background: rgba(0,20,28,.35);
@@ -447,17 +477,21 @@
                  data-fafo-section-min="120"
                  data-fafo-section-default="200">
                 <h3>Options</h3>
-                <label class="field-label">File types</label>
+                <label class="field-label">File types (scan)</label>
                 <select id="fileTypes">
                     <option value="all">All common types</option>
+                    <option value="all-except-text">All except text (Txt)</option>
                     <option value="media">Images + video + audio</option>
-                    <option value="images">Images only</option>
-                    <option value="video">Video only</option>
+                    <option value="images">Images only (IMG)</option>
+                    <option value="video">Video only (VID)</option>
                     <option value="audio">Audio only</option>
-                    <option value="documents">Documents</option>
+                    <option value="documents">Documents (PDF/Office)</option>
+                    <option value="text">Text only (Txt)</option>
                     <option value="archives">Archives</option>
-                    <option value="code">Code / text</option>
+                    <option value="code">Code</option>
+                    <option value="images,video">IMG + VID</option>
                 </select>
+                <p class="hint" style="margin:8px 0 0">Scan-time filter. After a scan, uncheck <strong>Txt</strong> on the results toolbar to hide notes from the list and from <strong>Merge all</strong> without rescanning.</p>
                 <label class="field-label">Match mode</label>
                 <select id="matchMode">
                     <option value="quick">Quick — size + partial hash</option>
@@ -504,6 +538,11 @@
                     <span class="persist-pill" id="liveScanPill" style="display:none" title="Groups appear as the scan finds them — pause on the left before merging so rows don't jump">🔴 Live scan</span>
                 </div>
                 <div class="toolbar-safe">
+                    <div class="result-type-chips" id="resultTypeChips" role="group"
+                         aria-label="Show types" title="Uncheck a type to hide those groups from the list and from Merge all. Txt off = notes cannot block auto-merge."></div>
+                    <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;white-space:nowrap;">
+                        <input type="checkbox" id="showDenied"> Show denied
+                    </label>
                     <select id="groupSort" title="How to order the group list" style="width:auto;min-width:160px;padding:6px 8px;font-size:11px;">
                         <option value="wasted">Sort: recoverable space</option>
                         <option value="folder">Sort: folder path A–Z</option>
@@ -521,7 +560,7 @@
                     <button class="ui-btn primary" id="btnMergeAllLowest" disabled
                             data-tip-title="Merge all using keep rules"
                             data-tip-basic="For every group, keep the file that wins your ranked keep rules, recycle the rest. If Keep Pre-scaled is on and a Before folder is set, Inbox twins of those files go to Recycle Bin."
-                            data-tip-pro="Top keep rule wins. Before / After copies stay locked. Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
+                            data-tip-pro="Top keep rule wins. Before / After copies stay locked. Hidden Txt / denied / protected pairs are skipped. Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
                 </div>
             </div>
             <div class="groups-wrap" id="groupsWrap">
@@ -583,15 +622,15 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-version.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-debug.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-core.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-api.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-ui.js?v=1.16.50"></script>
-    <script src="../shared/fafo-ops-stats.js?v=1.16.50"></script>
-    <script src="../shared/aitoolbox-layout.js?v=1.16.50"></script>
-  <script src="../shared/aitoolbox-pro.js?v=1.16.50"></script>
+    <script src="../shared/aitoolbox-config.js?v=1.16.52"></script>
+    <script src="../shared/aitoolbox-version.js?v=1.16.52"></script>
+    <script src="../shared/aitoolbox-debug.js?v=1.16.52"></script>
+    <script src="../shared/aitoolbox-core.js?v=1.16.52"></script>
+    <script src="../shared/aitoolbox-api.js?v=1.16.52"></script>
+    <script src="../shared/aitoolbox-ui.js?v=1.16.52"></script>
+    <script src="../shared/fafo-ops-stats.js?v=1.16.52"></script>
+    <script src="../shared/aitoolbox-layout.js?v=1.16.52"></script>
+  <script src="../shared/aitoolbox-pro.js?v=1.16.52"></script>
     <script>
 
         function el(id){try{if(!id)return null;return typeof id==='string'?document.getElementById(id):id}catch(_){return null}}
@@ -637,6 +676,21 @@
         let bulkMerging = false;
         const LS_DUP = 'fafo_duplicate_manager_settings_v1';
         const LS_DUP_SCAN = 'fafo_duplicate_manager_scan_v1';
+        const LS_DUP_PAIRS = 'fafo_duplicate_manager_pairs_v1';
+        const TEXT_EXTS = new Set(['.txt', '.rtf', '.csv', '.md', '.log', '.ini', '.cfg']);
+        const TYPE_CHIPS = [
+            { id: 'image', label: 'IMG' },
+            { id: 'video', label: 'VID' },
+            { id: 'audio', label: 'AUD' },
+            { id: 'document', label: 'Doc' },
+            { id: 'text', label: 'Txt' },
+            { id: 'code', label: 'Code' },
+            { id: 'archive', label: 'Zip' },
+        ];
+        let resultTypeOn = new Set(TYPE_CHIPS.map((t) => t.id));
+        let pairProtect = new Set();
+        let pairDeny = new Set();
+        let showDenied = false;
 
         const KEEP_CATALOG = {
             prefer_prescaled: {
@@ -689,9 +743,216 @@
 
         function isProtectedItem(item) {
             if (!item) return false;
-            if (item.protected) return true;
+            if (item.protected || item.user_lock) return true;
             const role = String(item.role || '').toLowerCase();
             return role === 'before' || role === 'after';
+        }
+
+        function itemExt(item) {
+            const named = String(item?.ext || '').toLowerCase();
+            if (named) return named.startsWith('.') ? named : '.' + named;
+            const name = String(item?.name || item?.path || '');
+            const i = name.lastIndexOf('.');
+            return i >= 0 ? name.slice(i).toLowerCase() : '';
+        }
+
+        function itemTypeBucket(item) {
+            const kind = String(item?.kind || '').toLowerCase();
+            const ext = itemExt(item);
+            if (TEXT_EXTS.has(ext) || kind === 'text') return 'text';
+            if (kind === 'image' || kind === 'video' || kind === 'audio' || kind === 'document' || kind === 'code' || kind === 'archive') {
+                return kind;
+            }
+            if (ext === '.zip' || ext === '.rar' || ext === '.7z') return 'archive';
+            return kind || 'other';
+        }
+
+        function groupTypeBucket(group) {
+            const items = group?.items || [];
+            const counts = {};
+            items.forEach((it) => {
+                const b = itemTypeBucket(it);
+                counts[b] = (counts[b] || 0) + 1;
+            });
+            const primary = String(group?.kind || '').toLowerCase();
+            if (primary === 'text' || TEXT_EXTS.has(itemExt(items[0]))) return 'text';
+            if (counts.text && !counts.image && !counts.video && !counts.audio) return 'text';
+            if (primary && primary !== 'other') return primary === 'document' && counts.text && !counts.document ? 'text' : (TYPE_CHIPS.some((t) => t.id === primary) ? primary : (Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'other'));
+            return Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'other';
+        }
+
+        function groupId(group) {
+            if (!group) return '';
+            if (group.key) return 'k:' + group.key;
+            const paths = (group.items || []).map((i) => String(i.path || '').toLowerCase()).filter(Boolean).sort();
+            return paths.length ? 'p:' + paths.join('|') : '';
+        }
+
+        function isPairProtected(group) {
+            const id = groupId(group);
+            return !!(id && pairProtect.has(id));
+        }
+
+        function isPairDenied(group) {
+            const id = groupId(group);
+            return !!(id && pairDeny.has(id));
+        }
+
+        function persistPairFlags() {
+            try {
+                lsSet(LS_DUP_PAIRS, JSON.stringify({
+                    protect: [...pairProtect],
+                    deny: [...pairDeny],
+                    types: [...resultTypeOn],
+                    showDenied,
+                }));
+            } catch (_) { /* ignore */ }
+        }
+
+        function restorePairFlags() {
+            try {
+                const raw = JSON.parse(lsGet(LS_DUP_PAIRS, 'null') || 'null');
+                if (!raw) return;
+                if (Array.isArray(raw.protect)) pairProtect = new Set(raw.protect);
+                if (Array.isArray(raw.deny)) pairDeny = new Set(raw.deny);
+                if (Array.isArray(raw.types) && raw.types.length) resultTypeOn = new Set(raw.types);
+                if (typeof raw.showDenied === 'boolean') showDenied = raw.showDenied;
+            } catch (_) { /* ignore */ }
+        }
+
+        function togglePairProtect(group) {
+            const id = groupId(group);
+            if (!id) return;
+            if (pairProtect.has(id)) pairProtect.delete(id);
+            else {
+                pairProtect.add(id);
+                pairDeny.delete(id);
+            }
+            persistPairFlags();
+            renderTypeChips();
+            renderGroups();
+            if (activeGroupIndex >= 0 && scanResult?.groups?.[activeGroupIndex]) {
+                renderDetail(scanResult.groups[activeGroupIndex]);
+            }
+            updateStats();
+            updateActionButtons();
+            UI()?.toast?.(pairProtect.has(id) ? 'Pair protected — Merge all will skip it' : 'Pair unprotected', 'ok');
+        }
+
+        function togglePairDeny(group) {
+            const id = groupId(group);
+            if (!id) return;
+            if (pairDeny.has(id)) pairDeny.delete(id);
+            else {
+                pairDeny.add(id);
+                pairProtect.delete(id);
+            }
+            persistPairFlags();
+            renderTypeChips();
+            renderGroups();
+            if (activeGroupIndex >= 0 && scanResult?.groups?.[activeGroupIndex]) {
+                renderDetail(scanResult.groups[activeGroupIndex]);
+            }
+            updateStats();
+            updateActionButtons();
+            UI()?.toast?.(pairDeny.has(id) ? 'Pair denied — hidden from Merge all' : 'Pair restored to the list', 'ok');
+        }
+
+        function groupMatchesTypeFilter(group) {
+            if (!resultTypeOn.size) return false;
+            if (resultTypeOn.size >= TYPE_CHIPS.length) return true;
+            const bucket = groupTypeBucket(group);
+            if (resultTypeOn.has(bucket)) return true;
+            return (group.items || []).some((it) => resultTypeOn.has(itemTypeBucket(it)));
+        }
+
+        function visibleGroups() {
+            const all = scanResult?.groups || [];
+            const rows = [];
+            all.forEach((g, index) => {
+                if (!showDenied && isPairDenied(g)) return;
+                if (!groupMatchesTypeFilter(g)) return;
+                rows.push({ group: g, index });
+            });
+            return rows;
+        }
+
+        function hiddenCounts() {
+            const all = scanResult?.groups || [];
+            let typeHidden = 0;
+            let denied = 0;
+            let protectedN = 0;
+            all.forEach((g) => {
+                if (isPairProtected(g)) protectedN += 1;
+                if (isPairDenied(g)) denied += 1;
+                if (!groupMatchesTypeFilter(g)) typeHidden += 1;
+            });
+            return { typeHidden, denied, protectedN, total: all.length };
+        }
+
+        function renderTypeChips() {
+            const host = el('resultTypeChips');
+            if (!host) return;
+            const counts = {};
+            (scanResult?.groups || []).forEach((g) => {
+                const b = groupTypeBucket(g);
+                counts[b] = (counts[b] || 0) + 1;
+            });
+            host.innerHTML = TYPE_CHIPS.map((t) => {
+                const on = resultTypeOn.has(t.id);
+                const n = counts[t.id] || 0;
+                return `<button type="button" class="type-chip${on ? ' on' : ' off'}" data-type="${t.id}" title="${on ? 'Showing' : 'Hidden'} ${t.label} groups — click to toggle. Hidden types are skipped by Merge all.">${t.label}${n ? ' ' + n : ''}</button>`;
+            }).join('') + `<button type="button" class="type-chip" id="btnTypesAll" title="Show every type">All</button>
+                <button type="button" class="type-chip" id="btnHideTxt" title="Hide text files from the list and Merge all">Hide Txt</button>
+                <button type="button" class="type-chip" id="btnDenyTxt" title="Deny every Txt pair so they stay skipped even if Txt is shown again">Deny Txt</button>`;
+            host.querySelectorAll('[data-type]').forEach((btn) => {
+                btn.onclick = () => {
+                    const id = btn.dataset.type;
+                    if (resultTypeOn.has(id)) resultTypeOn.delete(id);
+                    else resultTypeOn.add(id);
+                    persistPairFlags();
+                    renderTypeChips();
+                    renderGroups();
+                    updateStats();
+                    updateActionButtons();
+                };
+            });
+            el('btnTypesAll')?.addEventListener('click', () => {
+                resultTypeOn = new Set(TYPE_CHIPS.map((t) => t.id));
+                persistPairFlags();
+                renderTypeChips();
+                renderGroups();
+                updateStats();
+                updateActionButtons();
+            });
+            el('btnHideTxt')?.addEventListener('click', () => {
+                resultTypeOn.delete('text');
+                persistPairFlags();
+                renderTypeChips();
+                renderGroups();
+                updateStats();
+                updateActionButtons();
+                UI()?.toast?.('Text files hidden — Merge all will skip them', 'ok');
+            });
+            el('btnDenyTxt')?.addEventListener('click', () => {
+                let n = 0;
+                (scanResult?.groups || []).forEach((g) => {
+                    if (groupTypeBucket(g) !== 'text') return;
+                    const id = groupId(g);
+                    if (!id) return;
+                    pairDeny.add(id);
+                    pairProtect.delete(id);
+                    n += 1;
+                });
+                persistPairFlags();
+                renderTypeChips();
+                renderGroups();
+                updateStats();
+                updateActionButtons();
+                UI()?.toast?.(n ? `Denied ${n} text pair(s)` : 'No text pairs in this scan', n ? 'ok' : 'warn');
+            });
+            const showEl = el('showDenied');
+            if (showEl) showEl.checked = showDenied;
         }
 
         function protectedRootsFromScan() {
@@ -1065,7 +1326,7 @@
                         onerror="this.parentElement.classList.add('ph');this.parentElement.textContent='No preview';"></div>`;
                 }
             }
-            const label = k === 'audio' ? 'Audio' : k === 'document' ? 'Doc' : k === 'archive' ? 'Zip' : k === 'code' ? 'Code' : 'File';
+            const label = k === 'audio' ? 'Audio' : k === 'document' ? 'Doc' : k === 'text' ? 'Txt' : k === 'archive' ? 'Zip' : k === 'code' ? 'Code' : 'File';
             return `<div class="${cls} ph">${label}</div>`;
         }
 
@@ -1197,7 +1458,7 @@
             el('btnOpenFolder').disabled = false;
             el('btnRefresh').disabled = false;
             el('btnClearScan').disabled = false;
-            el('btnMergeAllLowest').disabled = !g || bulkMerging;
+            el('btnMergeAllLowest').disabled = bulkMerging;
             // Preserve selection by group key when list reshuffles
             if (activeGroupKey) {
                 const idx = scanResult.groups.findIndex((x) => x.key === activeGroupKey);
@@ -1207,6 +1468,7 @@
                     activeGroupKey = scanResult.groups[activeGroupIndex]?.key || null;
                 }
             }
+            renderTypeChips();
             renderGroups();
             updateStats();
             if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
@@ -1390,19 +1652,37 @@
         }
 
         function updateStats() {
-            setText('statGroups', scanResult?.duplicate_groups ?? scanResult?.groups?.length ?? 0);
+            const vis = visibleGroups();
+            const hide = hiddenCounts();
+            const shown = vis.length;
+            setText('statGroups', shown + (hide.total ? ` / ${hide.total}` : ''));
             setText('statScanned', scanResult?.scanned ?? 0);
-            const wasted = scanResult?.wasted_bytes ?? 0;
+            const wasted = vis.reduce((a, row) => a + (row.group.wasted_bytes || 0), 0);
             const wastedEl = el('statWasted');
             if (wastedEl) { wastedEl.textContent = fmtBytes(wasted); wastedEl.title = fmtBytesFull(wasted); }
             setText('statSelected', activeGroupIndex >= 0 ? `#${activeGroupIndex + 1}` : '—');
+            const info = el('toolbarInfo');
+            if (info && scanResult) {
+                const bits = [];
+                if (hide.typeHidden) bits.push(hide.typeHidden + ' hidden by type');
+                if (hide.denied) bits.push(hide.denied + ' denied');
+                if (hide.protectedN) bits.push(hide.protectedN + ' protected');
+                if (bits.length) {
+                    const extra = ' · ' + bits.join(' · ');
+                    if (!String(info.textContent || '').includes('hidden by type') && !String(info.textContent || '').includes('denied')) {
+                        /* keep scan status; pair counts live in the chips */
+                    }
+                    info.title = extra.slice(3);
+                }
+            }
         }
 
         function renderGroups() {
             const wrap = el('groupsWrap');
             if (!wrap) return;
-            const groups = scanResult?.groups || [];
-            if (!groups.length) {
+            const all = scanResult?.groups || [];
+            const vis = visibleGroups();
+            if (!all.length) {
                 if (scanning) {
                     wrap.innerHTML =
                         '<div class="empty"><strong style="color:var(--text)">Scanning…</strong><br>' +
@@ -1423,7 +1703,30 @@
                 el('btnNoDupPick')?.addEventListener('click', () => el('btnPickFolder')?.click());
                 return;
             }
-            wrap.innerHTML = groups.map((g, i) => {
+            if (!vis.length) {
+                const hide = hiddenCounts();
+                wrap.innerHTML =
+                    '<div class="empty"><strong style="color:var(--text)">No groups match the current filters</strong><br>' +
+                    '<span style="font-size:11px">' +
+                    (hide.typeHidden ? hide.typeHidden + ' hidden by IMG/VID/Doc/Txt chips. ' : '') +
+                    (hide.denied ? hide.denied + ' denied pairs (turn on Show denied). ' : '') +
+                    'Uncheck Txt is the usual fix when notes are blocking Merge all.</span>' +
+                    '<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' +
+                    '<button class="ui-btn primary" type="button" id="btnShowAllTypes">Show all types</button>' +
+                    '<button class="ui-btn" type="button" id="btnRevealDenied">Show denied</button>' +
+                    '</div></div>';
+                el('btnShowAllTypes')?.addEventListener('click', () => el('btnTypesAll')?.click());
+                el('btnRevealDenied')?.addEventListener('click', () => {
+                    showDenied = true;
+                    persistPairFlags();
+                    if (el('showDenied')) el('showDenied').checked = true;
+                    renderTypeChips();
+                    renderGroups();
+                    updateStats();
+                });
+                return;
+            }
+            wrap.innerHTML = vis.map(({ group: g, index: i }) => {
                 const keepPath = g.suggested_keep || pickKeeper(g.items);
                 const sample = (g.items || []).find((it) => it.path === keepPath) || g.items[0] || {};
                 const perFile = sample.size != null ? sample.size : Math.round((g.total_bytes || 0) / Math.max(1, g.count || 1));
@@ -1435,12 +1738,17 @@
                     g.has_before ? '<span class="role-pill before">pre-scaled</span>' : '',
                     g.has_after ? '<span class="role-pill after">after</span>' : '',
                 ].join('');
+                const protectedPair = isPairProtected(g);
+                const deniedPair = isPairDenied(g);
+                const bucket = groupTypeBucket(g);
                 return `
-                    <div class="dup-group${i === activeGroupIndex ? ' active' : ''}${prov ? ' provisional' : ''}${g.cross_source ? ' cross' : ''}${g.has_after ? ' has-after' : ''}" data-index="${i}">
+                    <div class="dup-group${i === activeGroupIndex ? ' active' : ''}${prov ? ' provisional' : ''}${g.cross_source ? ' cross' : ''}${g.has_after ? ' has-after' : ''}${protectedPair ? ' pair-protect' : ''}${deniedPair ? ' pair-deny' : ''}" data-index="${i}">
                         ${thumbHtml(sample.path, sample.kind || g.kind, 'dup-thumb')}
                         <div>
                             <h4>${escapeHtml(sample.name || 'group')} <span style="color:var(--muted);font-weight:400;">+${(g.count || g.items.length) - 1} copies</span>
                             ${prov ? '<span class="prov-badge" title="Same file size — hash confirm still running">likely</span>' : ''}
+                            ${protectedPair ? '<span class="pair-pill protect">protected</span>' : ''}
+                            ${deniedPair ? '<span class="pair-pill deny">denied</span>' : ''}
                             ${flags}${kinds}</h4>
                             <div class="dup-meta">
                                 <span>${g.count || g.items.length} files</span>
@@ -1448,10 +1756,14 @@
                                 <span title="Sum of all copies">${fmtBytesFull(g.total_bytes)} total</span>
                                 <span>${fmtBytesFull(g.wasted_bytes)} recoverable</span>
                                 <span title="Keeper from ranked keep rules">keep: ${escapeHtml(sample.name || '')}</span>
-                                <span>${escapeHtml(g.kind || sample.kind || 'file')}</span>
+                                <span>${escapeHtml(bucket || g.kind || sample.kind || 'file')}</span>
                                 ${g.deletable_count != null ? `<span>${g.deletable_count} deletable</span>` : ''}
                                 ${prov ? '<span style="color:var(--warn)">size match</span>' : '<span style="color:var(--ok)">hashed</span>'}
                                 <span class="dup-folder" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
+                            </div>
+                            <div class="group-actions">
+                                <button type="button" data-protect="${i}" class="${protectedPair ? 'on-protect' : ''}" title="Protect this pair — Merge all will skip it">${protectedPair ? '🛡 Protected' : '🛡 Protect'}</button>
+                                <button type="button" data-deny="${i}" class="${deniedPair ? 'on-deny' : ''}" title="Deny this pair — hide it and skip Merge all">${deniedPair ? '✕ Denied' : '✕ Deny'}</button>
                             </div>
                         </div>
                     </div>`;
@@ -1459,9 +1771,28 @@
             wrap.querySelectorAll('.dup-group').forEach(card => {
                 card.setAttribute('tabindex', '0');
                 card.setAttribute('role', 'button');
-                card.onclick = () => selectGroup(Number(card.dataset.index));
+                card.onclick = (ev) => {
+                    if (ev.target && ev.target.closest && ev.target.closest('.group-actions')) return;
+                    selectGroup(Number(card.dataset.index));
+                };
                 card.onkeydown = (ev) => {
                     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectGroup(Number(card.dataset.index)); }
+                };
+            });
+            wrap.querySelectorAll('[data-protect]').forEach((btn) => {
+                btn.onclick = (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const g = (scanResult?.groups || [])[Number(btn.dataset.protect)];
+                    if (g) togglePairProtect(g);
+                };
+            });
+            wrap.querySelectorAll('[data-deny]').forEach((btn) => {
+                btn.onclick = (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const g = (scanResult?.groups || [])[Number(btn.dataset.deny)];
+                    if (g) togglePairDeny(g);
                 };
             });
         }
@@ -1534,7 +1865,7 @@
             if (still) {
                 return `<img src="${attrEsc(still)}" alt="" loading="lazy">`;
             }
-            const label = kind === 'audio' ? 'Audio' : kind === 'document' ? 'Doc' : kind === 'archive' ? 'Zip' : kind === 'code' ? 'Code' : 'File';
+            const label = kind === 'audio' ? 'Audio' : kind === 'document' ? 'Doc' : kind === 'text' ? 'Txt' : kind === 'archive' ? 'Zip' : kind === 'code' ? 'Code' : 'File';
             return `<span style="color:#666;font-size:10px">${label}</span>`;
         }
 
@@ -1598,12 +1929,22 @@
                 return;
             }
             const keepName = (group.items.find((i) => i.path === keeperPath) || group.items[0] || {}).name || '';
+            const pairLock = isPairProtected(group);
+            const pairSkip = isPairDenied(group);
             setHtml('detailHead', `
                 <h2>${escapeHtml(group.items[0].name || 'group')}</h2>
                 <p class="hint" style="margin:0;">${group.count} copies · <span class="size-exact">${fmtBytesFull(group.wasted_bytes)}</span> recoverable if merged.
                 <br>Keeper from keep rules — currently <strong>${escapeHtml(keepName)}</strong>.
+                ${pairLock ? '<br><span style="color:var(--ok)">This pair is protected — Merge all skips it.</span>' : ''}
+                ${pairSkip ? '<br><span style="color:var(--danger)">This pair is denied — hidden from Merge all.</span>' : ''}
                 ${scanning ? '<br><span style="color:var(--ok)">Scan still running — you can merge this group now.</span>' : ''}
-                <br>Previews autoplay muted below so you can compare without opening full Compare.</p>`);
+                <br>Previews autoplay muted below so you can compare without opening full Compare.</p>
+                <div class="group-actions" style="margin-top:8px">
+                    <button type="button" class="ui-btn ghost" id="btnProtectPair">${pairLock ? '🛡 Unprotect pair' : '🛡 Protect pair'}</button>
+                    <button type="button" class="ui-btn ghost" id="btnDenyPair">${pairSkip ? '✕ Undeny pair' : '✕ Deny pair'}</button>
+                </div>`);
+            el('btnProtectPair')?.addEventListener('click', () => togglePairProtect(group));
+            el('btnDenyPair')?.addEventListener('click', () => togglePairDeny(group));
             const list = el('detailList');
             if (!list) return;
             const rows = group.items.map(item => {
@@ -1616,11 +1957,12 @@
                 const delChecked = deleteSelection.has(item.path) ? 'checked' : '';
                 const rolePill = role ? `<span class="role-pill ${escapeHtml(role)}">${escapeHtml(role === 'before' ? 'pre-scaled' : role)}</span>` : '';
                 const pidNote = item.pid ? `<span class="match-pill" title="Pair id">PID ${escapeHtml(item.pid)}</span>` : '';
+                const userLock = !!item.user_lock;
                 const lockNote = locked
-                    ? `<div class="lock-note">${role === 'after' ? 'Post-upgrade — locked (PID evidence only)' : 'Pre-scaled original — locked'}</div>`
+                    ? `<div class="lock-note">${userLock ? 'You locked this copy — skipped by Merge all' : (role === 'after' ? 'Post-upgrade — locked (PID evidence only)' : 'Pre-scaled original — locked')}</div>`
                     : '';
                 return `
-                    <div class="file-row${isKeeper ? ' keeper' : ''}${locked ? ' protected' : ''}${role === 'after' ? ' after' : ''}" data-path="${encodeURIComponent(item.path)}">
+                    <div class="file-row${isKeeper ? ' keeper' : ''}${locked ? ' protected' : ''}${userLock ? ' user-lock' : ''}${role === 'after' ? ' after' : ''}" data-path="${encodeURIComponent(item.path)}">
                         <input type="radio" name="keeper" ${isKeeper ? 'checked' : ''} data-keeper="${encodeURIComponent(item.path)}" ${locked && role === 'after' ? 'title="After files stay; keeper is for Inbox cleanup"' : ''}>
                         ${rowThumbHtml(item)}
                         <label>
@@ -1639,6 +1981,9 @@
                                 </label>
                                 <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:4px;">
                                     <input type="checkbox" class="del-chk" data-path="${encodeURIComponent(item.path)}" ${delChecked}${(isKeeper || locked) ? ' disabled' : ''}> ${locked ? 'lock' : 'del'}
+                                </label>
+                                <label style="font-size:9px;color:var(--ok);display:flex;align-items:center;gap:4px;" title="Lock this copy so Merge all cannot recycle it">
+                                    <input type="checkbox" class="lock-chk" data-path="${encodeURIComponent(item.path)}" ${userLock ? 'checked' : ''} ${role === 'before' || role === 'after' ? ' disabled' : ''}> lock
                                 </label>
                             </div>
                         </div>
@@ -1679,6 +2024,18 @@
                     updateActionButtons();
                 };
             });
+            list.querySelectorAll('.lock-chk').forEach(c => {
+                c.onchange = () => {
+                    const p = decodeURIComponent(c.dataset.path);
+                    const item = group.items.find((it) => it.path === p);
+                    if (!item) return;
+                    item.user_lock = !!c.checked;
+                    persistScan();
+                    renderDetail(group);
+                    updateActionButtons();
+                    UI()?.toast?.(item.user_lock ? 'Copy locked — Merge all will skip it' : 'Copy unlocked', 'ok');
+                };
+            });
 
             // Browsers often need a tick after insert for autoplay
             requestAnimationFrame(() => {
@@ -1692,8 +2049,8 @@
             setDisabled('btnCompare', !hasGroup || compareSelection.size !== 2);
             setDisabled('btnMerge', !hasGroup || !keeperPath);
             setDisabled('btnDeleteSelected', !hasGroup || deleteSelection.size === 0);
-            const gCount = scanResult?.groups?.length || 0;
-            setDisabled('btnMergeAllLowest', !gCount || bulkMerging);
+            const mergeable = visibleGroups().filter((row) => !isPairProtected(row.group) && !isPairDenied(row.group)).length;
+            setDisabled('btnMergeAllLowest', !mergeable || bulkMerging);
         }
 
         function isWholeSystemScan() {
@@ -1924,6 +2281,20 @@
             freezeForInteraction();
             const group = scanResult?.groups?.[activeGroupIndex];
             if (!group || !keeperPath) return;
+            if (isPairDenied(group)) {
+                UI()?.toast?.('This pair is denied — Undeny it first if you really want to merge', 'warn');
+                return;
+            }
+            if (isPairProtected(group)) {
+                const ok = await UI().confirmAction({
+                    title: 'Protected pair',
+                    body: '<p>This pair is protected from Merge all. Merge this one group anyway?</p>',
+                    confirmText: 'Merge anyway',
+                    cancelText: 'Keep protected',
+                    trustKey: 'dup_merge_protected_pair',
+                });
+                if (!ok?.confirmed) return;
+            }
             const others = group.items
                 .filter((i) => i.path !== keeperPath && !isProtectedItem(i))
                 .map((i) => i.path);
@@ -1975,9 +2346,17 @@
         async function mergeAllToLowest() {
             freezeForInteraction();
             if (bulkMerging) return;
-            const groups = (scanResult?.groups || []).slice();
+            const hide = hiddenCounts();
+            const groups = visibleGroups()
+                .filter((row) => !isPairProtected(row.group) && !isPairDenied(row.group))
+                .map((row) => row.group);
             if (!groups.length) {
-                UI().toast('No duplicate groups to merge', 'warn');
+                UI().toast(
+                    hide.typeHidden || hide.denied || hide.protectedN
+                        ? 'Nothing to merge — uncheck Txt / unprotect pairs / undeny pairs first'
+                        : 'No duplicate groups to merge',
+                    'warn'
+                );
                 return;
             }
             let totalOthers = 0;
@@ -1992,15 +2371,21 @@
             }).filter((p) => p.keep && p.others.length);
 
             if (!plan.length) {
-                UI().toast('Nothing to remove — each group only has a keeper', 'warn');
+                UI().toast('Nothing to remove — each visible group only has a keeper (or locked copies)', 'warn');
                 return;
             }
 
+            const skipBits = [];
+            if (hide.typeHidden) skipBits.push(`${hide.typeHidden} hidden by type filter`);
+            if (hide.protectedN) skipBits.push(`${hide.protectedN} protected`);
+            if (hide.denied) skipBits.push(`${hide.denied} denied`);
             const r = await UI().confirmAction({
-                title: 'Merge ALL groups using keep rules',
-                body: `<p>Keep the file that wins your ranked rules in each group:</p>
+                title: 'Merge ALL visible groups using keep rules',
+                body: `<p>Keep the file that wins your ranked rules in each <strong>visible</strong> group:</p>
                     <p style="font-size:11px;color:var(--accent)">${escapeHtml(keepRulesSummary())}</p>
-                    <p><strong>${plan.length}</strong> groups · <strong>${totalOthers}</strong> file(s) → Recycle Bin.</p>`,
+                    <p><strong>${plan.length}</strong> groups · <strong>${totalOthers}</strong> file(s) → Recycle Bin.</p>
+                    ${skipBits.length ? `<p class="hint">Skipping ${escapeHtml(skipBits.join(', '))}.</p>` : ''}
+                    <p class="hint">Hidden Txt / denied / protected pairs are not merged.</p>`,
                 confirmText: `Merge ${plan.length} groups`,
                 cancelText: "Don't merge",
                 trustKey: 'dup_merge_all_rules',
@@ -2109,8 +2494,8 @@
         }
 
         function refreshOpsTally() {
-            const el = el('opsTally');
-            if (!el || !window.FAFOOpsStats) return;
+            const node = el('opsTally');
+            if (!node || !window.FAFOOpsStats) return;
             try {
                 const snap = FAFOOpsStats.snapshot({ limit: 1 });
                 const open = snap.openSession && snap.openSession.tool === 'duplicate-file-manager'
@@ -2119,10 +2504,10 @@
                 const life = snap.lifetime || {};
                 const sessFiles = open ? (open.filesRemoved || 0) : 0;
                 const sessBytes = open ? (open.bytesFreed || 0) : 0;
-                el.textContent = sessFiles || sessBytes
+                node.textContent = sessFiles || sessBytes
                     ? `Session ${sessFiles} · ${FAFOOpsStats.formatBytes(sessBytes)}  ·  Σ ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)}`
                     : `Σ freed ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)}`;
-                el.title = `This session: ${sessFiles} files, ${FAFOOpsStats.formatBytes(sessBytes)}\nLifetime: ${(life.filesRemoved || 0)} files, ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)} — open Ops Stats for charts`;
+                node.title = `This session: ${sessFiles} files, ${FAFOOpsStats.formatBytes(sessBytes)}\nLifetime: ${(life.filesRemoved || 0)} files, ${FAFOOpsStats.formatBytes(life.bytesFreed || 0)} — open Ops Stats for charts`;
             } catch (_) { /* ignore */ }
         }
 
@@ -2328,6 +2713,8 @@
                     groupSort,
                     crossSourceOn,
                     crossSources,
+                    resultTypes: [...resultTypeOn],
+                    showDenied,
                 }));
             } catch (_) {}
         }
@@ -2374,8 +2761,13 @@
                         label: s.label || s.role || 'Inbox',
                     }));
                 }
+                if (Array.isArray(raw.resultTypes) && raw.resultTypes.length) {
+                    resultTypeOn = new Set(raw.resultTypes);
+                }
+                if (typeof raw.showDenied === 'boolean') showDenied = raw.showDenied;
             } catch (_) {}
         }
+        restorePairFlags();
         restoreDupSettings();
         if (el('crossSourceOn')) el('crossSourceOn').checked = crossSourceOn;
         renderCrossSources();
@@ -2399,6 +2791,14 @@
         el('groupSort')?.addEventListener('change', (e) => {
             groupSort = e.target.value || 'wasted';
             applyKeepersNow();
+        });
+        el('showDenied')?.addEventListener('change', (e) => {
+            showDenied = !!e.target.checked;
+            persistPairFlags();
+            saveDupSettings();
+            renderGroups();
+            updateStats();
+            updateActionButtons();
         });
         el('btnScanThisPc')?.addEventListener('click', () => {
             const wholeCb = el('scanWholeSystem');
@@ -2474,14 +2874,19 @@
             }
             if (e.key === 's' || e.key === 'S') { e.preventDefault(); withBusy('scanClick', scanWithSave, 'btnScan'); }
             if (e.key === 'e' || e.key === 'E') { e.preventDefault(); withBusy('report', copyDupReport, 'btnDupReport'); }
-            const nGroups = scanResult?.groups?.length || 0;
+            const visIdx = visibleGroups().map((row) => row.index);
+            const nGroups = visIdx.length;
             if (nGroups && (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J')) {
                 e.preventDefault();
-                selectGroup(Math.min(nGroups - 1, Math.max(0, activeGroupIndex) + 1));
+                const cur = visIdx.indexOf(activeGroupIndex);
+                const next = visIdx[Math.min(nGroups - 1, Math.max(0, cur) + 1)];
+                if (next != null) selectGroup(next);
             }
             if (nGroups && (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K')) {
                 e.preventDefault();
-                selectGroup(Math.max(0, (activeGroupIndex < 0 ? 0 : activeGroupIndex) - 1));
+                const cur = visIdx.indexOf(activeGroupIndex);
+                const prev = visIdx[Math.max(0, (cur < 0 ? 0 : cur) - 1)];
+                if (prev != null) selectGroup(prev);
             }
         });
         bind('btnOpenFolder', 'click', async () => {
@@ -2623,9 +3028,11 @@
             refreshOpsTally();
             window.addEventListener('fafo-ops-stats', refreshOpsTally);
         } catch (_) { /* stats optional */ }
+        renderTypeChips();
         // Restore last scan first (survives Media Hub tab switches / reloads)
         const restored = loadPersistedScan();
         if (restored) {
+            renderTypeChips();
             UI()?.toast?.('Restored previous duplicate scan — no rescan needed', 'ok');
         }
         // Launch params may still auto-scan when ?scan=1 (explicit)

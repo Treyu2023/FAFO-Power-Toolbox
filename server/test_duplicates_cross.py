@@ -91,7 +91,26 @@ def test_cross_scan_pid_and_protect() -> None:
         )
 
 
+def test_type_buckets_split_text_from_docs() -> None:
+    assert ".txt" in dup.FILE_TYPE_GROUPS["text"]
+    assert ".txt" not in dup.FILE_TYPE_GROUPS["documents"]
+    assert ".pdf" in dup.FILE_TYPE_GROUPS["documents"]
+    assert dup.classify_file(Path("notes.txt")) == "text"
+    assert dup.classify_file(Path("report.pdf")) == "document"
+    assert dup.classify_file(Path("clip.mp4")) == "video"
+    assert dup.classify_file(Path("shot.png")) == "image"
+    txt = dup.extensions_for_type("txt")
+    assert txt is not None and ".txt" in txt and ".pdf" not in txt
+    docs = dup.extensions_for_type("doc")
+    assert docs is not None and ".pdf" in docs and ".txt" not in docs
+    mixed = dup.extensions_for_type("img,vid")
+    assert mixed is not None and ".png" in mixed and ".mp4" in mixed and ".txt" not in mixed
+    no_txt = dup.extensions_for_type("all-except-text")
+    assert no_txt is not None and ".txt" not in no_txt and ".mp4" in no_txt and ".pdf" in no_txt
+
+
 if __name__ == "__main__":
     test_ids()
     test_cross_scan_pid_and_protect()
+    test_type_buckets_split_text_from_docs()
     print("ok")

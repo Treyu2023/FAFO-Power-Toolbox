@@ -118,7 +118,6 @@
       id: 'video-wall', title: 'Video Wall', emoji: '📺',
       path: 'Video Tools/GEMPlayHTML.html',
       counterparts: ['media-hub', 'video-compare', 'batch-media'],
-      forceNewTab: true,
     },
     'batch media converter': {
       id: 'batch-media', title: 'Batch Media Converter', emoji: '🔄',
@@ -289,31 +288,26 @@
       id: 'typing-trainer', title: 'KEYFLARE', emoji: '⚡',
       path: 'Typing Assistant Trainer.html',
       counterparts: ['bloodmoon', 'empire-seed'],
-      forceNewTab: true,
     },
     'keyflare': {
       id: 'typing-trainer', title: 'KEYFLARE', emoji: '⚡',
       path: 'Typing Assistant Trainer.html',
       counterparts: ['bloodmoon', 'empire-seed'],
-      forceNewTab: true,
     },
     'bloodmoon survivor': {
       id: 'bloodmoon', title: 'Bloodmoon Survivor', emoji: '🦇',
       path: 'Bloodmoon Survivor.html',
       counterparts: ['typing-trainer', 'empire-seed'],
-      forceNewTab: true,
     },
     'empire seed': {
       id: 'empire-seed', title: 'Empire Seed 3D', emoji: '👑',
       path: 'Empire Seed.html',
       counterparts: ['typing-trainer', 'bloodmoon'],
-      forceNewTab: true,
     },
     'solar system debris': {
       id: 'solar-debris', title: 'Debris Tracker', emoji: '🪐',
       path: 'Solar System Debris Tracker.html',
       counterparts: ['launcher'],
-      forceNewTab: true,
     },
     'font foundry': {
       id: 'font-foundry', title: 'Font Foundry', emoji: 'Aa',
@@ -442,7 +436,6 @@
   color:#c8d4e0;
   box-shadow:0 -8px 28px rgba(0,0,0,.35);
 }
-#atx-pro-bar .atx-nav{display:flex;gap:4px;align-items:center;flex:0 0 auto}
 #atx-pro-bar .atx-brand{
   color:#00f3ff;letter-spacing:.08em;text-transform:uppercase;font-size:10px;
   white-space:nowrap;
@@ -597,15 +590,12 @@ body.atx-dense{--ui-ease:linear}
         <li><kbd>F</kbd> — focus mode (dim chrome)</li>
         <li><kbd>D</kbd> — compact density</li>
         <li><kbd>O</kbd> — Look (layout vs lighting)</li>
-        <li><kbd>Alt</kbd>+<kbd>←</kbd> / ◀ — back (previous toolbox page)</li>
-        <li><kbd>Alt</kbd>+<kbd>→</kbd> / ▶ — forward</li>
-        <li><kbd>Alt</kbd>+<kbd>Home</kbd> / ⌂ / <kbd>L</kbd> — Toolbox launcher</li>
-        <li><kbd>B</kbd> — previous tool</li>
+        <li><kbd>B</kbd> — previous tool (recents)</li>
+        <li><kbd>L</kbd> — Toolbox launcher</li>
         <li><kbd>C</kbd> — jump first counterpart</li>
         <li><kbd>R</kbd> — copy page report to clipboard</li>
         <li><kbd>Esc</kbd> — close overlays, then back to launcher</li>
         <li>Ctrl/⌘-click a launcher card — open in a new tab</li>
-        <li>Games, KEYFLARE, Video Wall, and 3D trackers open in a new tab so this page stays loaded</li>
         ${custom.map((x) => '<li>' + escapeHtml(x) + '</li>').join('')}
         ${lastErr ? '<li>Last script error: <code>' + escapeHtml(lastErr) + '</code></li>' : ''}
       </ul>
@@ -659,25 +649,20 @@ body.atx-dense{--ui-ease:linear}
     const chips = counterparts.map((c, i) => {
       const href = resolveHref(c);
       const cls = i === 0 ? 'atx-chip primary' : 'atx-chip';
-      const extra = c.forceNewTab ? ' target="_blank" rel="noopener" title="Opens in a new tab so this page stays put"' : ' title="Open counterpart"';
       return href
-        ? `<a class="${cls}" href="${href}"${extra}>${c.emoji || ''} ${escapeHtml(c.title)}</a>`
+        ? `<a class="${cls}" href="${href}" title="Open counterpart">${c.emoji || ''} ${escapeHtml(c.title)}</a>`
         : '';
     }).join('');
 
     const launcher = resolveHref(BY_ID.launcher) || '../Toolbox Launcher.html';
 
     bar.innerHTML = `
-      <div class="atx-nav" role="group" aria-label="Toolbox history">
-        <button type="button" class="atx-chip" id="atxNavBack" data-act="back" title="Back (Alt+Left)">◀</button>
-        <button type="button" class="atx-chip" id="atxNavForward" data-act="forward" title="Forward (Alt+Right)">▶</button>
-        <a class="atx-chip" id="atxNavHome" href="${launcher}" data-act="home" title="Home — Toolbox Launcher (Alt+Home)">⌂</a>
-      </div>
       <span class="atx-brand">${tool.emoji || '🧰'} ${escapeHtml(tool.title)}</span>
       <div class="atx-chips">${chips || '<span style="opacity:.5">No counterparts mapped</span>'}</div>
       <div class="atx-actions">
         <a class="atx-chip" href="${launcher}">🚀 Launcher</a>
         <button type="button" class="atx-chip" data-act="help">Help <span class="atx-kbd">?</span></button>
+        <button type="button" class="atx-chip" data-act="back">Back <span class="atx-kbd">B</span></button>
         <button type="button" class="atx-chip" data-act="focus">Focus <span class="atx-kbd">F</span></button>
         <button type="button" class="atx-chip" data-act="dense">Dense <span class="atx-kbd">D</span></button>
         <button type="button" class="atx-chip" data-act="look">Look <span class="atx-kbd">O</span></button>
@@ -689,13 +674,6 @@ body.atx-dense{--ui-ease:linear}
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       const act = btn.getAttribute('data-act');
-      if (act === 'back' || act === 'forward' || act === 'home') {
-        e.preventDefault();
-        if (act === 'back') goBack(tool);
-        else if (act === 'forward') goForward();
-        else goHome();
-        return;
-      }
       if (act === 'help') openHelp(tool);
       if (act === 'focus') {
         document.body.classList.toggle('atx-focus');
@@ -719,6 +697,7 @@ body.atx-dense{--ui-ease:linear}
         const ok = await copyText(buildReport(tool));
         toast(ok ? 'Report copied to clipboard' : 'Copy failed');
       }
+      if (act === 'back') goBack(tool);
       if (act === 'minibar') {
         document.body.classList.toggle('atx-pro-min');
         localStorage.setItem(LS_MINI, document.body.classList.contains('atx-pro-min') ? '1' : '0');
@@ -727,8 +706,6 @@ body.atx-dense{--ui-ease:linear}
     });
 
     document.body.appendChild(bar);
-    try { global.AIToolboxUI && global.AIToolboxUI.navCanBack && (document.getElementById('atxNavBack').disabled = !global.AIToolboxUI.navCanBack()); } catch (_) { /* ignore */ }
-    try { global.AIToolboxUI && global.AIToolboxUI.navCanForward && (document.getElementById('atxNavForward').disabled = !global.AIToolboxUI.navCanForward()); } catch (_) { /* ignore */ }
     syncProPad();
     try {
       if (typeof ResizeObserver === 'function') {
@@ -739,43 +716,11 @@ body.atx-dense{--ui-ease:linear}
   }
 
   function goBack(tool) {
-    if (global.AIToolboxUI?.goToolboxBack) {
-      global.AIToolboxUI.goToolboxBack();
-      return;
-    }
     const rec = loadRecents();
     const prev = rec.find((x) => x && x.id && x.id !== tool.id && x.id !== 'launcher' && x.id !== 'unknown');
     const href = prev ? resolveHref(prev) : resolveHref(BY_ID.launcher);
     if (href) location.href = href;
     else toast('No previous tool yet');
-  }
-
-  function goForward() {
-    if (global.AIToolboxUI?.goToolboxForward) {
-      global.AIToolboxUI.goToolboxForward();
-      return;
-    }
-    toast('Nothing to go forward to');
-  }
-
-  function goHome() {
-    if (global.AIToolboxUI?.goToolboxHome) {
-      global.AIToolboxUI.goToolboxHome();
-      return;
-    }
-    const href = resolveHref(BY_ID.launcher) || '../Toolbox Launcher.html';
-    location.href = href;
-  }
-
-  function openCounterpart(meta) {
-    const href = resolveHref(meta);
-    if (!href) return;
-    if (meta.forceNewTab || global.AIToolboxUI?.shouldForceNewTab?.(href)) {
-      if (global.AIToolboxUI?.openToolboxNewTab) global.AIToolboxUI.openToolboxNewTab(href);
-      else window.open(href, '_blank', 'noopener');
-      return;
-    }
-    location.href = href;
   }
 
   function bindKeys(tool) {
@@ -809,10 +754,11 @@ body.atx-dense{--ui-ease:linear}
       } else if (e.key === 'b' || e.key === 'B') {
         goBack(tool);
       } else if (e.key === 'l' || e.key === 'L') {
-        goHome();
+        location.href = resolveHref(BY_ID.launcher) || '../Toolbox Launcher.html';
       } else if (e.key === 'c' || e.key === 'C') {
         const first = (tool.counterparts || []).map((id) => BY_ID[id]).find(Boolean);
-        if (first) openCounterpart(first);
+        const href = resolveHref(first);
+        if (href) location.href = href;
       } else if (e.key === 'r' || e.key === 'R') {
         copyText(buildReport(tool)).then((ok) => toast(ok ? 'Report copied' : 'Copy failed'));
       }

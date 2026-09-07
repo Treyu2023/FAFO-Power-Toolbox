@@ -576,8 +576,12 @@
         bar.setAttribute('role', 'navigation');
         bar.setAttribute('aria-label', 'Toolbox servers and navigation');
         bar.innerHTML = `
-            <a class="tb-bar-back toolbox-back" id="tbBtnToolbox" href="#"
-               data-tip-title="Toolbox" data-tip="Return to Toolbox Launcher without closing servers.">← Toolbox</a>
+            <div class="tb-nav-cluster" role="group" aria-label="Toolbox history">
+                <button type="button" class="tb-nav-btn" id="tbNavBack" title="Back (Alt+Left)">◀</button>
+                <button type="button" class="tb-nav-btn" id="tbNavForward" title="Forward (Alt+Right)">▶</button>
+                <a class="tb-bar-back toolbox-back" id="tbBtnToolbox" href="#"
+                   data-tip-title="Home" data-tip="Toolbox Launcher (Alt+Home). Servers stay running.">⌂ Home</a>
+            </div>
             <div class="tb-bar-servers">
                 <span class="tb-pill off" id="tbPillS1" tabindex="0" role="button"
                       data-tip-title="S1 HTML Toolbox" data-tip="127.0.0.87:18765 — media, Verifone, system tools. Click to start if offline.">
@@ -614,6 +618,14 @@
                     color:#c8d0d8;position:sticky;top:0;z-index:9990;
                     max-height:42px;overflow-x:auto;overflow-y:hidden;
                 }
+                .tb-nav-cluster{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto}
+                .tb-nav-btn{
+                    appearance:none;color:#00e5ff;padding:4px 8px;border-radius:8px;
+                    border:1px solid rgba(0,229,255,.28);background:rgba(0,229,255,.08);
+                    cursor:pointer;font:700 12px/1 system-ui,Segoe UI,sans-serif;min-height:26px;min-width:28px;
+                }
+                .tb-nav-btn:hover{border-color:#00f3ff;box-shadow:0 0 12px rgba(0,243,255,.35);color:#fff}
+                .tb-nav-btn:disabled{opacity:.35;cursor:default;box-shadow:none}
                 .tb-bar-back{
                     color:#00e5ff;text-decoration:none;padding:5px 10px;border-radius:8px;
                     border:1px solid rgba(0,229,255,.28);background:rgba(0,229,255,.08);
@@ -741,10 +753,13 @@
             back._tbBound = true;
             back.href = launcherHref();
             back.addEventListener('click', (e) => {
-                // Always re-resolve in case scripts load late
-                back.href = launcherHref();
+                e.preventDefault();
+                goToolboxHome();
             });
         }
+        const bar = document.getElementById('tbSharedServerBar');
+        if (bar) wireNavCluster(bar);
+        syncToolboxNavButtons();
 
         const pillS1 = document.getElementById('tbPillS1');
         const pillS2 = document.getElementById('tbPillS2');
@@ -1270,6 +1285,282 @@
         location.href = info.href || href;
     }
 
+    /**
+     * Windows-like Back / Forward / Home for the toolbox.
+     * Session stack is per tab. Games / trainers / video-wall force a new tab
+     * so a mis-click does not unload a long-running tool (duplicate scan, etc.).
+     */
+    const NAV_STORE = 'aitoolbox.nav.history.v1';
+    const NAV_MODE = 'aitoolbox.nav.mode';
+    const NAV_MAX = 40;
+    const FORCE_NEW_TAB_FRAGMENTS = [
+        'bloodmoon survivor',
+        'empire seed',
+        'typing assistant trainer',
+        'tech quest',
+        'progress map',
+        'solar system debris',
+        'gemplayhtml',
+    ];
+
+    function navLoad() {
+        try {
+            const raw = JSON.parse(sessionStorage.getItem(NAV_STORE) || 'null');
+            if (raw && Array.isArray(raw.stack) && Number.isInteger(raw.index)) return raw;
+        } catch { /* ignore */ }
+        return { stack: [], index: -1 };
+    }
+
+    function navSave(state) {
+        try { sessionStorage.setItem(NAV_STORE, JSON.stringify(state)); } catch { /* ignore */ }
+    }
+
+    function navPageKey(url) {
+        try {
+            const u = new URL(url, location.href);
+            return (u.pathname || '') + (u.search || '') + (u.hash || '');
+        } catch {
+            return String(url || '');
+        }
+    }
+
+    function navCanBack() {
+        const st = navLoad();
+        return st.index > 0;
+    }
+
+    function navCanForward() {
+        const st = navLoad();
+        return st.index >= 0 && st.index < st.stack.length - 1;
+    }
+
+    function hrefLooksToolboxPage(href) {
+        const raw = String(href || '').trim();
+        if (!raw || raw === '#' || /^javascript:/i.test(raw) || /^(mailto|tel):/i.test(raw)) return false;
+        try {
+            const u = new URL(raw, location.href);
+            if (u.origin !== location.origin && u.protocol !== 'file:') {
+                if (u.hostname && u.hostname !== '127.0.0.87' && u.hostname !== '127.0.0.1') return false;
+            }
+            return /\.html($|[?#])/i.test(u.pathname || raw);
+        } catch {
+            return /\.html($|[?#])/i.test(raw);
+        }
+    }
+
+    function shouldForceNewTab(href) {
+        let hay = String(href || '');
+        try { hay = decodeURIComponent(hay); } catch { /* keep */ }
+        hay = hay.toLowerCase().replace(/\\/g, '/').replace(/%20/g, ' ');
+        if (FORCE_NEW_TAB_FRAGMENTS.some((frag) => hay.includes(frag))) return true;
+        try {
+            const pro = global.AIToolboxPro;
+            const byId = pro && pro.BY_ID;
+            if (byId) {
+                for (const meta of Object.values(byId)) {
+                    if (!meta || !meta.forceNewTab || !meta.path) continue;
+                    const p = String(meta.path).toLowerCase().replace(/\\/g, '/');
+                    if (p && hay.includes(p.split('/').pop().replace(/\.html.*/i, ''))) return true;
+                    if (p && hay.includes(p)) return true;
+                }
+            }
+        } catch { /* ignore */ }
+        return false;
+    }
+
+    function openToolboxNewTab(href) {
+        try {
+            window.open(href, '_blank', 'noopener');
+            try { toast('Opened in a new tab so this page stays put', 'ok'); } catch { /* ignore */ }
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function recordToolboxVisit() {
+        if (typeof sessionStorage === 'undefined') return;
+        let mode = '';
+        try { mode = sessionStorage.getItem(NAV_MODE) || ''; sessionStorage.removeItem(NAV_MODE); } catch { mode = ''; }
+        const url = location.href;
+        const title = document.title || '';
+        const st = navLoad();
+        const key = navPageKey(url);
+        if (mode === 'back' || mode === 'forward' || mode === 'home') {
+            if (st.stack[st.index]) st.stack[st.index].title = title;
+            navSave(st);
+            syncToolboxNavButtons();
+            return;
+        }
+        const cur = st.stack[st.index];
+        if (cur && navPageKey(cur.url) === key) {
+            cur.title = title;
+            cur.at = Date.now();
+            navSave(st);
+            syncToolboxNavButtons();
+            return;
+        }
+        st.stack = st.stack.slice(0, Math.max(st.index, -1) + 1);
+        st.stack.push({ url, title, at: Date.now() });
+        if (st.stack.length > NAV_MAX) st.stack = st.stack.slice(-NAV_MAX);
+        st.index = st.stack.length - 1;
+        navSave(st);
+        syncToolboxNavButtons();
+    }
+
+    function goToolboxBack() {
+        const st = navLoad();
+        if (st.index > 0) {
+            st.index -= 1;
+            navSave(st);
+            try { sessionStorage.setItem(NAV_MODE, 'back'); } catch { /* ignore */ }
+            location.href = st.stack[st.index].url;
+            return;
+        }
+        if (history.length > 1) {
+            history.back();
+            return;
+        }
+        goToolboxHome();
+    }
+
+    function goToolboxForward() {
+        const st = navLoad();
+        if (st.index >= 0 && st.index < st.stack.length - 1) {
+            st.index += 1;
+            navSave(st);
+            try { sessionStorage.setItem(NAV_MODE, 'forward'); } catch { /* ignore */ }
+            location.href = st.stack[st.index].url;
+            return;
+        }
+        try { toast('Nothing to go forward to', 'warn'); } catch { /* ignore */ }
+    }
+
+    function goToolboxHome() {
+        try { sessionStorage.setItem(NAV_MODE, 'home'); } catch { /* ignore */ }
+        location.href = launcherHref();
+    }
+
+    function syncToolboxNavButtons() {
+        const backOn = navCanBack();
+        const fwdOn = navCanForward();
+        ['tbNavBack', 'atxNavBack', 'lxNavBack'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !backOn;
+        });
+        ['tbNavForward', 'atxNavForward', 'lxNavForward'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !fwdOn;
+        });
+    }
+
+    function wireNavCluster(root) {
+        if (!root || root._tbNavWired) return;
+        root._tbNavWired = true;
+        root.addEventListener('click', (e) => {
+            const btn = e.target && e.target.closest ? e.target.closest('[data-nav], #tbNavBack, #tbNavForward, #atxNavBack, #atxNavForward, #lxNavBack, #lxNavForward, #atxNavHome, #lxNavHome') : null;
+            if (!btn) return;
+            const id = btn.id || '';
+            const act = btn.getAttribute('data-nav') || (
+                /back/i.test(id) ? 'back' : /forward/i.test(id) ? 'forward' : /home/i.test(id) ? 'home' : ''
+            );
+            if (!act) return;
+            e.preventDefault();
+            if (act === 'back') goToolboxBack();
+            else if (act === 'forward') goToolboxForward();
+            else if (act === 'home') goToolboxHome();
+        });
+        syncToolboxNavButtons();
+    }
+
+    function mountLauncherNavCluster() {
+        if (!isToolboxLauncherPage()) return;
+        if (document.getElementById('lxToolboxNav')) {
+            wireNavCluster(document.getElementById('lxToolboxNav'));
+            return;
+        }
+        const host = document.querySelector('header') || document.body;
+        if (!host) return;
+        const wrap = document.createElement('div');
+        wrap.id = 'lxToolboxNav';
+        wrap.className = 'lx-toolbox-nav tb-nav-cluster';
+        wrap.setAttribute('role', 'navigation');
+        wrap.setAttribute('aria-label', 'Toolbox history');
+        wrap.innerHTML = `
+            <button type="button" class="tb-nav-btn" id="lxNavBack" data-nav="back" title="Back (Alt+Left)">◀ Back</button>
+            <button type="button" class="tb-nav-btn" id="lxNavForward" data-nav="forward" title="Forward (Alt+Right)">Forward ▶</button>
+            <button type="button" class="tb-nav-btn" id="lxNavHome" data-nav="home" title="Home (Alt+Home)">⌂ Home</button>`;
+        if (!document.getElementById('lxToolboxNavCss')) {
+            const css = document.createElement('style');
+            css.id = 'lxToolboxNavCss';
+            css.textContent = `
+                .lx-toolbox-nav{display:flex;justify-content:center;gap:6px;margin:6px 0 2px;flex-wrap:wrap}
+                .lx-toolbox-nav .tb-nav-btn{padding:5px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+            `;
+            document.head.appendChild(css);
+        }
+        host.appendChild(wrap);
+        wireNavCluster(wrap);
+    }
+
+    function bindToolboxHistoryNav() {
+        if (typeof document === 'undefined' || document.documentElement.dataset.tbHistNav === '1') return;
+        document.documentElement.dataset.tbHistNav = '1';
+        try {
+            if (window.self !== window.top) return;
+        } catch { return; }
+
+        recordToolboxVisit();
+        const bar = document.getElementById('tbSharedServerBar');
+        if (bar) wireNavCluster(bar);
+        mountLauncherNavCluster();
+        syncToolboxNavButtons();
+
+        document.addEventListener('click', (e) => {
+            if (e.defaultPrevented) return;
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+            if (!a) return;
+            if (a.target && a.target !== '_self') return;
+            if (a.hasAttribute('download')) return;
+            const href = a.getAttribute('href') || '';
+            if (!hrefLooksToolboxPage(href) && !hrefLooksToolboxPage(a.href)) return;
+            const dest = a.href || href;
+            if (!shouldForceNewTab(dest)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            openToolboxNewTab(dest);
+        }, true);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.defaultPrevented) return;
+            const t = e.target;
+            const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+            if (typing) return;
+            if (document.pointerLockElement) return;
+            if (document.body && (document.body.classList.contains('run-active') || document.body.classList.contains('tat-stage'))) {
+                if (!(e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home'))) return;
+            }
+            const altNav = e.altKey && !e.ctrlKey && !e.metaKey;
+            if (altNav && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                goToolboxBack();
+            } else if (altNav && e.key === 'ArrowRight') {
+                e.preventDefault();
+                goToolboxForward();
+            } else if (altNav && e.key === 'Home') {
+                e.preventDefault();
+                goToolboxHome();
+            } else if (e.key === 'BrowserBack') {
+                e.preventDefault();
+                goToolboxBack();
+            } else if (e.key === 'BrowserForward') {
+                e.preventDefault();
+                goToolboxForward();
+            }
+        }, true);
+    }
+
     /** Intercept <a href="Media Hub.html#duplicates"> etc. so iframe children cannot nest a hub. */
     function bindFramedHubLinks() {
         if (typeof document === 'undefined' || document.documentElement.dataset.tbHubLinks === '1') return;
@@ -1355,7 +1646,11 @@
                 // Skip pure extension pages / about:blank noise
                 if (!document.body) return;
                 ensureChromeFix();
-                if (document.body.dataset.tbChrome === 'off' || isToolboxLauncherPage()) return;
+                bindToolboxHistoryNav();
+                if (document.body.dataset.tbChrome === 'off' || isToolboxLauncherPage()) {
+                    installGlobalQol();
+                    return;
+                }
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
                 bindFramedHubLinks();
@@ -1376,7 +1671,7 @@
                     if (m) return decodeURIComponent(m[1]);
                 }
             } catch (_) { /* ignore */ }
-            return '1.16.47';
+            return '1.16.52';
         }
 
         function withCacheBust(url) {
@@ -1465,5 +1760,14 @@
         navigateToolbox,
         bindFramedHubLinks,
         installGlobalQol,
+        goToolboxBack,
+        goToolboxForward,
+        goToolboxHome,
+        shouldForceNewTab,
+        openToolboxNewTab,
+        recordToolboxVisit,
+        bindToolboxHistoryNav,
+        navCanBack,
+        navCanForward,
     };
 })(typeof window !== 'undefined' ? window : globalThis);
