@@ -1671,7 +1671,7 @@
                     if (m) return decodeURIComponent(m[1]);
                 }
             } catch (_) { /* ignore */ }
-            return '1.16.52';
+            return '1.16.53';
         }
 
         function withCacheBust(url) {

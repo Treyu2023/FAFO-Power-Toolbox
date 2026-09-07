@@ -1,7 +1,8 @@
 /**
  * FAFO modular layout engine
  * --------------------------
- * Resize columns/rows, reorder panels & sections, auto-save per app.
+ * Resize columns/rows, reorder panels & sections.
+ * Opens as last closed: save on every gesture, on hide/exit, and every 10 min.
  *
  * Adopt in any tool HTML:
  *
@@ -46,8 +47,27 @@
       return Number.isFinite(v) && v > 0.05 ? v : 1;
     } catch (_) { return 1; }
   }
+
+  /**
+   * Layout CSS pixels. UI scale uses CSS zoom on .fafo-scale-root, so
+   * getBoundingClientRect is painted size. Saving painted px made panels
+   * grow (or vanish) every reload whenever scale ≠ 100%.
+   */
+  function cssPx(el, dim) {
+    if (!el || !el.getBoundingClientRect) return 0;
+    try {
+      const r = el.getBoundingClientRect();
+      const painted = dim === 'h' ? r.height : r.width;
+      const scale = readUiScale();
+      return Math.round(painted / (scale > 0.05 ? scale : 1));
+    } catch (_) {
+      return 0;
+    }
+  }
+
   const STORAGE_PREFIX = 'fafo_layout_v2_';
   const INDEX_KEY = 'fafo_layout_v2__index';
+  const HEARTBEAT_MS = 10 * 60 * 1000;
   const instances = new Map();
 
   function storageKey(appId) {
@@ -72,6 +92,8 @@
         appId,
         updatedAt: new Date().toISOString(),
         ...data,
+        sizeUnit: 'css',
+        uiScale: readUiScale(),
       };
       try {
         localStorage.setItem(storageKey(appId), JSON.stringify(payload));
@@ -502,11 +524,12 @@
   function looksLikeCollapsedCapture(root, opts) {
     const type = (opts && opts.type) || 'columns';
     try {
-      const r = root.getBoundingClientRect();
+      const w = cssPx(root, 'w');
+      const h = cssPx(root, 'h');
       const vh = window.innerHeight || 800;
       const vw = window.innerWidth || 1200;
-      if (type === 'rows' && r.height > 0 && r.height < Math.min(200, vh * 0.22) && vh > 400) return true;
-      if (type === 'columns' && r.width > 0 && r.width < Math.min(200, vw * 0.15) && vw > 600) return true;
+      if (type === 'rows' && h > 0 && h < Math.min(200, vh * 0.22) && vh > 400) return true;
+      if (type === 'columns' && w > 0 && w < Math.min(200, vw * 0.15) && vw > 600) return true;
     } catch (_) { /* ignore */ }
     return false;
   }
@@ -710,9 +733,8 @@
       // Rows: only persist a height the user actually dragged. Capturing
       // content height on every save froze panels and made neighbors shrink.
       if (type === 'rows' && p.getAttribute('data-fafo-sized') !== '1') return;
-      const rect = p.getBoundingClientRect();
-      const px = type === 'columns' ? rect.width : rect.height;
-      if (px > 0) sizes[id] = Math.round(px);
+      const px = cssPx(p, type === 'columns' ? 'w' : 'h');
+      if (px > 0) sizes[id] = px;
     });
     const sections = {};
     const sectionHeights = {};
@@ -729,7 +751,7 @@
         if (s.getAttribute('data-fafo-resizable') !== '1') return;
         if (s.getAttribute('data-fafo-user-sized') !== '1') return;
         if (s.getAttribute('data-fafo-collapsed') === '1') return;
-        const h = Math.round(s.getBoundingClientRect().height);
+        const h = cssPx(s, 'h');
         if (sid && h > 0) sectionHeights[sid] = h;
       });
     });
@@ -868,7 +890,7 @@
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
           window.removeEventListener('pointercancel', onUp);
-          save();
+          save(true);
         }
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
@@ -918,7 +940,7 @@
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
           window.removeEventListener('pointercancel', onUp);
-          save();
+          save(true);
         }
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
@@ -988,7 +1010,7 @@
         state.order = order;
         applyState(root, state, opts);
         rebindAll();
-        save();
+        save(true);
       });
     });
   }
@@ -1048,7 +1070,7 @@
           state.sections[pid] = order;
           applyState(root, state, opts);
           rebindAll();
-          save();
+          save(true);
         });
       });
     });
@@ -1059,19 +1081,10 @@
     if (host.querySelector('.fafo-layout-bar')) return;
     const bar = el('div', 'fafo-layout-bar');
     bar.innerHTML = `
-      <button type="button" class="fafo-layout-btn" data-act="save" title="Save layout now (also auto-saves)">Save layout</button>
       <button type="button" class="fafo-layout-btn" data-act="reset" title="Reset this app's panel layout to defaults (fixes off-screen / skewed panels)">Reset layout</button>
       <button type="button" class="fafo-layout-btn danger" data-act="reset-all" title="Reset saved layouts for every toolbox app on this PC">Reset all apps</button>
-      <span class="fafo-layout-hint" title="Drag panel headers to reorder · drag edges to resize · ▾ collapses a section · ↺ resets just that piece · layout always remembers last position">Layout remembers · auto-saves</span>
+      <span class="fafo-layout-hint" title="Opens as last closed. Saves on drag, on tab hide / exit, and every 10 minutes in case of a dirty shutdown. Drag panel headers to reorder · drag edges to resize · ▾ collapses a section · ↺ resets just that piece.">Opens as last closed</span>
     `;
-    bar.querySelector('[data-act="save"]').addEventListener('click', () => {
-      try {
-        instance.save(true);
-        toast('Layout saved');
-      } catch (_) {
-        toast('Layout save failed');
-      }
-    });
     bar.querySelector('[data-act="reset"]').addEventListener('click', () => {
       if (confirm('Reset this app layout to defaults?\n\nFixes panels stuck tiny, huge, or off-screen. Your last layout will be replaced.')) {
         instance.reset();
@@ -1300,6 +1313,49 @@
   }
   function isCollapsedSection(s) {
     return !!(s && (s.getAttribute('data-fafo-collapsed') === '1' || s.classList.contains('fafo-section-collapsed')));
+  }
+
+  const RESIZE_CHILD_SEL =
+    LIST_CHILD_SEL +
+    ', table, textarea, pre, video, canvas, iframe, [contenteditable="true"]';
+
+  /**
+   * List panes, tall forms, and previews get a height handle.
+   * Compact action/summary rows stay content-sized unless they are lists.
+   * Authors can opt out with data-fafo-resizable="0".
+   */
+  function sectionWarrantsResize(s) {
+    if (!s || s.nodeType !== 1) return false;
+    const flag = s.getAttribute('data-fafo-resizable');
+    if (flag === '0') return false;
+    if (flag === '1') return true;
+    if (isCollapsedSection(s)) return false;
+    if (s.getAttribute('data-fafo-compact') === '1' && !isListSection(s)) return false;
+    if (isListSection(s) || isSettingsSection(s)) return true;
+    try {
+      if (s.querySelector(RESIZE_CHILD_SEL)) return true;
+    } catch (_) { /* ignore */ }
+    return cssPx(s, 'h') >= 180;
+  }
+
+  function promoteResizableSections(root) {
+    if (!root) return;
+    panelEls(root).forEach((p) => {
+      sectionEls(p).forEach((s) => {
+        if (!sectionWarrantsResize(s)) return;
+        if (s.getAttribute('data-fafo-resizable') !== '1') {
+          s.setAttribute('data-fafo-resizable', '1');
+          if (!s.getAttribute('data-fafo-section-min')) {
+            s.setAttribute('data-fafo-section-min', isListSection(s) ? '120' : '80');
+          }
+        }
+        if (!s.querySelector(':scope > .fafo-section-resize')) {
+          s.appendChild(
+            el('div', 'fafo-section-resize', { title: 'Drag to resize section height' })
+          );
+        }
+      });
+    });
   }
 
   /**
@@ -1668,6 +1724,9 @@
       ensureChrome(panel);
       sectionEls(panel).forEach((s) => ensureSectionChrome(s));
     });
+    try {
+      promoteResizableSections(root);
+    } catch (_) { /* ignore */ }
 
     const defaults = defaultStateFromDom(root);
     let state = readStore(appId) || defaults;
@@ -1693,15 +1752,16 @@
       }
     }
     const save = debounce(saveNow, 180);
+    function persist(immediate) {
+      if (immediate) return saveNow();
+      save();
+      return null;
+    }
 
     const api = {
       appId,
       root,
-      save: (immediate) => {
-        if (immediate) return saveNow();
-        save();
-        return null;
-      },
+      save: persist,
       /** Re-apply after CSS show/hide of panels (e.g. tags collapsed). */
       refresh() {
         const snap = sanitizeState(root, captureState(root, opts), opts);
@@ -1809,11 +1869,15 @@
         toast(on ? 'Section collapsed' : 'Section expanded');
       },
       destroy() {
+        teardownPersist();
         instances.delete(appId);
       },
     };
 
     function rebindAll() {
+      try {
+        promoteResizableSections(root);
+      } catch (_) { /* ignore */ }
       // re-query handles after DOM reorder
       root.querySelectorAll('.fafo-split-handle').forEach((h) => {
         h._fafoBound = false;
@@ -1827,12 +1891,18 @@
         sectionEls(p).forEach((s) => {
           const sc = s.querySelector(':scope > .fafo-section-chrome');
           if (sc) sc._fafoDrag = false;
+          if (
+            s.getAttribute('data-fafo-resizable') === '1' &&
+            !s.querySelector(':scope > .fafo-section-chrome')
+          ) {
+            ensureSectionChrome(s);
+          }
         });
       });
-      bindSplitResize(root, opts, save);
-      bindSectionResize(root, save);
-      bindPanelDrag(root, opts, save, rebindAll);
-      bindSectionDrag(root, opts, save, rebindAll);
+      bindSplitResize(root, opts, persist);
+      bindSectionResize(root, persist);
+      bindPanelDrag(root, opts, persist, rebindAll);
+      bindSectionDrag(root, opts, persist, rebindAll);
     }
 
     function wireResets() {
@@ -1854,6 +1924,7 @@
     requestAnimationFrame(() => {
       try {
         pinViewport(root);
+        promoteResizableSections(root);
         let healed = sanitizeState(root, captureState(root, opts), opts);
         healed = healBannerStripState(root, healed, opts);
         applyState(root, healed, opts);
@@ -1888,31 +1959,61 @@
     ensureFloatingToolbar(appId, api);
 
     // Persist when window resizes (flex panels change absolute sizes)
-    window.addEventListener(
-      'resize',
-      debounce(() => {
-        // Re-clamp if viewport shrank under a huge saved panel
+    const onWinResize = debounce(() => {
+      pinViewport(root);
+      const cur = sanitizeState(root, captureState(root, opts), opts);
+      applyState(root, cur, opts);
+      rebindAll();
+      wireResets();
+      markScrollPanes(root);
+      saveNow();
+    }, 400);
+    window.addEventListener('resize', onWinResize);
+
+    // Opens as last closed: flush on hide / exit, plus a 10-minute heartbeat
+    // so a dirty shutdown still has a recent snapshot.
+    const flush = () => {
+      try {
+        saveNow();
+      } catch (_) { /* ignore */ }
+    };
+    const onVis = () => {
+      if (document.hidden) flush();
+    };
+    const onPrefs = () => {
+      try {
         pinViewport(root);
         const cur = sanitizeState(root, captureState(root, opts), opts);
         applyState(root, cur, opts);
         rebindAll();
         wireResets();
         markScrollPanes(root);
-        saveNow();
-      }, 400)
-    );
-
-    // Always remember last position — flush on leave / hide
-    const flush = () => {
-      try {
-        saveNow();
       } catch (_) { /* ignore */ }
     };
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', flush);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) flush();
-    });
+    window.addEventListener('freeze', flush);
+    document.addEventListener('visibilitychange', onVis);
+    document.addEventListener('fafo-shell-prefs', onPrefs);
+    const heartbeat = setInterval(() => {
+      if (document.hidden) return;
+      flush();
+    }, HEARTBEAT_MS);
+
+    function teardownPersist() {
+      try {
+        flush();
+      } catch (_) { /* ignore */ }
+      try {
+        clearInterval(heartbeat);
+      } catch (_) { /* ignore */ }
+      window.removeEventListener('resize', onWinResize);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('freeze', flush);
+      document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('fafo-shell-prefs', onPrefs);
+    }
 
     instances.set(appId, api);
     return api;
