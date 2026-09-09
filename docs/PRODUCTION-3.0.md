@@ -1,6 +1,10 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.10**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.11**.
+
+## Creator cluster (3.0.11)
+
+- Style Bible / Take Rack / Lyric Shot Board: HTML-escape was a no-op (same bug as Prompt Queue). Import/duplicate/copy-negative, send packed prompt into Prompt Queue, keyboard, cross-links.
 
 ## PDF Converter + Prompt Queue (3.0.10)
 
