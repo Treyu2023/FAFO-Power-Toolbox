@@ -1,6 +1,11 @@
 # FAFO Power Toolbox 3.0 — production pass
 
-Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.9**.
+Frozen **2.0** (git-disconnected archive of `1.16.51`) first. Live tree is **3.0.10**.
+
+## PDF Converter + Prompt Queue (3.0.10)
+
+- New **PDF Converter** (`System Tools/PDF Converter.html`): Adobe-free PDF → txt / md / html / docx / png / jpg / webp / csv via PyMuPDF, pypdf, python-docx. Page-1 preview, format cards, folder scan, SSE convert. APIs `/api/pdf/presets|scan|preview|stream`
+- Prompt Queue: HTML-escape bug (prompts were not escaped), Duplicate, Import JSON, Clear done, timestamps, Style Bible / Take Rack links, `N`/`A` keys
 
 ## Task Manager Pro (3.0.9)
 

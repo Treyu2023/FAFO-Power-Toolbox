@@ -21,7 +21,7 @@ _STARTED_AT = time.time()
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 import media_ops as ops
@@ -3658,6 +3658,7 @@ import hosts_ops as hosts
 import reg_qol_ops as reg_qol
 import ditto_ops as ditto
 import convert_ops as convert
+import pdf_ops as pdfconv
 import health_ops as health
 import event_ops as events
 import board_ops as board
@@ -4964,6 +4965,13 @@ class ConvertBatch(BaseModel):
     output_dir: str | None = None
 
 
+class PdfConvertBatch(BaseModel):
+    files: list[str]
+    preset: str = "txt"
+    output_dir: str | None = None
+    dpi: int = 150
+
+
 class ScaleMaxSideBody(BaseModel):
     src: str
     max_side: int = 3840
@@ -5949,6 +5957,80 @@ def api_convert_stream(files: str, preset: str = "mp4_h264", output_dir: str | N
     def gen():
         sent = 0
         import time
+        while True:
+            while sent < len(progress):
+                yield f"data: {progress[sent]}\n\n"
+                sent += 1
+                item = json.loads(progress[sent - 1])
+                if "done" in item or "error" in item:
+                    return
+            time.sleep(0.12)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.get("/api/pdf/presets")
+def api_pdf_presets():
+    return {"presets": pdfconv.list_presets(), "status": pdfconv.engine_status()}
+
+
+@app.get("/api/pdf/scan")
+def api_pdf_scan(folder: str, recursive: bool = True):
+    try:
+        return pdfconv.scan_folder(folder, recursive=recursive)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.get("/api/pdf/preview")
+def api_pdf_preview(path: str, page: int = 1, dpi: int = 110):
+    try:
+        prev = pdfconv.preview_png(path, page=page, dpi=dpi)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    headers = {
+        "X-PDF-Page": str(prev.get("page") or 1),
+        "X-PDF-Pages": str(prev.get("pages") or 0),
+        "X-PDF-Name": str(prev.get("name") or ""),
+        "Cache-Control": "no-store",
+    }
+    return Response(content=prev["png"], media_type="image/png", headers=headers)
+
+
+@app.get("/api/pdf/stream")
+def api_pdf_stream(
+    files: str,
+    preset: str = "txt",
+    output_dir: str | None = None,
+    dpi: int = 150,
+):
+    file_list = [f.strip() for f in files.split("|") if f.strip()]
+    progress: list[str] = []
+
+    def on_progress(msg: str, extra: dict | None = None):
+        progress.append(json.dumps({"message": msg, "extra": extra or {}}))
+
+    def run():
+        try:
+            result = pdfconv.convert_batch(
+                file_list,
+                preset=preset,
+                output_dir=output_dir,
+                dpi=dpi,
+                on_progress=on_progress,
+            )
+            progress.append(json.dumps({"done": True, "result": result}))
+        except Exception as e:
+            progress.append(json.dumps({"error": str(e)}))
+
+    threading.Thread(target=run, daemon=True).start()
+
+    def gen():
+        sent = 0
         while True:
             while sent < len(progress):
                 yield f"data: {progress[sent]}\n\n"

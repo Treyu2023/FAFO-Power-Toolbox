@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<!-- Snapshots: newest 5 copies of THIS file live in snapshots/System Tools/PDF Converter.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="aitoolbox-tool-id" content="pdf-converter">
+<title>PDF Converter — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.10">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.10">
+<style>
+:root{
+  --bg:#05080f;--panel:#0c1420;--border:rgba(56,189,248,.22);
+  --accent:#38bdf8;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;
+  --text:#e8eef6;--muted:#8b9bb4
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:radial-gradient(ellipse at 30% -10%,#102033,var(--bg) 55%);
+  color:var(--text);min-height:100vh
+}
+:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);align-items:center;gap:12px;flex-wrap:wrap;background:rgba(5,8,15,.94);position:sticky;top:0;z-index:20}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.wrap{max-width:1280px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:22px;margin-bottom:4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px;line-height:1.5}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.ph{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center}
+.pb{padding:14px 16px}
+.inp,.sel{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px}
+.btn{padding:8px 14px;border:1px solid var(--accent);background:rgba(56,189,248,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:700}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:rgba(255,255,255,.15);color:var(--muted);background:transparent}
+.btn.ok{border-color:var(--ok);color:var(--ok);background:rgba(74,222,128,.1)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.tw{max-height:42vh;overflow:auto}
+.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;min-height:36px;white-space:pre-wrap}
+.tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(56,189,248,.15);color:var(--accent)}
+.progress{height:6px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:10px;overflow:hidden;display:none}
+.progress span{display:block;height:100%;background:var(--accent);width:0%;transition:width .2s}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.pill{font-size:11px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.25)}
+.pill.on{border-color:rgba(74,222,128,.35);color:var(--ok)}
+.pill.off{border-color:rgba(251,191,36,.25);color:var(--warn)}
+.fmt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.fmt-card{
+  text-align:left;padding:10px 12px;border-radius:10px;cursor:pointer;
+  border:1px solid rgba(56,189,248,.2);background:rgba(0,0,0,.25);color:var(--muted);font-size:12px
+}
+.fmt-card.on{border-color:var(--accent);color:var(--accent);background:rgba(56,189,248,.12);box-shadow:0 0 16px rgba(56,189,248,.12)}
+.fmt-card.na{opacity:.4;cursor:not-allowed;text-decoration:line-through}
+.preview{
+  min-height:180px;border:1px dashed rgba(56,189,248,.25);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden
+}
+.preview img{max-width:100%;max-height:280px;display:block}
+.drop{border:2px dashed rgba(56,189,248,.25);border-radius:12px;padding:10px;text-align:center;color:var(--muted);font-size:12px}
+.drop.on{border-color:var(--accent);background:rgba(56,189,248,.06)}
+kbd{font:11px Consolas;color:var(--warn)}
+tr.active{background:rgba(56,189,248,.08)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <a href="Batch Media Converter.html" style="font-size:12px;color:var(--muted);text-decoration:none">🔄 Media convert</a>
+    <span style="color:var(--accent);font-size:12px;letter-spacing:.08em;font-weight:700">PDF CONVERTER</span>
+  </div>
+  <span data-fafo-layout-toolbar></span>
+</nav>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="pdf-converter" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
+  <aside data-fafo-panel="sidebar" data-fafo-panel-title="Convert" data-fafo-panel-min="260" data-fafo-panel-default="340">
+    <div class="panel">
+      <div class="ph">Adobe-free engines <span id="readyBadge" style="text-transform:none;letter-spacing:0;color:var(--muted)"></span></div>
+      <div class="pb">
+        <div class="status-grid" id="engineGrid"></div>
+        <div class="log" id="engineNote" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <div class="ph">Format</div>
+      <div class="pb">
+        <div class="fmt-grid" id="fmtGrid"></div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;color:var(--muted)">
+          Image DPI <input class="inp" id="dpi" type="number" min="72" max="300" value="150" style="width:88px">
+        </label>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <div class="ph">Page preview</div>
+      <div class="pb">
+        <div class="preview" id="preview"><span class="log">Select a PDF to peek page 1</span></div>
+        <div class="log" id="previewMeta" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </aside>
+  <section data-fafo-panel="center" data-fafo-panel-title="Files" data-fafo-flex="1">
+    <h1>PDF Converter</h1>
+    <p class="sub">
+      Text, Markdown, HTML, Word, PNG/JPEG/WebP pages, or best-effort CSV — PyMuPDF / pypdf / python-docx.
+      <strong>No Adobe.</strong> Needs the toolbox server.
+      <span style="margin-left:8px"><kbd>Enter</kbd> scan · <kbd>C</kbd> convert · <kbd>Esc</kbd> launcher</span>
+    </p>
+    <div class="panel">
+      <div class="ph">Source</div>
+      <div class="pb">
+        <div class="toolbar">
+          <input class="inp" id="folder" placeholder="C:\path\to\pdfs" style="flex:1;min-width:220px">
+          <button class="btn ghost" id="btnPick" type="button">Browse…</button>
+          <label style="font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center"><input type="checkbox" id="recursive" checked> Recursive</label>
+        </div>
+        <div class="toolbar" style="margin-top:8px">
+          <input class="inp" id="outDir" placeholder="Output folder (optional — same as source)" style="flex:1;min-width:200px">
+          <button class="btn ghost" id="btnPickOut" type="button">Out…</button>
+          <button class="btn" id="btnScan">Scan PDFs</button>
+          <button class="btn ok" id="btnConvert" disabled>Convert selected</button>
+          <button class="btn ghost" id="btnStop" type="button" disabled>Stop</button>
+        </div>
+        <div class="drop" id="drop" style="margin-top:10px">Drop PDF files here, or scan a folder</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <div class="ph">PDF files <span id="fileCount" style="text-transform:none;letter-spacing:0;color:var(--muted)"></span>
+        <input class="inp" id="filter" placeholder="Filter…" style="min-width:140px;max-width:200px">
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th><input type="checkbox" id="chkAll" title="Select all shown"></th><th>Name</th><th>Size</th></tr></thead>
+          <tbody id="fileBody"></tbody>
+        </table>
+      </div>
+      <div class="pb">
+        <div class="progress" id="progress"><span id="progressBar"></span></div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </section>
+</div>
+<script src="../shared/aitoolbox-config.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-api.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.10"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtB = (n) => UI()?.formatBytes?.(n) ?? (n + ' B');
+function apiBase() {
+  return UI()?.getApiBase?.() || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+}
+let files = [];
+let sel = new Set();
+let es = null;
+let preset = 'txt';
+let focusIdx = -1;
+
+function log(msg) { document.getElementById('log').textContent = msg || ''; }
+
+async function init() {
+  try {
+    const p = await UI().apiFetch('/pdf/presets');
+    renderStatus(p.status || {}, p.presets || []);
+  } catch (e) {
+    renderStatus({}, []);
+    document.getElementById('engineNote').textContent = e.message || String(e);
+    log(e.message || String(e));
+  }
+}
+
+function renderStatus(status, presets) {
+  const eng = status.engines || {};
+  const labels = {
+    pymupdf: 'PyMuPDF (render + HTML)',
+    pypdf: 'pypdf (text)',
+    python_docx: 'python-docx (Word)',
+    pillow: 'Pillow (WebP)',
+  };
+  document.getElementById('engineGrid').innerHTML = Object.keys(labels).map(k => {
+    const on = !!eng[k];
+    return `<div class="pill ${on ? 'on' : 'off'}">${on ? '✓' : '○'} ${esc(labels[k])}</div>`;
+  }).join('');
+  const ready = !!status.ready;
+  const badge = document.getElementById('readyBadge');
+  badge.textContent = ready ? 'ready · no Adobe' : 'missing libraries';
+  badge.style.color = ready ? 'var(--ok)' : 'var(--warn)';
+  const cards = (presets || []).map(x => {
+    const on = x.id === preset && x.available !== false;
+    return `<button type="button" class="fmt-card ${x.available === false ? 'na' : (on ? 'on' : '')}" data-preset="${esc(x.id)}" ${x.available === false ? 'disabled' : ''}>${esc(x.label)}</button>`;
+  }).join('') || '<div class="log">Server offline</div>';
+  document.getElementById('fmtGrid').innerHTML = cards;
+  document.querySelectorAll('#fmtGrid [data-preset]').forEach(btn => {
+    btn.onclick = () => { preset = btn.dataset.preset; renderStatus(status, presets); };
+  });
+  document.getElementById('engineNote').textContent = (status.note || '')
+    + (status.install_hint ? '\n' + status.install_hint : '');
+}
+
+function filteredIndexes() {
+  const q = (document.getElementById('filter').value || '').toLowerCase();
+  return files.map((_, i) => i).filter(i => !q || (files[i].name || '').toLowerCase().includes(q));
+}
+
+function render() {
+  const idxs = filteredIndexes();
+  document.getElementById('fileCount').textContent = files.length
+    ? `(${sel.size} selected · ${idxs.length}/${files.length} shown)`
+    : '';
+  document.getElementById('fileBody').innerHTML = idxs.map(i => {
+    const f = files[i];
+    return `<tr data-row="${i}" class="${i === focusIdx ? 'active' : ''}">
+      <td><input type="checkbox" data-i="${i}" ${sel.has(i) ? 'checked' : ''}></td>
+      <td>${esc(f.name)}</td>
+      <td>${fmtB(f.size)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No PDFs — scan a folder or drop files</td></tr>';
+  document.querySelectorAll('[data-i]').forEach(c => {
+    c.onchange = () => {
+      const i = +c.dataset.i;
+      if (c.checked) sel.add(i); else sel.delete(i);
+      document.getElementById('btnConvert').disabled = sel.size === 0;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-row]').forEach(tr => {
+    tr.onclick = (ev) => {
+      if (ev.target.closest('input')) return;
+      focusIdx = +tr.dataset.row;
+      previewFile(files[focusIdx]);
+      render();
+    };
+  });
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+}
+
+document.getElementById('chkAll').onchange = e => {
+  const idxs = filteredIndexes();
+  if (e.target.checked) idxs.forEach(i => sel.add(i));
+  else idxs.forEach(i => sel.delete(i));
+  render();
+};
+document.getElementById('filter').oninput = render;
+
+async function previewFile(f) {
+  const box = document.getElementById('preview');
+  const meta = document.getElementById('previewMeta');
+  if (!f?.path) { box.innerHTML = '<span class="log">Select a PDF</span>'; meta.textContent = ''; return; }
+  box.innerHTML = '<span class="log">Rendering…</span>';
+  try {
+    const url = apiBase() + '/pdf/preview?path=' + encodeURIComponent(f.path) + '&t=' + Date.now();
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const blob = await r.blob();
+    const img = document.createElement('img');
+    img.alt = f.name;
+    img.src = URL.createObjectURL(blob);
+    box.innerHTML = '';
+    box.appendChild(img);
+    meta.textContent = `${f.name} · page ${r.headers.get('X-PDF-Page') || 1}/${r.headers.get('X-PDF-Pages') || '?'}`;
+  } catch (e) {
+    box.innerHTML = '<span class="log">No preview (needs PyMuPDF)</span>';
+    meta.textContent = e.message || String(e);
+  }
+}
+
+document.getElementById('btnScan').onclick = async () => {
+  const folder = document.getElementById('folder').value.trim();
+  if (!folder) { log('Enter a folder path'); return; }
+  log('Scanning for PDFs…');
+  try {
+    const rec = document.getElementById('recursive').checked ? 'true' : 'false';
+    const d = await UI().apiFetch('/pdf/scan?folder=' + encodeURIComponent(folder) + '&recursive=' + rec);
+    files = d.files || [];
+    sel = new Set(files.map((_, i) => i));
+    document.getElementById('chkAll').checked = true;
+    focusIdx = files.length ? 0 : -1;
+    render();
+    if (files[0]) previewFile(files[0]);
+    log(`Found ${files.length} PDF file(s)`);
+  } catch (e) {
+    log(e.message || String(e));
+    UI()?.toast?.(e.message || String(e), 'warn');
+  }
+};
+
+function stopConvert() {
+  if (es) { try { es.close(); } catch {} es = null; }
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+  document.getElementById('btnStop').disabled = true;
+}
+
+document.getElementById('btnStop').onclick = () => { stopConvert(); log('Conversion stopped'); };
+
+document.getElementById('btnConvert').onclick = () => {
+  const chosen = [...sel].map(i => files[i]?.path).filter(Boolean);
+  if (!chosen.length) return;
+  if (!preset) { log('Pick a format'); return; }
+  const outDir = document.getElementById('outDir').value.trim() || null;
+  const dpi = parseInt(document.getElementById('dpi').value, 10) || 150;
+  log('Starting Adobe-free conversion…');
+  document.getElementById('btnConvert').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  const prog = document.getElementById('progress');
+  const bar = document.getElementById('progressBar');
+  prog.style.display = 'block';
+  bar.style.width = '0%';
+  let url = apiBase() + '/pdf/stream?files=' + encodeURIComponent(chosen.join('|'))
+    + '&preset=' + encodeURIComponent(preset)
+    + '&dpi=' + encodeURIComponent(String(dpi));
+  if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
+  if (es) try { es.close(); } catch {}
+  es = new EventSource(url);
+  es.onmessage = ev => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.error) { log('Error: ' + d.error); stopConvert(); return; }
+    if (d.done) {
+      const r = d.result || {};
+      const outs = (r.results || []).flatMap(x => x.outputs || (x.output ? [x.output] : []));
+      const fails = (r.results || []).filter(x => !x.ok);
+      log(`Done: ${r.succeeded || 0}/${r.total || chosen.length} succeeded`
+        + (r.failed ? ` · ${r.failed} failed` : '')
+        + (fails.length ? '\n' + fails.map(x => (x.input || '') + ': ' + (x.error || 'failed')).join('\n') : '')
+        + (outs.length ? `\nOutputs:\n` + outs.slice(0, 24).join('\n') + (outs.length > 24 ? `\n… +${outs.length - 24} more` : '') : ''));
+      bar.style.width = '100%';
+      stopConvert();
+      UI()?.toast?.(`${r.succeeded || 0} converted`, r.failed ? 'warn' : 'ok');
+      return;
+    }
+    const cur = d.extra?.current ?? d.current;
+    const tot = d.extra?.total ?? d.total;
+    if (cur != null && tot) bar.style.width = Math.round((cur / tot) * 100) + '%';
+    if (d.message) log(d.message);
+  };
+  es.onerror = () => {
+    log('Convert stream failed — is the toolbox server online? Libraries installed?');
+    stopConvert();
+  };
+};
+
+async function pickInto(id) {
+  try {
+    if (!window.AIToolboxAPI) throw new Error('API not loaded');
+    if (!(await AIToolboxAPI.isOnline(true))) throw new Error('Start the server first');
+    const r = await AIToolboxAPI.pickFolderOnly();
+    const p = r?.path || r?.folder || r;
+    if (typeof p === 'string' && p) document.getElementById(id).value = p;
+  } catch (e) { log(e.message || String(e)); }
+}
+document.getElementById('btnPick').onclick = () => pickInto('folder');
+document.getElementById('btnPickOut').onclick = () => pickInto('outDir');
+
+const drop = document.getElementById('drop');
+;['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('on'); }));
+;['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('on'); }));
+drop.addEventListener('drop', e => {
+  const list = [...(e.dataTransfer?.files || [])].filter(f => /\.pdf$/i.test(f.name));
+  if (!list.length) { log('Drop PDF files'); return; }
+  const extra = list.map(f => ({ path: f.path || f.name, name: f.name, size: f.size, type: 'pdf' }));
+  // Browser file.path only in some hosts; if missing, tell user to scan a folder
+  if (extra.some(x => !x.path || x.path === x.name)) {
+    log('This browser did not give disk paths — use Browse + Scan on the folder instead.');
+    UI()?.toast?.('Use Browse + Scan for folder PDFs', 'warn');
+    return;
+  }
+  files = extra;
+  sel = new Set(files.map((_, i) => i));
+  focusIdx = 0;
+  render();
+  previewFile(files[0]);
+});
+
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+    if (e.key === 'Enter' && t.id === 'folder') { e.preventDefault(); document.getElementById('btnScan').click(); }
+    return;
+  }
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnScan').click(); }
+  if (e.key === 'c' || e.key === 'C') { if (!document.getElementById('btnConvert').disabled) document.getElementById('btnConvert').click(); }
+});
+
+UI()?.mountServerBar?.({ onOnline: init });
+init();
+</script>
+</body>
+</html>
