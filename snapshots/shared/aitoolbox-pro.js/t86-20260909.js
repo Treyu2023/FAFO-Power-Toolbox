@@ -122,7 +122,7 @@
     'batch media converter': {
       id: 'batch-media', title: 'Batch Media Converter', emoji: '🔄',
       path: 'System Tools/Batch Media Converter.html',
-      counterparts: ['fafo-vid-trim', 'pdf-converter', 'vsr-pipeline', 'media-hub'],
+      counterparts: ['fafo-vid-trim', 'vsr-pipeline', 'media-hub'],
     },
     'imagine vault': {
       id: 'imagine-tracker', title: 'Imagine Vault', emoji: '🎬',
@@ -313,26 +313,6 @@
       id: 'font-foundry', title: 'Font Foundry', emoji: 'Aa',
       path: 'AI Creator/Font Foundry.html',
       counterparts: ['style-bible', 'image-cropper', 'prompt-queue'],
-    },
-    'prompt queue': {
-      id: 'prompt-queue', title: 'Prompt Queue', emoji: '📥',
-      path: 'AI Creator/Prompt Queue.html',
-      counterparts: ['style-bible', 'generation-take-rack', 'font-foundry'],
-    },
-    'style bible': {
-      id: 'style-bible', title: 'Style Bible', emoji: '📖',
-      path: 'AI Creator/Style Bible.html',
-      counterparts: ['prompt-queue', 'generation-take-rack', 'font-foundry'],
-    },
-    'generation take rack': {
-      id: 'generation-take-rack', title: 'Generation Take Rack', emoji: '🎞️',
-      path: 'AI Creator/Generation Take Rack.html',
-      counterparts: ['prompt-queue', 'style-bible'],
-    },
-    'pdf converter': {
-      id: 'pdf-converter', title: 'PDF Converter', emoji: '📄',
-      path: 'System Tools/PDF Converter.html',
-      counterparts: ['batch-media', 'image-cropper'],
     },
   };
 

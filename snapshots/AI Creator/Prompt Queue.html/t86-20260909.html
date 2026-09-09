@@ -4,11 +4,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="aitoolbox-tool-id" content="prompt-queue">
 <title>Prompt Queue — AI HTML Toolbox</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📥</text></svg>">
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.10">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.10">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.9">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.9">
 <style>
 :root{--bg:#06100c;--panel:#0d1a14;--line:rgba(52,211,153,.22);--accent:#34d399;--accent2:#67e8f9;--warn:#fbbf24;--bad:#f87171;--text:#e8f6ef;--muted:#8aa399}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -42,14 +41,10 @@ textarea{min-height:90px;resize:vertical}
 <nav class="nav">
   <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
   <h1>PROMPT QUEUE</h1>
-  <span style="color:var(--muted);font-size:12px;flex:1">Local production queue — Start next copies the prompt. <kbd style="color:var(--warn)">N</kbd> next · <kbd style="color:var(--warn)">A</kbd> add</span>
-  <a class="btn ghost" href="Style Bible.html" style="text-decoration:none">📖 Style Bible</a>
-  <a class="btn ghost" href="Generation Take Rack.html" style="text-decoration:none">🎞️ Take Rack</a>
+  <span style="color:var(--muted);font-size:12px;flex:1">Local production queue — priority, kind, status. Run the next job when a GPU slot frees.</span>
   <span data-fafo-layout-toolbar></span>
   <button type="button" class="btn" id="btnNext">Start next</button>
   <button type="button" class="btn ghost" id="btnExport">Export</button>
-  <button type="button" class="btn ghost" id="btnImport">Import</button>
-  <input type="file" id="importFile" accept="application/json,.json" hidden>
 </nav>
 <div class="wrap" data-fafo-layout-root data-fafo-layout-app="prompt-queue" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
   <aside class="side" data-fafo-panel="sidebar" data-fafo-panel-title="New job" data-fafo-panel-min="240" data-fafo-panel-default="320">
@@ -61,7 +56,7 @@ textarea{min-height:90px;resize:vertical}
     <label>Prompt</label><textarea id="prompt"></textarea>
     <label>Params</label><input id="params" placeholder="seed, steps, duration, size">
     <label>Output note</label><input id="out" placeholder="folder or filename when done">
-    <div class="row"><button type="button" class="btn" id="btnAdd">Queue job</button><button type="button" class="btn ghost" id="btnClearDone">Clear done</button></div>
+    <div class="row"><button type="button" class="btn" id="btnAdd">Queue job</button></div>
   </aside>
   <section class="main" data-fafo-panel="center" data-fafo-panel-title="Queue" data-fafo-flex="1">
     <div class="hud" id="hud"></div>
@@ -71,13 +66,13 @@ textarea{min-height:90px;resize:vertical}
     <div id="list"></div>
   </section>
 </div>
-<script src="../shared/aitoolbox-config.js?v=3.0.10"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.10"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.10"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.10"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.10"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.10"></script>
-<script src="../shared/aitoolbox-pro.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-config.js?v=3.0.9"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.9"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.9"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.9"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.9"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.9"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.9"></script>
 <script>
 const KEY='fafo_prompt_queue_v1';
 const $ = id => document.getElementById(id);
@@ -94,11 +89,11 @@ function order(list){return list.slice().sort((a,b)=>{const rank={running:0,queu
 function render(){
   const f=$('filter').value;
   const list=order(jobs).filter(j=>!f||j.status===f);
-  $('list').innerHTML=list.map((j,idx)=>`<article class="job ${j.status}" data-id="${esc(j.id)}">
+  $('list').innerHTML=list.map((j,idx)=>`<article class="job ${j.status}" data-id="${j.id}">
     <div class="pri">${j.pri}</div>
     <div>
       <strong>${esc(j.title)}</strong> <span class="badge ${j.status}">${j.status}</span>
-      <div class="meta">${esc(j.kind)} · ${esc(j.params)} · ${when(j.at)}</div>
+      <div class="meta">${esc(j.kind)} · ${esc(j.params)}</div>
       <div class="prompt">${esc(j.prompt)}</div>
       <div class="meta">out: ${esc(j.out||'—')} ${j.note?'· '+esc(j.note):''}</div>
       <div class="row">
@@ -110,7 +105,6 @@ function render(){
         <button type="button" class="btn ghost" data-up>↑</button>
         <button type="button" class="btn ghost" data-dn>↓</button>
         <button type="button" class="btn ghost" data-copy>Copy prompt</button>
-        <button type="button" class="btn ghost" data-dup>Duplicate</button>
         <button type="button" class="btn ghost" data-del>Delete</button>
       </div>
     </div>
@@ -119,20 +113,17 @@ function render(){
   const c=s=>jobs.filter(j=>j.status===s).length;
   $('hud').textContent=`${jobs.length} jobs · ${c('running')} running · ${c('queued')} queued · ${c('hold')} hold · ${c('done')} done · ${c('failed')} failed`;
 }
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function when(ts){try{return new Date(ts).toLocaleString()}catch(_){return ''}}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
 $('btnAdd').onclick=()=>{
   jobs.push({id:uid(),title:$('title').value.trim()||'Untitled',kind:$('kind').value,pri:Math.min(5,Math.max(1,+$('pri').value||3)),prompt:$('prompt').value,params:$('params').value,out:$('out').value,status:'queued',note:'',at:Date.now()});
   $('title').value=$('prompt').value='';save();render();
 };
-$('btnClearDone').onclick=()=>{jobs=jobs.filter(j=>j.status!=='done');save();render();};
 $('list').addEventListener('click',e=>{
   const art=e.target.closest('.job'); if(!art)return;
   const j=jobs.find(x=>x.id===art.dataset.id); if(!j)return;
   if(e.target.dataset.st){j.status=e.target.dataset.st;if(e.target.dataset.st==='done')j.note='finished '+new Date().toLocaleString();save();render();return}
   if(e.target.dataset.del){jobs=jobs.filter(x=>x.id!==j.id);save();render();return}
   if(e.target.dataset.copy){navigator.clipboard.writeText(j.prompt);AIToolboxUI?.toast?.('Copied','ok');return}
-  if(e.target.dataset.dup){jobs.push({...j,id:uid(),title:(j.title||'Untitled')+' copy',status:'queued',note:'',at:Date.now()});save();render();return}
   if(e.target.dataset.up){j.pri=Math.min(5,j.pri+1);save();render();return}
   if(e.target.dataset.dn){j.pri=Math.max(1,j.pri-1);save();render();return}
 });
@@ -145,22 +136,6 @@ $('btnNext').onclick=()=>{
 };
 $('filter').onchange=render;
 $('btnExport').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(jobs,null,2)],{type:'application/json'}));a.download='prompt-queue.json';a.click()};
-$('btnImport').onclick=()=>$('importFile').click();
-$('importFile').onchange=async ev=>{
-  const f=ev.target.files&&ev.target.files[0]; ev.target.value='';
-  if(!f)return;
-  try{
-    const data=JSON.parse(await f.text());
-    const list=Array.isArray(data)?data:(data.jobs||[]);
-    list.forEach(j=>{jobs.push({id:uid(),title:j.title||'Imported',kind:j.kind||'image',pri:Math.min(5,Math.max(1,+j.pri||3)),prompt:j.prompt||'',params:j.params||'',out:j.out||'',status:j.status==='running'?'queued':(j.status||'queued'),note:j.note||'',at:Date.now()});});
-    save();render();AIToolboxUI?.toast?.('Imported '+list.length,'ok');
-  }catch(err){AIToolboxUI?.toast?.(String(err.message||err),'warn');}
-};
-document.addEventListener('keydown',e=>{
-  const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
-  if(e.key==='n'||e.key==='N') $('btnNext').click();
-  if(e.key==='a'||e.key==='A') $('title').focus();
-});
 render();
 </script>
 </body>
