@@ -4,11 +4,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="aitoolbox-tool-id" content="style-bible">
 <title>Style Bible — AI HTML Toolbox</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.10">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.10">
 <style>
 :root{--bg:#08070f;--panel:#13101c;--line:rgba(167,139,250,.25);--accent:#a78bfa;--accent2:#fbbf24;--ok:#34d399;--text:#f3eefc;--muted:#9b93b0}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -40,19 +39,13 @@ textarea{min-height:64px;resize:vertical}
 <nav class="nav">
   <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
   <h1>STYLE BIBLE</h1>
-  <span style="color:var(--muted);font-size:12px;flex:1">Looks, palettes, camera grammar, negatives. <kbd style="color:var(--accent2)">C</kbd> copy · <kbd style="color:var(--accent2)">N</kbd> new</span>
-  <a class="btn ghost" href="Prompt Queue.html" style="text-decoration:none">📥 Queue</a>
-  <a class="btn ghost" href="Generation Take Rack.html" style="text-decoration:none">🎞️ Takes</a>
+  <span style="color:var(--muted);font-size:12px;flex:1">Looks, palettes, camera grammar, negatives — reusable packed prompts.</span>
   <span data-fafo-layout-toolbar></span>
   <button type="button" class="btn ghost" id="btnNew">New look</button>
-  <button type="button" class="btn ghost" id="btnDup">Duplicate</button>
   <button type="button" class="btn ghost" id="btnExport">Export</button>
-  <button type="button" class="btn ghost" id="btnImport">Import</button>
-  <input id="fileIn" type="file" accept="application/json,.json" hidden>
 </nav>
 <div class="wrap" data-fafo-layout-root data-fafo-layout-app="style-bible" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
   <aside class="side" data-fafo-panel="sidebar" data-fafo-panel-title="Looks" data-fafo-panel-min="200" data-fafo-panel-default="280">
-    <input id="lookQ" placeholder="Filter looks…" style="margin-bottom:10px">
     <div id="list"></div>
   </aside>
   <section class="main" data-fafo-panel="center" data-fafo-panel-title="Look" data-fafo-flex="1">
@@ -77,19 +70,17 @@ textarea{min-height:64px;resize:vertical}
     <div class="pack" id="pack"></div>
     <div class="row">
       <button type="button" class="btn" id="btnCopy">Copy packed look</button>
-      <button type="button" class="btn ghost" id="btnCopyNeg">Copy negative</button>
-      <button type="button" class="btn ghost" id="btnQueue">Send to Prompt Queue</button>
       <button type="button" class="btn ghost" id="btnDel">Delete look</button>
     </div>
   </section>
 </div>
-<script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+<script src="../shared/aitoolbox-config.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.10"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.10"></script>
 <script>
 const KEY='fafo_style_bible_v1';
 const $ = id => document.getElementById(id);
@@ -105,11 +96,9 @@ let active=looks[0].id;
 function cur(){return looks.find(l=>l.id===active)||looks[0]}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(looks))}catch(_){}}
 function renderList(){
-  const q=(($('lookQ')&&$('lookQ').value)||'').toLowerCase();
-  const list=looks.filter(l=>!q||(l.name+' '+l.tags).toLowerCase().includes(q));
-  $('list').innerHTML=list.map(l=>`<div class="look ${l.id===active?'on':''}" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><div class="swatch">${(l.palette||[]).map(c=>`<i style="background:${esc(c)}"></i>`).join('')}</div><small style="color:var(--muted)">${esc(l.tags)}</small></div>`).join('')||'<p style="color:var(--muted);font-size:12px">No looks match.</p>';
+  $('list').innerHTML=looks.map(l=>`<div class="look ${l.id===active?'on':''}" data-id="${l.id}"><b>${esc(l.name)}</b><div class="swatch">${l.palette.map(c=>`<i style="background:${c}"></i>`).join('')}</div><small style="color:var(--muted)">${esc(l.tags)}</small></div>`).join('');
 }
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
 function renderLook(){
   const l=cur(); if(!l)return;
   $('name').value=l.name;$('tags').value=l.tags;$('type').value=l.type;$('cam').value=l.cam;$('lit').value=l.lit;$('grade').value=l.grade;$('yes').value=l.yes;$('no').value=l.no;$('neg').value=l.neg;
@@ -131,35 +120,7 @@ $('list').addEventListener('click',e=>{const el=e.target.closest('.look');if(!el
 $('btnNew').onclick=()=>{const n={id:uid(),name:'New look',tags:'',palette:['#111111','#ffffff','#fb7185','#67e8f9','#a78bfa','#fbbf24'],type:'',cam:'',lit:'',grade:'',yes:'',no:'',neg:''};looks.push(n);active=n.id;save();renderList();renderLook()};
 $('btnDel').onclick=()=>{if(looks.length<2)return;looks=looks.filter(l=>l.id!==active);active=looks[0].id;save();renderList();renderLook()};
 $('btnCopy').onclick=()=>navigator.clipboard.writeText($('pack').textContent).then(()=>AIToolboxUI?.toast?.('Copied','ok'));
-$('btnCopyNeg').onclick=()=>navigator.clipboard.writeText(cur()?.neg||'').then(()=>AIToolboxUI?.toast?.('Negative copied','ok'));
-$('btnDup').onclick=()=>{const l=cur();if(!l)return;const n={...l,id:uid(),name:(l.name||'Look')+' copy',palette:(l.palette||[]).slice()};looks.push(n);active=n.id;save();renderList();renderLook()};
-$('btnQueue').onclick=()=>{
-  const l=cur(); if(!l)return;
-  const KEYQ='fafo_prompt_queue_v1';
-  let jobs=[]; try{jobs=JSON.parse(localStorage.getItem(KEYQ)||'[]')}catch(_){}
-  if(!Array.isArray(jobs)) jobs=[];
-  jobs.push({id:uid(),title:l.name||'Look',kind:'image',pri:4,prompt:$('pack').textContent,params:'style bible',out:'',status:'queued',note:'from Style Bible',at:Date.now()});
-  try{localStorage.setItem(KEYQ,JSON.stringify(jobs))}catch(_){}
-  AIToolboxUI?.toast?.('Sent to Prompt Queue','ok');
-};
 $('btnExport').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(looks,null,2)],{type:'application/json'}));a.download='style-bible.json';a.click()};
-$('btnImport').onclick=()=>$('fileIn').click();
-$('fileIn').onchange=async e=>{
-  const f=e.target.files&&e.target.files[0]; e.target.value='';
-  if(!f)return;
-  try{
-    const data=JSON.parse(await f.text());
-    const list=Array.isArray(data)?data:(data.looks||[]);
-    list.forEach(l=>looks.push({id:uid(),name:l.name||'Imported',tags:l.tags||'',palette:Array.isArray(l.palette)&&l.palette.length?l.palette:['#111111','#ffffff'],type:l.type||'',cam:l.cam||'',lit:l.lit||'',grade:l.grade||'',yes:l.yes||'',no:l.no||'',neg:l.neg||''}));
-    save();renderList();renderLook();AIToolboxUI?.toast?.('Imported '+list.length,'ok');
-  }catch(err){AIToolboxUI?.toast?.(String(err.message||err),'warn')}
-};
-if($('lookQ')) $('lookQ').oninput=renderList;
-document.addEventListener('keydown',e=>{
-  const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
-  if(e.key==='n'||e.key==='N') $('btnNew').click();
-  if(e.key==='c'||e.key==='C') $('btnCopy').click();
-});
 bind();renderList();renderLook();
 </script>
 </body>

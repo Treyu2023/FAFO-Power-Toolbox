@@ -317,17 +317,22 @@
     'prompt queue': {
       id: 'prompt-queue', title: 'Prompt Queue', emoji: '📥',
       path: 'AI Creator/Prompt Queue.html',
-      counterparts: ['style-bible', 'generation-take-rack', 'font-foundry'],
+      counterparts: ['style-bible', 'generation-take-rack', 'lyric-shot-board'],
     },
     'style bible': {
       id: 'style-bible', title: 'Style Bible', emoji: '📖',
       path: 'AI Creator/Style Bible.html',
-      counterparts: ['prompt-queue', 'generation-take-rack', 'font-foundry'],
+      counterparts: ['prompt-queue', 'generation-take-rack', 'lyric-shot-board'],
     },
     'generation take rack': {
       id: 'generation-take-rack', title: 'Generation Take Rack', emoji: '🎞️',
       path: 'AI Creator/Generation Take Rack.html',
-      counterparts: ['prompt-queue', 'style-bible'],
+      counterparts: ['prompt-queue', 'style-bible', 'lyric-shot-board'],
+    },
+    'lyric shot board': {
+      id: 'lyric-shot-board', title: 'Lyric Shot Board', emoji: '🎬',
+      path: 'AI Creator/Lyric Shot Board.html',
+      counterparts: ['style-bible', 'prompt-queue', 'generation-take-rack'],
     },
     'pdf converter': {
       id: 'pdf-converter', title: 'PDF Converter', emoji: '📄',

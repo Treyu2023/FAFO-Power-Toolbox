@@ -4,11 +4,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="aitoolbox-tool-id" content="generation-take-rack">
 <title>Generation Take Rack — AI HTML Toolbox</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.10">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.10">
 <style>
 :root{--bg:#07090e;--panel:#10161e;--line:rgba(251,191,36,.22);--accent:#fbbf24;--accent2:#67e8f9;--ok:#34d399;--bad:#f87171;--text:#e8eef4;--muted:#8b9bb0}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -44,9 +43,7 @@ textarea{min-height:70px;resize:vertical}
 <nav class="nav">
   <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
   <h1>GENERATION TAKE RACK</h1>
-  <span style="color:var(--muted);font-size:12px;flex:1">Keep / maybe / kill. <kbd style="color:var(--accent)">K</kbd> keep · <kbd style="color:var(--accent)">X</kbd> kill · <kbd style="color:var(--accent)">C</kbd> copy</span>
-  <a class="btn ghost" href="Prompt Queue.html" style="text-decoration:none">📥 Queue</a>
-  <a class="btn ghost" href="Style Bible.html" style="text-decoration:none">📖 Bible</a>
+  <span style="color:var(--muted);font-size:12px;flex:1">Rank seeds, models, and prompts. Keep / maybe / kill — local film strip.</span>
   <span data-fafo-layout-toolbar></span>
   <button type="button" class="btn ghost" id="btnExport">Export</button>
   <button type="button" class="btn ghost" id="btnImport">Import</button>
@@ -71,9 +68,6 @@ textarea{min-height:70px;resize:vertical}
     <div class="row">
       <button type="button" class="btn" id="btnAdd">Add take</button>
       <button type="button" class="btn ghost" id="btnUpd">Update selected</button>
-      <button type="button" class="btn ghost" id="btnDupTake">Duplicate</button>
-      <button type="button" class="btn ghost" id="btnCopyP">Copy prompt</button>
-      <button type="button" class="btn ghost" id="btnQueueTake">Send to Queue</button>
       <button type="button" class="btn ghost" id="btnDel">Delete</button>
     </div>
   </aside>
@@ -88,13 +82,13 @@ textarea{min-height:70px;resize:vertical}
     <div id="cmp" class="compare" hidden></div>
   </section>
 </div>
-<script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+<script src="../shared/aitoolbox-config.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.10"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.10"></script>
 <script>
 const KEY='fafo_gen_take_rack_v1';
 const $ = id => document.getElementById(id);
@@ -125,7 +119,7 @@ function render(){
   const n=takes.length,k=takes.filter(t=>t.verdict==='keep').length;
   $('stats').textContent=`${n} takes · ${k} keep (${n?Math.round(k/n*100):0}%) · avg ${(takes.reduce((s,t)=>s+(+t.rate||0),0)/(n||1)).toFixed(1)}★`;
 }
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
 function readForm(){return {title:$('tTitle').value.trim()||'Untitled',kind:$('tKind').value,model:$('tModel').value,seed:$('tSeed').value,steps:$('tSteps').value,prompt:$('tPrompt').value,neg:$('tNeg').value,path:$('tPath').value,rate:+$('tRate').value,verdict:$('tVerdict').value,notes:$('tNotes').value}}
 function fill(t){if(!t)return;$('tTitle').value=t.title;$('tKind').value=t.kind;$('tModel').value=t.model;$('tSeed').value=t.seed;$('tSteps').value=t.steps;$('tPrompt').value=t.prompt;$('tNeg').value=t.neg;$('tPath').value=t.path;$('tRate').value=String(t.rate);$('tVerdict').value=t.verdict;$('tNotes').value=t.notes}
 $('grid').addEventListener('click',e=>{const c=e.target.closest('.card');if(!c)return;const id=c.dataset.id;
@@ -134,26 +128,7 @@ $('grid').addEventListener('click',e=>{const c=e.target.closest('.card');if(!c)r
 });
 $('btnAdd').onclick=()=>{takes.unshift({id:uid(),...readForm(),at:Date.now()});save();render();AIToolboxUI?.toast?.('Take added','ok')};
 $('btnUpd').onclick=()=>{const id=[...sel][0];const t=takes.find(x=>x.id===id);if(!t){AIToolboxUI?.toast?.('Select a take','warn');return}Object.assign(t,readForm());save();render()};
-$('btnDupTake').onclick=()=>{const id=[...sel][0];const t=takes.find(x=>x.id===id);if(!t){AIToolboxUI?.toast?.('Select a take','warn');return}takes.unshift({...t,id:uid(),title:(t.title||'Take')+' copy',at:Date.now()});save();render()};
-$('btnCopyP').onclick=()=>{const t=takes.find(x=>x.id===[...sel][0]);if(!t){AIToolboxUI?.toast?.('Select a take','warn');return}navigator.clipboard.writeText(t.prompt||'').then(()=>AIToolboxUI?.toast?.('Prompt copied','ok'))};
-$('btnQueueTake').onclick=()=>{
-  const t=takes.find(x=>x.id===[...sel][0]); if(!t){AIToolboxUI?.toast?.('Select a take','warn');return}
-  const KEYQ='fafo_prompt_queue_v1';
-  let jobs=[]; try{jobs=JSON.parse(localStorage.getItem(KEYQ)||'[]')}catch(_){}
-  if(!Array.isArray(jobs)) jobs=[];
-  jobs.push({id:uid(),title:t.title||'Take',kind:t.kind||'image',pri:4,prompt:t.prompt||'',params:[t.model,t.seed,t.steps].filter(Boolean).join(' · '),out:t.path||'',status:'queued',note:'from Take Rack',at:Date.now()});
-  try{localStorage.setItem(KEYQ,JSON.stringify(jobs))}catch(_){}
-  AIToolboxUI?.toast?.('Sent to Prompt Queue','ok');
-};
 $('btnDel').onclick=()=>{if(!sel.size)return;takes=takes.filter(t=>!sel.has(t.id));sel.clear();save();render()};
-document.addEventListener('keydown',e=>{
-  const el=e.target; if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT'||el.isContentEditable)) return;
-  const t=takes.find(x=>x.id===[...sel][0]);
-  if((e.key==='k'||e.key==='K')&&t){t.verdict='keep';save();render()}
-  if((e.key==='x'||e.key==='X')&&t){t.verdict='kill';save();render()}
-  if((e.key==='c'||e.key==='C')) $('btnCopyP').click();
-  if(e.key==='/'){e.preventDefault();$('fQ').focus()}
-});
 ['fKind','fVerdict','fQ'].forEach(id=>$(id).addEventListener('input',render));
 $('btnCmp').onclick=()=>{
   const ids=[...sel].slice(0,2);if(ids.length<2){AIToolboxUI?.toast?.('Shift-click two takes','warn');return}

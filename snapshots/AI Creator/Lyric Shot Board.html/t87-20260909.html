@@ -4,11 +4,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="aitoolbox-tool-id" content="lyric-shot-board">
 <title>Lyric Shot Board — AI HTML Toolbox</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.10">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.10">
 <style>
 :root{--bg:#08060c;--panel:#120e18;--panel2:#0c0a12;--line:rgba(251,113,133,.22);--accent:#fb7185;--accent2:#67e8f9;--ok:#34d399;--warn:#fbbf24;--text:#f4eef6;--muted:#9aa0b8;--glow:0 0 16px rgba(251,113,133,.35)}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -52,9 +51,7 @@ textarea{min-height:72px;resize:vertical}
 <nav class="nav">
   <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
   <h1>LYRIC SHOT BOARD</h1>
-  <span class="sub">Map verses to camera shots. Local only.</span>
-  <a class="btn ghost" href="Style Bible.html" style="text-decoration:none">📖 Bible</a>
-  <a class="btn ghost" href="Prompt Queue.html" style="text-decoration:none">📥 Queue</a>
+  <span class="sub">Map verses to camera shots. Local only — nothing leaves this PC.</span>
   <span data-fafo-layout-toolbar></span>
   <button type="button" class="btn ghost" id="btnNew">New project</button>
   <button type="button" class="btn ghost" id="btnExport">Export JSON</button>
@@ -87,20 +84,19 @@ textarea{min-height:72px;resize:vertical}
     <div class="pack" id="pack"></div>
     <div class="row">
       <button type="button" class="btn" id="btnCopy">Copy prompt</button>
-      <button type="button" class="btn ghost" id="btnQueueShot">Send to Queue</button>
       <button type="button" class="btn ghost" id="btnImport">Import JSON</button>
     </div>
     <input id="fileIn" type="file" accept="application/json" hidden>
     <p class="beat" style="color:var(--muted)">1 bar @ BPM = seconds. Shots inherit aspect + look. Drop this prompt into Imagine / your video model.</p>
   </aside>
 </div>
-<script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+<script src="../shared/aitoolbox-config.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-version.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.0.10"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.0.10"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.0.10"></script>
 <script>
 const KEY='fafo_lyric_shot_board_v1';
 const KINDS=['intro','verse','pre-chorus','chorus','bridge','drop','outro','instrumental'];
@@ -127,7 +123,7 @@ function sec(){return state.sections.find(s=>s.id===active)||state.sections[0]}
 function renderList(){
   $('secList').innerHTML=state.sections.map(s=>`<div class="sec ${s.id===active?'on':''}" data-id="${s.id}"><span class="kind">${s.kind}</span><b>${esc(s.name)}</b><span>${s.shots.length} shots</span></div>`).join('')||'<p class="empty">No sections</p>';
 }
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
 function renderEditor(){
   const s=sec(); if(!s){$('editor').innerHTML='<p class="empty">Add a section.</p>';return}
   $('editor').innerHTML=`
@@ -202,15 +198,6 @@ $('btnMd').onclick=()=>{
   dl((state.title||'shot-list').replace(/\W+/g,'-')+'.md',md,'text/markdown');
 };
 $('btnCopy').onclick=()=>navigator.clipboard.writeText($('pack').textContent).then(()=>AIToolboxUI?.toast?.('Prompt copied','ok'),()=>{});
-$('btnQueueShot').onclick=()=>{
-  const s=sec(); if(!s)return;
-  const KEYQ='fafo_prompt_queue_v1';
-  let jobs=[]; try{jobs=JSON.parse(localStorage.getItem(KEYQ)||'[]')}catch(_){}
-  if(!Array.isArray(jobs)) jobs=[];
-  jobs.push({id:uid(),title:(state.title||'Track')+' — '+(s.name||'section'),kind:'video',pri:4,prompt:$('pack').textContent,params:state.aspect+' · '+state.bpm+' BPM',out:'',status:'queued',note:'from Lyric Shot Board',at:Date.now()});
-  try{localStorage.setItem(KEYQ,JSON.stringify(jobs))}catch(_){}
-  AIToolboxUI?.toast?.('Sent to Prompt Queue','ok');
-};
 $('btnImport').onclick=()=>$('fileIn').click();
 $('fileIn').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(!j||!Array.isArray(j.sections))throw 0;state=j;active=state.sections[0]&&state.sections[0].id;persist();bindHead();renderList();renderEditor();AIToolboxUI?.toast?.('Imported','ok')}catch(_){AIToolboxUI?.toast?.('Bad JSON','warn')}};r.readAsText(f);e.target.value=''};
 function dl(name,text,mime){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:mime}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
