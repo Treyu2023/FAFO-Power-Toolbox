@@ -10,7 +10,9 @@ Technician Swiss army knife. It does **not** replace the C-Site interview — it
 2. Color hops as TCP/ping/DNS run: green/black pass, amber/black warn, red/black fail. Stamp a hop if you ran it in cmd instead.
 3. **Open needed desks** launches C-Site Diagnostic, Status HUD, and Phone Assist when the laptop is on POS LAN.
 4. **Launch Command Prompt** starts a new `cmd.exe` with a whitelisted kit (`ipconfig /all`, `arp -a`, ping, tracert, nslookup, netstat). If S1 is down, downloads the same kit as a `.bat`.
-5. In-page desks: Forecourt / CRIND, MNSP (Cybera, Hughes+FortiGate, Acumera, Mako), ISP (Brightspeed, Spectrum/TWC, Starlink).
+5. **Add command** on the Cmd kit tab — clickable custom commands saved on this laptop so the kit can match the store.
+6. **Unique hosts** on Forecourt / MNSP / ISP — odd DCR IPs, extra boxes, VLANs that are not the template. Each one becomes a hop and a copyable ping.
+7. In-page desks: Forecourt / CRIND, MNSP (Cybera, Hughes+FortiGate, Acumera, Mako), ISP (Brightspeed, Spectrum/TWC, Starlink).
 
 ## Gateway cheat sheet
 

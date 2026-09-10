@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Field Network Desk · FAFO</title>
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.4.00">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.00">
 <style>
 :root {
   --bg:#03060a; --panel:#0a1018; --panel2:#0e1620;
@@ -63,7 +63,7 @@ textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monos
 <header>
   <div class="brand">
     <h1>Field Network Desk</h1>
-    <div class="sub">Fingerprint the LAN · color hops as they pass or fail · open only the desks that apply · launch cmd kit</div>
+    <div class="sub">Fingerprint the LAN · color hops as they pass or fail · add unique hosts this store actually has · launch cmd kit</div>
   </div>
   <nav class="nav-links">
     <a href="../Toolbox Launcher.html">Launcher</a>
@@ -131,11 +131,19 @@ textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monos
         </div>
       </div>
     </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="ph">This store’s unique hosts — not the 192.168.31.11 template</div>
+      <div class="pb custom-net" data-desk="forecourt"></div>
+    </div>
   </div>
   <div id="pane-mnsp" hidden>
     <div class="panel">
       <div class="ph">MNSP playbooks · factory logins are starting points only</div>
       <div class="pb" id="mnsp"></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="ph">This store’s unique MNSP hosts</div>
+      <div class="pb custom-net" data-desk="mnsp"></div>
     </div>
   </div>
   <div id="pane-isp" hidden>
@@ -143,17 +151,46 @@ textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monos
       <div class="ph">ISP CPE · NC (Brightspeed / Spectrum-TWC / Starlink)</div>
       <div class="pb" id="isp"></div>
     </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="ph">This store’s unique ISP hosts</div>
+      <div class="pb custom-net" data-desk="isp"></div>
+    </div>
   </div>
   <div id="pane-kit" hidden>
     <div class="panel">
-      <div class="ph">Command kit — copy, or Launch Command Prompt above</div>
-      <div class="pb" id="cmds"></div>
+      <div class="ph">Command kit — copy, add, or Launch Command Prompt above</div>
+      <div class="pb">
+        <p class="muted">Template commands stay. Add a clickable command this store actually uses — odd ping, unique DCR IP, extra VLAN. Saved on this laptop.</p>
+        <div class="grid" style="margin:8px 0">
+          <div>
+            <label class="fld">Name</label>
+            <input id="cmdName" placeholder="Ping DCR pos 5">
+          </div>
+          <div>
+            <label class="fld">Desk</label>
+            <select id="cmdDesk">
+              <option value="all">Any desk</option>
+              <option value="forecourt">Forecourt</option>
+              <option value="mnsp">MNSP</option>
+              <option value="isp">ISP</option>
+            </select>
+          </div>
+        </div>
+        <label class="fld">Command</label>
+        <input id="cmdText" placeholder="ping -n 4 192.168.31.45" style="font-family:Consolas,ui-monospace,monospace">
+        <label class="fld">Why / when</label>
+        <input id="cmdWhy" placeholder="Pos 5 OPT is not the template IP">
+        <div class="btn-row">
+          <button class="btn primary" type="button" id="btnAddCmd">Save command</button>
+        </div>
+        <div id="cmds"></div>
+      </div>
     </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="../shared/aitoolbox-config.js?v=3.4.00"></script>
-<script src="../shared/aitoolbox-api.js?v=3.4.00"></script>
+<script src="../shared/aitoolbox-config.js?v=3.5.00"></script>
+<script src="../shared/aitoolbox-api.js?v=3.5.00"></script>
 <script>
 const CMDS = [
   {t:"Who am I", c:"ipconfig /all"},
@@ -192,6 +229,50 @@ const DESK_URL = {
 };
 const $=id=>document.getElementById(id);
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",1800)}
+const CUSTOM_CMD_KEY="fafo-field-custom-cmds-v1";
+const CUSTOM_NET_KEY="fafo-field-custom-net-v1";
+function loadJson(k,fb){try{const v=JSON.parse(localStorage.getItem(k)||"null");return Array.isArray(v)?v:fb;}catch(e){return fb;}}
+function saveJson(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function uid(p){return p+"-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function customCmds(){return loadJson(CUSTOM_CMD_KEY,[]);}
+function customNets(){return loadJson(CUSTOM_NET_KEY,[]);}
+function endpointCmd(e){
+  const host=String(e.host||"").trim();
+  const port=String(e.port||"").trim();
+  if(host&&port) return 'powershell -c "Test-NetConnection '+host+' -Port '+port+'"';
+  if(host) return "ping -n 4 "+host;
+  return "";
+}
+function customHops(){
+  return customNets().filter(e=>e&&e.host).map(e=>({
+    id:"x-"+e.id, label:e.label||e.host, host:e.host, port:e.port?Number(e.port):undefined, cmd:endpointCmd(e), custom:true
+  }));
+}
+function liveHops(){ return (last.hops||[]).concat(customHops()); }
+function allCmds(){
+  const extraNets=customNets().filter(e=>e&&e.host).map(e=>({t:e.label||e.host,c:endpointCmd(e),id:"xcmd-"+e.id,custom:true}));
+  return CMDS.concat(customCmds().map(c=>({t:c.title,c:c.cmd,id:c.id,custom:true,why:c.why}))).concat(extraNets);
+}
+function renderCustomNets(){
+  document.querySelectorAll(".custom-net").forEach(el=>{
+    const desk=el.getAttribute("data-desk");
+    const items=customNets().filter(e=>e.desk===desk);
+    el.innerHTML='<p class="muted">Template IPs are a starting point. Add the odd DCR, extra box, VLAN, or camera this store actually has. Each one becomes a hop and a copyable ping.</p>'
+      +'<label class="fld">Name</label><input data-f="label" placeholder="DCR pos 5">'
+      +'<label class="fld">IP / host</label><input data-f="host" placeholder="192.168.31.45" style="font-family:Consolas,ui-monospace,monospace">'
+      +'<label class="fld">Port (optional)</label><input data-f="port" placeholder="9700" style="font-family:Consolas,ui-monospace,monospace">'
+      +'<label class="fld">Why it\'s here</label><input data-f="why" placeholder="Remodel — not the template OPT IP">'
+      +'<div class="btn-row"><button class="btn primary" type="button" data-add-net="'+desk+'">Save host</button></div>'
+      +(items.map(e=>'<div style="display:flex;justify-content:space-between;gap:8px;margin:8px 0;align-items:flex-start"><div><div>'+e.label+' <span class="cmd">custom</span></div><div class="cmd">'+e.host+(e.port?":"+e.port:"")+'</div><div class="muted">'+(e.why||"")+'</div></div><div class="btn-row" style="margin:0"><button class="btn" type="button" data-copy-net="'+e.id+'">Copy ping</button><button class="btn" type="button" data-del-net="'+e.id+'">Remove</button></div></div>').join("")||'<p class="muted">None yet. Add whatever is not the template.</p>');
+  });
+}
+function renderCmds(){
+  $("cmds").innerHTML=allCmds().map(x=>{
+    const del=x.id&&!String(x.id).startsWith("xcmd-")?'<button class="btn" type="button" data-del-cmd="'+x.id+'">Remove</button>':"";
+    const tag=x.custom?' <span class="cmd">custom</span>':"";
+    return '<div style="display:flex;justify-content:space-between;gap:8px;margin:6px 0;align-items:center"><div><div>'+x.t+tag+'</div><div class="cmd">'+x.c+'</div>'+(x.why?'<div class="muted">'+x.why+'</div>':'')+'</div><div class="btn-row" style="margin:0"><button class="btn" type="button" data-cmd="'+encodeURIComponent(x.c)+'">Copy</button>'+del+'</div></div>';
+  }).join("");
+}
 function apiBase(){
   try{ if(window.AIToolboxAPI && AIToolboxAPI.endpoint) return String(AIToolboxAPI.endpoint).replace(/\/$/,"")+"/api"; }catch(e){}
   return "http://127.0.0.87:18765/api";
@@ -249,7 +330,8 @@ function renderPlaybooks(){
   $("mnsp").innerHTML=MNSP.map(x=>'<div style="margin-bottom:14px"><strong>'+x.n+'</strong><div class="cmd">'+x.p+'</div><div class="muted">'+x.u+' · '+x.t+'</div><div class="muted" style="margin-top:4px"><b>Physical:</b> '+x.phys+'</div><div class="muted"><b>Virtual:</b> '+x.virt+'</div></div>').join("");
   $("isp").innerHTML=ISP.map(x=>'<div style="margin-bottom:14px"><strong>'+x.n+'</strong><div class="cmd">'+x.p+'</div><div class="muted">'+x.u+' · '+x.t+'</div><div class="muted" style="margin-top:4px"><b>Physical:</b> '+x.phys+'</div><div class="muted"><b>Virtual:</b> '+x.virt+'</div></div>').join("");
   $("crind").innerHTML=CRIND.map(x=>'<div style="margin-bottom:10px"><strong>'+x.t+'</strong><div class="muted">'+x.d+'</div></div>').join("");
-  $("cmds").innerHTML=CMDS.map(x=>'<div style="display:flex;justify-content:space-between;gap:8px;margin:6px 0;align-items:center"><div><div>'+x.t+'</div><div class="cmd">'+x.c+'</div></div><button class="btn" type="button" data-cmd="'+encodeURIComponent(x.c)+'">Copy</button></div>').join("");
+  renderCmds();
+  renderCustomNets();
   $("cmds").onclick=e=>{
     const b=e.target.closest("[data-cmd]"); if(!b) return;
     navigator.clipboard.writeText(decodeURIComponent(b.getAttribute("data-cmd"))); toast("Copied");
@@ -264,11 +346,12 @@ function worstClass(){
   return "";
 }
 function setHops(){
-  const hops=last.hops||[];
+  const hops=liveHops();
   $("hops").innerHTML=hops.map(h=>{
     const st=hopState[h.id]||"idle";
-    return '<div class="node '+st+'" data-hop="'+h.id+'"><div class="n">'+h.label+'</div><div class="h">'+h.host+(h.port?":"+h.port:"")+'</div><div class="h" id="d-'+h.id+'">'+(h.cmd||"")+'</div><button class="btn" type="button" data-test="'+h.id+'">Test this hop</button><div class="stamps"><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="pass">Pass</button><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="warn">Warn</button><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="fail">Fail</button></div></div>';
-  }).join("")||'<p class="muted">Identify first.</p>';
+    const tag=h.custom||String(h.id).indexOf("x-")===0?' <span class="h">custom</span>':"";
+    return '<div class="node '+st+'" data-hop="'+h.id+'"><div class="n">'+h.label+tag+'</div><div class="h">'+h.host+(h.port?":"+h.port:"")+'</div><div class="h" id="d-'+h.id+'">'+(h.cmd||"")+'</div><button class="btn" type="button" data-test="'+h.id+'">Test this hop</button><div class="stamps"><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="pass">Pass</button><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="warn">Warn</button><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="fail">Fail</button></div></div>';
+  }).join("")||'<p class="muted">Identify first. Unique hosts still show once you add them.</p>';
   const w=worstClass();
   $("hopPanel").className="panel "+w;
   $("hopPill").textContent=w||"idle";
@@ -282,7 +365,7 @@ $("hops").onclick=function(e){
   }
   if(test){
     const id=test.getAttribute("data-test");
-    const h=(last.hops||[]).find(x=>x.id===id); if(!h) return;
+    const h=liveHops().find(x=>x.id===id); if(!h) return;
     if(h.cmd) navigator.clipboard.writeText(h.cmd);
     hopState[id]="run"; setHops();
     probeHop(h).then(r=>{
@@ -299,8 +382,8 @@ async function probeHop(h){
       const ok=!!((j.records&&j.records.length)||(j.forward_records&&j.forward_records.length));
       return {ok, detail: ok?"DNS records returned":"no records"};
     }
-    if(h.port===80||h.port===443||h.port===9700||h.port===4710){
-      const j=await api("/network/telnet",{method:"POST",body:JSON.stringify({host:h.host,port:h.port||443,timeout_sec:3})});
+    if(h.port){
+      const j=await api("/network/telnet",{method:"POST",body:JSON.stringify({host:h.host,port:Number(h.port),timeout_sec:3})});
       return {ok:j.open===true, detail:j.open===true?"open":(j.error||"closed")};
     }
     const j=await api("/network/ping",{method:"POST",body:JSON.stringify({host:h.host,count:2,timeout_ms:1000})});
@@ -328,16 +411,18 @@ async function identify(){
   $("idPill").textContent=last.layer;
   $("idPanel").className="panel "+(last.layer==="unknown"?"warn":"pass");
   last.hops.forEach(h=>hopState[h.id]="run");
+  customHops().forEach(h=>hopState[h.id]="run");
   setHops();
   showTab(last.tab||"forecourt");
-  if(last.hops[0] && last.hops[0].cmd) navigator.clipboard.writeText(last.hops.map(h=>h.cmd).join("\r\n"));
+  const hops=liveHops();
+  if(hops[0] && hops[0].cmd) navigator.clipboard.writeText(hops.map(h=>h.cmd).join("\r\n"));
   if(!online){
     toast("S1 offline — stamp hops from cmd, or start S1 for live TCP");
-    last.hops.forEach(h=>hopState[h.id]="warn");
+    hops.forEach(h=>hopState[h.id]="warn");
     setHops();
     return;
   }
-  for(const h of last.hops){
+  for(const h of hops){
     hopState[h.id]="run"; setHops();
     const r=await probeHop(h);
     hopState[h.id]=r.ok?"pass":"fail";
@@ -362,7 +447,7 @@ async function launchCmd(){
       toast(j.error||"Could not launch cmd");
     }catch(e){ toast(String(e.message||e)); }
   }
-  const bat=["@echo off","title FAFO Field Network Kit"].concat(CMDS.flatMap(x=>["echo === "+x.t+" ===", x.c, "echo."])).concat(["pause"]).join("\r\n");
+  const bat=["@echo off","title FAFO Field Network Kit"].concat(allCmds().flatMap(x=>["echo === "+x.t+" ===", x.c, "echo."])).concat(["pause"]).join("\r\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([bat],{type:"application/x-bat"}));
   a.download="fafo-field-net-kit.bat";
@@ -375,6 +460,45 @@ document.querySelectorAll("#deskTabs button").forEach(btn=>{
 $("btnId").onclick=identify;
 $("btnOpen").onclick=openDesks;
 $("btnCmd").onclick=launchCmd;
+$("btnAddCmd").onclick=function(){
+  const title=($("cmdName").value||"").trim();
+  const cmd=($("cmdText").value||"").trim();
+  if(!title||!cmd){ toast("Name and command required"); return; }
+  saveJson(CUSTOM_CMD_KEY, customCmds().concat({id:uid("cmd"), title, cmd, why:($("cmdWhy").value||"").trim(), desk:$("cmdDesk").value||"all"}));
+  $("cmdName").value=""; $("cmdText").value=""; $("cmdWhy").value="";
+  renderCmds(); toast("Saved command");
+};
+document.addEventListener("click", function(e){
+  const add=e.target.closest("[data-add-net]");
+  if(add){
+    const desk=add.getAttribute("data-add-net");
+    const box=add.closest(".custom-net");
+    const label=(box.querySelector('[data-f="label"]').value||"").trim();
+    const host=(box.querySelector('[data-f="host"]').value||"").trim();
+    const port=(box.querySelector('[data-f="port"]').value||"").trim();
+    const why=(box.querySelector('[data-f="why"]').value||"").trim();
+    if(!label||!host){ toast("Name and IP required"); return; }
+    saveJson(CUSTOM_NET_KEY, customNets().concat({id:uid("net"), desk, label, host, port, why}));
+    renderCustomNets(); renderCmds(); setHops(); toast("Saved host");
+    return;
+  }
+  const deln=e.target.closest("[data-del-net]");
+  if(deln){
+    saveJson(CUSTOM_NET_KEY, customNets().filter(x=>x.id!==deln.getAttribute("data-del-net")));
+    renderCustomNets(); renderCmds(); setHops(); return;
+  }
+  const copyn=e.target.closest("[data-copy-net]");
+  if(copyn){
+    const rec=customNets().find(x=>x.id===copyn.getAttribute("data-copy-net"));
+    if(rec){ navigator.clipboard.writeText(endpointCmd(rec)); toast("Copied"); }
+    return;
+  }
+  const delc=e.target.closest("[data-del-cmd]");
+  if(delc){
+    saveJson(CUSTOM_CMD_KEY, customCmds().filter(x=>x.id!==delc.getAttribute("data-del-cmd")));
+    renderCmds();
+  }
+});
 let ipProfiles=[];
 function ipLine(p){
   if(!p) return "";
