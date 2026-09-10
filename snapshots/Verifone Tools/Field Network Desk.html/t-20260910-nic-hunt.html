@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Field Network Desk · FAFO</title>
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.4.00">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.3.00">
 <style>
 :root {
   --bg:#03060a; --panel:#0a1018; --panel2:#0e1620;
@@ -67,7 +67,6 @@ textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monos
   </div>
   <nav class="nav-links">
     <a href="../Toolbox Launcher.html">Launcher</a>
-    <a href="../System Tools/IP Profile Switcher.html">IP setups</a>
     <a href="C-Site Management Diagnostic.html">C-Site</a>
     <a href="Commander Status HUD.html">Status HUD</a>
     <a href="Phone Assist Navigator.html">Phone Assist</a>
@@ -80,15 +79,6 @@ textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monos
       <div class="ph">Identify this laptop</div>
       <div class="pb">
         <p class="muted">S1 reads the default gateway and ARP. You can also paste ipconfig /all. Identify colors hops live (green/black pass, amber/black warn, red/black fail) and opens the matching desks.</p>
-        <label class="fld">Saved NIC setup</label>
-        <select id="ipProf"><option value="">Loading setups…</option></select>
-        <p class="muted" id="ipProfMeta" style="margin-top:4px">Pick a setup, press OK. Hunt applies each and pings its probe until one answers (~0.4s).</p>
-        <div class="btn-row">
-          <button class="btn primary" type="button" id="btnIpOk">OK — apply</button>
-          <button class="btn" type="button" id="btnIpHunt">Hunt</button>
-          <a class="btn" href="../System Tools/IP Profile Switcher.html" style="text-decoration:none">Edit setups</a>
-        </div>
-        <div id="huntLog" class="muted" style="margin-top:8px"></div>
         <label class="fld">Paste ipconfig /all (optional)</label>
         <textarea id="blob" placeholder="Windows ipconfig /all"></textarea>
         <div class="btn-row">
@@ -152,8 +142,8 @@ textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monos
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="../shared/aitoolbox-config.js?v=3.4.00"></script>
-<script src="../shared/aitoolbox-api.js?v=3.4.00"></script>
+<script src="../shared/aitoolbox-config.js?v=3.3.00"></script>
+<script src="../shared/aitoolbox-api.js?v=3.3.00"></script>
 <script>
 const CMDS = [
   {t:"Who am I", c:"ipconfig /all"},
@@ -375,73 +365,9 @@ document.querySelectorAll("#deskTabs button").forEach(btn=>{
 $("btnId").onclick=identify;
 $("btnOpen").onclick=openDesks;
 $("btnCmd").onclick=launchCmd;
-let ipProfiles=[];
-function ipLine(p){
-  if(!p) return "";
-  if(p.mode==="dhcp") return "DHCP · probe "+(p.probe||p.gateway||"gw");
-  return (p.ip||"—")+" · gw "+(p.gateway||"—");
-}
-function fillIpSelect(){
-  const sel=$("ipProf");
-  if(!sel) return;
-  if(!ipProfiles.length){
-    sel.innerHTML='<option value="">No saved setups — Edit setups</option>';
-    return;
-  }
-  sel.innerHTML=ipProfiles.map(p=>'<option value="'+p.id+'">'+p.name+' — '+ipLine(p)+"</option>").join("");
-  const want=ipProfiles.find(p=>/commander|pos/i.test(p.name||""))||ipProfiles[0];
-  if(want) sel.value=want.id;
-  const cur=ipProfiles.find(p=>p.id===sel.value);
-  if(cur) $("ipProfMeta").textContent=ipLine(cur)+" · "+(cur.notes||"OK applies this NIC. Hunt cycles probes.");
-}
-async function loadIpProfiles(){
-  try{
-    const j=await api("/ip/profiles");
-    ipProfiles=Array.isArray(j.profiles)?j.profiles:[];
-  }catch(e){ ipProfiles=[]; }
-  fillIpSelect();
-}
-$("ipProf").onchange=function(){
-  const p=ipProfiles.find(x=>x.id===$("ipProf").value);
-  if(p) $("ipProfMeta").textContent=ipLine(p)+" · "+(p.notes||"");
-};
-$("btnIpOk").onclick=async function(){
-  const p=ipProfiles.find(x=>x.id===$("ipProf").value);
-  if(!p){ toast("Pick a saved setup"); return; }
-  const online=await pingServer();
-  if(!online){ toast("S1 offline — start the toolbox server as Administrator"); return; }
-  try{
-    await api("/ip/apply",{method:"POST",body:JSON.stringify({profile_id:p.id,profile:p})});
-    toast("Applied "+p.name);
-    if(p.gateway) $("blob").value="Default Gateway . . . . . . . . . : "+p.gateway+(p.ip?"\nIPv4 Address. . . . . . . . . . . : "+p.ip:"");
-    identify();
-  }catch(e){ toast(String(e.message||e)); }
-};
-$("btnIpHunt").onclick=async function(){
-  const online=await pingServer();
-  if(!online){ toast("S1 offline — Hunt needs the toolbox server as Administrator"); return; }
-  $("huntLog").textContent="Hunting…";
-  const ids=ipProfiles.filter(p=>p.hunt!==false).map(p=>p.id);
-  try{
-    const j=await api("/ip/hunt",{method:"POST",body:JSON.stringify({profile_ids:ids,timeout_ms:400,settle_ms:350})});
-    const rows=(j.attempts||[]).map(a=>(a.ok?"✓ ":"✗ ")+a.name+" · "+(a.detail||""));
-    $("huntLog").innerHTML=rows.join("<br>")||"";
-    if(j.hit&&j.hit.id){
-      $("ipProf").value=j.hit.id;
-      toast("Hit "+j.hit.name);
-      const gw=j.hit.gateway||"";
-      const ip=j.hit.ipv4||"";
-      if(gw||ip) $("blob").value="Default Gateway . . . . . . . . . : "+gw+"\nIPv4 Address. . . . . . . . . . . : "+ip;
-      identify();
-    }else{
-      toast(j.message||"No probe answered");
-    }
-  }catch(e){ $("huntLog").textContent=""; toast(String(e.message||e)); }
-};
 renderPlaybooks();
 setHops();
 pingServer();
-loadIpProfiles();
 </script>
 </body>
 </html>

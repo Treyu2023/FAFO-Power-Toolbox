@@ -7,6 +7,7 @@ import json
 import platform
 import re
 import subprocess
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any
 import psutil
 
 IS_WINDOWS = platform.system() == "Windows"
+ACTIVE_TOKEN = "__ACTIVE_ADAPTER__"
 # Portable with the toolbox: <toolbox root>/data/ip_profiles.json
 # (copy whole Toolbox folder to another PC and keep your IP setups)
 TOOLBOX_ROOT = Path(__file__).resolve().parent.parent
@@ -315,6 +317,9 @@ def save_profile(profile: dict[str, Any]) -> dict[str, Any]:
         "netmask": mask if mode == "static" else "",
         "gateway": gateway,
         "dns": dns,
+        "probe": (profile.get("probe") or gateway or "").strip() if isinstance(gateway, str) else (profile.get("probe") or ""),
+        "hunt": bool(profile.get("hunt", True)),
+        "useActiveOnApply": bool(profile.get("useActiveOnApply") or adapter == "__ACTIVE_ADAPTER__"),
         "notes": (profile.get("notes") or "").strip(),
         "updated_at": now,
         "created_at": existing.get("created_at") if existing else now,
@@ -383,6 +388,8 @@ def apply_profile(profile_id: str | None = None, profile: dict[str, Any] | None 
 
     adapter = (profile.get("adapter") or "").strip()
     mode = (profile.get("mode") or "static").strip().lower()
+    if profile.get("useActiveOnApply") or adapter in ("", ACTIVE_TOKEN, "__ACTIVE_ADAPTER__"):
+        adapter = pick_active_adapter(True)
     if not adapter:
         raise ValueError("Adapter name required")
 
@@ -494,4 +501,145 @@ def apply_profile(profile_id: str | None = None, profile: dict[str, Any] | None 
                 else "One or more netsh steps failed"
             )
         ),
+    }
+
+
+def pick_active_adapter(prefer_ethernet: bool = True) -> str:
+    ads = list_adapters()
+    up = [a for a in ads if a.get("is_up")]
+    pool = up or ads
+    if prefer_ethernet:
+        eth = [
+            a
+            for a in pool
+            if re.search(r"ether|eth|cable|local area|nic|lan", a.get("name") or "", re.I)
+            and not re.search(r"wi-?fi|wireless|bluetooth|virtual|vmware|hyper-v|loop|vpn|tunnel", a.get("name") or "", re.I)
+        ]
+        if eth:
+            return str(eth[0]["name"])
+    if pool:
+        return str(pool[0]["name"])
+    raise ValueError("No network adapter found")
+
+
+def resolve_adapter(profile: dict[str, Any]) -> str:
+    adapter = (profile.get("adapter") or "").strip()
+    if profile.get("useActiveOnApply") or adapter in ("", ACTIVE_TOKEN):
+        return pick_active_adapter(True)
+    return adapter
+
+
+def probe_of(profile: dict[str, Any]) -> str:
+    return str(profile.get("probe") or profile.get("gateway") or "").strip()
+
+
+def ping_probe(host: str, timeout_ms: int = 400) -> dict[str, Any]:
+    host = (host or "").strip()
+    if not host:
+        return {"ok": False, "host": host, "detail": "no probe", "ms": 0}
+    timeout_ms = max(200, min(int(timeout_ms), 2000))
+    t0 = time.time()
+    if IS_WINDOWS:
+        cmd = ["ping", "-n", "1", "-w", str(timeout_ms), host]
+    else:
+        sec = max(1, timeout_ms // 1000)
+        cmd = ["ping", "-c", "1", "-W", str(sec), host]
+    r = _run(cmd, timeout=timeout_ms / 1000 + 1.5)
+    ms = int((time.time() - t0) * 1000)
+    blob = (r.get("stdout") or "") + "\n" + (r.get("stderr") or "")
+    ok = bool(r.get("ok")) and bool(re.search(r"TTL=|ttl=", blob))
+    if not ok and re.search(r"time[=<]\s*\d", blob, re.I):
+        ok = True
+    detail = "reply" if ok else "no reply"
+    m = re.search(r"time[=<](\d+)\s*ms", blob, re.I)
+    if m:
+        detail = f"reply {m.group(1)}ms"
+        try:
+            ms = int(m.group(1))
+        except ValueError:
+            pass
+    return {"ok": ok, "host": host, "detail": f"{detail} {host}", "ms": ms, "stdout": r.get("stdout")}
+
+
+def ipv4_after(adapter: str) -> tuple[str, str]:
+    try:
+        d = get_adapter_detail(adapter)
+    except Exception:
+        return "", ""
+    ip = ""
+    ipv4 = d.get("ipv4") or []
+    if ipv4:
+        ip = str(ipv4[0].get("address") or "")
+    return ip, str(d.get("gateway") or "")
+
+
+def hunt(
+    profile_ids: list[str] | None = None,
+    timeout_ms: int = 400,
+    settle_ms: int = 350,
+) -> dict[str, Any]:
+    """Apply each hunt-enabled profile and ping its probe until one answers."""
+    store = _load_store()
+    all_p = list(store.get("profiles") or [])
+    if profile_ids:
+        want = set(profile_ids)
+        ordered = [p for p in all_p if p.get("id") in want]
+        # keep requested order
+        ordered.sort(key=lambda p: profile_ids.index(p.get("id")) if p.get("id") in want else 99)
+    else:
+        ordered = [p for p in all_p if p.get("hunt", True)]
+    if not ordered:
+        return {"ok": False, "hit": None, "attempts": [], "message": "No hunt-enabled setups"}
+
+    attempts: list[dict[str, Any]] = []
+    for p in ordered:
+        probe = probe_of(p)
+        name = p.get("name") or p.get("id")
+        pid = p.get("id")
+        try:
+            adapter = resolve_adapter(p)
+            payload = dict(p)
+            payload["adapter"] = adapter
+            payload["useActiveOnApply"] = False
+            applied = apply_profile(profile=payload)
+            settle = 900 if (p.get("mode") == "dhcp") else max(200, int(settle_ms))
+            time.sleep(settle / 1000)
+            ping = ping_probe(probe, timeout_ms=timeout_ms)
+            ipv4, gw = ipv4_after(adapter)
+            row = {
+                "id": pid,
+                "name": name,
+                "probe": probe,
+                "adapter": adapter,
+                "ok": bool(ping.get("ok")),
+                "detail": ping.get("detail"),
+                "ms": ping.get("ms"),
+                "apply_ok": bool(applied.get("ok")),
+                "ipv4": ipv4,
+                "gateway": gw or p.get("gateway") or "",
+            }
+            attempts.append(row)
+            if ping.get("ok"):
+                return {
+                    "ok": True,
+                    "hit": row,
+                    "attempts": attempts,
+                    "message": f"Hit {name} — {probe} answered",
+                }
+        except Exception as e:
+            attempts.append(
+                {
+                    "id": pid,
+                    "name": name,
+                    "probe": probe,
+                    "ok": False,
+                    "detail": str(e),
+                    "ms": 0,
+                }
+            )
+    return {
+        "ok": False,
+        "hit": None,
+        "attempts": attempts,
+        "message": "No probe answered. Plug the cable and Hunt again.",
     }

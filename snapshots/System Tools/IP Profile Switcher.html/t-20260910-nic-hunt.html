@@ -159,9 +159,8 @@ fieldset.box legend {
 <div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-tools-ip-profile-switcher" data-fafo-layout-type="rows">
   <h1>IP Profile Switcher</h1>
   <p class="sub">
-    Save multiple network setups and switch with one click — no Control Panel.
-    <strong>OK</strong> applies the selected setup. <strong>Hunt</strong> applies each hunt-enabled setup and pings its probe (~0.4s) until a device answers.
-    Profiles live in this browser and in <code>data/ip_profiles.json</code>.
+    Save multiple network setups and switch with one click.
+    Adapters load from the toolbox server. Profiles are stored in this browser <strong>and</strong> on the server when available.
   </p>
 
   <div id="adminWarn" class="banner">
@@ -170,22 +169,6 @@ fieldset.box legend {
   </div>
   <div id="statusBanner" class="banner"></div>
   <div class="pb" style="padding:0 0 14px" id="statusBar"></div>
-
-  <div class="panel" style="margin-bottom:16px">
-    <div class="ph">Quick switch — dropdown then OK</div>
-    <div class="pb">
-      <p class="sub" style="margin-bottom:10px">Does not open another window. Select a setup, press OK. Hunt walks Commander → FPIV → FortiGate → ISP until a probe replies.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
-        <label class="field" for="quickProf" style="flex:1;min-width:220px;margin:0">
-          Saved setup
-          <select class="sel" id="quickProf" style="margin:4px 0 0"></select>
-        </label>
-        <button type="button" class="btn primary" id="btnQuickOk">OK — apply</button>
-        <button type="button" class="btn ok" id="btnHunt">Hunt until a probe answers</button>
-      </div>
-      <div id="huntLog" style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.45"></div>
-    </div>
-  </div>
 
   <div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
     <div class="ph">Saved setups — one-click apply</div>
@@ -275,12 +258,6 @@ fieldset.box legend {
             </div>
             <label class="field" for="profDns">DNS (comma-separated)</label>
             <input class="inp mono" id="profDns" data-tip-title="DNS" data-tip="DNS servers (comma or space separated)." placeholder="1.1.1.1, 8.8.8.8" autocomplete="off">
-            <label class="field" for="profProbe">Hunt probe (ping this to know you are on this LAN)</label>
-            <input class="inp mono" id="profProbe" placeholder="192.168.31.11  ·  Commander / FortiGate / modem">
-            <label class="field" style="display:flex;gap:8px;align-items:flex-start;text-transform:none;letter-spacing:0">
-              <input type="checkbox" id="profHunt" checked style="margin-top:2px">
-              <span>Include in Hunt — cycle this setup when hunting</span>
-            </label>
           </fieldset>
 
           <div class="row2">
@@ -733,10 +710,8 @@ function formFromProfile(p) {
   setVal('profMask', p.netmask || prefixToMask(p.prefix || 24));
   setVal('profGw', p.gateway || '');
   setVal('profDns', Array.isArray(p.dns) ? p.dns.join(', ') : (p.dns || ''));
-  setVal('profProbe', p.probe || p.gateway || '');
   setVal('profColor', p.color || '#00f3ff');
   setVal('profNotes', p.notes || '');
-  setChk('profHunt', p.hunt !== false);
   setChk('profUseActiveOnApply', !!(p.useActiveOnApply || p.adapter === ACTIVE_TOKEN));
 
   const name = (p.adapter === ACTIVE_TOKEN ? '' : p.adapter) || '';
@@ -783,8 +758,6 @@ function readForm() {
     netmask: mask,
     gateway: v('profGw').trim(),
     dns,
-    probe: v('profProbe').trim() || v('profGw').trim(),
-    hunt: !!(el('profHunt') && el('profHunt').checked),
     color: v('profColor', '#00f3ff'),
     notes: v('profNotes').trim(),
     updated_at: new Date().toISOString(),
@@ -864,7 +837,6 @@ function downloadScript(p) {
 function renderProfiles() {
   const box = el('profiles');
   if (!box) return;
-  fillQuickSelect();
   const q = (el('profileFilter')?.value || '').trim().toLowerCase();
   let list = profiles;
   if (q) {
@@ -941,22 +913,6 @@ function renderProfiles() {
       }
     };
   });
-  fillQuickSelect();
-}
-
-function fillQuickSelect() {
-  const sel = el('quickProf');
-  if (!sel) return;
-  const keep = sel.value;
-  if (!profiles.length) {
-    sel.innerHTML = '<option value="">— save a setup first —</option>';
-    return;
-  }
-  sel.innerHTML = profiles.map(p => {
-    const line = p.mode === 'dhcp' ? ('DHCP · ' + (p.probe || p.gateway || '')) : ((p.ip || '') + ' · ' + (p.gateway || ''));
-    return `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(line)}</option>`;
-  }).join('');
-  if (keep && profiles.some(p => p.id === keep)) sel.value = keep;
 }
 
 async function applyProfile(p, btn) {
@@ -1111,8 +1067,7 @@ if (el('btnToggleAdapterType')) el('btnToggleAdapterType').onclick = () => {
 if (el('btnNew')) el('btnNew').onclick = () => {
   const setVal = (id, v) => { const n = el(id); if (n) n.value = v; };
   setVal('profId', ''); setVal('profName', ''); setVal('profIp', '');
-  setVal('profGw', ''); setVal('profDns', ''); setVal('profNotes', ''); setVal('profProbe', '');
-  if (el('profHunt')) el('profHunt').checked = true;
+  setVal('profGw', ''); setVal('profDns', ''); setVal('profNotes', '');
   setVal('profPrefix', 24); setVal('profMask', '255.255.255.0'); setVal('profMode', 'static');
   toggleStatic();
 };
@@ -1145,43 +1100,6 @@ if (el('btnApplyForm')) el('btnApplyForm').onclick = async () => withBusy(async 
   renderProfiles();
   await applyProfile(body, el('btnApplyForm'));
 }, 'btnApplyForm');
-if (el('btnQuickOk')) el('btnQuickOk').onclick = async () => withBusy(async () => {
-  const id = el('quickProf')?.value;
-  const p = profiles.find(x => x.id === id);
-  if (!p) { toast('Pick a saved setup', false); return; }
-  await applyProfile(p, el('btnQuickOk'));
-}, 'btnQuickOk');
-if (el('btnHunt')) el('btnHunt').onclick = async () => withBusy(async () => {
-  const log = el('huntLog');
-  if (log) log.textContent = 'Hunting — apply + ping each probe…';
-  if (!ipApiOnline) {
-    if (log) log.textContent = 'S1 IP API offline. Start the toolbox server as Administrator.';
-    toast('Hunt needs the toolbox server as Administrator', false);
-    return;
-  }
-  const ids = profiles.filter(p => p.hunt !== false).map(p => p.id);
-  try {
-    const j = await api('/ip/hunt', {
-      method: 'POST',
-      body: JSON.stringify({ profile_ids: ids, timeout_ms: 400, settle_ms: 350 }),
-    });
-    const rows = (j.attempts || []).map(a => (a.ok ? '✓ ' : '✗ ') + (a.name || '') + ' — ' + (a.detail || ''));
-    if (log) log.innerHTML = rows.join('<br>') || (j.message || '');
-    if (j.hit && j.hit.id) {
-      if (el('quickProf')) el('quickProf').value = j.hit.id;
-      toast('Hit ' + j.hit.name, true);
-      showBanner('Hit <strong>' + esc(j.hit.name) + '</strong> — probe ' + esc(j.hit.probe || '') + ' answered.', 'ok');
-      userPickedAdapter = false;
-      await loadAdapters();
-    } else {
-      toast(j.message || 'No probe answered', false);
-      showBanner(j.message || 'No probe answered. Plug the cable and Hunt again.', 'err');
-    }
-  } catch (e) {
-    if (log) log.textContent = e.message || String(e);
-    toast(e.message || 'Hunt failed', false);
-  }
-}, 'btnHunt');
 if (el('btnDownloadForm')) el('btnDownloadForm').onclick = () => {
   const body = readForm();
   const err = validateProfile(body);

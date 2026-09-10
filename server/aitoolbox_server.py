@@ -5542,6 +5542,9 @@ class IpProfileBody(BaseModel):
     gateway: str | None = None
     dns: list[str] | str | None = None
     notes: str | None = None
+    probe: str | None = None
+    hunt: bool | None = None
+    useActiveOnApply: bool | None = None
 
 
 class IpCaptureBody(BaseModel):
@@ -5553,6 +5556,12 @@ class IpCaptureBody(BaseModel):
 class IpApplyBody(BaseModel):
     profile_id: str | None = None
     profile: dict | None = None
+
+
+class IpHuntBody(BaseModel):
+    profile_ids: list[str] | None = None
+    timeout_ms: int = 400
+    settle_ms: int = 350
 
 
 @app.get("/api/ip/adapters")
@@ -5622,6 +5631,22 @@ def api_ip_apply(body: IpApplyBody):
         return result
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(501, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/ip/hunt")
+def api_ip_hunt(body: IpHuntBody):
+    try:
+        return ip_profiles.hunt(
+            profile_ids=body.profile_ids,
+            timeout_ms=body.timeout_ms,
+            settle_ms=body.settle_ms,
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     except RuntimeError as e:
