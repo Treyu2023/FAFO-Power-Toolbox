@@ -1,6 +1,6 @@
 /** Keep in sync with /VERSION */
 (function (g) {
-  var V = '3.1.00';
+  var V = '3.2.00';
   g.AITOOLBOX_VERSION = V;
   g.AIToolboxCacheBust = function (url) {
     if (!url) return url;

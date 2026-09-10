@@ -53,6 +53,7 @@
 | **Commander Site Console** | Backups, Liferaft, PLU, IE, tech desk, SITE-INFO |
 | **Phone Assist Navigator** | Talking a cashier/manager through CSR / TLS / SSH menus |
 | **Commander Status HUD** | Live ping / ports / credential probe |
+| **C-Site Management Diagnostic** | C-Site vs cards vs store LAN: host vs network, path map, watch ports |
 | **Pre-Reload Punch List** | CITGO-style reload checklist |
 
 ### 1.3 First-time checklist (new laptop)
@@ -433,6 +434,17 @@ Live probe tool:
 
 Use when validating reachability before Journal or IE.
 
+### C-Site Management Diagnostic
+
+**Path:** `Verifone Tools\C-Site Management Diagnostic.html`  
+**Launcher:** Verifone & Field → C-Site Diagnostic. Also linked from HUD, Phone Assist, and Site Console.
+
+C-Site / Commander Central is **not** the card path. Three pipes: pumps stay on store LAN (no MNSP), cards go MNSP outbound to the processor, C-Site is a second MNSP outbound (MQTT 443 heartbeat).
+
+On **LAN Configuration**, Host route = one IP, mask `255.255.255.255`, gateway `192.168.31.31`. Network route = a block (`255.255.255.0`) and will miss C-Site AWS hosts. Default route (`0.0.0.0`) is whichever NIC is Default.
+
+**Watch ports while testing a card:** penny = processor 443. Idle 30–60s = MQTT 443 (`184.73.231.196`, `3.212.149.223`, `52.6.28.56`). One can pass while the other fails.
+
 ---
 
 ## 16. Security & secrets
@@ -458,7 +470,7 @@ Use when validating reachability before Journal or IE.
 | SSH fails | Help Desk login + token · LAN cable · fleet maint password rotated? |
 | PLU Apply but no live change | Apply is local backup only — IE Import to Commander |
 | TLS line still down after PASS | Other alarms (FUEL OUT, sensor, etc.) · don’t spam tests |
-| Password dashboard empty | Need Liferaft profiles with letter-cycle data |
+| C-Site portal Offline, cards work | Open C-Site Diagnostic. Watch MQTT 443 idle. Host route ≠ network route. Do not copy payment hosts. |
 
 ---
 
@@ -478,7 +490,7 @@ Base: `http://127.0.0.87:18765/api`
 | POST | `/verifone/ssh/confirm-manager-password` | Final A+base in Liferaft |
 | GET | `/verifone/fleet-tech-defaults` | Local fleet SSH defaults |
 | GET | `/verifone/docs/user-guide` | This manual as Markdown |
-| GET | `/toolbox/docs/Commander-FAFO-User-Guide.md` | Static file serve |
+| GET | `/network/connections` | Live TCP table (C-Site watch ports) |
 
 PLU / backup / journal / IE endpoints are under `/verifone/backup/*`, `/verifone/journal/*`, `/verifone/sms-ie/*`, `/verifone/live/*`.
 
@@ -495,6 +507,8 @@ AI HTML TOOLBOX/
     Phone Assist Navigator.html
     phone-assist-tls-trees.js
     Commander Status HUD.html
+    C-Site Management Diagnostic.html
+    C-Site-Management-Diagnostic.md
     Pre-Reload Punch List.html
   server/
     tech_ops.py                      ← dashboard, playbook, preflight, field pack
