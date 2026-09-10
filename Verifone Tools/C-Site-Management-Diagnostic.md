@@ -48,4 +48,4 @@ Read the **Subnet** column out loud. `255.255.255.255` = Host. Anything else is 
    - Idle 30–60s, no card: you should see ESTABLISHED 443 to MQTT (`184.73.231.196`, `3.212.149.223`, `52.6.28.56`). That is stay-online.
 6. **Live TCP probes** from this laptop to VAM / VIC / GSC / MQTT `:443` and DNS for `us.live.verifone.cloud`. Laptop must be on the store LAN (or the same MNSP path). ICMP may lie; 443 is the test that matters.
 
-Gateway for typed host routes: `192.168.31.31` / `255.255.255.255`.
+Gateway for typed host routes: `192.168.31.31` / `255.255.255.255`. Config Client only accepts **one host-route row at a time** — use **Copy next IP** / **Copy IP** on each row, plus **Copy gateway** and **Copy subnet** once. Do not paste the whole table.

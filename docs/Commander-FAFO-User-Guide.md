@@ -441,7 +441,7 @@ Use when validating reachability before Journal or IE.
 
 C-Site / Commander Central is **not** the card path. Three pipes: pumps stay on store LAN (no MNSP), cards go MNSP outbound to the processor, C-Site is a second MNSP outbound (MQTT 443 heartbeat).
 
-On **LAN Configuration**, Host route = one IP, mask `255.255.255.255`, gateway `192.168.31.31`. Network route = a block (`255.255.255.0`) and will miss C-Site AWS hosts. Default route (`0.0.0.0`) is whichever NIC is Default.
+On **LAN Configuration**, Host route = one IP, mask `255.255.255.255`, gateway `192.168.31.31`. Network route = a block (`255.255.255.0`) and will miss C-Site AWS hosts. Default route (`0.0.0.0`) is whichever NIC is Default. Config Client only takes **one host-route row at a time** — use **Copy next IP** / per-row **Copy IP**, plus **Copy gateway** and **Copy subnet** once. Do not paste a whole table.
 
 **Watch ports while testing a card:** penny = processor 443. Idle 30–60s = MQTT 443 (`184.73.231.196`, `3.212.149.223`, `52.6.28.56`). One can pass while the other fails.
 

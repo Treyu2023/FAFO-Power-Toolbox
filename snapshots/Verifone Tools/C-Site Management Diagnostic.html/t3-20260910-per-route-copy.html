@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>C-Site Management Diagnostic · FAFO</title>
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.3.01">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.3.00">
 <style>
 :root {
   --bg:#03060a; --panel:#0a1018; --panel2:#0e1620;
@@ -39,10 +39,7 @@ input,select,textarea{width:100%;background:#070c12;border:1px solid var(--line)
 textarea{min-height:64px;resize:vertical}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row>*{flex:1;min-width:110px}
-.btn.sm{padding:4px 8px;font-size:10px;letter-spacing:.03em;text-transform:none}
-tr.done td:first-child{color:var(--good)}
-tr.next{background:rgba(56,189,248,.08)}
-.chip-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.btn{border:1px solid var(--accent);background:transparent;color:var(--accent);padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
 .btn:hover{background:var(--accent);color:#041018}
 .btn.primary{background:rgba(56,189,248,.14)}
 .btn.amber{border-color:var(--accent2);color:var(--accent2)}
@@ -197,7 +194,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
               <button class="btn primary" id="btnRun" type="button">Run diagnostic</button>
               <button class="btn amber" id="btnSweep2" type="button">Sweep + color</button>
               <button class="btn amber" id="btnProbe" type="button">Live TCP probes</button>
-              <button class="btn" id="btnCopy" type="button">Copy next IP</button>
+              <button class="btn" id="btnCopy" type="button">Copy routes</button>
               <button class="btn" id="btnExport" type="button">Export MD</button>
               <button class="btn" id="btnClear" type="button">Clear</button>
             </div>
@@ -216,8 +213,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
                 <p>The internet starts a connection to the store. Rare for C-Site. Pumps are not inbound from the internet — they live on the store LAN.</p>
               </div>
             </div>
-            <p class="callout">Config Client Host Routes only takes one row at a time (Description, IP, Gateway, Subnet — Save — Add). Copy gateway and subnet once, then Copy IP for each host. Do not paste a whole table.</p>
-            <div class="chip-row" id="routeCopyBar"></div>
             <div style="overflow-x:auto;margin-top:12px">
               <table id="routeTable"></table>
             </div>
@@ -273,22 +268,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="../shared/aitoolbox-config.js?v=3.3.01"></script>
-<script src="../shared/aitoolbox-api.js?v=3.3.01"></script>
+<script src="../shared/aitoolbox-config.js?v=3.3.00"></script>
+<script src="../shared/aitoolbox-api.js?v=3.3.00"></script>
 <script>
 const LS_KEY = "fafo-csite-diag";
 const HOSTS = [
-  {id:"vam1", name:"C-Site VAM 1", ip:"23.23.135.174", port:443, kind:"VAM", why:"Cloud agent / onboarding"},
-  {id:"vam2", name:"C-Site VAM 2", ip:"18.213.229.217", port:443, kind:"VAM", why:"Cloud agent / onboarding"},
-  {id:"vic1", name:"C-Site VIC 1", ip:"34.117.16.222", port:443, kind:"VIC", why:"Commander Central / VIC"},
-  {id:"gsc1", name:"C-Site GSC 1", ip:"184.72.129.214", port:443, kind:"GSC", why:"Site config / GSC"},
-  {id:"gsc2", name:"C-Site GSC 2", ip:"54.221.203.197", port:443, kind:"GSC", why:"Site config / GSC"},
-  {id:"gsc3", name:"C-Site GSC 3", ip:"52.72.155.235", port:443, kind:"GSC", why:"Site config / GSC"},
-  {id:"mqtt1", name:"C-Site MQTT 1", ip:"184.73.231.196", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
-  {id:"mqtt2", name:"C-Site MQTT 2", ip:"3.212.149.223", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
-  {id:"mqtt3", name:"C-Site MQTT 3", ip:"52.6.28.56", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
-  {id:"dns1", name:"DNS 1", ip:"8.8.8.8", port:53, kind:"DNS", why:"Resolve C-Site URLs"},
-  {id:"dns2", name:"DNS 2", ip:"8.8.4.4", port:53, kind:"DNS", why:"Resolve C-Site URLs"}
+  {name:"C-Site VAM 1", ip:"23.23.135.174", port:443, kind:"VAM", why:"Cloud agent / onboarding"},
+  {name:"C-Site VAM 2", ip:"18.213.229.217", port:443, kind:"VAM", why:"Cloud agent / onboarding"},
+  {name:"C-Site VIC 1", ip:"34.117.16.222", port:443, kind:"VIC", why:"Commander Central / VIC"},
+  {name:"C-Site GSC 1", ip:"184.72.129.214", port:443, kind:"GSC", why:"Site config / GSC"},
+  {name:"C-Site GSC 2", ip:"54.221.203.197", port:443, kind:"GSC", why:"Site config / GSC"},
+  {name:"C-Site GSC 3", ip:"52.72.155.235", port:443, kind:"GSC", why:"Site config / GSC"},
+  {name:"C-Site MQTT 1", ip:"184.73.231.196", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
+  {name:"C-Site MQTT 2", ip:"3.212.149.223", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
+  {name:"C-Site MQTT 3", ip:"52.6.28.56", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
+  {name:"DNS 1", ip:"8.8.8.8", port:53, kind:"DNS", why:"Resolve C-Site URLs"},
+  {name:"DNS 2", ip:"8.8.4.4", port:53, kind:"DNS", why:"Resolve C-Site URLs"}
 ];
 const MQTT = HOSTS.filter(h=>h.kind==="MQTT").map(h=>h.ip);
 const DNS = HOSTS.filter(h=>h.kind==="DNS").map(h=>h.ip);
@@ -399,7 +394,7 @@ function run(i){
 
   if(b.add) checks.push(chk("routes",i.routesMatchSister==="yes"?"warn":"fail","Host routes required","config-client",
     i.routesMatchSister==="yes"?"Sister-site routes can still be the payment table. C-Site needs VAM/VIC/GSC/MQTT host rows, not Buypass hosts.":"This brand needs the C-Site VAM/VIC/GSC/MQTT table — not a copy of payment hosts.",
-    b.lan,"Initial Setup → LAN Configuration → Host Routes. Add one row at a time. Copy IP for each host — Config Client will not take a pasted table. Do not paste a BP/Sunoco leave-blank playbook onto Exxon.","",
+    b.lan,"Initial Setup → LAN Configuration → Host Routes. Use Copy routes. Do not paste a BP/Sunoco leave-blank playbook onto Exxon.","",
     ["Add routes from the table. Gateway 192.168.31.31 / 255.255.255.255."]));
   else if(b.mnsp) checks.push(chk("routes","info","MNSP injects routes","mnsp","Do not hand-type C-Site routes for this brand.","BP / Sunoco / Chevron (after Payment NIC is default) get C-Site routes from the MNSP profile. Hand-typing an Exxon table here fights that profile.","If you see a full VAM/MQTT table that you typed, remove it and let MNSP inject. DNS still stays enabled.","Please confirm this store’s MNSP profile includes C-Site / Commander Central.",["If you copied Exxon/Buypass routes, remove them and let MNSP inject."]));
 
@@ -528,58 +523,10 @@ function renderLan(i){
     const on=i.routeKind===k.id;
     return '<div class="card" style="'+(on?"border-color:var(--accent)":"")+'"><h4>'+esc(k.title)+'</h4><p class="ex">'+esc(k.ex)+" / "+esc(k.mask)+'</p><p>'+esc(k.meaning)+'</p><p style="margin-top:6px">'+esc(k.inClient)+'</p></div>';
   }).join("");
-  $("brandLan").innerHTML='<h4>This brand on LAN Config</h4><p>'+esc(b.lan)+'</p><ul>'+b.notes.map(n=>"<li>"+esc(n)+"</li>").join("")+'</ul><p class="ex">C-Site host route: gateway 192.168.31.31 · subnet 255.255.255.255</p><p class="hint">Copy gateway and subnet once, then Copy IP for each row. Config Client does not accept a pasted table.</p>';
+  $("brandLan").innerHTML='<h4>This brand on LAN Config</h4><p>'+esc(b.lan)+'</p><ul>'+b.notes.map(n=>"<li>"+esc(n)+"</li>").join("")+'</ul><p class="ex">C-Site host route: gateway 192.168.31.31 · subnet 255.255.255.255</p>';
 }
 function routesTSV(){
   return ["Host Route\tIP Address\tGateway\tSubnet"].concat(HOSTS.map(h=>h.name+"\t"+h.ip+"\t192.168.31.31\t255.255.255.255")).join("\n");
-}
-const GW="192.168.31.31";
-const SN="255.255.255.255";
-let copiedHostIds={};
-function nextHost(){
-  return HOSTS.find(h=>!copiedHostIds[h.id])||null;
-}
-function copyText(text, msg){
-  navigator.clipboard.writeText(text).then(function(){ toast(msg||("Copied "+text)); }).catch(function(){ toast("Copy failed"); });
-}
-function markIpCopied(id){
-  copiedHostIds[id]=true;
-  paintRouteTable();
-}
-function copyHostIp(id){
-  const h=HOSTS.find(x=>x.id===id);
-  if(!h) return;
-  copyText(h.ip, "IP "+h.ip);
-  markIpCopied(id);
-}
-function copyNextIp(){
-  showTab("lan");
-  const n=nextHost();
-  if(!n){ toast("All IPs copied — add each as its own Host Route row"); return; }
-  copyHostIp(n.id);
-}
-function paintRouteTable(){
-  const n=nextHost();
-  const doneCount=HOSTS.filter(h=>copiedHostIds[h.id]).length;
-  $("routeCopyBar").innerHTML=
-    '<button class="btn sm" type="button" data-copy-const="gw">Copy gateway '+GW+'</button>'+
-    '<button class="btn sm" type="button" data-copy-const="sn">Copy subnet '+SN+'</button>'+
-    '<button class="btn sm primary" type="button" id="btnCopyNext">'+(n?("Copy next IP "+n.ip):"All IPs copied")+'</button>'+
-    (doneCount?'<button class="btn sm" type="button" id="btnCopyReset">Reset copied ('+doneCount+'/'+HOSTS.length+')</button>':'');
-  $("routeTable").innerHTML="<thead><tr><th>Route</th><th>IP</th><th>Port</th><th>Why</th><th>Copy</th></tr></thead><tbody>"+
-    HOSTS.map(h=>{
-      const done=!!copiedHostIds[h.id];
-      const isNext=n && n.id===h.id;
-      const mark=done?"✓ ":isNext?"→ ":"";
-      return '<tr class="'+(done?"done":isNext?"next":"")+'">'+
-        '<td><button class="btn sm" type="button" data-copy="name" data-id="'+h.id+'">'+mark+esc(h.name)+'</button></td>'+
-        '<td class="mono"><button class="btn sm" type="button" data-copy="ip" data-id="'+h.id+'">'+esc(h.ip)+'</button></td>'+
-        '<td class="mono">'+esc(h.port)+'</td>'+
-        '<td>'+esc(h.why)+'</td>'+
-        '<td><button class="btn sm primary" type="button" data-copy="ip" data-id="'+h.id+'">Copy IP</button> '+
-        '<button class="btn sm" type="button" data-copy="name" data-id="'+h.id+'">Copy name</button></td>'+
-        '</tr>';
-    }).join("")+"</tbody>";
 }
 function apiBase(){
   try{ if(window.AIToolboxAPI && AIToolboxAPI.endpoint) return String(AIToolboxAPI.endpoint).replace(/\/$/,"")+"/api"; }catch(e){}
@@ -728,6 +675,8 @@ function exportMd(r){
   a.download="csite-diag-"+(i.siteName||"site").replace(/\s+/g,"-")+".md";
   a.click();
 }
+$("routeTable").innerHTML="<thead><tr><th>Route</th><th>IP</th><th>Port</th><th>Why</th></tr></thead><tbody>"+
+  HOSTS.map(h=>'<tr><td>'+esc(h.name)+'</td><td class="mono">'+esc(h.ip)+'</td><td class="mono">'+esc(h.port)+'</td><td>'+esc(h.why)+'</td></tr>').join("")+"</tbody>";
 $("scripts").innerHTML=SCRIPTS.map(s=>'<div class="card" style="margin-bottom:8px"><h4>'+esc(s.title)+'</h4><p><b>Say:</b> '+esc(s.say)+'</p><p style="margin-top:4px"><b>Watch:</b> '+esc(s.watch)+'</p><p style="margin-top:4px">Pass: '+esc(s.pass)+'</p><p style="margin-top:4px">Fail: '+esc(s.fail)+'</p></div>').join("");
 function showTab(id){
   ["facts","lan","watch"].forEach(t=>{
@@ -764,25 +713,7 @@ FIELDS.forEach(id=>{
   $(id).addEventListener("change",refresh);
   $(id).addEventListener("input",refresh);
 });
-$("btnCopy").onclick=()=>copyNextIp();
-$("routeCopyBar").addEventListener("click", function(e){
-  const t=e.target.closest("[data-copy-const], #btnCopyNext, #btnCopyReset");
-  if(!t) return;
-  if(t.id==="btnCopyNext"){ copyNextIp(); return; }
-  if(t.id==="btnCopyReset"){ copiedHostIds={}; paintRouteTable(); toast("Copied marks cleared"); return; }
-  const k=t.getAttribute("data-copy-const");
-  if(k==="gw") copyText(GW, "Gateway "+GW);
-  if(k==="sn") copyText(SN, "Subnet "+SN);
-});
-$("routeTable").addEventListener("click", function(e){
-  const b=e.target.closest("[data-copy]");
-  if(!b) return;
-  const id=b.getAttribute("data-id");
-  const h=HOSTS.find(x=>x.id===id);
-  if(!h) return;
-  if(b.getAttribute("data-copy")==="ip") copyHostIp(id);
-  else copyText(h.name, "Description "+h.name);
-});
+$("btnCopy").onclick=()=>{navigator.clipboard.writeText(routesTSV());toast("Host routes copied");};
 $("btnExport").onclick=()=>exportMd(run(intake()));
 $("btnProbe").onclick=()=>liveProbes();
 $("btnProbe2").onclick=()=>liveProbes();
@@ -796,7 +727,6 @@ $("btnClear").onclick=()=>{
   refresh();
 };
 loadIntake();
-paintRouteTable();
 render(run(intake()));
 pingServer();
 </script>
