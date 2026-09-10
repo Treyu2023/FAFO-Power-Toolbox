@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C-Site Management Diagnostic · FAFO</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.1.00">
+<style>
+:root {
+  --bg:#03060a; --panel:#0a1018; --panel2:#0e1620;
+  --line:rgba(56,189,248,.2); --accent:#38bdf8; --accent2:#f59e0b;
+  --good:#34d399; --warn:#fbbf24; --bad:#f87171; --text:#e8eef4; --muted:#7b8fa6;
+  --glow:0 0 28px rgba(56,189,248,.28);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;
+  background:radial-gradient(ellipse 70% 45% at 15% -5%,rgba(14,116,144,.4),transparent 55%),linear-gradient(180deg,#050a10,var(--bg));}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(5,10,16,.9);position:sticky;top:0;z-index:30}
+.brand h1{margin:0;font-size:17px;color:var(--accent);letter-spacing:.06em;text-shadow:var(--glow)}
+.brand .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.nav-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nav-links a,.pill{color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:6px 10px;border-radius:8px}
+.pill.ok{border-color:rgba(52,211,153,.5);color:var(--good)}
+.pill.bad{border-color:rgba(248,113,113,.5);color:var(--bad)}
+.pill.warn{border-color:rgba(251,191,36,.5);color:var(--warn)}
+.wrap{max-width:1280px;margin:0 auto;padding:16px 16px 40px}
+.layout{display:grid;grid-template-columns:minmax(280px,380px) 1fr;gap:14px}
+@media(max-width:960px){.layout{grid-template-columns:1fr}}
+.panel{background:linear-gradient(165deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ph{padding:10px 14px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pb{padding:12px 14px}
+label.fld{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:8px 0 4px}
+input,select,textarea{width:100%;background:#070c12;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px}
+textarea{min-height:64px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1;min-width:110px}
+.btn{border:1px solid var(--accent);background:transparent;color:var(--accent);padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
+.btn:hover{background:var(--accent);color:#041018}
+.btn.primary{background:rgba(56,189,248,.14)}
+.btn.amber{border-color:var(--accent2);color:var(--accent2)}
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid}
+.badge.pass{color:var(--good);border-color:rgba(52,211,153,.4)}
+.badge.fail{color:var(--bad);border-color:rgba(248,113,113,.4)}
+.badge.warn{color:var(--warn);border-color:rgba(251,191,36,.4)}
+.badge.info{color:var(--muted);border-color:var(--line)}
+.check{padding:10px 0;border-bottom:1px solid var(--line)}
+.check:last-child{border-bottom:0}
+.check h3{margin:6px 0 4px;font-size:14px}
+.check p,.check li{margin:0;font-size:13px;color:var(--muted);line-height:1.45}
+.check ul{margin:6px 0 0;padding-left:16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.mono{font-family:Consolas,ui-monospace,monospace}
+.toast{position:fixed;bottom:16px;right:16px;background:#0e1620;border:1px solid var(--line);padding:10px 14px;border-radius:10px;display:none;z-index:50}
+.callout{font-size:12px;color:var(--muted);line-height:1.45;margin:0 0 8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>C-Site Management Diagnostic</h1>
+    <div class="sub">Verifone · FAFO field tool · scores why one site stays offline when routes already look right</div>
+  </div>
+  <nav class="nav-links">
+    <a href="../Toolbox Launcher.html">Launcher</a>
+    <a href="Commander Status HUD.html">Status HUD</a>
+    <a href="Commander Site Console.html">Site Console</a>
+    <span id="serverPill" class="pill">S1 …</span>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="layout">
+    <div class="stack">
+      <div class="panel">
+        <div class="ph">Site facts</div>
+        <div class="pb">
+          <p class="callout">C-Site (Commander Central) is not the card-processing path. Matching a sister store’s payment host routes will not bring MQTT / VAM online.</p>
+          <label class="fld">Site name</label>
+          <input id="siteName" placeholder="Store name">
+          <div class="row">
+            <div><label class="fld">Service ID</label><input id="serviceId" class="mono" placeholder="Help → Support"></div>
+            <div><label class="fld">Serial</label><input id="serial" class="mono"></div>
+          </div>
+          <div class="row">
+            <div><label class="fld">Software</label><input id="software" class="mono" placeholder="54.02"></div>
+            <div><label class="fld">Brand / processor</label>
+              <select id="brand">
+                <option value="bp">BP</option>
+                <option value="sunoco">Sunoco</option>
+                <option value="chevron">Chevron</option>
+                <option value="shell">Shell</option>
+                <option value="exxon">Exxon</option>
+                <option value="buypass">Generic Buypass</option>
+                <option value="other" selected>Other / unknown</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div><label class="fld">DNS enabled</label>
+              <select id="dnsEnabled"><option value="unknown">Unknown</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+            <div><label class="fld">Payment NIC default</label>
+              <select id="paymentNicDefault"><option value="unknown">Unknown</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+          </div>
+          <div class="row">
+            <div><label class="fld">Onboarded</label>
+              <select id="onboarded">
+                <option value="unknown">Unknown</option>
+                <option value="no">Not onboarded</option>
+                <option value="registration">Registration completed</option>
+                <option value="yes">Onboarded previously</option>
+              </select></div>
+            <div><label class="fld">Portal status</label>
+              <select id="portalStatus">
+                <option value="unknown">Unknown</option>
+                <option value="active">Active</option>
+                <option value="offline">Offline</option>
+                <option value="pending">Pending auth</option>
+              </select></div>
+          </div>
+          <div class="row">
+            <div><label class="fld">Payments working</label>
+              <select id="paymentsWorking"><option value="unknown">Unknown</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+            <div><label class="fld">Routes match sister site</label>
+              <select id="routesMatchSister"><option value="unknown">Unknown</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+          </div>
+          <label class="fld">MNSP</label>
+          <input id="mnsp" placeholder="Cybera, Hughes, Mako…">
+          <label class="fld">Error text</label>
+          <input id="errorText" placeholder="Communication error, Wrong serial, Not Connected…">
+          <label class="fld">Notes</label>
+          <textarea id="notes"></textarea>
+          <div class="btn-row">
+            <button class="btn primary" id="btnRun" type="button">Run diagnostic</button>
+            <button class="btn amber" id="btnProbe" type="button">Live TCP probes</button>
+            <button class="btn" id="btnCopy" type="button">Copy routes</button>
+            <button class="btn" id="btnExport" type="button">Export MD</button>
+            <button class="btn" id="btnClear" type="button">Clear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <div class="ph"><span>Verdict</span><span id="verdictPill" class="badge info">idle</span></div>
+        <div class="pb">
+          <h2 id="headline" style="margin:0 0 8px;font-size:18px">Fill the facts, then run.</h2>
+          <p id="summary" style="margin:0;color:var(--muted);font-size:13px">Host routes matching a working store is necessary, not sufficient. DNS, default NIC, Service ID mapping, leftover merchant onboard, and MNSP 443 to MQTT/VAM are the usual outliers.</p>
+          <ol id="next" style="margin:12px 0 0;padding-left:18px;font-size:13px;line-height:1.5"></ol>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span>Checks</span><span id="checkCount" class="badge info">0</span></div>
+        <div class="pb" id="checks"></div>
+      </div>
+      <div class="panel">
+        <div class="ph">Live probes (this laptop → C-Site IPs)</div>
+        <div class="pb" id="probes"><p style="margin:0;color:var(--muted);font-size:13px">Uses toolbox server on 127.0.0.87:18765. Start servers from the launcher if the pill is red. ICMP may be blocked; TCP 443 is the real test. Laptop must be on store LAN (or the same MNSP path) for the result to mean anything.</p></div>
+      </div>
+      <div class="panel">
+        <div class="ph">C-Site host routes · gw 192.168.31.31 / 255.255.255.255</div>
+        <div class="pb" style="overflow-x:auto">
+          <table id="routeTable"></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../shared/aitoolbox-config.js?v=3.1.00"></script>
+<script src="../shared/aitoolbox-api.js?v=3.1.00"></script>
+<script>
+const LS_KEY = "fafo-csite-diag";
+const HOSTS = [
+  {name:"C-Site VAM 1", ip:"23.23.135.174", port:443, kind:"VAM", why:"Cloud agent / onboarding"},
+  {name:"C-Site VAM 2", ip:"18.213.229.217", port:443, kind:"VAM", why:"Cloud agent / onboarding"},
+  {name:"C-Site VIC 1", ip:"34.117.16.222", port:443, kind:"VIC", why:"Commander Central / VIC"},
+  {name:"C-Site GSC 1", ip:"184.72.129.214", port:443, kind:"GSC", why:"Site config / GSC"},
+  {name:"C-Site GSC 2", ip:"54.221.203.197", port:443, kind:"GSC", why:"Site config / GSC"},
+  {name:"C-Site GSC 3", ip:"52.72.155.235", port:443, kind:"GSC", why:"Site config / GSC"},
+  {name:"C-Site MQTT 1", ip:"184.73.231.196", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
+  {name:"C-Site MQTT 2", ip:"3.212.149.223", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
+  {name:"C-Site MQTT 3", ip:"52.6.28.56", port:443, kind:"MQTT", why:"Heartbeat / stay-online"},
+  {name:"DNS 1", ip:"8.8.8.8", port:53, kind:"DNS", why:"Resolve C-Site URLs"},
+  {name:"DNS 2", ip:"8.8.4.4", port:53, kind:"DNS", why:"Resolve C-Site URLs"}
+];
+const RULES = {
+  bp:{add:false,nic:false,mnsp:true,notes:["MNSP injects routes. Do not hand-type C-Site table.","DNS must still be enabled."]},
+  sunoco:{add:false,nic:false,mnsp:true,notes:["MNSP injects routes.","Confirm default route after 55.02 zone upgrades."]},
+  chevron:{add:false,nic:true,mnsp:true,notes:["Payment NIC must be default route, save, reboot.","Then MNSP injects."]},
+  shell:{add:false,nic:false,mnsp:false,notes:["Payment NIC often NOT default.","Add DNS 8.8.8.8 / 8.8.4.4."]},
+  exxon:{add:true,nic:true,mnsp:false,notes:["Add full C-Site host route table + Google DNS."]},
+  buypass:{add:true,nic:true,mnsp:false,notes:["Generic Buypass: add host routes + DNS when Payment NIC is default."]},
+  other:{add:true,nic:false,mnsp:false,notes:["Enable DNS. Add host routes unless MNSP already owns the table."]}
+};
+const ERRORS = [
+  {m:"communication error",t:"Communication error",d:"Cannot reach C-Site (DNS, NIC, routes, or MNSP).",f:["Enable DNS.","Apply brand playbook — do not copy another brand.","MNSP: 443 to VAM/VIC/GSC/MQTT."]},
+  {m:"user code has expired",t:"User code expired",d:"14-minute Cloud Connect code, or missing Commander Onboarder role.",f:["Assign Onboarder role. Fresh code."]},
+  {m:"invalid credentials",t:"Invalid credentials",d:"54.02+ wants C-Site email/password, not Config Client.",f:["Use us.live.verifone.cloud login."]},
+  {m:"wrong serial",t:"Wrong serial / Service ID mapping",d:"Box serial does not match C-Site record.",f:["Help → Support vs portal. Helpdesk remap only."]},
+  {m:"already onboarded",t:"Tied to another merchant",d:"Serial still on a previous C-Site account.",f:["Original merchant deletes site, or Helpdesk unbinds."]},
+  {m:"not connected",t:"Onboarded but Not Connected",d:"Registration happened; MQTT/heartbeat lost.",f:["MNSP C-Site path, not payment host. Reseat NIC, reboot."]},
+  {m:"dns",t:"DNS",d:"Without DNS, URLs never resolve even with host routes.",f:["LAN Config: enable DNS 8.8.8.8 / 8.8.4.4."]}
+];
+const HELPDESK = "888-777-3536";
+const FIELDS = ["siteName","serviceId","serial","software","brand","dnsEnabled","paymentNicDefault","onboarded","portalStatus","paymentsWorking","routesMatchSister","mnsp","errorText","notes"];
+const $=id=>document.getElementById(id);
+function toast(msg){const t=$("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>t.style.display="none",1800)}
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/\u0026/g, "\u0026amp;")
+    .replace(/\u003c/g, "\u0026lt;")
+    .replace(/\u003e/g, "\u0026gt;")
+    .replace(/\u0022/g, "\u0026quot;")
+    .replace(/\u0027/g, "\u0026#39;");
+}
+function parseSw(raw){
+  const t=(raw||"").trim(); if(!t) return null;
+  const m=t.match(/(\d{2,3})[.\-_](\d{1,2})/);
+  if(!m) return {ok:false,label:t,code:0};
+  const code=Number(m[1])*100+Number(m[2]);
+  return {ok:code>=5335,label:m[1]+"."+m[2].padStart(2,"0"),code};
+}
+function intake(){
+  const o={};
+  FIELDS.forEach(id=>{ o[id]=$(id).value; if(typeof o[id]==="string") o[id]=o[id].trim ? (id==="errorText"||id==="notes"?$(id).value:$(id).value.trim()) : o[id]; });
+  return o;
+}
+function applyIntake(o){
+  if(!o) return;
+  FIELDS.forEach(id=>{ if(o[id]!=null && $(id)) $(id).value=o[id]; });
+}
+function saveIntake(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(intake())); }catch(e){}
+}
+function loadIntake(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    applyIntake(JSON.parse(raw));
+  }catch(e){}
+}
+function run(i){
+  const checks=[]; const sw=parseSw(i.software); const b=RULES[i.brand]||RULES.other;
+  if(sw){
+    checks.push({id:"software",sev:sw.ok?"pass":"fail",title:"Software vs 53.35+",
+      detail: sw.ok?("Release "+sw.label+" meets minimum."):("Release "+sw.label+" is too old."),
+      actions: sw.ok?(sw.code<5402?["Use Cloud Connect + user code (pre-54.02)."]:["Use Connect to C-Site Management with C-Site email/password (54.02+)."]):["Upgrade to 53.35+."]});
+  } else checks.push({id:"software",sev:"warn",title:"Software unknown",detail:"C-Site needs 53.35+.",actions:["Help → Support: copy release."]});
+  if(i.dnsEnabled==="no") checks.push({id:"dns",sev:"fail",title:"DNS disabled",detail:"Official hard fail. Routes can match a sister site and C-Site still stays dark.",actions:["LAN Config: enable DNS 8.8.8.8 / 8.8.4.4. Save. Reboot."]});
+  else if(i.dnsEnabled==="yes") checks.push({id:"dns",sev:"pass",title:"DNS enabled",detail:"DNS is on. MNSP 443 can still block MQTT/VAM.",actions:[]});
+  else checks.push({id:"dns",sev:"warn",title:"DNS unknown",detail:"Most common look-alike when host routes already match.",actions:["Confirm DNS is checked, not just that routes exist."]});
+  if(b.nic && i.paymentNicDefault==="no") checks.push({id:"nic",sev:"fail",title:"Payment NIC not default",detail:"This brand assumes Payment NIC is the default route.",actions:["Set Payment NIC default, save, reboot Commander."]});
+  else if(b.nic && i.paymentNicDefault==="yes") checks.push({id:"nic",sev:"pass",title:"Payment NIC default",detail:"Matches brand assumption.",actions:[]});
+  else if(b.nic) checks.push({id:"nic",sev:"warn",title:"Payment NIC default unknown",detail:"Required for this brand (Chevron / Exxon-style).",actions:["Compare default route NIC to a working sister store."]});
+  else checks.push({id:"nic",sev:"info",title:"Default route",detail:b.notes[0],actions:b.notes.slice(1)});
+  if(b.add) checks.push({id:"routes",sev:i.routesMatchSister==="yes"?"warn":"fail",title:"Host routes required",
+    detail:"This brand needs the C-Site VAM/VIC/GSC/MQTT table — not a copy of payment hosts.",
+    actions:["Add routes from the table below. Gateway 192.168.31.31 / 255.255.255.255."]});
+  else if(b.mnsp) checks.push({id:"routes",sev:"info",title:"MNSP injects routes",detail:"Do not hand-type C-Site routes for this brand.",actions:["If you copied Exxon/Buypass routes, remove them and let MNSP inject."]});
+  if(i.serviceId && !/^\d{5,}$/.test(i.serviceId.replace(/\s/g,""))) checks.push({id:"sid",sev:"warn",title:"Service ID format",detail:"Does not look numeric.",actions:["Copy from Help → Support."]});
+  const et=(i.errorText||"").toLowerCase();
+  ERRORS.forEach(e=>{ if(et.includes(e.m)) checks.push({id:"err-"+e.m,sev:"fail",title:e.t,detail:e.d,actions:e.f}); });
+  if(i.onboarded==="no") checks.push({id:"onboard",sev:"fail",title:"Not onboarded",detail:"Commander is not registered to C-Site.",actions:["Run Cloud Connect / Connect to C-Site. Wait 5 minutes after Registration completed."]});
+  if(i.portalStatus==="pending") checks.push({id:"portal",sev:"warn",title:"Pending authorization",detail:"Portal state, not a network fault.",actions:["Authorize the site in C-Site / fix hierarchy."]});
+  if(i.portalStatus==="offline" && i.onboarded==="yes") checks.push({id:"portal",sev:"fail",title:"Onboarded but portal Offline",detail:"Heartbeat/MQTT lost. Payments can still work.",actions:["Reseat Ethernet to MNSP. Open 443 to C-Site IPs. Helpdesk "+HELPDESK+" if mapping suspected."]});
+  if(i.paymentsWorking==="yes" && i.portalStatus==="offline") checks.push({id:"split",sev:"info",title:"Payments up, C-Site down",detail:"Split path is expected. Matching payment routes will not fix C-Site.",actions:["Probe C-Site IPs, not the processor host."]});
+  const fails=checks.filter(c=>c.sev==="fail");
+  let verdict="ready";
+  if(fails.some(c=>c.id==="software")) verdict="software";
+  else if(fails.some(c=>c.id==="dns")) verdict="dns";
+  else if(fails.some(c=>c.id==="nic")) verdict="nic";
+  else if(fails.some(c=>c.id.indexOf("serial")>=0||c.id.indexOf("already")>=0)) verdict="mapping";
+  else if(fails.some(c=>c.id==="onboard")) verdict="onboard";
+  else if(fails.some(c=>c.id==="routes")) verdict="routes";
+  else if(fails.length) verdict="mnsp";
+  const headlines={
+    software:"Software is too old for C-Site.",
+    dns:"DNS is off or unverified — this alone keeps a site dark with identical host routes.",
+    nic:"Payment NIC is not the default route; this brand will not stay on C-Site that way.",
+    mapping:"Serial / Service ID mapping — Helpdesk, not LAN Config.",
+    onboard:"Commander is not actually registered to C-Site yet.",
+    routes:"This brand needs the C-Site host-route table, not a copy of payment routes.",
+    mnsp:"Onboarded (or routes look right) but path to C-Site IPs is the remaining suspect.",
+    ready:"No hard fail in the interview. If the portal is still dark, treat it as MNSP / MQTT."
+  };
+  const next=[...new Set(checks.filter(c=>c.sev==="fail"||c.sev==="warn").flatMap(c=>c.actions))].slice(0,8);
+  if(!next.length) next.push("Run live TCP 443 probes.","If only this store fails, ticket MNSP. If probes pass, call "+HELPDESK+" with Service ID + serial.");
+  return {checks,verdict,headline:headlines[verdict],summary:fails.length+" hard fail(s). Brand playbook: "+i.brand+".",next,i};
+}
+function render(r){
+  $("headline").textContent=r.headline;
+  $("summary").textContent=r.summary;
+  $("verdictPill").textContent=r.verdict;
+  $("verdictPill").className="badge "+(r.verdict==="ready"?"pass":"fail");
+  $("next").innerHTML=r.next.map(n=>"<li>"+esc(n)+"</li>").join("");
+  $("checkCount").textContent=r.checks.length;
+  $("checks").innerHTML=r.checks.map(c=>'<div class="check"><span class="badge '+c.sev+'">'+c.sev+'</span><h3>'+esc(c.title)+'</h3><p>'+esc(c.detail)+'</p>'+(c.actions.length?'<ul>'+c.actions.map(a=>"<li>"+esc(a)+"</li>").join("")+"</ul>":"")+"</div>").join("");
+}
+function routesTSV(){
+  return ["Host Route\tIP Address\tGateway\tSubnet"].concat(HOSTS.map(h=>h.name+"\t"+h.ip+"\t192.168.31.31\t255.255.255.255")).join("\n");
+}
+function apiBase(){
+  try{ if(window.AIToolboxAPI && AIToolboxAPI.endpoint) return String(AIToolboxAPI.endpoint).replace(/\/$/,"")+"/api"; }catch(e){}
+  return "http://127.0.0.87:18765/api";
+}
+async function apiPost(path, body){
+  if(window.AIToolboxAPI && typeof AIToolboxAPI.api==="function"){
+    return AIToolboxAPI.api(path, {method:"POST", body: JSON.stringify(body)});
+  }
+  const r=await fetch(apiBase()+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.detail || j.message || r.statusText || "Request failed");
+  return j;
+}
+async function pingServer(){
+  const pill=$("serverPill");
+  try{
+    if(window.AIToolboxAPI && typeof AIToolboxAPI.isOnline==="function"){
+      const on=await AIToolboxAPI.isOnline();
+      if(on){pill.textContent="S1 online";pill.className="pill ok";return true;}
+      pill.textContent="S1 offline"; pill.className="pill bad"; return false;
+    }
+    const r=await fetch(apiBase()+"/health",{cache:"no-store"});
+    if(r.ok){pill.textContent="S1 online";pill.className="pill ok";return true;}
+  }catch(e){}
+  pill.textContent="S1 offline"; pill.className="pill bad"; return false;
+}
+function summarizeProbe(j){
+  if(!j || typeof j!=="object") return String(j);
+  const bits=[];
+  if(j.open===true) bits.push("open");
+  if(j.open===false) bits.push("closed");
+  if(j.resolved_ip) bits.push(j.resolved_ip);
+  if(j.latency_ms!=null) bits.push(j.latency_ms+" ms");
+  if(j.service_hint) bits.push(j.service_hint);
+  if(j.error) bits.push(String(j.error));
+  if(j.records && j.records.length) bits.push(j.records.slice(0,4).map(x=>x.value||x.address||JSON.stringify(x)).join(", "));
+  if(!bits.length) return JSON.stringify(j).slice(0,160);
+  return bits.join(" · ");
+}
+async function liveProbes(){
+  const box=$("probes");
+  box.innerHTML="<p style='color:var(--muted);font-size:13px'>Running TCP 443 to C-Site IPs from this laptop…</p>";
+  const online=await pingServer();
+  if(!online){ box.innerHTML="<p>Toolbox server is offline. Start servers from the launcher, then retry. Interview diagnostic still works without it.</p>"; return; }
+  const rows=[];
+  async function telnet(host,port){
+    try{
+      const j=await apiPost("/network/telnet",{host,port,timeout_sec:3});
+      return {ok:j.open===true, raw:j};
+    }catch(e){ return {ok:false, raw:{error:String(e && e.message || e)}}; }
+  }
+  try{
+    const dj=await apiPost("/network/dns",{host:"us.live.verifone.cloud",record_type:"AUTO"});
+    const ok=!!((dj.records && dj.records.length) || (dj.forward_records && dj.forward_records.length));
+    rows.push({name:"DNS us.live.verifone.cloud", ok:ok, detail:summarizeProbe(dj)});
+  }catch(e){ rows.push({name:"DNS us.live.verifone.cloud", ok:false, detail:String(e && e.message || e)}); }
+  for(const h of HOSTS.filter(x=>x.kind!=="DNS")){
+    const r=await telnet(h.ip,h.port);
+    rows.push({name:h.kind+" · "+h.name+" "+h.ip+":"+h.port, ok:r.ok, detail:summarizeProbe(r.raw)});
+  }
+  const fail=rows.filter(r=>!r.ok).length;
+  const mqttFail=rows.filter(r=>!r.ok && /MQTT/.test(r.name)).length;
+  let note= (rows.length-fail)+" reachable / "+fail+" failed from this laptop.";
+  if(mqttFail && mqttFail===rows.filter(r=>/MQTT/.test(r.name)).length) note+=" All MQTT 443 failed — that is the stay-online / heartbeat path.";
+  box.innerHTML='<p style="margin:0 0 8px;font-size:13px">'+esc(note)+' If this laptop is on the store LAN (or VPN) this is the MNSP path. ICMP may lie; TCP 443 is what C-Site uses.</p>'+
+    rows.map(r=>'<div class="check"><span class="badge '+(r.ok?"pass":"fail")+'">'+(r.ok?"open":"fail")+'</span> <strong>'+esc(r.name)+'</strong><p class="mono">'+esc(r.detail)+'</p></div>').join("");
+}
+function exportMd(r){
+  const i=r.i;
+  const md=["# C-Site diagnostic — "+(i.siteName||"unnamed"),"","Generated: "+new Date().toISOString(),"Verdict: "+r.verdict+" — "+r.headline,"","## Site",
+    "- Service ID: "+(i.serviceId||"—"),"- Serial: "+(i.serial||"—"),"- Software: "+(i.software||"—"),"- Brand: "+i.brand,
+    "- DNS: "+i.dnsEnabled,"- Payment NIC default: "+i.paymentNicDefault,"- Onboarded: "+i.onboarded,"- Portal: "+i.portalStatus,
+    "- Payments: "+i.paymentsWorking,"- Routes match sister: "+i.routesMatchSister,"- MNSP: "+(i.mnsp||"—"),"- Error: "+(i.errorText||"—"),
+    "","## Checks",...r.checks.map(c=>"- **["+c.sev.toUpperCase()+"] "+c.title+"** — "+c.detail),
+    "","## Next",...r.next.map(n=>"- "+n),"","Helpdesk: "+HELPDESK,"","## Routes","```",routesTSV(),"```"].join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([md],{type:"text/markdown"}));
+  a.download="csite-diag-"+(i.siteName||"site").replace(/\s+/g,"-")+".md";
+  a.click();
+}
+$("routeTable").innerHTML="<thead><tr><th>Route</th><th>IP</th><th>Port</th><th>Why</th></tr></thead><tbody>"+
+  HOSTS.map(h=>'<tr><td>'+esc(h.name)+'</td><td class="mono">'+esc(h.ip)+'</td><td class="mono">'+esc(h.port)+'</td><td>'+esc(h.why)+'</td></tr>').join("")+"</tbody>";
+function refresh(){ saveIntake(); render(run(intake())); }
+$("btnRun").onclick=()=>refresh();
+FIELDS.forEach(id=>{
+  $(id).addEventListener("change",refresh);
+  $(id).addEventListener("input",refresh);
+});
+$("btnCopy").onclick=()=>{navigator.clipboard.writeText(routesTSV());toast("Host routes copied");};
+$("btnExport").onclick=()=>exportMd(run(intake()));
+$("btnProbe").onclick=()=>liveProbes();
+$("btnClear").onclick=()=>{
+  FIELDS.forEach(id=>{ const el=$(id); if(el.tagName==="SELECT") el.selectedIndex=el.options.length?0:0; else el.value=""; });
+  $("brand").value="other";
+  ["dnsEnabled","paymentNicDefault","onboarded","portalStatus","paymentsWorking","routesMatchSister"].forEach(id=>$(id).value="unknown");
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  refresh();
+};
+loadIntake();
+render(run(intake()));
+pingServer();
+</script>
+</body>
+</html>
