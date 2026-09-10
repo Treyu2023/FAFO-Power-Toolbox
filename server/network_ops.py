@@ -1057,3 +1057,127 @@ def run_diagnostics() -> dict[str, Any]:
         "issues": issues,
         "healthy": not any(i["level"] == "error" for i in issues),
     }
+
+
+CONSOLE_PROFILES: dict[str, list[str]] = {
+    "full": [
+        "ipconfig /all",
+        "arp -a",
+        "route print",
+        "ping -n 4 192.168.31.11",
+        "ping -n 4 192.168.31.31",
+        "nslookup us.live.verifone.cloud",
+        "ping -n 4 8.8.8.8",
+        "tracert -d -h 12 8.8.8.8",
+        'netstat -ano | findstr ":443"',
+    ],
+    "forecourt": [
+        "ipconfig /all",
+        "ping -n 4 192.168.31.11",
+        "ping -n 4 192.168.31.31",
+        "arp -a",
+    ],
+    "csite": [
+        "nslookup us.live.verifone.cloud",
+        "ping -n 2 8.8.8.8",
+        'netstat -ano | findstr ":443"',
+    ],
+    "mnsp": [
+        "ping -n 4 192.168.31.31",
+        "ping -n 4 192.168.1.99",
+        "tracert -d -h 8 192.168.31.31",
+    ],
+    "isp": [
+        "ipconfig /all",
+        "ping -n 4 192.168.0.1",
+        "ping -n 4 8.8.8.8",
+        "tracert -d -h 12 8.8.8.8",
+    ],
+}
+
+
+def fingerprint_lan() -> dict[str, Any]:
+    """Classify this laptop's LAN as POS / MNSP mgmt / ISP."""
+    gw = get_default_gateway() or ""
+    ipv4 = ""
+    mask = ""
+    adapter = ""
+    for iface in list_network_interfaces():
+        if not iface.get("is_up"):
+            continue
+        for v4 in iface.get("ipv4") or []:
+            addr = v4.get("addr") or ""
+            if addr.startswith("127."):
+                continue
+            ipv4 = addr
+            mask = v4.get("netmask") or ""
+            adapter = iface.get("name") or ""
+            if addr.startswith("192.168.31.") or gw.startswith("192.168.31."):
+                break
+        if ipv4.startswith("192.168.31."):
+            break
+
+    vendor, layer = "unknown", "unknown"
+    desks = ["kit"]
+    hops: list[dict[str, Any]] = []
+    if gw.startswith("192.168.31.") or ipv4.startswith("192.168.31."):
+        vendor, layer = "cybera", "pos-lan"
+        desks = ["forecourt", "mnsp", "csite", "kit"]
+        hops = [
+            {"id": "cmd", "label": "Commander", "host": "192.168.31.11", "port": 443},
+            {"id": "zone", "label": "MNSP LAN", "host": "192.168.31.31", "port": 443},
+            {"id": "mqtt", "label": "C-Site MQTT", "host": "184.73.231.196", "port": 443},
+        ]
+    elif gw == "192.168.1.99":
+        vendor, layer = "hughes", "mnsp-mgmt"
+        desks = ["mnsp", "isp", "kit"]
+        hops = [{"id": "fg", "label": "FortiGate", "host": "192.168.1.99", "port": 443}]
+    elif gw in ("192.168.0.1",):
+        vendor, layer = "brightspeed", "isp-lan"
+        desks = ["isp", "mnsp", "kit"]
+        hops = [
+            {"id": "modem", "label": "ISP gateway", "host": gw, "port": 80},
+            {"id": "offnet", "label": "Off-net", "host": "8.8.8.8", "port": 53},
+        ]
+    elif gw in ("192.168.1.1",):
+        vendor, layer = "spectrum", "isp-lan"
+        desks = ["isp", "mnsp", "kit"]
+        hops = [{"id": "modem", "label": "ISP gateway", "host": gw, "port": 80}]
+    elif gw == "192.168.100.1":
+        vendor, layer = "starlink", "isp-lan"
+        desks = ["isp", "kit"]
+        hops = [{"id": "dish", "label": "Starlink", "host": gw, "port": 80}]
+
+    return {
+        "gateway": gw,
+        "ipv4": ipv4,
+        "mask": mask,
+        "adapter": adapter,
+        "vendor": vendor,
+        "layer": layer,
+        "desks": desks,
+        "hops": hops,
+        "arp": get_arp_table()[:40],
+    }
+
+
+def open_console(profile: str = "full") -> dict[str, Any]:
+    """Launch a new cmd.exe with a whitelisted diagnostic kit. Windows only."""
+    key = (profile or "full").strip().lower()
+    cmds = CONSOLE_PROFILES.get(key)
+    if not cmds:
+        raise ValueError("Unknown profile. Use full, forecourt, csite, mnsp, isp")
+    if not IS_WINDOWS:
+        return {"ok": False, "error": "Command Prompt launch is Windows-only", "commands": cmds}
+    import os
+    from pathlib import Path
+
+    bat = Path(os.environ.get("TEMP", ".")) / f"fafo-net-{key}.bat"
+    lines = ["@echo off", "title FAFO Field Network Kit", "echo FAFO field kit", "echo."]
+    for c in cmds:
+        lines.extend([f"echo === {c} ===", c, "echo."])
+    lines.append("pause")
+    bat.write_text("\r\n".join(lines), encoding="utf-8")
+    creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    subprocess.Popen(["cmd.exe", "/k", str(bat)], shell=False, creationflags=creation)
+    return {"ok": True, "launched": "cmd", "path": str(bat), "commands": cmds}

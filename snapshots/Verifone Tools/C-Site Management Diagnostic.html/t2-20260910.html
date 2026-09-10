@@ -27,10 +27,6 @@ header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-betw
 .layout{display:grid;grid-template-columns:minmax(280px,400px) 1fr;gap:14px}
 @media(max-width:960px){.layout{grid-template-columns:1fr}}
 .panel{background:linear-gradient(165deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.panel.pass{border-color:rgba(52,211,153,.45);background:linear-gradient(165deg,#062016,var(--panel))}
-.panel.fail{border-color:rgba(248,113,113,.5);background:linear-gradient(165deg,#1a0b0b,var(--panel))}
-.panel.warn{border-color:rgba(251,191,36,.45);background:linear-gradient(165deg,#1a1406,var(--panel))}
-.panel.run{animation:csweep 1.1s ease-in-out infinite}
 .ph{padding:10px 14px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .pb{padding:12px 14px}
 label.fld{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:8px 0 4px}
@@ -192,7 +188,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
             <textarea id="notes"></textarea>
             <div class="btn-row">
               <button class="btn primary" id="btnRun" type="button">Run diagnostic</button>
-              <button class="btn amber" id="btnSweep2" type="button">Sweep + color</button>
               <button class="btn amber" id="btnProbe" type="button">Live TCP probes</button>
               <button class="btn" id="btnCopy" type="button">Copy routes</button>
               <button class="btn" id="btnExport" type="button">Export MD</button>
@@ -235,12 +230,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
     </div>
     <div class="stack">
       <div class="panel">
-        <div class="ph"><span>Where the break is</span>
-          <span style="display:flex;gap:8px;align-items:center">
-            <button class="btn primary" id="btnSweep" type="button">Run live sweep</button>
-            <span id="breakPill" class="badge info">idle</span>
-          </span>
-        </div>
+        <div class="ph"><span>Where the break is</span><span id="breakPill" class="badge info">idle</span></div>
         <div class="pb">
           <h2 id="breakTitle" style="margin:0 0 6px;font-size:18px">Fill the facts</h2>
           <p id="breakBlurb" class="callout">Host vs network, default NIC, and DNS decide if you even call MNSP.</p>
@@ -461,38 +451,19 @@ function buildFlow(i,verdict){
   const csStatus=i.portalStatus==="active"?"pass":mapping?"warn":i.portalStatus==="offline"?"fail":"idle";
   const mnspStatus=mnspHot && !lanBad && !mapping?"fail":(i.paymentsWorking==="yes" && csStatus==="fail"?"warn":"idle");
   return [
-    {id:"pump",label:"Pumps / CRIND",hint:"Store LAN only — never MNSP",status:lanStatus,hot:false,cmd:"ping -n 4 192.168.31.11"},
-    {id:"box",label:"Commander",hint:"The box you are logged into",status:verdict==="software"?"fail":"idle",hot:verdict==="software",cmd:"ping -n 4 192.168.31.11"},
-    {id:"lan",label:"LAN Config",hint:"DNS · default NIC · host vs network",status:cfgStatus,hot:lanBad,cmd:"nslookup us.live.verifone.cloud"},
-    {id:"mnsp",label:"MNSP",hint:"Outbound 443 vs inbound. Two allow-lists.",status:mnspStatus,hot:mnspHot && !lanBad && !mapping,cmd:"ping -n 4 192.168.31.31"},
-    {id:"proc",label:"Processor",hint:"Card host — not C-Site",status:payStatus,hot:false,cmd:'netstat -ano | findstr ":443"'},
-    {id:"cloud",label:"C-Site cloud",hint:"VAM / MQTT heartbeat",status:csStatus,hot:mapping || verdict==="mnsp",cmd:'powershell -c "Test-NetConnection 184.73.231.196 -Port 443"'}
+    {id:"pump",label:"Pumps / CRIND",hint:"Store LAN only — never MNSP",status:lanStatus,hot:false},
+    {id:"box",label:"Commander",hint:"The box you are logged into",status:verdict==="software"?"fail":"idle",hot:verdict==="software"},
+    {id:"lan",label:"LAN Config",hint:"DNS · default NIC · host vs network",status:cfgStatus,hot:lanBad},
+    {id:"mnsp",label:"MNSP",hint:"Outbound 443 vs inbound. Two allow-lists.",status:mnspStatus,hot:mnspHot && !lanBad && !mapping},
+    {id:"proc",label:"Processor",hint:"Card host — not C-Site",status:payStatus,hot:false},
+    {id:"cloud",label:"C-Site cloud",hint:"VAM / MQTT heartbeat",status:csStatus,hot:mapping || verdict==="mnsp"}
   ];
 }
-function nodeHtml(n, runningId){
-  const st = runningId===n.id ? "run" : (n.status||"idle");
-  return '<div class="node '+esc(st)+(n.hot && st!=="run"?" hot":"")+'" data-id="'+esc(n.id)+'">'+(n.hot && st!=="run"?'<span class="hot-tag">Likely break</span>':"")+'<div class="n">'+esc(n.label)+'</div><div class="h">'+esc(n.hint)+'</div>'+(n.cmd?'<button class="btn" type="button" data-cmd="'+encodeURIComponent(n.cmd)+'" style="margin-top:8px;width:100%">Test this hop</button>':"")+'</div>';
+function nodeHtml(n){
+  return '<div class="node '+esc(n.status)+(n.hot?" hot":"")+'">'+(n.hot?'<span class="hot-tag">Likely break</span>':"")+'<div class="n">'+esc(n.label)+'</div><div class="h">'+esc(n.hint)+'</div></div>';
 }
-function rowHtml(title,note,nodes,runningId){
-  const tones=nodes.map(n=> runningId===n.id?"run":(n.status||"idle"));
-  const worst=tones.indexOf("fail")>=0?"fail":tones.indexOf("run")>=0?"run":tones.indexOf("warn")>=0?"warn":(tones.length && tones.every(t=>t==="pass")?"pass":"idle");
-  return '<div class="panel '+worst+'" style="margin-top:12px;padding:10px 12px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong style="font-size:13px">'+esc(title)+'</strong><span class="pipe">'+esc(note)+'</span></div><div class="flow-row">'+nodes.map(n=>nodeHtml(n,runningId)).join("")+'</div></div>';
-}
-function paintFlow(r, runningId, revealed){
-  const by=id=>{
-    const n=Object.assign({}, r.flow.find(x=>x.id===id));
-    if(runningId && !revealed.has(n.id) && n.id!==runningId) n.status="idle";
-    return n;
-  };
-  $("flow").innerHTML=
-    rowHtml(PIPES[0].title,PIPES[0].note,[by("pump"),by("box")],runningId)+
-    rowHtml(PIPES[1].title,PIPES[1].note,[by("box"),by("mnsp"),by("proc")],runningId)+
-    rowHtml(PIPES[2].title,PIPES[2].note,[by("box"),by("lan"),by("mnsp"),by("cloud")],runningId);
-  $("flow").onclick=function(e){
-    const b=e.target.closest("[data-cmd]"); if(!b) return;
-    const cmd=decodeURIComponent(b.getAttribute("data-cmd"));
-    navigator.clipboard.writeText(cmd); toast("Copied "+cmd);
-  };
+function rowHtml(title,note,nodes){
+  return '<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong style="font-size:13px">'+esc(title)+'</strong><span class="pipe">'+esc(note)+'</span></div><div class="flow-row">'+nodes.map(nodeHtml).join("")+'</div></div>';
 }
 function render(r){
   $("headline").textContent=r.headline;
@@ -506,7 +477,11 @@ function render(r){
   $("next").innerHTML=r.next.map(n=>"<li>"+esc(n)+"</li>").join("");
   $("checkCount").textContent=r.checks.length;
   $("pipeNotes").innerHTML=PIPES.map(p=>'<p class="pipe"><b style="color:var(--text)">'+esc(p.title)+'.</b> '+esc(p.summary)+'</p>').join("");
-  paintFlow(r, null, new Set(r.flow.map(n=>n.id)));
+  const by=id=>r.flow.find(n=>n.id===id);
+  $("flow").innerHTML=
+    rowHtml(PIPES[0].title,PIPES[0].note,[by("pump"),by("box")])+
+    rowHtml(PIPES[1].title,PIPES[1].note,[by("box"),by("mnsp"),by("proc")])+
+    rowHtml(PIPES[2].title,PIPES[2].note,[by("box"),by("lan"),by("mnsp"),by("cloud")]);
   $("checks").innerHTML=r.checks.map(c=>{
     const extra=
       (c.teach?'<p class="why"><b>Why:</b> '+esc(c.teach)+'</p>':'')+
@@ -688,27 +663,7 @@ document.querySelectorAll("#tabs button").forEach(btn=>{
   btn.onclick=()=>showTab(btn.getAttribute("data-tab"));
 });
 function refresh(){ saveIntake(); render(run(intake())); }
-async function liveSweep(){
-  const r=run(intake());
-  saveIntake();
-  const order=["pump","box","lan","mnsp","proc","cloud"];
-  const revealed=new Set();
-  $("breakPill").textContent="sweep";
-  $("breakPill").className="badge warn";
-  for(const id of order){
-    paintFlow(r, id, revealed);
-    await new Promise(res=>setTimeout(res, 380));
-    revealed.add(id);
-  }
-  paintFlow(r, null, revealed);
-  $("breakPill").textContent=r.breakLayer;
-  $("breakPill").className="badge "+(r.verdict==="ready"?"pass":"fail");
-  toast("Sweep finished — green/black pass, amber/black warn, red/black fail");
-  liveProbes();
-}
 $("btnRun").onclick=()=>refresh();
-$("btnSweep").onclick=()=>liveSweep();
-$("btnSweep2").onclick=()=>liveSweep();
 FIELDS.forEach(id=>{
   $(id).addEventListener("change",refresh);
   $(id).addEventListener("input",refresh);

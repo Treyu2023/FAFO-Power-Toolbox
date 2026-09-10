@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field Network Desk · FAFO</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.3.00">
+<style>
+:root {
+  --bg:#03060a; --panel:#0a1018; --panel2:#0e1620;
+  --line:rgba(56,189,248,.2); --accent:#38bdf8; --accent2:#f59e0b;
+  --good:#34d399; --warn:#fbbf24; --bad:#f87171; --text:#e8eef4; --muted:#7b8fa6;
+  --glow:0 0 28px rgba(56,189,248,.28);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;
+  background:radial-gradient(ellipse 70% 45% at 15% -5%,rgba(14,116,144,.4),transparent 55%),linear-gradient(180deg,#050a10,var(--bg));}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(5,10,16,.9);position:sticky;top:0;z-index:30}
+.brand h1{margin:0;font-size:17px;color:var(--accent);letter-spacing:.06em;text-shadow:var(--glow)}
+.brand .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.nav-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nav-links a,.pill{color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:6px 10px;border-radius:8px}
+.pill.ok{border-color:rgba(52,211,153,.5);color:var(--good)}
+.pill.bad{border-color:rgba(248,113,113,.5);color:var(--bad)}
+.wrap{max-width:1280px;margin:0 auto;padding:16px 16px 40px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:960px){.grid{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:linear-gradient(165deg,var(--panel2),var(--panel))}
+.panel.pass{border-color:rgba(52,211,153,.45);background:linear-gradient(165deg,#062016,var(--panel))}
+.panel.fail{border-color:rgba(248,113,113,.5);background:linear-gradient(165deg,#1a0b0b,var(--panel))}
+.panel.warn{border-color:rgba(251,191,36,.45);background:linear-gradient(165deg,#1a1406,var(--panel))}
+.panel.run{animation:sweep 1.1s ease-in-out infinite}
+.ph{padding:10px 14px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.pb{padding:12px 14px}
+.btn{border:1px solid var(--accent);background:transparent;color:var(--accent);padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase}
+.btn:hover{background:var(--accent);color:#041018}
+.btn.primary{background:rgba(56,189,248,.14)}
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+label.fld{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:8px 0 4px}
+input,select,textarea{width:100%;background:#070c12;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px}
+textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monospace;font-size:12px}
+.hops{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.node{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(0,0,0,.28);display:flex;flex-direction:column;gap:6px}
+.node.pass{border-color:rgba(52,211,153,.5);background:linear-gradient(165deg,#062016,#070c12);color:var(--good)}
+.node.fail{border-color:rgba(248,113,113,.5);background:linear-gradient(165deg,#1a0b0b,#070c12);color:var(--bad)}
+.node.warn{border-color:rgba(251,191,36,.5);background:linear-gradient(165deg,#1a1406,#070c12);color:var(--warn)}
+.node.run{border-color:var(--accent);animation:sweep 1.1s ease-in-out infinite}
+.node .n{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.node .h{font-size:11px;color:var(--muted)}
+.stamps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.stamps button{min-height:36px;font-size:10px}
+.cmd{font-family:Consolas,ui-monospace,monospace;font-size:12px;color:var(--accent)}
+.muted{color:var(--muted);font-size:13px;line-height:1.45}
+.toast{position:fixed;bottom:16px;right:16px;background:#0e1620;border:1px solid var(--line);padding:10px 14px;border-radius:10px;display:none;z-index:50}
+.tabs{display:flex;gap:4px;background:rgba(0,0,0,.28);padding:4px;border-radius:10px;margin:14px 0 10px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:10px 10px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase}
+.tabs button.on{background:#0e1620;color:var(--text)}
+@keyframes sweep{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Field Network Desk</h1>
+    <div class="sub">Fingerprint the LAN · color hops as they pass or fail · open only the desks that apply · launch cmd kit</div>
+  </div>
+  <nav class="nav-links">
+    <a href="../Toolbox Launcher.html">Launcher</a>
+    <a href="C-Site Management Diagnostic.html">C-Site</a>
+    <a href="Commander Status HUD.html">Status HUD</a>
+    <a href="Phone Assist Navigator.html">Phone Assist</a>
+    <span id="serverPill" class="pill">S1 …</span>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="grid">
+    <div class="panel">
+      <div class="ph">Identify this laptop</div>
+      <div class="pb">
+        <p class="muted">S1 reads the default gateway and ARP. You can also paste ipconfig /all. Identify colors hops live (green/black pass, amber/black warn, red/black fail) and opens the matching desks.</p>
+        <label class="fld">Paste ipconfig /all (optional)</label>
+        <textarea id="blob" placeholder="Windows ipconfig /all"></textarea>
+        <div class="btn-row">
+          <button class="btn primary" type="button" id="btnId">Identify + sweep</button>
+          <button class="btn" type="button" id="btnOpen">Open needed desks</button>
+          <button class="btn" type="button" id="btnCmd">Launch Command Prompt</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="idPanel">
+      <div class="ph"><span>Fingerprint</span><span id="idPill" class="pill">idle</span></div>
+      <div class="pb">
+        <h2 id="vendor" style="margin:0 0 8px;font-size:18px">Unknown LAN</h2>
+        <p class="muted" id="summary">Start S1, then Identify. Gateway 192.168.31.31 = POS / Cybera. 192.168.0.1 = Brightspeed-style ISP. 192.168.1.99 = FortiGate. 10.96.10.1 = Acumera.</p>
+        <p class="cmd" id="ids">gateway — · ipv4 —</p>
+      </div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:14px" id="hopPanel">
+    <div class="ph"><span>Hops · green/black pass · amber/black warn · red/black fail</span><span id="hopPill" class="pill">idle</span></div>
+    <div class="pb"><div class="hops" id="hops"></div></div>
+  </div>
+  <div class="tabs" id="deskTabs">
+    <button type="button" data-tab="forecourt" class="on">Forecourt</button>
+    <button type="button" data-tab="mnsp">MNSP</button>
+    <button type="button" data-tab="isp">ISP</button>
+    <button type="button" data-tab="kit">Cmd kit</button>
+  </div>
+  <div id="pane-forecourt">
+    <div class="grid">
+      <div class="panel">
+        <div class="ph">CRIND / DCR — store LAN only</div>
+        <div class="pb" id="crind"></div>
+      </div>
+      <div class="panel warn">
+        <div class="ph">Please Pay Inside is not C-Site</div>
+        <div class="pb">
+          <p class="muted">Dark outdoor reader + inside sales still authorize = cable, switch, DCR IP, or Fueling Positions. Do not ticket Hughes, Cybera, or Brightspeed for that.</p>
+          <p class="muted" style="margin-top:8px">Ports on Commander: <span class="cmd">443</span> Config Client · <span class="cmd">9700</span> Invenco/FlexPay OPT · <span class="cmd">4710</span> Freedom Easy Pump forward.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="pane-mnsp" hidden>
+    <div class="panel">
+      <div class="ph">MNSP playbooks · factory logins are starting points only</div>
+      <div class="pb" id="mnsp"></div>
+    </div>
+  </div>
+  <div id="pane-isp" hidden>
+    <div class="panel">
+      <div class="ph">ISP CPE · NC (Brightspeed / Spectrum-TWC / Starlink)</div>
+      <div class="pb" id="isp"></div>
+    </div>
+  </div>
+  <div id="pane-kit" hidden>
+    <div class="panel">
+      <div class="ph">Command kit — copy, or Launch Command Prompt above</div>
+      <div class="pb" id="cmds"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../shared/aitoolbox-config.js?v=3.3.00"></script>
+<script src="../shared/aitoolbox-api.js?v=3.3.00"></script>
+<script>
+const CMDS = [
+  {t:"Who am I", c:"ipconfig /all"},
+  {t:"ARP", c:"arp -a"},
+  {t:"Route table", c:"route print"},
+  {t:"Ping Commander", c:"ping -n 4 192.168.31.11"},
+  {t:"Ping zone router", c:"ping -n 4 192.168.31.31"},
+  {t:"Trace zone router", c:"tracert -d -h 8 192.168.31.31"},
+  {t:"C-Site DNS", c:"nslookup us.live.verifone.cloud"},
+  {t:"Watch 443", c:"netstat -ano | findstr :443"},
+  {t:"Off-net", c:"ping -n 4 8.8.8.8"},
+  {t:"Tracert ISP", c:"tracert -d -h 12 8.8.8.8"}
+];
+const MNSP = [
+  {id:"cybera", n:"Cybera (zone router)", p:"https://192.168.31.31", u:"zonerouter / cyberasca (published Verifone guide; often rotated)", t:"866-429-2372", phys:"LAN = POS 192.168.31.0/24. WAN = ISP modem (often static .200). Do not bypass Cybera with Commander on the modem.", virt:"Commander 192.168.31.11. Config Client HTTPS. C-Site and cards are two outbound 443 allow-lists."},
+  {id:"hughes", n:"Hughes + FortiGate", p:"https://192.168.1.99", u:"admin / (NOC or sticker, not factory)", t:"888-440-7126", phys:"POS VLAN 30 ports 1–8. Trunk to FortiGate. WAN toward ISP/VSAT.", virt:"Two planes: POS 192.168.31.31 vs FortiGate 192.168.1.99. MQTT 443 is a FortiGate policy, not a host-route paste."},
+  {id:"fortinet", n:"Fortinet FortiGate (standalone)", p:"https://192.168.1.99", u:"admin / empty on factory, then forced change", t:"Vendor / MNSP NOC", phys:"MGMT often 192.168.1.99. WAN light down = ISP desk first.", virt:"Policies: POS LAN → WAN 443 payment vs 443 C-Site."},
+  {id:"acumera", n:"Acumera (Chevron / Texaco)", p:"AcuVigil / NOC-issued LAN IP", u:"No public default — call with site ID", t:"512-687-7401 · tech 512-368-9619 opt 3", phys:"Firewall LAN port specified by Acumera. WAN to ISP.", virt:"Some sites 10.96.10.0/24 back office. Chevron C-Site is MNSP-inject, not a typed Exxon table."},
+  {id:"mako", n:"Mako (BP)", p:"MNSP injects", u:"Do not type C-Site host table", t:"BP / Mako NOC", phys:"POS LAN through Mako CPE.", virt:"DNS stays enabled. If you see a full VAM/MQTT table someone typed, remove it."}
+];
+const ISP = [
+  {id:"brightspeed", n:"Brightspeed (C4000 / ex-CenturyLink)", p:"http://192.168.0.1", u:"admin / sticker (not the Wi-Fi key)", t:"833-692-7773", phys:"Center LED ring green = internet up, red = call Brightspeed. MNSP WAN on Ethernet, not Wi-Fi.", virt:"LAN 192.168.0.1/24. Cybera WAN often static 192.168.0.200."},
+  {id:"spectrum", n:"Spectrum / Time Warner Cable", p:"http://192.168.0.1 or 192.168.1.1", u:"admin/password on older Arris; app on new", t:"833-267-6094", phys:"Coax in. Online LED on, US/DS locked. No lock = plant.", virt:"Double NAT with Cybera is normal. POS stays 192.168.31.x."},
+  {id:"starlink", n:"Starlink (backup / rural)", p:"http://192.168.100.1", u:"open dish UI", t:"Starlink support", phys:"Dish → Ethernet adapter → MNSP WAN.", virt:"CGNAT. Fine for outbound C-Site 443."}
+];
+const CRIND = [
+  {t:"Commander", d:"192.168.31.11 — ping before anything else"},
+  {t:"Config Client", d:"https://192.168.31.11/ConfigClient.html — TCP 443"},
+  {t:"DCR / OPT", d:"Port 9700 Invenco / FlexPay. Serial DCR is not this port."},
+  {t:"Please Pay Inside / E01", d:"Commander is not polling that position. Store LAN, not MNSP."}
+];
+const DESK_URL = {
+  csite: "C-Site Management Diagnostic.html",
+  hud: "Commander Status HUD.html",
+  assist: "Phone Assist Navigator.html"
+};
+const $=id=>document.getElementById(id);
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",1800)}
+function apiBase(){
+  try{ if(window.AIToolboxAPI && AIToolboxAPI.endpoint) return String(AIToolboxAPI.endpoint).replace(/\/$/,"")+"/api"; }catch(e){}
+  return "http://127.0.0.87:18765/api";
+}
+async function api(path, opt){
+  if(window.AIToolboxAPI && typeof AIToolboxAPI.api==="function") return AIToolboxAPI.api(path, opt||{});
+  const r=await fetch(apiBase()+path, Object.assign({cache:"no-store"}, opt||{}));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.detail||j.message||r.statusText);
+  return j;
+}
+async function pingServer(){
+  const pill=$("serverPill");
+  try{
+    if(window.AIToolboxAPI && typeof AIToolboxAPI.isOnline==="function"){
+      const on=await AIToolboxAPI.isOnline();
+      pill.textContent=on?"S1 online":"S1 offline"; pill.className="pill "+(on?"ok":"bad"); return on;
+    }
+    const r=await fetch(apiBase()+"/health",{cache:"no-store"});
+    const on=r.ok; pill.textContent=on?"S1 online":"S1 offline"; pill.className="pill "+(on?"ok":"bad"); return on;
+  }catch(e){ pill.textContent="S1 offline"; pill.className="pill bad"; return false; }
+}
+function parseGw(blob){
+  const m=String(blob||"").match(/Default Gateway[.\s]*:\s*([\d.]+)/i);
+  const ip=String(blob||"").match(/IPv4 Address[.\s]*:\s*([\d.]+)/i);
+  return {gateway:m?m[1]:"", ipv4:ip?ip[1]:""};
+}
+function classify(fp){
+  const gw=fp.gateway||"";
+  const ipv4=fp.ipv4||"";
+  if(gw.startsWith("10.96.10.")||ipv4.startsWith("10.96.10.")) return {vendor:"Acumera LAN", layer:"mnsp-mgmt", tab:"mnsp", desks:["csite","hud"], hops:[
+    {id:"cmd",label:"Commander",host:"192.168.31.11",port:443,cmd:"ping -n 4 192.168.31.11"}
+  ]};
+  if(gw.startsWith("192.168.31.")||ipv4.startsWith("192.168.31.")) return {vendor:"Cybera / Verifone POS LAN", layer:"pos-lan", tab:"forecourt", desks:["csite","hud","assist"], hops:[
+    {id:"cmd",label:"Commander",host:"192.168.31.11",port:443,cmd:"ping -n 4 192.168.31.11"},
+    {id:"zone",label:"MNSP LAN",host:"192.168.31.31",port:443,cmd:"ping -n 4 192.168.31.31"},
+    {id:"dcr",label:"DCR 9700",host:"192.168.31.11",port:9700,cmd:"powershell -c \"Test-NetConnection 192.168.31.11 -Port 9700\""},
+    {id:"mqtt",label:"MQTT 443",host:"184.73.231.196",port:443,cmd:"powershell -c \"Test-NetConnection 184.73.231.196 -Port 443\""}
+  ]};
+  if(gw==="192.168.1.99") return {vendor:"Hughes / FortiGate", layer:"mnsp-mgmt", tab:"mnsp", desks:["hud","csite"], hops:[{id:"fg",label:"FortiGate",host:"192.168.1.99",port:443,cmd:"ping -n 4 192.168.1.99"}]};
+  if(gw==="192.168.100.1") return {vendor:"Starlink", layer:"isp-lan", tab:"isp", desks:["hud"], hops:[{id:"dish",label:"Starlink",host:"192.168.100.1",port:80,cmd:"ping -n 4 192.168.100.1"}]};
+  if(gw==="192.168.0.1") return {vendor:"Brightspeed-style ISP", layer:"isp-lan", tab:"isp", desks:["hud"], hops:[{id:"m",label:"Modem",host:"192.168.0.1",port:80,cmd:"ping -n 4 192.168.0.1"},{id:"d",label:"Off-net",host:"8.8.8.8",port:53,cmd:"ping -n 4 8.8.8.8"}]};
+  if(gw==="192.168.1.1") return {vendor:"Spectrum / SOHO", layer:"isp-lan", tab:"isp", desks:["hud"], hops:[{id:"m",label:"Gateway",host:"192.168.1.1",port:80,cmd:"ping -n 4 192.168.1.1"}]};
+  return {vendor:fp.vendor||"Unknown LAN", layer:fp.layer||"unknown", tab:"kit", desks:["csite"], hops:fp.hops||[]};
+}
+let last = classify({});
+let hopState = {};
+function showTab(id){
+  ["forecourt","mnsp","isp","kit"].forEach(t=>{
+    $("pane-"+t).hidden = t!==id;
+    document.querySelector('#deskTabs [data-tab="'+t+'"]').classList.toggle("on", t===id);
+  });
+}
+function renderPlaybooks(){
+  $("mnsp").innerHTML=MNSP.map(x=>'<div style="margin-bottom:14px"><strong>'+x.n+'</strong><div class="cmd">'+x.p+'</div><div class="muted">'+x.u+' · '+x.t+'</div><div class="muted" style="margin-top:4px"><b>Physical:</b> '+x.phys+'</div><div class="muted"><b>Virtual:</b> '+x.virt+'</div></div>').join("");
+  $("isp").innerHTML=ISP.map(x=>'<div style="margin-bottom:14px"><strong>'+x.n+'</strong><div class="cmd">'+x.p+'</div><div class="muted">'+x.u+' · '+x.t+'</div><div class="muted" style="margin-top:4px"><b>Physical:</b> '+x.phys+'</div><div class="muted"><b>Virtual:</b> '+x.virt+'</div></div>').join("");
+  $("crind").innerHTML=CRIND.map(x=>'<div style="margin-bottom:10px"><strong>'+x.t+'</strong><div class="muted">'+x.d+'</div></div>').join("");
+  $("cmds").innerHTML=CMDS.map(x=>'<div style="display:flex;justify-content:space-between;gap:8px;margin:6px 0;align-items:center"><div><div>'+x.t+'</div><div class="cmd">'+x.c+'</div></div><button class="btn" type="button" data-cmd="'+encodeURIComponent(x.c)+'">Copy</button></div>').join("");
+  $("cmds").onclick=e=>{
+    const b=e.target.closest("[data-cmd]"); if(!b) return;
+    navigator.clipboard.writeText(decodeURIComponent(b.getAttribute("data-cmd"))); toast("Copied");
+  };
+}
+function worstClass(){
+  const vals=Object.values(hopState);
+  if(vals.indexOf("fail")>=0) return "fail";
+  if(vals.indexOf("run")>=0) return "run";
+  if(vals.indexOf("warn")>=0) return "warn";
+  if(vals.length && vals.every(v=>v==="pass")) return "pass";
+  return "";
+}
+function setHops(){
+  const hops=last.hops||[];
+  $("hops").innerHTML=hops.map(h=>{
+    const st=hopState[h.id]||"idle";
+    return '<div class="node '+st+'" data-hop="'+h.id+'"><div class="n">'+h.label+'</div><div class="h">'+h.host+(h.port?":"+h.port:"")+'</div><div class="h" id="d-'+h.id+'">'+(h.cmd||"")+'</div><button class="btn" type="button" data-test="'+h.id+'">Test this hop</button><div class="stamps"><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="pass">Pass</button><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="warn">Warn</button><button class="btn" type="button" data-stamp="'+h.id+'" data-tone="fail">Fail</button></div></div>';
+  }).join("")||'<p class="muted">Identify first.</p>';
+  const w=worstClass();
+  $("hopPanel").className="panel "+w;
+  $("hopPill").textContent=w||"idle";
+}
+$("hops").onclick=function(e){
+  const test=e.target.closest("[data-test]");
+  const stamp=e.target.closest("[data-stamp]");
+  if(stamp){
+    hopState[stamp.getAttribute("data-stamp")]=stamp.getAttribute("data-tone");
+    setHops(); return;
+  }
+  if(test){
+    const id=test.getAttribute("data-test");
+    const h=(last.hops||[]).find(x=>x.id===id); if(!h) return;
+    if(h.cmd) navigator.clipboard.writeText(h.cmd);
+    hopState[id]="run"; setHops();
+    probeHop(h).then(r=>{
+      hopState[id]=r.ok?"pass":"fail";
+      setHops();
+      const el=document.getElementById("d-"+h.id); if(el) el.textContent=r.detail;
+    });
+  }
+};
+async function probeHop(h){
+  try{
+    if(h.port===53){
+      const j=await api("/network/dns",{method:"POST",body:JSON.stringify({host:"us.live.verifone.cloud",record_type:"AUTO"})});
+      const ok=!!((j.records&&j.records.length)||(j.forward_records&&j.forward_records.length));
+      return {ok, detail: ok?"DNS records returned":"no records"};
+    }
+    if(h.port===80||h.port===443||h.port===9700||h.port===4710){
+      const j=await api("/network/telnet",{method:"POST",body:JSON.stringify({host:h.host,port:h.port||443,timeout_sec:3})});
+      return {ok:j.open===true, detail:j.open===true?"open":(j.error||"closed")};
+    }
+    const j=await api("/network/ping",{method:"POST",body:JSON.stringify({host:h.host,count:2,timeout_ms:1000})});
+    return {ok:!!j.success, detail:j.success?"ping ok":"ping fail"};
+  }catch(e){
+    return {ok:false, detail:String(e.message||e)};
+  }
+}
+async function identify(){
+  const pasted=parseGw($("blob").value);
+  let fp={};
+  const online=await pingServer();
+  if(online){
+    try{ fp=await api("/network/fingerprint"); }catch(e){
+      try{ const d=await api("/network/diagnostics"); fp={gateway:d.gateway,ipv4:""}; }catch(e2){}
+    }
+  }
+  if(pasted.gateway) fp.gateway=pasted.gateway;
+  if(pasted.ipv4) fp.ipv4=pasted.ipv4;
+  last=classify(fp);
+  hopState={};
+  $("vendor").textContent=last.vendor;
+  $("summary").textContent="Layer "+last.layer+". Opening: "+last.desks.join(", ")+". Hop commands copied.";
+  $("ids").textContent="gateway "+(fp.gateway||"—")+" · ipv4 "+(fp.ipv4||"—");
+  $("idPill").textContent=last.layer;
+  $("idPanel").className="panel "+(last.layer==="unknown"?"warn":"pass");
+  last.hops.forEach(h=>hopState[h.id]="run");
+  setHops();
+  showTab(last.tab||"forecourt");
+  if(last.hops[0] && last.hops[0].cmd) navigator.clipboard.writeText(last.hops.map(h=>h.cmd).join("\r\n"));
+  if(!online){
+    toast("S1 offline — stamp hops from cmd, or start S1 for live TCP");
+    last.hops.forEach(h=>hopState[h.id]="warn");
+    setHops();
+    return;
+  }
+  for(const h of last.hops){
+    hopState[h.id]="run"; setHops();
+    const r=await probeHop(h);
+    hopState[h.id]=r.ok?"pass":"fail";
+    setHops();
+    const el=document.getElementById("d-"+h.id); if(el) el.textContent=r.detail;
+  }
+  openDesks();
+}
+function openDesks(){
+  const map={csite:DESK_URL.csite, hud:DESK_URL.hud, assist:DESK_URL.assist};
+  const urls=(last.desks||["csite"]).map(id=>map[id]).filter(Boolean);
+  [...new Set(urls)].forEach((u,i)=> setTimeout(()=>window.open(u, "fafo-"+i), i*180));
+  toast("Opened needed Verifone desks");
+}
+async function launchCmd(){
+  const online=await pingServer();
+  const profile = last.layer==="pos-lan"?"forecourt": last.layer==="isp-lan"?"isp": last.layer==="mnsp-mgmt"?"mnsp":"full";
+  if(online){
+    try{
+      const j=await api("/network/open-console",{method:"POST",body:JSON.stringify({profile:profile})});
+      if(j.ok){ toast("Command Prompt launched ("+profile+")"); return; }
+      toast(j.error||"Could not launch cmd");
+    }catch(e){ toast(String(e.message||e)); }
+  }
+  const bat=["@echo off","title FAFO Field Network Kit"].concat(CMDS.flatMap(x=>["echo === "+x.t+" ===", x.c, "echo."])).concat(["pause"]).join("\r\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([bat],{type:"application/x-bat"}));
+  a.download="fafo-field-net-kit.bat";
+  a.click();
+  toast("Downloaded kit.bat — run it to open cmd");
+}
+document.querySelectorAll("#deskTabs button").forEach(btn=>{
+  btn.onclick=()=>showTab(btn.getAttribute("data-tab"));
+});
+$("btnId").onclick=identify;
+$("btnOpen").onclick=openDesks;
+$("btnCmd").onclick=launchCmd;
+renderPlaybooks();
+setHops();
+pingServer();
+</script>
+</body>
+</html>

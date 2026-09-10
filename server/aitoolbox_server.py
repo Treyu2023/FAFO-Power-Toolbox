@@ -4046,6 +4046,10 @@ class NetPing(BaseModel):
     timeout_ms: int = 1000
 
 
+class NetOpenConsole(BaseModel):
+    profile: str = "full"
+
+
 class NetTraceroute(BaseModel):
     host: str
     max_hops: int = 30
@@ -4760,6 +4764,24 @@ def api_network_portscan(body: NetPortScan):
 def api_network_diagnostics():
     try:
         return net.run_diagnostics()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/network/fingerprint")
+def api_network_fingerprint():
+    try:
+        return net.fingerprint_lan()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/network/open-console")
+def api_network_open_console(body: NetOpenConsole):
+    try:
+        return net.open_console(body.profile)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, str(e))
 

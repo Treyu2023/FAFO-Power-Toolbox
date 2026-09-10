@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field Network Desk · FAFO</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.3.00">
+<style>
+:root {
+  --bg:#03060a; --panel:#0a1018; --panel2:#0e1620;
+  --line:rgba(56,189,248,.2); --accent:#38bdf8; --accent2:#f59e0b;
+  --good:#34d399; --warn:#fbbf24; --bad:#f87171; --text:#e8eef4; --muted:#7b8fa6;
+  --glow:0 0 28px rgba(56,189,248,.28);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;
+  background:radial-gradient(ellipse 70% 45% at 15% -5%,rgba(14,116,144,.4),transparent 55%),linear-gradient(180deg,#050a10,var(--bg));}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(5,10,16,.9);position:sticky;top:0;z-index:30}
+.brand h1{margin:0;font-size:17px;color:var(--accent);letter-spacing:.06em;text-shadow:var(--glow)}
+.brand .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.nav-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nav-links a,.pill{color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;border:1px solid var(--line);padding:6px 10px;border-radius:8px}
+.pill.ok{border-color:rgba(52,211,153,.5);color:var(--good)}
+.pill.bad{border-color:rgba(248,113,113,.5);color:var(--bad)}
+.wrap{max-width:1280px;margin:0 auto;padding:16px 16px 40px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:960px){.grid{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:linear-gradient(165deg,var(--panel2),var(--panel))}
+.panel.pass{border-color:rgba(52,211,153,.45);background:linear-gradient(165deg,#062016,var(--panel))}
+.panel.fail{border-color:rgba(248,113,113,.5);background:linear-gradient(165deg,#1a0b0b,var(--panel))}
+.panel.warn{border-color:rgba(251,191,36,.45);background:linear-gradient(165deg,#1a1406,var(--panel))}
+.panel.run{animation:sweep 1.1s ease-in-out infinite}
+.ph{padding:10px 14px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);display:flex;justify-content:space-between;gap:8px}
+.pb{padding:12px 14px}
+.btn{border:1px solid var(--accent);background:transparent;color:var(--accent);padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase}
+.btn:hover{background:var(--accent);color:#041018}
+.btn.primary{background:rgba(56,189,248,.14)}
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+label.fld{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:8px 0 4px}
+input,select,textarea{width:100%;background:#070c12;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px}
+textarea{min-height:90px;resize:vertical;font-family:Consolas,ui-monospace,monospace;font-size:12px}
+.hops{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.node{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(0,0,0,.28)}
+.node.pass{border-color:rgba(52,211,153,.5);background:linear-gradient(165deg,#062016,#070c12);color:var(--good)}
+.node.fail{border-color:rgba(248,113,113,.5);background:linear-gradient(165deg,#1a0b0b,#070c12);color:var(--bad)}
+.node.warn{border-color:rgba(251,191,36,.5);background:linear-gradient(165deg,#1a1406,#070c12);color:var(--warn)}
+.node.run{border-color:var(--accent);animation:sweep 1.1s ease-in-out infinite}
+.node .n{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.node .h{font-size:11px;color:var(--muted);margin-top:4px}
+.cmd{font-family:Consolas,ui-monospace,monospace;font-size:12px;color:var(--accent)}
+.muted{color:var(--muted);font-size:13px;line-height:1.45}
+.toast{position:fixed;bottom:16px;right:16px;background:#0e1620;border:1px solid var(--line);padding:10px 14px;border-radius:10px;display:none;z-index:50}
+@keyframes sweep{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Field Network Desk</h1>
+    <div class="sub">Fingerprint the LAN · color the hops · open only the desks that apply · launch cmd kit</div>
+  </div>
+  <nav class="nav-links">
+    <a href="../Toolbox Launcher.html">Launcher</a>
+    <a href="C-Site Management Diagnostic.html">C-Site</a>
+    <a href="Commander Status HUD.html">Status HUD</a>
+    <a href="Phone Assist Navigator.html">Phone Assist</a>
+    <span id="serverPill" class="pill">S1 …</span>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="grid">
+    <div class="panel">
+      <div class="ph">Identify this laptop</div>
+      <div class="pb">
+        <p class="muted">S1 reads the default gateway and ARP. You can also paste ipconfig /all. Then Open needed desks starts live TCP probes and the matching pages.</p>
+        <label class="fld">Paste ipconfig /all (optional)</label>
+        <textarea id="blob" placeholder="Windows ipconfig /all"></textarea>
+        <div class="btn-row">
+          <button class="btn primary" type="button" id="btnId">Identify + sweep</button>
+          <button class="btn" type="button" id="btnOpen">Open needed desks</button>
+          <button class="btn" type="button" id="btnCmd">Launch Command Prompt</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="idPanel">
+      <div class="ph"><span>Fingerprint</span><span id="idPill" class="pill">idle</span></div>
+      <div class="pb">
+        <h2 id="vendor" style="margin:0 0 8px;font-size:18px">Unknown LAN</h2>
+        <p class="muted" id="summary">Start S1, then Identify. Gateway 192.168.31.31 = POS / Cybera. 192.168.0.1 = Brightspeed-style ISP. 192.168.1.99 = FortiGate.</p>
+        <p class="cmd" id="ids">gateway — · ipv4 —</p>
+      </div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <div class="ph">Hops · green/black pass · red/black fail · amber/black warn</div>
+    <div class="pb"><div class="hops" id="hops"></div></div>
+  </div>
+  <div class="grid" style="margin-top:14px">
+    <div class="panel">
+      <div class="ph">MNSP playbooks</div>
+      <div class="pb" id="mnsp"></div>
+    </div>
+    <div class="panel">
+      <div class="ph">ISP CPE · NC</div>
+      <div class="pb" id="isp"></div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <div class="ph">Command kit (copy)</div>
+    <div class="pb" id="cmds"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../shared/aitoolbox-config.js?v=3.3.00"></script>
+<script src="../shared/aitoolbox-api.js?v=3.3.00"></script>
+<script>
+const CMDS = [
+  {t:"Who am I", c:"ipconfig /all"},
+  {t:"ARP", c:"arp -a"},
+  {t:"Ping Commander", c:"ping -n 4 192.168.31.11"},
+  {t:"Ping zone router", c:"ping -n 4 192.168.31.31"},
+  {t:"C-Site DNS", c:"nslookup us.live.verifone.cloud"},
+  {t:"Watch 443", c:"netstat -ano | findstr :443"},
+  {t:"Off-net", c:"ping -n 4 8.8.8.8"},
+  {t:"Tracert ISP", c:"tracert -d -h 12 8.8.8.8"}
+];
+const MNSP = [
+  {n:"Cybera", p:"https://192.168.31.31", u:"zonerouter / cyberasca (published Verifone guide; often rotated)", t:"866-429-2372"},
+  {n:"Hughes + FortiGate", p:"https://192.168.1.99", u:"admin / (NOC or sticker, not factory)", t:"888-440-7126"},
+  {n:"Acumera", p:"AcuVigil / NOC-issued LAN IP", u:"No public default — call with site ID", t:"512-687-7401"},
+  {n:"Mako (BP)", p:"MNSP injects", u:"Do not type C-Site host table", t:"BP / Mako NOC"}
+];
+const ISP = [
+  {n:"Brightspeed (C4000)", p:"http://192.168.0.1", u:"admin / sticker", t:"LED ring green=WAN up, red=call Brightspeed"},
+  {n:"Spectrum / TWC", p:"http://192.168.0.1 or .1.1", u:"admin/password on older Arris; app on new", t:"Online LED before MNSP WAN"},
+  {n:"Starlink", p:"http://192.168.100.1", u:"open dish UI", t:"CGNAT is fine for outbound C-Site 443"}
+];
+const DESKS = {
+  csite: "C-Site Management Diagnostic.html",
+  hud: "Commander Status HUD.html",
+  assist: "Phone Assist Navigator.html"
+};
+const $=id=>document.getElementById(id);
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",1800)}
+function apiBase(){
+  try{ if(window.AIToolboxAPI && AIToolboxAPI.endpoint) return String(AIToolboxAPI.endpoint).replace(/\/$/,"")+"/api"; }catch(e){}
+  return "http://127.0.0.87:18765/api";
+}
+async function api(path, opt){
+  if(window.AIToolboxAPI && typeof AIToolboxAPI.api==="function") return AIToolboxAPI.api(path, opt||{});
+  const r=await fetch(apiBase()+path, Object.assign({cache:"no-store"}, opt||{}));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.detail||j.message||r.statusText);
+  return j;
+}
+async function pingServer(){
+  const pill=$("serverPill");
+  try{
+    if(window.AIToolboxAPI && typeof AIToolboxAPI.isOnline==="function"){
+      const on=await AIToolboxAPI.isOnline();
+      pill.textContent=on?"S1 online":"S1 offline"; pill.className="pill "+(on?"ok":"bad"); return on;
+    }
+    const r=await fetch(apiBase()+"/health",{cache:"no-store"});
+    const on=r.ok; pill.textContent=on?"S1 online":"S1 offline"; pill.className="pill "+(on?"ok":"bad"); return on;
+  }catch(e){ pill.textContent="S1 offline"; pill.className="pill bad"; return false; }
+}
+function parseGw(blob){
+  const m=String(blob||"").match(/Default Gateway[.\s]*:\s*([\d.]+)/i);
+  const ip=String(blob||"").match(/IPv4 Address[.\s]*:\s*([\d.]+)/i);
+  return {gateway:m?m[1]:"", ipv4:ip?ip[1]:""};
+}
+function classify(fp){
+  const gw=fp.gateway||"";
+  const ipv4=fp.ipv4||"";
+  if(gw.startsWith("192.168.31.")||ipv4.startsWith("192.168.31.")) return {vendor:"Cybera / Verifone POS LAN", layer:"pos-lan", desks:["csite","hud"], hops:[
+    {id:"cmd",label:"Commander",host:"192.168.31.11",port:443},
+    {id:"zone",label:"MNSP LAN",host:"192.168.31.31",port:443},
+    {id:"mqtt",label:"MQTT",host:"184.73.231.196",port:443}
+  ]};
+  if(gw==="192.168.1.99") return {vendor:"Hughes / FortiGate", layer:"mnsp-mgmt", desks:["hud","csite"], hops:[{id:"fg",label:"FortiGate",host:"192.168.1.99",port:443}]};
+  if(gw==="192.168.0.1") return {vendor:"Brightspeed-style ISP", layer:"isp-lan", desks:["hud"], hops:[{id:"m",label:"Modem",host:"192.168.0.1",port:80},{id:"d",label:"Off-net",host:"8.8.8.8",port:53}]};
+  if(gw==="192.168.1.1") return {vendor:"Spectrum / SOHO", layer:"isp-lan", desks:["hud"], hops:[{id:"m",label:"Gateway",host:"192.168.1.1",port:80}]};
+  return {vendor:fp.vendor||"Unknown LAN", layer:fp.layer||"unknown", desks:["csite"], hops:fp.hops||[]};
+}
+let last = classify({});
+function renderPlaybooks(){
+  $("mnsp").innerHTML=MNSP.map(x=>'<div style="margin-bottom:10px"><strong>'+x.n+'</strong><div class="cmd">'+x.p+'</div><div class="muted">'+x.u+' · '+x.t+'</div></div>').join("");
+  $("isp").innerHTML=ISP.map(x=>'<div style="margin-bottom:10px"><strong>'+x.n+'</strong><div class="cmd">'+x.p+'</div><div class="muted">'+x.u+' · '+x.t+'</div></div>').join("");
+  $("cmds").innerHTML=CMDS.map(x=>'<div style="display:flex;justify-content:space-between;gap:8px;margin:6px 0;align-items:center"><div><div>'+x.t+'</div><div class="cmd">'+x.c+'</div></div><button class="btn" type="button" data-cmd="'+encodeURIComponent(x.c)+'">Copy</button></div>').join("");
+  $("cmds").onclick=e=>{
+    const b=e.target.closest("[data-cmd]"); if(!b) return;
+    navigator.clipboard.writeText(decodeURIComponent(b.getAttribute("data-cmd"))); toast("Copied");
+  };
+}
+function setHops(hops, state){
+  $("hops").innerHTML=(hops||[]).map(h=>{
+    const st=state[h.id]||"run";
+    return '<div class="node '+st+'"><div class="n">'+h.label+'</div><div class="h">'+h.host+(h.port?":"+h.port:"")+'</div><div class="h" id="d-'+h.id+'">…</div></div>';
+  }).join("")||'<p class="muted">Identify first.</p>';
+}
+async function probeHop(h){
+  const el=document.getElementById("d-"+h.id);
+  try{
+    if(h.port===53){
+      const j=await api("/network/dns",{method:"POST",body:JSON.stringify({host:"us.live.verifone.cloud",record_type:"AUTO"})});
+      const ok=!!((j.records&&j.records.length)||(j.forward_records&&j.forward_records.length));
+      return {ok, detail: ok?"DNS records returned":"no records"};
+    }
+    if(h.port===80||h.port===443){
+      const j=await api("/network/telnet",{method:"POST",body:JSON.stringify({host:h.host,port:h.port||443,timeout_sec:3})});
+      return {ok:j.open===true, detail:j.open===true?"open":(j.error||"closed")};
+    }
+    const j=await api("/network/ping",{method:"POST",body:JSON.stringify({host:h.host,count:2,timeout_ms:1000})});
+    return {ok:!!j.success, detail:j.success?"ping ok":"ping fail"};
+  }catch(e){
+    if(el) el.textContent=String(e.message||e);
+    return {ok:false, detail:String(e.message||e)};
+  }
+}
+async function identify(){
+  const pasted=parseGw($("blob").value);
+  let fp={};
+  const online=await pingServer();
+  if(online){
+    try{ fp=await api("/network/fingerprint"); }catch(e){
+      try{ const d=await api("/network/diagnostics"); fp={gateway:d.gateway,ipv4:""}; }catch(e2){}
+    }
+  }
+  if(pasted.gateway) fp.gateway=pasted.gateway;
+  if(pasted.ipv4) fp.ipv4=pasted.ipv4;
+  last=classify(fp);
+  $("vendor").textContent=last.vendor;
+  $("summary").textContent="Layer "+last.layer+". Opening these desks after the hop sweep: "+last.desks.join(", ")+".";
+  $("ids").textContent="gateway "+(fp.gateway||"—")+" · ipv4 "+(fp.ipv4||"—");
+  $("idPill").textContent=last.layer;
+  $("idPanel").className="panel "+(last.layer==="unknown"?"warn":"pass");
+  const state={}; last.hops.forEach(h=>state[h.id]="run");
+  setHops(last.hops, state);
+  if(!online){ toast("S1 offline — interview still works, hop tests need the server"); return; }
+  for(const h of last.hops){
+    const r=await probeHop(h);
+    state[h.id]=r.ok?"pass":"fail";
+    setHops(last.hops, state);
+    const el=document.getElementById("d-"+h.id); if(el) el.textContent=r.detail;
+  }
+}
+function openDesks(){
+  const extra=last.desks||["csite"];
+  const urls=["C-Site Management Diagnostic.html","Commander Status HUD.html"];
+  if(extra.indexOf("csite")>=0) urls.push("C-Site Management Diagnostic.html");
+  [...new Set(urls)].forEach((u,i)=> setTimeout(()=>window.open(u,"_blank"), i*250));
+  toast("Opened needed Verifone desks");
+}
+async function launchCmd(){
+  const online=await pingServer();
+  if(online){
+    try{
+      const j=await api("/network/open-console",{method:"POST",body:JSON.stringify({profile:"full"})});
+      if(j.ok){ toast("Command Prompt launched"); return; }
+      toast(j.error||"Could not launch cmd");
+    }catch(e){ toast(String(e.message||e)); }
+  }
+  const bat=["@echo off","title FAFO Field Network Kit"].concat(CMDS.flatMap(x=>["echo === "+x.t+" ===", x.c, "echo."])).concat(["pause"]).join("\r\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([bat],{type:"application/x-bat"}));
+  a.download="fafo-field-net-kit.bat";
+  a.click();
+  toast("Downloaded kit.bat — run it to open cmd");
+}
+$("btnId").onclick=identify;
+$("btnOpen").onclick=openDesks;
+$("btnCmd").onclick=launchCmd;
+renderPlaybooks();
+pingServer();
+</script>
+</body>
+</html>
