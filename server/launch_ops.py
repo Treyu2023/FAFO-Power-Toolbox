@@ -377,7 +377,8 @@ _HOST_BROWSER_NAMES = {
     "opera",
 }
 
-DEMAND_TTL_SEC = 12 * 60  # keep S2 up this long after last FAFO ping
+DEMAND_TTL_SEC = 8 * 60  # keep S1/S2 up this long after last real app ping
+
 
 
 def demand_path(which: str = "s2") -> Path:
@@ -435,7 +436,11 @@ def chrome_running() -> bool:
 def get_sessions(prefs: dict[str, Any] | None = None) -> dict[str, bool]:
     p = prefs or get_prefs()
     s = p.get("sessions") or {}
-    return {"toolboxActive": bool(s.get("toolboxActive"))}
+    return {
+        "toolboxActive": bool(s.get("toolboxActive")),
+        "fafoMediaActive": bool(s.get("fafoMediaActive")),
+    }
+
 
 
 def set_toolbox_session(active: bool) -> dict[str, Any]:
@@ -483,7 +488,12 @@ def should_auto_run_s1(prefs: dict[str, Any] | None = None) -> bool:
 
 
 def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
-    """S2 while FAFO/Ultimate Tab is in use, a host browser is open, or manual hold."""
+    """S2 while FAFO/Ultimate Tab is actually using it, or manual hold.
+
+    Chrome being open is NOT enough — people leave Chrome up all day. The new
+    tab / tag writes ping demand-s2.json; when that goes stale the watchdog
+    parks S2 so the PC can rest.
+    """
     p = prefs or get_prefs()
     if servers_sleeping(p).get("fafoMetaServer"):
         return False
@@ -495,16 +505,14 @@ def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
         return True
     if bool(get_sessions(p).get("fafoMediaActive")):
         return True
-    if host_browser_running():
-        return True
     return bool(manual_hold(p).get("fafoMetaServer"))
 
 
 def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
     """Align S1/S2 with host apps + manual holds (tray + watchdog).
 
-    S1 HTML Toolbox  → toolbox session or manual hold
-    S2 Ultimate Tab  → FAFO demand / Chromium browser / manual hold
+    S1 HTML Toolbox  → toolbox session or demand-s1.json or manual hold
+    S2 Ultimate Tab  → FAFO demand / new-tab use or manual hold (Chrome open ≠ demand)
     """
     prefs = get_prefs()
     actions: list[str] = []
@@ -523,7 +531,15 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
                 if _port_open(TOOLBOX_HOST, TOOLBOX_PORT):
                     break
                 time.sleep(0.4)
-    # Do not auto-stop S1 when session ends — user Sleep is explicit
+    elif (
+        (not want_s1)
+        and s1_up
+        and not servers_sleeping(prefs).get("toolboxServer")
+        and not hold.get("toolboxServer")
+        and not demand_fresh("s1")
+    ):
+        killed = stop_companions(toolbox=True, fafo_meta=False, mark_sleep=False)
+        actions.append(f"stop_s1_idle:killed={killed.get('killed')}")
 
     if want_s2 and not s2_up:
         r = start_fafo_meta_server()
@@ -538,12 +554,11 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
         and s2_up
         and not servers_sleeping(prefs).get("fafoMetaServer")
         and not hold.get("fafoMetaServer")
-        and browser is False
         and not demand_fresh("s2")
     ):
-        # Host browser closed AND FAFO has not pinged recently — free resources
+        # FAFO has not pinged recently — free resources even if Chrome is still open
         killed = stop_companions(toolbox=False, fafo_meta=True, mark_sleep=False)
-        actions.append(f"stop_s2_host_gone:killed={killed.get('killed')}")
+        actions.append(f"stop_s2_idle:killed={killed.get('killed')}")
 
     tray_info: dict[str, Any] = {}
     if ensure_tray:
@@ -677,12 +692,12 @@ def companion_status() -> dict[str, Any]:
     toolbox_listening = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
     meta_listening = _port_open(META_HOST, META_PORT)
     toolbox_health = (
-        _http_health_resilient(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health")
+        _http_health_resilient(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health?probe=1")
         if toolbox_listening
         else {"ok": False}
     )
     meta_health = (
-        _http_health_resilient(f"http://{META_HOST}:{META_PORT}/api/health")
+        _http_health_resilient(f"http://{META_HOST}:{META_PORT}/api/health?probe=1")
         if meta_listening
         else {"ok": False}
     )
@@ -832,7 +847,7 @@ def runtime_stack(
         toolbox_listening = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
     if toolbox_health is None:
         toolbox_health = (
-            _http_health_resilient(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health")
+            _http_health_resilient(f"http://{TOOLBOX_HOST}:{TOOLBOX_PORT}/api/health?probe=1")
             if toolbox_listening
             else {"ok": False}
         )
@@ -840,7 +855,7 @@ def runtime_stack(
         meta_listening = _port_open(META_HOST, META_PORT)
     if meta_health is None:
         meta_health = (
-            _http_health_resilient(f"http://{META_HOST}:{META_PORT}/api/health")
+            _http_health_resilient(f"http://{META_HOST}:{META_PORT}/api/health?probe=1")
             if meta_listening
             else {"ok": False}
         )
@@ -870,7 +885,8 @@ def runtime_stack(
     s1_up = bool(toolbox_listening and toolbox_health.get("ok"))
     s1_listen_only = bool(toolbox_listening and not toolbox_health.get("ok"))
     s2_up = bool(meta_listening and (meta_health.get("ok") or meta_listening))
-    s2_expected = bool(chrome_up and not sleep.get("fafoMetaServer") and one.get("fafoMetaServer", True))
+    s2_expected = bool(should_auto_run_s2(prefs) and not sleep.get("fafoMetaServer") and one.get("fafoMetaServer", True))
+
     pinokio = "pinokio.exe" in images
     chrome = chrome_up or "chrome.exe" in images
 

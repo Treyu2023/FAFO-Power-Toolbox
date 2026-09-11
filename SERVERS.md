@@ -9,8 +9,8 @@
 
 | Server | Starts when | Stops when |
 |--------|-------------|------------|
-| **S1** | You open **AI HTML Toolbox** | Tray → **Sleep S1** |
-| **S2** | **Google Chrome** is running | Chrome exits (if not manually held) · or **Sleep S2** |
+| **S1** | You open **AI HTML Toolbox** | 8 min after last Toolbox use, or tray **Sleep S1** |
+| **S2** | FAFO new tab / tagging is actually using it | 8 min after last FAFO ping (Chrome can stay open), or **Sleep S2** |
 
 ## Manual (any Start button)
 
@@ -30,7 +30,8 @@ Manual start sets a short **manual hold** so the auto Chrome lifecycle does not 
 ## One-liners
 
 ```text
-S1 auto  = Toolbox open
-S2 auto  = Chrome open
+S1 auto  = Toolbox open (parks after idle)
+S2 auto  = FAFO new tab / tags in use (not merely Chrome open)
 Any Start button = run that server now, no host app required
+Imagine Vault = grok.com/imagine overlay on :18767, parks after 8 min idle
 ```
