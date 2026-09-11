@@ -80,7 +80,7 @@
     lighting: 'full',        // full | soft | dim | flat
     halo: true,
     ambient: true,
-    fxTheme: 'off',          // off | sparkysparks | paintonsalought  (lighting FX, not layout)
+    fxTheme: 'off',          // off | sparkysparks | paintonsalought | lavalamp | wallpaper
     // Colors — empty string means "leave the page default"
     accentCustom: '',
     colorBg: '',
@@ -192,7 +192,7 @@
     if (!['full', 'soft', 'dim', 'flat'].includes(out.lighting)) out.lighting = 'full';
     out.halo = out.halo !== false;
     out.ambient = out.ambient !== false;
-    if (!['off', 'sparkysparks', 'paintonsalought'].includes(out.fxTheme)) out.fxTheme = 'off';
+    if (!['off', 'sparkysparks', 'paintonsalought', 'lavalamp', 'wallpaper'].includes(out.fxTheme)) out.fxTheme = 'off';
     COLOR_FIELDS.forEach(function (f) {
       out[f.k] = normHex(out[f.k]);
     });
@@ -257,7 +257,7 @@
     html.setAttribute('data-atx-layout', layout);
     html.setAttribute('data-atx-lighting', p.lighting);
     html.setAttribute('data-atx-accent', p.accent);
-    html.setAttribute('data-atx-fx', p.fxTheme === 'sparkysparks' || p.fxTheme === 'paintonsalought' ? p.fxTheme : 'off');
+    html.setAttribute('data-atx-fx', ['sparkysparks', 'paintonsalought', 'lavalamp', 'wallpaper'].indexOf(p.fxTheme) >= 0 ? p.fxTheme : 'off');
     html.style.setProperty('--atx-accent', pal.accent);
     html.style.setProperty('--atx-accent2', pal.accent2);
     html.style.setProperty('--atx-accent3', pal.accent3);
@@ -761,8 +761,10 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
           { v: 'off', l: 'Off' },
           { v: 'sparkysparks', l: 'SparkySparks' },
           { v: 'paintonsalought', l: 'PAINTONSaLOUGHT' },
+          { v: 'lavalamp', l: 'Lava lamp' },
+          { v: 'wallpaper', l: 'Live wallpaper' },
         ], p.fxTheme || 'off') +
-        '<p class="atx-look-hint">SparkySparks: click fireworks, move to shower bloom sparks that pile at the bottom, scroll blows piles away, borders lightning-flash in burst colors. PAINTONSaLOUGHT: same motion with neon / blacklight paint specks that swell when you get near them. Lighting, not layout.</p>' +
+        '<p class="atx-look-hint">SparkySparks: click fireworks, move to shower sparks that pile at the bottom. PAINTONSaLOUGHT: neon paint specks. <b>Lava lamp</b>: viscous color blobs in the margins (not over the tools). <b>Live wallpaper</b>: slower aurora wash around the frame. Lighting, not layout. Off if the OS asks for reduced motion.</p>' +
       '</div>' +
 
       '<div class="row-btns">' +
@@ -781,6 +783,8 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
         patch[k] = v;
         if (k === 'fxTheme' && v === 'sparkysparks') patch.accent = 'gold';
         if (k === 'fxTheme' && v === 'paintonsalought') patch.accent = 'violet';
+        if (k === 'fxTheme' && v === 'lavalamp') patch.accent = 'ember';
+        if (k === 'fxTheme' && v === 'wallpaper') patch.accent = 'cyan';
         if (k === 'accent' && v === 'custom' && !prefs.accentCustom) {
           patch.accentCustom = (ACCENTS.cyan && ACCENTS.cyan.accent) || '#00f3ff';
         }

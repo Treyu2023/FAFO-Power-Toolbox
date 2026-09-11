@@ -2,6 +2,8 @@
  * FAFO Toolbox — named lighting themes
  *   sparkysparks     fireworks click, falling bloom sparks, glowing piles
  *   paintonsalought  same motion with neon / blacklight paint specks
+ *   lavalamp         viscous color blobs in the page margins (lava-lamp)
+ *   wallpaper        slow aurora / live-wallpaper wash, strongest in the frame
  *
  * Driven by AIToolboxPrefs.fxTheme. Pointer-events none; listens on window.
  * Snapshots: snapshots/shared/aitoolbox-theme-fx.js/
@@ -13,6 +15,9 @@
   const BINS = 28;
   const FW_HUES = [12, 32, 48, 190, 268, 310, 140];
   const PAINT_HUES = [188, 272, 300, 164, 220, 128];
+  const LAVA_HUES = [18, 32, 8, 338, 285, 195];
+  const WALL_HUES = [188, 268, 162, 48, 312, 210];
+  const FX_MODES = ['sparkysparks', 'paintonsalought', 'lavalamp', 'wallpaper'];
 
   let canvas = null;
   let ctx = null;
@@ -32,6 +37,8 @@
   let reduced = false;
   let glowMul = 1;
   let bound = false;
+  let blobs = [];
+  let blobT = 0;
 
   function hueColor(hue, a, lit) {
     const l = lit == null ? 62 : lit;
@@ -39,6 +46,8 @@
   }
 
   function isPaint() { return mode === 'paintonsalought'; }
+  function isSpark() { return mode === 'sparkysparks' || mode === 'paintonsalought'; }
+  function isBlob() { return mode === 'lavalamp' || mode === 'wallpaper'; }
 
   function paletteHue() {
     const arr = isPaint() ? PAINT_HUES : FW_HUES;
@@ -57,6 +66,12 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!piles.length) {
       for (let i = 0; i < BINS; i++) piles.push({ m: 0, hue: 200, glow: 0 });
+    }
+    if (isBlob() && blobs.length) {
+      for (let i = 0; i < blobs.length; i++) {
+        blobs[i].x = Math.max(0, Math.min(w, blobs[i].x));
+        blobs[i].y = Math.max(0, Math.min(h, blobs[i].y));
+      }
     }
   }
 
@@ -77,6 +92,13 @@ html[data-atx-fx="paintonsalought"] body{
   transition: box-shadow .12s linear;
 }
 html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
+html[data-atx-fx="lavalamp"] #atx-theme-fx,
+html[data-atx-fx="wallpaper"] #atx-theme-fx{
+  z-index:1;
+  mix-blend-mode:screen;
+  opacity:0.92;
+}
+html[data-atx-fx="wallpaper"] #atx-theme-fx{opacity:0.78}
 @media (prefers-reduced-motion: reduce){
   #atx-theme-fx{display:none !important}
 }
@@ -253,13 +275,116 @@ html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
     }
   }
 
+  function marginPx() {
+    return Math.max(72, Math.min(w, h) * (mode === 'wallpaper' ? 0.18 : 0.15));
+  }
+
+  function seedBlobs() {
+    blobs = [];
+    const hues = mode === 'lavalamp' ? LAVA_HUES : WALL_HUES;
+    const n = mode === 'wallpaper' ? 6 : 7;
+    const m = marginPx();
+    for (let i = 0; i < n; i++) {
+      const side = i % 4;
+      let x, y;
+      if (side === 0) { x = Math.random() * w; y = Math.random() * m; }
+      else if (side === 1) { x = w - Math.random() * m; y = Math.random() * h; }
+      else if (side === 2) { x = Math.random() * w; y = h - Math.random() * m; }
+      else { x = Math.random() * m; y = Math.random() * h; }
+      const big = mode === 'wallpaper';
+      blobs.push({
+        x, y,
+        vx: (Math.random() - 0.5) * (big ? 0.18 : 0.28),
+        vy: (Math.random() - 0.5) * (big ? 0.16 : 0.26),
+        r: big ? (140 + Math.random() * 130) : (88 + Math.random() * 110),
+        hue: hues[i % hues.length] + (Math.random() - 0.5) * 14,
+        ph: Math.random() * Math.PI * 2,
+        wob: 0.35 + Math.random() * 0.55,
+      });
+    }
+  }
+
+  function stepBlobs(dt) {
+    blobT += dt * 0.016;
+    const m = marginPx();
+    const lava = mode === 'lavalamp';
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < blobs.length; i++) {
+      const b = blobs[i];
+      b.vx += Math.sin(blobT * b.wob + b.ph) * (lava ? 0.014 : 0.008);
+      b.vy += Math.cos(blobT * b.wob * 0.85 + b.ph) * (lava ? 0.012 : 0.007);
+      const dxc = b.x - w * 0.5;
+      const dyc = b.y - h * 0.5;
+      const nx = Math.abs(dxc) / Math.max(1, w * 0.5);
+      const ny = Math.abs(dyc) / Math.max(1, h * 0.5);
+      if (nx < 0.52 && ny < 0.52) {
+        if (nx >= ny) b.vx += (dxc >= 0 ? 1 : -1) * 0.05;
+        else b.vy += (dyc >= 0 ? 1 : -1) * 0.05;
+      }
+      if (lastPt.x || lastPt.y) {
+        const mxp = Math.min(lastPt.x, w - lastPt.x);
+        const myp = Math.min(lastPt.y, h - lastPt.y);
+        if (mxp < m * 1.4 || myp < m * 1.15) {
+          const ddx = lastPt.x - b.x;
+          const ddy = lastPt.y - b.y;
+          const d2 = ddx * ddx + ddy * ddy;
+          if (d2 < (b.r * 2.2) * (b.r * 2.2) && d2 > 16) {
+            const d = Math.sqrt(d2);
+            b.vx += (ddx / d) * 0.012;
+            b.vy += (ddy / d) * 0.012;
+          }
+        }
+      }
+      b.vx *= lava ? 0.992 : 0.996;
+      b.vy *= lava ? 0.992 : 0.996;
+      const spd = lava ? 0.55 : 0.32;
+      b.x += b.vx * dt * 6 * spd;
+      b.y += b.vy * dt * 6 * spd;
+      const pad = b.r * 0.25;
+      if (b.x < -pad) { b.x = -pad; b.vx = Math.abs(b.vx); }
+      if (b.x > w + pad) { b.x = w + pad; b.vx = -Math.abs(b.vx); }
+      if (b.y < -pad) { b.y = -pad; b.vy = Math.abs(b.vy); }
+      if (b.y > h + pad) { b.y = h + pad; b.vy = -Math.abs(b.vy); }
+      const pulse = 1 + Math.sin(blobT * b.wob + b.ph) * (lava ? 0.08 : 0.05);
+      const r = b.r * pulse;
+      const a = glowMul * (lava ? 0.62 : 0.48);
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+      g.addColorStop(0, hueColor(b.hue, Math.min(0.9, a), lava ? 58 : 62));
+      g.addColorStop(0.38, hueColor(b.hue + 8, a * 0.38, lava ? 50 : 54));
+      g.addColorStop(1, hueColor(b.hue, 0, 40));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'destination-in';
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const inner = Math.min(w, h) * (lava ? 0.22 : 0.18);
+    const outer = Math.max(w, h) * (lava ? 0.72 : 0.78);
+    const vg = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    vg.addColorStop(0, 'rgba(0,0,0,' + (lava ? '0.12' : '0.20') + ')');
+    vg.addColorStop(0.55, 'rgba(0,0,0,0.55)');
+    vg.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   function step(ts) {
     raf = requestAnimationFrame(step);
     if (mode === 'off' || !ctx) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
     const dt = Math.min(32, (ts - lastTs) || 16) / 16;
     lastTs = ts;
     skip++;
     if (glowMul < 0.15) return;
+    if (isBlob()) {
+      if (skip % 2 === 0 && glowMul < 0.5) return;
+      ctx.clearRect(0, 0, w, h);
+      stepBlobs(dt);
+      return;
+    }
 
     wind *= 0.92;
     ctx.clearRect(0, 0, w, h);
@@ -364,6 +489,7 @@ html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
     const dy = y - lastPt.y;
     lastPt.x = x;
     lastPt.y = y;
+    if (isBlob()) return;
     if (now - lastMove < 24) return;
     lastMove = now;
     const dist = Math.hypot(dx, dy);
@@ -374,6 +500,7 @@ html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
 
   function onPointerDown(e) {
     if (mode === 'off' || e.button !== 0) return;
+    if (isBlob()) return;
     if (ignoreTarget(e.target)) return;
     lastPt.x = e.clientX;
     lastPt.y = e.clientY;
@@ -381,7 +508,7 @@ html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
   }
 
   function onScroll(e) {
-    if (mode === 'off') return;
+    if (mode === 'off' || isBlob()) return;
     if (e && e.ctrlKey) return;
     const dy = e && typeof e.deltaY === 'number' ? e.deltaY : 0;
     wind += Math.max(-8, Math.min(8, dy * 0.02));
@@ -407,7 +534,7 @@ html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
   }
 
   function setMode(next) {
-    const m = next === 'sparkysparks' || next === 'paintonsalought' ? next : 'off';
+    const m = FX_MODES.indexOf(next) >= 0 ? next : 'off';
     try {
       reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     } catch (_) { reduced = false; }
@@ -426,11 +553,19 @@ html[data-atx-fx="paintonsalought"] #atx-theme-fx{mix-blend-mode:plus-lighter}
       if (raf) { cancelAnimationFrame(raf); raf = 0; }
       particles = [];
       bolts = [];
+      blobs = [];
       if (canvas && ctx) ctx.clearRect(0, 0, w, h);
       return;
     }
     inject();
     bind();
+    if (isBlob()) {
+      particles = [];
+      bolts = [];
+      seedBlobs();
+    } else {
+      blobs = [];
+    }
     if (!raf) {
       lastTs = performance.now();
       raf = requestAnimationFrame(step);
