@@ -85,10 +85,11 @@
   }
 
   async function loadMap() {
-    const r = await fetch(VAULT + '/ids', { cache: 'no-store' });
+    const r = await fetch(VAULT + '/snapshot', { cache: 'no-store' });
     const j = await r.json();
-    return (j && j.items) || {};
+    return (j && (j.items || {})) || {};
   }
+
 
   function paint(map) {
     const seen = new Set();

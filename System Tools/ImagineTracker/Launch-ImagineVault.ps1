@@ -4,7 +4,15 @@
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $work = Join-Path $env:LOCALAPPDATA 'FAFO\ImagineTracker'
+$fafo = Join-Path $env:LOCALAPPDATA 'FAFO'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
+New-Item -ItemType Directory -Force -Path $fafo | Out-Null
+
+# Opening the protocol IS demand — write it before health checks so an idle
+# supervisor will actually start the HTTP process instead of staying parked.
+$demand = Join-Path $fafo 'demand-vault.json'
+$now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
+("{`"at`":$now,`"app`":`"imaginevault-launch`",`"which`":`"vault`"}") | Set-Content -LiteralPath $demand -Encoding ASCII
 
 function Test-VaultUpEarly {
     try {
