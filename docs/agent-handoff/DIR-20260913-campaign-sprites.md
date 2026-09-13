@@ -30,7 +30,7 @@ Hands staged Kenney copies + two Imagine stills and began wiring faces. Grokbot 
 1. Confirm class picker six faces load from `players/*.png` (emoji remains fallback).
 2. Glyph companion `#companionFace` uses `companion/glyph.png` after class pick.
 3. Map nodes: apply `TAT_NPC_SPRITES` (or `t.sprite`) so Act I critters + three bosses show on `#territories`.
-4. Optional Imagine portraits: Relay ← cyber-warrior pointer (downsample first); Glyph alt ← `imagine/glyph-cyber-squirrel.jpg`; Sovereign alt ← `imagine/sovereign-skull-axe.jpg`. Keep Kenney as default pixel set.
+4. Optional Imagine portraits: read `assets/typing-campaign-sprites/imagine/POINTERS.json`. Enhanced PNGs are 16–24MB — downsample/crop to ≤1.5MB before T83. Repo already has squirrel, skull-axe, golden cat.
 5. Fill leftover Act II/III nodes from `_source/tiny-dungeon` / `_source/new-platformer-pack` using the same naming (`npcs/<territoryId>.png`).
 6. Smoke: open trainer from `production/`, pick each class, Attack Territory on meadow + warden. Sprites visible; no broken-image icons.
 7. Result + LOG in this file / `LOG.md`.

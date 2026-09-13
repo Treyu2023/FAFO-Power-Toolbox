@@ -25,10 +25,15 @@ CSS should use `image-rendering: pixelated` (Kenney tiles are 16–96 px). Do **
 
 ## Imagine pointers
 
-- Relay portrait: `D:\OUTPUTS\__X_GROK\Images\Upscaled images\2026-09-12-09h54m59s_seed654258030_cyber warrior female full frontal view she has two_upscaled.png`
+Full roster: `imagine/POINTERS.json` (Goth Ninja, Rogue Wizard, Cyborg Female, Futuristic 1, Ethereal Fairy, Zeus, etc.).
+
+Already copied (small enough for git):
+
 - Glyph alt: `imagine/glyph-cyber-squirrel.jpg`
 - Sovereign alt: `imagine/sovereign-skull-axe.jpg`
-- Extra mascot pool: Sir Khan squirrel-knight stills under `__AI__DESKTOP SLIDESHOW ALBUM\outcycle`
+- Streaker alt: `imagine/streaker-golden-cat.png`
+
+Enhanced `__Unknown_Characters\*_enhanced.png` files are 16–24MB — downsample before using as T83 layers.
 
 ## License
 
