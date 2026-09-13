@@ -54,7 +54,7 @@ TaxForge, Investor Portal, and Xero proxy modules live **only on the owner machi
 
 ### Other HTML tools (same wave)
 
-- `Typing Assistant Trainer.html` — WPM trainer, combos, campaign  
+- `Typing Assistant Trainer.html` — **LetterKey** (keys + letters): Keystroke Chronicles campaign, three art themes, mini-games, WPM combos
 - `Empire Seed.html` — Civilization-style 4X, **Three.js 3D** (CDN)  
 
 ### Pro shell + QoL wave (2026-08-11)

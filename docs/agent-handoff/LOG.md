@@ -4,6 +4,14 @@ Append-only style. Newest at top.
 
 ---
 
+## 2026-09-13 — LetterKey production polish (3 art themes)
+
+- **Actor:** Grok Build Hands (intervene while grokbot runs T85 minigames)
+- **Action:** Renamed trainer **LetterKey** (keys + letters). Built three Kenney CC0 themes under `assets/typing-campaign-sprites/themes/{glyph,toon,rune}` covering 10 classes + all campaign NPCs/bosses. Default theme Glyph (keys). Grokbot T85 minigames kept. Launcher tile renamed LetterKey.
+- **Watch:** grokbot previously wiped T84 sprite wiring; re-injected theme engine.
+
+---
+
 ## 2026-09-13 — Campaign sprites for grokbot (Kenney + Imagine)
 
 - **Actor:** Grok Build Hands (assist grokbot)
