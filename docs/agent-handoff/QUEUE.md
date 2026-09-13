@@ -7,6 +7,7 @@
 
 | Priority | Status | ID | Title | Notes |
 |----------|--------|-----|-------|-------|
+| P1 | IN_PROGRESS | DIR-20260913-campaign-sprites | Campaign NPC + player sprites | Kenney CC0 + Imagine stills staged under assets/typing-campaign-sprites; grokbot finish remaining nodes |
 | P1 | DONE | DIR-20260802-2200-xero-token-proxy-impl | Xero token proxy implementation | Hands 2026-08-02 B+C; needs Owner Client ID/Secret at runtime |
 | P2 | DONE | DIR-20260802-0035-google-takeout-location-xero-tickets | Google Takeout / Timeline → draft Xero tickets | Hands 2026-08-02; local placeVisit importer + stage drafts |
 | P1 | DONE | DIR-20260802-2100-partner-reimbursement-period-desk | Partner reimb + investor period desk | Hands 2026-08-02; Owner request for reclass + fiscal rollups + expert packs |
