@@ -4,6 +4,15 @@ Append-only style. Newest at top.
 
 ---
 
+## 2026-09-13 — Campaign sprites for grokbot (Kenney + Imagine)
+
+- **Actor:** Grok Build Hands (assist grokbot)
+- **DIR:** `DIR-20260913-campaign-sprites` → **IN_PROGRESS**
+- **Action:** Downloaded Kenney CC0 packs (New Platformer, Pixel Platformer, Tiny Dungeon, Roguelike Characters, Shape Characters, Simplified Platformer, Industrial expansion) into `assets/typing-campaign-sprites/_source/`. Mapped 6 class faces, Glyph companion, 3 bosses, Act I NPCs. Copied Imagine stills: cyan cyber squirrel (Glyph alt), demonic skull axe (Sovereign). Cyber-warrior Relay portrait left as a path pointer (~5.8 MB). Wired `TAT70_CLASSES.art.sprite`, `TAT_NPC_SPRITES`, class-picker / companion / map `has-sprite` CSS.
+- **Grokbot leftover:** remaining Act II/III nodes, downsample Relay portrait, playtest from Toolbox launcher.
+
+---
+
 ## 2026-08-11 — Public hygiene: owner-private modules removed from git
 
 - **Actor:** Grok Build  
