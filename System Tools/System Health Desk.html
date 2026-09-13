@@ -1,17 +1,15 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/System Tools/System Health Desk.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>System Health Desk — FAFO Ops</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
-  <script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
   <style>
     :root {
       --bg: #070b12; --panel: #0c1220; --panel2: #141c2c;
@@ -19,6 +17,18 @@
       --warn: #fbbf24; --err: #f43f5e; --ok: #34d399;
       --text: #f1f5f9; --muted: #b6c4d8; --border: rgba(0, 243, 255, 0.24);
       --font: "Segoe UI", system-ui, sans-serif;
+      /* SIE-UI-21 PREP folded: kit+layout data-fafo-layout-app=system-health-desk */
+      /* PET-UI-21 / SYSTEM HEALTH DESK: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel2);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-danger: var(--err);
+      --fafo-border: var(--border);
+      --fafo-radius: 12px;
+      --fafo-touch-min: 44px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -117,45 +127,151 @@
     @media (prefers-contrast: more) {
       :root { --text: #ffffff; --muted: #d5deea; --border: rgba(0, 243, 255, 0.45); }
     }
+
+    /* PET-UI-21 soft sheen: .stat/.panel only — never cover KPI numbers or primary btns */
+    .stat, .panel {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .stat::before, .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      z-index: 0;
+      background: linear-gradient(
+        125deg,
+        transparent 0%,
+        rgba(0, 243, 255, 0.05) 30%,
+        rgba(232, 121, 249, 0.05) 52%,
+        rgba(245, 197, 66, 0.03) 72%,
+        transparent 100%
+      );
+      opacity: 0.85;
+    }
+    .stat > *, .panel > * { position: relative; z-index: 1; }
+
+    /* PET-UI-21 / SYSTEM HEALTH DESK: More tools collapse + KPIs primary */
+    .toolbar.fafo-toolbar { align-items: center; flex-wrap: wrap; gap: 8px; }
+    .toolbar.fafo-toolbar details.fafo-collapse {
+      position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+    }
+    .toolbar.fafo-toolbar details.fafo-collapse > summary {
+      padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none; min-height: 0;
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+      color: var(--fafo-muted, var(--muted));
+    }
+    .toolbar.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+    .toolbar.fafo-toolbar details.fafo-collapse[open] > summary {
+      border-color: var(--fafo-accent, var(--accent));
+      color: var(--fafo-accent, var(--accent));
+    }
+    .toolbar.fafo-toolbar details.fafo-collapse > :not(summary) {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+      min-width: 260px; max-width: min(420px, 92vw); padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+      border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    .shd-desk-more-body {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .shd-desk-more-body .fafo-btn, .shd-desk-more-body .btn, .shd-desk-more-body .nav-chip {
+      font-size: 11px; padding: 6px 10px; border-radius: 6px;
+      text-transform: none; font-weight: 600; text-decoration: none;
+    }
+    .toolbar details.ui-advanced {
+      position: relative; flex: 0 1 auto; min-width: 0;
+    }
+    .toolbar details.ui-advanced > summary {
+      padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+      color: var(--fafo-muted, var(--muted));
+    }
+    .toolbar details.ui-advanced > summary::-webkit-details-marker { display: none; }
+    .toolbar details.ui-advanced[open] > summary {
+      border-color: var(--fafo-accent, var(--accent));
+      color: var(--fafo-accent, var(--accent));
+    }
+    .toolbar details.ui-advanced > :not(summary) {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
+      min-width: 220px; padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 30%, transparent);
+      border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+    }
+    .shd-desk-more-actions {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .wrap.fafo-primary-surface,
+    .wrap[data-fafo-primary],
+    #kpiRow[data-fafo-primary] {
+      flex: 1 1 auto; min-height: 0; min-width: 0;
+    }
+    .wrap.fafo-primary-surface { min-height: 50vh; }
+    @media (max-width: 900px) {
+      /* UI-M: touch-friendly primary desk controls */
+      .toolbar.fafo-toolbar { gap: 8px; }
+      #btnRefresh, #btnStartServer,
+      [data-fafo-primary].btn, [data-fafo-primary].fafo-btn,
+      button.fafo-btn-primary, .fafo-btn.fafo-btn-primary {
+        min-height: var(--fafo-touch-min, 44px);
+        min-width: var(--fafo-touch-min, 44px);
+      }
+    }
   </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 </head>
 <body>
   <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="system-health-desk" data-fafo-layout-type="rows">
+  <div class="wrap fafo-primary-surface" data-fafo-primary data-fafo-layout-root data-fafo-layout-app="system-health-desk" data-fafo-layout-type="rows">
+    <!-- PET-UI-21 / SYSTEM HEALTH DESK: primary chrome + More tools overflow -->
+    <!-- SIE-UI-21 PREP folded: kit+layout data-fafo-layout-app=system-health-desk -->
     <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
       <div class="badge">Ops · Admin · Loopback only</div>
       <h1>🩺 SYSTEM HEALTH DESK</h1>
       <p>Live-ish metrics for this PC + toolbox server. Privileged data via loopback API — no free-form shell.</p>
-      <div class="nav-chips">
-        <a class="nav-chip primary" href="System Health Dashboard.html">← Health Hub</a>
-        <a class="nav-chip primary" href="Secrets Presence Console.html">Secrets Presence →</a>
-        <a class="nav-chip" href="PC Diagnostics HUD.html">PC Diagnostics</a>
-        <a class="nav-chip" href="PC Reports and Log Viewer/index.html">PC Reports</a>
-        <a class="nav-chip" href="Disk Space Analyzer.html">Disk Analyzer</a>
-        <a class="nav-chip" href="Event Viewer.html">Event Viewer</a>
-      </div>
       <span data-fafo-layout-toolbar></span>
-</header>
+    </header>
 
-    <div class="toolbar" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
-      <button class="primary" type="button" id="btnRefresh" data-tip-title="Refresh" data-tip="Reload health signals for this PC." title="Refresh (R)">Refresh now</button>
-      <button type="button" id="btnStartServer" data-tip-title="Start server" data-tip="Start S1 for live collectors." title="Start S1 if offline">▶ Start Server</button>
-      <button type="button" id="btnExport" data-tip-title="Export" data-tip="Export health snapshot.">↓ JSON</button>
-      <button type="button" id="btnCopy" data-tip-title="Copy summary" data-tip="Copy plain-English health summary.">Copy summary</button>
-      <a class="btn" href="../Toolbox Launcher.html">← Toolbox</a>
-      <label class="auto"><input type="checkbox" id="autoRefresh" data-tip-title="Auto-refresh" data-tip="Periodically refresh health signals." checked> Auto
-        <select id="autoInterval" data-tip-title="Interval" data-tip="Seconds between auto-refresh ticks.">
-          <option value="15" selected>15s</option>
-          <option value="30">30s</option>
-          <option value="60">60s</option>
-        </select>
-      </label>
+    <div class="toolbar fafo-toolbar" data-fafo-toolbar data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <button class="primary fafo-btn fafo-btn-primary" type="button" id="btnRefresh" data-fafo-primary data-tip-title="Refresh" data-tip="Reload health signals for this PC." title="Refresh (R)">Refresh now</button>
+      <button class="fafo-btn" type="button" id="btnStartServer" data-tip-title="Start server" data-tip="Start S1 for live collectors." title="Start S1 if offline">▶ Start Server</button>
       <span class="muted" id="statusLine">Loading…</span>
+      <details class="fafo-collapse" id="shdDeskMoreTools" data-fafo-collapse-key="system-health-desk-more-tools">
+        <summary>More tools</summary>
+        <div class="shd-desk-more-body">
+          <a class="fafo-btn" href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Toolbox</a>
+          <a class="fafo-btn" href="System Health Dashboard.html" data-tip-title="Health Hub" data-tip="System health dashboard.">← Health Hub</a>
+          <a class="fafo-btn" href="Secrets Presence Console.html" data-tip-title="Secrets Presence" data-tip="Secrets presence console (flags only).">Secrets Presence →</a>
+          <a class="fafo-btn" href="PC Diagnostics HUD.html" data-tip-title="PC Diagnostics" data-tip="Diagnostics HUD.">PC Diagnostics</a>
+          <a class="fafo-btn" href="PC Reports and Log Viewer/index.html" data-tip-title="Reports" data-tip="PC Reports and log viewer (link only).">PC Reports</a>
+          <a class="fafo-btn" href="Disk Space Analyzer.html" data-tip-title="Disk Analyzer" data-tip="Disk space analyzer.">Disk Analyzer</a>
+          <a class="fafo-btn" href="Event Viewer.html" data-tip-title="Event Viewer" data-tip="Windows event viewer.">Event Viewer</a>
+        </div>
+      </details>
+      <details class="ui-advanced" id="shdDeskMoreActions" data-fafo-collapse-key="system-health-desk-more-actions">
+        <summary>Advanced</summary>
+        <div class="shd-desk-more-actions">
+          <button class="fafo-btn" type="button" id="btnExport" data-tip-title="Export" data-tip="Export health snapshot.">↓ JSON</button>
+          <button class="fafo-btn" type="button" id="btnCopy" data-tip-title="Copy summary" data-tip="Copy plain-English health summary.">Copy summary</button>
+          <label class="auto"><input type="checkbox" id="autoRefresh" data-tip-title="Auto-refresh" data-tip="Periodically refresh health signals." checked> Auto
+            <select id="autoInterval" data-tip-title="Interval" data-tip="Seconds between auto-refresh ticks.">
+              <option value="15" selected>15s</option>
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+            </select>
+          </label>
+        </div>
+      </details>
     </div>
 
-    <div class="grid grid-4" id="kpiRow">
+    <div class="grid grid-4" id="kpiRow" data-fafo-primary>
       <div class="stat"><div class="val" id="kCpu">—</div><div class="lbl">CPU</div></div>
       <div class="stat"><div class="val" id="kMem">—</div><div class="lbl">Memory</div></div>
       <div class="stat"><div class="val" id="kDisk">—</div><div class="lbl">System disk free</div></div>

@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Movie File Manager/Guided Pair Match.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guided Pair Match — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
       --bg: #0b1220; --panel: #121a28; --border: rgba(0,229,255,.28);
@@ -14,6 +13,16 @@
       --ok: #4ade80; --warn: #f5c84c; --danger: #f87171;
       --text: #e8eef7; --muted: #8b9bb4;
       --legend-h: 78px;
+      /* PET-UI-9 / GUIDED PAIR MATCH: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-danger: var(--danger);
+      --fafo-border: var(--border);
+      --fafo-radius: 12px;
     }
     :focus { outline: none; }
     :focus-visible {
@@ -88,20 +97,65 @@
     .controls.compact-when-active { transition: max-height .2s ease; }
     body.is-matching .controls .folder-row,
     body.is-matching .controls .preset-row,
-    body.is-matching #learnPanel { display: none !important; }
+    body.is-matching #learnPanel,
+    body.is-matching #gpmMatchOptions { display: none !important; }
     body.is-matching .progress { display: none; }
     body.is-matching .log { display: none; }
     body.is-matching .wrap { padding-top: 6px; }
-    details.setup-fold {
-      width: 100%; margin-top: 4px; border: 1px solid rgba(255,255,255,.08);
-      border-radius: 8px; padding: 4px 8px; background: rgba(0,0,0,.2);
+
+    /* PET-UI-9 / GUIDED PAIR MATCH: More tools + Match options + Start primary */
+    .top.fafo-toolbar { align-items: center; }
+    .top.fafo-toolbar details.fafo-collapse {
+      position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
     }
-    details.setup-fold > summary {
-      cursor: pointer; font-size: 11px; color: var(--muted); font-weight: 700;
-      list-style: none; user-select: none;
+    .top.fafo-toolbar details.fafo-collapse > summary {
+      padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none; min-height: 0;
     }
-    details.setup-fold > summary::-webkit-details-marker { display: none; }
-    details.setup-fold[open] > summary { color: var(--accent); margin-bottom: 6px; }
+    .top.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+    .top.fafo-toolbar details.fafo-collapse > :not(summary) {
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+      min-width: 240px; max-width: min(340px, 92vw); padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+      border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    .gpm-more-body {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .ui-btn.fafo-btn { text-decoration: none; }
+    .ui-btn.primary.fafo-btn-primary { /* CTA alias — keep ui-btn primary look */ }
+    .gpm-primary-cta {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%;
+    }
+    .gpm-primary-cta #btnStart { flex: 0 1 auto; }
+    details.ui-advanced#gpmMatchOptions {
+      width: 100%; margin-top: 8px;
+    }
+    .gpm-match-opts-body {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 6px 2px 2px;
+    }
+    #activeUI[data-fafo-primary] { min-width: 0; }
+    @media (max-width: 900px) {
+      /* UI-M: stack controls; Start CTA always visible */
+      .controls {
+        flex-direction: column; align-items: stretch;
+      }
+      .gpm-primary-cta {
+        position: sticky; top: 42px; z-index: 25;
+        background: color-mix(in srgb, var(--fafo-panel, var(--panel)) 92%, transparent);
+        padding: 6px 0; margin-bottom: 2px;
+        border-bottom: 1px solid color-mix(in srgb, var(--fafo-border, var(--border)) 70%, transparent);
+      }
+      .gpm-primary-cta #btnStart {
+        flex: 1 1 auto; min-width: 160px;
+      }
+      #activeUI[data-fafo-primary] { min-height: 40vh; }
+    }
+    @media (max-width: 640px) {
+      .gpm-primary-cta #btnStart { width: 100%; }
+      #activeUI[data-fafo-primary] { min-height: 48vh; }
+    }
 
     /* ── View mode bar ── */
     .view-bar {
@@ -330,16 +384,16 @@
     }
     .pair-title-row h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 200px; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
-    .ui-btn.match { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.12); }
-    .ui-btn.match:hover { background: var(--ok); color: #04120a; }
-    .ui-btn.nomatch { border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,.1); }
-    .ui-btn.nomatch:hover { background: var(--danger); color: #1a0505; }
-    .ui-btn.undo-main {
+    .ui-btn.match, .ui-btn.match.fafo-btn { border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.12); }
+    .ui-btn.match:hover, .ui-btn.match.fafo-btn:hover { background: var(--ok); color: #04120a; }
+    .ui-btn.nomatch, .ui-btn.nomatch.fafo-btn { border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,.1); }
+    .ui-btn.nomatch:hover, .ui-btn.nomatch.fafo-btn:hover { background: var(--danger); color: #1a0505; }
+    .ui-btn.undo-main, .ui-btn.undo-main.fafo-btn {
       border-color: var(--warn); color: var(--warn); background: rgba(251,191,36,.1);
       font-weight: 700;
     }
-    .ui-btn.undo-main:hover:not(:disabled) { background: var(--warn); color: #1a1200; }
-    .ui-btn.undo-main:disabled { opacity: .4; cursor: not-allowed; }
+    .ui-btn.undo-main:hover:not(:disabled), .ui-btn.undo-main.fafo-btn:hover:not(:disabled) { background: var(--warn); color: #1a1200; }
+    .ui-btn.undo-main:disabled, .ui-btn.undo-main.fafo-btn:disabled { opacity: .4; cursor: not-allowed; }
     .empty-state {
       text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
     }
@@ -445,48 +499,6 @@
     }
     .empty-cta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 
-    .pid-strip {
-      background: rgba(245,200,76,.07);
-      border: 1px solid rgba(245,200,76,.34);
-      border-radius: 10px;
-      padding: 8px 12px;
-      margin-bottom: 8px;
-    }
-    body.is-matching .pid-strip { padding: 6px 10px; margin-bottom: 4px; }
-    .pid-strip-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .pid-badge {
-      font: 800 10px Consolas, monospace;
-      color: #1a1200;
-      background: var(--gold);
-      padding: 2px 8px;
-      border-radius: 999px;
-      letter-spacing: .05em;
-    }
-    .pid-list { max-height: 172px; overflow: auto; margin-top: 6px; }
-    body.is-matching .pid-list { max-height: 96px; }
-    .pid-row {
-      display: grid;
-      grid-template-columns: 92px minmax(0,1fr) auto auto;
-      gap: 8px;
-      align-items: center;
-      padding: 6px 2px;
-      border-top: 1px solid rgba(255,255,255,.06);
-      font-size: 12px;
-    }
-    .pid-row.ambiguous { opacity: .9; }
-    .pid-hex { font: 700 11px Consolas, monospace; color: var(--gold); }
-    .pid-names { min-width: 0; overflow: hidden; }
-    .pid-names .from, .pid-names .to {
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .pid-names .to { color: var(--accent2); }
-    .pid-empty { font-size: 11px; color: var(--muted); padding: 6px 0 2px; }
-    .score.pid {
-      color: #1a1200;
-      background: var(--gold);
-      border-color: var(--gold);
-    }
-
     @media (max-width: 1100px) {
       .pip-canvas-wrap { height: 110px; }
       #activeUI { height: calc(100vh - var(--legend-h) - 100px); }
@@ -502,61 +514,50 @@
 </head>
 <body>
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
-  <div class="top">
+  <!-- PET-UI-9 / GUIDED PAIR MATCH: primary chrome + More tools overflow -->
+  <div class="top fafo-toolbar" data-fafo-toolbar>
     <h1>🎯 Guided Pair Match</h1>
     <span id="serverPill" class="status-pill warn" data-legacy-server-chrome style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
-    <button class="ui-btn primary" type="button" id="btnStartServer" data-legacy-server-chrome
+    <button class="ui-btn primary fafo-btn fafo-btn-primary" type="button" id="btnStartServer" data-legacy-server-chrome
             data-tip-title="Start Server" data-tip-basic="Turn on the toolbox backend so matching can run."
             data-tip-pro="Start S1 (and companions). Prefer the shared S1/S2 bar at the top when present.">▶ Start Server</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'"
-            data-tip-title="Launcher" data-tip="Back to the main Toolbox menu.">← Launcher</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'"
-            data-tip-title="Media Hub" data-tip="Open the media tools hub (library, pairs, VSR).">Media Hub</button>
-    <button class="ui-btn ghost" type="button" onclick="(window.AIToolboxPipeline&&AIToolboxPipeline.goTab('video'))||(location.href='Media Hub.html#video')"
-            data-tip-title="Video compare" data-tip="Jump to the video slider tab in Media Hub.">Video compare</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'"
-            data-tip-title="Library" data-tip="Browse and tag your scanned media catalog.">Library</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Mismatched Source Companion.html'"
-            data-tip-title="Mismatched Source Companion" data-tip-basic="Match dumps whose names no longer match originals. Not FlashVSR."
-            data-tip-pro="Use when ComfyUI or another upscaler scrambled names. Skip for Pinokio FlashVSR_plus.">🔗 Name match</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'"
-            data-tip-title="Pair Review" data-tip="Keyboard accept/reject queue for proposed pairs before rename.">🔎 Pair Review</button>
-    <button class="ui-btn ghost" type="button" id="btnExportSession"
+    <button class="ui-btn ghost fafo-btn" type="button" id="btnExportSession"
             data-tip-title="Export session" data-tip="Copy a text report of this match session to the clipboard.">📋 Export</button>
+    <details class="fafo-collapse" id="gpmMoreTools" data-fafo-collapse-key="gpm-more-tools">
+      <summary>More tools</summary>
+      <div class="gpm-more-body">
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='../Toolbox Launcher.html'"
+                data-tip-title="Launcher" data-tip="Back to the main Toolbox menu.">← Launcher</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Media Hub.html'"
+                data-tip-title="Media Hub" data-tip="Open the media tools hub (library, pairs, VSR).">Media Hub</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Compare Hub.html#match'"
+                data-tip-title="Compare Hub" data-tip="Jump to compare tools (slider, pairs, review).">Compare Hub</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Media Library Manager.html'"
+                data-tip-title="Library" data-tip="Browse and tag your scanned media catalog.">Library</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='VSR Pipeline Manager.html'"
+                data-tip-title="VSR Pipeline" data-tip-basic="Rename / match upscale pipeline stages."
+                data-tip-pro="Stage I/II rename + teach matcher. Pair stage 1↔3; stage 2 is usually intermediate junk.">⚡ VSR</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Pair Review Queue.html'"
+                data-tip-title="Pair Review" data-tip="Keyboard accept/reject queue for proposed pairs before rename.">🔎 Pair Review</button>
+      </div>
+    </details>
   </div>
 
   <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-guided-pair-match" data-fafo-layout-type="columns">
     <div class="controls" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
-      <button class="ui-btn primary" type="button" id="btnStart"
-              data-tip-title="Start / Resume"
-              data-tip-basic="Load unpaired files and show match candidates one by one."
-              data-tip-mid="Build the anchor queue (Before folder if set) and rank After candidates."
-              data-tip-pro="pairAnchors → candidates_for_media with folder scope, size rules, and learned naming."
-              data-tip-efficient="Use Before/After folders so the scan stays small."
-              data-tip-perf="With a strong PC you can raise Max tries and lower Min score % for wider search.">▶ Start / Resume queue</button>
-      <button class="ui-btn ghost" type="button" id="btnReset"
-              data-tip-title="Reset session"
-              data-tip="Clear rejections, counters, and history for this browser session (does not delete pairs on disk).">Reset session</button>
-      <label>Max tries per file
-        <input type="number" id="maxTries" min="3" max="30" value="10">
-      </label>
-      <label>Min score %
-        <input type="number" id="minPct" min="20" max="95" value="40">
-      </label>
-      <label>Kind
-        <select id="kindFilter" style="width:auto">
-          <option value="">All</option>
-          <option value="video">Video</option>
-          <option value="image">Image</option>
-        </select>
-      </label>
-      <label title="Prefer non-upscale names as anchors (originals first)">
-        <input type="checkbox" id="preferSources" checked> Sources first
-      </label>
-      <label title="After must be larger than before — same size is treated as a duplicate, not a pair" style="margin-left:4px">
-        <input type="checkbox" id="requireLarger" checked> After larger only
-      </label>
-      <span id="statusLine" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      <div class="gpm-primary-cta">
+        <button class="ui-btn primary fafo-btn fafo-btn-primary" type="button" id="btnStart"
+                data-tip-title="Start / Resume"
+                data-tip-basic="Load unpaired files and show match candidates one by one."
+                data-tip-mid="Build the anchor queue (Before folder if set) and rank After candidates."
+                data-tip-pro="pairAnchors → candidates_for_media with folder scope, size rules, and learned naming."
+                data-tip-efficient="Use Before/After folders so the scan stays small."
+                data-tip-perf="With a strong PC you can raise Max tries and lower Min score % for wider search.">▶ Start / Resume queue</button>
+        <button class="ui-btn ghost fafo-btn" type="button" id="btnReset"
+                data-tip-title="Reset session"
+                data-tip="Clear rejections, counters, and history for this browser session (does not delete pairs on disk).">Reset session</button>
+        <span id="statusLine" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      </div>
       <div class="folder-row" style="width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
         <div class="folder-pick" style="background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
           <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);font-weight:700;margin-bottom:6px">Before · source folder</div>
@@ -564,7 +565,7 @@
             <select id="beforeDir" style="flex:1;min-width:140px;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px">
               <option value="">Any catalog folder</option>
             </select>
-            <button type="button" class="ui-btn ghost" id="btnPickBefore" title="Pick a folder and scan it into the library" style="padding:6px 10px;font-size:11px">📂 Pick</button>
+            <button type="button" class="ui-btn ghost fafo-btn" id="btnPickBefore" title="Pick a folder and scan it into the library" style="padding:6px 10px;font-size:11px">📂 Pick</button>
           </div>
           <div id="beforeDirPath" style="font-size:10px;color:var(--muted);margin-top:4px;word-break:break-all">Anchors come from here when set</div>
         </div>
@@ -574,7 +575,7 @@
             <select id="afterDir" style="flex:1;min-width:140px;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px">
               <option value="">Any catalog folder</option>
             </select>
-            <button type="button" class="ui-btn ghost" id="btnPickAfter" title="Pick a folder and scan it into the library" style="padding:6px 10px;font-size:11px">📂 Pick</button>
+            <button type="button" class="ui-btn ghost fafo-btn" id="btnPickAfter" title="Pick a folder and scan it into the library" style="padding:6px 10px;font-size:11px">📂 Pick</button>
           </div>
           <div id="afterDirPath" style="font-size:10px;color:var(--muted);margin-top:4px;word-break:break-all">Candidates looked up here when set</div>
         </div>
@@ -583,49 +584,51 @@
         Tip: set both folders for VSR-style pairing. Matching only looks in After for each Before file.
         <strong style="color:var(--warn)">Same size = duplicate, not a pair</strong> — after must be larger.
         Stage-2 intermediates (huge leftovers) are skipped; matching learns from locked pairs.
-        Files stamped with <code>_PID_xxxxxxxx</code> auto-link first — Approve each, or Trust all unique 1:1 matches.
       </div>
-      <div id="learnPanel" style="width:100%;margin-top:8px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-radius:10px;padding:8px 12px;font-size:11px;line-height:1.45">
-        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:4px">
-          <strong style="color:var(--accent2)">🧠 Pair memory</strong>
-          <span id="learnStats" style="color:var(--muted)">Learning from locked pairs…</span>
-          <button type="button" class="ui-btn ghost" id="btnRefreshLearn" style="padding:3px 8px;font-size:10px;margin-left:auto">↻ Refresh</button>
-          <button type="button" class="ui-btn ghost" id="btnResetLearn" style="padding:3px 8px;font-size:10px" title="Clear learned patterns">Clear memory</button>
+      <details class="ui-advanced" id="gpmMatchOptions" data-fafo-collapse-key="gpm-match-options">
+        <summary>Match options</summary>
+        <div class="gpm-match-opts-body">
+          <label>Max tries per file
+            <input type="number" id="maxTries" min="3" max="30" value="10">
+          </label>
+          <label>Min score %
+            <input type="number" id="minPct" min="20" max="95" value="40">
+          </label>
+          <label>Kind
+            <select id="kindFilter" style="width:auto">
+              <option value="">All</option>
+              <option value="video">Video</option>
+              <option value="image">Image</option>
+            </select>
+          </label>
+          <label title="Prefer non-upscale names as anchors (originals first)">
+            <input type="checkbox" id="preferSources" checked> Sources first
+          </label>
+          <label title="After must be larger than before — same size is treated as a duplicate, not a pair" style="margin-left:4px">
+            <input type="checkbox" id="requireLarger" checked> After larger only
+          </label>
+          <div id="learnPanel" style="width:100%;margin-top:4px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-radius:10px;padding:8px 12px;font-size:11px;line-height:1.45">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:4px">
+              <strong style="color:var(--accent2)">🧠 Pair memory</strong>
+              <span id="learnStats" style="color:var(--muted)">Learning from locked pairs…</span>
+              <button type="button" class="ui-btn ghost fafo-btn" id="btnRefreshLearn" style="padding:3px 8px;font-size:10px;margin-left:auto">↻ Refresh</button>
+              <button type="button" class="ui-btn ghost fafo-btn" id="btnResetLearn" style="padding:3px 8px;font-size:10px" title="Clear learned patterns">Clear memory</button>
+            </div>
+            <div id="learnDetail" style="color:var(--muted)">
+              After a few matches it learns tokens like <code>upscaled</code> / <code>60fps</code> on finals,
+              skips stage-2 junk, and prefers source ↔ final (1 ↔ 3).
+            </div>
+          </div>
+          <div class="preset-row" style="width:100%">
+            <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Quick presets</span>
+            <button type="button" class="preset-chip" data-preset="strict" title="Fewer tries, higher score">Strict 5 / 60%</button>
+            <button type="button" class="preset-chip" data-preset="balanced" title="Default balance">Balanced 10 / 40%</button>
+            <button type="button" class="preset-chip" data-preset="wide" title="More candidates">Wide 15 / 30%</button>
+            <button type="button" class="preset-chip" data-preset="video" title="Video only">Video only</button>
+            <button type="button" class="preset-chip" data-preset="image" title="Image only">Image only</button>
+          </div>
         </div>
-        <div id="learnDetail" style="color:var(--muted)">
-          After a few matches it learns tokens like <code>upscaled</code> / <code>60fps</code> on finals,
-          skips stage-2 junk, and prefers source ↔ final (1 ↔ 3).
-        </div>
-      </div>
-      <div id="pipelineHost"></div>
-      <div id="leftoverHost"></div>
-      <div class="preset-row" style="width:100%">
-        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Quick presets</span>
-        <button type="button" class="preset-chip" data-preset="strict" title="Fewer tries, higher score">Strict 5 / 60%</button>
-        <button type="button" class="preset-chip" data-preset="balanced" title="Default balance">Balanced 10 / 40%</button>
-        <button type="button" class="preset-chip" data-preset="wide" title="More candidates">Wide 15 / 30%</button>
-        <button type="button" class="preset-chip" data-preset="video" title="Video only">Video only</button>
-        <button type="button" class="preset-chip" data-preset="image" title="Image only">Image only</button>
-      </div>
-    </div>
-
-    <div class="pid-strip" id="pidStrip">
-      <div class="pid-strip-h">
-        <span class="pid-badge">PID unique</span>
-        <strong style="font-size:12px">Trust-all layout</strong>
-        <span id="pidStats" style="font-size:11px;color:var(--muted)">Unique 1:1 stamps lock in one click. Everything else is leftover.</span>
-        <button type="button" class="ui-btn ghost" id="btnPidRefresh" style="padding:4px 8px;font-size:11px"
-                data-tip-title="Find PIDs" data-tip="Scan the catalog for matching _PID_xxxxxxxx stamps.">↻ Find PIDs</button>
-        <button type="button" class="ui-btn primary" id="btnPidTrust" style="padding:4px 10px;font-size:11px;margin-left:auto" disabled
-                data-tip-title="Trust all unique (T)"
-                data-tip-basic="Dry-run the unique 1:1 PID list, uncheck any you do not trust, then lock."
-                data-tip-pro="POST /pairs/trust-pids — unique groups only. Ambiguous 3+ groups stay in leftover.">Trust unique</button>
-      </div>
-      <div id="pidList" class="pid-list"></div>
-      <div id="ambiguousHost" style="display:none">
-        <div style="font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);font-weight:800;margin:8px 0 4px">Ambiguous PID — pick After</div>
-        <div id="ambiguousFilm"></div>
-      </div>
+      </details>
     </div>
 
     <div class="progress" id="progressBox">
@@ -649,17 +652,17 @@
       <strong>Z / ⌫</strong> step back (history up to 50) · <strong>double-tap Z</strong> jumps back 5 · <strong>F</strong> forward 1.<br><br>
       Needs the toolbox server and a scanned library.
       <div class="empty-cta">
-        <button class="ui-btn primary" type="button" id="btnEmptyStart">▶ Start matching</button>
-        <button class="ui-btn ghost" type="button" id="btnEmptyStartServer">▶ Start Server</button>
+        <button class="ui-btn primary fafo-btn fafo-btn-primary" type="button" id="btnEmptyStart">▶ Start matching</button>
+        <button class="ui-btn ghost fafo-btn" type="button" id="btnEmptyStartServer">▶ Start Server</button>
         <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">📚 Open Library</button>
         <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
-        <button class="ui-btn ghost" type="button" onclick="location.href='Mismatched Source Companion.html'">🔗 Name match</button>
+        <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">⚡ VSR</button>
         <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">Go to Pair Review →</button>
         <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
       </div>
     </div>
 
-    <div id="activeUI">
+    <div id="activeUI" class="fafo-primary-surface" data-fafo-primary>
       <div class="view-bar">
         <span class="vb-label">View</span>
         <button type="button" class="view-tab on" data-view="side" id="tabSide">⧉ Side by side</button>
@@ -743,7 +746,6 @@
 
       <div class="pair-title-row">
         <h2 id="pairTitle">—</h2>
-        <span class="fafo-method" id="methodBadge" hidden>—</span>
         <span class="score" id="scorePill">—</span>
         <span style="font-size:12px;color:var(--muted)" id="reasonVal">—</span>
       </div>
@@ -776,33 +778,30 @@
       <span id="typeVal" style="display:none"></span>
 
       <div class="actions">
-        <button class="ui-btn match" type="button" id="btnYes"
+        <button class="ui-btn match fafo-btn" type="button" id="btnYes"
                 data-tip-title="Match (Y)"
-                data-tip-basic="Yes — these are the same shot (source + upscale). Saves the pair and stamps _PID_xxxxxxxx."
-                data-tip-pro="savePair + mint PID + learn naming tokens. After must be larger than before.">✓ Match (Y)</button>
-        <button class="ui-btn nomatch" type="button" id="btnNo"
+                data-tip-basic="Yes — these are the same shot (source + upscale). Saves the pair."
+                data-tip-pro="savePair + learn naming tokens. After must be larger than before.">✓ Match (Y)</button>
+        <button class="ui-btn nomatch fafo-btn" type="button" id="btnNo"
                 data-tip-title="Not this (N)"
-                data-tip="No match — never again for this stem/PID. Try the next candidate.">✗ Not this (N)</button>
-        <details class="actions-overflow">
-          <summary>More</summary>
-          <button class="ui-btn ghost" type="button" id="btnSkip"
-                  data-tip-title="Skip file (S)"
-                  data-tip="Skip this whole source file and move to the next unpaired item.">Skip anchor (S)</button>
-          <button class="ui-btn ghost" type="button" id="btnPlay"
-                  data-tip-title="Play both"
-                  data-tip="Play or pause both previews together (Space).">⏯ Play both</button>
-          <button class="ui-btn ghost" type="button" id="btnViewOverlay"
-                  data-tip-title="Overlay sweep (O)"
-                  data-tip-basic="Stack both images and wipe a line left/right to compare detail."
-                  data-tip-pro="Clip-path sweeper limited to image content width (9:16 letterbox-aware).">⧉ Overlay (O)</button>
-          <button class="ui-btn undo-main" type="button" id="btnUndo" disabled
-                  data-tip-title="Back (Z)"
-                  data-tip="Undo last decision. Double-tap Z within 0.4s jumps back 5 steps.">↩ Back (Z)</button>
-          <button class="ui-btn ghost" type="button" id="btnRedo" disabled
-                  data-tip-title="Forward (F)"
-                  data-tip="Redo one step you undid.">↪ Forward (F)</button>
-          <span class="undo-hint" id="undoHint">History empty</span>
-        </details>
+                data-tip="No match — try the next candidate for this file.">✗ Not this (N)</button>
+        <button class="ui-btn ghost fafo-btn" type="button" id="btnSkip"
+                data-tip-title="Skip file (S)"
+                data-tip="Skip this whole source file and move to the next unpaired item.">Skip anchor (S)</button>
+        <button class="ui-btn ghost fafo-btn" type="button" id="btnPlay"
+                data-tip-title="Play both"
+                data-tip="Play or pause both previews together (Space).">⏯ Play both</button>
+        <button class="ui-btn ghost fafo-btn" type="button" id="btnViewOverlay"
+                data-tip-title="Overlay sweep (O)"
+                data-tip-basic="Stack both images and wipe a line left/right to compare detail."
+                data-tip-pro="Clip-path sweeper limited to image content width (9:16 letterbox-aware).">⧉ Overlay (O)</button>
+        <button class="ui-btn undo-main fafo-btn" type="button" id="btnUndo" disabled
+                data-tip-title="Back (Z)"
+                data-tip="Undo last decision. Double-tap Z within 0.4s jumps back 5 steps.">↩ Back (Z)</button>
+        <button class="ui-btn ghost fafo-btn" type="button" id="btnRedo" disabled
+                data-tip-title="Forward (F)"
+                data-tip="Redo one step you undid.">↪ Forward (F)</button>
+        <span class="undo-hint" id="undoHint">History empty</span>
       </div>
     </div>
 
@@ -816,14 +815,6 @@
       <div class="key-chip clickable" data-action="match" data-keys="y,enter" title="Lock this pair">
         <div class="key-glyph"><kbd>Y</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>⏎</kbd></div>
         <div class="key-label">Match</div>
-      </div>
-      <div class="key-chip clickable" data-action="pid-approve" data-keys="p" title="Approve this PID match (or jump to the PID candidate)">
-        <div class="key-glyph"><kbd>P</kbd></div>
-        <div class="key-label">Approve PID</div>
-      </div>
-      <div class="key-chip clickable" data-action="pid-trust" data-keys="t" title="Trust all unique 1:1 PID matches">
-        <div class="key-glyph"><kbd>T</kbd></div>
-        <div class="key-label">Trust all PIDs</div>
       </div>
       <div class="key-chip clickable" data-action="reject" data-keys="n,x,arrowright" title="Reject this candidate">
         <div class="key-glyph"><kbd>N</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>X</kbd><span style="opacity:.5;font-size:10px">/</span><kbd>→</kbd></div>
@@ -856,17 +847,14 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pipeline.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-version.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/fafo-ops-stats.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+  <script src="../shared/fafo-chrome.js"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -1678,14 +1666,14 @@
       // crossOrigin anonymous helps canvas PiP when page is served over http
       box.innerHTML = isImage
         ? `<img alt="" src="${esc(url)}" draggable="false" crossorigin="anonymous">`
-        : `<video controls muted playsinline preload="metadata" src="${esc(url)}" crossorigin="anonymous"></video>`;
+        : `<video controls muted playsinline preload="auto" src="${esc(url)}" crossorigin="anonymous"></video>`;
       const m = box.querySelector('img,video');
       if (!m) return;
       m.onerror = () => {
         // retry without crossorigin (some file:// / auth setups)
         box.innerHTML = isImage
           ? `<img alt="" src="${esc(url)}" draggable="false">`
-          : `<video controls muted playsinline preload="metadata" src="${esc(url)}"></video>`;
+          : `<video controls muted playsinline preload="auto" src="${esc(url)}"></video>`;
         const m2 = box.querySelector('img,video');
         if (!m2) return;
         m2.onerror = () => { box.innerHTML = '<div class="empty">Preview failed</div>'; };
@@ -1962,7 +1950,7 @@
             '<div class="empty-cta">' +
             '<button class="ui-btn primary" type="button" id="btnEmptyRetry">↻ Try again</button>' +
             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Library Manager.html\'">📚 Library</button>' +
-            '<button class="ui-btn ghost" type="button" onclick="location.href=\'Mismatched Source Companion.html\'">🔗 Name match</button>' +
+            '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Hub</button>' +
             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Pair Review Queue.html\'">🔎 Pair Review</button>' +
             '</div>';
@@ -1975,7 +1963,7 @@
             <button class="ui-btn undo-main" type="button" id="btnUndoDone" ${canBack() ? '' : 'disabled'}>↩ Back (Z)</button>
             <button class="ui-btn ghost" type="button" id="btnRedoDone" ${canForward() ? '' : 'disabled'}>↪ Forward (F)</button>
             <button class="ui-btn ghost" type="button" onclick="location.href='Pair Review Queue.html'">🔎 Review pairs</button>
-            <button class="ui-btn ghost" type="button" onclick="(window.AIToolboxPipeline&&AIToolboxPipeline.goTab('pairs'))||(location.href='Media Hub.html#pairs')">🔎 Review</button>
+            <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'">⇄ Compare Hub</button>
             <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
             </div>`;
           document.getElementById('btnRestart')?.addEventListener('click', () => startQueue(true));
@@ -2017,7 +2005,6 @@
         const pill0 = el('scorePill');
         if (pill0) pill0.className = 'score';
         setText('reasonVal', '—');
-        try { window.AIToolboxPipeline && AIToolboxPipeline.paintMethodBadge('methodBadge', ''); } catch (_) {}
         fillUniformMeta(anchor, null);
         updatePips();
         return;
@@ -2030,21 +2017,17 @@
       setText('pairTitle', `${cand.before_name || '?'}  →  ${cand.after_name || '?'}`);
       const pill = el('scorePill');
       if (pill) {
-        const isPid = !!(cand.pid || String(cand.reason || '').startsWith('pid'));
-        pill.textContent = (isPid ? 'PID · ' : '') + scoreLabel(cand.confidence);
-        pill.className = 'score ' + (isPid ? 'pid' : scoreClass(cand.confidence));
+        pill.textContent = scoreLabel(cand.confidence);
+        pill.className = 'score ' + scoreClass(cand.confidence);
       }
-      setText('reasonVal', (cand.reason || '—') + (cand.pid ? ' · PID ' + cand.pid : '') + ' · roles: before/after proposed');
-      try { window.AIToolboxPipeline && AIToolboxPipeline.paintMethodBadge('methodBadge', cand.reason || (cand.pid ? 'pid_exact' : '')); } catch (_) {}
+      setText('reasonVal', (cand.reason || '—') + ' · roles: before/after proposed');
       setText('rolesVal', `Before: ${cand.before_name || '—'} · After: ${cand.after_name || '—'}`);
       setText('typeVal', cand.type || anchor.type || '—');
       fillUniformMeta(anchor, cand);
       if (viewState.mode === 'overlay') rebuildOverlayMedia();
     }
 
-    let _candGen = 0;
     async function loadCandidatesForAnchor() {
-      const gen = ++_candGen;
       const anchor = currentAnchor();
       if (!anchor) return;
       const exclude = rejectedFor(anchor.id).slice();
@@ -2056,12 +2039,10 @@
         beforeDirId: fo.beforeDirId || undefined,
         afterDirId: fo.afterDirId || undefined,
       });
-      if (gen !== _candGen) return;
       // Client-side safety: drop same-size / not-larger when option is on
       let cands = data?.candidates || [];
       if (fo.requireLarger) {
         cands = cands.filter((c) => {
-          if (c.pid || String(c.reason || '').startsWith('pid')) return true;
           const a = Number(c.anchor_size || anchor.size || 0);
           const b = Number(c.candidate_size || 0);
           if (a > 0 && b > 0 && b <= a) return false;
@@ -2074,7 +2055,6 @@
       if (data.skipped_same_size) skipBits.push(data.skipped_same_size + ' same-size');
       if (data.skipped_not_larger) skipBits.push(data.skipped_not_larger + ' not-larger');
       if (data.skipped_intermediate) skipBits.push(data.skipped_intermediate + ' stage2/junk');
-      if (data.skipped_rejected) skipBits.push(data.skipped_rejected + ' never-again');
       const skipNote = skipBits.length ? ' · skipped ' + skipBits.join(' / ') : '';
       setText('statusLine', `${state.candidates.length} candidates · scanned ${data.scanned_peers || 0} peers${skipNote}`);
       if (!state.candidates.length) {
@@ -2109,259 +2089,6 @@
         toast(e.message || String(e), 'warn');
         logLine('Error: ' + (e.message || e));
       });
-    }
-
-    let pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
-
-    function pidFolderOpts() {
-      const fo = folderOpts();
-      const kind = el('kindFilter')?.value || null;
-      return {
-        kind: kind || undefined,
-        beforeDirId: fo.beforeDirId || undefined,
-        afterDirId: fo.afterDirId || undefined,
-        limit: 400,
-      };
-    }
-
-    function renderPidStrip() {
-      const list = el('pidList');
-      const stats = el('pidStats');
-      const trustBtn = el('btnPidTrust');
-      const ambHost = el('ambiguousHost');
-      const ambFilm = el('ambiguousFilm');
-      const P = window.AIToolboxPipeline;
-      const rows = pidState.matches || [];
-      const unique = rows.filter((m) => m.unique);
-      const ambiguous = rows.filter((m) => !m.unique);
-      const u = unique.length;
-      const a = ambiguous.length;
-      pidState.uniqueCount = u;
-      pidState.ambiguousCount = a;
-      if (stats) {
-        stats.textContent = rows.length
-          ? `${u} unique → Trust · ${a} ambiguous → leftover · 10-try is leftover only`
-          : 'No shared _PID_xxxxxxxx stamps in unpaired catalog files';
-      }
-      if (trustBtn) trustBtn.disabled = u < 1;
-      if (!list) return;
-      if (!unique.length && !ambiguous.length) {
-        list.innerHTML = '<div class="pid-empty">Start the server, then Find PIDs. Unique 1:1 matches Trust first — ambiguous groups and unpaired files stay leftover.</div>';
-        if (ambHost) ambHost.style.display = 'none';
-        return;
-      }
-      list.innerHTML = unique.map((m) => {
-        const hex = esc(m.pid || '');
-        return `<div class="pid-row" data-pid="${hex}">
-          <span class="pid-hex" title="Unique 1:1">${hex}</span>
-          <div class="pid-names">
-            <div class="from">${esc(m.before_name || '')}</div>
-            <div class="to">${esc(m.after_name || '')}</div>
-          </div>
-          <button type="button" class="ui-btn primary" data-pid-approve="${hex}" style="padding:4px 10px;font-size:11px">Approve</button>
-          <button type="button" class="ui-btn ghost" data-pid-skip="${hex}" style="padding:4px 10px;font-size:11px">Skip</button>
-        </div>`;
-      }).join('') || '<div class="pid-empty">No unique 1:1 PIDs — leftover queue below.</div>';
-      if (ambHost && ambFilm) {
-        if (!ambiguous.length) {
-          ambHost.style.display = 'none';
-          ambFilm.innerHTML = '';
-        } else {
-          ambHost.style.display = '';
-          ambFilm.innerHTML = ambiguous.map((m) => {
-            const hex = esc(m.pid || '');
-            const members = m.member_list || (m.member_names || []).map((n) => ({ name: n, size: 0 }));
-            return `<div class="pid-row ambiguous" data-pid="${hex}">
-              <span class="pid-hex" title="${m.members || members.length} files share this PID">${hex} · ${m.members || members.length}</span>
-              <div class="pid-names">
-                <div class="from">${esc(m.before_name || '')}</div>
-                <div class="to">${esc(m.after_name || '')}</div>
-              </div>
-              <button type="button" class="ui-btn primary" data-pid-approve="${hex}" style="padding:4px 10px;font-size:11px">Pick After</button>
-              <button type="button" class="ui-btn ghost" data-pid-skip="${hex}" style="padding:4px 10px;font-size:11px">Skip</button>
-              ${P && P.filmstripHtml ? P.filmstripHtml(members, m.pid) : ''}
-            </div>`;
-          }).join('');
-        }
-      }
-    }
-
-    async function loadPidMatches() {
-      const api = API();
-      if (!api?.listPidMatches) {
-        pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
-        renderPidStrip();
-        return pidState;
-      }
-      try {
-        if (!(await api.isOnline?.(false, 1500))) {
-          pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
-          renderPidStrip();
-          const stats = el('pidStats');
-          if (stats) stats.textContent = 'Server offline — start it to find PID matches';
-          return pidState;
-        }
-        const data = await api.listPidMatches(pidFolderOpts());
-        pidState = {
-          matches: data.matches || [],
-          uniqueCount: data.unique_count || 0,
-          ambiguousCount: data.ambiguous_count || 0,
-        };
-        renderPidStrip();
-        persistLeftoverFromPid(data).catch(() => {});
-        return pidState;
-      } catch (e) {
-        pidState = { matches: [], uniqueCount: 0, ambiguousCount: 0 };
-        renderPidStrip();
-        const stats = el('pidStats');
-        if (stats) stats.textContent = e.message || String(e);
-        return pidState;
-      }
-    }
-
-    async function approvePidRow(pidHex, { silent } = {}) {
-      const row = (pidState.matches || []).find((m) => String(m.pid || '').toLowerCase() === String(pidHex || '').toLowerCase());
-      if (!row) return false;
-      if (busy) return false;
-      busy = true;
-      try {
-        const r = await API()?.trustPidMatches?.({
-          pids: [row.pid],
-          includeAmbiguous: !row.unique,
-          pin: true,
-          ...pidFolderOpts(),
-        });
-        const n = r?.created || 0;
-        if (!n) throw new Error('Could not lock PID ' + row.pid);
-        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== row.pid);
-        pidState.uniqueCount = (pidState.matches || []).filter((m) => m.unique).length;
-        pidState.ambiguousCount = (pidState.matches || []).filter((m) => !m.unique).length;
-        state.matched += n;
-        renderPidStrip();
-        if (!silent) toast('PID ' + row.pid + ' locked', 'ok');
-        logLine('PID MATCH ' + row.before_name + ' ↔ ' + row.after_name + ' (' + row.pid + ')');
-        try { refreshLearnPanel(); } catch (_) {}
-        return true;
-      } catch (e) {
-        toast(e.message || String(e), 'warn');
-        return false;
-      } finally {
-        busy = false;
-      }
-    }
-
-    async function persistLeftoverFromPid(data) {
-      const api = API();
-      if (!api?.saveLeftover) return;
-      const unique = (data.unique || []).length || data.unique_count || 0;
-      const amb = data.ambiguous || [];
-      try {
-        await api.saveLeftover({
-          unique_trusted: 0,
-          ambiguous: amb.slice(0, 400),
-          fuzzy_ids: [],
-          rejected: 0,
-          note: unique + ' unique ready · ' + amb.length + ' ambiguous · leftover queue',
-        });
-      } catch (_) {}
-      const P = window.AIToolboxPipeline;
-      if (P && P.renderLeftover) {
-        try {
-          const left = await api.getLeftover();
-          P.renderLeftover('leftoverHost', left, {
-            onResume: () => startQueue(false),
-            onRebuild: async () => {
-              const fo = folderOpts();
-              const r = await api.rebuildLeftover({ ...fo, kind: el('kindFilter')?.value || null });
-              P.renderLeftover('leftoverHost', r, { onResume: () => startQueue(false), onRebuild: () => {} });
-              toast(r.note || 'Leftover rebuilt', 'ok');
-            },
-          });
-        } catch (_) {}
-      }
-    }
-
-    async function trustAllPids() {
-      const unique = (pidState.matches || []).filter((m) => m.unique);
-      const n = unique.length;
-      if (n < 1) {
-        toast('No unique PID matches to trust', 'warn');
-        return;
-      }
-      const P = window.AIToolboxPipeline;
-      let pids = unique.map((m) => m.pid);
-      if (P && P.dryRunTrust) {
-        const dry = await P.dryRunTrust(unique, {
-          title: 'Trust unique PID matches?',
-          body: 'Uncheck any pair you do not want locked. Ambiguous 3+ groups stay leftover.',
-        });
-        if (!dry.confirmed) return;
-        pids = dry.pids || [];
-        if (!pids.length) {
-          toast('Nothing selected', 'warn');
-          return;
-        }
-      } else {
-        let ok = false;
-        if (UI()?.confirmAction) {
-          const conf = await UI().confirmAction({
-            title: 'Trust all unique PID matches?',
-            body: `<strong>${n}</strong> unique <code>_PID_xxxxxxxx</code> pair${n === 1 ? '' : 's'} will lock as catalog pairs. Ambiguous groups (3+ files) stay leftover.`,
-            confirmText: `Trust ${n}`,
-            cancelText: 'Cancel',
-            showSafetyNote: true,
-          });
-          ok = !!conf?.confirmed;
-        } else {
-          ok = window.confirm('Lock ' + n + ' unique PID pair(s)?');
-        }
-        if (!ok) return;
-      }
-      if (busy) return;
-      busy = true;
-      const trustBtn = el('btnPidTrust');
-      if (trustBtn) trustBtn.disabled = true;
-      try {
-        const r = await API()?.trustPidMatches?.({
-          pin: true,
-          includeAmbiguous: false,
-          pids,
-          ...pidFolderOpts(),
-        });
-        const created = r?.created || 0;
-        state.matched += created;
-        toast('Trusted ' + created + ' PID pair' + (created === 1 ? '' : 's'), created ? 'ok' : 'warn');
-        logLine('TRUST PID · ' + created + ' locked');
-        await loadPidMatches();
-        try { refreshLearnPanel(); } catch (_) {}
-        try {
-          await API()?.saveLeftover?.({
-            unique_trusted: created,
-            ambiguous: pidState.matches.filter((m) => !m.unique),
-            fuzzy_ids: (state.anchors || []).map((a) => a.id).slice(0, 2000),
-            note: created + ' unique trusted · leftover remains',
-          });
-        } catch (_) {}
-      } catch (e) {
-        toast(e.message || String(e), 'warn');
-      } finally {
-        busy = false;
-        renderPidStrip();
-      }
-    }
-
-    function approveCurrentPid() {
-      const cand = currentCandidate();
-      if (cand && (cand.pid || String(cand.reason || '').startsWith('pid'))) {
-        runAction('match');
-        return;
-      }
-      const first = (pidState.matches || [])[0];
-      if (first?.pid) {
-        approvePidRow(first.pid);
-        return;
-      }
-      toast('No PID match on this candidate', 'warn');
     }
 
     async function startQueue(forceReload) {
@@ -2410,7 +2137,6 @@
         ].join(' → ');
         logLine(`Loaded ${state.anchors.length} unpaired anchors (${scope})`);
         toast(`${state.anchors.length} unpaired · ${scope}`, 'ok');
-        loadPidMatches().catch(() => {});
         await loadCandidatesForAnchor();
       } catch (e) {
         toast(e.message || String(e), 'warn');
@@ -2434,9 +2160,7 @@
         name: `${cand.before_name} ↔ ${cand.after_name}`,
         kind: cand.type || anchor.type || 'video',
         pinned: true,
-        notes: (cand.pid || String(cand.reason || '').startsWith('pid'))
-          ? ('guided-pair-match · pid ' + (cand.pid || ''))
-          : 'guided-pair-match',
+        notes: 'guided-pair-match',
       };
       try {
         const pair = await API()?.savePair(pairPayload);
@@ -2497,20 +2221,13 @@
     }
 
     function rejectCandidate() {
-      return withBusy(async () => {
+      if (busy) return;
       const cand = currentCandidate();
       const anchor = currentAnchor();
       if (!cand || !anchor) return;
 
       const before = snapshotCore();
       rejectedFor(anchor.id).push(cand.candidate_id);
-      try {
-        window.AIToolboxPipeline && AIToolboxPipeline.persistReject(anchor.id, cand.candidate_id, {
-          pid: cand.pid || '',
-          stem: (anchor.name || '').replace(/\.[^.]+$/, ''),
-          reason: 'guided-reject',
-        });
-      } catch (_) {}
       try {
         window.FAFOOpsStats?.record({
           tool: 'guided-pair-match',
@@ -2543,12 +2260,11 @@
           render();
           return;
         }
-        try {
-          await loadCandidatesForAnchor();
+        loadCandidatesForAnchor().then(() => {
           if (historyCursor >= 0 && history[historyCursor]?.type === 'exhaust') {
             history[historyCursor].after = snapshotCore();
           }
-        } catch (e) { toast(e.message || String(e), 'warn'); }
+        }).catch(e => toast(e.message || String(e), 'warn'));
         return;
       }
 
@@ -2562,11 +2278,10 @@
         pairPayload: null,
       });
       render();
-      });
     }
 
     function skipAnchor() {
-      return withBusy(async () => {
+      if (busy) return;
       const anchor = currentAnchor();
       if (!anchor) return;
       const before = snapshotCore();
@@ -2589,13 +2304,11 @@
         render();
         return;
       }
-      try {
-        await loadCandidatesForAnchor();
+      loadCandidatesForAnchor().then(() => {
         if (historyCursor >= 0 && history[historyCursor]?.type === 'skip') {
           history[historyCursor].after = snapshotCore();
         }
-      } catch (e) { toast(e.message || String(e), 'warn'); }
-      });
+      }).catch(e => toast(e.message || String(e), 'warn'));
     }
 
     /**
@@ -2765,102 +2478,10 @@
       }
       else if (action === 'undo') requestBack();
       else if (action === 'redo') redoSteps(1);
-      else if (action === 'pid-approve') approveCurrentPid();
-      else if (action === 'pid-trust') trustAllPids();
     }
 
     // Wire buttons
     bind('btnStart', 'click', () => startQueue(false));
-    bind('btnPidRefresh', 'click', () => loadPidMatches());
-    bind('btnPidTrust', 'click', () => trustAllPids());
-    bind('pidList', 'click', (e) => {
-      const film = e.target.closest('[data-member-id]');
-      if (film) {
-        e.preventDefault();
-        const row = film.closest('[data-pid]');
-        const pidHex = row && row.getAttribute('data-pid');
-        const memberId = film.getAttribute('data-member-id');
-        if (pidHex && memberId) pickAmbiguousAfter(pidHex, memberId);
-        return;
-      }
-      const approve = e.target.closest('[data-pid-approve]');
-      if (approve) {
-        e.preventDefault();
-        approvePidRow(approve.getAttribute('data-pid-approve'));
-        return;
-      }
-      const skip = e.target.closest('[data-pid-skip]');
-      if (skip) {
-        e.preventDefault();
-        const hex = skip.getAttribute('data-pid-skip');
-        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== hex);
-        pidState.uniqueCount = (pidState.matches || []).filter((m) => m.unique).length;
-        pidState.ambiguousCount = (pidState.matches || []).filter((m) => !m.unique).length;
-        renderPidStrip();
-      }
-    });
-    bind('ambiguousHost', 'click', (e) => {
-      const film = e.target.closest('[data-member-id]');
-      if (film) {
-        e.preventDefault();
-        const row = film.closest('[data-pid]');
-        const pidHex = row && row.getAttribute('data-pid');
-        const memberId = film.getAttribute('data-member-id');
-        if (pidHex && memberId) pickAmbiguousAfter(pidHex, memberId);
-        return;
-      }
-      const approve = e.target.closest('[data-pid-approve]');
-      if (approve) {
-        e.preventDefault();
-        approvePidRow(approve.getAttribute('data-pid-approve'));
-        return;
-      }
-      const skip = e.target.closest('[data-pid-skip]');
-      if (skip) {
-        e.preventDefault();
-        const hex = skip.getAttribute('data-pid-skip');
-        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== hex);
-        renderPidStrip();
-      }
-    });
-
-    async function pickAmbiguousAfter(pidHex, memberId) {
-      const row = (pidState.matches || []).find((m) => String(m.pid || '').toLowerCase() === String(pidHex || '').toLowerCase());
-      if (!row) return;
-      const members = row.member_list || [];
-      const picked = members.find((m) => m.id === memberId);
-      if (!picked) {
-        approvePidRow(pidHex);
-        return;
-      }
-      const beforeId = row.before_id;
-      const afterId = picked.id === beforeId ? row.after_id : picked.id;
-      if (!beforeId || !afterId || beforeId === afterId) {
-        toast('Pick a different After file', 'warn');
-        return;
-      }
-      if (busy) return;
-      busy = true;
-      try {
-        await API().savePair({
-          name: (row.before_name || 'pair') + ' — PID ' + row.pid,
-          beforeMediaId: beforeId,
-          afterMediaId: afterId,
-          kind: row.type || 'video',
-          pinned: true,
-          notes: 'pid-ambiguous ' + row.pid,
-        });
-        pidState.matches = (pidState.matches || []).filter((m) => m.pid !== row.pid);
-        state.matched += 1;
-        renderPidStrip();
-        toast('PID ' + row.pid + ' locked with chosen After', 'ok');
-        logLine('PID PICK ' + row.before_name + ' ↔ ' + (picked.name || afterId));
-      } catch (e) {
-        toast(e.message || String(e), 'warn');
-      } finally {
-        busy = false;
-      }
-    }
     bind('btnEmptyStart', 'click', () => startQueue(false));
     bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
     bind('btnReset', 'click', () => {
@@ -2966,14 +2587,6 @@
         e.preventDefault();
         runAction('redo');
       }
-      else if (key === 'p') {
-        e.preventDefault();
-        runAction('pid-approve');
-      }
-      else if (key === 't') {
-        e.preventDefault();
-        runAction('pid-trust');
-      }
     });
 
     document.addEventListener('keyup', (e) => {
@@ -2993,10 +2606,8 @@
 
     bindCompareInteraction();
     loadSession();
-    renderPidStrip();
-    loadPidMatches().catch(() => {});
-    document.getElementById('beforeDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); loadPidMatches().catch(() => {}); });
-    document.getElementById('afterDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); loadPidMatches().catch(() => {}); });
+    document.getElementById('beforeDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
+    document.getElementById('afterDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
     document.getElementById('requireLarger')?.addEventListener('change', saveSession);
     document.getElementById('btnPickBefore')?.addEventListener('click', () => pickAndRegisterFolder('before'));
     document.getElementById('btnPickAfter')?.addEventListener('click', () => pickAndRegisterFolder('after'));
@@ -3038,30 +2649,6 @@
 
     refreshDirSelects().catch(() => {});
     refreshLearnPanel().catch(() => {});
-    (async () => {
-      try {
-        const P = window.AIToolboxPipeline;
-        if (!P || !P.boot) return;
-        await P.boot({
-          host: 'pipelineHost',
-          leftoverHost: 'leftoverHost',
-          beforeSelect: 'beforeDir',
-          afterSelect: 'afterDir',
-          onApply: (pipe) => {
-            if (pipe && pipe.before) P.inheritFolders({ beforeSelect: 'beforeDir', afterSelect: 'afterDir', host: 'pipelineHost' });
-            updateFolderPathLabels();
-            saveSession();
-            loadPidMatches().catch(() => {});
-          },
-          onResume: () => startQueue(false),
-          onRebuild: async () => {
-            const fo = folderOpts();
-            const r = await API()?.rebuildLeftover?.({ ...fo, kind: el('kindFilter')?.value || null });
-            P.renderLeftover('leftoverHost', r || {}, { onResume: () => startQueue(false) });
-          },
-        });
-      } catch (_) {}
-    })();
     render();
     if (new URLSearchParams(location.search).get('autoload') === '1') {
       startQueue(false);

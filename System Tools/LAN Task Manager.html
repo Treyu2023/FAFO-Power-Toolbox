@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/System Tools/LAN Task Manager.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LAN & Task Manager — AI HTML Toolbox</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
             --bg: #04060d;
@@ -23,6 +22,16 @@
             --text: #f1f5f9;
             --muted: #b6c4d8;
             --glow: 0 0 20px rgba(0, 243, 255, 0.28);
+            /* PET-UI-17 / LAN TASK MANAGER: kit aliases only — no second theme */
+            --fafo-bg: var(--bg);
+            --fafo-panel: var(--panel);
+            --fafo-panel-2: var(--panel2);
+            --fafo-text: var(--text);
+            --fafo-muted: var(--muted);
+            --fafo-accent: var(--accent);
+            --fafo-danger: var(--danger);
+            --fafo-border: var(--border);
+            --fafo-touch-min: 44px;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -109,17 +118,24 @@
             padding: 8px 12px; border-radius: 8px; font-size: 13px; min-width: 140px;
         }
         .inp:focus, .sel:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
-        .btn {
+        .btn, .fafo-btn {
             background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35);
-            color: var(--accent); padding: 8px 16px; border-radius: 8px; cursor: pointer;
+            color: var(--fafo-accent, var(--accent)); padding: 8px 16px; border-radius: 8px; cursor: pointer;
             font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
-            transition: all .2s;
+            transition: all .2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
         }
-        .btn:hover { background: var(--accent); color: #0f172a; }
-        .btn.danger { border-color: rgba(248,113,113,.4); color: var(--danger); background: rgba(248,113,113,.08); }
-        .btn.danger:hover { background: var(--danger); color: #fff; }
-        .btn.sm { padding: 5px 10px; font-size: 11px; }
-        .btn:disabled { opacity: .45; cursor: not-allowed; }
+        .btn:hover, .fafo-btn:hover { background: var(--fafo-accent, var(--accent)); color: #0f172a; }
+        .btn.danger, .fafo-btn.danger { border-color: rgba(248,113,113,.4); color: var(--fafo-danger, var(--danger)); background: rgba(248,113,113,.08); }
+        .btn.danger:hover, .fafo-btn.danger:hover { background: var(--fafo-danger, var(--danger)); color: #fff; }
+        .btn.sm, .fafo-btn.sm { padding: 5px 10px; font-size: 11px; }
+        .btn:disabled, .fafo-btn:disabled { opacity: .45; cursor: not-allowed; }
+        .btn.fafo-btn-primary, .fafo-btn.fafo-btn-primary, .btn.primary, .fafo-btn.primary {
+            background: linear-gradient(135deg, rgba(129,140,248,.35), rgba(0,243,255,.25));
+            border-color: var(--fafo-accent, var(--accent)); color: #f8fafc; box-shadow: var(--glow);
+        }
+        .btn.fafo-btn-primary:hover, .fafo-btn.fafo-btn-primary:hover, .btn.primary:hover, .fafo-btn.primary:hover {
+            background: var(--fafo-accent, var(--accent)); color: #0f172a;
+        }
 
         .data-table-wrap { overflow: auto; max-height: 520px; position: relative; }
         .list-freeze-pill {
@@ -233,21 +249,111 @@
             .status-dot { animation: none !important; }
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* PET-UI-17 / LAN TASK MANAGER: More tools collapse + ops surface primary */
+        .toolbox-nav.fafo-toolbar { align-items: center; flex-wrap: wrap; gap: 8px; }
+        .toolbox-nav.fafo-toolbar details.fafo-collapse {
+            position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+        }
+        .toolbox-nav.fafo-toolbar details.fafo-collapse > summary {
+            padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+            list-style: none; user-select: none; min-height: 0;
+            border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+            color: var(--fafo-muted, var(--muted));
+        }
+        .toolbox-nav.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+        .toolbox-nav.fafo-toolbar details.fafo-collapse[open] > summary {
+            border-color: var(--fafo-accent, var(--accent));
+            color: var(--fafo-accent, var(--accent));
+        }
+        .toolbox-nav.fafo-toolbar details.fafo-collapse > :not(summary) {
+            position: absolute; top: calc(100% + 4px); right: 0; z-index: 50;
+            min-width: 260px; max-width: min(420px, 92vw); padding: 6px;
+            background: var(--fafo-panel, var(--panel));
+            border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+            border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+        }
+        .lan-more-body {
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+        }
+        .lan-more-body .fafo-btn, .lan-more-body .btn {
+            font-size: 11px; padding: 6px 10px; border-radius: 6px;
+            text-transform: none; font-weight: 600;
+        }
+        .toolbar details.ui-advanced {
+            position: relative; flex: 0 1 auto; min-width: 0;
+        }
+        .toolbar details.ui-advanced > summary {
+            padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
+            list-style: none; user-select: none;
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+            color: var(--fafo-muted, var(--muted));
+        }
+        .toolbar details.ui-advanced > summary::-webkit-details-marker { display: none; }
+        .toolbar details.ui-advanced[open] > summary {
+            border-color: var(--fafo-accent, var(--accent));
+            color: var(--fafo-accent, var(--accent));
+        }
+        .toolbar details.ui-advanced > :not(summary) {
+            position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+            min-width: 200px; padding: 6px;
+            background: var(--fafo-panel, var(--panel));
+            border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 30%, transparent);
+            border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+        }
+        .lan-more-actions {
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+        }
+        .main.fafo-primary-surface,
+        .main[data-fafo-primary],
+        .view.active[data-fafo-primary],
+        #procTableWrap[data-fafo-primary] {
+            flex: 1 1 auto; min-height: 0; min-width: 0;
+        }
+        .main.fafo-primary-surface { min-height: 50vh; }
+        @media (max-width: 900px) {
+            /* UI-M: side nav → horizontal tabs */
+            .app { flex-direction: column; }
+            .sidebar {
+                flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 6px;
+                border-right: none; border-bottom: 1px solid var(--fafo-border, var(--border));
+                padding: 8px 10px; -webkit-overflow-scrolling: touch;
+            }
+            .sidebar .nav-btn {
+                flex: 0 0 auto; width: auto; white-space: nowrap;
+                min-height: var(--fafo-touch-min, 44px);
+                padding: 10px 14px;
+            }
+            .toolbox-nav.fafo-toolbar { gap: 8px; }
+            #btnDiscover, #btnDiag, #btnPing, #btnScan, #btnTrace, #btnDns, #btnTelnet,
+            #tbBtnStartServer, [data-fafo-primary].btn, [data-fafo-primary].fafo-btn {
+                min-height: var(--fafo-touch-min, 44px);
+                min-width: var(--fafo-touch-min, 44px);
+            }
+        }
+        @media (max-width: 640px) {
+            .sidebar { flex-wrap: wrap; }
+        }
+
     </style>
 </head>
 <body>
-    <nav class="toolbox-nav">
-        <a href="../Toolbox Launcher.html">← Toolbox</a>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-            <a href="FAFO Task Manager Pro.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(56,189,248,.08)">Task Manager Pro →</a>
-            <a href="System Health Dashboard.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Hub</a>
-            <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">PC Diagnostics</a>
-            <a href="IP Profile Switcher.html" style="color:var(--muted);text-decoration:none;font-size:11px;font-weight:600;padding:4px 10px;border:1px solid var(--border);border-radius:999px">IP Profiles</a>
-            <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
-        </div>
+    <nav class="toolbox-nav fafo-toolbar" data-fafo-toolbar>
+        <!-- PET-UI-17 / LAN TASK MANAGER: primary chrome + More tools overflow -->
         <span class="title">LAN & TASK MANAGER</span>
-        <span data-fafo-layout-toolbar></span>
         <span id="serverStatus" class="status-pill offline"><span class="status-dot"></span> Server offline</span>
+        <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+        <details class="fafo-collapse" id="lanMoreTools" data-fafo-collapse-key="lan-task-manager-more-tools">
+            <summary>More tools</summary>
+            <div class="lan-more-body">
+                <a class="fafo-btn" href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Toolbox</a>
+                <a class="fafo-btn" href="FAFO Task Manager Pro.html" data-tip-title="Task Manager Pro" data-tip="Pro intel + efficiency modes.">Task Manager Pro →</a>
+                <a class="fafo-btn" href="System Health Dashboard.html" data-tip-title="Health Hub" data-tip="System health dashboard.">Health Hub</a>
+                <a class="fafo-btn" href="PC Diagnostics HUD.html" data-tip-title="PC Diagnostics" data-tip="Diagnostics HUD.">PC Diagnostics</a>
+                <a class="fafo-btn" href="IP Profile Switcher.html" data-tip-title="IP Profiles" data-tip="IP profile switcher.">IP Profiles</a>
+            </div>
+        </details>
+        <span data-fafo-layout-toolbar></span>
     </nav>
 
     <div id="serverBanner" class="server-banner" style="display:none;margin:16px 24px 0;">
@@ -272,12 +378,13 @@
             <button class="nav-btn" data-view="diagnostics"><span class="icon">🩺</span> Diagnostics</button>
         </aside>
 
-        <main class="main"
+        <main class="main fafo-primary-surface"
+              data-fafo-primary
               data-fafo-panel="main"
               data-fafo-panel-title="Content"
               data-fafo-flex="1">
             <!-- DASHBOARD -->
-            <section id="view-dashboard" class="view active">
+            <section id="view-dashboard" class="view active" data-fafo-primary>
                 <div class="page-header">
                     <h1>System Dashboard</h1>
                     <p>Real-time CPU, memory, disk, and network activity across your machine</p>
@@ -305,7 +412,7 @@
             </section>
 
             <!-- PROCESSES -->
-            <section id="view-processes" class="view">
+            <section id="view-processes" class="view" data-fafo-primary>
                 <div class="page-header">
                     <h1>Task Manager</h1>
                     <p>All running processes — CPU, memory, threads, and active network connections</p>
@@ -322,12 +429,17 @@
                                 <option value="name">Sort: Name</option>
                                 <option value="pid">Sort: PID</option>
                             </select>
-                            <button class="btn" id="btnRefreshProcs" data-tip-title="Refresh processes" data-tip="Reload process list." title="Refresh (R)">Refresh</button>
-                            <button class="btn" id="btnExportProcs" data-tip-title="Export processes" data-tip="Export process table as CSV." type="button" title="Export process list CSV">↓ CSV</button>
-                            <a class="btn" href="FAFO Task Manager Pro.html" style="text-decoration:none" title="Pro intel + efficiency modes">Pro →</a>
+                            <button class="btn fafo-btn" id="btnRefreshProcs" data-tip-title="Refresh processes" data-tip="Reload process list." title="Refresh (R)">Refresh</button>
+                            <details class="ui-advanced" id="lanMoreActions" data-fafo-collapse-key="lan-task-manager-more-actions">
+                                <summary>More actions</summary>
+                                <div class="lan-more-actions">
+                                    <button class="btn fafo-btn" id="btnExportProcs" data-tip-title="Export processes" data-tip="Export process table as CSV." type="button" title="Export process list CSV">↓ CSV</button>
+                                    <a class="btn fafo-btn" href="FAFO Task Manager Pro.html" style="text-decoration:none" title="Pro intel + efficiency modes">Pro →</a>
+                                </div>
+                            </details>
                         </div>
                     </div>
-                    <div class="data-table-wrap" id="procTableWrap">
+                    <div class="data-table-wrap" id="procTableWrap" data-fafo-primary>
                         <div class="list-freeze-pill">⏸ Live refresh paused while scrolling</div>
                         <table class="data-table" id="procTable">
                             <thead><tr>
@@ -356,7 +468,7 @@
                                 <option value="tcp">TCP</option>
                                 <option value="udp">UDP</option>
                             </select>
-                            <button class="btn" id="btnRefreshConn" data-tip-title="Refresh connections" data-tip="Reload network connection table.">Refresh</button>
+                            <button class="btn fafo-btn" id="btnRefreshConn" data-tip-title="Refresh connections" data-tip="Reload network connection table.">Refresh</button>
                         </div>
                     </div>
                     <div class="data-table-wrap" id="connTableWrap">
@@ -391,7 +503,7 @@
                         <h2>Discovery scan</h2>
                         <div class="toolbar">
                             <input class="inp" id="subnetInp" data-tip-title="Subnet" data-tip="CIDR/subnet to discover (e.g. 192.168.1.0/24)." placeholder="Subnet e.g. 192.168.1.0/24 (auto if empty)" style="min-width:260px">
-                            <button class="btn" id="btnDiscover" data-tip-title="Discover LAN" data-tip="Scan the subnet for live hosts.">Scan LAN</button>
+                            <button class="btn fafo-btn fafo-btn-primary" id="btnDiscover" data-fafo-primary data-tip-title="Discover LAN" data-tip="Scan the subnet for live hosts.">Scan LAN</button>
                         </div>
                     </div>
                     <div class="panel-body">
@@ -414,7 +526,7 @@
                             <div class="toolbar" style="margin-bottom:14px;">
                                 <input class="inp" id="pingHost" data-tip-title="Ping host" data-tip="Hostname or IP to ping." placeholder="Host or IP" value="8.8.8.8">
                                 <input class="inp" id="pingCount" type="number" value="4" min="1" max="20" style="width:70px;min-width:70px">
-                                <button class="btn" id="btnPing" data-tip-title="Ping" data-tip="ICMP ping the host.">Ping</button>
+                                <button class="btn fafo-btn fafo-btn-primary" id="btnPing" data-fafo-primary data-tip-title="Ping" data-tip="ICMP ping the host.">Ping</button>
                             </div>
                             <div id="pingResults" class="ping-results"></div>
                         </div>
@@ -425,7 +537,7 @@
                             <div class="toolbar" style="margin-bottom:14px;">
                                 <input class="inp" id="telHost" data-tip-title="Telnet host" data-tip="Host for TCP port check." placeholder="Host" value="google.com">
                                 <input class="inp" id="telPort" data-tip-title="Port" data-tip="TCP port to test." type="number" value="443" style="width:80px;min-width:80px">
-                                <button class="btn" id="btnTelnet" data-tip-title="Port check" data-tip="Test if the TCP port is open.">Test port</button>
+                                <button class="btn fafo-btn fafo-btn-primary" id="btnTelnet" data-fafo-primary data-tip-title="Port check" data-tip="Test if the TCP port is open.">Test port</button>
                             </div>
                             <div id="telResult"></div>
                         </div>
@@ -437,7 +549,7 @@
                         <div class="toolbar">
                             <input class="inp" id="traceHost" data-tip-title="Trace host" data-tip="Host for traceroute." placeholder="Destination host" value="1.1.1.1">
                             <input class="inp" id="traceHops" type="number" value="30" min="1" max="64" style="width:70px;min-width:70px" title="Max hops">
-                            <button class="btn" id="btnTrace" data-tip-title="Traceroute" data-tip="Run traceroute hops to the host.">Trace route</button>
+                            <button class="btn fafo-btn fafo-btn-primary" id="btnTrace" data-fafo-primary data-tip-title="Traceroute" data-tip="Run traceroute hops to the host.">Trace route</button>
                         </div>
                     </div>
                     <div class="panel-body">
@@ -457,7 +569,7 @@
                                     <option value="CANONICAL">FQDN</option>
                                     <option value="REVERSE">Reverse PTR</option>
                                 </select>
-                                <button class="btn" id="btnDns" data-tip-title="DNS lookup" data-tip="Resolve DNS records.">Lookup</button>
+                                <button class="btn fafo-btn fafo-btn-primary" id="btnDns" data-fafo-primary data-tip-title="DNS lookup" data-tip="Resolve DNS records.">Lookup</button>
                             </div>
                             <div id="dnsModeHint" class="stat-sub" style="margin-bottom:8px;min-height:16px;"></div>
                             <div id="dnsResult"></div>
@@ -469,7 +581,7 @@
                             <div class="toolbar" style="margin-bottom:14px;">
                                 <input class="inp" id="scanHost" data-tip-title="Scan host" data-tip="Host for port scan." placeholder="Target host" value="127.0.0.1">
                                 <input class="inp" id="scanPorts" data-tip-title="Ports" data-tip="Port list or range to scan." placeholder="Ports (empty = common)" style="min-width:180px">
-                                <button class="btn" id="btnScan" data-tip-title="Port scan" data-tip="Scan the listed ports on the host.">Scan</button>
+                                <button class="btn fafo-btn fafo-btn-primary" id="btnScan" data-fafo-primary data-tip-title="Port scan" data-tip="Scan the listed ports on the host.">Scan</button>
                             </div>
                             <div id="scanResult"></div>
                         </div>
@@ -486,7 +598,7 @@
                 <div class="panel">
                     <div class="panel-head">
                         <h2>System health</h2>
-                        <button class="btn" id="btnDiag" data-tip-title="Quick diag" data-tip="Run a bundled local network diagnostic pass.">Run diagnostics</button>
+                        <button class="btn fafo-btn fafo-btn-primary" id="btnDiag" data-fafo-primary data-tip-title="Quick diag" data-tip="Run a bundled local network diagnostic pass.">Run diagnostics</button>
                     </div>
                     <div class="panel-body" id="diagResult"><div class="empty">Click Run diagnostics to start</div></div>
                 </div>
@@ -507,14 +619,13 @@
         </div>
     </aside>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
     (function () {
         'use strict';
@@ -1403,7 +1514,7 @@
     bar.id = 'tbSharedServerBar';
     bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(0,243,255,.15);background:rgba(0,0,0,.35);font-size:12px;';
     bar.innerHTML = '<span id="tbServerPill" style="padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.15);cursor:pointer">Server …</span>'
-      + '<button type="button" id="tbBtnStartServer" style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
+      + '<button type="button" id="tbBtnStartServer" class="fafo-btn fafo-btn-primary" data-fafo-primary data-tip-title="Start server" data-tip="Start the toolbox backend for LAN/network tools." style="padding:5px 12px;border-radius:8px;border:1px solid #00f3ff;background:rgba(0,243,255,.12);color:#00f3ff;cursor:pointer;font-weight:600">▶ Start Server</button>'
       + '<span id="tbServerHint" style="color:#888;font-size:11px"></span>'
       + '<span style="margin-left:auto;opacity:.55;font-size:11px" id="tbVer"></span>';
     const nav = document.querySelector('nav, .nav, .nav-bar, header');
