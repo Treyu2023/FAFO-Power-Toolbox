@@ -1,6 +1,6 @@
 # DIR: Campaign NPC + player sprites (Kenney + Imagine)
 
-- **Status:** IN_PROGRESS  
+- **Status:** DONE (Hands 2026-09-13: 3 themes + LetterKey rename; grokbot still owns T85 minigames)  
 - **Priority:** P1  
 - **Owner (expert):** local Hands (assist grokbot)  
 - **Executor:** grokbot / Hands  
