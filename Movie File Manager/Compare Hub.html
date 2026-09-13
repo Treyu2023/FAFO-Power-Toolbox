@@ -2,19 +2,605 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Moved — Media Hub</title>
-  <link rel="canonical" href="Media Hub.html">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compare Hub — Pairs · Video · Image</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⇄</text></svg>">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+  <style>
+    :root {
+      --bg: #0b1220; --panel: #121820; --navy: #0b1220; --charcoal: #1a2230;
+      --accent: #e879f9; --accent2: #00e5ff; --gold: #f5c542; --magenta: #e879f9;
+      --text: #f2f4f8; --muted: #9aa3b2; --ok: #00ff88;
+      /* PET-UI-14 / COMPARE HUB: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-focus: var(--gold);
+      --fafo-border: rgba(167, 139, 250, 0.35);
+      --fafo-radius: 12px;
+    }
+    :focus-visible {
+      outline: 2px solid var(--gold); outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column;
+    }
+    .hub-bar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 12px;
+      background: linear-gradient(180deg, #12101a, #0a0a10);
+      border-bottom: 1px solid rgba(167, 139, 250, 0.35);
+      z-index: 5;
+    }
+    .hub-bar h1 {
+      font-size: 14px; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--accent); margin-right: 6px;
+    }
+    .hub-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+    .hub-tab {
+      appearance: none; border: 1px solid rgba(167, 139, 250, 0.35);
+      background: transparent; color: var(--muted);
+      padding: 7px 12px; border-radius: 999px; cursor: pointer;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+      transition: 0.15s;
+    }
+    .hub-tab:hover { color: var(--gold); border-color: var(--gold); }
+    .hub-tab.active {
+      background: rgba(167, 139, 250, 0.2);
+      color: #fff; border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(167, 139, 250, 0.3);
+    }
+    .hub-meta { font-size: 10px; color: var(--muted); max-width: 300px; line-height: 1.35; }
+    .hub-actions { display: flex; gap: 6px; align-items: center; }
+    .hub-actions a, .hub-actions button {
+      font-size: 11px; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.14); background: transparent;
+      color: var(--muted); text-decoration: none; cursor: pointer; font-weight: 600;
+    }
+    .hub-actions a:hover, .hub-actions button:hover {
+      color: var(--accent2); border-color: var(--accent2);
+    }
+    .frame-wrap { flex: 1; min-height: 0; position: relative; background: #000; }
+    .frame-wrap iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      border: 0; background: #050508;
+    }
+    .loading {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 13px; pointer-events: none;
+      background: radial-gradient(ellipse at 50% 30%, #1a1430, #050508 70%);
+      transition: opacity 0.3s;
+    }
+    .loading.hide { opacity: 0; pointer-events: none; }
+    .loading.fail { opacity: 1; pointer-events: auto; flex-direction: column; gap: 12px; text-align: center; padding: 24px; }
+    .loading.fail .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .loading.fail button, .loading.fail a {
+      font-size: 12px; font-weight: 700; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(167,139,250,.45); background: rgba(167,139,250,.15); color: #e9d5ff;
+      text-decoration: none;
+    }
+    .loading.fail button.ghost, .loading.fail a.ghost {
+      border-color: rgba(255,255,255,.2); background: transparent; color: var(--muted);
+    }
+    .server-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,200,0,.4);
+      color: #ffc800; background: rgba(255,200,0,.08); white-space: nowrap;
+    }
+    .server-badge.ok { color: var(--ok); border-color: rgba(0,255,136,.45); background: rgba(0,255,136,.1); }
+    .server-badge.bad { color: #ff6b8a; border-color: rgba(255,68,102,.45); background: rgba(255,68,102,.1); cursor: pointer; }
+    .hub-actions #btnStartServer { border-color: rgba(0,255,136,.4); color: var(--ok); }
+    .kbd-hint {
+      font-size: 10px; color: var(--muted); padding: 4px 8px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.08); white-space: nowrap;
+    }
+    .kbd-hint kbd {
+      font-family: Consolas, monospace; font-size: 10px; color: var(--accent2);
+      padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(0,243,255,.3);
+      background: rgba(0,0,0,.35);
+    }
+  
+    /* PET-UI-14 / COMPARE HUB: More tools collapse + workspace primary */
+    .hub-bar.fafo-toolbar { align-items: center; flex-wrap: wrap; }
+    .hub-bar.fafo-toolbar details.fafo-collapse {
+      position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+    }
+    .hub-bar.fafo-toolbar details.fafo-collapse > summary {
+      padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none; min-height: 0;
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: var(--fafo-muted, var(--muted));
+    }
+    .hub-bar.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+    .hub-bar.fafo-toolbar details.fafo-collapse[open] > summary {
+      border-color: var(--fafo-accent, var(--accent)); color: var(--fafo-accent, var(--accent));
+    }
+    .hub-bar.fafo-toolbar details.fafo-collapse > :not(summary) {
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+      min-width: 260px; max-width: min(420px, 92vw); padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+      border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    .hub-more-body {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .hub-tab.fafo-btn {
+      /* Keep pill tabs; fafo-btn for kit/touch floors only */
+      border-radius: 999px;
+      background: transparent;
+      min-height: 0;
+      box-shadow: none;
+    }
+    .hub-tab.fafo-btn.active {
+      background: rgba(167, 139, 250, 0.2);
+      box-shadow: 0 0 12px rgba(167, 139, 250, 0.3);
+    }
+    .hub-actions .fafo-btn,
+    .hub-more-body .fafo-btn {
+      font-size: 11px; padding: 6px 10px; border-radius: 6px;
+      text-decoration: none; font-weight: 600; cursor: pointer;
+    }
+    .hub-actions #btnStartServer.fafo-btn-primary {
+      border-color: rgba(0,255,136,.4); color: var(--ok);
+    }
+    .frame-wrap.fafo-primary-surface,
+    .frame-wrap [data-fafo-primary],
+    #hubFrame[data-fafo-primary] {
+      flex: 1 1 auto; min-height: 0; min-width: 0;
+    }
+    .frame-wrap.fafo-primary-surface {
+      display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative;
+    }
+    @media (max-width: 900px) {
+      /* UI-M: hub-bar wraps; tabs stay tappable >=44px */
+      .hub-bar { gap: 6px; }
+      .hub-tabs .hub-tab,
+      .hub-tabs .hub-tab.fafo-btn {
+        min-height: var(--fafo-touch-min, 44px);
+        min-width: var(--fafo-touch-min, 44px);
+        padding: 10px 14px;
+      }
+      .hub-meta { max-width: 100%; }
+    }
+    @media (max-width: 640px) {
+      .hub-bar h1 { width: 100%; }
+      .frame-wrap [data-fafo-primary],
+      #hubFrame[data-fafo-primary] { min-height: 48vh; }
+    }
+</style>
+</head>
+<body>
+<div data-fafo-layout-root data-fafo-layout-app="movie-file-manager-compare-hub" data-fafo-layout-type="rows" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
+  <header class="hub-bar fafo-toolbar" data-fafo-toolbar data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
+    <!-- PET-UI-14 / COMPARE HUB: primary server/tabs/Start/Pop out + More tools overflow -->
+    <h1>⇄ COMPARE HUB</h1>
+    <span class="server-badge" id="serverBadge" title="Toolbox server status">Server …</span>
+    <div class="hub-tabs" id="hubTabs" role="tablist">
+      <button type="button" class="hub-tab fafo-btn active" data-tab="match" role="tab"
+              data-tip-title="Guided Match" data-tip="Try candidates one-by-one per source file until you lock a pair.">Guided Match</button>
+      <button type="button" class="hub-tab fafo-btn" data-tab="pairs" role="tab"
+              data-tip-title="Pair Review" data-tip="Keyboard accept/reject queue before renames.">Pair Review</button>
+      <button type="button" class="hub-tab fafo-btn" data-tab="video" role="tab"
+              data-tip-title="Video Comparator" data-tip="Side-by-side / slider sync for video pairs.">Video Comparator</button>
+      <button type="button" class="hub-tab fafo-btn" data-tab="image" role="tab"
+              data-tip-title="Image Comparator" data-tip="Slider compare for still image pairs.">Image Comparator</button>
+    </div>
+    <div class="hub-meta" id="hubMeta">Guided match: try up to 10 candidates per file — you decide. Then review or open sliders.</div>
+    <div class="hub-actions">
+      <span data-fafo-layout-toolbar></span>
+      <button type="button" class="fafo-btn fafo-btn-primary" id="btnStartServer" data-legacy-server-chrome
+              data-tip-title="Start Server" data-tip="Start toolbox backend if offline (prefer top S1/S2 bar).">▶ Start Server</button>
+      <button type="button" class="fafo-btn" id="btnPopout" data-tip-title="Pop out" data-tip="Open this tab in a full window.">↗ Pop out</button>
+      <details class="fafo-collapse" id="hubMoreTools" data-fafo-collapse-key="compare-hub-more-tools">
+        <summary>More tools</summary>
+        <div class="hub-more-body">
+          <a class="fafo-btn" href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Launcher</a>
+          <a class="fafo-btn" href="Media Hub.html" data-tip-title="Media Hub" data-tip="Library + duplicates + organizer tabs.">🗂️ Media Hub</a>
+          <a class="fafo-btn" href="Media Library Manager.html" data-tip-title="Library" data-tip="Full Media Library window.">📚 Library</a>
+          <a class="fafo-btn" href="VSR Pipeline Manager.html" data-tip-title="VSR" data-tip="Match and rename upscale / interpolation stages.">⚡ VSR</a>
+          <a class="fafo-btn" href="Guided Pair Match.html" data-tip-title="Guided Match" data-tip="Open Guided Match in its own window.">🎯 Match</a>
+          <a class="fafo-btn" href="Pair Review Queue.html" data-tip-title="Pair Review" data-tip="Open Pair Review in its own window.">🔎 Review</a>
+          <button type="button" class="fafo-btn" id="btnCopyReport" data-tip-title="Report" data-tip="Copy a compare-hub session summary.">📋 Report</button>
+          <span class="kbd-hint" title="Keyboard"><kbd>1</kbd>–<kbd>4</kbd> tabs · <kbd>R</kbd> report</span>
+        </div>
+      </details>
+    </div>
+  </header>
+  <div class="frame-wrap fafo-primary-surface">
+    <div class="loading" id="loading">Loading compare workspace…</div>
+    <iframe id="hubFrame" data-fafo-primary title="Compare workspace" allow="autoplay; fullscreen"></iframe>
+  </div>
+
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
+  <script src="../shared/fafo-chrome.js"></script>
   <script>
     (function () {
-      var hash = location.hash || '#match';
-      var search = location.search || '';
-      location.replace('Media Hub.html' + search + hash);
+      const TABS = {
+        match: {
+          path: 'Guided Pair Match.html',
+          toolboxPath: 'Movie File Manager/Guided Pair Match.html',
+          title: 'Guided Pair Match',
+          meta: 'One unpaired file at a time · up to 10 candidates · Y match / N next · process of elimination with you at the helm.'
+        },
+        pairs: {
+          path: 'Pair Review Queue.html',
+          toolboxPath: 'Movie File Manager/Pair Review Queue.html',
+          title: 'Pair Review',
+          meta: 'Review before/after pairs, accept or reject, batch-fix catalog links — then jump to a comparator.'
+        },
+        video: {
+          path: '../Video Tools/Video Comparison Slider Tool.html',
+          toolboxPath: 'Video Tools/Video Comparison Slider Tool.html',
+          title: 'Video Comparator',
+          meta: 'Side-by-side / slider sync playback for upscaled vs source video pairs.'
+        },
+        image: {
+          path: '../Image tools/Image Comparitor With Slider.html',
+          toolboxPath: 'Image tools/Image Comparitor With Slider.html',
+          title: 'Image Comparator',
+          meta: 'Before/after image slider with blend & loupe.'
+        }
+      };
+
+      const frame = document.getElementById('hubFrame');
+      const loading = document.getElementById('loading');
+      const meta = document.getElementById('hubMeta');
+      const LS_TAB = 'fafo_compare_hub_last_tab';
+      let current = 'match';
+      let loadTimer = null;
+      let loadGen = 0;
+      let lastFrameSrc = '';
+
+      function el(id) {
+        try {
+          if (!id) return null;
+          return typeof id === 'string' ? document.getElementById(id) : id;
+        } catch (_) { return null; }
+      }
+      function setText(n, txt) {
+        const node = typeof n === 'string' ? el(n) : n;
+        if (!node) return null;
+        node.textContent = txt == null ? '' : String(txt);
+        return node;
+      }
+      function bind(n, ev, fn) {
+        const node = typeof n === 'string' ? el(n) : n;
+        if (!node || !ev || typeof fn !== 'function') return null;
+        node.addEventListener(ev, fn);
+        return node;
+      }
+      function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v == null ? fb : v; } catch (_) { return fb; } }
+      function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
+      const _busy = new Set();
+      async function withBusy(key, fn, btn) {
+        if (!key || _busy.has(key)) return;
+        _busy.add(key);
+        const b = typeof btn === 'string' ? el(btn) : btn;
+        if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
+        try { return await fn(); }
+        finally {
+          _busy.delete(key);
+          if (b) { b.disabled = false; b.removeAttribute('aria-busy'); }
+        }
+      }
+      function revokeUrl(u) { try { if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u); } catch (_) {} }
+      function escapeHtml(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function normalizeTab(raw) {
+        let h = String(raw || '').replace(/^#/, '').toLowerCase();
+        h = h.split('?')[0].split('/')[0].trim();
+        if (h === 'match' || h === 'guided' || h === 'elim' || h === 'studio') return 'match';
+        if (h === 'pair' || h === 'pairs' || h === 'review' || h === 'queue') return 'pairs';
+        if (h === 'video' || h === 'vid' || h === 'vc') return 'video';
+        if (h === 'image' || h === 'img' || h === 'ic') return 'image';
+        if (TABS[h]) return h;
+        return '';
+      }
+
+      function tabFromHash() {
+        let h = (location.hash || '').replace(/^#/, '');
+        if (!h) {
+          try {
+            const m = /#([^#]*)$/.exec(location.href || '');
+            if (m) h = decodeURIComponent(m[1]);
+          } catch (_) {}
+        }
+        const tab = normalizeTab(h);
+        if (tab) return tab;
+        if (!h || h === 'compare') {
+          const last = lsGet(LS_TAB, '');
+          if (last && TABS[last]) return last;
+        }
+        return 'match';
+      }
+
+      function launcherHref() {
+        try {
+          if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+        } catch (_) {}
+        return '../Toolbox Launcher.html';
+      }
+
+      async function pingServer() {
+        const badge = el('serverBadge');
+        if (!badge) return;
+        try {
+          const on = await window.AIToolboxAPI?.isOnline?.(false, 1500).catch(() => false);
+          setText(badge, on ? '● Online' : '○ Offline — click ▶ Start');
+          badge.className = 'server-badge ' + (on ? 'ok' : 'bad');
+          badge.title = on ? 'Toolbox server online' : 'Server offline — click to start from this page';
+        } catch (_) {
+          setText(badge, '○ Offline');
+          badge.className = 'server-badge bad';
+        }
+      }
+
+      async function startServerFromHub() {
+        return withBusy('start-server', async () => {
+          try {
+            window.AIToolboxUI?.toast?.('Starting toolbox server…', 'ok');
+            if (window.AIToolboxAPI?.startServer) {
+              await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+            } else {
+              location.href = launcherHref();
+              return;
+            }
+            await pingServer();
+            window.AIToolboxUI?.toast?.('Server ready — reloading workspace', 'ok');
+            await showTab(current, false);
+          } catch (e) {
+            window.AIToolboxUI?.toast?.(e?.message || 'Start failed — open Launcher', 'warn');
+          }
+        }, 'btnStartServer');
+      }
+
+      async function resolveSrc(tab) {
+        const t = TABS[tab] || TABS.match;
+        if (!t) return '';
+        let src = t.path;
+        const qs = location.search || '';
+        try {
+          if (window.AIToolboxAPI?.isOnline && window.AIToolboxAPI?.toolPageUrl) {
+            const on = await AIToolboxAPI.isOnline(false, 1500).catch(() => false);
+            if (on) src = AIToolboxAPI.toolPageUrl(t.toolboxPath);
+          }
+        } catch (_) { /* ignore */ }
+        if (qs) {
+          src += (String(src).includes('?') ? '&' : '?') + qs.replace(/^\?/, '');
+        }
+        return src;
+      }
+
+      function showLoadFail(title, src) {
+        if (!loading) return;
+        loading.classList.remove('hide');
+        loading.classList.add('fail');
+        const safeTitle = escapeHtml(title || 'Workspace');
+        const safeSrc = escapeHtml(src || '');
+        const safeLaunch = escapeHtml(launcherHref());
+        loading.innerHTML =
+          '<div><strong style="color:#fff">' + safeTitle + ' didn’t load</strong></div>' +
+          '<div style="max-width:420px;color:var(--muted);font-size:12px;line-height:1.45">' +
+          'Workspace tab timed out or failed. Retry, open full-window, or return to the Launcher.</div>' +
+          '<div class="actions">' +
+          '<button type="button" id="hubRetry">↻ Retry</button>' +
+          '<a href="' + safeSrc + '" target="_blank" rel="noopener">↗ Open full window</a>' +
+          '<a class="ghost" href="' + safeLaunch + '">← Launcher</a>' +
+          '<button type="button" class="ghost" id="hubStartFromFail">▶ Start Server</button>' +
+          '</div>';
+        bind('hubRetry', 'click', () => showTab(current, false));
+        bind('hubStartFromFail', 'click', startServerFromHub);
+      }
+
+      async function showTab(id, pushHash) {
+        return withBusy('show-tab', async () => {
+          if (!TABS[id]) id = 'match';
+          current = id;
+          document.querySelectorAll('.hub-tab').forEach((b) => {
+            const on = b.dataset.tab === id;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+          });
+          const t = TABS[id];
+          if (!t) return;
+          document.title = t.title + ' — Compare Hub';
+          setText(meta, t.meta);
+          lsSet(LS_TAB, id);
+          if (pushHash !== false) {
+            if (location.hash.replace(/^#/, '') !== id) {
+              try { history.replaceState(null, '', '#' + id); } catch (_) {}
+            }
+          }
+          const gen = ++loadGen;
+          if (loadTimer) clearTimeout(loadTimer);
+          if (loading) {
+            loading.classList.remove('hide', 'fail');
+            setText(loading, 'Loading ' + t.title + '…');
+          }
+          const src = await resolveSrc(id);
+          if (!frame) return;
+          frame.onload = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            if (loading) {
+              loading.classList.add('hide');
+              loading.classList.remove('fail');
+            }
+          };
+          frame.onerror = () => {
+            if (gen !== loadGen) return;
+            if (loadTimer) clearTimeout(loadTimer);
+            showLoadFail(t.title, src);
+          };
+          loadTimer = setTimeout(() => {
+            if (gen !== loadGen) return;
+            if (loading && loading.classList.contains('hide')) return;
+            try {
+              const doc = frame.contentDocument;
+              if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+                if (loading) loading.classList.add('hide');
+                return;
+              }
+            } catch (_) {
+              if (frame.getAttribute('src')) {
+                if (loading) loading.classList.add('hide');
+                return;
+              }
+            }
+            showLoadFail(t.title, src);
+          }, 25000);
+          revokeUrl(lastFrameSrc);
+          lastFrameSrc = src || '';
+          frame.src = src || 'about:blank';
+        });
+      }
+
+      async function copyHubReport() {
+        return withBusy('copy-report', async () => {
+          const t = TABS[current] || TABS.match || { title: current };
+          const text = [
+            'FAFO Compare Hub — session report',
+            'Time: ' + new Date().toISOString(),
+            'Active workspace: ' + (t.title || current),
+            'URL: ' + location.href,
+            'Server: ' + (el('serverBadge')?.textContent || 'unknown'),
+            '',
+            'Tabs: Guided Match · Pair Review · Video Comparator · Image Comparator',
+            'Counterparts: Media Hub · VSR · Pair Review · Guided Match',
+          ].join('\n');
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              window.AIToolboxUI?.toast?.('Compare report copied', 'ok');
+            } else {
+              prompt('Copy report:', text);
+            }
+          } catch (_) { try { prompt('Copy report:', text); } catch (__) {} }
+        }, 'btnCopyReport');
+      }
+
+      bind('hubTabs', 'click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('.hub-tab') : null;
+        if (!btn) return;
+        showTab(btn.dataset.tab, true);
+      });
+      bind('hubTabs', 'keydown', (e) => {
+        const tabs = Array.from(document.querySelectorAll('.hub-tab'));
+        if (!tabs.length) return;
+        const i = tabs.indexOf(document.activeElement);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          const next = tabs[(Math.max(i, 0) + dir + tabs.length) % tabs.length];
+          if (next) next.focus();
+          if (next && next.dataset && next.dataset.tab) showTab(next.dataset.tab, true);
+        }
+      });
+
+      bind('btnPopout', 'click', async () => {
+        const src = await resolveSrc(current);
+        if (src) window.open(src, '_blank', 'noopener');
+      });
+      bind('btnCopyReport', 'click', copyHubReport);
+      bind('btnStartServer', 'click', startServerFromHub);
+      bind('serverBadge', 'click', () => {
+        const badge = el('serverBadge');
+        if (badge && badge.classList.contains('bad')) startServerFromHub();
+        else pingServer();
+      });
+
+      window.addEventListener('hashchange', () => showTab(tabFromHash(), false));
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) showTab(tabFromHash(), false);
+      });
+      showTab(tabFromHash(), true);
+      pingServer();
+      setInterval(pingServer, 20000);
+      document.addEventListener('keydown', function hubTabKeys(e){
+        if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+        const map = { '1':'match', '2':'pairs', '3':'video', '4':'image' };
+        if (map[e.key]) showTab(map[e.key], true);
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); copyHubReport(); }
+      });
+      window.addEventListener('message', function (ev) {
+        const data = ev?.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'fafo-compare-tab') {
+          const tab = normalizeTab(data.tab);
+          if (!tab) return;
+          if (data.search && String(data.search).startsWith('?')) {
+            try { history.replaceState(null, '', data.search + '#' + tab); } catch (_) {}
+          }
+          showTab(tab, true);
+          return;
+        }
+        if (data.type === 'fafo-escape') {
+          try {
+            location.href = (window.AIToolboxUI?.launcherHref?.() || data.href || '../Toolbox Launcher.html');
+          } catch (_) {
+            location.href = '../Toolbox Launcher.html';
+          }
+        }
+      });
     })();
   </script>
-  <meta http-equiv="refresh" content="0;url=Media%20Hub.html#match">
-</head>
-<body style="font:14px system-ui,sans-serif;background:#0a1020;color:#e8eef8;padding:32px;max-width:40rem">
-  <p>Compare Hub is the same Media workspace now.</p>
-  <p><a href="Media Hub.html#match" style="color:#00e5ff">Open Media Hub → Match</a></p>
+
+<script data-tool-polish="compare-hub">
+/* Tool polish: compare-hub — Esc → launcher (shared UI layered), load toast */
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "compare-hub";
+  const TOOL_NAME = "Compare Hub";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    if (window.AIToolboxUI?.bindEscToLauncher) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  // One soft status toast so launch failures are visible
+  window.addEventListener('load', function(){
+    try {
+      try { if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return; sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1'); } catch(_) { return; }
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+  // Surface failed module loads
+  window.addEventListener('error', function(ev){
+    if (!ev?.filename || !/\.js($|\?)/i.test(ev.filename)) return;
+    try { window.AIToolboxUI?.toast?.('Script failed: ' + (ev.message||'error').slice(0,80), 'warn'); } catch(_){}
+  });
+})();
+</script>
+</div>
 </body>
 </html>

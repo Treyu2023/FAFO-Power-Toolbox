@@ -1,11 +1,10 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/System Tools/Disk Space Analyzer.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Disk Space Analyzer — AI HTML Toolbox</title>
-<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
 <style>
 :root{
   --bg:#070b12;--panel:#0c1420;--border:rgba(0,243,255,.22);
@@ -42,47 +41,144 @@ td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 .log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;margin-top:8px;min-height:18px}
 .err{color:#f87171}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* PET-UI-23 / DISK SPACE ANALYZER: More tools collapse + scan/refresh primary */
+:root{
+  --fafo-bg:var(--bg);--fafo-panel:var(--panel);--fafo-panel-2:var(--panel);
+  --fafo-text:var(--text);--fafo-muted:var(--muted);--fafo-accent:var(--accent);
+  --fafo-danger:#f87171;--fafo-border:var(--border);--fafo-radius:12px;
+  --fafo-touch-min:44px;
+}
+.nav.fafo-toolbar{align-items:center;flex-wrap:wrap;gap:8px}
+.nav.fafo-toolbar details.fafo-collapse{
+  position:relative;flex:0 1 auto;min-width:0;margin-top:0;opacity:1
+}
+.nav.fafo-toolbar details.fafo-collapse>summary{
+  padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;
+  list-style:none;user-select:none;min-height:0;
+  border:1px solid rgba(255,255,255,.15);border-radius:8px;
+  color:var(--fafo-muted,var(--muted))
+}
+.nav.fafo-toolbar details.fafo-collapse>summary::-webkit-details-marker{display:none}
+.nav.fafo-toolbar details.fafo-collapse[open]>summary{
+  border-color:var(--fafo-accent,var(--accent));
+  color:var(--fafo-accent,var(--accent))
+}
+.nav.fafo-toolbar details.fafo-collapse>:not(summary){
+  position:absolute;top:calc(100% + 4px);right:0;z-index:50;
+  min-width:260px;max-width:min(420px,92vw);padding:6px;
+  background:var(--fafo-panel,var(--panel));
+  border:1px solid color-mix(in srgb,var(--fafo-accent,var(--accent)) 35%,transparent);
+  border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.55)
+}
+.dsa-more-body{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0 2px
+}
+.dsa-more-body .fafo-btn,.dsa-more-body .btn,.dsa-more-body a{
+  font-size:11px;padding:6px 10px;border-radius:6px;
+  text-transform:none;font-weight:600;text-decoration:none;
+  color:var(--fafo-accent,var(--accent));
+  border:1px solid var(--fafo-border,var(--border));
+  background:rgba(0,243,255,.06)
+}
+.toolbar.fafo-toolbar{align-items:center;flex-wrap:wrap;gap:8px}
+.toolbar details.ui-advanced{
+  position:relative;flex:0 1 auto;min-width:0
+}
+.toolbar details.ui-advanced>summary{
+  padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;
+  list-style:none;user-select:none;
+  border:1px solid rgba(255,255,255,.12);border-radius:6px;
+  color:var(--fafo-muted,var(--muted))
+}
+.toolbar details.ui-advanced>summary::-webkit-details-marker{display:none}
+.toolbar details.ui-advanced[open]>summary{
+  border-color:var(--fafo-accent,var(--accent));
+  color:var(--fafo-accent,var(--accent))
+}
+.toolbar details.ui-advanced>:not(summary){
+  position:absolute;top:calc(100% + 4px);left:0;z-index:40;
+  min-width:220px;padding:6px;
+  background:var(--fafo-panel,var(--panel));
+  border:1px solid color-mix(in srgb,var(--fafo-accent,var(--accent)) 30%,transparent);
+  border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.5)
+}
+.dsa-more-actions{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0 2px
+}
+.wrap.fafo-primary-surface,
+.wrap[data-fafo-primary],
+[data-fafo-panel][data-fafo-primary]{
+  flex:1 1 auto;min-height:0;min-width:0
+}
+.wrap.fafo-primary-surface{min-height:50vh}
+.btn.fafo-btn-primary,button.fafo-btn-primary{
+  background:linear-gradient(135deg,rgba(0,243,255,.22),rgba(232,121,249,.14));
+  border-color:var(--fafo-accent,var(--accent));color:var(--fafo-accent,var(--accent));font-weight:700
+}
+@media (max-width:900px){
+  /* UI-M: touch-friendly primary Disk Space Analyzer controls */
+  .nav.fafo-toolbar,.toolbar.fafo-toolbar{gap:8px}
+  #btnScan,#btnRefreshDrives,
+  [data-fafo-primary].btn,[data-fafo-primary].fafo-btn,
+  button.fafo-btn-primary,.fafo-btn.fafo-btn-primary{
+    min-height:var(--fafo-touch-min,44px);
+    min-width:var(--fafo-touch-min,44px)
+  }
+}
+
 </style>
 </head>
 <body>
-<nav class="nav">
-  <a href="../Toolbox Launcher.html">← Toolbox</a>
-  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-    <a href="PC Diagnostics HUD.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">PC Diagnostics</a>
-    <a href="System Health Dashboard.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Health Hub</a>
-    <a href="Startup Service Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(52,211,153,.08)">Startup Manager</a>
-    <a href="../File Tools/Duplicate File Manager.html" style="color:var(--accent);text-decoration:none;font-size:11px;font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:999px">Duplicate Finder →</a>
-  </div>
-  <span style="color:var(--accent)">DISK SPACE ANALYZER</span>
+<nav class="nav fafo-toolbar" data-fafo-toolbar>
+  <!-- PET-UI-23 / DISK SPACE ANALYZER: primary chrome + More tools overflow -->
+  <!-- SIE-UI-23 PREP folded: kit+layout data-fafo-layout-app=disk-space-analyzer; no CDN; Segoe UI local -->
+  <span style="color:var(--accent);letter-spacing:1px;font-size:14px;font-weight:700">DISK SPACE ANALYZER</span>
+  <details class="fafo-collapse" id="dsaMoreTools" data-fafo-collapse-key="disk-space-analyzer-more-tools">
+    <summary>More tools</summary>
+    <div class="dsa-more-body">
+      <a class="fafo-btn" href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">Toolbox</a>
+      <a class="fafo-btn" href="PC Diagnostics HUD.html" data-tip-title="PC Diagnostics" data-tip="Diagnostics HUD.">PC Diagnostics</a>
+      <a class="fafo-btn" href="System Health Dashboard.html" data-tip-title="Health Hub" data-tip="System health dashboard.">Health Hub</a>
+      <a class="fafo-btn" href="Startup Service Manager.html" data-tip-title="Startup Manager" data-tip="Startup and service manager.">Startup Manager</a>
+      <a class="fafo-btn" href="../File Tools/Duplicate File Manager.html" data-tip-title="Duplicate Finder" data-tip="Find duplicate files.">Duplicate Finder</a>
+      <a class="fafo-btn" href="Event Viewer.html" data-tip-title="Event Viewer" data-tip="Windows event themes.">Event Viewer</a>
+      <a class="fafo-btn" href="PC Reports and Log Viewer/index.html" data-tip-title="Reports" data-tip="PC Reports and log viewer (link only).">Reports</a>
+    </div>
+  </details>
   <span data-fafo-layout-toolbar></span>
 </nav>
-<div class="wrap" data-fafo-layout-root data-fafo-layout-app="disk-space-analyzer" data-fafo-layout-type="rows">
+<div class="wrap fafo-primary-surface" data-fafo-primary data-fafo-layout-root data-fafo-layout-app="disk-space-analyzer" data-fafo-layout-type="rows">
 <h1 style="font-size:22px">Disk Space Analyzer</h1>
 <p style="color:var(--muted);font-size:13px;margin:8px 0 16px">Find what's eating your drives — large files, heavy folders, and junk candidates. <strong>Click</strong> a drive to select it · <strong>double-click</strong> to start a scan.</p>
-<div class="grid" id="drives"></div>
+<div class="grid" id="drives" data-fafo-primary></div>
 <div class="panel" data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph"><span>Deep scan</span>
-<span class="toolbar">
-<input class="inp" id="scanPath" placeholder="Folder path e.g. C:\Users\You\Downloads">
-<button class="btn ghost" id="btnPick" type="button" data-tip-title="Browse" data-tip="Pick a folder or drive path to analyze.">Browse…</button>
-<label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">Min MB <input class="inp" id="minMb" type="number" min="1" value="5" style="min-width:70px;width:80px"></label>
-<button class="btn" id="btnScan" data-tip-title="Scan" data-tip-basic="Measure what is using space under this path." data-tip-pro="Tree size walk — large roots take time." data-tip-efficient="Start one level down from the drive root when possible.">Scan</button>
+<span class="toolbar fafo-toolbar" data-fafo-toolbar>
+<input class="inp" id="scanPath" placeholder="Folder path e.g. C:\Users\You\Downloads" data-fafo-primary>
+<button class="btn ghost" id="btnPick" type="button" data-fafo-primary data-tip-title="Browse" data-tip="Pick a folder or drive path to analyze.">Browse…</button>
+<label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">Min MB <input class="inp" id="minMb" type="number" min="1" value="5" style="min-width:70px;width:80px" data-fafo-primary></label>
+<button class="btn fafo-btn fafo-btn-primary" id="btnScan" data-fafo-primary data-tip-title="Scan" data-tip-basic="Measure what is using space under this path." data-tip-pro="Tree size walk — large roots take time." data-tip-efficient="Start one level down from the drive root when possible.">Scan</button>
 <button class="btn ghost" id="btnStop" type="button" disabled data-tip-title="Stop" data-tip="Cancel the running space scan.">Stop</button>
-<button class="btn ghost" id="btnExportFiles" type="button" data-tip-title="Export CSV" data-tip="Download the large-file list as CSV.">↓ CSV</button>
-<button class="btn ghost" id="btnRefreshDrives" type="button" data-tip-title="Refresh drives" data-tip="Reload free space for all volumes.">↻ Drives</button>
+<button class="btn ghost fafo-btn" id="btnRefreshDrives" type="button" data-fafo-primary data-tip-title="Refresh drives" data-tip="Reload free space for all volumes.">↻ Drives</button>
 <span id="lastUpdated" style="font-size:11px;color:var(--muted)">—</span>
+<details class="ui-advanced" id="dsaMoreActions" data-fafo-collapse-key="disk-space-analyzer-more-actions">
+<summary>Advanced</summary>
+<div class="dsa-more-actions">
+<button class="btn ghost fafo-btn" id="btnExportFiles" type="button" data-tip-title="Export CSV" data-tip="Download the large-file list as CSV.">⬇ CSV</button>
+</div>
+</details>
 </span></div>
 <div style="padding:16px 18px"><div class="log" id="log"></div></div></div>
-<div class="panel" data-fafo-panel="block-1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Largest files <input class="inp" id="fileFilter" placeholder="Filter files… (/)" style="min-width:160px;max-width:220px"></div><div class="tw" id="largeFiles"><div style="padding:24px;text-align:center;color:var(--muted)">Run a scan</div></div></div>
-<div class="panel" data-fafo-panel="block-2" data-fafo-flex="1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Top folders · Junk candidates <span id="junkInfo" style="color:var(--muted);font-weight:400"></span></div><div class="tw" id="folders"></div></div>
+<div class="panel" data-fafo-primary data-fafo-panel="block-1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Largest files <input class="inp" id="fileFilter" data-fafo-primary placeholder="Filter files… (/)" style="min-width:160px;max-width:220px"></div><div class="tw" id="largeFiles"><div style="padding:24px;text-align:center;color:var(--muted)">Run a scan</div></div></div>
+<div class="panel" data-fafo-primary data-fafo-panel="block-2" data-fafo-flex="1" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140"><div class="ph">Top folders · Junk candidates <span id="junkInfo" style="color:var(--muted);font-weight:400"></span></div><div class="tw" id="folders"></div></div>
 </div>
-<script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-debug.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+<script src="../shared/aitoolbox-config.js"></script>
+<script src="../shared/aitoolbox-version.js"></script>
+<script src="../shared/aitoolbox-debug.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
 <script>
 const UI = () => window.AIToolboxUI;
 function el(id) {

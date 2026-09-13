@@ -1,0 +1,462 @@
+/* shared/fafo-chrome.css — PET/THE/TST/CRE shared wow chrome kit
+ * Cite: UI-M / MOBILE KIT (PET-UI-M). Shared kit ONLY — no per-app HTML.
+ *
+ * Theme-friendly: --fafo-* tokens are FALLBACKS only. They alias common
+ * app/launcher theme vars (--bg, --panel, --accent, --text, --muted,
+ * --border, --danger, --ui-accent, …). When a host theme switches those
+ * vars (or sets --fafo-* directly), panels / buttons / collapse / sheen
+ * follow. Do not treat the hex fallbacks as a fixed dark-only palette.
+ *
+ * Opt-in (apps):
+ *   CSS — already pulled in via @import from shared/aitoolbox-ui.css
+ *         (or <link rel="stylesheet" href="shared/fafo-chrome.css">).
+ *   JS  — optional collapse persistence / sheen helper:
+ *         <script src="shared/fafo-chrome.js"></script>
+ *         CSS alone looks correct; JS only persists <details> open state.
+ *
+ * Markup:
+ *   <div class="fafo-shell">…</div>
+ *   <section class="fafo-panel fafo-sheen">…</section>
+ *   <button class="fafo-btn fafo-btn-primary">Save</button>  <!-- CTAs outside Advanced -->
+ *   <details class="fafo-collapse ui-advanced">…</details>   <!-- default CLOSED -->
+ *   <span class="fafo-glint">…</span>
+ *   <div class="fafo-toolbar">…</div>                       <!-- wraps on narrow -->
+ *   <div class="fafo-primary-surface" data-fafo-primary>…</div> <!-- typewell-first -->
+ *
+ * Viewport (docs note ONLY — do not mass-edit apps):
+ *   Prefer <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+ *   when an app owns its <head>. This kit clips overflow-x and applies safe-area on .fafo-shell.
+ *
+ * Breakpoints (UI-M): ~900px stack columns; ~640px narrow typewell-first.
+ * Touch: pointer:coarse → min 44×44 on .fafo-btn; split handles non-drag.
+ *
+ * Contrast: fallbacks target ≥4.5:1 text/bg. Themes that invert to light
+ * should set --text/--muted/--bg (or --fafo-*) so floors still hold.
+ * No CDNs / no remote fonts.
+ */
+
+:root {
+  /* Surfaces */
+  --fafo-bg: var(--bg, var(--ui-bg, #04060a));
+  --fafo-panel: var(--panel, var(--ui-panel, #0a0e16));
+  --fafo-panel-2: var(--panel-2, var(--panel2, var(--panel-soft, var(--ui-panel-2, #121826))));
+  --fafo-text: var(--text, var(--ui-text, #e8eef4));
+  --fafo-muted: var(--muted, var(--ui-muted, #8b9bb0));
+  --fafo-accent: var(--accent, var(--hub-accent, var(--ui-accent, #00f3ff)));
+  --fafo-danger: var(--danger, var(--err, var(--ui-danger, #ff4466)));
+  --fafo-border: var(--border, var(--line, var(--ui-border, rgba(255, 255, 255, 0.12))));
+  --fafo-radius: var(--radius, var(--ui-radius, 12px));
+  --fafo-shadow: var(--shadow, var(--glow-edge, var(--ui-glow, 0 8px 28px rgba(0, 0, 0, 0.45))));
+
+  /* Derived (tint from theme accent — never hard-code cyan in rules) */
+  --fafo-accent-rgb: var(--accent-rgb, 0, 243, 255);
+  --fafo-focus: color-mix(in srgb, var(--fafo-accent) 70%, #ffffff 30%);
+  --fafo-sheen-hi: color-mix(in srgb, var(--fafo-accent) 55%, transparent);
+  --fafo-sheen-mid: color-mix(in srgb, var(--fafo-accent) 18%, transparent);
+
+  /* UI-M breakpoints (docs + JS FafoChrome.MOBILE mirror) */
+  --fafo-bp-stack: 900px;
+  --fafo-bp-narrow: 640px;
+  --fafo-touch-min: 44px;
+}
+
+/* Viewport / base — kill accidental H-scroll; wide desktop layout unchanged */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@supports not (overflow-x: clip) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* Shell — safe-area + dvh (100vh fallback) */
+.fafo-shell {
+  background: var(--fafo-bg);
+  color: var(--fafo-text);
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.fafo-shell *,
+.fafo-shell *::before,
+.fafo-shell *::after {
+  box-sizing: border-box;
+}
+
+/* Panel */
+.fafo-panel {
+  position: relative;
+  background:
+    linear-gradient(165deg,
+      color-mix(in srgb, var(--fafo-panel-2) 88%, var(--fafo-accent) 12%),
+      var(--fafo-panel) 55%,
+      var(--fafo-panel));
+  color: var(--fafo-text);
+  border: 1px solid color-mix(in srgb, var(--fafo-border) 80%, var(--fafo-accent) 20%);
+  border-radius: var(--fafo-radius);
+  box-shadow: var(--fafo-shadow);
+  padding: 14px 16px;
+  overflow: hidden;
+}
+
+.fafo-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Buttons */
+.fafo-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: calc(var(--fafo-radius) - 4px);
+  border: 1px solid color-mix(in srgb, var(--fafo-border) 75%, var(--fafo-accent) 25%);
+  background: color-mix(in srgb, var(--fafo-panel-2) 92%, var(--fafo-accent) 8%);
+  color: var(--fafo-text);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+.fafo-btn:hover {
+  border-color: color-mix(in srgb, var(--fafo-accent) 55%, var(--fafo-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fafo-accent) 25%, transparent),
+              0 0 18px color-mix(in srgb, var(--fafo-accent) 18%, transparent);
+}
+
+.fafo-btn:active {
+  transform: translateY(1px);
+}
+
+.fafo-btn-primary {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--fafo-accent) 88%, #ffffff 12%),
+    color-mix(in srgb, var(--fafo-accent) 72%, #000000 28%));
+  border-color: color-mix(in srgb, var(--fafo-accent) 70%, #ffffff 10%);
+  color: #061018; /* dark text on accent CTA — ≥4.5 on typical neon accents */
+  text-shadow: none;
+}
+
+.fafo-btn-primary:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fafo-accent) 40%, transparent),
+              0 0 22px color-mix(in srgb, var(--fafo-accent) 35%, transparent);
+}
+
+/* Inputs */
+.fafo-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: calc(var(--fafo-radius) - 4px);
+  border: 1px solid var(--fafo-border);
+  background: color-mix(in srgb, var(--fafo-bg) 70%, var(--fafo-panel) 30%);
+  color: var(--fafo-text);
+  font: inherit;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fafo-input::placeholder {
+  color: var(--fafo-muted);
+  opacity: 0.9;
+}
+
+.fafo-input:hover {
+  border-color: color-mix(in srgb, var(--fafo-accent) 35%, var(--fafo-border));
+}
+
+/* Collapse — details.fafo-collapse / details.ui-advanced; default CLOSED (no open attr) */
+details.fafo-collapse,
+details.ui-advanced,
+.fafo-collapse details {
+  border: 1px solid var(--fafo-border);
+  border-radius: var(--fafo-radius);
+  background: var(--fafo-panel);
+  color: var(--fafo-text);
+  padding: 0;
+  overflow: hidden;
+}
+
+details.fafo-collapse > summary,
+details.ui-advanced > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 10px 14px;
+  font-weight: 650;
+  color: var(--fafo-text);
+  background: color-mix(in srgb, var(--fafo-panel-2) 85%, var(--fafo-accent) 15%);
+  border-bottom: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+details.fafo-collapse > summary::-webkit-details-marker,
+details.ui-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.fafo-collapse > summary::before,
+details.ui-advanced > summary::before {
+  content: '';
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid var(--fafo-accent);
+  border-bottom: 2px solid var(--fafo-accent);
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+  flex: 0 0 auto;
+}
+
+details.fafo-collapse[open] > summary::before,
+details.ui-advanced[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+details.fafo-collapse[open] > summary,
+details.ui-advanced[open] > summary {
+  border-bottom-color: var(--fafo-border);
+}
+
+details.fafo-collapse > :not(summary),
+details.ui-advanced > :not(summary) {
+  padding: 12px 14px;
+  color: var(--fafo-text);
+}
+
+/* Advanced sections stay visually secondary; keep primary CTAs outside */
+.ui-advanced,
+details.ui-advanced {
+  margin-top: 12px;
+  opacity: 0.98;
+}
+
+/* Toolbars — wrap; secondary lives in fafo-collapse / ui-advanced (default CLOSED) */
+.fafo-toolbar,
+[data-fafo-toolbar] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fafo-toolbar > .fafo-btn,
+[data-fafo-toolbar] > .fafo-btn {
+  flex: 0 1 auto;
+}
+
+/* Typewell-first helpers (opt-in). Do NOT rewrite Trainer #promptWrap logic. */
+.fafo-primary-surface,
+[data-fafo-primary] {
+  min-width: 0;
+}
+
+/* Sheen / glint — accent-tinted, not hard-coded cyan */
+@keyframes fafo-sheen-sweep {
+  0% { transform: translateX(-120%) skewX(-18deg); opacity: 0; }
+  15% { opacity: 0.55; }
+  50% { opacity: 0.35; }
+  100% { transform: translateX(180%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes fafo-glint-pulse {
+  0%, 100% { opacity: 0.35; filter: brightness(1); }
+  50% { opacity: 0.85; filter: brightness(1.25); }
+}
+
+.fafo-sheen,
+.fafo-panel.fafo-sheen,
+.fafo-btn.fafo-sheen {
+  isolation: isolate;
+}
+
+.fafo-sheen::after,
+.fafo-panel.fafo-sheen::after,
+.fafo-btn.fafo-sheen::after {
+  content: '';
+  position: absolute;
+  inset: -20% auto -20% -40%;
+  width: 42%;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--fafo-sheen-mid) 35%,
+    var(--fafo-sheen-hi) 50%,
+    var(--fafo-sheen-mid) 65%,
+    transparent 100%);
+  animation: fafo-sheen-sweep 4.5s ease-in-out infinite;
+  opacity: 0.5;
+}
+
+.fafo-glint {
+  position: relative;
+  display: inline-block;
+}
+
+.fafo-glint::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 12px var(--fafo-sheen-hi), 0 0 2px var(--fafo-accent);
+  animation: fafo-glint-pulse 2.8s ease-in-out infinite;
+}
+
+/* Focus-visible */
+.fafo-btn:focus-visible,
+.fafo-btn-primary:focus-visible,
+.fafo-input:focus-visible,
+details.fafo-collapse > summary:focus-visible,
+details.ui-advanced > summary:focus-visible {
+  outline: 2px solid var(--fafo-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fafo-bg) 60%, transparent),
+              0 0 0 4px color-mix(in srgb, var(--fafo-accent) 45%, transparent);
+}
+
+/* Reduced motion — kill sheen/glint tweens */
+@media (prefers-reduced-motion: reduce) {
+  .fafo-sheen::after,
+  .fafo-panel.fafo-sheen::after,
+  .fafo-btn.fafo-sheen::after,
+  .fafo-glint::before {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+
+  .fafo-btn,
+  details.fafo-collapse > summary::before,
+  details.ui-advanced > summary::before {
+    transition: none !important;
+  }
+}
+
+/* ========== PET-UI-M / MOBILE KIT ==========
+ * Wide desktop (≥901px, fine pointer): Launcher/Trainer/Console chrome unchanged.
+ * Narrow: columns stack (list then detail); no H-scroll 360–430.
+ */
+
+/* Touch targets — pointer:coarse overrides (desktop fine-pointer keeps compact btns) */
+@media (pointer: coarse) {
+  .fafo-btn {
+    min-width: var(--fafo-touch-min, 44px);
+    min-height: var(--fafo-touch-min, 44px);
+    padding: 10px 16px;
+  }
+
+  details.fafo-collapse > summary,
+  details.ui-advanced > summary {
+    min-height: var(--fafo-touch-min, 44px);
+    padding: 12px 14px;
+  }
+
+  /* Split handle hidden / non-drag on coarse; fine-pointer desktop keeps drag */
+  .fafo-split-handle {
+    display: none !important;
+    pointer-events: none !important;
+    touch-action: auto !important;
+    flex-basis: 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    cursor: default !important;
+  }
+}
+
+/* ~900px — stack columns (list then detail = DOM order) */
+@media (max-width: 900px) {
+  .fafo-layout-root.fafo-layout-columns {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .fafo-layout-root.fafo-layout-columns > .fafo-layout-panel {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .fafo-layout-root.fafo-layout-columns > .fafo-split-handle {
+    display: none !important;
+    pointer-events: none !important;
+    flex-basis: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    cursor: default !important;
+  }
+
+  .fafo-toolbar,
+  [data-fafo-toolbar] {
+    row-gap: 8px;
+  }
+
+  /* Typewell-first: opted surfaces get flex priority above the fold */
+  .fafo-primary-surface,
+  [data-fafo-primary] {
+    flex: 1 1 auto;
+    min-height: 40vh;
+    min-height: 40dvh;
+  }
+
+  .fafo-btn {
+    min-height: var(--fafo-touch-min, 44px);
+  }
+}
+
+/* ~640px — tighter stack + stronger typewell-first */
+@media (max-width: 640px) {
+  .fafo-panel {
+    padding: 12px;
+  }
+
+  .fafo-toolbar,
+  [data-fafo-toolbar] {
+    gap: 6px;
+  }
+
+  .fafo-primary-surface,
+  [data-fafo-primary] {
+    flex: 1 1 auto;
+    min-height: 48vh;
+    min-height: 48dvh;
+  }
+
+  .fafo-btn {
+    min-width: var(--fafo-touch-min, 44px);
+    min-height: var(--fafo-touch-min, 44px);
+  }
+}
+
+/* Fine-pointer desktop: keep split-handle drag (explicit restore if host set coarse attrs) */
+@media (pointer: fine) and (min-width: 901px) {
+  .fafo-layout-root.fafo-layout-columns {
+    flex-direction: row;
+  }
+}

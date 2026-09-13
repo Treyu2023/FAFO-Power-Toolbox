@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Movie File Manager/File Organizer.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>File Organizer — Rename & Tag</title>
-    <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+    <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
     <style>
         :root {
             --bg: #0a1020; --panel: #121826; --panel2: #1a2233;
@@ -14,12 +13,22 @@
             --text: #f0f4ff; --muted: #9aa6c0;
             --danger: #ff5c7a; --ok: #3dffb0;
             --glow: 0 0 10px rgba(0,229,255,0.45);
+            /* PET-UI-10 / FILE ORGANIZER: kit aliases only — no second theme */
+            --fafo-bg: var(--bg);
+            --fafo-panel: var(--panel);
+            --fafo-panel-2: var(--panel2);
+            --fafo-text: var(--text);
+            --fafo-muted: var(--muted);
+            --fafo-accent: var(--accent);
+            --fafo-danger: var(--danger);
+            --fafo-border: rgba(255, 255, 255, 0.12);
+            --fafo-radius: 12px;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             background: radial-gradient(ellipse at 80% 0%, #162038 0%, var(--bg) 55%);
             color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
-            min-height: 100vh; display: flex; flex-direction: column; min-width: 0;
+            min-height: 100vh; display: flex; flex-direction: column; min-width: 1000px;
         }
         .nav-bar {
             padding: 8px 16px; background: var(--panel); border-bottom: 1px solid rgba(124,92,255,0.25);
@@ -202,26 +211,97 @@
         .file-table tr:focus-visible td { outline: 2px solid var(--accent); outline-offset: -2px; }
         kbd { font: 10px Consolas, monospace; color: var(--accent3); }
 
+        /* PET-UI-10 / FILE ORGANIZER: More tools collapse + organize/batch primary */
+        .nav-bar.fafo-toolbar { align-items: center; }
+        .nav-bar.fafo-toolbar details.fafo-collapse {
+            position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+        }
+        .nav-bar.fafo-toolbar details.fafo-collapse > summary {
+            padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+            list-style: none; user-select: none; min-height: 0;
+            border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; color: var(--muted);
+        }
+        .nav-bar.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+        .nav-bar.fafo-toolbar details.fafo-collapse[open] > summary {
+            border-color: var(--fafo-accent, var(--accent)); color: var(--fafo-accent, var(--accent));
+        }
+        .nav-bar.fafo-toolbar details.fafo-collapse > :not(summary) {
+            position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+            min-width: 240px; max-width: min(360px, 92vw); padding: 6px;
+            background: var(--fafo-panel, var(--panel));
+            border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+            border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+        }
+        .org-more-body {
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+        }
+        .btn.fafo-btn, .ui-btn.fafo-btn { text-decoration: none; }
+        .btn.fafo-btn-primary, .ui-btn.primary.fafo-btn-primary { /* CTA alias — keep existing btn look */ }
+        .center[data-fafo-primary], .batch-bar[data-fafo-primary] { min-width: 0; }
+        @media (max-width: 900px) {
+            /* UI-M: stack sidebar under center; filters in details */
+            body { min-width: 0; }
+            .main[data-fafo-layout-root] {
+                flex-direction: column; overflow: auto;
+            }
+            .main[data-fafo-layout-root] > .sidebar {
+                order: 2; width: 100% !important; max-width: 100% !important;
+                min-width: 0 !important; height: auto; max-height: 32vh;
+                border-right: none; border-top: 1px solid rgba(255,255,255,0.06);
+            }
+            .main[data-fafo-layout-root] > .center[data-fafo-primary] {
+                order: 1; width: 100% !important; min-width: 0 !important;
+                min-height: 40vh; flex: 1 1 auto;
+            }
+            .main[data-fafo-layout-root] > .detail-panel {
+                order: 3; width: 100% !important; max-width: 100% !important;
+                min-width: 0 !important; height: auto;
+                border-left: none; border-top: 1px solid rgba(255,255,255,0.06);
+            }
+            .batch-bar[data-fafo-primary] {
+                position: sticky; top: 0; z-index: 20;
+                background: color-mix(in srgb, var(--fafo-panel, var(--panel)) 92%, transparent);
+            }
+            .sidebar details.org-filters-m > summary {
+                padding: 4px 0; font-size: 11px; font-weight: 700; cursor: pointer;
+                list-style: none; color: var(--muted); text-transform: uppercase; letter-spacing: 1px;
+            }
+            .sidebar details.org-filters-m > summary::-webkit-details-marker { display: none; }
+        }
+        @media (max-width: 640px) {
+            body {
+                min-width: 0; height: auto; min-height: 100vh; min-height: 100dvh;
+                overflow-x: hidden; overflow-y: auto;
+            }
+            .center[data-fafo-primary] { min-height: 48vh; }
+        }
+
     </style>
 </head>
 <body>
 
-    <nav class="nav-bar">
+    <!-- PET-UI-10 / FILE ORGANIZER: primary server/Rescan + More tools overflow -->
+    <nav class="nav-bar fafo-toolbar" data-fafo-toolbar>
         <h1>✏️ File Organizer</h1>
         <span class="server-pill offline" id="serverStatus" role="button" tabindex="0" data-tip-title="Backend" data-tip="Green = full power. Offline = click this pill or ▶ Start Server to launch the Python backend from this page (same as Media Library / Launcher).">Server …</span>
-        <button class="btn" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from File Organizer. Waits for green. If blocked: Launcher → Console / Open Folder → START SERVER.bat, or SETUP (run once).bat.">▶ Start Server</button>
-        <a class="nav-link" href="../Toolbox Launcher.html">← Launcher</a>
-        <a class="nav-link" href="Media Hub.html#organizer" title="Library + Duplicates + Organizer">🗂️ Media Hub</a>
-        <a class="nav-link" href="Media Library Manager.html">🗂️ Media Library</a>
+        <button class="btn fafo-btn fafo-btn-primary" id="btnStartServer" data-tip-title="Start Server" data-tip="Launches the Python backend from File Organizer. Waits for green. If blocked: Launcher → Console / Open Folder → START SERVER.bat, or SETUP (run once).bat.">▶ Start Server</button>
+        <button class="btn fafo-btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new or changed files.">↻ Rescan</button>
         <span class="nav-link active">✏️ File Organizer</span>
-        <a class="nav-link" href="Media Hub.html#duplicates" title="Duplicate cleanup">🗑️ Duplicates</a>
-        <a class="nav-link" href="Media Hub.html#match" title="Guided match + pair review">🎯 Match</a>
-        <a class="nav-link" href="Mismatched Source Companion.html">🔗 Name match</a>
-        <button class="btn" id="btnRescan" data-tip-title="Rescan" data-tip="Re-index watched folders for new or changed files.">↻ Rescan</button>
-        <button class="btn" id="btnOrgReport" data-tip-title="Report" data-tip="Copy an organizer session summary to the clipboard.">📋 Report</button>
-        <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent3)">/</kbd> focus search · <kbd style="font:10px Consolas;color:var(--accent3)">R</kbd> rescan · <kbd style="font:10px Consolas;color:var(--accent3)">E</kbd> report</span>
         <span data-fafo-layout-toolbar></span>
-        <button class="ui-btn ghost" id="btnDebug" data-tip-title="Debug" data-tip="Toggle technical debug logging.">🐛 Debug</button>
+        <details class="fafo-collapse" id="orgMoreTools" data-fafo-collapse-key="org-more-tools">
+            <summary>More tools</summary>
+            <div class="org-more-body">
+                <a class="btn fafo-btn" href="../Toolbox Launcher.html">← Launcher</a>
+                <a class="btn fafo-btn" href="Media Hub.html#organizer" title="Library + Duplicates + Organizer">🗂️ Media Hub</a>
+                <a class="btn fafo-btn" href="Media Library Manager.html">🗂️ Media Library</a>
+                <a class="btn fafo-btn" href="Media Hub.html#duplicates" title="Duplicate cleanup">🗑️ Duplicates</a>
+                <a class="btn fafo-btn" href="Compare Hub.html#match" title="Guided match + pair review">⇄ Compare Hub</a>
+                <a class="btn fafo-btn" href="VSR Pipeline Manager.html">⚡ VSR Pipeline</a>
+                <button class="btn fafo-btn" id="btnOrgReport" data-tip-title="Report" data-tip="Copy an organizer session summary to the clipboard.">📋 Report</button>
+                <span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:6px" title="Keyboard"><kbd style="font:10px Consolas;color:var(--accent3)">/</kbd> focus search · <kbd style="font:10px Consolas;color:var(--accent3)">R</kbd> rescan · <kbd style="font:10px Consolas;color:var(--accent3)">E</kbd> report</span>
+                <button class="ui-btn ghost fafo-btn" id="btnDebug" data-tip-title="Debug" data-tip="Toggle technical debug logging.">🐛 Debug</button>
+            </div>
+        </details>
     </nav>
 
     <div class="main"
@@ -247,7 +327,8 @@
             </div>
             <div class="sidebar-section" data-fafo-section="organize-by" data-fafo-section-title="Organize by"
                  data-fafo-resizable="1" data-fafo-section-min="100" data-fafo-section-default="180">
-                <h3>Organize by</h3>
+                <details class="org-filters-m" open>
+                <summary><h3 style="display:inline;margin:0">Organize by</h3></summary>
                 <div class="filter-chip" data-cat="">All categories</div>
                 <div id="categoryFilters"></div>
                 <div style="margin-top:10px;"></div>
@@ -257,10 +338,12 @@
                 <div class="filter-chip" data-rank="0">Any rank</div>
                 <div class="filter-chip" data-rank="3">★★★+ only</div>
                 <div class="filter-chip" data-rank="4">★★★★+ only</div>
+                </details>
             </div>
         </aside>
 
-        <section class="center"
+        <section class="center fafo-primary-surface"
+                 data-fafo-primary
                  data-fafo-panel="center"
                  data-fafo-panel-title="Files"
                  data-fafo-flex="1">
@@ -278,9 +361,9 @@
                     <option value="category">Sort: Category</option>
                     <option value="mtime">Sort: Date</option>
                 </select>
-                <button class="btn" id="btnSelectPage" data-tip="Select every item on the current page.">Select Page</button>
+                <button class="btn fafo-btn" id="btnSelectPage" data-tip="Select every item on the current page.">Select Page</button>
             </div>
-            <div class="batch-bar" id="batchBar">
+            <div class="batch-bar" id="batchBar" data-fafo-primary>
                 <strong><span id="selCount">0</span> selected</strong>
                 <select id="batchCategory" class="inline-input" style="width:auto;">
                     <option value="">Set category…</option>
@@ -292,11 +375,11 @@
                     <option>To Review</option><option>Approved</option><option>Best</option>
                     <option>WIP</option><option>Favorite</option><option>Reject</option>
                 </select>
-                <button class="btn orange" id="btnBatchMeta" data-tip-title="Apply meta" data-tip="Write category/status/rank to the selected items.">Apply Meta</button>
-                <button class="btn" id="btnBatchTag" data-tip-title="Tags" data-tip="Add tags to all selected items.">+ Tags</button>
-                <button class="btn purple" id="btnBatchRename" data-tip-title="Batch rename" data-tip="Rename selected files using a pattern (opens dialog).">Batch Rename</button>
-                <button class="btn" id="btnCopyPaths" data-tip-title="Copy paths" data-tip="Copy full disk paths of the selection to the clipboard.">Copy Paths</button>
-                <button class="btn" id="btnClearSel" data-tip="Clear the current selection.">Clear</button>
+                <button class="btn orange fafo-btn fafo-btn-primary" id="btnBatchMeta" data-tip-title="Apply meta" data-tip="Write category/status/rank to the selected items.">Apply Meta</button>
+                <button class="btn fafo-btn" id="btnBatchTag" data-tip-title="Tags" data-tip="Add tags to all selected items.">+ Tags</button>
+                <button class="btn purple fafo-btn" id="btnBatchRename" data-tip-title="Batch rename" data-tip="Rename selected files using a pattern (opens dialog).">Batch Rename</button>
+                <button class="btn fafo-btn" id="btnCopyPaths" data-tip-title="Copy paths" data-tip="Copy full disk paths of the selection to the clipboard.">Copy Paths</button>
+                <button class="btn fafo-btn" id="btnClearSel" data-tip="Clear the current selection.">Clear</button>
             </div>
             <div class="file-table-wrap">
                 <table class="file-table">
@@ -423,18 +506,15 @@
         </div>
     </div>
 
-    <script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-debug.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-core.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-    <script src="../shared/fafo-ops-stats.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+    <script src="../shared/aitoolbox-config.js"></script>
+    <script src="../shared/aitoolbox-version.js"></script>
+    <script src="../shared/aitoolbox-debug.js"></script>
+    <script src="../shared/aitoolbox-core.js"></script>
+    <script src="../shared/aitoolbox-api.js"></script>
+    <script src="../shared/aitoolbox-ui.js"></script>
+    <script src="../shared/fafo-ops-stats.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
     <script>
         const PAGE_SIZE = 100;
         const API = () => window.AIToolboxAPI;
@@ -498,12 +578,8 @@
 
         async function init() {
             try { safeUI()?.initTooltips?.(); } catch (_) {}
-            if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
-                AIToolboxMedia.watchServer(updateServer);
-            } else {
-                await updateServer();
-                setInterval(updateServer, 5000);
-            }
+            await updateServer();
+            setInterval(updateServer, 5000);
             await refreshVirtualFolders();
             await refreshFacets();
             await loadItems();
@@ -701,9 +777,7 @@
             setText('vfSources', srcHtml ? `Sources: ${srcHtml}` : '');
         }
 
-        let _loadGen = 0;
         async function loadItems() {
-            const gen = ++_loadGen;
             try {
                 const res = await API()?.queryMedia?.({
                     search: el('searchInput')?.value || '',
@@ -717,7 +791,6 @@
                     sort: el('sortBy')?.value || 'rank',
                     page, limit: PAGE_SIZE,
                 }) || {};
-                if (gen !== _loadGen) return;
                 items = Array.isArray(res.items) ? res.items : [];
                 total = Number(res.total) || 0;
                 let dirs = [];
@@ -737,7 +810,7 @@
         function rankStarsHtml(rank, clickable, itemId) {
             let h = '';
             for (let i = 1; i <= 5; i++) {
-                h += `<span class="rank-star ${i <= rank ? 'on' : ''}" data-r="${i}" data-id="${escapeHtml(itemId || '')}">${i <= rank ? '★' : '☆'}</span>`;
+                h += `<span class="rank-star ${i <= rank ? 'on' : ''}" data-r="${i}" data-id="${itemId || ''}">${i <= rank ? '★' : '☆'}</span>`;
             }
             return h;
         }
@@ -753,7 +826,6 @@
                 if (!item) return;
                 const tr = document.createElement('tr');
                 tr.tabIndex = 0;
-                tr.dataset.id = item.id;
                 tr.className = (selected.has(item.id) ? 'selected ' : '') + (current?.id === item.id ? 'active-row' : '');
                 const rel = item.relativePath || item.rel_path || '';
                 const src = dirNames[item.dirId || item.dir_id] || '?';
@@ -801,16 +873,7 @@
 
         function toggleSel(id) {
             if (selected.has(id)) selected.delete(id); else selected.add(id);
-            const body = el('fileTableBody');
-            const safe = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(String(id)) : String(id).replace(/"/g, '');
-            const tr = body && body.querySelector('tr[data-id="' + safe + '"]');
-            if (tr) {
-                tr.classList.toggle('selected', selected.has(id));
-                const cb = tr.querySelector('input[type="checkbox"]');
-                if (cb) cb.checked = selected.has(id);
-            } else {
-                renderTable();
-            }
+            renderTable();
         }
 
         async function setRank(id, rank) {
@@ -1134,15 +1197,7 @@
             } catch (_) {}
         }
         restoreOrgSettings();
-        bind('searchInput', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch)
-            ? AIToolboxMedia.bindSearch(() => { page = 0; saveOrgSettings(); loadItems(); }, 280)
-            : (function () {
-                let t = 0;
-                return function () {
-                    clearTimeout(t);
-                    t = setTimeout(() => { page = 0; saveOrgSettings(); loadItems(); }, 280);
-                };
-            })());
+        bind('searchInput', 'input', () => { page = 0; saveOrgSettings(); loadItems(); });
         bind('filterType', 'change', () => { page = 0; saveOrgSettings(); loadItems(); });
         bind('sortBy', 'change', () => { page = 0; saveOrgSettings(); loadItems(); });
         bind('btnPrev', 'click', () => { if (page > 0) { page--; loadItems(); } });

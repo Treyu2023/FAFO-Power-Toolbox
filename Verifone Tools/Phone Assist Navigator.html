@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Verifone Tools/Phone Assist Navigator.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -12,6 +11,15 @@
       --accent: #38bdf8; --accent2: #f59e0b; --gold: #f59e0b; --magenta: #e879f9;
       --good: #34d399; --warn: #fbbf24; --text: #e8eef4; --muted: #9aacbf;
       --reg: #0b3d2e; --reg-bezel: #14532d; --tls: #1e1b4b; --cmd: #0c4a6e;
+      /* PET-UI-6 / PHONE ASSIST: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel2);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-border: var(--line);
+      --fafo-radius: 12px;
     }
     * { box-sizing: border-box; }
     body {
@@ -45,7 +53,29 @@
     .layout {
       display: grid; grid-template-columns: 280px 1fr 320px; gap: 0; min-height: calc(100vh - 62px);
     }
-    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+    /* PET-UI-6 / PHONE ASSIST: More tools collapse + call-surface primary on narrow */
+    .nav-row.fafo-toolbar { align-items: center; }
+    .nav-row.fafo-toolbar details.fafo-collapse { flex: 0 1 auto; min-width: 0; }
+    .pan-more-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px; }
+    .btn.fafo-btn { text-decoration: none; }
+    .btn.amber.fafo-btn { border-color: var(--accent2); color: var(--accent2); }
+    .btn.primary.fafo-btn-primary { background: rgba(56,189,248,.18); }
+    .col-call, .col-tree, .col-tech { min-width: 0; }
+    /* Wide: keep path tree | call surface | tech notes */
+    .col-tree { order: 1; }
+    .col-call { order: 2; }
+    .col-tech { order: 3; }
+    @media (max-width: 1100px) {
+      .layout {
+        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+      }
+      /* UI-M + existing 1100px: screen/say → path tree → tech notes */
+      .col-call { order: 1; }
+      .col-tree { order: 2; }
+      .col-tech { order: 3; }
+    }
     .col { border-right: 1px solid var(--line); padding: 12px; overflow: auto; max-height: calc(100vh - 62px); }
     .col:last-child { border-right: none; }
     .crumb {
@@ -137,8 +167,9 @@
       :root { --text: #ffffff; --muted: #d5deea; --line: rgba(56, 189, 248, 0.45); }
     }
   </style>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
+<link rel="stylesheet" href="../shared/fafo-chrome.css">
 </head>
 <body>
   <a class="toolbox-back" href="../Toolbox Launcher.html" style="position:fixed;top:10px;left:12px;z-index:9999;color:#38bdf8;text-decoration:none;font:600 12px system-ui;padding:6px 10px;border-radius:8px;background:rgba(5,5,12,.9);border:1px solid rgba(56,189,248,.35)">← Toolbox</a>
@@ -148,22 +179,42 @@
       <div class="sub">Walk CSR / Commander / TLS menus with the person on the phone — same path they see</div>
     </div>
     <div class="tabs" id="deviceTabs"></div>
-    <div class="nav-row" style="margin:0">
-      <a class="btn" href="Commander Site Console.html" title="Counterpart · site dossiers">⛽ Console</a>
-      <a class="btn" href="C-Site Management Diagnostic.html" title="C-Site / MNSP outbound vs cards, watch ports">☁ C-Site Diag</a>
-      <a class="btn" href="Field Network Desk.html" title="Fingerprint LAN / MNSP / ISP / cmd kit">🛠 Field Desk</a>
-      <a class="btn" href="Pre-Reload Punch List.html" title="Counterpart · pre-reload punch list">✅ Pre-Reload</a>
-      <button type="button" class="btn" id="btnHome" data-tip-title="Root" data-tip="Jump to the top of the call tree for a new call.">🏠 Root</button>
-      <button type="button" class="btn" id="btnBack" data-tip-title="Back" data-tip="Go up one step in the tree.">← Back</button>
-      <button type="button" class="btn amber" id="btnSsh" data-tip-title="SSH / resetpw" data-tip="Show password-reset / SSH SOP helpers.">🔑 SSH / resetpw</button>
-      <button type="button" class="btn" id="btnCopySession" data-tip-title="Session" data-tip="Copy a summary of this call session.">📋 Session</button>
-      <a class="btn" href="http://127.0.0.87:18765/toolbox/docs/Commander-FAFO-User-Guide.md" target="_blank" title="Full FAFO Commander user manual">📖 Guide</a>
+    <div class="nav-row fafo-toolbar" data-fafo-toolbar style="margin:0">
+      <button type="button" class="btn fafo-btn" id="btnHome" data-tip-title="Root" data-tip="Jump to the top of the call tree for a new call.">🏠 Root</button>
+      <button type="button" class="btn fafo-btn" id="btnBack" data-tip-title="Back" data-tip="Go up one step in the tree.">← Back</button>
+      <details class="fafo-collapse" id="panMoreTools" data-fafo-collapse-key="pan-more-tools">
+        <summary>More tools</summary>
+        <div class="pan-more-body">
+          <a class="btn fafo-btn" href="Commander Site Console.html" title="Counterpart · site dossiers">⛽ Console</a>
+          <a class="btn fafo-btn" href="Pre-Reload Punch List.html" title="Counterpart · pre-reload punch list">✅ Pre-Reload</a>
+          <button type="button" class="btn fafo-btn" id="btnCopySession" data-tip-title="Session" data-tip="Copy a summary of this call session.">📋 Session</button>
+          <a class="btn fafo-btn" href="http://127.0.0.87:18765/toolbox/docs/Commander-FAFO-User-Guide.md" target="_blank" title="Full FAFO Commander user manual">📖 Guide</a>
+          <button type="button" class="btn amber fafo-btn" id="btnSsh" data-tip-title="SSH / resetpw" data-tip="Show password-reset / SSH SOP helpers.">🔑 SSH / resetpw</button>
+        </div>
+      </details>
     </div>
     <span data-fafo-layout-toolbar></span>
 </header>
 
   <div class="layout" data-fafo-layout-root data-fafo-layout-app="verifone-tools-phone-assist-navigator" data-fafo-layout-type="columns">
-    <div class="col" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+    <div class="col col-call" data-fafo-panel="main" data-fafo-panel-title="Call" data-fafo-flex="1" data-fafo-panel-min="120">
+      <div class="crumb" id="crumb">—</div>
+      <div class="screen fafo-primary-surface reg" id="screen" data-fafo-primary>
+        <div class="screen-title" id="screenTitle">Screen</div>
+        <div class="screen-hint" id="screenHint"></div>
+        <div class="menu-list" id="menuList"></div>
+      </div>
+      <div class="say-box fafo-primary-surface" data-fafo-primary>
+        <h3>Say to the person on the phone</h3>
+        <div class="body" id="sayText">—</div>
+      </div>
+      <div class="nav-row">
+        <button type="button" class="btn primary fafo-btn fafo-btn-primary" id="btnCopySay" data-tip-title="Copy say-this" data-tip="Copy the suggested agent script for this step.">Copy “say this”</button>
+        <button type="button" class="btn fafo-btn" id="btnCopyPath" data-tip-title="Copy path" data-tip="Copy where you are in the call tree.">Copy path</button>
+      </div>
+    </div>
+
+    <div class="col col-tree" data-fafo-panel="tree" data-fafo-panel-title="Path" data-fafo-flex="1" data-fafo-panel-min="120">
       <div class="field">
         <label>Site host (for SSH script)</label>
         <input id="siteHost" placeholder="192.168.31.11" value="192.168.31.11">
@@ -176,24 +227,7 @@
       <div class="path-tree" id="pathTree"></div>
     </div>
 
-    <div class="col">
-      <div class="crumb" id="crumb">—</div>
-      <div class="screen reg" id="screen">
-        <div class="screen-title" id="screenTitle">Screen</div>
-        <div class="screen-hint" id="screenHint"></div>
-        <div class="menu-list" id="menuList"></div>
-      </div>
-      <div class="nav-row">
-        <button type="button" class="btn primary" id="btnCopySay" data-tip-title="Copy say-this" data-tip="Copy the suggested agent script for this step.">Copy “say this”</button>
-        <button type="button" class="btn" id="btnCopyPath" data-tip-title="Copy path" data-tip="Copy where you are in the call tree.">Copy path</button>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="say-box">
-        <h3>Say to the person on the phone</h3>
-        <div class="body" id="sayText">—</div>
-      </div>
+    <div class="col col-tech" data-fafo-panel="tech" data-fafo-panel-title="Tech" data-fafo-flex="1" data-fafo-panel-min="120">
       <div class="tech-box">
         <h3>Tech notes (don’t read all of this)</h3>
         <div class="body" id="techText">—</div>
@@ -208,8 +242,8 @@
         </div>
         <pre class="ssh" id="sshPlaybook"></pre>
         <div class="nav-row">
-          <button type="button" class="btn primary" id="btnCopySsh">Copy full SOP</button>
-          <button type="button" class="btn" id="btnHideSsh">Hide</button>
+          <button type="button" class="btn primary fafo-btn fafo-btn-primary" id="btnCopySsh">Copy full SOP</button>
+          <button type="button" class="btn fafo-btn" id="btnHideSsh">Hide</button>
         </div>
         <div class="warn" style="margin-top:8px">
           Fleet shell account — local tech use only. After <code>resetpw manager</code>, set Manager to next letter+base and update Liferaft.
@@ -696,7 +730,7 @@
         fleetShell = {
           commanderShell: {
             username: 'maint',
-            password: '',
+            password: 'EsG2Com@nd3r',
             port: 22,
             defaultHostHint: '192.168.31.11',
             playbookRendered: '',
@@ -704,7 +738,7 @@
         };
         setText('sshUser', 'maint');
         setText('sshPort', '22');
-        setText('sshPass', '(set in fleet defaults)');
+        setText('sshPass', 'EsG2Com@nd3r');
         applyHostToPlaybook();
       }
     }
@@ -715,7 +749,7 @@
       setText('sshHost', host);
       const sh = (fleetShell && fleetShell.commanderShell) || {};
       const user = sh.username || 'maint';
-      const pass = sh.password || '(set in fleet defaults)';
+      const pass = sh.password || 'EsG2Com@nd3r';
       const port = sh.port || 22;
       const text =
 `Open PuTTY
@@ -929,13 +963,11 @@ Update Liferaft: letter + last changed = today.`;
   } catch(_){}
 })();
 </script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+<script src="../shared/aitoolbox-api.js"></script>
+<script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-pro.js"></script>
+<script src="../shared/fafo-chrome.js"></script>
 </body>
 </html>
 

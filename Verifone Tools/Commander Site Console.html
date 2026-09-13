@@ -1,13 +1,12 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Verifone Tools/Commander Site Console.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Commander Site Console · FAFO</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛽</text></svg>">
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
       --bg: #05080c;
@@ -33,14 +32,40 @@
         radial-gradient(ellipse 60% 40% at 100% 0%, rgba(245, 158, 11, 0.12), transparent 45%),
         var(--bg);
     }
+    /* PET-UI-4: compact header; list+detail primary */
     header {
-      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 14px 18px; border-bottom: 1px solid var(--line);
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 14px; border-bottom: 1px solid var(--line);
       background: rgba(8, 12, 18, 0.88); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 20;
     }
-    .brand h1 { margin: 0; font-size: 18px; color: var(--accent); letter-spacing: 0.04em; text-shadow: var(--glow); }
-    .brand .sub { font-size: 11px; color: var(--muted); }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .brand h1 { margin: 0; font-size: 16px; color: var(--accent); letter-spacing: 0.04em; text-shadow: var(--glow); }
+    .brand .sub { display: none; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    details.csc-more, details.csc-pwd {
+      border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,.22);
+      color: var(--text); max-width: 100%;
+    }
+    details.csc-more { flex: 0 1 auto; }
+    details.csc-pwd { border-radius: 0; border-left: none; border-right: none; border-top: none; background: rgba(12, 18, 24, 0.95); }
+    details.csc-more > summary, details.csc-pwd > summary {
+      list-style: none; cursor: pointer; user-select: none;
+      padding: 6px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    }
+    details.csc-more > summary::-webkit-details-marker,
+    details.csc-pwd > summary::-webkit-details-marker { display: none; }
+    details.csc-more > summary::before, details.csc-pwd > summary::before {
+      content: ''; width: 0.4em; height: 0.4em;
+      border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+      transform: rotate(-45deg); transition: transform .15s ease; flex: 0 0 auto;
+    }
+    details.csc-more[open] > summary::before, details.csc-pwd[open] > summary::before { transform: rotate(45deg); }
+    details.csc-more[open] > summary, details.csc-pwd[open] > summary { color: var(--accent); }
+    .csc-more-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px 8px; }
+    .csc-pwd > .tech-desk { border-bottom: none; padding-top: 0; }
+    @media (prefers-reduced-motion: reduce) {
+      details.csc-more > summary::before, details.csc-pwd > summary::before { transition: none; }
+    }
     .btn {
       border: 1px solid var(--accent); background: transparent; color: var(--accent);
       padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 700;
@@ -62,7 +87,7 @@
     .status-pill.ok { border-color: rgba(52,211,153,.5); color: var(--good); }
     .status-pill.warn { border-color: rgba(251,191,36,.5); color: var(--warn); }
     .layout {
-      display: flex; min-height: calc(100vh - 70px); width: 100%;
+      display: flex; min-height: calc(100vh - 52px); width: 100%;
     }
     .list-pane {
       flex: 0 0 var(--list-w, 320px);
@@ -567,22 +592,25 @@
       <h1>⛽ Commander Site Console</h1>
       <div class="sub">Auto-scans watched folders · dossiers · punch lists · live journal · tech desk</div>
     </div>
-    <div class="toolbar">
-      <a class="btn" href="../Toolbox Launcher.html" title="Return to Toolbox Launcher">← Toolbox</a>
+    <div class="toolbar" id="cscPrimaryToolbar">
       <span id="serverPill" class="status-pill warn" role="button" tabindex="0" title="Local FAFO toolbox API on this PC (127.0.0.87:18765). Click when offline to start.">Server…</span>
-      <button class="btn primary" id="btnStartServer" data-tip-title="Start server" data-tip="Start the toolbox backend for Commander tools (prefer top S1/S2 bar)." type="button" title="Launch the Python toolbox backend from this page (same as other tools / START SERVER.bat)">▶ Start Server</button>
+      <button class="btn primary ui-btn" id="btnStartServer" data-tip-title="Start server" data-tip="Start the toolbox backend for Commander tools (prefer top S1/S2 bar)." type="button" title="Launch the Python toolbox backend from this page (same as other tools / START SERVER.bat)">▶ Start Server</button>
       <input type="search" id="search" data-tip-title="Search" data-tip="Search site dossiers, notes, and gear." placeholder="Search customer, site, phone, equipment…">
-      <button class="btn primary" id="btnQuickStart" data-tip-title="Quick start" data-tip="Jump to the guided site-setup checklist." type="button" title="Sync backups → create site profiles → sticky notes → seed aerial layouts">⚡ Quick Start</button>
-      <button class="btn primary" id="btnSync" data-tip-title="Sync" data-tip="Sync site data from disk/watch paths." title="Rescan all watched folders for new/updated sites">↻ Sync folders</button>
-      <button class="btn" id="btnSetRoot" data-tip-title="Set root" data-tip="Set the Commander sites root folder on disk." title="Each tech can set their own local backup folders">📁 Watched folders…</button>
-      <a class="btn" id="btnLiveHud" data-tip-title="Live HUD" data-tip="Open Commander Status HUD for this site." href="Commander Status HUD.html" title="Live Commander reachability + credential probe">📡 Status HUD</a>
-      <a class="btn" id="btnCsiteDiag" data-tip-title="C-Site diagnostic" data-tip="C-Site / Commander Central path vs MNSP and cards. Watch ports while testing a card." href="C-Site Management Diagnostic.html" title="C-Site Management path vs MNSP / cards">☁ C-Site Diag</a>
-      <a class="btn" href="Field Network Desk.html" title="Fingerprint this LAN and open the right desks.">🛠 Field Desk</a>
-      <a class="btn" id="btnPhoneAssist" data-tip-title="Phone Assist" data-tip="Open the phone call navigator for support calls." href="Phone Assist Navigator.html" title="Walk CSR / Veeder TLS / SSH menus on the phone">📞 Phone Assist</a>
-      <a class="btn" id="btnPreReload" data-tip-title="Pre-Reload punch" data-tip="Open the pre-reload punch list for this site." href="Pre-Reload Punch List.html" title="Create working pre-reload punch list">✅ Pre-Reload</a>
-      <button class="btn" id="btnCopySiteSummary" data-tip-title="Copy site summary" data-tip="Copy a text summary of the selected site." type="button" title="Copy selected site summary (S)">📋 Copy summary</button>
-      <button class="btn" id="btnUserGuide" data-tip-title="User guide" data-tip="Open the Commander FAFO user guide." type="button" title="Feature guide & user manual (file + in-app)">📖 Help</button>
-      <button class="btn amber" id="btnPunch" data-tip-title="Punch list" data-tip="Open or create the site punch list." disabled>📋 Prefill punch list</button>
+      <button class="btn primary ui-btn" id="btnQuickStart" data-tip-title="Quick start" data-tip="Jump to the guided site-setup checklist." type="button" title="Sync backups → create site profiles → sticky notes → seed aerial layouts">⚡ Quick Start</button>
+      <button class="btn primary ui-btn" id="btnSync" data-tip-title="Sync" data-tip="Sync site data from disk/watch paths." title="Rescan all watched folders for new/updated sites">↻ Sync folders</button>
+      <button class="btn amber ui-btn" id="btnPunch" data-tip-title="Punch list" data-tip="Open or create the site punch list." disabled>📋 Prefill punch list</button>
+      <details class="csc-more" id="cscMoreTools">
+        <summary>More tools</summary>
+        <div class="csc-more-body">
+          <a class="btn ui-btn" id="btnLiveHud" data-tip-title="Live HUD" data-tip="Open Commander Status HUD for this site." href="Commander Status HUD.html" title="Live Commander reachability + credential probe">📡 Status HUD</a>
+          <a class="btn ui-btn" id="btnPhoneAssist" data-tip-title="Phone Assist" data-tip="Open the phone call navigator for support calls." href="Phone Assist Navigator.html" title="Walk CSR / Veeder TLS / SSH menus on the phone">📞 Phone Assist</a>
+          <a class="btn ui-btn" id="btnPreReload" data-tip-title="Pre-Reload punch" data-tip="Open the pre-reload punch list for this site." href="Pre-Reload Punch List.html" title="Create working pre-reload punch list">✅ Pre-Reload</a>
+          <button class="btn ui-btn" id="btnCopySiteSummary" data-tip-title="Copy site summary" data-tip="Copy a text summary of the selected site." type="button" title="Copy selected site summary (S)">📋 Copy summary</button>
+          <button class="btn ui-btn" id="btnUserGuide" data-tip-title="User guide" data-tip="Open the Commander FAFO user guide." type="button" title="Feature guide & user manual (file + in-app)">📖 Help</button>
+          <button class="btn ui-btn" id="btnSetRoot" data-tip-title="Set root" data-tip="Set the Commander sites root folder on disk." title="Each tech can set their own local backup folders">📁 Watched folders…</button>
+          <a class="btn ui-btn" href="../Toolbox Launcher.html" title="Return to Toolbox Launcher">← Toolbox</a>
+        </div>
+      </details>
     </div>
     <span data-fafo-layout-toolbar></span>
 </header>
@@ -610,12 +638,16 @@
       </div>
     </div>
   </div>
-  <div class="tech-desk" id="techDesk" title="Manager password rotation across Liferaft sites">
-    <span class="label">Manager passwords</span>
-    <span id="pwdDashSummary" class="note" style="margin:0">Loading…</span>
-    <button type="button" class="tech-chip" id="btnPwdDashRefresh" data-tip-title="Refresh password dash" data-tip="Refresh password rotation dashboard." title="Refresh due list">↻</button>
-    <div id="pwdDashChips" style="display:flex;flex-wrap:wrap;gap:6px;flex:1"></div>
-  </div>
+  <details class="csc-pwd" id="cscPwdDesk" title="Manager password rotation across Liferaft sites">
+    <summary>
+      <span class="label">Manager passwords</span>
+      <span id="pwdDashSummary" class="note" style="margin:0">Loading…</span>
+    </summary>
+    <div class="tech-desk" id="techDesk">
+      <button type="button" class="tech-chip" id="btnPwdDashRefresh" data-tip-title="Refresh password dash" data-tip="Refresh password rotation dashboard." title="Refresh due list">↻</button>
+      <div id="pwdDashChips" style="display:flex;flex-wrap:wrap;gap:6px;flex:1"></div>
+    </div>
+  </details>
 
   <div class="modal-backdrop" id="watchModal" role="dialog" aria-modal="true" aria-labelledby="watchModalTitle">
     <div class="modal">
@@ -666,7 +698,6 @@
             <button type="button" class="btn" data-cmd-empty="sync">↻ Sync folders</button>
             <button type="button" class="btn" data-cmd-empty="quick">⚡ Quick Start</button>
             <a class="btn" href="Commander Status HUD.html">📡 Status HUD</a>
-            <a class="btn" href="C-Site Management Diagnostic.html">☁ C-Site Diag</a>
             <a class="btn" href="Phone Assist Navigator.html">📞 Phone Assist</a>
             <a class="btn" href="../Toolbox Launcher.html">← Toolbox</a>
           </div>
@@ -691,12 +722,11 @@
   </div>
   <div class="toast" id="toast"></div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-<script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+<script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script src="site-layout-3d.js"></script>
   <script>
     const apiBase = () => (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
@@ -814,6 +844,24 @@
         btns.forEach(function (b) { b.disabled = false; });
       }
     }
+
+    // PET-UI-4: More tools / Manager passwords collapse prefs (default closed)
+    (function bindCscUiPrefs() {
+      const more = document.getElementById('cscMoreTools');
+      const pwd = document.getElementById('cscPwdDesk');
+      if (more) {
+        more.open = lsGet('cscMoreOpen', 'false') === 'true';
+        more.addEventListener('toggle', function () {
+          lsSet('cscMoreOpen', more.open ? 'true' : 'false');
+        });
+      }
+      if (pwd) {
+        pwd.open = lsGet('cscPwdOpen', 'false') === 'true';
+        pwd.addEventListener('toggle', function () {
+          lsSet('cscPwdOpen', pwd.open ? 'true' : 'false');
+        });
+      }
+    })();
 
     // --- resizable site list / detail panes ---
     (function initSplitter() {
@@ -1106,7 +1154,6 @@
           <button type="button" class="btn" data-cmd-empty="sync">↻ Sync</button>
           <button type="button" class="btn" data-cmd-empty="quick">⚡ Quick Start</button>
           <a class="btn" href="Commander Status HUD.html">📡 HUD</a>
-          <a class="btn" href="C-Site Management Diagnostic.html">☁ C-Site</a>
           <a class="btn" href="Phone Assist Navigator.html">📞 Phone Assist</a>
           <a class="btn" href="../Toolbox Launcher.html">← Toolbox</a>
         </div>

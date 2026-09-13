@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<!-- Snapshots: newest 5 copies of THIS file live in snapshots/Movie File Manager/Pair Review Queue.html/ (per app, not a global pool). Never leave .bak next to the live tool. See snapshots/README.md -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pair Review Queue — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.0.11">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.0.11">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css">
   <style>
     :root {
       --bg: #0b1220;
@@ -20,6 +19,16 @@
       --danger: #f87171;
       --text: #e8eef8;
       --muted: #94a3b8;
+      /* PET-UI-12 / PAIR REVIEW: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-danger: var(--danger);
+      --fafo-border: var(--border);
+      --fafo-radius: 12px;
     }
     :focus-visible {
       outline: 2px solid var(--gold);
@@ -77,7 +86,10 @@
     .stage {
       display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;
     }
-    @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) {
+      /* UI-M: stack Before/After */
+      .stage[data-fafo-primary], .stage { grid-template-columns: 1fr; }
+    }
     .pane {
       background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
       display: flex; flex-direction: column; min-height: 280px;
@@ -116,14 +128,6 @@
     .score-pill.high { color: var(--ok); border-color: rgba(74,222,128,.4); }
     .score-pill.mid { color: var(--warn); border-color: rgba(251,191,36,.4); }
     .score-pill.low { color: var(--danger); border-color: rgba(248,113,113,.4); }
-    .score-pill.pid { color: #1a1200; background: var(--gold); border-color: var(--gold); }
-    .pid-trust-bar {
-      display: none; flex-wrap: wrap; gap: 8px; align-items: center;
-      background: rgba(245,200,76,.08); border: 1px solid rgba(245,200,76,.32);
-      border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px;
-    }
-    .pid-trust-bar.on { display: flex; }
-    .pid-hex { font: 700 11px Consolas, monospace; color: var(--gold); }
     .rename-line {
       margin-top: 12px; padding: 10px 12px; border-radius: 10px;
       background: rgba(0,0,0,.3); border: 1px solid var(--border); font-size: 12px;
@@ -179,51 +183,125 @@
       display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
       padding-top: 14px; border-top: 1px solid var(--border);
     }
+
+    /* PET-UI-12 / PAIR REVIEW: More tools + Queue filters + review primary */
+    .top.fafo-toolbar { align-items: center; }
+    .top.fafo-toolbar details.fafo-collapse {
+      position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+    }
+    .top.fafo-toolbar details.fafo-collapse > summary {
+      padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none; min-height: 0;
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; color: var(--muted);
+    }
+    .top.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+    .top.fafo-toolbar details.fafo-collapse[open] > summary {
+      border-color: var(--fafo-accent, var(--accent)); color: var(--fafo-accent, var(--accent));
+    }
+    .top.fafo-toolbar details.fafo-collapse > :not(summary) {
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+      min-width: 240px; max-width: min(360px, 92vw); padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+      border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    .prq-more-body {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .ui-btn.fafo-btn { text-decoration: none; }
+    .ui-btn.primary.fafo-btn-primary { /* CTA alias — keep ui-btn primary look */ }
+    .prq-primary-row {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%;
+    }
+    .prq-primary-row #btnLoad { flex: 0 1 auto; }
+    details.ui-advanced#prqQueueFilters {
+      width: 100%; margin-top: 8px;
+    }
+    .prq-filters-body {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 6px 2px 2px;
+    }
+    #activeReview[data-fafo-primary],
+    .stage[data-fafo-primary],
+    .pane[data-fafo-primary] { min-width: 0; }
+    @media (max-width: 900px) {
+      /* UI-M: keep Load + action keys reachable */
+      .top.fafo-toolbar { flex-wrap: wrap; gap: 8px; }
+      .top.fafo-toolbar h1 { width: 100%; margin-right: 0; }
+      .source-bar {
+        flex-direction: column; align-items: stretch;
+      }
+      .prq-primary-row {
+        position: sticky; top: 42px; z-index: 25;
+        background: color-mix(in srgb, var(--fafo-panel, var(--panel)) 92%, transparent);
+        padding: 6px 0; margin-bottom: 2px;
+        border-bottom: 1px solid color-mix(in srgb, var(--fafo-border, var(--border)) 70%, transparent);
+      }
+      .prq-primary-row #btnLoad {
+        flex: 1 1 auto; min-width: 160px;
+      }
+      #activeReview[data-fafo-primary] { min-height: 40vh; }
+      #activeReview[data-fafo-primary] .actions {
+        position: sticky; bottom: 0; z-index: 22;
+        background: color-mix(in srgb, var(--fafo-panel, var(--panel)) 94%, transparent);
+        padding: 8px 0 6px;
+        border-top: 1px solid color-mix(in srgb, var(--fafo-border, var(--border)) 70%, transparent);
+      }
+      #activeReview[data-fafo-primary] .keys {
+        font-size: 11px; line-height: 1.5;
+      }
+    }
+    @media (max-width: 640px) {
+      .prq-primary-row #btnLoad { width: 100%; }
+      #activeReview[data-fafo-primary] { min-height: 48vh; }
+    }
   </style>
 </head>
 <body>
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
-  <div class="top">
+  <!-- PET-UI-12 / PAIR REVIEW: primary chrome + More tools overflow -->
+  <div class="top fafo-toolbar" data-fafo-toolbar>
     <h1>🔎 Pair Review Queue</h1>
     <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
-    <button class="ui-btn primary" id="btnStartServer" type="button">▶ Start Server</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'" title="Library · Duplicates · Organizer">🗂️ Media Hub</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'" title="Process-of-elimination matching">🎯 Guided Match</button>
-    <button class="ui-btn ghost" type="button" onclick="(window.AIToolboxPipeline&&AIToolboxPipeline.goTab('video'))||(location.href='Media Hub.html#video')" title="Video slider in Media Hub">⇄ Video compare</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Mismatched Source Companion.html'">Name match</button>
-    <button class="ui-btn ghost" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
-    <button class="ui-btn ghost" type="button" id="btnExportReview" title="Copy review session report">📋 Export</button>
+    <button class="ui-btn primary fafo-btn fafo-btn-primary" id="btnStartServer" type="button">▶ Start Server</button>
+    <button class="ui-btn ghost fafo-btn" type="button" id="btnExportReview" title="Copy review session report">📋 Export</button>
+    <details class="fafo-collapse" id="prqMoreTools" data-fafo-collapse-key="prq-more-tools">
+      <summary>More tools</summary>
+      <div class="prq-more-body">
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Media Hub.html'" title="Library · Duplicates · Organizer">🗂️ Media Hub</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Guided Pair Match.html'" title="Process-of-elimination matching">🎯 Guided Match</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Compare Hub.html#pairs'" title="Compare Hub pair review tab">⇄ Compare Hub</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='VSR Pipeline Manager.html'">VSR</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
+      </div>
+    </details>
     <span id="modeHint" style="margin-left:auto;font-size:11px;color:var(--muted)"></span>
   </div>
 
   <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-pair-review-queue" data-fafo-layout-type="columns">
-    <div id="pipelineHost"></div>
-    <div id="leftoverHost"></div>
     <div class="source-bar" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
-      <label style="font-size:11px;color:var(--muted)">Queue source</label>
-      <select id="sourceSelect">
-        <option value="pid">PID stamps — _PID_xxxxxxxx auto-link</option>
+      <div class="prq-primary-row">
+        <label style="font-size:11px;color:var(--muted)">Queue source</label>
+        <select id="sourceSelect">
         <option value="vsr1">VSR Stage I — upscale matches</option>
         <option value="vsr2">VSR Stage II — interp matches</option>
         <option value="catalog">Catalog pairs (saved)</option>
         <option value="suggest">Suggested pairs (unlinked)</option>
       </select>
-      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
-        <input type="checkbox" id="onlyRename" checked> Only rename-needed (VSR)
-      </label>
-      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
-        Min score
-        <input type="number" id="minScore" min="0" max="1" step="0.05" value="0" style="width:64px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text)">
-      </label>
-      <button class="ui-btn primary" id="btnLoad" type="button">↻ Load queue</button>
-      <button class="ui-btn primary" id="btnPidTrust" type="button" disabled
-              title="Lock every unique 1:1 PID match">Trust all unique PIDs</button>
-    </div>
-
-    <div class="pid-trust-bar" id="pidTrustBar">
-      <span class="pid-hex">PID</span>
-      <span id="pidTrustStats">Unique 1:1 stamps can lock in one click. Ambiguous groups stay in the queue for Approve.</span>
+        <button class="ui-btn primary fafo-btn fafo-btn-primary" id="btnLoad" type="button">↻ Load queue</button>
+      </div>
+      <details class="ui-advanced" id="prqQueueFilters" data-fafo-collapse-key="prq-queue-filters">
+        <summary>Queue filters</summary>
+        <div class="prq-filters-body">
+          <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="onlyRename" checked> Only rename-needed (VSR)
+          </label>
+          <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            Min score
+            <input type="number" id="minScore" min="0" max="1" step="0.05" value="0" style="width:64px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text)">
+          </label>
+        </div>
+      </details>
     </div>
 
     <div class="progress-wrap" id="progressWrap" style="display:none">
@@ -253,21 +331,21 @@
           <button class="ui-btn primary" type="button" id="btnEmptyLoad">↻ Load queue</button>
           <button class="ui-btn ghost" type="button" id="btnEmptyStartServer">▶ Start Server</button>
           <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'">🎯 Guided Match first</button>
-          <button class="ui-btn ghost" type="button" onclick="location.href='Mismatched Source Companion.html'">🔗 Name match</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">⚡ Open VSR</button>
           <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
-          <button class="ui-btn ghost" type="button" onclick="(window.AIToolboxPipeline&&AIToolboxPipeline.goTab('match'))||(location.href='Media Hub.html#match')">🎯 Match</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'">⇄ Compare Hub</button>
           <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
         </div>
       </div>
     </div>
 
-    <div id="activeReview" style="display:none">
-      <div class="stage">
-        <div class="pane">
+    <div id="activeReview" class="fafo-primary-surface" data-fafo-primary style="display:none">
+      <div class="stage" data-fafo-primary>
+        <div class="pane" data-fafo-primary>
           <div class="pane-h"><span>Before / Source</span><span class="name" id="beforeName">—</span></div>
           <div class="media-box" id="beforeMedia"><div class="empty-media">No preview</div></div>
         </div>
-        <div class="pane">
+        <div class="pane" data-fafo-primary>
           <div class="pane-h"><span>After / Output</span><span class="name" id="afterName">—</span></div>
           <div class="media-box" id="afterMedia"><div class="empty-media">No preview</div></div>
         </div>
@@ -276,7 +354,7 @@
       <div class="card-info">
         <h2 id="itemTitle">—</h2>
         <div class="meta-grid">
-          <div><div class="lbl">Confidence</div><div class="val"><span class="score-pill" id="scorePill">—</span> <span class="fafo-method" id="methodBadge" hidden>—</span></div></div>
+          <div><div class="lbl">Confidence</div><div class="val"><span class="score-pill" id="scorePill">—</span></div></div>
           <div><div class="lbl">Kind</div><div class="val" id="kindVal">—</div></div>
           <div><div class="lbl">Decision</div><div class="val" id="decisionVal">pending</div></div>
           <div><div class="lbl">Stage / Source</div><div class="val" id="stageVal">—</div></div>
@@ -288,8 +366,6 @@
           <kbd>A</kbd> / <kbd>Enter</kbd> Accept ·
           <kbd>R</kbd> / <kbd>X</kbd> Reject ·
           <kbd>S</kbd> Skip ·
-          <kbd>P</kbd> Accept PID ·
-          <kbd>T</kbd> Trust all unique PIDs ·
           <kbd>←</kbd> <kbd>→</kbd> Prev / Next ·
           <kbd>N</kbd> Next + play ·
           <kbd>Space</kbd> Play/pause both ·
@@ -313,21 +389,18 @@
                 data-tip-pro="Mark decision accept; optional flush tags to disk.">✓ Accept</button>
         <button class="ui-btn danger" id="btnReject" type="button"
                 data-tip-title="Reject (R / X)" data-tip="No — wrong match. Will not rename this one.">✗ Reject</button>
-        <details class="actions-overflow">
-          <summary>More</summary>
-          <button class="ui-btn ghost" id="btnSkip" type="button"
-                  data-tip-title="Skip (S)" data-tip="Leave undecided and move on.">Skip</button>
-          <button class="ui-btn ghost" id="btnPrev" type="button" data-tip-title="Previous" data-tip="Go back one queue item.">← Prev</button>
-          <button class="ui-btn ghost" id="btnNext" type="button" data-tip-title="Next" data-tip="Go forward one queue item.">Next →</button>
-          <button class="ui-btn primary" id="btnNextPlay" type="button"
-                  data-tip-title="Next + play" data-tip="Advance and start playback on the new pair.">⏭ Next + play</button>
-          <button class="ui-btn ghost" id="btnSwapSides" type="button"
-                  data-tip-title="Swap L/R" data-tip="Swap which side is left/right for this review only.">⇄ Swap L/R</button>
-          <button class="ui-btn ghost" id="btnUndo" type="button"
-                  data-tip-title="Undo (U)" data-tip="Clear the decision on the current item.">Undo</button>
-          <button class="ui-btn ghost" id="btnCompare" type="button"
-                  data-tip-title="Comparator" data-tip="Open the full before/after comparator for this pair.">Open comparator</button>
-        </details>
+        <button class="ui-btn ghost" id="btnSkip" type="button"
+                data-tip-title="Skip (S)" data-tip="Leave undecided and move on.">Skip</button>
+        <button class="ui-btn ghost" id="btnPrev" type="button" data-tip-title="Previous" data-tip="Go back one queue item.">← Prev</button>
+        <button class="ui-btn ghost" id="btnNext" type="button" data-tip-title="Next" data-tip="Go forward one queue item.">Next →</button>
+        <button class="ui-btn primary" id="btnNextPlay" type="button"
+                data-tip-title="Next + play" data-tip="Advance and start playback on the new pair.">⏭ Next + play</button>
+        <button class="ui-btn ghost" id="btnSwapSides" type="button"
+                data-tip-title="Swap L/R" data-tip="Swap which side is left/right for this review only.">⇄ Swap L/R</button>
+        <button class="ui-btn ghost" id="btnUndo" type="button"
+                data-tip-title="Undo (U)" data-tip="Clear the decision on the current item.">Undo</button>
+        <button class="ui-btn ghost" id="btnCompare" type="button"
+                data-tip-title="Comparator" data-tip="Open the full before/after comparator for this pair.">Open comparator</button>
       </div>
 
       <div class="footer-actions">
@@ -347,18 +420,14 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-debug.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-runtime.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-media.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-dom.js?v=3.0.11"></script>
-    <script src="../shared/aitoolbox-api.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pipeline.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.0.11"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.0.11"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.0.11"></script>
+  <script src="../shared/aitoolbox-config.js"></script>
+  <script src="../shared/aitoolbox-version.js"></script>
+  <script src="../shared/aitoolbox-debug.js"></script>
+  <script src="../shared/aitoolbox-api.js"></script>
+  <script src="../shared/aitoolbox-ui.js"></script>
+  <script src="../shared/fafo-ops-stats.js"></script>
+  <script src="../shared/aitoolbox-layout.js"></script>
+  <script src="../shared/aitoolbox-pro.js"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -538,16 +607,16 @@
           ? ('<strong>Queue finished reviewing.</strong><br>Apply accepted renames or reload.' +
              '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
              '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Reload queue</button>' +
-             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Mismatched Source Companion.html\'">🔗 Name match</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
              '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Media Hub</button>' +
-             '<button class="ui-btn ghost" type="button" onclick="(window.AIToolboxPipeline&&AIToolboxPipeline.goTab(\'video\'))||(location.href=\'Media Hub.html#video\')">🎬 Video compare</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Compare Hub.html#video\'">🎬 Video compare</button>' +
              '</div>')
           : ('<strong>No items loaded.</strong><br>Choose a source and click Load queue (server required).' +
              '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
              '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Load queue</button>' +
              '<button class="ui-btn ghost" type="button" id="btnEmptyStartServer2">▶ Start Server</button>' +
              '<button class="ui-btn ghost" type="button" onclick="location.href=\'Guided Pair Match.html\'">🎯 Guided Match</button>' +
-             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Mismatched Source Companion.html\'">🔗 Name match</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
              '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Hub</button>' +
              '<button class="ui-btn ghost" type="button" onclick="location.href=\'../Toolbox Launcher.html\'">← Launcher</button>' +
              '</div>');
@@ -568,17 +637,9 @@
 
       const pill = el('scorePill');
       if (pill) {
-        const isPid = !!(item.pid || String(item.mode || '').startsWith('pid'));
-        pill.textContent = (isPid ? 'PID · ' : '') + scoreLabel(item.score);
-        pill.className = 'score-pill ' + (isPid ? 'pid' : scoreClass(item.score || 0));
+        pill.textContent = scoreLabel(item.score);
+        pill.className = 'score-pill ' + scoreClass(item.score || 0);
       }
-      try {
-        window.AIToolboxPipeline && AIToolboxPipeline.paintMethodBadge(
-          'methodBadge',
-          item.pid ? 'pid_exact' : (item.mode || item.reason || '')
-        );
-      } catch (_) {}
-      document.body.classList.add('is-reviewing');
 
       const dec = el('decisionVal');
       if (dec) dec.textContent = '';
@@ -870,37 +931,7 @@
             }
             items = items.map(it => Object.assign({}, it, { _useMediaId: true }));
             setText('modeHint', 'Suggestions (multi-signal) · ' + items.length);
-          } else if (source === 'pid') {
-            const data = api.listPidMatches ? await api.listPidMatches({ limit: 400 }) : { matches: [] };
-            const rows = Array.isArray(data.matches) ? data.matches : [];
-            for (const s of rows) {
-              items.push({
-                id: 'pid-' + (s.pid || '') + '-' + (s.before_id || ''),
-                mode: s.unique ? 'pid-unique' : 'pid-group',
-                kind: s.type || 'video',
-                score: Number(s.confidence) || (s.unique ? 0.99 : 0.88),
-                beforePath: '',
-                afterPath: '',
-                beforeName: s.before_name || '',
-                afterName: s.after_name || '',
-                beforeMediaId: s.before_id,
-                afterMediaId: s.after_id,
-                pid: s.pid,
-                unique: !!s.unique,
-                members: s.members,
-                decision: 'pending',
-                label: 'PID ' + (s.pid || '') + ' · ' + (s.before_name || '') + ' ↔ ' + (s.after_name || '')
-                  + (s.unique ? '' : ' (' + (s.members || '?') + ' files)'),
-                _useMediaId: true,
-              });
-            }
-            const u = data.unique_count || rows.filter(r => r.unique).length;
-            const a = data.ambiguous_count || rows.filter(r => !r.unique).length;
-            setText('modeHint', 'PID · ' + u + ' unique · ' + a + ' need a look');
-            updatePidTrustBar(u, a);
           }
-
-          if (source !== 'pid') updatePidTrustBar(0, 0);
 
           if (minScore > 0) {
             items = items.filter(i => (i.score || 0) >= minScore || (i.score > 1 && i.score / 100 >= minScore));
@@ -1079,86 +1110,8 @@
       });
     }
 
-    function updatePidTrustBar(uniqueCount, ambiguousCount) {
-      const bar = el('pidTrustBar');
-      const stats = el('pidTrustStats');
-      const btn = el('btnPidTrust');
-      const u = Number(uniqueCount) || 0;
-      const a = Number(ambiguousCount) || 0;
-      if (btn) btn.disabled = u < 1;
-      if (bar) bar.classList.toggle('on', u > 0 || a > 0 || ((el('sourceSelect') && el('sourceSelect').value) === 'pid'));
-      if (stats) {
-        stats.textContent = (u || a)
-          ? (u + ' unique 1:1 · ' + a + ' ambiguous (Approve each). Trust all locks unique only.')
-          : 'No shared _PID_xxxxxxxx stamps in unpaired files. Load the PID source after a catalog scan.';
-      }
-    }
-
-    async function trustAllPidMatches() {
-      const pendingUnique = queue.filter(q => q.pid && q.unique !== false && q.decision === 'pending' && (q.unique || q.mode === 'pid-unique'));
-      const n = pendingUnique.length || queue.filter(q => q.mode === 'pid-unique' && q.decision === 'pending').length;
-      if (!n) {
-        toast('No unique PID matches to trust', 'warn');
-        return;
-      }
-      const P = window.AIToolboxPipeline;
-      let pids = pendingUnique.map(q => q.pid).filter(Boolean);
-      if (P && P.dryRunTrust) {
-        const rows = pendingUnique.map(q => ({
-          pid: q.pid,
-          before_name: q.beforeName,
-          after_name: q.afterName,
-          before_size: q.beforeSize,
-          after_size: q.afterSize,
-        }));
-        const dry = await P.dryRunTrust(rows, {
-          title: 'Trust unique PID matches?',
-          body: 'Uncheck any pair you do not want locked. Ambiguous groups stay pending.',
-        });
-        if (!dry.confirmed) return;
-        pids = dry.pids || [];
-        if (!pids.length) { toast('Nothing selected', 'warn'); return; }
-      } else {
-        let ok = false;
-        if (UI()?.confirmAction) {
-          const conf = await UI().confirmAction({
-            title: 'Trust all unique PID matches?',
-            body: `<strong>${n}</strong> unique <code>_PID_xxxxxxxx</code> pair${n === 1 ? '' : 's'} will lock as catalog pairs. Ambiguous groups stay pending.`,
-            confirmText: 'Trust ' + n,
-            cancelText: 'Cancel',
-            showSafetyNote: true,
-          });
-          ok = !!conf?.confirmed;
-        } else {
-          ok = window.confirm('Lock ' + n + ' unique PID pair(s)?');
-        }
-        if (!ok) return;
-      }
-      await withBusy(async () => {
-        try {
-          const r = await API()?.trustPidMatches?.({ pin: true, includeAmbiguous: false, limit: 400, pids });
-          const created = r?.created || 0;
-          const locked = new Set((r?.pairs || []).map(p => String(p.pid || '').toLowerCase()).concat(pids.map(p => String(p).toLowerCase())));
-          for (const q of queue) {
-            if (q.pid && (locked.has(String(q.pid).toLowerCase()) || (q.unique && q.decision === 'pending'))) {
-              q.decision = 'accept';
-              if (r?.pairs) {
-                const hit = r.pairs.find(p => String(p.pid || '').toLowerCase() === String(q.pid).toLowerCase());
-                if (hit && hit.id) q.pairId = hit.id;
-              }
-            }
-          }
-          toast('Trusted ' + created + ' PID pair' + (created === 1 ? '' : 's'), created ? 'ok' : 'warn');
-          renderItem();
-        } catch (e) {
-          toast(e.message || String(e), 'warn');
-        }
-      });
-    }
-
     // Wire buttons
     bind('btnLoad', 'click', () => loadQueue());
-    bind('btnPidTrust', 'click', () => trustAllPidMatches());
     bind('btnEmptyLoad', 'click', () => loadQueue());
     bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
     bind('btnAccept', 'click', () => setDecision('accept'));
@@ -1261,21 +1214,11 @@
           flushItemFilesToDisk(current()).then(() => { index++; renderItem(); });
         }
       }
-      else if (k === 'ArrowLeft') {
+      else if (k === 'ArrowLeft' || k === 'p' || k === 'P') {
         e.preventDefault();
         if (index > 0) {
           flushItemFilesToDisk(current()).then(() => { index--; renderItem(); });
         }
-      }
-      else if (k === 'p' || k === 'P') {
-        e.preventDefault();
-        const cur = current();
-        if (cur && (cur.pid || String(cur.mode || '').startsWith('pid'))) setDecision('accept');
-        else toast('This item is not a PID match — load the PID source', 'warn');
-      }
-      else if (k === 't' || k === 'T') {
-        e.preventDefault();
-        trustAllPidMatches();
       }
       else if (k === ' ') { e.preventDefault(); togglePlay(); }
       else if (k === 'c' || k === 'C') { e.preventDefault(); openComparator(); }
@@ -1310,11 +1253,8 @@
         statusEl: '#serverPill',
         startBtn: '#btnStartServer',
         onOnline: () => {
-          if (window.__pairReviewAutoloaded) return;
-          if (params.get('source') || params.get('autoload') === '1') {
-            window.__pairReviewAutoloaded = true;
-            loadQueue();
-          }
+          // Auto-load if navigated with source query
+          if (params.get('source') || params.get('autoload') === '1') loadQueue();
         },
       });
     } else {
@@ -1327,19 +1267,6 @@
     if (API() && !API().mediaFileUrl) {
       API().mediaFileUrl = (mid) => API().getApiBase() + '/media/file?mid=' + encodeURIComponent(mid);
     }
-
-    (async () => {
-      try {
-        const P = window.AIToolboxPipeline;
-        if (P && P.boot) {
-          await P.boot({
-            host: 'pipelineHost',
-            leftoverHost: 'leftoverHost',
-            onResume: () => { const s = el('sourceSelect'); if (s) s.value = 'pid'; loadQueue(); },
-          });
-        }
-      } catch (_) {}
-    })();
   </script>
 <script data-extra-polish="pairs">
 (function(){
@@ -1347,7 +1274,7 @@
   try {
     if (!sessionStorage.getItem('pair_hub_tip') && window.AIToolboxUI?.toast) {
       sessionStorage.setItem('pair_hub_tip','1');
-      AIToolboxUI.toast('Tip: Media Hub groups Review + sliders as tabs', 'ok');
+      AIToolboxUI.toast('Tip: Compare Hub groups Pair Review + sliders', 'ok');
     }
   } catch(_){}
 })();
