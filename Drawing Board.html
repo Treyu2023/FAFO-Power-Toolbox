@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drawing Board — FAFO Ops</title>
+<!-- PET-DB-1 LIVE cite THE-DB-1 sha8 642e079e CRE-DB-1 sha8 107e8576 -->
+<!-- B2 example 1:3 → Ω3 (bots * minutes) -->
+<!-- Launcher tile (COM on promote): Management / Ops → Drawing Board.html -->
+<script src="shared/aitoolbox-config.js"></script>
+<script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
+<link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
+<link rel="stylesheet" href="shared/fafo-chrome.css">
+<script src="shared/fafo-chrome.js" defer></script>
+<style>
+:root{--bg:#070b12;--panel:#0c1220;--panel2:#141c2c;--border:rgba(0,243,255,.24);--accent:#00f3ff;--gold:#f5c542;--ok:#34d399;--warn:#fbbf24;--bad:#f43f5e;--text:#f1f5f9;--muted:#b6c4d8;--fafo-bg:var(--bg);--fafo-panel:var(--panel);--fafo-text:var(--text);--fafo-muted:var(--muted);--fafo-accent:var(--accent);--fafo-border:var(--border);--fafo-touch-min:44px}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);min-height:100vh;background:radial-gradient(ellipse at 15% -10%,rgba(0,243,255,.1),transparent 45%),var(--bg)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.nav{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(5,7,12,.95);position:sticky;top:0;z-index:30}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px;min-height:44px;display:inline-flex;align-items:center}.t{color:var(--gold);font-weight:700}
+.wrap{max-width:1180px;margin:0 auto;padding:16px 14px 48px}h1{font-size:1.35rem;color:var(--accent)}.sub{color:var(--muted);font-size:13px;line-height:1.4}
+.head{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;margin-bottom:8px}
+.btn{min-height:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--accent);background:rgba(0,243,255,.1);color:var(--accent);font:700 12px/1 system-ui;cursor:pointer}
+.btn.primary{background:var(--accent);color:#041018}.btn.ghost{background:0 0;border-color:var(--border);color:var(--muted)}.btn.danger{border-color:var(--bad);color:var(--bad)}
+.stepper{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;position:sticky;top:52px;z-index:25;padding:6px 0;background:rgba(7,11,18,.92)}
+.step{min-height:44px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);background:rgba(0,0,0,.25);color:var(--muted);font:700 12px/1 system-ui;cursor:pointer}.step.active{color:var(--accent);border-color:var(--accent);background:rgba(0,243,255,.14)}
+.omega{display:none;margin:0 0 10px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--panel);position:sticky;top:108px;z-index:24}.omega.show{display:block}.omega.over{border-color:rgba(251,191,36,.75)}
+.meter{height:10px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:6px}.fill{height:100%;width:0;background:linear-gradient(90deg,rgba(0,243,255,.75),rgba(52,211,153,.8))}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden}.ph{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--accent);font:700 11px/1 system-ui;text-transform:uppercase;display:flex;justify-content:space-between}.pb{padding:12px}
+.stage{display:none}.stage.active{display:block}.grid2{display:grid;grid-template-columns:1.25fr .85fr;gap:10px}@media(max-width:720px){.grid2{grid-template-columns:1fr}.stepper{flex-wrap:nowrap;overflow-x:auto}}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}.inp,.sel,.ta{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-size:13px;min-height:44px}.ta{min-height:72px;width:100%}
+.wall{display:flex;flex-wrap:wrap;gap:8px}.sticky{width:min(100%,220px);background:rgba(10,16,28,.92);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px}.sticky.sel{border-color:var(--accent)}
+.chip{display:inline-flex;font:700 10px/1 system-ui;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);margin:2px}.chip.WorthComparing{color:#fde68a;border-color:rgba(251,191,36,.55)}.chip.PromotedToRoadmap,.chip.Done{color:#a7f3d0;border-color:rgba(52,211,153,.55)}.chip.LIVE{color:var(--accent)}.chip.Blocked{color:#fde68a}.chip.Cut{color:#fda4af;text-decoration:line-through}
+.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.actions .btn{min-height:36px;padding:6px 10px;font-size:11px}
+.src{border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:6px;background:rgba(0,0,0,.22)}.url{font-size:11px;color:var(--accent);word-break:break-all}.snip{font-size:12px;color:var(--muted)}
+.ms{border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;background:rgba(0,0,0,.22)}.stamp{border-left:2px solid var(--gold);padding:8px;margin-bottom:6px;background:rgba(0,0,0,.2)}.ref{font-family:ui-monospace,Consolas,monospace;color:var(--accent);font-size:11px}
+.task{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:8px;margin:6px 0}.task.sel{border-color:var(--accent)}
+.bt,.om{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:700;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,.35)}.om{border-color:rgba(0,243,255,.35);background:rgba(0,243,255,.12);color:var(--accent)}
+.empty{padding:12px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed rgba(125,211,252,.28);border-radius:12px}
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:80;padding:16px}.modal-back.show{display:flex}
+.modal{width:min(440px,100%);background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}.modal h2{font-size:16px;color:var(--accent);margin-bottom:6px}.modal p{font-size:13px;color:var(--muted);margin-bottom:10px}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0e1520;border:1px solid var(--ok);color:var(--ok);padding:10px 12px;border-radius:10px;opacity:0;z-index:90}.toast.show{opacity:1}
+.form{display:grid;gap:8px}.form label{font-size:11px;color:var(--muted);display:grid;gap:4px}.tiny{font-size:11px;color:var(--muted)}
+</style></head><body>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="drawing-board" data-fafo-layout-type="rows">
+<div class="nav"><span class="t">DRAWING BOARD</span><a href="Toolbox Launcher.html">Launcher</a><a href="Startup Command Board.html">Startup board</a><span data-fafo-layout-toolbar></span></div>
+<header class="head"><div><h1>Drawing Board</h1><p class="sub">Brainstorm → Roadmap → Scaffolding with BTΩ. Ryan promote gate. Cite THE-DB-1 / CRE-DB-1.</p></div>
+<div><button class="btn ghost" id="btnExport" type="button">Export</button> <button class="btn ghost" id="btnImport" type="button">Import</button> <button class="btn ghost" id="btnPrefs" type="button">Ω prefs</button><input id="importFile" type="file" accept="application/json,.json" hidden></div></header>
+<div class="stepper" role="tablist">
+<button class="step active" data-stage="board" type="button">1 Drawing Board</button>
+<button class="step" data-stage="roadmap" type="button">2 Roadmap</button>
+<button class="step" data-stage="scaffolding" type="button">3 Scaffolding</button>
+</div>
+<div class="omega" id="omegaBar"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700"><span id="omegaLabel">Ω planning</span><span id="omegaWarn" class="tiny" hidden>Over Ω budget</span></div><div class="meter"><div class="fill" id="omegaFill"></div></div></div>
+<section class="stage active" id="stageBoard" data-stage-panel="board">
+<div class="filters"><input class="inp" id="ideaSearch" placeholder="Search" style="flex:1"><select class="sel" id="ideaStatusFilter"><option value="">All statuses</option><option>Idea</option><option>WorthComparing</option><option>Parked</option><option>PromotedToRoadmap</option></select><input class="inp" id="ideaTagFilter" placeholder="Tag" style="width:110px"><button class="btn primary" id="btnNewIdea" type="button">+ New idea</button></div>
+<div class="grid2"><div class="panel"><div class="ph"><span>Idea wall</span><span class="tiny" id="ideaCount">0</span></div><div class="pb"><div class="wall" id="ideaWall"></div><div class="empty" id="ideaEmpty">No ideas yet.</div></div></div>
+<div class="panel"><div class="ph"><span>Outside sources</span><span class="tiny">Paste only — no fetch</span></div><div class="pb"><div class="form"><label>URL<input class="inp" id="srcUrl"></label><label>Title<input class="inp" id="srcTitle"></label><label>Snippet<textarea class="ta" id="srcSnippet"></textarea></label><button class="btn primary" id="btnAddSource" type="button">Add source</button></div><div id="sourceList"></div><div class="empty" id="sourceEmpty">No sources yet — paste a URL + note.</div></div></div></div>
+</section>
+<section class="stage" id="stageRoadmap" data-stage-panel="roadmap">
+<div class="grid2"><div class="panel"><div class="ph"><span>Milestones</span><button class="btn ghost" id="btnNewMs" type="button" style="min-height:32px">+ Milestone</button></div><div class="pb"><div id="msList"></div><div class="empty" id="msEmpty" hidden>Promote an idea to start.</div></div></div>
+<div class="panel"><div class="ph"><span>History</span><span class="tiny">Shipped</span></div><div class="pb" id="historyList"></div></div></div>
+</section>
+<section class="stage" id="stageScaff" data-stage-panel="scaffolding">
+<div class="panel"><div class="ph"><span>Scaffolding tree</span><span class="tiny">BTΩ = bots × minutes</span></div><div class="pb" id="scaffTree"></div></div>
+</section>
+</div>
+<div class="modal-back" id="modalBack"><div class="modal"><h2 id="modalTitle">Confirm</h2><p id="modalBody"></p><div id="modalExtra"></div><div class="actions" style="justify-content:flex-end"><button class="btn ghost" id="modalCancel" type="button">Cancel</button><button class="btn primary" id="modalOk" type="button">Confirm</button></div></div></div>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+'use strict';
+var LS_KEY = 'aitoolbox.drawingBoard.v1';
+var SEED = {"schema": "fafo-drawing-board.v1", "updatedAt": "2026-09-14T01:47:39Z", "prefs": {"dailyBudgetOmega": 60}, "ideas": [], "sources": [], "milestones": [{"id": "ms-db-v1", "title": "Drawing Board v1", "summary": "Ship three-stage Drawing Board with BTΩ planning.", "status": "Planned", "order": 0, "ideaIds": [], "sourceIds": [], "createdAt": "2026-09-14T01:47:39Z", "updatedAt": "2026-09-14T01:47:39Z"}], "tasks": [{"id": "tk-tabs", "milestoneId": "ms-db-v1", "title": "Wire 3-stage tabs", "notes": "", "status": "Open", "bots": 1, "minutes": 25, "omega": 25, "rolesIdeal": ["PET"], "tokenBand": "M", "createdAt": "2026-09-14T01:47:39Z", "updatedAt": "2026-09-14T01:47:39Z"}, {"id": "tk-crud", "milestoneId": "ms-db-v1", "title": "Idea + source paste CRUD", "notes": "", "status": "Open", "bots": 1, "minutes": 20, "omega": 20, "rolesIdeal": ["PET"], "tokenBand": "M", "createdAt": "2026-09-14T01:47:39Z", "updatedAt": "2026-09-14T01:47:39Z"}, {"id": "tk-road", "milestoneId": "ms-db-v1", "title": "Roadmap order + status", "notes": "", "status": "Open", "bots": 1, "minutes": 15, "omega": 15, "rolesIdeal": ["PET"], "tokenBand": "L", "createdAt": "2026-09-14T01:47:39Z", "updatedAt": "2026-09-14T01:47:39Z"}, {"id": "tk-scaff", "milestoneId": "ms-db-v1", "title": "Scaffolding + BTΩ bar", "notes": "", "status": "Open", "bots": 1, "minutes": 20, "omega": 20, "rolesIdeal": ["PET", "CRE"], "tokenBand": "M", "createdAt": "2026-09-14T01:47:39Z", "updatedAt": "2026-09-14T01:47:39Z"}, {"id": "tk-io", "milestoneId": "ms-db-v1", "title": "Export/Import + History seed", "notes": "", "status": "Open", "bots": 1, "minutes": 10, "omega": 10, "rolesIdeal": ["PET"], "tokenBand": "L", "createdAt": "2026-09-14T01:47:39Z", "updatedAt": "2026-09-14T01:47:39Z"}], "history": [{"id": "hist-hard3", "title": "Typing Trainer HARD3 complete", "note": "Trainer T90 PASS closed; HARD3 sealed.", "shippedAt": "2026-09-13", "ref": "618b14a"}, {"id": "hist-chrome", "title": "System Tools chrome wave UI-15..32", "note": "Kit chrome closeout across System Tools (UI-15 through UI-32).", "shippedAt": "2026-09-13", "ref": "chrome-UI-15..32"}]};
+var state = null;
+var stage = 'board';
+var focusedIdeaId = null;
+var selectedTaskIds = {};
+var focusMilestoneId = null;
+var modalCb = null;
+
+function $(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function uid(prefix){
+  try { if (crypto.randomUUID) return (prefix||'id')+'-'+crypto.randomUUID(); } catch(e){}
+  return (prefix||'id')+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+}
+function nowIso(){ return new Date().toISOString(); }
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+
+function persist(){
+  state.updatedAt = nowIso();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e){}
+}
+function loadFromLS(){
+  try {
+    var raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    if (o && o.schema === 'fafo-drawing-board.v1') return o;
+  } catch(e){}
+  return null;
+}
+function normalize(o){
+  o = o || {};
+  o.schema = 'fafo-drawing-board.v1';
+  o.prefs = o.prefs || {};
+  if (typeof o.prefs.dailyBudgetOmega !== 'number' || o.prefs.dailyBudgetOmega < 1) o.prefs.dailyBudgetOmega = 60;
+  o.ideas = Array.isArray(o.ideas)?o.ideas:[];
+  o.sources = Array.isArray(o.sources)?o.sources:[];
+  o.milestones = Array.isArray(o.milestones)?o.milestones:[];
+  o.tasks = Array.isArray(o.tasks)?o.tasks:[];
+  o.history = Array.isArray(o.history)?o.history:[];
+  o.tasks.forEach(function(t){
+    t.bots = Math.max(1, parseInt(t.bots,10)||1);
+    t.minutes = Math.max(1, parseInt(t.minutes,10)||1);
+    t.omega = t.bots * t.minutes;
+  });
+  return o;
+}
+
+function openModal(title, body, okLabel, danger, onOk, extraHtml){
+  $('modalTitle').textContent = title;
+  $('modalBody').textContent = body;
+  $('modalExtra').innerHTML = extraHtml || '';
+  $('modalOk').textContent = okLabel || 'Confirm';
+  $('modalOk').className = 'btn ' + (danger ? 'danger' : 'primary');
+  modalCb = onOk;
+  $('modalBack').classList.add('show');
+}
+function closeModal(){ $('modalBack').classList.remove('show'); modalCb=null; }
+
+function setStage(name){
+  stage = name;
+  document.querySelectorAll('.stage').forEach(function(el){ el.classList.toggle('active', el.getAttribute('data-stage-panel')===name); });
+  var boardDone = (state.ideas||[]).some(function(i){ return i.status==='PromotedToRoadmap'; });
+  var roadDone = (state.milestones||[]).length>0;
+  document.querySelectorAll('.step').forEach(function(el){
+    var s = el.getAttribute('data-stage');
+    el.classList.toggle('active', s===name);
+    if (s==='board') el.classList.toggle('done', boardDone);
+    if (s==='roadmap') el.classList.toggle('done', roadDone);
+  });
+  var ob = $('omegaBar');
+  if (ob) ob.classList.toggle('show', name==='scaffolding');
+  render();
+}
+
+function ideaById(id){ return (state.ideas||[]).find(function(i){ return i.id===id; }); }
+function msById(id){ return (state.milestones||[]).find(function(m){ return m.id===id; }); }
+
+function renderIdeaWall(){
+  var q = ($('ideaSearch').value||'').toLowerCase().trim();
+  var st = $('ideaStatusFilter').value;
+  var tag = ($('ideaTagFilter').value||'').toLowerCase().trim();
+  var list = (state.ideas||[]).filter(function(i){
+    if (st && i.status!==st) return false;
+    if (tag && !(i.tags||[]).some(function(t){ return String(t).toLowerCase().indexOf(tag)>=0; })) return false;
+    if (q) {
+      var blob = (i.title+' '+i.notes+' '+(i.tags||[]).join(' ')).toLowerCase();
+      if (blob.indexOf(q)<0) return false;
+    }
+    return true;
+  });
+  $('ideaCount').textContent = list.length + ' shown';
+  $('ideaEmpty').hidden = list.length>0;
+  var html = '';
+  list.forEach(function(i){
+    var sel = i.id===focusedIdeaId ? ' selected' : '';
+    html += '<article class="sticky'+sel+'" data-id="'+esc(i.id)+'">';
+    html += '<div><span class="chip '+esc(i.status)+'">'+esc(i.status)+'</span></div>';
+    html += '<h3>'+esc(i.title||'Untitled')+'</h3>';
+    html += '<div class="notes">'+esc(i.notes||'')+'</div>';
+    html += '<div>'+(i.tags||[]).map(function(t){ return '<span class="chip">'+esc(t)+'</span>'; }).join('')+'</div>';
+    html += '<div class="tiny" style="margin-top:6px">'+(i.links||[]).length+' links · '+(i.sourceIds||[]).length+' sources</div>';
+    html += '<div class="row-actions">';
+    html += '<button type="button" class="btn ghost" data-act="focus">Focus</button>';
+    html += '<button type="button" class="btn ghost" data-act="edit">Edit</button>';
+    if (i.status!=='Parked' && i.status!=='PromotedToRoadmap') html += '<button type="button" class="btn ghost" data-act="park">Park</button>';
+    if (i.status!=='PromotedToRoadmap') html += '<button type="button" class="btn primary" data-act="promote">Promote…</button>';
+    html += '</div></article>';
+  });
+  $('ideaWall').innerHTML = html;
+}
+
+function renderSources(){
+  var list = state.sources||[];
+  $('sourceEmpty').hidden = list.length>0;
+  $('sourceEmpty').style.display = list.length? 'none':'block';
+  var html='';
+  list.forEach(function(s){
+    html += '<div class="src-row" data-id="'+esc(s.id)+'">';
+    html += '<strong>'+esc(s.title||'Source')+'</strong>';
+    html += '<div class="url">'+esc(s.url||'')+'</div>';
+    html += '<div class="snip">'+esc(s.snippet||'')+'</div>';
+    html += '<div class="row-actions"><button type="button" class="btn ghost" data-act="attach">Attach to focused idea</button></div>';
+    html += '</div>';
+  });
+  $('sourceList').innerHTML = html;
+}
+
+function renderRoadmap(){
+  var mss = (state.milestones||[]).slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
+  $('msEmpty').hidden = mss.length>0;
+  var html='';
+  mss.forEach(function(m, idx){
+    html += '<div class="ms-row" data-id="'+esc(m.id)+'">';
+    html += '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3>'+esc(m.title)+'</h3><span class="chip '+esc(m.status)+'">'+esc(m.status)+'</span></div>';
+    html += '<div class="ms-sum">'+esc(m.summary||'')+'</div>';
+    html += '<div class="tiny">ideas: '+(m.ideaIds||[]).length+' · sources: '+(m.sourceIds||[]).length+'</div>';
+    var chips='';
+    (m.ideaIds||[]).forEach(function(iid){ var idea=ideaById(iid); if(idea) chips+='<span class="chip">idea: '+esc(idea.title)+'</span>'; });
+    (m.sourceIds||[]).forEach(function(sid){ var s=(state.sources||[]).find(function(x){return x.id===sid;}); if(s) chips+='<span class="chip">src: '+esc(s.title)+'</span>'; });
+    if (chips) html += '<div style="margin-top:6px">'+chips+'</div>';
+    html += '<div class="row-actions">';
+    html += '<button type="button" class="btn ghost" data-act="up" '+(idx===0?'disabled':'')+'>Up</button>';
+    html += '<button type="button" class="btn ghost" data-act="down" '+(idx===mss.length-1?'disabled':'')+'>Down</button>';
+    html += '<select class="sel" data-act="status" style="min-height:36px">';
+    ['Planned','LIVE','Blocked','Done'].forEach(function(s){ html+='<option'+(m.status===s?' selected':'')+'>'+s+'</option>'; });
+    html += '</select>';
+    html += '<button type="button" class="btn primary" data-act="explode">Explode to Scaffolding…</button>';
+    html += '</div></div>';
+  });
+  $('msList').innerHTML = html;
+
+  var h='';
+  (state.history||[]).forEach(function(x){
+    h += '<div class="stamp"><strong>'+esc(x.title)+'</strong><div class="tiny">'+esc(x.note||'')+'</div>';
+    h += '<div class="tiny">'+esc(x.shippedAt||'')+' · <span class="ref">'+esc(x.ref||'')+'</span></div></div>';
+  });
+  $('historyList').innerHTML = h || '<div class="empty">No history yet.</div>';
+}
+
+function taskOmega(t){ return (Math.max(1,t.bots|0))*(Math.max(1,t.minutes|0)); }
+
+function renderOmegaBar(){
+  var budget = state.prefs.dailyBudgetOmega || 60;
+  var tasks = state.tasks||[];
+  var selected = Object.keys(selectedTaskIds).filter(function(id){ return selectedTaskIds[id]; });
+  var slice;
+  if (selected.length) slice = tasks.filter(function(t){ return selectedTaskIds[t.id]; });
+  else slice = tasks.filter(function(t){ return !focusMilestoneId || t.milestoneId===focusMilestoneId; });
+  var sum = slice.reduce(function(a,t){ return a + taskOmega(t); }, 0);
+  var pct = Math.min(100, Math.round((sum/budget)*100));
+  $('omegaLabel').textContent = 'Ω '+sum+' / Ω'+budget+(selected.length?' (selected)':' (visible)');
+  $('omegaFill').style.width = pct+'%';
+  var over = sum > budget;
+  $('omegaBar').classList.toggle('over', over);
+  $('omegaWarn').hidden = !over;
+}
+
+function renderScaff(){
+  var mss = (state.milestones||[]).slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
+  if (!mss.length){ $('scaffTree').innerHTML = '<div class="empty">No milestones yet — promote an idea first.</div>'; renderOmegaBar(); return; }
+  var html='';
+  mss.forEach(function(m){
+    var tasks = (state.tasks||[]).filter(function(t){ return t.milestoneId===m.id; });
+    var sum = tasks.reduce(function(a,t){ return a+taskOmega(t); },0);
+    var open = !focusMilestoneId || focusMilestoneId===m.id;
+    html += '<details class="ms-fold" data-id="'+esc(m.id)+'" '+(open?'open':'')+'>';
+    html += '<summary><span>'+esc(m.title)+'</span><span class="chip '+esc(m.status)+'">'+esc(m.status)+'</span>';
+    html += '<span class="tiny">'+tasks.length+' tasks · sum Ω'+sum+'</span>';
+    html += '<button type="button" class="btn ghost" data-act="add-task" style="min-height:32px;margin-left:auto">+ Task</button></summary>';
+    if (!tasks.length) html += '<div class="empty">No tasks — explode creates shells, or add one.</div>';
+    tasks.forEach(function(t){
+      var sel = selectedTaskIds[t.id] ? ' selected' : '';
+      html += '<div class="task'+sel+' '+esc(t.status)+'" data-id="'+esc(t.id)+'">';
+      html += '<input type="checkbox" data-act="sel" '+(selectedTaskIds[t.id]?'checked':'')+' title="Select for Ω bar">';
+      html += '<div style="flex:1;min-width:160px"><h4 style="font-size:13px">'+esc(t.title)+'</h4>';
+      if (t.notes) html += '<div class="tiny">'+esc(t.notes)+'</div>';
+      html += '<div>'+(t.rolesIdeal||[]).map(function(r){return '<span class="chip">'+esc(r)+'</span>';}).join('');
+      if (t.tokenBand) html += '<span class="chip">band '+esc(t.tokenBand)+'</span>';
+      html += '</div>';
+      if (t.actualBots || t.actualMinutes) {
+        var ao = (t.actualOmega!=null)?t.actualOmega:((t.actualBots||0)*(t.actualMinutes||0));
+        html += '<div class="tiny">actual '+(t.actualBots||'?')+':'+(t.actualMinutes||'?')+' · Ω'+ao+'</div>';
+      }
+      html += '</div>';
+      html += '<span class="bt-chip">'+esc(t.bots)+':'+esc(t.minutes)+'</span>';
+      html += '<span class="om-chip">Ω'+esc(taskOmega(t))+'</span>';
+      html += '<select class="sel" data-act="tstatus" style="min-height:36px">';
+      ['Open','LIVE','Done','Cut'].forEach(function(s){ html+='<option'+(t.status===s?' selected':'')+'>'+s+'</option>'; });
+      html += '</select>';
+      html += '<button type="button" class="btn ghost" data-act="edit-bt">Edit BTΩ</button>';
+      html += '</div>';
+    });
+    html += '</details>';
+  });
+  $('scaffTree').innerHTML = html;
+  renderOmegaBar();
+}
+
+function render(){
+  renderIdeaWall();
+  renderSources();
+  renderRoadmap();
+  renderScaff();
+}
+
+function newIdea(){
+  openModal('New idea', 'Title and notes for a sticky card.', 'Create', false, function(){
+    var title = ($('mTitle')||{}).value || 'Untitled idea';
+    var notes = ($('mNotes')||{}).value || '';
+    var tags = (($('mTags')||{}).value||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    var idea = {id:uid('idea'), title:title, notes:notes, tags:tags, links:[], status:'Idea', createdAt:nowIso(), updatedAt:nowIso(), sourceIds:[]};
+    state.ideas.unshift(idea); focusedIdeaId=idea.id; persist(); render(); toast('Idea added');
+  }, '<div class="form-grid"><label>Title<input class="inp" id="mTitle"></label><label>Notes<textarea class="ta" id="mNotes"></textarea></label><label>Tags (comma)<input class="inp" id="mTags" placeholder="ops, chrome"></label></div>');
+}
+
+function editIdea(idea){
+  openModal('Edit idea', 'Update sticky fields.', 'Save', false, function(){
+    idea.title = ($('mTitle')||{}).value || idea.title;
+    idea.notes = ($('mNotes')||{}).value || '';
+    idea.tags = (($('mTags')||{}).value||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    idea.status = ($('mStatus')||{}).value || idea.status;
+    idea.updatedAt = nowIso(); persist(); render(); toast('Idea saved');
+  }, '<div class="form-grid"><label>Title<input class="inp" id="mTitle" value="'+esc(idea.title)+'"></label><label>Notes<textarea class="ta" id="mNotes">'+esc(idea.notes||'')+'</textarea></label><label>Tags<input class="inp" id="mTags" value="'+esc((idea.tags||[]).join(', '))+'"></label><label>Status<select class="sel" id="mStatus"><option>Idea</option><option>WorthComparing</option><option>Parked</option><option>PromotedToRoadmap</option></select></label></div>');
+  setTimeout(function(){ if($('mStatus')) $('mStatus').value=idea.status; },0);
+}
+
+function promoteIdea(idea){
+  openModal('Promote to Roadmap?', 'Creates a Planned milestone linked to “'+idea.title+'”. Status becomes PromotedToRoadmap.', 'Confirm', false, function(){
+    var ms = {
+      id: uid('ms'), title: idea.title, summary: (idea.notes||'').slice(0,160),
+      status:'Planned', order: (state.milestones||[]).length,
+      ideaIds:[idea.id], sourceIds:(idea.sourceIds||[]).slice(),
+      createdAt:nowIso(), updatedAt:nowIso()
+    };
+    state.milestones.push(ms);
+    idea.status='PromotedToRoadmap'; idea.updatedAt=nowIso();
+    persist(); setStage('roadmap'); toast('Promoted to Roadmap');
+  });
+}
+
+function explodeMs(m){
+  openModal('Explode to Scaffolding?', 'Open scaffolding for “'+m.title+'”. Empty milestones get starter task shells.', 'Confirm', false, function(){
+    var tasks = (state.tasks||[]).filter(function(t){ return t.milestoneId===m.id; });
+    if (!tasks.length){
+      ['Shell task A','Shell task B','Shell task C'].forEach(function(title,i){
+        state.tasks.push({id:uid('tk'), milestoneId:m.id, title:title, notes:'', status:'Open', bots:1, minutes:5+i*5, omega:5+i*5, rolesIdeal:['PET'], tokenBand:'L', createdAt:nowIso(), updatedAt:nowIso()});
+      });
+      persist();
+    }
+    focusMilestoneId = m.id;
+    setStage('scaffolding');
+    toast('Scaffolding ready');
+  });
+}
+
+function editBt(task){
+  openModal('Edit BTΩ', 'Bots × minutes = Ω. Example 1:3 → Ω3.', 'Save', false, function(){
+    task.bots = Math.max(1, parseInt(($('mBots')||{}).value,10)||1);
+    task.minutes = Math.max(1, parseInt(($('mMins')||{}).value,10)||1);
+    task.omega = task.bots * task.minutes;
+    task.rolesIdeal = (($('mRoles')||{}).value||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    task.tokenBand = ($('mBand')||{}).value || '';
+    var ab = parseInt(($('mABots')||{}).value,10); var am = parseInt(($('mAMins')||{}).value,10);
+    if (!isNaN(ab) && ab>0) task.actualBots=ab; else delete task.actualBots;
+    if (!isNaN(am) && am>0) task.actualMinutes=am; else delete task.actualMinutes;
+    if (task.actualBots && task.actualMinutes) task.actualOmega = task.actualBots*task.actualMinutes;
+    if (task.status==='Done' || task.status==='Cut') task.closedAt = task.closedAt || nowIso();
+    task.updatedAt=nowIso(); persist(); render(); toast('BTΩ updated');
+  }, '<div class="form-grid"><label>Bots<input class="inp" id="mBots" type="number" min="1" value="'+esc(task.bots)+'"></label><label>Minutes<input class="inp" id="mMins" type="number" min="1" value="'+esc(task.minutes)+'"></label><label>rolesIdeal<input class="inp" id="mRoles" value="'+esc((task.rolesIdeal||[]).join(', '))+'"></label><label>tokenBand<select class="sel" id="mBand"><option value=""></option><option>L</option><option>M</option><option>H</option></select></label><label>actualBots<input class="inp" id="mABots" type="number" min="1" value="'+(task.actualBots||'')+'"></label><label>actualMinutes<input class="inp" id="mAMins" type="number" min="1" value="'+(task.actualMinutes||'')+'"></label></div>');
+  setTimeout(function(){ if($('mBand')) $('mBand').value=task.tokenBand||''; },0);
+}
+
+function exportPack(){
+  var blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='fafo-drawing-board.json';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 500);
+  toast('Pack downloaded');
+}
+
+function importPack(obj, mode){
+  obj = normalize(obj);
+  if (mode==='replace') state = obj;
+  else {
+    function mergeById(arr, incoming){
+      var map={}; arr.forEach(function(x){ map[x.id]=x; });
+      (incoming||[]).forEach(function(x){ map[x.id]=x; });
+      return Object.keys(map).map(function(k){ return map[k]; });
+    }
+    state.ideas = mergeById(state.ideas, obj.ideas);
+    state.sources = mergeById(state.sources, obj.sources);
+    state.milestones = mergeById(state.milestones, obj.milestones);
+    state.tasks = mergeById(state.tasks, obj.tasks);
+    state.history = mergeById(state.history, obj.history);
+    if (obj.prefs && obj.prefs.dailyBudgetOmega) state.prefs.dailyBudgetOmega = obj.prefs.dailyBudgetOmega;
+  }
+  state = normalize(state); persist(); render(); toast(mode==='replace'?'Replaced':'Merged');
+}
+
+function wire(){
+  document.querySelectorAll('.step').forEach(function(btn){
+    btn.addEventListener('click', function(){ setStage(btn.getAttribute('data-stage')); });
+  });
+  $('btnNewIdea').addEventListener('click', newIdea);
+  ['ideaSearch','ideaStatusFilter','ideaTagFilter'].forEach(function(id){
+    $(id).addEventListener('input', renderIdeaWall);
+    $(id).addEventListener('change', renderIdeaWall);
+  });
+  $('btnAddSource').addEventListener('click', function(){
+    var url=($('srcUrl').value||'').trim(); var title=($('srcTitle').value||'').trim(); var snip=($('srcSnippet').value||'').trim();
+    if (!url && !title){ toast('Need URL or title'); return; }
+    state.sources.unshift({id:uid('src'), url:url, title:title||url, snippet:snip, createdAt:nowIso()});
+    $('srcUrl').value=''; $('srcTitle').value=''; $('srcSnippet').value='';
+    persist(); render(); toast('Source added (no fetch)');
+  });
+  $('ideaWall').addEventListener('click', function(ev){
+    var btn=ev.target.closest('button[data-act]'); if(!btn) return;
+    var card=btn.closest('[data-id]'); var idea=ideaById(card.getAttribute('data-id')); if(!idea) return;
+    var act=btn.getAttribute('data-act');
+    if (act==='focus'){ focusedIdeaId=idea.id; render(); }
+    if (act==='edit') editIdea(idea);
+    if (act==='park'){ idea.status='Parked'; idea.updatedAt=nowIso(); persist(); render(); }
+    if (act==='promote') promoteIdea(idea);
+  });
+  $('sourceList').addEventListener('click', function(ev){
+    var btn=ev.target.closest('button[data-act="attach"]'); if(!btn) return;
+    var row=btn.closest('[data-id]'); var sid=row.getAttribute('data-id');
+    var idea=ideaById(focusedIdeaId); if(!idea){ toast('Focus an idea first'); return; }
+    idea.sourceIds = idea.sourceIds||[];
+    if (idea.sourceIds.indexOf(sid)<0) idea.sourceIds.push(sid);
+    if (idea.status==='Idea') idea.status='WorthComparing';
+    idea.updatedAt=nowIso(); persist(); render(); toast('Attached');
+  });
+  $('msList').addEventListener('click', function(ev){
+    var row=ev.target.closest('.ms-row'); if(!row) return;
+    var m=msById(row.getAttribute('data-id')); if(!m) return;
+    var btn=ev.target.closest('button[data-act]');
+    if (btn){
+      var act=btn.getAttribute('data-act');
+      var mss=(state.milestones||[]).slice().sort(function(a,b){return (a.order||0)-(b.order||0);});
+      var idx=mss.findIndex(function(x){return x.id===m.id;});
+      if (act==='up' && idx>0){ var tmp=mss[idx-1].order; mss[idx-1].order=mss[idx].order; mss[idx].order=tmp; persist(); render(); }
+      if (act==='down' && idx<mss.length-1){ var tmp2=mss[idx+1].order; mss[idx+1].order=mss[idx].order; mss[idx].order=tmp2; persist(); render(); }
+      if (act==='explode') explodeMs(m);
+    }
+  });
+  $('msList').addEventListener('change', function(ev){
+    if (ev.target.getAttribute('data-act')!=='status') return;
+    var row=ev.target.closest('.ms-row'); var m=msById(row.getAttribute('data-id'));
+    m.status=ev.target.value; m.updatedAt=nowIso();
+    if (m.status==='Done'){
+      m.shippedAt=m.shippedAt||nowIso().slice(0,10);
+      state.history.unshift({id:uid('hist'), title:m.title, note:m.summary||'Milestone done', shippedAt:m.shippedAt, ref:m.id});
+    }
+    persist(); render();
+  });
+  $('btnNewMs').addEventListener('click', function(){
+    openModal('New milestone', 'Manual roadmap entry.', 'Create', false, function(){
+      var title=($('mTitle')||{}).value||'Milestone';
+      var summary=($('mNotes')||{}).value||'';
+      state.milestones.push({id:uid('ms'), title:title, summary:summary, status:'Planned', order:state.milestones.length, ideaIds:[], sourceIds:[], createdAt:nowIso(), updatedAt:nowIso()});
+      persist(); render();
+    }, '<div class="form-grid"><label>Title<input class="inp" id="mTitle"></label><label>Summary<textarea class="ta" id="mNotes"></textarea></label></div>');
+  });
+  $('scaffTree').addEventListener('click', function(ev){
+    var add=ev.target.closest('button[data-act="add-task"]');
+    if (add){
+      ev.preventDefault();
+      var fold=add.closest('details'); var mid=fold.getAttribute('data-id');
+      openModal('Add task', 'New scaffolding task under milestone.', 'Add', false, function(){
+        var title=($('mTitle')||{}).value||'Task';
+        var bots=Math.max(1,parseInt(($('mBots')||{}).value,10)||1);
+        var mins=Math.max(1,parseInt(($('mMins')||{}).value,10)||10);
+        state.tasks.push({id:uid('tk'), milestoneId:mid, title:title, notes:'', status:'Open', bots:bots, minutes:mins, omega:bots*mins, rolesIdeal:['PET'], tokenBand:'M', createdAt:nowIso(), updatedAt:nowIso()});
+        focusMilestoneId=mid; persist(); render();
+      }, '<div class="form-grid"><label>Title<input class="inp" id="mTitle"></label><label>Bots<input class="inp" id="mBots" type="number" min="1" value="1"></label><label>Minutes<input class="inp" id="mMins" type="number" min="1" value="10"></label></div>');
+      return;
+    }
+    var edit=ev.target.closest('button[data-act="edit-bt"]');
+    if (edit){
+      var task=(state.tasks||[]).find(function(t){return t.id===edit.closest('.task').getAttribute('data-id');});
+      if (task) editBt(task);
+    }
+  });
+  $('scaffTree').addEventListener('change', function(ev){
+    var taskEl=ev.target.closest('.task'); if(!taskEl) return;
+    var task=(state.tasks||[]).find(function(t){return t.id===taskEl.getAttribute('data-id');}); if(!task) return;
+    if (ev.target.getAttribute('data-act')==='sel'){ selectedTaskIds[task.id]=!!ev.target.checked; renderOmegaBar(); taskEl.classList.toggle('selected', !!ev.target.checked); return; }
+    if (ev.target.getAttribute('data-act')==='tstatus'){
+      task.status=ev.target.value; task.updatedAt=nowIso();
+      if (task.status==='Done'||task.status==='Cut') task.closedAt=nowIso();
+      persist(); render();
+    }
+  });
+  $('btnExport').addEventListener('click', exportPack);
+  $('btnImport').addEventListener('click', function(){ $('importFile').click(); });
+  $('importFile').addEventListener('change', function(){
+    var f=$('importFile').files[0]; if(!f) return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      try {
+        var obj=JSON.parse(reader.result);
+        openModal('Import pack', 'Merge keeps existing ids; Replace overwrites local state.', 'Merge', false, function(){
+          // buttons below
+        }, '<div class="row-actions"><button type="button" class="btn primary" id="impMerge">Merge</button><button type="button" class="btn danger" id="impReplace">Replace</button></div>');
+        setTimeout(function(){
+          $('impMerge').onclick=function(){ closeModal(); importPack(obj,'merge'); };
+          $('impReplace').onclick=function(){ closeModal(); importPack(obj,'replace'); };
+          $('modalOk').style.display='none';
+        },0);
+      } catch(e){ toast('Invalid JSON'); }
+      $('importFile').value='';
+    };
+    reader.readAsText(f);
+  });
+  $('btnPrefs').addEventListener('click', function(){
+    openModal('Ω budget prefs', 'Daily planning budget (default Ω60).', 'Save', false, function(){
+      state.prefs.dailyBudgetOmega = Math.max(1, parseInt(($('mBudget')||{}).value,10)||60);
+      persist(); render(); toast('Budget saved');
+    }, '<div class="form-grid"><label>dailyBudgetOmega<input class="inp" id="mBudget" type="number" min="1" value="'+esc(state.prefs.dailyBudgetOmega)+'"></label></div>');
+  });
+  $('modalCancel').addEventListener('click', function(){ $('modalOk').style.display=''; closeModal(); });
+  $('modalOk').addEventListener('click', function(){ var cb=modalCb; closeModal(); $('modalOk').style.display=''; if(cb) cb(); });
+  document.addEventListener('keydown', function(ev){ if(ev.key==='Escape') closeModal(); });
+}
+
+function boot(data){
+  state = normalize(data || clone(SEED));
+  // ensure seed history present if empty
+  if (!state.history.length) state.history = clone(SEED.history);
+  if (!state.milestones.length && SEED.milestones) {
+    state.milestones = clone(SEED.milestones);
+    state.tasks = clone(SEED.tasks);
+  }
+  persist();
+  wire();
+  setStage('board');
+  try { if (window.FafoChrome && FafoChrome.init) FafoChrome.init(document); } catch(e){}
+}
+
+var existing = loadFromLS();
+if (existing){ boot(existing); }
+else {
+  fetch('shared/fafo-drawing-board.json').then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+    .then(function(j){ boot(j); })
+    .catch(function(){ boot(clone(SEED)); });
+}
+})();
+
+</script></body></html>
