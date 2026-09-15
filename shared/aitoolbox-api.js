@@ -1560,6 +1560,7 @@
                     tail_len: opts.tailLen ?? opts.tail_len ?? 5,
                     after_dir_id: opts.afterDirId || opts.after_dir_id || null,
                     before_dir_id: opts.beforeDirId || opts.before_dir_id || null,
+                    needle: opts.needle || null,
                 }),
             });
         },

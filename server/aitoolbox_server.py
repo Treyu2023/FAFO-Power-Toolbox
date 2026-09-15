@@ -3449,6 +3449,7 @@ class PairCandidatesRequest(BaseModel):
     tail_len: int = 5
     after_dir_id: str | None = None
     before_dir_id: str | None = None
+    needle: str | None = None
 
 
 @app.get("/api/pairs/learn")
@@ -3535,6 +3536,7 @@ def api_pair_candidates_post(body: PairCandidatesRequest):
             tail_len=body.tail_len,
             after_dir_id=body.after_dir_id,
             before_dir_id=body.before_dir_id,
+            needle=body.needle,
         )
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e

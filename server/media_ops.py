@@ -2479,6 +2479,7 @@ def candidates_for_media(
     after_dir_id: str | None = None,
     before_dir_id: str | None = None,
     require_larger_after: bool = True,
+    needle: str | None = None,
 ) -> dict[str, Any]:
     """
     Guided match: rank unpaired peers against ONE anchor file.
@@ -2566,6 +2567,7 @@ def candidates_for_media(
     skipped_not_larger = 0
     skipped_rejected = 0
     anchor_pid = _media_pid(anchor)
+    needle_l = (needle or "").strip().lower()
 
     for peer in peers:
         if (media_id, peer["id"]) in rejected or (peer["id"], media_id) in rejected:
@@ -2619,7 +2621,20 @@ def candidates_for_media(
                     after_size=sp,
                     model=_learn,
                 )
-            if best_conf < min_ratio and not pid_hit:
+            needle_hit = False
+            if needle_l:
+                hay = " ".join(
+                    [
+                        str(peer.get("name") or ""),
+                        str(anchor.get("name") or ""),
+                        str(_media_abs_path(peer, dir_paths) or ""),
+                    ]
+                ).lower()
+                needle_hit = needle_l in hay
+                if needle_hit:
+                    best_conf = min(1.0, max(best_conf, 0.55) + 0.28)
+                    best_reason = (best_reason or "fuzzy") + " · needle"
+            if best_conf < min_ratio and not pid_hit and not needle_hit:
                 continue
             best_before, best_after = anchor, peer
             anchor_is_before = True
@@ -2669,7 +2684,21 @@ def candidates_for_media(
                     after_size=asz,
                     model=_learn,
                 )
-            if best_conf < min_ratio and not pid_hit:
+            needle_hit = False
+            if needle_l:
+                hay = " ".join(
+                    [
+                        str(peer.get("name") or ""),
+                        str(best_after.get("name") or ""),
+                        str(best_before.get("name") or ""),
+                        str(_media_abs_path(peer, dir_paths) or ""),
+                    ]
+                ).lower()
+                needle_hit = needle_l in hay
+                if needle_hit:
+                    best_conf = min(1.0, max(best_conf, 0.55) + 0.28)
+                    best_reason = (best_reason or "fuzzy") + " · needle"
+            if best_conf < min_ratio and not pid_hit and not needle_hit:
                 continue
             anchor_is_before = best_before["id"] == media_id
             candidate = best_after if anchor_is_before else best_before
@@ -2705,7 +2734,13 @@ def candidates_for_media(
             "pid": (anchor_pid if pid_hit else None) or _media_pid(best_before) or _media_pid(best_after),
         })
 
-    scored.sort(key=lambda x: (0 if x.get("pid") and str(x.get("reason") or "").startswith("pid") else 1, -x["confidence"], x["candidate_name"]))
+    def _rank(x: dict[str, Any]) -> tuple:
+        reason = str(x.get("reason") or "")
+        needle_hit = "needle" in reason
+        pid_hit = bool(x.get("pid") and reason.startswith("pid"))
+        return (0 if pid_hit else 1, 0 if needle_hit else 1, -x["confidence"], x["candidate_name"])
+
+    scored.sort(key=_rank)
     top = scored[: max(1, min(50, int(limit or 10)))]
 
     return {
