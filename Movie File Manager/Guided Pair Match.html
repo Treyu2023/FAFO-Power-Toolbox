@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guided Pair Match — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.05">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.05">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
   <style>
     :root {
       --bg: #0b1220; --panel: #121a28; --border: rgba(0,229,255,.28);
@@ -39,17 +39,16 @@
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; }
+    html, body { min-height: 100%; height: auto; overflow-x: hidden; overflow-y: auto; }
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: radial-gradient(ellipse at 40% -10%, #152238, var(--bg) 55%);
       color: var(--text); min-height: 100vh;
       padding-bottom: var(--legend-h);
-      overflow-x: hidden;
     }
     .top {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-      padding: 8px 14px; border-bottom: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      padding: 4px 10px; border-bottom: 1px solid var(--border);
       background: rgba(5,5,8,.96); position: sticky; top: 0; z-index: 30;
     }
     .top h1 { font-size: 14px; color: var(--accent); letter-spacing: .04em; font-weight: 700; }
@@ -100,8 +99,18 @@
     body.is-matching #learnPanel,
     body.is-matching #gpmMatchOptions { display: none !important; }
     body.is-matching .progress { display: none; }
-    body.is-matching .log { display: none; }
-    body.is-matching .wrap { padding-top: 6px; }
+    body.is-matching .log,
+    body.is-matching [data-fafo-panel="log"],
+    body.is-matching [data-fafo-panel="help"] { display: none !important; }
+    body.is-matching .wrap { padding-top: 4px; padding-bottom: 8px; }
+    body.is-matching [data-fafo-panel="controls"] {
+      max-height: 58px; overflow: hidden;
+    }
+    body.is-matching [data-fafo-panel="workbench"],
+    body.is-matching #activeUI.show {
+      flex: 1 1 auto; min-height: calc(100vh - var(--legend-h) - 96px);
+    }
+    body.is-matching [data-fafo-section="stage"] { min-height: 42vh; }
 
     /* PET-UI-9 / GUIDED PAIR MATCH: More tools + Match options + Start primary */
     .top.fafo-toolbar { align-items: center; }
@@ -256,9 +265,12 @@
 
     /* PiP loupes — compact canvas row */
     .pip-row {
-      display: none; grid-template-columns: 1fr 1fr; gap: 10px; flex-shrink: 0;
+      display: none; flex-direction: column; flex-shrink: 0; min-height: 0;
     }
-    .pip-row.on { display: grid; }
+    .pip-row.on { display: flex; }
+    .pip-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 0; flex: 1 1 auto;
+    }
     body.mode-overlay .pip-row { display: none !important; }
     .pip-card {
       background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -568,15 +580,14 @@
     }
     @media (max-width: 820px) {
       .stage { grid-template-columns: 1fr; }
-      .pip-row.on { grid-template-columns: 1fr; }
+      .pip-inner { grid-template-columns: 1fr; }
       .view-hint { display: none; }
       #activeUI { height: auto; max-height: none; }
       .media-box { min-height: 220px; }
     }
   </style>
 </head>
-<body>
-<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+<body class="gpm-page">
   <!-- PET-UI-9 / GUIDED PAIR MATCH: primary chrome + More tools overflow -->
   <div class="top fafo-toolbar" data-fafo-toolbar>
     <h1>🎯 Guided Pair Match</h1>
@@ -586,6 +597,7 @@
             data-tip-pro="Start S1 (and companions). Prefer the shared S1/S2 bar at the top when present.">▶ Start Server</button>
     <button class="ui-btn ghost fafo-btn" type="button" id="btnExportSession"
             data-tip-title="Export session" data-tip="Copy a text report of this match session to the clipboard.">📋 Export</button>
+    <span data-fafo-layout-toolbar></span>
     <details class="fafo-collapse" id="gpmMoreTools" data-fafo-collapse-key="gpm-more-tools">
       <summary>More tools</summary>
       <div class="gpm-more-body">
@@ -606,7 +618,7 @@
     </details>
   </div>
 
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-guided-pair-match" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="guided-pair-match-v36" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
     <div class="controls" data-fafo-panel="controls" data-fafo-panel-title="Queue" data-fafo-panel-min="80">
       <div class="gpm-primary-cta">
         <button class="ui-btn primary fafo-btn fafo-btn-primary" type="button" id="btnStart"
@@ -789,6 +801,7 @@
 
         <!-- Canvas PiP (drawn from loaded media — works with local API files) -->
         <div class="pip-row on" id="pipRow" data-fafo-section="zoom" data-fafo-section-title="PiP zoom" data-fafo-resizable="1" data-fafo-section-min="120">
+          <div class="pip-inner">
           <div class="pip-card">
             <div class="pip-h"><span>PiP · Anchor</span><strong id="pipZoomLblA">×2.5</strong></div>
             <div class="pip-canvas-wrap" id="pipAnchor" title="Drag to pan · wheel to zoom">
@@ -804,6 +817,7 @@
               <div class="pip-cross"></div>
               <span class="pip-zoom-lbl" id="pipZoomB">×2.5</span>
             </div>
+          </div>
           </div>
         </div>
 
@@ -926,14 +940,14 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.5.05"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.5.05"></script>
-  <script src="../shared/aitoolbox-api.js?v=3.5.05"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.5.05"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.5.05"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.5.05"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.5.05"></script>
-  <script src="../shared/fafo-chrome.js?v=3.5.05"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+  <script src="../shared/fafo-ops-stats.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+  <script src="../shared/fafo-chrome.js?v=3.5.06"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -995,7 +1009,19 @@
       unmatched: [],
       matched: [],
       centerId: null,
+      autoNeedle: '',
     };
+
+    function extractPidFromName(name) {
+      const s = String(name || '');
+      let m = s.match(/_PID_([0-9a-f]{8})(?:_|$)/i);
+      if (m) return m[1].toLowerCase();
+      m = s.match(/(?:^|[^a-z0-9])PID[_-]([0-9a-f]{8})(?:[^a-z0-9]|$)/i);
+      if (m) return m[1].toLowerCase();
+      m = s.match(/(?:^|[^a-z0-9])PID(?:\s*#|\s*[:_=-]+|\s+)([0-9]{3,12}|[0-9a-f]{6,12})(?:[^a-z0-9]|$)/i);
+      if (m) return m[1].toLowerCase();
+      return '';
+    }
 
     const MAX_HISTORY = 50;
     /** @type {{ type: string, label: string, before: object, after: object, pairId?: string|null, pairPayload?: object|null }[]} */
@@ -2086,6 +2112,11 @@
       setText('anchorName', anchor.name || '—');
       setText('anchorRoleTag', cand?.anchor_role === 'after' ? 'Anchor · After' : 'Anchor · Before');
       setMedia(el('anchorMedia'), anchor.id, anchor.type, anchor.name, 'anchor');
+      const pid = extractPidFromName(anchor.name) || extractPidFromName(anchor.path || '');
+      if (pid && libState.autoNeedle !== pid) {
+        libState.autoNeedle = pid;
+        setNeedle(pid, true);
+      }
 
       if (!cand) {
         setText('candName', 'No candidates');
@@ -2821,6 +2852,23 @@
         sort: 'name',
       });
       const items = (res.items || []).filter((it) => it.id !== currentAnchor()?.id && !matchedIds.has(it.id) && !reject.has(it.id));
+      const needle = (libState.needle || '').toLowerCase();
+      const anchorName = (currentAnchor()?.name || '').toLowerCase();
+      items.sort((a, b) => {
+        const score = (it) => {
+          const n = String(it.name || '').toLowerCase();
+          let s = 0;
+          if (needle && n.includes(needle)) s += 50;
+          const pidA = extractPidFromName(currentAnchor()?.name || '');
+          const pidB = extractPidFromName(it.name);
+          if (pidA && pidB && pidA === pidB) s += 80;
+          const ta = new Set((anchorName.match(/[a-z0-9]{3,}/g) || []));
+          const tb = n.match(/[a-z0-9]{3,}/g) || [];
+          tb.forEach((t) => { if (ta.has(t)) s += /^\d+$/.test(t) ? 8 : 3; });
+          return s;
+        };
+        return score(b) - score(a);
+      });
       libState.unmatched = items;
       if (!items.length) {
         track.innerHTML = '<div class="gpm-lib-empty">No unmatched library hits'

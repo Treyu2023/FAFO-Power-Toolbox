@@ -1102,10 +1102,21 @@ UPSCALE_MARKERS = (
 _PID_IN_NAME_RE = re.compile(r"_PID_([0-9a-f]{8})(?:_|$)", re.I)
 _PAIR_FOLDER_RE = re.compile(r"^GT-([0-9a-f]{8})__", re.I)
 _PID_TITLE_RE = re.compile(r"(?<![a-z0-9])PID[_-]([0-9a-f]{8})(?![a-z0-9])", re.I)
+# Human / title forms: PID#420, PID 420, PID:abc123
+_PID_HASH_RE = re.compile(
+    r"(?<![a-z0-9])PID(?:\s*#|\s*[:_=-]+|\s+)([0-9]{3,12}|[0-9a-f]{6,12})(?![a-z0-9])",
+    re.I,
+)
+_NAME_TOKEN_RE = re.compile(r"[a-z0-9]{3,}", re.I)
+_NAME_TOKEN_SKIP = frozenset({
+    "mp4", "mov", "webm", "mkv", "avi", "png", "jpg", "jpeg", "webp", "gif", "bmp",
+    "upscaled", "upscale", "flash", "interp", "scaled", "chunked", "final", "output",
+    "video", "image", "clip",
+})
 
 
 def pair_id_from_name(path_or_name: str) -> str | None:
-    """8-char hex pair id from `_PID_xxxxxxxx` in the filename (or legacy GT- folder)."""
+    """Pair id from `_PID_xxxxxxxx`, `PID#123`, `PID-abc`, or legacy GT- folder."""
     text = str(path_or_name or "")
     if not text:
         return None
@@ -1115,6 +1126,9 @@ def pair_id_from_name(path_or_name: str) -> str | None:
     m4 = _PID_TITLE_RE.search(text)
     if m4:
         return m4.group(1).lower()
+    m5 = _PID_HASH_RE.search(text)
+    if m5:
+        return m5.group(1).lower()
     # Slash-agnostic folder stamp: GT-xxxxxxxx__
     for part in text.replace("\\", "/").split("/"):
         if not part:
@@ -1123,6 +1137,22 @@ def pair_id_from_name(path_or_name: str) -> str | None:
         if m2:
             return m2.group(1).lower()
     return None
+
+
+def _name_tokens(name: str) -> set[str]:
+    toks = {t.lower() for t in _NAME_TOKEN_RE.findall(str(name or ""))}
+    return {t for t in toks if t not in _NAME_TOKEN_SKIP}
+
+
+def _filename_sync_boost(anchor_name: str, peer_name: str) -> tuple[float, str]:
+    """Shared filename chunks (especially digit runs like 420) raise match score."""
+    shared = _name_tokens(anchor_name) & _name_tokens(peer_name)
+    if not shared:
+        return 0.0, ""
+    boost = min(0.38, 0.10 * len(shared))
+    if any(t.isdigit() and len(t) >= 3 for t in shared):
+        return min(0.58, boost + 0.22), "tokens+digits"
+    return boost, "tokens"
 
 
 def _media_pid(m: dict[str, Any] | None) -> str | None:
@@ -2621,6 +2651,11 @@ def candidates_for_media(
                     after_size=sp,
                     model=_learn,
                 )
+            if not pid_hit:
+                tok_boost, tok_tag = _filename_sync_boost(anchor.get("name") or "", peer.get("name") or "")
+                if tok_boost:
+                    best_conf = min(1.0, best_conf + tok_boost)
+                    best_reason = (best_reason or "fuzzy") + " · " + tok_tag
             needle_hit = False
             if needle_l:
                 hay = " ".join(
@@ -2684,6 +2719,13 @@ def candidates_for_media(
                     after_size=asz,
                     model=_learn,
                 )
+            if not pid_hit:
+                tok_boost, tok_tag = _filename_sync_boost(
+                    best_before.get("name") or "", best_after.get("name") or ""
+                )
+                if tok_boost:
+                    best_conf = min(1.0, best_conf + tok_boost)
+                    best_reason = (best_reason or "fuzzy") + " · " + tok_tag
             needle_hit = False
             if needle_l:
                 hay = " ".join(
