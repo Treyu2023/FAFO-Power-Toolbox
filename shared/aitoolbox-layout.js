@@ -152,6 +152,22 @@
     return Array.from(body.querySelectorAll(':scope > [data-fafo-section]'));
   }
 
+  /** Sections are resizable unless the app opts out with data-fafo-resizable="0". */
+  function sectionIsResizable(section) {
+    if (!section) return false;
+    const flag = section.getAttribute('data-fafo-resizable');
+    if (flag === '0' || flag === 'false' || flag === 'off') return false;
+    return true;
+  }
+
+  function markSectionResizable(section) {
+    if (!section || !sectionIsResizable(section)) return false;
+    if (!section.getAttribute('data-fafo-resizable')) {
+      section.setAttribute('data-fafo-resizable', '1');
+    }
+    return true;
+  }
+
   function defaultStateFromDom(root) {
     const type = (root && root.getAttribute('data-fafo-layout-type')) || 'columns';
     const panels = panelEls(root);
@@ -219,14 +235,12 @@
   }
 
   function ensureSectionChrome(section) {
+    const canResize = markSectionResizable(section);
     if (section.querySelector(':scope > .fafo-section-chrome')) {
       // Still ensure resize handle exists for resizable sections
-      if (
-        section.getAttribute('data-fafo-resizable') === '1' &&
-        !section.querySelector(':scope > .fafo-section-resize')
-      ) {
+      if (canResize && !section.querySelector(':scope > .fafo-section-resize')) {
         section.appendChild(
-          el('div', 'fafo-section-resize', { title: 'Drag to resize section height' })
+          el('div', 'fafo-section-resize', { title: 'Drag the bottom edge to resize. Layout auto-saves.' })
         );
       }
       return;
@@ -259,9 +273,9 @@
     section.appendChild(chrome);
     section.appendChild(body);
 
-    if (section.getAttribute('data-fafo-resizable') === '1') {
+    if (canResize) {
       const handle = el('div', 'fafo-section-resize', {
-        title: 'Drag to resize section height',
+        title: 'Drag the bottom edge to resize. Layout auto-saves.',
       });
       section.appendChild(handle);
     }
@@ -627,7 +641,9 @@
           frag.appendChild(
             el('div', 'fafo-split-handle', {
               'data-fafo-split-after': id,
-              title: type === 'columns' ? 'Drag to resize columns' : 'Drag to resize rows',
+              title: type === 'columns'
+                ? 'Drag to resize columns — layout auto-saves'
+                : 'Drag to resize rows — layout auto-saves',
             })
           );
         }
@@ -654,7 +670,7 @@
       secOrder.forEach((sid) => {
         const s = bySid[sid];
         if (s) body.appendChild(s);
-        if (s && s.getAttribute('data-fafo-resizable') === '1') {
+        if (s && sectionIsResizable(s)) {
           let h = state.sectionHeights && state.sectionHeights[sid];
           const minH = parseInt(s.getAttribute('data-fafo-section-min') || '80', 10) || 80;
           if (!Number.isFinite(h) || h <= 0) {
@@ -727,7 +743,7 @@
         if (sid && (s.getAttribute('data-fafo-collapsed') === '1' || s.classList.contains('fafo-section-collapsed'))) {
           collapsed[sid] = true;
         }
-        if (s.getAttribute('data-fafo-resizable') !== '1') return;
+        if (!sectionIsResizable(s)) return;
         if (s.getAttribute('data-fafo-user-sized') !== '1') return;
         if (s.getAttribute('data-fafo-collapsed') === '1') return;
         const h = Math.round(s.getBoundingClientRect().height / (readUiScale() || 1));
@@ -1063,7 +1079,7 @@
       <button type="button" class="fafo-layout-btn" data-act="save" title="Save layout now (also auto-saves)">Save layout</button>
       <button type="button" class="fafo-layout-btn" data-act="reset" title="Reset this app's panel layout to defaults (fixes off-screen / skewed panels)">Reset layout</button>
       <button type="button" class="fafo-layout-btn danger" data-act="reset-all" title="Reset saved layouts for every toolbox app on this PC">Reset all apps</button>
-      <span class="fafo-layout-hint" title="Drag panel headers to reorder · drag edges to resize · ▾ collapses a section · ↺ resets just that piece · layout always remembers last position">Layout remembers · auto-saves</span>
+      <span class="fafo-layout-hint" title="Drag ⠿ headers to move · drag the cyan edges to resize · changes auto-save on this PC">Drag to move · drag edges to resize · auto-saves</span>
     `;
     bar.querySelector('[data-act="save"]').addEventListener('click', () => {
       try {
@@ -1608,6 +1624,7 @@
         'Section ' + (i + 1);
       el.setAttribute('data-fafo-section', 'sec-' + i);
       el.setAttribute('data-fafo-section-title', title);
+      if (!el.getAttribute('data-fafo-resizable')) el.setAttribute('data-fafo-resizable', '1');
     });
   }
 
@@ -1694,6 +1711,11 @@
       }
     }
     const save = debounce(saveNow, 180);
+    function saveUser() {
+      const snap = saveNow();
+      if (snap) toast('Layout saved');
+      return snap;
+    }
     let onResize = null;
     let flush = null;
     let onVis = null;
@@ -1825,10 +1847,10 @@
 
     function rebindAll() {
       // Do not clear _fafoBound / _fafoDrag — those flags are the listener guard.
-      bindSplitResize(root, opts, save);
-      bindSectionResize(root, save);
-      bindPanelDrag(root, opts, save, rebindAll);
-      bindSectionDrag(root, opts, save, rebindAll);
+      bindSplitResize(root, opts, saveUser);
+      bindSectionResize(root, saveUser);
+      bindPanelDrag(root, opts, saveUser, rebindAll);
+      bindSectionDrag(root, opts, saveUser, rebindAll);
     }
 
     function wireResets() {

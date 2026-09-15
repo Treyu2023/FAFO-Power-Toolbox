@@ -122,17 +122,13 @@
     if (narrow) docEl.setAttribute('data-fafo-narrow', tight ? '640' : '900');
     else docEl.removeAttribute('data-fafo-narrow');
 
-    // Coarse: mark split handles non-interactive (CSS also hides). Fine desktop keeps drag.
+    // Never disable split handles here — hiding them (PET-UI-M) made apps
+    // reorder-only. Touch desktops still get a larger CSS hit target.
     if (global.document.querySelectorAll) {
       var handles = document.querySelectorAll('.fafo-split-handle');
       for (var i = 0; i < handles.length; i++) {
-        if (coarse || narrow) {
-          handles[i].setAttribute('data-fafo-split-disabled', '1');
-          handles[i].setAttribute('aria-hidden', 'true');
-        } else {
-          handles[i].removeAttribute('data-fafo-split-disabled');
-          handles[i].removeAttribute('aria-hidden');
-        }
+        handles[i].removeAttribute('data-fafo-split-disabled');
+        handles[i].removeAttribute('aria-hidden');
       }
     }
   }
