@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guided Pair Match — AI HTML Toolbox</title>
-  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.04">
-<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.04">
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.05">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.05">
   <style>
     :root {
       --bg: #0b1220; --panel: #121a28; --border: rgba(0,229,255,.28);
@@ -178,12 +178,11 @@
     }
     #activeUI {
       display: none; flex-direction: column;
-      min-height: 0;
-      /* Fill remaining viewport under chrome + legend */
-      height: calc(100vh - var(--legend-h) - 120px);
-      max-height: calc(100vh - var(--legend-h) - 80px);
+      min-height: 280px;
+      height: auto;
+      max-height: none;
     }
-    body.is-matching #activeUI { height: calc(100vh - var(--legend-h) - 72px); }
+    body.is-matching #activeUI { min-height: 320px; height: auto; }
     #activeUI.show { display: flex; }
 
     /* ── Compare main: flex-grow stage ── */
@@ -229,9 +228,16 @@
       user-select: none; touch-action: none;
     }
     .media-box video, .media-box img {
-      max-width: 100%; max-height: 100%; width: auto; height: auto;
+      max-width: 100%; max-height: 100%; width: 100%; height: 100%;
       object-fit: contain; pointer-events: none;
       background: #000;
+    }
+    [data-fafo-section] .media-box,
+    [data-fafo-panel] .media-box {
+      min-height: 120px;
+    }
+    [data-gpm-search-source] {
+      user-select: text; -webkit-user-select: text; cursor: text;
     }
     .media-box .empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
     .media-box .focus-ring {
@@ -264,13 +270,16 @@
     }
     .pip-card .pip-h strong { color: var(--text); text-transform: none; font-size: 11px; }
     .pip-canvas-wrap {
-      position: relative; width: 100%; height: 140px;
+      position: relative; width: 100%; flex: 1 1 auto;
+      min-height: 160px; aspect-ratio: 16 / 9; height: auto;
       border-radius: 8px; border: 1px solid rgba(0,243,255,.25);
       background: #000; overflow: hidden; cursor: grab; touch-action: none;
     }
+    .pip-card { min-height: 0; }
     .pip-canvas-wrap:active { cursor: grabbing; }
     .pip-canvas-wrap canvas {
       display: block; width: 100%; height: 100%;
+      object-fit: contain;
     }
     .pip-canvas-wrap .pip-cross {
       position: absolute; inset: 0; pointer-events: none;
@@ -499,8 +508,62 @@
     }
     .empty-cta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 
+    /* Flipbook library + matched tray */
+    .gpm-lib-head, .gpm-matched-head {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      padding: 6px 8px 4px; flex-shrink: 0;
+    }
+    .gpm-lib-head input[type="search"] {
+      flex: 1 1 180px; min-width: 120px;
+      background: rgba(0,0,0,.4); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 10px; border-radius: 8px; font-size: 12px;
+    }
+    .gpm-needle {
+      font-size: 11px; color: var(--gold); font-family: Consolas, monospace;
+    }
+    .gpm-flip-track {
+      display: flex; align-items: flex-end; gap: 8px;
+      overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      padding: 18px 38% 14px;
+      min-height: 132px;
+      scrollbar-width: thin;
+    }
+    .gpm-flip-card {
+      flex: 0 0 72px; scroll-snap-align: center;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: #000; cursor: pointer; overflow: hidden;
+      transition: transform .15s ease, flex-basis .15s ease, border-color .15s;
+      position: relative;
+    }
+    .gpm-flip-card img, .gpm-flip-card video {
+      width: 100%; height: 88px; object-fit: cover; display: block; pointer-events: none;
+    }
+    .gpm-flip-card .cap {
+      font-size: 9px; padding: 3px 5px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .gpm-flip-card.is-center {
+      flex-basis: 168px; transform: translateY(-6px) scale(1.08);
+      border-color: var(--accent); z-index: 2;
+      box-shadow: 0 8px 22px rgba(0,243,255,.25);
+    }
+    .gpm-flip-card.is-center img, .gpm-flip-card.is-center video { height: 128px; }
+    .gpm-flip-card.is-active { outline: 2px solid var(--ok); }
+    .gpm-matched-track {
+      display: flex; gap: 8px; overflow-x: auto; padding: 8px;
+      min-height: 88px; scrollbar-width: thin;
+    }
+    .gpm-matched-card {
+      flex: 0 0 110px; border: 1px solid rgba(74,222,128,.4); border-radius: 10px;
+      background: rgba(74,222,128,.08); cursor: pointer; overflow: hidden;
+    }
+    .gpm-matched-card img { width: 100%; height: 64px; object-fit: cover; display: block; }
+    .gpm-matched-card .cap { font-size: 9px; padding: 4px; color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gpm-lib-empty { color: var(--muted); font-size: 12px; padding: 16px; }
+
     @media (max-width: 1100px) {
-      .pip-canvas-wrap { height: 110px; }
+      .pip-canvas-wrap { min-height: 120px; }
       #activeUI { height: calc(100vh - var(--legend-h) - 100px); }
     }
     @media (max-width: 820px) {
@@ -543,8 +606,8 @@
     </details>
   </div>
 
-  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-guided-pair-match" data-fafo-layout-type="columns">
-    <div class="controls" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-guided-pair-match" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
+    <div class="controls" data-fafo-panel="controls" data-fafo-panel-title="Queue" data-fafo-panel-min="80">
       <div class="gpm-primary-cta">
         <button class="ui-btn primary fafo-btn fafo-btn-primary" type="button" id="btnStart"
                 data-tip-title="Start / Resume"
@@ -645,7 +708,7 @@
       <div class="queue-strip" id="tryDots"></div>
     </div>
 
-    <div id="emptyState" class="empty-state">
+    <div id="emptyState" class="empty-state" data-fafo-panel="help" data-fafo-panel-title="Start" data-fafo-panel-min="80">
       <strong style="color:var(--text)">Process-of-elimination pairing</strong><br>
       Take one unpaired file, show the best match candidates one-by-one (up to 10).<br>
       Use the <strong>key legend</strong> at the bottom — keys light up when pressed.<br>
@@ -662,7 +725,7 @@
       </div>
     </div>
 
-    <div id="activeUI" class="fafo-primary-surface" data-fafo-primary>
+    <div id="activeUI" class="fafo-primary-surface" data-fafo-primary data-fafo-panel="workbench" data-fafo-panel-title="Match desk" data-fafo-flex="1" data-fafo-panel-min="220">
       <div class="view-bar">
         <span class="vb-label">View</span>
         <button type="button" class="view-tab on" data-view="side" id="tabSide">⧉ Side by side</button>
@@ -679,13 +742,13 @@
         </span>
       </div>
 
-      <div class="compare-main">
+      <div class="compare-main" data-fafo-section="stage" data-fafo-section-title="Stage" data-fafo-resizable="1" data-fafo-section-min="160">
         <!-- Dual tiles -->
         <div class="stage" id="stageSide">
           <div class="pane">
             <div class="pane-h">
               <span class="role-tag before" id="anchorRoleTag">Anchor</span>
-              <span class="name" id="anchorName">—</span>
+              <span class="name" id="anchorName" data-gpm-search-source title="Highlight any slice of this name to search the library">—</span>
             </div>
             <div class="media-stage">
               <div class="media-box" id="anchorMedia" data-side="anchor" title="Click to set PiP focus · wheel to zoom">
@@ -702,26 +765,6 @@
               <div class="media-box" id="candMedia" data-side="cand" title="Click to set PiP focus · wheel to zoom">
                 <div class="empty">—</div>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Canvas PiP (drawn from loaded media — works with local API files) -->
-        <div class="pip-row on" id="pipRow">
-          <div class="pip-card">
-            <div class="pip-h"><span>PiP · Anchor</span><strong id="pipZoomLblA">×2.5</strong></div>
-            <div class="pip-canvas-wrap" id="pipAnchor" title="Drag to pan · wheel to zoom">
-              <canvas id="pipCanvasA" width="480" height="270"></canvas>
-              <div class="pip-cross"></div>
-              <span class="pip-zoom-lbl" id="pipZoomA">×2.5</span>
-            </div>
-          </div>
-          <div class="pip-card">
-            <div class="pip-h"><span>PiP · Candidate</span><strong id="pipZoomLblB">same crop</strong></div>
-            <div class="pip-canvas-wrap" id="pipCand" title="Drag to pan · wheel to zoom">
-              <canvas id="pipCanvasB" width="480" height="270"></canvas>
-              <div class="pip-cross"></div>
-              <span class="pip-zoom-lbl" id="pipZoomB">×2.5</span>
             </div>
           </div>
         </div>
@@ -744,6 +787,42 @@
         </div>
       </div>
 
+        <!-- Canvas PiP (drawn from loaded media — works with local API files) -->
+        <div class="pip-row on" id="pipRow" data-fafo-section="zoom" data-fafo-section-title="PiP zoom" data-fafo-resizable="1" data-fafo-section-min="120">
+          <div class="pip-card">
+            <div class="pip-h"><span>PiP · Anchor</span><strong id="pipZoomLblA">×2.5</strong></div>
+            <div class="pip-canvas-wrap" id="pipAnchor" title="Drag to pan · wheel to zoom">
+              <canvas id="pipCanvasA" width="480" height="270"></canvas>
+              <div class="pip-cross"></div>
+              <span class="pip-zoom-lbl" id="pipZoomA">×2.5</span>
+            </div>
+          </div>
+          <div class="pip-card">
+            <div class="pip-h"><span>PiP · Candidate</span><strong id="pipZoomLblB">same crop</strong></div>
+            <div class="pip-canvas-wrap" id="pipCand" title="Drag to pan · wheel to zoom">
+              <canvas id="pipCanvasB" width="480" height="270"></canvas>
+              <div class="pip-cross"></div>
+              <span class="pip-zoom-lbl" id="pipZoomB">×2.5</span>
+            </div>
+          </div>
+        </div>
+
+        <div data-fafo-section="library" data-fafo-section-title="Library (unmatched)" data-fafo-resizable="1" data-fafo-section-min="120" id="gpmLibrary">
+          <div class="gpm-lib-head">
+            <strong style="font-size:12px;color:var(--accent)">Library</strong>
+            <input type="search" id="gpmLibSearch" placeholder="Search any slice — or highlight 420 in the source name" autocomplete="off">
+            <span class="gpm-needle" id="gpmNeedleHint"></span>
+          </div>
+          <div class="gpm-flip-track" id="gpmFlipTrack" tabindex="0" title="Scroll past cards · center enlarges · click to try as candidate"></div>
+        </div>
+        <div data-fafo-section="matched" data-fafo-section-title="Matched" data-fafo-resizable="1" data-fafo-section-min="80" id="gpmMatched">
+          <div class="gpm-matched-head">
+            <strong style="font-size:12px;color:var(--ok)">Matched (out of library)</strong>
+            <span style="font-size:11px;color:var(--muted)" id="gpmMatchedCount">0</span>
+          </div>
+          <div class="gpm-matched-track" id="gpmMatchedTrack"></div>
+        </div>
+
       <div class="pair-title-row">
         <h2 id="pairTitle">—</h2>
         <span class="score" id="scorePill">—</span>
@@ -761,15 +840,15 @@
             </tr>
           </thead>
           <tbody id="metaBody">
-            <tr data-key="name"><td class="k">Name</td><td class="a name-cell" id="mA_name">—</td><td class="b name-cell" id="mC_name">—</td></tr>
-            <tr data-key="path"><td class="k">Location</td><td class="a" id="mA_path" style="font-size:11px;word-break:break-all">—</td><td class="b" id="mC_path" style="font-size:11px;word-break:break-all">—</td></tr>
+            <tr data-key="name"><td class="k">Name</td><td class="a name-cell" id="mA_name" data-gpm-search-source title="Highlight a slice (e.g. 420) to search the library">—</td><td class="b name-cell" id="mC_name">—</td></tr>
+            <tr data-key="path"><td class="k">Location</td><td class="a" id="mA_path" data-gpm-search-source style="font-size:11px;word-break:break-all">—</td><td class="b" id="mC_path" style="font-size:11px;word-break:break-all">—</td></tr>
             <tr data-key="res"><td class="k">Resolution</td><td class="a" id="mA_res">—</td><td class="b" id="mC_res">—</td></tr>
             <tr data-key="aspect"><td class="k">Aspect</td><td class="a" id="mA_aspect">—</td><td class="b" id="mC_aspect">—</td></tr>
             <tr data-key="size"><td class="k">File size</td><td class="a" id="mA_size">—</td><td class="b" id="mC_size">—</td></tr>
             <tr data-key="duration"><td class="k">Duration / length</td><td class="a" id="mA_dur">—</td><td class="b" id="mC_dur">—</td></tr>
             <tr data-key="type"><td class="k">Type</td><td class="a" id="mA_type">—</td><td class="b" id="mC_type">—</td></tr>
             <tr data-key="role"><td class="k">Proposed role</td><td class="a" id="mA_role">—</td><td class="b" id="mC_role">—</td></tr>
-            <tr data-key="stem"><td class="k">Name structure</td><td class="a" id="mA_stem">—</td><td class="b" id="mC_stem">—</td></tr>
+            <tr data-key="stem"><td class="k">Name structure</td><td class="a" id="mA_stem" data-gpm-search-source>— </td><td class="b" id="mC_stem">—</td></tr>
           </tbody>
         </table>
       </div>
@@ -805,7 +884,7 @@
       </div>
     </div>
 
-    <div class="log" id="sessionLog">Session log…</div>
+    <div class="log" id="sessionLog" data-fafo-panel="log" data-fafo-panel-title="Session log" data-fafo-panel-min="60">Session log…</div>
   </div>
 
   <!-- Always-visible keyboard legend -->
@@ -847,14 +926,14 @@
     </div>
   </div>
 
-  <script src="../shared/aitoolbox-config.js?v=3.5.04"></script>
-  <script src="../shared/aitoolbox-version.js?v=3.5.04"></script>
-  <script src="../shared/aitoolbox-api.js?v=3.5.04"></script>
-  <script src="../shared/aitoolbox-ui.js?v=3.5.04"></script>
-  <script src="../shared/fafo-ops-stats.js?v=3.5.04"></script>
-  <script src="../shared/aitoolbox-layout.js?v=3.5.04"></script>
-  <script src="../shared/aitoolbox-pro.js?v=3.5.04"></script>
-  <script src="../shared/fafo-chrome.js?v=3.5.04"></script>
+  <script src="../shared/aitoolbox-config.js?v=3.5.05"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.5.05"></script>
+  <script src="../shared/aitoolbox-api.js?v=3.5.05"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.5.05"></script>
+  <script src="../shared/fafo-ops-stats.js?v=3.5.05"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.5.05"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.5.05"></script>
+  <script src="../shared/fafo-chrome.js?v=3.5.05"></script>
   <script>
     const API = () => window.AIToolboxAPI;
     const UI = () => window.AIToolboxUI;
@@ -911,6 +990,12 @@
       log: [],
     };
     let busy = false;
+    const libState = {
+      needle: '',
+      unmatched: [],
+      matched: [],
+      centerId: null,
+    };
 
     const MAX_HISTORY = 50;
     /** @type {{ type: string, label: string, before: object, after: object, pairId?: string|null, pairPayload?: object|null }[]} */
@@ -1413,6 +1498,15 @@
         viewState.pipRaf = 0;
         updatePips();
       });
+    }
+    if (!window.__gpmPipResizeObs) {
+      try {
+        window.__gpmPipResizeObs = new ResizeObserver(() => schedulePip());
+        ['pipAnchor', 'pipCand', 'anchorMedia', 'candMedia'].forEach((id) => {
+          const n = document.getElementById(id);
+          if (n) window.__gpmPipResizeObs.observe(n);
+        });
+      } catch (_) { /* older hosts */ }
     }
 
     /**
@@ -2025,6 +2119,8 @@
       setText('typeVal', cand.type || anchor.type || '—');
       fillUniformMeta(anchor, cand);
       if (viewState.mode === 'overlay') rebuildOverlayMedia();
+      markFlipActive();
+      refreshLibrary().catch(() => {});
     }
 
     async function loadCandidatesForAnchor() {
@@ -2033,11 +2129,12 @@
       const exclude = rejectedFor(anchor.id).slice();
       const fo = folderOpts();
       const data = await API()?.pairCandidates(anchor.id, {
-        limit: maxTries(),
+        limit: Math.max(maxTries(), 24),
         minRatio: minRatio(),
         excludeIds: exclude,
         beforeDirId: fo.beforeDirId || undefined,
         afterDirId: fo.afterDirId || undefined,
+        needle: libState.needle || undefined,
       });
       // Client-side safety: drop same-size / not-larger when option is on
       let cands = data?.candidates || [];
@@ -2175,6 +2272,7 @@
         } catch (_) { /* stats optional */ }
         logLine(`MATCH ${cand.before_name} ↔ ${cand.after_name} (${scoreLabel(cand.confidence)}) · memory updated`);
         toast('Pair locked · naming memory updated', 'ok');
+        rememberMatched(cand);
         refreshLearnPanel().catch(() => {});
 
         // Advance after match
@@ -2561,6 +2659,7 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      if (e.target && e.target.closest && e.target.closest('[data-gpm-search-source], #gpmLibSearch, #gpmFlipTrack')) return;
       const key = normalizeKey(e);
       setChipPressed(key, true);
 
@@ -2604,7 +2703,183 @@
       });
     }
 
+    function thumbSrc(id) {
+      try { return API()?.thumbUrl?.(id) || ''; } catch (_) { return ''; }
+    }
+
+    function setNeedle(text, reload) {
+      const n = String(text || '').trim();
+      libState.needle = n;
+      const hint = el('gpmNeedleHint');
+      if (hint) hint.textContent = n ? ('needle: ' + n) : '';
+      const inp = el('gpmLibSearch');
+      if (inp && inp.value !== n) inp.value = n;
+      if (reload !== false) {
+        refreshLibrary().catch(() => {});
+        if (currentAnchor()) loadCandidatesForAnchor().catch(() => {});
+      }
+    }
+
+    function rememberMatched(cand) {
+      const id = cand.after_id || cand.candidate_id;
+      if (!id) return;
+      libState.matched = libState.matched.filter((m) => m.id !== id && m.id !== cand.before_id);
+      libState.matched.unshift({
+        id,
+        beforeId: cand.before_id,
+        afterId: cand.after_id || cand.candidate_id,
+        name: cand.after_name || cand.candidate_name || id,
+        beforeName: cand.before_name,
+      });
+      renderMatched();
+    }
+
+    function renderMatched() {
+      const track = el('gpmMatchedTrack');
+      const count = el('gpmMatchedCount');
+      if (count) count.textContent = String(libState.matched.length);
+      if (!track) return;
+      if (!libState.matched.length) {
+        track.innerHTML = '<div class="gpm-lib-empty">Matched pairs land here — they leave the library strip.</div>';
+        return;
+      }
+      track.innerHTML = libState.matched.map((m) => {
+        const src = thumbSrc(m.afterId || m.id);
+        return `<button type="button" class="gpm-matched-card" data-mid="${esc(m.id)}" title="${esc(m.beforeName || '')} → ${esc(m.name)}">
+          ${src ? `<img alt="" src="${esc(src)}" loading="lazy">` : ''}
+          <div class="cap">${esc(m.name)}</div>
+        </button>`;
+      }).join('');
+    }
+
+    function pickFromLibrary(item) {
+      const anchor = currentAnchor();
+      if (!anchor || !item?.id) return;
+      const cand = {
+        candidate_id: item.id,
+        candidate_name: item.name,
+        candidate_path: item.path || item.abs_path || '',
+        candidate_size: Number(item.size || 0),
+        anchor_id: anchor.id,
+        anchor_name: anchor.name,
+        anchor_size: Number(anchor.size || 0),
+        anchor_path: anchor.path || '',
+        anchor_role: 'before',
+        before_id: anchor.id,
+        after_id: item.id,
+        before_name: anchor.name,
+        after_name: item.name,
+        confidence: 0.62,
+        reason: libState.needle ? ('library-pick · needle') : 'library-pick',
+        type: item.type || anchor.type || 'video',
+      };
+      state.candidates = [cand].concat((state.candidates || []).filter((c) => c.candidate_id !== item.id));
+      state.tryIndex = 0;
+      saveSession();
+      render();
+      toast('Library pick → candidate', 'ok');
+    }
+
+    function updateFlipCenter() {
+      const track = el('gpmFlipTrack');
+      if (!track) return;
+      const cards = [...track.querySelectorAll('.gpm-flip-card')];
+      if (!cards.length) return;
+      const mid = track.getBoundingClientRect().left + track.clientWidth / 2;
+      let best = null, bestD = 1e9;
+      cards.forEach((c) => {
+        const r = c.getBoundingClientRect();
+        const d = Math.abs(r.left + r.width / 2 - mid);
+        if (d < bestD) { bestD = d; best = c; }
+      });
+      cards.forEach((c) => c.classList.toggle('is-center', c === best));
+      libState.centerId = best?.getAttribute('data-mid') || null;
+    }
+
+    function markFlipActive() {
+      const cand = currentCandidate();
+      const id = cand?.candidate_id;
+      document.querySelectorAll('.gpm-flip-card').forEach((c) => {
+        c.classList.toggle('is-active', id && c.getAttribute('data-mid') === id);
+      });
+    }
+
+    async function refreshLibrary() {
+      const track = el('gpmFlipTrack');
+      if (!track || !API()) return;
+      const fo = folderOpts();
+      const kind = el('kindFilter')?.value || '';
+      const matchedIds = new Set(libState.matched.flatMap((m) => [m.id, m.afterId, m.beforeId]).filter(Boolean));
+      const reject = new Set();
+      Object.values(state.rejected || {}).forEach((arr) => (arr || []).forEach((id) => reject.add(id)));
+      const res = await API().queryMedia({
+        type: kind || undefined,
+        dirId: fo.afterDirId || undefined,
+        pairFilter: 'unpaired',
+        search: libState.needle || undefined,
+        limit: 180,
+        sort: 'name',
+      });
+      const items = (res.items || []).filter((it) => it.id !== currentAnchor()?.id && !matchedIds.has(it.id) && !reject.has(it.id));
+      libState.unmatched = items;
+      if (!items.length) {
+        track.innerHTML = '<div class="gpm-lib-empty">No unmatched library hits'
+          + (libState.needle ? ' for “' + esc(libState.needle) + '”' : '')
+          + '. Highlight a slice of the source name (e.g. 420) or type in the search box.</div>';
+        return;
+      }
+      track.innerHTML = items.map((it) => {
+        const src = thumbSrc(it.id);
+        return `<button type="button" class="gpm-flip-card" data-mid="${esc(it.id)}" title="${esc(it.name || '')}">
+          ${src ? `<img alt="" src="${esc(src)}" loading="lazy">` : '<div style="height:88px;background:#111"></div>'}
+          <div class="cap">${esc(it.name || it.id)}</div>
+        </button>`;
+      }).join('');
+      markFlipActive();
+      requestAnimationFrame(updateFlipCenter);
+    }
+
+    function bindLibraryUi() {
+      const track = el('gpmFlipTrack');
+      const search = el('gpmLibSearch');
+      track?.addEventListener('scroll', () => updateFlipCenter(), { passive: true });
+      track?.addEventListener('click', (e) => {
+        const card = e.target.closest('.gpm-flip-card');
+        if (!card) return;
+        const id = card.getAttribute('data-mid');
+        const item = libState.unmatched.find((x) => x.id === id);
+        if (item) pickFromLibrary(item);
+      });
+      track?.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Enter') return;
+        e.preventDefault();
+        const cards = [...(track.querySelectorAll('.gpm-flip-card') || [])];
+        const cur = track.querySelector('.gpm-flip-card.is-center') || cards[0];
+        const i = cards.indexOf(cur);
+        if (e.key === 'Enter' && cur) cur.click();
+        else {
+          const next = cards[i + (e.key === 'ArrowRight' ? 1 : -1)];
+          next?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+        }
+      });
+      let t = 0;
+      search?.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(() => setNeedle(search.value, true), 180);
+      });
+      document.addEventListener('selectionchange', () => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) return;
+        const node = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
+        if (!node || !node.closest || !node.closest('[data-gpm-search-source]')) return;
+        const text = String(sel.toString() || '').trim();
+        if (text.length < 1 || text.length > 80) return;
+        setNeedle(text, true);
+      });
+    }
+
     bindCompareInteraction();
+    bindLibraryUi();
     loadSession();
     document.getElementById('beforeDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });
     document.getElementById('afterDir')?.addEventListener('change', () => { updateFolderPathLabels(); saveSession(); });

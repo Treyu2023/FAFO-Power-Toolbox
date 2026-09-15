@@ -192,8 +192,10 @@
     });
     const sectionHeights = {};
     const collapsed = {};
+    const box = {};
+    const sectionBoxes = {};
     // Do not seed sectionHeights from data-fafo-section-default.
-    return { order, sizes, flex, sections, sectionHeights, collapsed };
+    return { order, sizes, flex, sections, sectionHeights, collapsed, box, sectionBoxes };
   }
 
   function ensureChrome(panel) {
@@ -208,6 +210,7 @@
     }
     if (panel.querySelector(':scope > .fafo-panel-chrome')) {
       panel.classList.add('fafo-layout-panel');
+      ensureCornerHandle(panel);
       return;
     }
     const id = panel.getAttribute('data-fafo-panel') || 'panel';
@@ -232,6 +235,17 @@
     panel.appendChild(chrome);
     panel.appendChild(body);
     panel.classList.add('fafo-layout-panel');
+    ensureCornerHandle(panel);
+  }
+
+  function ensureCornerHandle(panel) {
+    if (!panel || panel.getAttribute('data-fafo-chrome') === '0') return;
+    if (panel.querySelector(':scope > .fafo-corner-resize')) return;
+    panel.appendChild(
+      el('div', 'fafo-corner-resize', {
+        title: 'Drag corner to resize width and height. Layout auto-saves.',
+      })
+    );
   }
 
   function ensureSectionChrome(section) {
@@ -240,7 +254,14 @@
       // Still ensure resize handle exists for resizable sections
       if (canResize && !section.querySelector(':scope > .fafo-section-resize')) {
         section.appendChild(
-          el('div', 'fafo-section-resize', { title: 'Drag the bottom edge to resize. Layout auto-saves.' })
+          el('div', 'fafo-section-resize', { title: 'Drag the bottom edge to resize height. Layout auto-saves.' })
+        );
+      }
+      if (canResize && !section.querySelector(':scope > .fafo-section-corner')) {
+        section.appendChild(
+          el('div', 'fafo-section-corner', {
+            title: 'Drag corner to resize width and height. Layout auto-saves.',
+          })
         );
       }
       return;
@@ -274,10 +295,16 @@
     section.appendChild(body);
 
     if (canResize) {
-      const handle = el('div', 'fafo-section-resize', {
-        title: 'Drag the bottom edge to resize. Layout auto-saves.',
-      });
-      section.appendChild(handle);
+      section.appendChild(
+        el('div', 'fafo-section-resize', {
+          title: 'Drag the bottom edge to resize height. Layout auto-saves.',
+        })
+      );
+      section.appendChild(
+        el('div', 'fafo-section-corner', {
+          title: 'Drag corner to resize width and height. Layout auto-saves.',
+        })
+      );
     }
   }
 
@@ -568,6 +595,24 @@
       const isFlex = panel.getAttribute('data-fafo-flex') === '1' || (state.flex && state.flex[id]);
       const min = parseInt(panel.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
       const max = parseInt(panel.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
+      const box = state.box && state.box[id];
+      if (box && Number.isFinite(box.w) && Number.isFinite(box.h) && box.w > 40 && box.h > 40) {
+        const bw = Math.max(min, box.w);
+        const bh = Math.max(80, box.h);
+        panel.style.flex = '0 0 auto';
+        panel.style.flexShrink = '0';
+        panel.style.width = bw + 'px';
+        panel.style.height = bh + 'px';
+        panel.style.minWidth = min + 'px';
+        panel.style.minHeight = '80px';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+        panel.setAttribute('data-fafo-box', '1');
+        panel.setAttribute('data-fafo-sized', '1');
+        panel.dataset.fafoSize = String(type === 'columns' ? bw : bh);
+        if (state.box) state.box[id] = { w: Math.round(bw), h: Math.round(bh) };
+        return;
+      }
       if (isFlex) {
         panel.style.flex = '1 0 auto';
         panel.style.flexShrink = '0';
@@ -671,6 +716,21 @@
         const s = bySid[sid];
         if (s) body.appendChild(s);
         if (s && sectionIsResizable(s)) {
+          const sbox = state.sectionBoxes && state.sectionBoxes[sid];
+          if (sbox && Number.isFinite(sbox.w) && Number.isFinite(sbox.h) && sbox.w > 40 && sbox.h > 40) {
+            s.style.flex = '0 0 auto';
+            s.style.flexShrink = '0';
+            s.style.width = sbox.w + 'px';
+            s.style.height = sbox.h + 'px';
+            s.style.maxWidth = 'none';
+            s.style.maxHeight = 'none';
+            s.dataset.fafoHeight = String(sbox.h);
+            s.setAttribute('data-fafo-user-sized', '1');
+            s.setAttribute('data-fafo-box', '1');
+            if (state.sectionBoxes) state.sectionBoxes[sid] = { w: Math.round(sbox.w), h: Math.round(sbox.h) };
+            applyCollapsedClass(s, !!(state.collapsed && state.collapsed[sid]));
+            return;
+          }
           let h = state.sectionHeights && state.sectionHeights[sid];
           const minH = parseInt(s.getAttribute('data-fafo-section-min') || '80', 10) || 80;
           if (!Number.isFinite(h) || h <= 0) {
@@ -734,6 +794,18 @@
     const sections = {};
     const sectionHeights = {};
     const collapsed = {};
+    const box = {};
+    const sectionBoxes = {};
+    panels.forEach((p) => {
+      const pid = p.getAttribute('data-fafo-panel');
+      if (pid && p.getAttribute('data-fafo-box') === '1') {
+        const scale = readUiScale() || 1;
+        const r = p.getBoundingClientRect();
+        if (r.width > 40 && r.height > 40) {
+          box[pid] = { w: Math.round(r.width / scale), h: Math.round(r.height / scale) };
+        }
+      }
+    });
     panels.forEach((p) => {
       const id = p.getAttribute('data-fafo-panel');
       const secs = sectionEls(p);
@@ -748,9 +820,16 @@
         if (s.getAttribute('data-fafo-collapsed') === '1') return;
         const h = Math.round(s.getBoundingClientRect().height / (readUiScale() || 1));
         if (sid && h > 0) sectionHeights[sid] = h;
+        if (sid && s.getAttribute('data-fafo-box') === '1') {
+          const br = s.getBoundingClientRect();
+          const sc = readUiScale() || 1;
+          if (br.width > 40 && br.height > 40) {
+            sectionBoxes[sid] = { w: Math.round(br.width / sc), h: Math.round(br.height / sc) };
+          }
+        }
       });
     });
-    return { order, sizes, flex, sections, sectionHeights, collapsed };
+    return { order, sizes, flex, sections, sectionHeights, collapsed, box, sectionBoxes };
   }
 
   /**
@@ -932,6 +1011,110 @@
           try {
             handle.releasePointerCapture?.(ev.pointerId);
           } catch (_) { /* ignore */ }
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          save();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+    });
+  }
+
+  function bindCornerResize(root, save) {
+    root.querySelectorAll(':scope > .fafo-layout-panel > .fafo-corner-resize, :scope > [data-fafo-panel] > .fafo-corner-resize').forEach((handle) => {
+      if (handle._fafoBound) return;
+      handle._fafoBound = true;
+      handle.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const panel = handle.closest('[data-fafo-panel]');
+        if (!panel) return;
+        const min = parseInt(panel.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
+        const scale = readUiScale();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const startW = panel.getBoundingClientRect().width / scale;
+        const startH = panel.getBoundingClientRect().height / scale;
+        handle.classList.add('is-active');
+        document.body.classList.add('fafo-layout-resizing');
+        try { handle.setPointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+        let finished = false;
+        function onMove(e) {
+          if (finished) return;
+          let w = Math.max(min, startW + (e.clientX - startX) / scale);
+          let h = Math.max(80, startH + (e.clientY - startY) / scale);
+          panel.style.flex = '0 0 auto';
+          panel.style.flexShrink = '0';
+          panel.style.width = w + 'px';
+          panel.style.height = h + 'px';
+          panel.style.maxWidth = 'none';
+          panel.style.maxHeight = 'none';
+          panel.setAttribute('data-fafo-box', '1');
+          panel.setAttribute('data-fafo-sized', '1');
+          panel.dataset.fafoSize = String(Math.round(w));
+        }
+        function onUp() {
+          if (finished) return;
+          finished = true;
+          handle.classList.remove('is-active');
+          clearLayoutPointerState(root);
+          try { handle.releasePointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          save();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+    });
+  }
+
+  function bindSectionCornerResize(root, save) {
+    root.querySelectorAll('.fafo-section-corner').forEach((handle) => {
+      if (handle._fafoBound) return;
+      handle._fafoBound = true;
+      handle.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const section = handle.closest('[data-fafo-section]');
+        if (!section) return;
+        const minH = parseInt(section.getAttribute('data-fafo-section-min') || '80', 10) || 80;
+        const scale = readUiScale();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const startW = section.getBoundingClientRect().width / scale;
+        const startH = section.getBoundingClientRect().height / scale;
+        handle.classList.add('is-active');
+        document.body.classList.add('fafo-layout-resizing');
+        try { handle.setPointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+        let finished = false;
+        function onMove(e) {
+          if (finished) return;
+          let w = Math.max(120, startW + (e.clientX - startX) / scale);
+          let h = Math.max(minH, startH + (e.clientY - startY) / scale);
+          section.style.flex = '0 0 auto';
+          section.style.flexShrink = '0';
+          section.style.width = w + 'px';
+          section.style.height = h + 'px';
+          section.style.maxWidth = 'none';
+          section.style.maxHeight = 'none';
+          section.dataset.fafoHeight = String(Math.round(h));
+          section.setAttribute('data-fafo-user-sized', '1');
+          section.setAttribute('data-fafo-box', '1');
+        }
+        function onUp() {
+          if (finished) return;
+          finished = true;
+          handle.classList.remove('is-active');
+          clearLayoutPointerState(root);
+          try { handle.releasePointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
           window.removeEventListener('pointercancel', onUp);
@@ -1849,6 +2032,8 @@
       // Do not clear _fafoBound / _fafoDrag — those flags are the listener guard.
       bindSplitResize(root, opts, saveUser);
       bindSectionResize(root, saveUser);
+      bindCornerResize(root, saveUser);
+      bindSectionCornerResize(root, saveUser);
       bindPanelDrag(root, opts, saveUser, rebindAll);
       bindSectionDrag(root, opts, saveUser, rebindAll);
     }
