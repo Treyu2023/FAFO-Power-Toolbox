@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDF Converter — AI HTML Toolbox</title>
+<link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=1.16.53">
+<style>
+:root{--bg:#050508;--panel:#0c0f16;--border:rgba(56,189,248,.22);--accent:#38bdf8;--ok:#4ade80;--warn:#fbbf24;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 40% -10%,#0c1a2e,var(--bg) 55%);color:var(--text);min-height:100vh}
+.nav{display:flex;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);align-items:center;gap:12px;flex-wrap:wrap}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.badge{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ok);border:1px solid rgba(74,222,128,.35);background:rgba(74,222,128,.08);padding:4px 10px;border-radius:999px}
+.wrap{max-width:1100px;margin:0 auto;padding:24px}
+h1{font-size:22px;margin-bottom:6px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 16px;line-height:1.5}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--accent);font-size:12px;text-transform:uppercase;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center}
+.pb{padding:16px 18px}
+.inp,.sel{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px}
+.btn{padding:8px 16px;border:1px solid var(--accent);background:rgba(56,189,248,.1);color:var(--accent);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:rgba(255,255,255,.15);color:var(--muted);background:transparent}
+.btn.ok{border-color:var(--ok);color:var(--ok);background:rgba(74,222,128,.1)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.tw{max-height:360px;overflow:auto}
+.log{font-size:11px;color:var(--muted);font-family:Consolas,monospace;min-height:40px;margin-top:10px;white-space:pre-wrap}
+.tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(56,189,248,.15);color:var(--accent)}
+.progress{height:6px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:10px;overflow:hidden;display:none}
+.progress span{display:block;height:100%;background:var(--accent);width:0%;transition:width .2s}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:8px}
+.pill{font-size:11px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.25)}
+.pill.on{border-color:rgba(74,222,128,.35);color:var(--ok)}
+.pill.off{border-color:rgba(251,191,36,.25);color:var(--warn)}
+.formats{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.fmt{font-size:11px;padding:4px 8px;border-radius:6px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);color:var(--muted)}
+.fmt.ok{color:var(--accent);border-color:rgba(56,189,248,.4)}
+.fmt.na{opacity:.45;text-decoration:line-through}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a href="../Toolbox Launcher.html">← Toolbox</a>
+  <span style="color:var(--accent);font-size:12px;letter-spacing:1px">PDF CONVERTER</span>
+  <span class="badge">Adobe-free</span>
+</nav>
+<div class="wrap">
+  <h1>PDF Converter</h1>
+  <p class="sub">
+    Convert PDFs to text, Markdown, HTML, Word (.docx), PNG/JPEG/WebP page images, or best-effort CSV —
+    using open-source engines only (PyMuPDF / pypdf / python-docx). <strong>No Adobe. No subscription.</strong>
+    Requires the toolbox server. Esc = launcher.
+  </p>
+
+  <div class="panel">
+    <div class="ph">Engine status <span id="readyBadge" style="color:var(--muted);font-size:11px;text-transform:none"></span></div>
+    <div class="pb">
+      <div class="status-grid" id="engineGrid"></div>
+      <div class="formats" id="formatList"></div>
+      <div class="log" id="engineNote" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph">Source folder</div>
+    <div class="pb toolbar">
+      <input class="inp" id="folder" placeholder="C:\path\to\pdfs" style="flex:1;min-width:240px">
+      <button class="btn ghost" id="btnPick" type="button">Browse…</button>
+      <select class="sel" id="preset"></select>
+      <input class="inp" id="dpi" type="number" min="72" max="300" value="150" title="DPI for image outputs" style="width:88px" placeholder="DPI">
+      <input class="inp" id="outDir" placeholder="Output folder (optional, same as source)" style="flex:1;min-width:200px">
+      <button class="btn" id="btnScan">Scan PDFs</button>
+      <button class="btn ok" id="btnConvert" disabled>Convert selected</button>
+      <button class="btn ghost" id="btnStop" type="button" disabled>Stop</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph">PDF files <span id="fileCount" style="color:var(--muted);text-transform:none"></span>
+      <input class="inp" id="filter" placeholder="Filter…" style="min-width:140px;max-width:200px">
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th><input type="checkbox" id="chkAll" title="Select all"></th><th>Name</th><th>Type</th><th>Size</th></tr></thead>
+        <tbody id="fileBody"></tbody>
+      </table>
+    </div>
+    <div class="pb">
+      <div class="progress" id="progress"><span id="progressBar"></span></div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/aitoolbox-config.js?v=1.16.53"></script>
+<script src="../shared/aitoolbox-version.js?v=1.16.53"></script>
+<script src="../shared/aitoolbox-debug.js?v=1.16.53"></script>
+<script src="../shared/aitoolbox-api.js?v=1.16.53"></script>
+<script src="../shared/aitoolbox-ui.js?v=1.16.53"></script>
+<script>
+const UI = () => window.AIToolboxUI;
+const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtB = (n) => UI()?.formatBytes?.(n) ?? (n + ' B');
+function apiBase() {
+  return UI()?.getApiBase?.() || (window.AITOOLBOX_CONFIG && AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+}
+
+let files = [];
+let sel = new Set();
+let es = null;
+
+function log(msg) { document.getElementById('log').textContent = msg || ''; }
+
+async function init() {
+  try {
+    const p = await UI().apiFetch('/pdf/presets');
+    const presets = p.presets || [];
+    document.getElementById('preset').innerHTML = presets
+      .map(x => `<option value="${esc(x.id)}" ${x.available === false ? 'disabled' : ''}>${esc(x.label)}${x.available === false ? ' (needs install)' : ''}</option>`)
+      .join('') || '<option value="">No presets</option>';
+    renderStatus(p.status || {}, presets);
+  } catch (e) {
+    document.getElementById('preset').innerHTML = '<option value="">Server offline</option>';
+    document.getElementById('engineNote').textContent = e.message || String(e);
+    log(e.message || String(e));
+  }
+}
+
+function renderStatus(status, presets) {
+  const eng = status.engines || {};
+  const labels = {
+    pymupdf: 'PyMuPDF (render + HTML)',
+    pypdf: 'pypdf (text)',
+    python_docx: 'python-docx (Word)',
+    pillow: 'Pillow (WebP)',
+  };
+  document.getElementById('engineGrid').innerHTML = Object.keys(labels).map(k => {
+    const on = !!eng[k];
+    return `<div class="pill ${on ? 'on' : 'off'}">${on ? '✓' : '○'} ${esc(labels[k])}</div>`;
+  }).join('');
+  const ready = !!status.ready;
+  document.getElementById('readyBadge').textContent = ready ? 'ready · Adobe-free' : 'missing libraries';
+  document.getElementById('readyBadge').style.color = ready ? 'var(--ok)' : 'var(--warn)';
+  document.getElementById('formatList').innerHTML = (presets || []).map(x =>
+    `<span class="fmt ${x.available ? 'ok' : 'na'}">${esc(x.label)}</span>`
+  ).join('');
+  document.getElementById('engineNote').textContent = status.note
+    + (status.install_hint ? '\n' + status.install_hint : '');
+}
+
+function filteredIndexes() {
+  const q = (document.getElementById('filter').value || '').toLowerCase();
+  return files.map((_, i) => i).filter(i => {
+    if (!q) return true;
+    return (files[i].name || '').toLowerCase().includes(q);
+  });
+}
+
+function render() {
+  const idxs = filteredIndexes();
+  document.getElementById('fileCount').textContent = files.length
+    ? `(${sel.size} selected · ${idxs.length}/${files.length} shown)`
+    : '';
+  document.getElementById('fileBody').innerHTML = idxs.map(i => {
+    const f = files[i];
+    return `<tr>
+      <td><input type="checkbox" data-i="${i}" ${sel.has(i) ? 'checked' : ''}></td>
+      <td>${esc(f.name)}</td>
+      <td><span class="tag">${esc(f.type || 'pdf')}</span></td>
+      <td>${fmtB(f.size)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No PDFs — scan a folder</td></tr>';
+  document.querySelectorAll('[data-i]').forEach(c => {
+    c.onchange = () => {
+      const i = +c.dataset.i;
+      if (c.checked) sel.add(i); else sel.delete(i);
+      document.getElementById('btnConvert').disabled = sel.size === 0;
+      document.getElementById('fileCount').textContent =
+        `(${sel.size} selected · ${idxs.length}/${files.length} shown)`;
+    };
+  });
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+}
+
+document.getElementById('chkAll').onchange = e => {
+  const idxs = filteredIndexes();
+  if (e.target.checked) idxs.forEach(i => sel.add(i));
+  else idxs.forEach(i => sel.delete(i));
+  render();
+};
+
+document.getElementById('filter').oninput = render;
+
+document.getElementById('btnScan').onclick = async () => {
+  const folder = document.getElementById('folder').value.trim();
+  if (!folder) { log('Enter a folder path'); return; }
+  log('Scanning for PDFs…');
+  try {
+    const d = await UI().apiFetch('/pdf/scan?folder=' + encodeURIComponent(folder));
+    files = d.files || [];
+    sel = new Set(files.map((_, i) => i));
+    document.getElementById('chkAll').checked = true;
+    render();
+    log(`Found ${files.length} PDF file(s)`);
+  } catch (e) {
+    log(e.message || String(e));
+    UI()?.toast?.(e.message || String(e), 'warn');
+  }
+};
+
+function stopConvert() {
+  if (es) { try { es.close(); } catch {} es = null; }
+  document.getElementById('btnConvert').disabled = sel.size === 0;
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('progress').style.display = 'none';
+}
+
+document.getElementById('btnStop').onclick = () => { stopConvert(); log('Conversion stopped'); };
+
+document.getElementById('btnConvert').onclick = () => {
+  const chosen = [...sel].map(i => files[i]?.path).filter(Boolean);
+  if (!chosen.length) return;
+  const preset = document.getElementById('preset').value;
+  if (!preset) { log('No format selected'); return; }
+  const outDir = document.getElementById('outDir').value.trim() || null;
+  const dpi = parseInt(document.getElementById('dpi').value, 10) || 150;
+  log('Starting Adobe-free conversion…');
+  document.getElementById('btnConvert').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  const prog = document.getElementById('progress');
+  const bar = document.getElementById('progressBar');
+  prog.style.display = 'block';
+  bar.style.width = '0%';
+
+  let url = apiBase() + '/pdf/stream?files=' + encodeURIComponent(chosen.join('|'))
+    + '&preset=' + encodeURIComponent(preset)
+    + '&dpi=' + encodeURIComponent(String(dpi));
+  if (outDir) url += '&output_dir=' + encodeURIComponent(outDir);
+  if (es) try { es.close(); } catch {}
+  es = new EventSource(url);
+  es.onmessage = ev => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.error) { log('Error: ' + d.error); stopConvert(); return; }
+    if (d.done) {
+      const r = d.result || {};
+      const outs = (r.results || []).flatMap(x => x.outputs || (x.output ? [x.output] : []));
+      log(`Done: ${r.succeeded || 0}/${r.total || chosen.length} succeeded`
+        + (r.failed ? ` · ${r.failed} failed` : '')
+        + (outs.length ? `\nOutputs:\n` + outs.slice(0, 20).join('\n') + (outs.length > 20 ? `\n… +${outs.length - 20} more` : '') : ''));
+      bar.style.width = '100%';
+      stopConvert();
+      return;
+    }
+    if (d.current != null && d.total) {
+      bar.style.width = Math.round((d.current / d.total) * 100) + '%';
+    } else if (d.extra?.current != null && d.extra?.total) {
+      bar.style.width = Math.round((d.extra.current / d.extra.total) * 100) + '%';
+    }
+    if (d.message) log(d.message);
+  };
+  es.onerror = () => {
+    log('Convert stream failed — is the toolbox server online? Libraries installed?');
+    stopConvert();
+  };
+};
+
+document.getElementById('btnPick').onclick = async () => {
+  try {
+    if (!window.AIToolboxAPI) throw new Error('API not loaded');
+    if (!(await AIToolboxAPI.isOnline(true))) throw new Error('Start the server first');
+    const r = await AIToolboxAPI.pickFolderOnly();
+    const p = r?.path || r?.folder || r;
+    if (typeof p === 'string' && p) document.getElementById('folder').value = p;
+  } catch (e) {
+    log(e.message || String(e));
+  }
+};
+
+UI()?.mountServerBar?.({ onOnline: init });
+init();
+</script>
+
+<script data-tool-polish="pdf-converter">
+(function(){
+  if (window.__tbToolPolish) return; window.__tbToolPolish = true;
+  const TOOL_ID = "pdf-converter";
+  const TOOL_NAME = "PDF Converter";
+  function launcherHref(){
+    try {
+      if (window.AIToolboxUI?.launcherHref) return AIToolboxUI.launcherHref();
+      if (location.hostname === '127.0.0.87' || location.port === '18765')
+        return 'http://127.0.0.87:18765/toolbox/Toolbox%20Launcher.html';
+    } catch(_){}
+    const a = document.querySelector('a[href*="Toolbox Launcher"], a.toolbox-back');
+    if (a?.href) return a.href;
+    return '../Toolbox Launcher.html';
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t?.closest?.('[role="dialog"], .modal, .overlay, .ui-modal')) return;
+    location.href = launcherHref();
+  }, true);
+  window.addEventListener('load', function(){
+    try {
+      if (sessionStorage.getItem('tb_launch_toast_'+TOOL_ID)) return;
+      sessionStorage.setItem('tb_launch_toast_'+TOOL_ID, '1');
+      if (window.AIToolboxUI?.toast) AIToolboxUI.toast(TOOL_NAME + ' ready · no Adobe · Esc = launcher', 'ok');
+    } catch(_){}
+  });
+})();
+</script>
+</body>
+</html>
