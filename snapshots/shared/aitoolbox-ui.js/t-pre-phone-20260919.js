@@ -175,15 +175,15 @@
             bg.className = 'ui-modal-bg';
             const previewHtml = preview.length
                 ? `<div class="preview-list">${preview.slice(0, 8).map(p =>
-                    `<div><span style="color:#888">${p.from}</span> → <span style="color:var(--ui-accent)">${p.to}</span></div>`
+                    `<div><span style="color:#888">${escapeHtml(p.from)}</span> → <span style="color:var(--ui-accent)">${escapeHtml(p.to)}</span></div>`
                 ).join('')}${preview.length > 8 ? `<div style="color:#666">…and ${preview.length - 8} more</div>` : ''}</div>`
                 : '';
 
             const trustChecked = trustDefaultChecked ? ' checked' : '';
             bg.innerHTML = `
                 <div class="ui-modal">
-                    <h3>${title}</h3>
-                    <div class="ui-modal-body">${body}${safetyHtml}</div>
+                    <h3>${escapeHtml(title)}</h3>
+                    <div class="ui-modal-body">${escapeHtml(body)}${safetyHtml}</div>
                     ${previewHtml}
                     ${trustKey ? `<label class="trust-row"><input type="checkbox" id="ui-trust-cb"${trustChecked}> ${trustLabel}</label>` : ''}
                     <div class="ui-modal-actions">
@@ -215,6 +215,11 @@
     function startTutorial(steps, storageKey, onStep, opts) {
         const force = opts === true || (opts && opts.force);
         if (!force && storageKey && isTutorialDone(storageKey)) return;
+        try {
+            // Hub iframes: a full-page dim covers Library/Duplicates/Organizer
+            // toolbars. First-run tour stays on the standalone window.
+            if (!force && window.self !== window.top) return;
+        } catch (_) { /* ignore */ }
         tutorialState = { steps, index: 0, storageKey, onStep };
         showTutorialStep();
     }
@@ -245,8 +250,8 @@
 
         card.innerHTML = `
             <div class="ui-tutorial-progress">${dots}</div>
-            <h4>${step.title}</h4>
-            <p>${step.body}</p>
+            <h4>${escapeHtml(step.title)}</h4>
+            <p>${escapeHtml(step.body)}</p>
             <div class="ui-tutorial-actions">
                 <button class="ui-btn ghost" id="tut-skip">Skip tour</button>
                 <div style="display:flex;gap:8px">
@@ -295,6 +300,8 @@
         window.addEventListener('resize', positionSpotlight);
 
         bg.querySelector('#tut-skip').onclick = endTutorial;
+        const dim = bg.querySelector('.ui-tutorial-dim');
+        if (dim) dim.addEventListener('click', endTutorial);
         bg.querySelector('#tut-next').onclick = () => {
             tutorialState.index++;
             showTutorialStep();
@@ -532,6 +539,18 @@
         return (num < 0 ? '-' : '') + shown + ' ' + units[i];
     }
 
+    function isToolboxLauncherPage() {
+        try {
+            if (document.body && document.body.getAttribute('data-tb-chrome') === 'off') return true;
+            const raw = String(location.pathname || '') + ' ' + String(location.href || '');
+            let decoded = raw;
+            try { decoded = decodeURIComponent(raw.replace(/\+/g, '%20')); } catch (_) { /* ignore */ }
+            if (/Toolbox Launcher\.html/i.test(raw) || /Toolbox Launcher\.html/i.test(decoded)) return true;
+            if (/toolbox%20launcher\.html/i.test(raw)) return true;
+        } catch (_) { /* ignore */ }
+        return false;
+    }
+
     /**
      * Inject a consistent multi-server status bar (S1 HTML Toolbox + S2 FAFO Tagger)
      * with ← Toolbox escape hatch. OLED black + teal/neon accents.
@@ -539,10 +558,13 @@
      */
     function mountServerBar(opts = {}) {
         // Don't put a second bar on the launcher (it has its own full panel)
-        const isLauncher = /Toolbox Launcher\.html/i.test(location.pathname || location.href || '');
-        if (opts.skipOnLauncher !== false && isLauncher) {
+        if (opts.skipOnLauncher !== false && isToolboxLauncherPage()) {
             return null;
         }
+        // Hub iframes already show the parent toolbox chrome
+        try {
+            if (window.self !== window.top) return null;
+        } catch (_) { return null; }
 
         if (document.getElementById('tbSharedServerBar')) {
             return _wireCompanionBar(opts);
@@ -584,12 +606,13 @@
             style.id = 'tbCompanionBarCss';
             style.textContent = `
                 .tb-companion-bar{
-                    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
-                    padding:8px 14px;font:600 12px/1.3 system-ui,Segoe UI,sans-serif;
+                    display:flex;flex-wrap:nowrap;gap:8px;align-items:center;
+                    padding:4px 10px;font:600 12px/1.3 system-ui,Segoe UI,sans-serif;
                     background:linear-gradient(180deg,#050508 0%,#0a0a10 100%);
                     border-bottom:1px solid rgba(0,243,255,.22);
                     box-shadow:0 0 24px rgba(0,243,255,.06), inset 0 1px 0 rgba(0,243,255,.08);
                     color:#c8d0d8;position:sticky;top:0;z-index:9990;
+                    max-height:42px;overflow-x:auto;overflow-y:hidden;
                 }
                 .tb-bar-back{
                     color:#00e5ff;text-decoration:none;padding:5px 10px;border-radius:8px;
@@ -914,13 +937,20 @@
      * Fetch JSON from toolbox API with clearer offline errors.
      */
     async function apiFetch(path, opts = {}) {
+        if (global.AIToolboxAPI && typeof global.AIToolboxAPI.api === 'function' && !/^https?:/i.test(String(path || ''))) {
+            return global.AIToolboxAPI.api(path, { timeoutMs: 30000, ...opts });
+        }
         const base = getApiBase();
         const url = path.startsWith('http') ? path : base + path;
         let r;
         try {
+            const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
+                ? AbortSignal.timeout(opts.timeoutMs || 30000)
+                : undefined;
             r = await fetch(url, {
                 headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
                 ...opts,
+                signal: opts.signal || ctrl,
             });
         } catch (e) {
             const err = new Error('Server offline — use ▶ Start Server (backend ' + (
@@ -1059,6 +1089,11 @@
                 return true;
             }
             // Explicit close targets (Dup Manager compare, etc.)
+            const look = document.getElementById('atx-look');
+            if (look && look.classList.contains('open')) {
+                try { window.AIToolboxPrefs?.close?.(); } catch (_) { look.classList.remove('open'); }
+                return true;
+            }
             const cmp = document.getElementById('comparePanel');
             if (cmp && cmp.classList.contains('open')) {
                 const btn = document.getElementById('btnCloseCompare');
@@ -1174,7 +1209,7 @@
                 if (window.self !== window.top) {
                     e.preventDefault();
                     e.stopPropagation();
-                    window.parent.postMessage({ type: 'fafo-escape', href: launcherHref() }, '*');
+                    window.parent.postMessage({ type: 'fafo-escape', href: launcherHref() }, location.origin);
                     return;
                 }
             } catch { /* cross-origin — fall through to local leave */ }
@@ -1226,16 +1261,17 @@
         if (!info) { fallback(); return; }
         try {
             if (window.self !== window.top) {
-                if (info.kind === 'media' && info.tab) {
-                    window.parent.postMessage({ type: 'fafo-hub-tab', tab: info.tab, search: info.search, href: info.href }, '*');
-                    return;
-                }
-                if (info.kind === 'compare' && info.tab) {
-                    window.parent.postMessage({ type: 'fafo-compare-tab', tab: info.tab, search: info.search, href: info.href }, '*');
+                if ((info.kind === 'media' || info.kind === 'compare') && (info.tab || info.kind === 'compare')) {
+                    window.parent.postMessage({
+                        type: 'fafo-hub-tab',
+                        tab: info.tab || 'match',
+                        search: info.search,
+                        href: info.href,
+                    }, location.origin);
                     return;
                 }
                 try { window.top.location.href = info.href; return; } catch { /* cross-origin */ }
-                window.parent.postMessage({ type: 'fafo-escape', href: info.href }, '*');
+                window.parent.postMessage({ type: 'fafo-escape', href: info.href }, location.origin);
                 return;
             }
         } catch { /* ignore */ }
@@ -1326,7 +1362,8 @@
             try {
                 // Skip pure extension pages / about:blank noise
                 if (!document.body) return;
-                if (document.body.dataset.tbChrome === 'off') return;
+                ensureChromeFix();
+                if (document.body.dataset.tbChrome === 'off' || isToolboxLauncherPage()) return;
                 mountToolChrome({ pollMs: 8000 });
                 bindEscToLauncher();
                 bindFramedHubLinks();
@@ -1338,26 +1375,58 @@
             }
         };
 
+        function toolboxAssetVersion() {
+            if (global.AITOOLBOX_VERSION) return String(global.AITOOLBOX_VERSION);
+            try {
+                const scripts = document.getElementsByTagName('script');
+                for (let i = scripts.length - 1; i >= 0; i--) {
+                    const m = String(scripts[i].src || '').match(/[?&]v=([^&]+)/);
+                    if (m) return decodeURIComponent(m[1]);
+                }
+            } catch (_) { /* ignore */ }
+            return String(global.AITOOLBOX_VERSION || '3.0.0');
+        }
+
+        function withCacheBust(url) {
+            if (!url) return url;
+            const v = toolboxAssetVersion();
+            if (/[?&]v=/.test(url)) return url.replace(/([?&]v=)[^&]*/, '$1' + encodeURIComponent(v));
+            return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(v);
+        }
+
+        function sharedScriptSrc(fileName) {
+            let src = 'shared/' + fileName;
+            try {
+                const scripts = document.getElementsByTagName('script');
+                for (let i = scripts.length - 1; i >= 0; i--) {
+                    const s = scripts[i].src || '';
+                    if (s.includes('aitoolbox-ui.js')) {
+                        src = s.replace(/aitoolbox-ui\.js(?:\?.*)?$/i, fileName);
+                        break;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+            return withCacheBust(src);
+        }
+
+        function ensureChromeFix() {
+            if (global.__fafoChromeFix || document.getElementById('fafoChromeFixScript')) return;
+            const el = document.createElement('script');
+            el.id = 'fafoChromeFixScript';
+            el.src = sharedScriptSrc('aitoolbox-chrome-fix.js');
+            el.async = true;
+            (document.head || document.documentElement).appendChild(el);
+        }
+
         function ensureGuidanceScript() {
             if (global.FAFOGuidance) {
                 try { global.FAFOGuidance.installSkillControl?.(); } catch (_) { /* ignore */ }
                 return;
             }
             if (document.getElementById('fafoGuidanceScript')) return;
-            let src = 'shared/fafo-guidance.js';
-            try {
-                const scripts = document.getElementsByTagName('script');
-                for (let i = scripts.length - 1; i >= 0; i--) {
-                    const s = scripts[i].src || '';
-                    if (s.includes('aitoolbox-ui.js')) {
-                        src = s.replace(/aitoolbox-ui\.js.*$/i, 'fafo-guidance.js');
-                        break;
-                    }
-                }
-            } catch (_) { /* ignore */ }
             const el = document.createElement('script');
             el.id = 'fafoGuidanceScript';
-            el.src = src;
+            el.src = sharedScriptSrc('fafo-guidance.js');
             el.async = true;
             document.head.appendChild(el);
         }

@@ -652,6 +652,9 @@
                     padding:5px 11px;border-radius:8px;border:1px solid rgba(0,243,255,.35);
                     background:rgba(0,243,255,.1);color:#00f3ff;cursor:pointer;font:600 11px system-ui,sans-serif;
                 }
+                @media (pointer:coarse),(max-width:640px){
+                    .tb-btn{min-height:44px;min-width:44px;padding:10px 12px}
+                }
                 .tb-btn.primary{background:rgba(0,243,255,.18);border-color:#00f3ff}
                 .tb-btn.primary.state-online{background:rgba(0,255,136,.2);border-color:#00ff88;color:#b7ffd9}
                 .tb-btn.primary.state-starting{background:rgba(45,212,191,.22);border-color:#2dd4bf;color:#99f6e4}

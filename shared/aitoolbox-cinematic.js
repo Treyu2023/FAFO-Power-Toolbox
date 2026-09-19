@@ -1295,7 +1295,14 @@ body.cine-active { overflow: hidden; }
     async function play(opts) {
         opts = opts || {};
         prefs = loadPrefs();
-        if (!opts.force && prefs.skipOnLaunch) {
+        var phoneNarrow = false;
+        try {
+            phoneNarrow = window.matchMedia('(max-width: 640px)').matches;
+        } catch (e) {
+            phoneNarrow = (window.innerWidth || 1200) <= 640;
+        }
+        // Phone-width: skip the full-screen intro so tiles are reachable. Replay still works with force.
+        if (!opts.force && (prefs.skipOnLaunch || phoneNarrow)) {
             return;
         }
 
