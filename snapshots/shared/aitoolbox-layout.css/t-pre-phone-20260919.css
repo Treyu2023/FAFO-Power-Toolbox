@@ -62,14 +62,14 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   display: none !important;
 }
 .fafo-layout-panel[data-fafo-flex="1"] {
-  flex: 1 0 auto !important;
+  flex: 1 1 auto !important;
   min-height: 0;
   height: auto !important;
   max-height: none !important;
 }
 .fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"] {
-  flex: 1 0 auto !important;
-  min-height: 220px;
+  flex: 1 1 auto !important;
+  min-height: 0;
 }
 .fafo-layout-panel[data-fafo-sized="1"] {
   overflow: hidden;
@@ -138,9 +138,11 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   background: rgba(0, 0, 0, 0.35);
   color: rgba(0, 243, 255, 0.9);
   border-radius: 6px;
-  width: 22px;
-  height: 20px;
-  padding: 0;
+  min-width: 28px;
+  min-height: 24px;
+  width: auto;
+  height: auto;
+  padding: 2px 6px;
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
@@ -161,6 +163,8 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
 .fafo-panel-body {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  position: relative;
   overflow: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -198,26 +202,35 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   overscroll-behavior: contain;
 }
 
-/* Split handles between panels */
+/* Split handles between panels — always visible so resize is discoverable */
 .fafo-split-handle {
-  flex: 0 0 6px;
+  flex: 0 0 10px;
   position: relative;
   z-index: 5;
-  background: transparent;
+  background: rgba(0, 243, 255, 0.07);
   cursor: col-resize;
   touch-action: none;
 }
 .fafo-layout-rows > .fafo-split-handle {
-  flex-basis: 6px;
+  flex-basis: 10px;
   width: 100%;
   cursor: row-resize;
 }
 .fafo-split-handle::after {
   content: "";
   position: absolute;
-  inset: 0;
-  background: rgba(0, 243, 255, 0.08);
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  right: -8px;
+  background: rgba(0, 243, 255, 0.1);
   transition: background 0.15s;
+}
+.fafo-layout-rows > .fafo-split-handle::after {
+  left: 0;
+  right: 0;
+  top: -8px;
+  bottom: -8px;
 }
 .fafo-split-handle:hover::after,
 .fafo-split-handle.is-active::after {
@@ -229,10 +242,10 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 10px;
-  color: rgba(0, 243, 255, 0.55);
+  font-size: 12px;
+  color: rgba(0, 243, 255, 0.75);
   pointer-events: none;
-  opacity: 0;
+  opacity: 0.85;
   transition: opacity 0.15s;
 }
 .fafo-layout-rows > .fafo-split-handle::before { content: "⋯"; }
@@ -278,7 +291,7 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   margin: 0;
 }
 .fafo-section-resize {
-  height: 6px;
+  height: 10px;
   cursor: row-resize;
   touch-action: none;
   background: transparent;
@@ -288,22 +301,53 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
 .fafo-section-resize::after {
   content: "";
   position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 2px;
-  height: 2px;
+  left: 10%;
+  right: 10%;
+  top: 4px;
+  height: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 243, 255, 0.35);
 }
 .fafo-section-resize:hover::after,
 .fafo-section-resize.is-active::after {
-  background: rgba(0, 243, 255, 0.55);
+  background: rgba(0, 243, 255, 0.8);
+}
+.fafo-corner-resize,
+.fafo-section-corner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  z-index: 40;
+  cursor: nwse-resize;
+  touch-action: none;
+  pointer-events: auto;
+  background:
+    linear-gradient(135deg, transparent 0 46%, rgba(0, 243, 255, 0.2) 46% 54%, transparent 54%),
+    linear-gradient(135deg, transparent 62%, rgba(0, 243, 255, 0.55) 62%);
+  border-radius: 2px 0 4px 0;
+}
+.fafo-corner-resize:hover,
+.fafo-section-corner:hover,
+.fafo-corner-resize.is-active,
+.fafo-section-corner.is-active {
+  background:
+    linear-gradient(135deg, transparent 0 40%, rgba(0, 243, 255, 0.45) 40% 55%, transparent 55%),
+    linear-gradient(135deg, transparent 58%, rgba(0, 243, 255, 0.9) 58%);
+}
+[data-fafo-section] {
+  position: relative;
 }
 [data-fafo-section][data-fafo-resizable="1"] {
   display: flex;
   flex-direction: column;
-  min-height: 80px;
-  overflow: hidden;
+  min-height: 36px;
+  overflow: auto;
+  resize: both;
+}
+[data-fafo-section][data-fafo-resizable="1"].fafo-section-compact {
+  min-height: 0;
 }
 [data-fafo-section][data-fafo-resizable="1"] .fafo-section-body {
   flex: 1 1 auto;
@@ -343,16 +387,19 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   max-width: 220px;
 }
 
-/* Always-available floating layout dock (reset / save never off-screen) */
+/* Always-available floating layout dock (reset / save never off-screen).
+   Overlay only — must never reserve a third of the viewport. */
 .fafo-layout-float-dock {
   position: fixed;
   left: 10px;
-  bottom: 10px;
+  bottom: calc(var(--atx-pro-h, 48px) + 10px);
   z-index: 99950;
   display: flex;
   flex-direction: column;
   gap: 6px;
   max-width: min(420px, calc(100vw - 20px));
+  max-height: min(36vh, 220px);
+  overflow: auto;
   pointer-events: none;
 }
 .fafo-layout-dock-toggle {
@@ -399,6 +446,12 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
   background: rgba(6, 10, 16, 0.88);
   backdrop-filter: blur(8px);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  resize: both;
+  overflow: auto;
+  min-width: 160px;
+  min-height: 36px;
+  max-width: min(72vw, 760px);
+  max-height: min(42vh, 280px);
 }
 .fafo-layout-float-label {
   font-size: 10px;
@@ -411,9 +464,12 @@ html:has(.fafo-layout-root.fafo-layout-rows:not(.fafo-viewport-pin)) body {
 .fafo-layout-float-host .fafo-layout-bar {
   gap: 5px;
 }
-/* Avoid covering companion S1/S2 bar if both bottom-left */
+body.atx-pro-pad .fafo-layout-float-dock,
 body.tb-has-companion-bar .fafo-layout-float-dock {
-  bottom: 52px;
+  bottom: calc(var(--atx-pro-h, 48px) + 10px);
+}
+body.atx-pro-min .fafo-layout-float-dock {
+  bottom: 12px;
 }
 
 body.fafo-layout-resizing {
@@ -487,7 +543,7 @@ body.fafo-layout-locked .fafo-layout-root.fafo-viewport-pin:not(body > *) {
   flex-direction: column;
   min-height: 0;
   overflow: visible;
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 .fafo-body-split > [data-fafo-section] > .fafo-section-body {
   flex: 1 1 auto;
@@ -503,12 +559,27 @@ body.fafo-layout-locked .fafo-layout-root.fafo-viewport-pin:not(body > *) {
   min-height: 0;
 }
 .fafo-body-split > [data-fafo-section].fafo-section-flex {
-  flex: 1 0 auto;
-  min-height: 180px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .fafo-body-split > [data-fafo-section][data-fafo-user-sized="1"] {
   overflow: hidden;
   flex: 0 0 auto;
+}
+.fafo-body-split > [data-fafo-section].fafo-section-collapsed,
+[data-fafo-section].fafo-section-collapsed {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: hidden;
+}
+[data-fafo-section].fafo-section-collapsed > .fafo-section-body,
+[data-fafo-section].fafo-section-collapsed > .fafo-section-resize {
+  display: none !important;
+}
+.fafo-chrome-btn[data-fafo-collapse-section][aria-pressed="true"] {
+  color: var(--atx-accent, #00f3ff);
 }
 
 /* Launcher / catalog pages: never lock the document. Page scroll is the
