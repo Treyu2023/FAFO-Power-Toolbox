@@ -8,6 +8,8 @@ Local browser-based tools for media cataloging, VSR pipeline renaming, and befor
 
 **Sharing / Chrome Web Store / GitHub:** [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) — full media+server stack is **not** a Chrome Web Store extension; GitHub (local install) is the right channel.
 
+**Phone (Android Chrome, no APK):** [`docs/PHONE.md`](docs/PHONE.md) — GitHub Pages URL, Add to Home screen, LAN `python -m http.server` fallback.
+
 ---
 
 ## Quick start (how to launch)
