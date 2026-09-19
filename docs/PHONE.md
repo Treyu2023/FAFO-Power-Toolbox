@@ -67,6 +67,8 @@ Example: `http://192.168.1.40:8080/` → launcher.
 
 | Works in the browser | Needs the PC toolbox server |
 |----------------------|-----------------------------|
+On phone-width, the Launcher skips the full-screen cinematic intro and hides the PC installer (“Install FAFO Toolbox.bat”) panel.
+
 | Launcher catalog, search, sections | Media Library, VSR, most System Tools |
 | Drawing Board (localStorage) | Verifone live probes, diagnostics HUD |
 | Other offline-OK HTML tools | Anything that talks to `127.0.0.87:18765` |
