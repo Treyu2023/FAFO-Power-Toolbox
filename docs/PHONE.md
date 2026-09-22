@@ -95,6 +95,20 @@ Example: `http://192.168.1.40:8080/` → launcher.
 
 `file://` open of HTML on the phone is out of scope. HTTP(S) keeps relative `shared/` paths working.
 
+## Autosize (no scale slider on a phone)
+
+The page matches the device. At **720px and under** there is no “scale everything” control. Saved UI scale on a laptop stays in preferences and comes back when the window is wide again. Ctrl+wheel does not change scale on a narrow window.
+
+Narrow layout:
+
+- Columns stack full width. Type uses the screen (viewport, `clamp`, fluid grids, safe-area).
+- Panels, menus, and option lists grow with their content. The **page** scrolls.
+- Nested max-height boxes (layout docks, companion chips, pro-bar chips, section bodies) unwrap. A collapsed accordion stays collapsed until you open it, then it grows.
+- Touch targets stay at least 44px. The page does not scroll sideways.
+- Desktop and laptop widths keep side-by-side panes, drag-resize, and the Look panel scale controls (UI scale, text scale, 4K TV presets).
+
+A typing run (`body.run-active`) keeps its stage so the drill is not shoved off screen. Menus outside a run follow the page.
+
 ## What works on the phone
 
 On phone-width (≤640px), the Launcher skips the full-screen cinematic intro and hides the PC installer (“Install FAFO Toolbox.bat”) panel. At ≤430px, shared chrome also enforces 44px controls, 16px inputs, and stacked panels. Desktop widths keep the denser layout.
