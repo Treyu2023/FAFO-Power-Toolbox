@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Songforge — FAFO Ops</title>
+<!-- PET-SF-4 LIVE cite THE Songforge SPEC sha8 ad476319 / brief 8fa05a52 -->
+<!-- CDN0. No Suno API. ScaleSiege HOLD. Studio hook soft-parked. -->
+<script src="shared/aitoolbox-config.js"></script>
+<script src="shared/aitoolbox-layout.js"></script>
+<script src="shared/aitoolbox-api.js"></script>
+<script src="shared/aitoolbox-ui.js"></script>
+<script src="shared/aitoolbox-pro.js"></script>
+<link rel="stylesheet" href="shared/aitoolbox-ui.css">
+<link rel="stylesheet" href="shared/aitoolbox-layout.css">
+<link rel="stylesheet" href="shared/fafo-chrome.css">
+<script src="shared/fafo-chrome.js" defer></script>
+<style>
+:root{
+  --bg:#070b12;--panel:#0c1220;--panel2:#141c2c;--border:rgba(0,243,255,.24);
+  --accent:#00f3ff;--gold:#f5c542;--ok:#34d399;--warn:#fbbf24;--bad:#f43f5e;
+  --text:#f1f5f9;--muted:#b6c4d8;
+  --fafo-bg:var(--bg);--fafo-panel:var(--panel);--fafo-text:var(--text);
+  --fafo-muted:var(--muted);--fafo-accent:var(--accent);--fafo-border:var(--border);
+  --fafo-touch-min:44px;--radius:12px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);
+  font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:12px 16px 48px}
+.nav{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;font-size:12px}
+.nav .t{font-weight:800;letter-spacing:.06em;color:var(--accent)}
+.nav a{color:var(--muted);text-decoration:none}
+.nav a:hover{color:var(--accent)}
+.head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.head h1{margin:0;font-size:1.45rem}
+.sub{margin:4px 0 0;color:var(--muted);font-size:12px;max-width:56ch}
+.btn{min-height:var(--fafo-touch-min);padding:8px 14px;border-radius:10px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-weight:700;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:rgba(0,243,255,.16);border-color:var(--accent);color:#e8feff}
+.btn.ghost{background:transparent}
+.btn:disabled,.btn.is-grey{opacity:.55;cursor:not-allowed;filter:grayscale(.4)}
+.stepper{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+.step{min-height:40px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);
+  background:var(--panel);color:var(--muted);font-weight:700;cursor:pointer;font-size:12px}
+.step.active{color:var(--bg);background:var(--accent);border-color:transparent}
+.step.is-grey{opacity:.55;cursor:default;filter:grayscale(.5)}
+.stage{display:none}
+.stage.active{display:block}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px}
+.panel h2{margin:0 0 8px;font-size:1rem}
+.panel p.hint{margin:0 0 10px;color:var(--muted);font-size:12px}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.field label{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.inp,textarea.inp,select.inp{width:100%;min-height:44px;padding:10px 12px;border-radius:10px;
+  border:1px solid var(--border);background:#0a101a;color:var(--text);font:inherit}
+textarea.inp{min-height:96px;resize:vertical}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:40px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);cursor:pointer;font-size:12px;font-weight:600}
+.chip.on{background:rgba(0,243,255,.18);border-color:var(--accent);color:#e8feff}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.spark-list{display:grid;gap:8px;margin:10px 0}
+.spark{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:10px;
+  border:1px dashed var(--border);background:rgba(20,28,44,.65)}
+.tag-row{display:flex;flex-wrap:wrap;gap:6px;min-height:28px}
+.tag{font-size:11px;padding:4px 8px;border-radius:999px;background:rgba(245,197,66,.12);
+  border:1px solid rgba(245,197,66,.35);color:var(--gold)}
+.sec{border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;background:rgba(10,16,26,.65)}
+.sec-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.sec-head select{min-width:120px}
+.sec textarea{min-height:88px}
+.rhyme-box{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.rhyme-box button{min-height:36px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);
+  background:#0a101a;color:var(--accent);cursor:pointer;font-size:12px}
+.export-grid{display:grid;gap:10px}
+@media(min-width:720px){.export-grid{grid-template-columns:1fr auto;align-items:start}}
+.export-val{font-family:ui-monospace,Consolas,monospace;font-size:13px;padding:10px 12px;
+  border-radius:10px;background:#0a101a;border:1px solid var(--border);word-break:break-word;min-height:44px;white-space:pre-wrap}
+.toast{position:fixed;bottom:16px;right:16px;z-index:50;padding:10px 14px;border-radius:10px;
+  background:var(--panel2);border:1px solid var(--accent);color:var(--text);font-size:12px;font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.toast[hidden]{display:none!important}
+.stub-note{font-size:12px;color:var(--muted);border-left:3px solid var(--warn);padding:8px 10px;margin:8px 0;background:rgba(251,191,36,.06)}
+.status{font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap" data-fafo-layout-root data-fafo-layout-app="songforge" data-fafo-layout-type="rows">
+  <div class="nav">
+    <span class="t">SONGFORGE</span>
+    <a href="Toolbox Launcher.html">Launcher</a>
+    <span class="status" id="sfStatus">SF-4 · cite ad476319</span>
+    <span data-fafo-layout-toolbar></span>
+  </div>
+  <header class="head">
+    <div>
+      <h1>Songforge</h1>
+      <p class="sub">Offline Title / Lyrics / Style packs for Suno v6 paste. SF-4: Pack polish — Copy all + offline download. Studio hook parked.</p>
+    </div>
+    <div class="row">
+      <button type="button" class="btn ghost" id="btnClearIdeas">Clear idea tags</button>
+    </div>
+  </header>
+
+  <div class="stepper" role="tablist" aria-label="Songforge stages">
+    <button type="button" class="step active" data-stage="ideas" role="tab" aria-selected="true">Ideas</button>
+    <button type="button" class="step" data-stage="lyrics" role="tab" aria-selected="false">Lyrics</button>
+    <button type="button" class="step" data-stage="style" role="tab" aria-selected="false">Style</button>
+    <button type="button" class="step" data-stage="kit" role="tab" aria-selected="false">Kit</button>
+    <button type="button" class="step" data-stage="export" role="tab" aria-selected="false">Export</button>
+  </div>
+
+  <section class="stage active" id="stageIdeas" data-stage-panel="ideas">
+    <div class="panel">
+      <h2>Title</h2>
+      <p class="hint">Shows in Export. Paste into Suno title.</p>
+      <div class="field">
+        <label for="sfTitle">Song title</label>
+        <input class="inp" id="sfTitle" type="text" maxlength="120" placeholder="e.g. Two-Lane Diesel" autocomplete="off">
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Ideas</h2>
+      <p class="hint">Tap chips to pin theme / POV / emotion. Sparks and remix stay local.</p>
+      <div class="field"><label>Pinned tags</label><div class="tag-row" id="sfIdeaTags" aria-live="polite"></div></div>
+      <div class="field"><label>Theme</label><div class="chips" id="sfThemes"></div></div>
+      <div class="field"><label>POV</label><div class="chips" id="sfPov"></div></div>
+      <div class="field"><label>Emotion</label><div class="chips" id="sfEmotions"></div></div>
+      <div class="field">
+        <label>Sparks</label>
+        <div class="spark-list" id="sfSparks"></div>
+        <button type="button" class="btn primary" id="btnRemix">Remix sparks</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="stageLyrics" data-stage-panel="lyrics">
+    <div class="panel">
+      <h2>Lyrics</h2>
+      <p class="hint">Sections for Suno paste. Rhyme chips from local banks (no CDN). Type a line-ending word, then pick a rhyme.</p>
+      <div class="row" style="margin-bottom:10px">
+        <label for="sfTemplate" class="status">Template</label>
+        <select class="inp" id="sfTemplate" style="max-width:220px"></select>
+        <button type="button" class="btn ghost" id="btnApplyTpl">Apply template</button>
+        <button type="button" class="btn ghost" id="btnAddSection">Add section</button>
+        <button type="button" class="btn ghost" id="btnClearLyrics">Clear lyrics</button>
+      </div>
+      <div id="sfSections"></div>
+      <div class="field" style="margin-top:12px">
+        <label for="sfRhymeQuery">Rhyme lookup (local)</label>
+        <div class="row">
+          <input class="inp" id="sfRhymeQuery" type="text" placeholder="ending letters e.g. ight / ore / ay" style="flex:1;min-width:160px">
+          <button type="button" class="btn primary" id="btnRhyme">Find rhymes</button>
+        </div>
+        <div class="rhyme-box" id="sfRhymes" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="stageStyle" data-stage-panel="style">
+    <div class="panel">
+      <h2>Style</h2>
+      <p class="hint">Build a Suno style string from chips. Kit inserts land here too.</p>
+      <div class="field"><label>Genre</label><div class="chips" id="sfGenre"></div></div>
+      <div class="field"><label>Mood</label><div class="chips" id="sfMood"></div></div>
+      <div class="field"><label>Vocal</label><div class="chips" id="sfVocal"></div></div>
+      <div class="field"><label>BPM band</label><div class="chips" id="sfBpm"></div></div>
+      <div class="field"><label>Production</label><div class="chips" id="sfProd"></div></div>
+      <div class="field">
+        <label for="sfStyle">Style string</label>
+        <textarea class="inp" id="sfStyle" rows="4" placeholder="genre, mood, vocal, BPM, production tags…"></textarea>
+      </div>
+      <div class="row">
+        <button type="button" class="btn primary" id="btnRebuildStyle">Rebuild from chips</button>
+        <button type="button" class="btn ghost" id="btnClearStyle">Clear style</button>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Active style chips</label>
+        <div class="tag-row" id="sfStyleTags"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="stageKit" data-stage-panel="kit">
+    <div class="panel">
+      <h2>Kit — instruments + soundboard</h2>
+      <p class="hint">Search local presets. Click to insert into Style.</p>
+      <div class="field">
+        <label for="sfKitSearch">Search</label>
+        <input class="inp" id="sfKitSearch" type="search" placeholder="pedal steel, 808, rain…" autocomplete="off">
+      </div>
+      <div class="field"><label>Instruments</label><div class="spark-list" id="sfInstruments"></div></div>
+      <div class="field"><label>Soundboard</label><div class="spark-list" id="sfSoundboard"></div></div>
+      <div class="field"><label>Pinned kit</label><div class="tag-row" id="sfKitPins"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" id="stageExport" data-stage-panel="export">
+    <div class="panel">
+      <h2>Suno Pack</h2>
+      <p class="hint">SF-4: Copy Title / Lyrics / Style / All + download .txt / .json.</p>
+      <div class="export-grid">
+        <div class="field" style="margin:0"><label>Title</label><div class="export-val" id="exTitle">(empty)</div></div>
+        <button type="button" class="btn primary" id="btnCopyTitle">Copy Title</button>
+      </div>
+      <div class="export-grid" style="margin-top:12px">
+        <div class="field" style="margin:0"><label>Lyrics (paste-ready)</label><div class="export-val" id="exLyrics">(empty)</div></div>
+        <button type="button" class="btn primary" id="btnCopyLyrics">Copy Lyrics</button>
+      </div>
+      <div class="export-grid" style="margin-top:12px">
+        <div class="field" style="margin:0"><label>Style</label><div class="export-val" id="exStyle">(empty)</div></div>
+        <button type="button" class="btn primary" id="btnCopyStyle">Copy Style</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button type="button" class="btn primary" id="btnCopyAll">Copy all</button>
+        <button type="button" class="btn ghost" id="btnDlTxt">Download .txt</button>
+        <button type="button" class="btn ghost" id="btnDlJson">Download .json</button>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Studio hook</label>
+        <div class="stub-note" id="sfStudioStub">Parked — <code>studioHook: false</code>. No Grok Build deep-link in this KEEP. Paste packs into Suno v6 manually.</div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="sfToast" hidden role="status"></div>
+<script>
+window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": "ad476319", "sparks": ["Midnight diesel on a two-lane", "Payday Friday / empty tank Monday", "Radio static and a name I still say", "Crown of dust, boots of clay", "Neon diner, last pie slice", "River ice cracks under truck weight", "Shift whistle, second chance"], "themes": ["Oilfield anthem", "Heartland night", "Road home", "Hard won love", "Quiet revenge", "Small town glory", "Storm coming"], "pov": ["I", "We", "You", "He/She", "They", "Narrator"], "emotions": ["Gritty", "Hopeful", "Lonely", "Proud", "Bittersweet", "Defiant", "Tender", "Wild"], "rhymeBanks": {"ay": ["day", "way", "stay", "pay", "gray", "pray", "away"], "ight": ["night", "light", "right", "fight", "sight", "tight"], "ore": ["more", "door", "floor", "shore", "before", "adore"], "ound": ["sound", "ground", "found", "around", "bound"], "ee": ["free", "see", "me", "be", "key", "believe"]}, "structureTemplates": [{"id": "pop", "label": "Pop", "sections": ["Intro", "Verse", "Pre", "Chorus", "Verse", "Pre", "Chorus", "Bridge", "Chorus", "Outro"]}, {"id": "ballad", "label": "Ballad", "sections": ["Intro", "Verse", "Chorus", "Verse", "Chorus", "Bridge", "Chorus", "Outro"]}, {"id": "trap", "label": "Trap", "sections": ["Intro", "Verse", "Chorus", "Verse", "Chorus", "Outro"]}], "styleChips": {"genre": ["country", "trap", "rock", "ambient", "oilfield anthem", "blues", "folk", "pop"], "mood": ["gritty", "melancholy", "uplifting", "dark", "warm", "cinematic"], "vocal": ["male lead", "female lead", "duet", "raspy", "clear tenor", "choir pads"], "bpm": ["70-85 BPM", "90-100 BPM", "110-120 BPM", "128-140 BPM"], "production": ["live drums", "808s", "slide guitar", "fiddle", "synth pads", "lo-fi tape"]}, "instruments": [{"id": "acoustic-gtr", "name": "Acoustic guitar", "tags": ["folk", "country"]}, {"id": "electric-gtr", "name": "Electric guitar", "tags": ["rock", "blues"]}, {"id": "pedal-steel", "name": "Pedal steel", "tags": ["country"]}, {"id": "fiddle", "name": "Fiddle", "tags": ["country", "folk"]}, {"id": "808", "name": "808 kick", "tags": ["trap"]}, {"id": "piano", "name": "Upright piano", "tags": ["ballad"]}], "soundboard": [{"id": "sb-diesel", "line": "distant diesel idle under verse"}, {"id": "sb-radio", "line": "AM radio crackle between lines"}, {"id": "sb-rain", "line": "soft rain on tin roof pad"}, {"id": "sb-crowd", "line": "small-room crowd murmur"}]};
+(function(){
+  'use strict';
+  var LS_KEY = 'aitoolbox.songforge.v1';
+  var PRESET_URL = 'shared/songforge-presets.json';
+  var SECTION_TYPES = ['Intro','Verse','Pre','Chorus','Bridge','Outro'];
+  var state = defaultState();
+  var presets = null;
+  var saveTimer = null;
+  var rhymeTarget = null; // {idx, textarea}
+
+  function $(id){ return document.getElementById(id); }
+  function defaultState(){
+    return {
+      schema: 'aitoolbox.songforge.v1',
+      title: '',
+      lyrics: { sections: [] },
+      style: '',
+      ideaTags: [],
+      kitPins: [],
+      updatedAt: null,
+      studioHook: false
+    };
+  }
+  function toast(msg){
+    var el = $('sfToast');
+    el.textContent = msg; el.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ el.hidden = true; }, 1800);
+    try { if (window.AIToolboxUI && AIToolboxUI.toast) AIToolboxUI.toast(msg, 'ok'); } catch(_){}
+  }
+  function loadState(){
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return defaultState();
+      var o = JSON.parse(raw);
+      if (!o || o.schema !== 'aitoolbox.songforge.v1') return defaultState();
+      o.lyrics = o.lyrics && typeof o.lyrics === 'object' ? o.lyrics : { sections: [] };
+      if (!Array.isArray(o.lyrics.sections)) o.lyrics.sections = [];
+      o.ideaTags = Array.isArray(o.ideaTags) ? o.ideaTags : [];
+      o.kitPins = Array.isArray(o.kitPins) ? o.kitPins : [];
+      o.studioHook = false;
+      return o;
+    } catch(_){ return defaultState(); }
+  }
+  function scheduleSave(){
+    state.updatedAt = new Date().toISOString();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(_){}
+    }, 120);
+  }
+  function fallbackPresets(){
+    return window.SF_PRESETS_INLINE || {
+      sparks: ['Midnight diesel on a two-lane'],
+      themes: ['Oilfield anthem'], pov: ['I'], emotions: ['Gritty'],
+      rhymeBanks: { ay:['day','way','stay'], ight:['night','light','right'] },
+      structureTemplates: [{ id:'pop', label:'Pop', sections:['Intro','Verse','Chorus','Verse','Chorus','Outro'] }]
+    };
+  }
+  function loadPresets(cb){
+    // Soft fix: file:// fetch often fails — prefer inline, try fetch as upgrade
+    var inline = fallbackPresets();
+    try {
+      fetch(PRESET_URL, { cache: 'no-store' }).then(function(r){
+        if (!r.ok) throw new Error('http');
+        return r.json();
+      }).then(function(j){ cb(j || inline); }).catch(function(){ cb(inline); });
+    } catch(_){ cb(inline); }
+  }
+
+  function paintTags(){
+    var row = $('sfIdeaTags'); row.innerHTML = '';
+    if (!state.ideaTags.length){ row.innerHTML = '<span class="status">No tags pinned yet</span>'; return; }
+    state.ideaTags.forEach(function(tag){
+      var s = document.createElement('span'); s.className = 'tag'; s.textContent = tag;
+      s.title = 'Click to remove'; s.style.cursor = 'pointer';
+      s.addEventListener('click', function(){
+        state.ideaTags = state.ideaTags.filter(function(x){ return x !== tag; });
+        paintTags(); paintChips(); scheduleSave();
+      });
+      row.appendChild(s);
+    });
+  }
+  function toggleTag(tag){
+    var i = state.ideaTags.indexOf(tag);
+    if (i >= 0) state.ideaTags.splice(i, 1); else state.ideaTags.push(tag);
+    paintTags(); paintChips(); scheduleSave();
+  }
+  function makeChips(hostId, list){
+    var host = $(hostId); host.innerHTML = '';
+    (list || []).forEach(function(label){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (state.ideaTags.indexOf(label) >= 0 ? ' on' : '');
+      b.textContent = label;
+      b.addEventListener('click', function(){ toggleTag(label); });
+      host.appendChild(b);
+    });
+  }
+  function paintChips(){
+    if (!presets) return;
+    makeChips('sfThemes', presets.themes);
+    makeChips('sfPov', presets.pov);
+    makeChips('sfEmotions', presets.emotions);
+  }
+  function paintSparks(list){
+    var host = $('sfSparks'); host.innerHTML = '';
+    (list || []).forEach(function(line){
+      var row = document.createElement('div'); row.className = 'spark';
+      var t = document.createElement('div'); t.style.flex = '1'; t.textContent = line;
+      var use = document.createElement('button'); use.type='button'; use.className='btn ghost'; use.textContent='Pin';
+      use.addEventListener('click', function(){
+        if (state.ideaTags.indexOf(line) < 0) state.ideaTags.push(line);
+        paintTags(); scheduleSave(); toast('Spark pinned');
+      });
+      var toTitle = document.createElement('button'); toTitle.type='button'; toTitle.className='btn ghost'; toTitle.textContent='→ Title';
+      toTitle.addEventListener('click', function(){
+        state.title = line.slice(0, 120); $('sfTitle').value = state.title;
+        paintExport(); scheduleSave(); toast('Title set from spark');
+      });
+      row.appendChild(t); row.appendChild(use); row.appendChild(toTitle); host.appendChild(row);
+    });
+  }
+  function remixSparks(){
+    if (!presets) return;
+    var base = (presets.sparks || []).slice();
+    for (var i = base.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = base[i]; base[i] = base[j]; base[j] = tmp;
+    }
+    paintSparks(base.slice(0, 7));
+    toast('Sparks remixed (local)');
+  }
+
+  function ensureSections(){
+    if (!state.lyrics) state.lyrics = { sections: [] };
+    if (!Array.isArray(state.lyrics.sections)) state.lyrics.sections = [];
+  }
+  function addSection(type, body){
+    ensureSections();
+    state.lyrics.sections.push({ type: type || 'Verse', body: body || '' });
+  }
+  function paintTemplates(){
+    var sel = $('sfTemplate'); sel.innerHTML = '';
+    var tpls = (presets && presets.structureTemplates) || [];
+    if (!tpls.length){
+      var o = document.createElement('option'); o.value=''; o.textContent='(no templates)'; sel.appendChild(o); return;
+    }
+    tpls.forEach(function(tpl){
+      var o = document.createElement('option');
+      o.value = tpl.id; o.textContent = tpl.label || tpl.id; sel.appendChild(o);
+    });
+  }
+  function applyTemplate(){
+    if (!presets) return;
+    var id = $('sfTemplate').value;
+    var tpl = ((presets.structureTemplates)||[]).filter(function(t){ return t.id === id; })[0];
+    if (!tpl) return;
+    state.lyrics.sections = (tpl.sections || []).map(function(ty){ return { type: ty, body: '' }; });
+    paintSections(); paintExport(); scheduleSave(); toast('Template applied');
+  }
+  function lyricsBlock(){
+    ensureSections();
+    return state.lyrics.sections.map(function(s){
+      var head = '[' + (s.type || 'Verse') + ']';
+      var body = (s.body || '').replace(/\s+$/,'');
+      return body ? (head + '\n' + body) : head;
+    }).join('\n\n').trim();
+  }
+  function paintSections(){
+    ensureSections();
+    var host = $('sfSections'); host.innerHTML = '';
+    if (!state.lyrics.sections.length){
+      host.innerHTML = '<p class="status">No sections yet — apply a template or Add section.</p>';
+      return;
+    }
+    state.lyrics.sections.forEach(function(sec, idx){
+      var box = document.createElement('div'); box.className = 'sec';
+      var head = document.createElement('div'); head.className = 'sec-head';
+      var sel = document.createElement('select'); sel.className = 'inp';
+      SECTION_TYPES.forEach(function(ty){
+        var o = document.createElement('option'); o.value = ty; o.textContent = ty;
+        if (ty === sec.type) o.selected = true; sel.appendChild(o);
+      });
+      sel.addEventListener('change', function(){ sec.type = sel.value; paintExport(); scheduleSave(); });
+      var up = document.createElement('button'); up.type='button'; up.className='btn ghost'; up.textContent='↑';
+      up.disabled = idx === 0;
+      up.addEventListener('click', function(){
+        var a = state.lyrics.sections; var tmp = a[idx-1]; a[idx-1]=a[idx]; a[idx]=tmp;
+        paintSections(); paintExport(); scheduleSave();
+      });
+      var down = document.createElement('button'); down.type='button'; down.className='btn ghost'; down.textContent='↓';
+      down.disabled = idx === state.lyrics.sections.length - 1;
+      down.addEventListener('click', function(){
+        var a = state.lyrics.sections; var tmp = a[idx+1]; a[idx+1]=a[idx]; a[idx]=tmp;
+        paintSections(); paintExport(); scheduleSave();
+      });
+      var rm = document.createElement('button'); rm.type='button'; rm.className='btn ghost'; rm.textContent='Remove';
+      rm.addEventListener('click', function(){
+        state.lyrics.sections.splice(idx, 1);
+        paintSections(); paintExport(); scheduleSave();
+      });
+      head.appendChild(sel); head.appendChild(up); head.appendChild(down); head.appendChild(rm);
+      var ta = document.createElement('textarea'); ta.className = 'inp'; ta.rows = 4;
+      ta.placeholder = 'Lines for this section…';
+      ta.value = sec.body || '';
+      ta.addEventListener('input', function(){ sec.body = ta.value; paintExport(); scheduleSave(); });
+      ta.addEventListener('focus', function(){ rhymeTarget = { idx: idx, ta: ta }; });
+      box.appendChild(head); box.appendChild(ta); host.appendChild(box);
+    });
+  }
+
+  function findRhymes(){
+    var q = ($('sfRhymeQuery').value || '').trim().toLowerCase().replace(/[^a-z]/g,'');
+    var box = $('sfRhymes'); box.innerHTML = '';
+    if (!q || !presets || !presets.rhymeBanks){ toast('Enter ending letters'); return; }
+    var banks = presets.rhymeBanks;
+    var hits = [];
+    Object.keys(banks).forEach(function(key){
+      if (key === q || q.endsWith(key) || key.endsWith(q)) {
+        (banks[key] || []).forEach(function(w){ if (hits.indexOf(w) < 0) hits.push(w); });
+      }
+    });
+    // also direct key match soft
+    if (!hits.length && banks[q]) hits = banks[q].slice();
+    if (!hits.length){
+      box.innerHTML = '<span class="status">No local rhymes for “' + q + '”</span>';
+      return;
+    }
+    hits.slice(0, 24).forEach(function(w){
+      var b = document.createElement('button'); b.type='button'; b.textContent = w;
+      b.addEventListener('click', function(){ insertRhyme(w); });
+      box.appendChild(b);
+    });
+  }
+  function insertRhyme(word){
+    ensureSections();
+    if (!rhymeTarget || !state.lyrics.sections[rhymeTarget.idx]){
+      // append to last section or create Verse
+      if (!state.lyrics.sections.length) addSection('Verse', word);
+      else {
+        var s = state.lyrics.sections[state.lyrics.sections.length - 1];
+        s.body = (s.body ? s.body.replace(/\s*$/, '') + (s.body && !/\s$/.test(s.body) ? ' ' : '') : '') + word;
+      }
+    } else {
+      var ta = rhymeTarget.ta;
+      var start = ta.selectionStart|0, end = ta.selectionEnd|0;
+      var v = ta.value;
+      var insert = word;
+      if (start > 0 && !/\s/.test(v.charAt(start-1))) insert = ' ' + insert;
+      ta.value = v.slice(0, start) + insert + v.slice(end);
+      state.lyrics.sections[rhymeTarget.idx].body = ta.value;
+      ta.focus();
+      var pos = start + insert.length;
+      try { ta.setSelectionRange(pos, pos); } catch(_){}
+    }
+    paintSections(); paintExport(); scheduleSave(); toast('Rhyme inserted');
+  }
+
+  function paintExport(){
+    var t = (state.title || '').trim();
+    $('exTitle').textContent = t || '(empty)';
+    var ly = lyricsBlock();
+    $('exLyrics').textContent = ly || '(empty)';
+    var st = (state.style || '').trim();
+    var exs = $('exStyle'); if (exs) exs.textContent = st || '(empty)';
+  }
+  function copyText(text, label){
+    text = String(text || '').trim();
+    if (!text){ toast('Nothing to copy'); return; }
+    function ok(){ toast(label + ' copied'); }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(ok).catch(function(){ legacyCopy(text); ok(); });
+    } else { legacyCopy(text); ok(); }
+  }
+  function legacyCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(_){}
+    ta.remove();
+  }
+  function showStage(name){
+    if (name === 'style'){ paintStyle(); }
+    if (name === 'kit'){ paintKit(); }
+    document.querySelectorAll('.stage').forEach(function(el){
+      el.classList.toggle('active', el.getAttribute('data-stage-panel') === name);
+    });
+    document.querySelectorAll('.step').forEach(function(btn){
+      var on = btn.getAttribute('data-stage') === name;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (name === 'export') paintExport();
+    if (name === 'lyrics') paintSections();
+  }
+
+  function ensureStyleChips(){
+    if (!state._styleChips) state._styleChips = { genre:[], mood:[], vocal:[], bpm:[], production:[] };
+    return state._styleChips;
+  }
+  function paintStyleTags(){
+    var row = document.getElementById('sfStyleTags'); if (!row) return;
+    row.innerHTML = '';
+    var chips = ensureStyleChips();
+    var all = [].concat(chips.genre||[], chips.mood||[], chips.vocal||[], chips.bpm||[], chips.production||[]);
+    if (!all.length){ row.innerHTML = '<span class="status">No style chips yet</span>'; return; }
+    all.forEach(function(tag){
+      var s = document.createElement('span'); s.className='tag'; s.textContent=tag; row.appendChild(s);
+    });
+  }
+  function toggleStyleChip(group, label){
+    var chips = ensureStyleChips();
+    if (!chips[group]) chips[group] = [];
+    var i = chips[group].indexOf(label);
+    if (i >= 0) chips[group].splice(i, 1); else chips[group].push(label);
+    rebuildStyleFromChips(); paintStyleChipButtons(); paintStyleTags(); scheduleSave();
+  }
+  function paintStyleChipButtons(){
+    if (!presets || !presets.styleChips) return;
+    var map = { sfGenre:'genre', sfMood:'mood', sfVocal:'vocal', sfBpm:'bpm', sfProd:'production' };
+    var chips = ensureStyleChips();
+    Object.keys(map).forEach(function(hid){
+      var group = map[hid];
+      var host = document.getElementById(hid); if (!host) return;
+      host.innerHTML = '';
+      ((presets.styleChips[group])||[]).forEach(function(label){
+        var b = document.createElement('button');
+        b.type='button';
+        b.className = 'chip' + ((chips[group]||[]).indexOf(label)>=0 ? ' on' : '');
+        b.textContent = label;
+        b.addEventListener('click', function(){ toggleStyleChip(group, label); });
+        host.appendChild(b);
+      });
+    });
+  }
+  function rebuildStyleFromChips(){
+    var chips = ensureStyleChips();
+    var parts = [];
+    ['genre','mood','vocal','bpm','production'].forEach(function(g){
+      (chips[g]||[]).forEach(function(x){ if (parts.indexOf(x)<0) parts.push(x); });
+    });
+    (state.kitPins||[]).forEach(function(x){ if (parts.indexOf(x)<0) parts.push(x); });
+    state.style = parts.join(', ');
+    var ta = document.getElementById('sfStyle'); if (ta) ta.value = state.style;
+    paintExport();
+  }
+  function paintStyle(){
+    paintStyleChipButtons();
+    var ta = document.getElementById('sfStyle');
+    if (ta) ta.value = state.style || '';
+    paintStyleTags();
+  }
+  function insertIntoStyle(text){
+    text = String(text||'').trim(); if (!text) return;
+    var cur = (state.style||'').trim();
+    var parts = cur ? cur.split(/,\s*/) : [];
+    if (parts.indexOf(text) >= 0){ toast('Already in style'); return; }
+    state.style = cur ? (cur + ', ' + text) : text;
+    if (!state.kitPins) state.kitPins = [];
+    if (state.kitPins.indexOf(text) < 0) state.kitPins.push(text);
+    var ta = document.getElementById('sfStyle'); if (ta) ta.value = state.style;
+    paintKitPins(); paintExport(); scheduleSave(); toast('Inserted into Style');
+  }
+  function paintKitPins(){
+    var row = document.getElementById('sfKitPins'); if (!row) return;
+    row.innerHTML = '';
+    if (!(state.kitPins||[]).length){ row.innerHTML = '<span class="status">No kit pins</span>'; return; }
+    state.kitPins.forEach(function(tag){
+      var s = document.createElement('span'); s.className='tag'; s.textContent=tag;
+      s.title='Click to remove'; s.style.cursor='pointer';
+      s.addEventListener('click', function(){
+        state.kitPins = state.kitPins.filter(function(x){ return x!==tag; });
+        paintKitPins(); scheduleSave();
+      });
+      row.appendChild(s);
+    });
+  }
+  function paintKit(){
+    if (!presets) return;
+    var qEl = document.getElementById('sfKitSearch');
+    var q = (qEl && qEl.value || '').trim().toLowerCase();
+    var ih = document.getElementById('sfInstruments');
+    var sh = document.getElementById('sfSoundboard');
+    if (ih){
+      ih.innerHTML = '';
+      ((presets.instruments)||[]).forEach(function(it){
+        var name = it.name || it.id || '';
+        var tags = (it.tags||[]).join(' ');
+        var hay = (name + ' ' + tags).toLowerCase();
+        if (q && hay.indexOf(q) < 0) return;
+        var row = document.createElement('div'); row.className='spark';
+        var td = document.createElement('div'); td.style.flex='1';
+        td.textContent = name + (tags ? ' · ' + tags : '');
+        var b = document.createElement('button'); b.type='button'; b.className='btn ghost'; b.textContent='→ Style';
+        b.addEventListener('click', function(){ insertIntoStyle(name); });
+        row.appendChild(td); row.appendChild(b); ih.appendChild(row);
+      });
+      if (!ih.children.length) ih.innerHTML = '<span class="status">No instruments match</span>';
+    }
+    if (sh){
+      sh.innerHTML = '';
+      ((presets.soundboard)||[]).forEach(function(it){
+        var line = it.line || it.id || '';
+        if (q && line.toLowerCase().indexOf(q) < 0) return;
+        var row = document.createElement('div'); row.className='spark';
+        var td = document.createElement('div'); td.style.flex='1'; td.textContent = line;
+        var b = document.createElement('button'); b.type='button'; b.className='btn ghost'; b.textContent='→ Style';
+        b.addEventListener('click', function(){ insertIntoStyle(line); });
+        row.appendChild(td); row.appendChild(b); sh.appendChild(row);
+      });
+      if (!sh.children.length) sh.innerHTML = '<span class="status">No soundboard match</span>';
+    }
+    paintKitPins();
+  }
+
+
+  function packText(){
+    var title = (state.title || '').trim() || '(untitled)';
+    var ly = lyricsBlock() || '(no lyrics)';
+    var st = (state.style || '').trim() || '(no style)';
+    return 'TITLE\n' + title + '\n\nLYRICS\n' + ly + '\n\nSTYLE\n' + st + '\n';
+  }
+  function packJson(){
+    return JSON.stringify({
+      schema: 'aitoolbox.songforge.pack.v1',
+      app: 'Songforge',
+      title: state.title || '',
+      lyrics: lyricsBlock(),
+      style: state.style || '',
+      ideaTags: state.ideaTags || [],
+      kitPins: state.kitPins || [],
+      studioHook: false,
+      updatedAt: state.updatedAt || null
+    }, null, 2);
+  }
+  function downloadBlob(filename, text, mime){
+    try {
+      var blob = new Blob([text], { type: mime || 'text/plain' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ try { URL.revokeObjectURL(a.href); a.remove(); } catch(_){ } }, 400);
+      toast('Downloaded ' + filename);
+    } catch (e) {
+      toast('Download failed');
+    }
+  }
+  function ymd(){
+    var d = new Date();
+    return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+  }
+
+  function bind(){
+    $('sfTitle').addEventListener('input', function(){
+      state.title = $('sfTitle').value; paintExport(); scheduleSave();
+    });
+    $('btnCopyTitle').addEventListener('click', function(){ copyText(state.title, 'Title'); });
+    $('btnCopyLyrics').addEventListener('click', function(){ copyText(lyricsBlock(), 'Lyrics'); });
+    $('btnRemix').addEventListener('click', remixSparks);
+    $('btnClearIdeas').addEventListener('click', function(){
+      state.ideaTags = []; paintTags(); paintChips(); scheduleSave(); toast('Idea tags cleared');
+    });
+    $('btnApplyTpl').addEventListener('click', applyTemplate);
+    $('btnAddSection').addEventListener('click', function(){
+      addSection('Verse', ''); paintSections(); paintExport(); scheduleSave();
+    });
+    $('btnClearLyrics').addEventListener('click', function(){
+      state.lyrics.sections = []; paintSections(); paintExport(); scheduleSave(); toast('Lyrics cleared');
+    });
+    $('btnRhyme').addEventListener('click', findRhymes);
+    $('sfRhymeQuery').addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter'){ ev.preventDefault(); findRhymes(); }
+    });
+    
+    if ($('btnCopyStyle')) $('btnCopyStyle').addEventListener('click', function(){ copyText(state.style, 'Style'); });
+
+    if ($('btnCopyAll')) $('btnCopyAll').addEventListener('click', function(){
+      copyText(packText(), 'Pack');
+    });
+    if ($('btnDlTxt')) $('btnDlTxt').addEventListener('click', function(){
+      var name = 'songforge-pack-' + ymd() + '.txt';
+      downloadBlob(name, packText(), 'text/plain');
+    });
+    if ($('btnDlJson')) $('btnDlJson').addEventListener('click', function(){
+      var name = 'songforge-pack-' + ymd() + '.json';
+      downloadBlob(name, packJson(), 'application/json');
+    });
+
+    if ($('sfStyle')) $('sfStyle').addEventListener('input', function(){
+      state.style = $('sfStyle').value; paintExport(); scheduleSave();
+    });
+    if ($('btnRebuildStyle')) $('btnRebuildStyle').addEventListener('click', function(){
+      rebuildStyleFromChips(); paintStyleTags(); toast('Style rebuilt from chips');
+    });
+    if ($('btnClearStyle')) $('btnClearStyle').addEventListener('click', function(){
+      state.style = '';
+      state._styleChips = { genre:[], mood:[], vocal:[], bpm:[], production:[] };
+      paintStyle(); paintExport(); scheduleSave(); toast('Style cleared');
+    });
+    if ($('sfKitSearch')) $('sfKitSearch').addEventListener('input', function(){ paintKit(); });
+
+    document.querySelectorAll('.step').forEach(function(btn){
+      btn.addEventListener('click', function(){ showStage(btn.getAttribute('data-stage')); });
+    });
+  }
+  function boot(){
+    state = loadState();
+    $('sfTitle').value = state.title || '';
+    paintTags(); paintExport(); bind();
+    loadPresets(function(p){
+      presets = p;
+      paintChips();
+      paintSparks((p.sparks || []).slice(0, 7));
+      paintTemplates();
+      paintSections();
+      var src = (p === window.SF_PRESETS_INLINE) ? 'inline' : 'file/fetch';
+      $('sfStatus').textContent = 'SF-4 · presets ' + src + ' · cite ad476319';
+      paintStyle();
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
