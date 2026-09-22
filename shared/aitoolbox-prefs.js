@@ -391,7 +391,7 @@ html[data-atx-layout="phone"] .btn, html[data-atx-layout="phone"] button.pill{
   min-height:44px; padding:8px 14px;
 }
 html[data-atx-layout="phone"] .fafo-chrome-btn{
-  min-width:32px; min-height:32px; width:auto; height:auto;
+  min-width:44px; min-height:44px; width:auto; height:auto;
 }
 html[data-atx-layout="desktop"] #atx-pro-bar{
   flex-direction:row;
