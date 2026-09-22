@@ -27,15 +27,7 @@
     '.fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"],',
     '.fafo-layout-panel[data-fafo-flex="1"]{flex:1 1 auto!important;min-height:0!important}',
     '.fafo-body-split > [data-fafo-section].fafo-section-flex{flex:1 1 auto!important;min-height:0!important}',
-    '[data-fafo-section][data-fafo-resizable="1"]{min-height:36px!important}',
-    '@media (max-width:430px){',
-    '#atx-pro-bar{height:auto!important;max-height:calc(52px + env(safe-area-inset-bottom,0px))!important;padding-top:4px!important;padding-bottom:max(4px,env(safe-area-inset-bottom,0px))!important;overflow-x:auto!important;overflow-y:hidden!important}',
-    '#atx-pro-bar a.atx-chip,#atx-pro-bar button.atx-chip{min-height:44px!important;height:44px!important;padding:0 12px!important}',
-    '#atx-pro-bar .atx-kbd{display:none!important}',
-    '.tb-companion-bar,#tbSharedServerBar{max-height:none!important;height:auto!important;flex-wrap:wrap!important;overflow-x:hidden!important;row-gap:6px!important}',
-    '.tb-bar-back{min-height:44px!important;display:inline-flex!important;align-items:center!important;padding:10px 12px!important}',
-    '.fafo-chrome-btn{min-width:44px!important;min-height:44px!important;width:auto!important;height:auto!important;padding:8px 10px!important}',
-    '}'
+    '[data-fafo-section][data-fafo-resizable="1"]{min-height:36px!important}'
   ].join('\n');
 
   function injectCss() {

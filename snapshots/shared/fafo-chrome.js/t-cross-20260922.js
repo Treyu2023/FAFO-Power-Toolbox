@@ -17,8 +17,7 @@
  *   details.ui-advanced
  *
  * Persistence key: fafo-collapse:<id|data-fafo-collapse-key|path>
- * Viewport meta: if a viewport tag exists and lacks viewport-fit, append
- * viewport-fit=cover. Does not invent a viewport tag for apps that have none.
+ * Viewport meta: docs note only in CSS — this script does not mass-edit <head>.
  * No CDN / no dependencies.
  */
 (function (global) {
@@ -31,7 +30,6 @@
   var MOBILE = {
     bpStack: 900,
     bpNarrow: 640,
-    bpPhone: 430,
     touchMin: 44,
     kit: 'UI-M',
     pet: 'PET-UI-M'
@@ -119,12 +117,9 @@
     var coarse = matchMq('(pointer: coarse)');
     var narrow = matchMq('(max-width: ' + MOBILE.bpStack + 'px)');
     var tight = matchMq('(max-width: ' + MOBILE.bpNarrow + 'px)');
-    var phone = matchMq('(max-width: ' + MOBILE.bpPhone + 'px)');
 
     docEl.setAttribute('data-fafo-pointer', coarse ? 'coarse' : 'fine');
-    if (phone) docEl.setAttribute('data-fafo-phone', '1');
-    else docEl.removeAttribute('data-fafo-phone');
-    if (narrow) docEl.setAttribute('data-fafo-narrow', phone ? '430' : (tight ? '640' : '900'));
+    if (narrow) docEl.setAttribute('data-fafo-narrow', tight ? '640' : '900');
     else docEl.removeAttribute('data-fafo-narrow');
 
     // Never disable split handles here — hiding them (PET-UI-M) made apps
@@ -146,18 +141,15 @@
     try {
       var qStack = global.matchMedia('(max-width: ' + MOBILE.bpStack + 'px)');
       var qNarrow = global.matchMedia('(max-width: ' + MOBILE.bpNarrow + 'px)');
-      var qPhone = global.matchMedia('(max-width: ' + MOBILE.bpPhone + 'px)');
       var qPointer = global.matchMedia('(pointer: coarse)');
       var onChange = function () { syncViewportHints(); };
       if (qStack.addEventListener) {
         qStack.addEventListener('change', onChange);
         qNarrow.addEventListener('change', onChange);
-        qPhone.addEventListener('change', onChange);
         qPointer.addEventListener('change', onChange);
       } else if (qStack.addListener) {
         qStack.addListener(onChange);
         qNarrow.addListener(onChange);
-        qPhone.addListener(onChange);
         qPointer.addListener(onChange);
       }
     } catch (e) { /* older hosts */ }
@@ -167,20 +159,7 @@
     }
   }
 
-  function ensureViewportFit() {
-    var doc = global.document;
-    if (!doc || !doc.querySelector) return;
-    var meta = doc.querySelector('meta[name="viewport"]');
-    if (!meta) return;
-    var content = String(meta.getAttribute('content') || '');
-    if (/viewport-fit\s*=/i.test(content)) return;
-    var next = content.replace(/\s+$/, '');
-    if (next && next.charAt(next.length - 1) !== ',') next += ',';
-    meta.setAttribute('content', (next ? next + ' ' : '') + 'viewport-fit=cover');
-  }
-
   function init(root) {
-    ensureViewportFit();
     initCollapse(root);
     initSheen(root);
     initPrimary(root);
@@ -194,7 +173,6 @@
     initSheen: initSheen,
     initPrimary: initPrimary,
     initViewport: initViewport,
-    ensureViewportFit: ensureViewportFit,
     syncViewportHints: syncViewportHints,
     STORAGE_PREFIX: STORAGE_PREFIX,
     MOBILE: MOBILE
