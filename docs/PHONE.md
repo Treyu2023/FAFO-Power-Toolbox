@@ -10,7 +10,21 @@ Phone and desktop share one chrome kit (`shared/fafo-chrome.css` / `fafo-chrome.
 
 **https://treyu2023.github.io/FAFO-Power-Toolbox/**
 
-Checked **2026-09-22**: that URL still returns **404**. `gh` reports this repo **public**, so the 404 is Pages left off (no source branch), not a private-repo limitation. Enabling Pages below is the path to use. If the repo is private, or a plan/policy blocks Pages here, publish a **history-free** public mirror — [FORK-PAGES.md](FORK-PAGES.md). Do not use GitHub’s Fork button; old commits still contain Investor Portal and TaxForge even though `.gitignore` keeps them out of `HEAD`.
+Checked **2026-09-22**: that URL still returns **HTTP 404**. The repo is **public** (owner `Treyu2023`, a user account, not an org). This is **not** a private-repo plan block.
+
+An agent tried to enable Pages on this repo:
+
+- `POST /repos/Treyu2023/FAFO-Power-Toolbox/pages` with `build_type: legacy`, `source.branch: main`, `source.path: /`
+- `PUT` the same body
+
+Both returned **403** `Resource not accessible by integration`. GitHub’s required permission header was `pages=write` and `administration=write`. The token’s repo permissions are `admin: false`. `GET .../pages` is **404** (no site configured). No public mirror repo was created: a GitHub Fork would republish Investor Portal / TaxForge history, and this token cannot create repos either.
+
+Someone who can open **Settings → Pages** on the owner account still has to turn it on. Two equivalent choices:
+
+1. **Deploy from a branch** — `main`, folder `/ (root)`. `index.html` and `.nojekyll` are already on `main`.
+2. **GitHub Actions** — after `.github/workflows/pages.yml` is on `main`, set Source to **GitHub Actions**. That workflow uploads the repo root and does not add a second app.
+
+If the repo is made private on a plan without private Pages, use [FORK-PAGES.md](FORK-PAGES.md) (fresh tree, not the Fork button).
 
 After Pages is live, open this on the phone:
 

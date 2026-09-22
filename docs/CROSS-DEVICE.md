@@ -2,7 +2,7 @@
 
 Same HTML. Android Chrome and desktop/laptop browsers share `shared/fafo-chrome.css`, `shared/fafo-chrome.js`, and `shared/fafo-pwa.js`. There is no phone-only app.
 
-Checked **2026-09-22**: [https://treyu2023.github.io/FAFO-Power-Toolbox/](https://treyu2023.github.io/FAFO-Power-Toolbox/) still returns **404**. The repo is **public**, so this 404 is Pages not being turned on (source branch), not a private-repo block. If the repo is private again, GitHub Free does not publish Pages — use [FORK-PAGES.md](FORK-PAGES.md) instead of the Fork button.
+Checked **2026-09-22**: [https://treyu2023.github.io/FAFO-Power-Toolbox/](https://treyu2023.github.io/FAFO-Power-Toolbox/) returns **HTTP 404**. The repo is **public**. Enabling Pages from this agent failed with **403** (`pages=write` + `administration=write` not granted). Details and the Actions workflow are in [PHONE.md](PHONE.md). If the repo is private again, use [FORK-PAGES.md](FORK-PAGES.md) instead of the Fork button.
 
 ## Open it
 
