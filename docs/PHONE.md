@@ -46,13 +46,21 @@ Repo: [Treyu2023/FAFO-Power-Toolbox](https://github.com/Treyu2023/FAFO-Power-Too
 
 ### Turn Pages on (one-time, repo Settings)
 
-Pages is **not** on until someone flips it. Use **repo root**, not `/docs` — the launcher and `shared/` live at the root.
+Pages stays off until an account with **admin** on this repo saves a source. Use **repo root**, not `/docs`.
+
+Branch source:
 
 1. GitHub → this repo → **Settings** → **Pages**
 2. **Build and deployment** → **Source:** Deploy from a branch
 3. **Branch:** `main` · **Folder:** `/ (root)` → Save
-4. Wait a minute. The site URL shown on that page should match the links above.
-5. If the repo is **private**, Pages for private repos needs a GitHub plan that includes it. Otherwise follow [FORK-PAGES.md](FORK-PAGES.md) (fresh public tree, not a fork).
+4. Wait a minute. The site URL on that page should match the links above.
+
+Actions source (after `.github/workflows/pages.yml` is on `main`):
+
+1. **Source:** GitHub Actions
+2. Run the “Deploy GitHub Pages” workflow, or push to `main` so it runs
+
+If the repo is **private**, Pages needs a plan that includes private Pages. Otherwise follow [FORK-PAGES.md](FORK-PAGES.md) (fresh public tree, not a fork).
 
 `index.html` + `.nojekyll` are the Pages entry. Jekyll stays off so filenames with spaces (`Toolbox Launcher.html`) serve as-is.
 
