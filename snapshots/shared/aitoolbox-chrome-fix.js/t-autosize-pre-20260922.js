@@ -28,23 +28,13 @@
     '.fafo-layout-panel[data-fafo-flex="1"]{flex:1 1 auto!important;min-height:0!important}',
     '.fafo-body-split > [data-fafo-section].fafo-section-flex{flex:1 1 auto!important;min-height:0!important}',
     '[data-fafo-section][data-fafo-resizable="1"]{min-height:36px!important}',
-    '@media (max-width:720px){',
-    'html,body{max-width:100%!important;overflow-x:clip!important}',
-    'html:not(:has(body.run-active)),html:not(:has(body.run-active)) body{height:auto!important;max-height:none!important;overflow-y:auto!important}',
-    '#atx-pro-bar{height:auto!important;max-height:none!important;flex-wrap:wrap!important;overflow:visible!important;padding-top:6px!important;padding-bottom:max(6px,env(safe-area-inset-bottom,0px))!important}',
-    '#atx-pro-bar .atx-chips,#atx-pro-bar .atx-actions{flex-wrap:wrap!important;overflow:visible!important;width:100%!important}',
-    '#atx-pro-bar a.atx-chip,#atx-pro-bar button.atx-chip{min-height:44px!important;height:auto!important;padding:8px 12px!important}',
+    '@media (max-width:430px){',
+    '#atx-pro-bar{height:auto!important;max-height:calc(52px + env(safe-area-inset-bottom,0px))!important;padding-top:4px!important;padding-bottom:max(4px,env(safe-area-inset-bottom,0px))!important;overflow-x:auto!important;overflow-y:hidden!important}',
+    '#atx-pro-bar a.atx-chip,#atx-pro-bar button.atx-chip{min-height:44px!important;height:44px!important;padding:0 12px!important}',
     '#atx-pro-bar .atx-kbd{display:none!important}',
-    '.tb-companion-bar,#tbSharedServerBar{max-height:none!important;height:auto!important;flex-wrap:wrap!important;overflow:visible!important;row-gap:6px!important}',
+    '.tb-companion-bar,#tbSharedServerBar{max-height:none!important;height:auto!important;flex-wrap:wrap!important;overflow-x:hidden!important;row-gap:6px!important}',
     '.tb-bar-back{min-height:44px!important;display:inline-flex!important;align-items:center!important;padding:10px 12px!important}',
     '.fafo-chrome-btn{min-width:44px!important;min-height:44px!important;width:auto!important;height:auto!important;padding:8px 10px!important}',
-    '.fafo-layout-float-dock{left:max(8px,env(safe-area-inset-left,0px))!important;right:max(8px,env(safe-area-inset-right,0px))!important;max-width:none!important;max-height:none!important;overflow:visible!important}',
-    '.fafo-layout-float-host{resize:none!important;overflow:visible!important;max-height:none!important;max-width:100%!important;width:100%!important;min-height:0!important}',
-    '.fafo-layout-dock-toggle{min-height:44px!important}',
-    'body:not(.run-active) .fafo-layout-panel,body:not(.run-active) .fafo-layout-panel[data-fafo-flex="1"],body:not(.run-active) .fafo-layout-panel[data-fafo-sized="1"]{flex:0 0 auto!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important}',
-    'body:not(.run-active) .fafo-panel-body,body:not(.run-active) .fafo-scroll-pane,body:not(.run-active) .fafo-section-body,body:not(.run-active) .fafo-body-split > [data-fafo-section],body:not(.run-active) .fafo-body-split > [data-fafo-section].fafo-section-flex,body:not(.run-active) .fafo-body-split > [data-fafo-section] > .fafo-section-body{flex:0 0 auto!important;height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important}',
-    '[data-fafo-section].fafo-section-collapsed > .fafo-section-body{display:none!important;overflow:hidden!important}',
-    '.fafo-split-handle,.fafo-corner-resize,.fafo-section-resize{display:none!important}',
     '}'
   ].join('\n');
 
@@ -66,9 +56,7 @@
     if (pro && pro.style.display !== 'none' && !document.body.classList.contains('atx-pro-min')) {
       try {
         var h = Math.ceil(pro.getBoundingClientRect().height) || 0;
-        var capPx = 48;
-        try { if (window.matchMedia('(max-width: 720px)').matches) capPx = 320; } catch (_) {}
-        bottom = Math.min(capPx, Math.max(0, h));
+        bottom = Math.min(48, Math.max(0, h));
       } catch (_) { bottom = 44; }
     } else if (document.body.classList.contains('atx-pro-min')) {
       bottom = 8;
