@@ -73,6 +73,7 @@ textarea{min-height:72px;resize:vertical;line-height:1.45}
   <button type="button" class="btn ghost" id="btnExport">Export JSON</button>
   <button type="button" class="btn ghost" id="btnImport">Import</button>
   <input id="fileIn" type="file" accept="application/json" hidden>
+  <button type="button" class="btn ghost" id="btnSendSongforge">Send to Songforge</button>
 </nav>
 <div class="layout" data-fafo-layout-root data-fafo-layout-app="no-exit-build" data-fafo-layout-type="columns" data-fafo-layout-page-scroll="1">
   <aside class="side" data-fafo-panel="sidebar" data-fafo-panel-title="Tracks" data-fafo-panel-min="220" data-fafo-panel-default="280">
@@ -142,6 +143,8 @@ textarea{min-height:72px;resize:vertical;line-height:1.45}
 <script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
 <script>
 const KEY='fafo_no_exit_build_v1';
+const HANDOFF_KEY='aitoolbox.songforge.handoff.v1';
+const SF_REL='../Songforge.html';
 const STYLE_LIMIT=1000, LYRIC_LIMIT=5000;
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -667,7 +670,45 @@ $('btnQueue').onclick=()=>{
   toast('Pack + Style + Lyrics + Exclude sent to Prompt Queue','ok');
 };
 
+function consumeSongforgeHandoff(){
+  let raw; try{ raw=localStorage.getItem(HANDOFF_KEY); }catch(_){ return; }
+  if(!raw) return;
+  let h; try{ h=JSON.parse(raw); }catch(_){ return; }
+  if(!h || h.v!==1 || h.from!=='songforge') return;
+  const n={
+    id:uid(), build:false, number:'', title:(h.title||'').trim()||'From Songforge',
+    tagline:'imported from Songforge', genre:'', bpm:100, key:'A minor', vocalGender:'Male',
+    instruments:[], style:h.style||'', exclude:h.exclude||'', lyrics:h.lyrics||'', chips:{}
+  };
+  state.songs.push(n); state.active=n.id; save();
+  try{ localStorage.removeItem(HANDOFF_KEY); }catch(_){}
+  renderList(); fill();
+  toast('Imported from Songforge','ok');
+}
+function sendToSongforge(){
+  read();
+  const s=cur();
+  const payload={
+    v:1, from:'noexit',
+    title:(s&&s.title)||($('title')&&$('title').value)||'',
+    lyrics:(s&&s.lyrics)||($('lyrics')&&$('lyrics').value)||'',
+    style:(s&&s.style)||($('style')&&$('style').value)||'',
+    exclude:(s&&s.exclude)||($('exclude')&&$('exclude').value)||'',
+    ts:Date.now()
+  };
+  try{ localStorage.setItem(HANDOFF_KEY, JSON.stringify(payload)); }catch(e){
+    toast('Handoff write failed','warn'); return;
+  }
+  toast('Sent to Songforge','ok');
+  try{
+    const w=window.open(SF_REL,'_blank');
+    if(!w) location.href=SF_REL;
+  }catch(_){ location.href=SF_REL; }
+}
+
+$('btnSendSongforge').onclick=()=>sendToSongforge();
 renderList(); fill();
+consumeSongforgeHandoff();
 </script>
 </body>
 </html>

@@ -99,7 +99,7 @@ textarea.inp{min-height:96px;resize:vertical}
   <header class="head">
     <div>
       <h1>Songforge</h1>
-      <p class="sub">Offline Title / Lyrics / Style packs for Suno v6 paste. SF-4: Pack polish — Copy all + offline download. Studio hook parked.</p>
+      <p class="sub">Offline Title / Lyrics / Style packs for Suno v6 paste. SF-5: JOIN Songforge / NO EXIT BUILD. Copy all + downloads stay green.</p>
     </div>
     <div class="row">
       <button type="button" class="btn ghost" id="btnClearIdeas">Clear idea tags</button>
@@ -220,9 +220,12 @@ textarea.inp{min-height:96px;resize:vertical}
         <button type="button" class="btn ghost" id="btnDlTxt">Download .txt</button>
         <button type="button" class="btn ghost" id="btnDlJson">Download .json</button>
       </div>
-      <div class="field" style="margin-top:12px">
+            <div class="field" style="margin-top:12px">
         <label>Studio hook</label>
-        <div class="stub-note" id="sfStudioStub">Parked — <code>studioHook: false</code>. No Grok Build deep-link in this KEEP. Paste packs into Suno v6 manually.</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn primary" id="btnSendNeb">Send to NO EXIT BUILD</button>
+          <span class="stub-note" id="sfStudioStub" style="margin:0">Live — handoff <code>aitoolbox.songforge.handoff.v1</code>.</span>
+        </div>
       </div>
     </div>
   </section>
@@ -233,6 +236,8 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
 (function(){
   'use strict';
   var LS_KEY = 'aitoolbox.songforge.v1';
+  var HANDOFF_KEY = 'aitoolbox.songforge.handoff.v1';
+  var NEB_REL = 'AI Creator/NO EXIT BUILD.html';
   var PRESET_URL = 'shared/songforge-presets.json';
   var SECTION_TYPES = ['Intro','Verse','Pre','Chorus','Bridge','Outro'];
   var state = defaultState();
@@ -250,7 +255,7 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
       ideaTags: [],
       kitPins: [],
       updatedAt: null,
-      studioHook: false
+      studioHook: true
     };
   }
   function toast(msg){
@@ -270,7 +275,7 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
       if (!Array.isArray(o.lyrics.sections)) o.lyrics.sections = [];
       o.ideaTags = Array.isArray(o.ideaTags) ? o.ideaTags : [];
       o.kitPins = Array.isArray(o.kitPins) ? o.kitPins : [];
-      o.studioHook = false;
+      o.studioHook = true;
       return o;
     } catch(_){ return defaultState(); }
   }
@@ -646,6 +651,73 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
   }
 
 
+
+  function lyricsFromHandoff(text){
+    text = String(text || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return { sections: [{ type: 'Verse', body: '' }] };
+    var re = /^\[([^\]]+)\]\s*$/gm;
+    var matches = [];
+    var m;
+    while ((m = re.exec(text)) !== null){
+      matches.push({ type: m[1].trim() || 'Verse', index: m.index, end: m.index + m[0].length });
+    }
+    if (!matches.length){
+      return { sections: [{ type: 'Verse', body: text }] };
+    }
+    var sections = [];
+    for (var i = 0; i < matches.length; i++){
+      var start = matches[i].end;
+      var stop = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
+      var body = text.slice(start, stop).replace(/^\n+/, '').replace(/\s+$/, '');
+      sections.push({ type: matches[i].type, body: body });
+    }
+    return { sections: sections };
+  }
+  function writeHandoff(from){
+    var payload = {
+      v: 1,
+      from: from || 'songforge',
+      title: state.title || '',
+      lyrics: lyricsBlock(),
+      style: state.style || '',
+      exclude: (state.exclude || ''),
+      ts: Date.now()
+    };
+    try { localStorage.setItem(HANDOFF_KEY, JSON.stringify(payload)); } catch(e){
+      toast('Handoff write failed (storage)');
+      return false;
+    }
+    return true;
+  }
+  function consumeHandoff(){
+    var raw;
+    try { raw = localStorage.getItem(HANDOFF_KEY); } catch(_){ return; }
+    if (!raw) return;
+    var h;
+    try { h = JSON.parse(raw); } catch(_){ return; }
+    if (!h || h.v !== 1 || (h.from !== 'noexit' && h.from !== 'no-exit-build')) return;
+    state.title = h.title || '';
+    state.style = h.style || '';
+    state.exclude = h.exclude || '';
+    state.lyrics = lyricsFromHandoff(h.lyrics || '');
+    state.studioHook = true;
+    try { localStorage.removeItem(HANDOFF_KEY); } catch(_){}
+    scheduleSave();
+    if ($('sfTitle')) $('sfTitle').value = state.title || '';
+    paintSections(); paintStyle(); paintExport();
+    toast('Imported from NO EXIT BUILD');
+  }
+  function sendToNeb(){
+    if (!writeHandoff('songforge')) return;
+    toast('Sent to NO EXIT BUILD');
+    try {
+      var w = window.open(NEB_REL, '_blank');
+      if (!w) location.href = NEB_REL;
+    } catch(_){
+      location.href = NEB_REL;
+    }
+  }
+
   function packText(){
     var title = (state.title || '').trim() || '(untitled)';
     var ly = lyricsBlock() || '(no lyrics)';
@@ -661,7 +733,7 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
       style: state.style || '',
       ideaTags: state.ideaTags || [],
       kitPins: state.kitPins || [],
-      studioHook: false,
+      studioHook: true,
       updatedAt: state.updatedAt || null
     }, null, 2);
   }
@@ -719,6 +791,10 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
       var name = 'songforge-pack-' + ymd() + '.json';
       downloadBlob(name, packJson(), 'application/json');
     });
+    if ($('btnSendNeb')) $('btnSendNeb').addEventListener('click', function(){
+      sendToNeb();
+    });
+
 
     if ($('sfStyle')) $('sfStyle').addEventListener('input', function(){
       state.style = $('sfStyle').value; paintExport(); scheduleSave();
@@ -739,6 +815,7 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
   }
   function boot(){
     state = loadState();
+    consumeHandoff();
     $('sfTitle').value = state.title || '';
     paintTags(); paintExport(); bind();
     loadPresets(function(p){
@@ -748,7 +825,7 @@ window.SF_PRESETS_INLINE = {"schema": "aitoolbox.songforge.presets.v1", "cite": 
       paintTemplates();
       paintSections();
       var src = (p === window.SF_PRESETS_INLINE) ? 'inline' : 'file/fetch';
-      $('sfStatus').textContent = 'SF-4 · presets ' + src + ' · cite ad476319';
+      $('sfStatus').textContent = 'SF-5 · presets ' + src + ' · cite ad476319';
       paintStyle();
     });
   }
