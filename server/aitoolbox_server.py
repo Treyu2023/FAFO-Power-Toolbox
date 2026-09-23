@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+import debris_tle
 import media_ops as ops
 import playlists as pl
 import debug_log as dbg
@@ -408,9 +409,24 @@ def health(probe: int = 0):
             "tool_icons",
             "commander_sites",
             "pc_diagnostics",
+            "debris_tle",
         ],
         "commanderConsole": f"http://{BIND_HOST}:{BIND_PORT}/toolbox/Verifone%20Tools/Commander%20Site%20Console.html",
     }
+
+
+@app.get("/api/debris/tle")
+def debris_tle_route(group: str = Query(...)):
+    """Same-origin CelesTrak GP elements for the debris tracker. Whitelisted groups only."""
+    try:
+        text = debris_tle.fetch_group(group, version=read_version())
+    except debris_tle.DebrisTleError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return Response(
+        text,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "private, max-age=600"},
+    )
 
 
 def _resolve_toolbox_file(file_path: str) -> Path:
