@@ -295,8 +295,8 @@
         <div class="section">
             <div class="section-title">Data Source</div>
             <p style="font-size:10px;color:var(--muted);line-height:1.5">
-                Live TLE sets from <a href="https://celestrak.org" target="_blank" style="color:var(--accent)">CelesTrak</a> (NORAD GP elements), loaded through the toolbox server.
-                Archived fallback is used when that fetch fails. Propagation via SGP4/SDP4.
+                Live TLE sets from <a href="https://celestrak.org" target="_blank" style="color:var(--accent)">CelesTrak</a> (NORAD GP elements).
+                Archived fallback embedded for offline use. Propagation via SGP4/SDP4.
             </p>
         </div>
     </div>
@@ -370,19 +370,16 @@
     const AU = 149597870.7; // km
     const EARTH_RADIUS_KM = 6371;
     const SCENE_SCALE = 0.00001; // 1 unit = 100,000 km (solar system)
-    // Same radius createPlanet() uses for Earth (cbrt(1) * 0.5). Debris and the
-    // detailed globe share it, so Earth Orbit / Debris Focus (4–10 units) stay
-    // outside the planet instead of inside a 6,371 km-scale globe.
-    const EARTH_BODY_RADIUS = 0.5;
-    const KM_TO_EARTH_UNIT = EARTH_BODY_RADIUS / EARTH_RADIUS_KM;
+    const EARTH_SCENE_SCALE = 0.001; // 1 unit = 1 km (earth orbit view)
+    const KM_TO_EARTH_UNIT = 0.001;
 
     const SPEED_STEPS = [1, 60, 300, 3600, 86400, 604800, 2592000];
 
     const DEBRIS_SOURCES = {
-        fengyun: { celestrakGroup: 'fengyun-1c-debris', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=fengyun-1c-debris&FORMAT=tle', color: 0xff4444, event: 'Fengyun 1C ASAT (Jan 11, 2007)', group: 'fengyun' },
-        iridium: { celestrakGroup: 'iridium-33-debris', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-33-debris&FORMAT=tle', color: 0xffaa00, event: 'Iridium 33 collision (Feb 10, 2009)', group: 'iridium' },
-        cosmos:  { celestrakGroup: 'cosmos-2251-debris', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=cosmos-2251-debris&FORMAT=tle', color: 0xff8800, event: 'Cosmos 2251 collision (Feb 10, 2009)', group: 'cosmos' },
-        analyst: { celestrakGroup: 'analyst', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=analyst&FORMAT=tle', color: 0xaa66ff, event: 'Analyst / uncatalogued', group: 'analyst' }
+        fengyun: { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=fengyun-1c-debris&FORMAT=tle', color: 0xff4444, event: 'Fengyun 1C ASAT (Jan 11, 2007)', group: 'fengyun' },
+        iridium: { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-33-debris&FORMAT=tle', color: 0xffaa00, event: 'Iridium 33 collision (Feb 10, 2009)', group: 'iridium' },
+        cosmos:  { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=cosmos-2251-debris&FORMAT=tle', color: 0xff8800, event: 'Cosmos 2251 collision (Feb 10, 2009)', group: 'cosmos' },
+        analyst: { url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=analyst&FORMAT=tle', color: 0xaa66ff, event: 'Analyst / uncatalogued', group: 'analyst' }
     };
 
     // Archived fallback TLE snapshot (CelesTrak NORAD GP, 2026-07-03)
@@ -492,26 +489,14 @@ COSMOS 2251 DEB
 
     async function fetchTLEGroup(key) {
         const src = DEBRIS_SOURCES[key];
-        const urls = [];
-        const api = (typeof window !== 'undefined' && window.AITOOLBOX_API_BASE) || '';
-        if (api && src.celestrakGroup) {
-            urls.push(api.replace(/\/$/, '') + '/debris/tle?group=' + encodeURIComponent(src.celestrakGroup));
+        try {
+            const resp = await fetch(src.url, { signal: AbortSignal.timeout(15000) });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return parseTLE(await resp.text(), key, { color: src.color, event: src.event });
+        } catch (e) {
+            console.warn(`Failed to fetch ${key}:`, e);
+            return null;
         }
-        urls.push(src.url);
-        let lastErr = null;
-        for (const url of urls) {
-            try {
-                const resp = await fetch(url, { signal: AbortSignal.timeout(20000) });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const objs = parseTLE(await resp.text(), key, { color: src.color, event: src.event });
-                if (objs.length) return objs;
-                lastErr = new Error('empty TLE');
-            } catch (e) {
-                lastErr = e;
-            }
-        }
-        console.warn('Failed to fetch ' + key + ':', lastErr);
-        return null;
     }
 
     async function loadDebrisData() {
@@ -582,39 +567,28 @@ COSMOS 2251 DEB
         const pos = debrisPoints.geometry.attributes.position.array;
         const vis = debrisPoints.geometry.attributes.visible.array;
         let visibleCount = 0;
-        let gmst = 0;
-        try { gmst = satellite.gstime(date); } catch (_) { gmst = 0; }
 
         for (let i = 0; i < debrisObjects.length; i++) {
             const obj = debrisObjects[i];
-            let pv = null;
-            try { pv = satellite.propagate(obj.satrec, date); } catch (_) { pv = null; }
-            const p = pv && pv.position;
-            const v = pv && pv.velocity;
-            if (!p || !v || typeof p.x !== 'number' || !Number.isFinite(p.x)) {
-                pos[i * 3] = NaN;
-                pos[i * 3 + 1] = NaN;
-                pos[i * 3 + 2] = NaN;
+            const pv = satellite.propagate(obj.satrec, date);
+            if (!pv.position || !pv.velocity) {
                 vis[i] = 0;
-                obj._alt = undefined;
                 continue;
             }
-            let geo = null;
-            try { geo = satellite.eciToGeodetic(p, gmst); } catch (_) { geo = null; }
-            const lat = geo ? satellite.degreesLat(geo.latitude) : NaN;
-            const lon = geo ? satellite.degreesLong(geo.longitude) : NaN;
-            const alt = geo ? geo.height : NaN;
+            const gmst = satellite.gstime(date);
+            const geo = satellite.eciToEcf(pv.position, gmst);
+            const lat = satellite.degreesLat(geo.latitude);
+            const lon = satellite.degreesLong(geo.longitude);
+            const alt = geo.height;
 
-            obj._lat = lat;
-            obj._lon = lon;
-            obj._alt = Number.isFinite(alt) ? alt : undefined;
-            obj._eci = p;
-            obj._vel = Math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2);
+            obj._lat = lat; obj._lon = lon; obj._alt = alt;
+            obj._eci = pv.position;
+            obj._vel = Math.sqrt(pv.velocity.x ** 2 + pv.velocity.y ** 2 + pv.velocity.z ** 2);
 
-            // ECI km → earth-local scene coords (Y-up)
-            pos[i * 3]     = p.x * KM_TO_EARTH_UNIT;
-            pos[i * 3 + 1] = p.z * KM_TO_EARTH_UNIT;
-            pos[i * 3 + 2] = -p.y * KM_TO_EARTH_UNIT;
+            // ECI position in km → earth-local scene coords
+            pos[i * 3]     = pv.position.x * KM_TO_EARTH_UNIT;
+            pos[i * 3 + 1] = pv.position.z * KM_TO_EARTH_UNIT; // Y-up: swap Z
+            pos[i * 3 + 2] = -pv.position.y * KM_TO_EARTH_UNIT;
 
             vis[i] = 1;
             visibleCount++;
@@ -700,7 +674,7 @@ COSMOS 2251 DEB
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-        const mat = new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false });
+        const mat = new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.8 });
         return new THREE.Points(geo, mat);
     }
 
@@ -734,16 +708,12 @@ COSMOS 2251 DEB
         const geo = new THREE.SphereGeometry(radius, 48, 48);
         const mat = new THREE.MeshPhongMaterial({
             color: data.color,
-            emissive: data.emissive || data.color,
-            emissiveIntensity: data.emissive ? 0.35 : 0.4,
+            emissive: data.emissive || 0x000000,
+            emissiveIntensity: data.emissive ? 0.3 : 0,
             shininess: 15
         });
-        // Anchor stays unrotated so ECI debris parented to Earth does not spin
-        // with the planet texture. The visible body is the child that rotates.
-        const body = new THREE.Mesh(geo, mat);
-        const mesh = new THREE.Group();
-        mesh.add(body);
-        mesh.userData = { ...data, orbitRadius: dist, angle: (index / PLANETS.length) * Math.PI * 2, body, bodyRadius: radius };
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData = { ...data, orbitRadius: dist, angle: (index / PLANETS.length) * Math.PI * 2 };
 
         // Orbit path
         const orbitPts = [];
@@ -763,7 +733,7 @@ COSMOS 2251 DEB
             const ringMat = new THREE.MeshBasicMaterial({ color: 0xaa9977, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
             const ring = new THREE.Mesh(ringGeo, ringMat);
             ring.rotation.x = Math.PI / 2.5;
-            body.add(ring);
+            mesh.add(ring);
         }
 
         scene.add(mesh);
@@ -776,7 +746,7 @@ COSMOS 2251 DEB
 
         const earthGeo = new THREE.SphereGeometry(r, 64, 64);
         const earthMat = new THREE.MeshPhongMaterial({
-            color: 0x2266cc, emissive: 0x1a4a99, emissiveIntensity: 0.9, shininess: 25
+            color: 0x2266cc, emissive: 0x0a1a33, shininess: 25
         });
         earthMesh = new THREE.Mesh(earthGeo, earthMat);
         group.add(earthMesh);
@@ -828,7 +798,7 @@ COSMOS 2251 DEB
         const container = document.getElementById('canvas-container');
         scene = new THREE.Scene();
 
-        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 10, 80000);
+        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.01, 5000);
         camera.position.set(0, 80, 180);
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -842,7 +812,7 @@ COSMOS 2251 DEB
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.minDistance = 0.5;
-        controls.maxDistance = 120000;
+        controls.maxDistance = 2000;
 
         controls.addEventListener('change', () => {
             if (lockEnabled) syncLockOffsetFromCamera();
@@ -859,17 +829,15 @@ COSMOS 2251 DEB
 
         scene.add(createStarfield());
         sunMesh = createSun();
-        scene.add(sunMesh);
 
         planetMeshes = PLANETS.map((p, i) => {
             const mesh = createPlanet(p, i);
             if (p.name === 'Earth') {
                 earthGroup = createEarthDetail();
                 mesh.add(earthGroup);
-                if (mesh.userData.body) mesh.userData.body.visible = false;
             }
             const label = makeTextSprite(p.name);
-            label.position.y = (mesh.userData.bodyRadius || 0.5) + 0.6;
+            label.position.y = Math.cbrt(p.radius / 6371) * 0.5 + 1;
             mesh.add(label);
             labelSprites.push(label);
             return mesh;
@@ -958,7 +926,7 @@ COSMOS 2251 DEB
             const angle = d.angle + t * (365 / d.period);
             mesh.position.x = Math.cos(angle) * d.orbitRadius;
             mesh.position.z = Math.sin(angle) * d.orbitRadius;
-            if (d.body && d.body.visible) d.body.rotation.y += 0.002;
+            mesh.rotation.y += 0.002;
         });
         sunMesh.rotation.y += 0.001;
         if (earthMesh) earthMesh.rotation.y += 0.005;
@@ -972,22 +940,14 @@ COSMOS 2251 DEB
         const planetSelect = document.getElementById('lock-planet');
 
         if (mode === 'solar') {
-            camera.near = 10;
-            camera.far = 80000;
-            camera.updateProjectionMatrix();
             lockEnabled = false;
             if (lockCheckbox) lockCheckbox.checked = false;
             camera.position.set(0, 80, 180);
             controls.target.set(0, 0, 0);
             lockInitialized = false;
             lastPlanetPos.set(0, 0, 0);
-            const distSlider = document.getElementById('lock-distance');
-            updateLockDistanceUI(parseFloat(distSlider && distSlider.value) || 8);
             if (debrisPoints) debrisPoints.material.size = parseFloat(document.getElementById('debris-size').value) * 0.003;
         } else {
-            camera.near = 0.05;
-            camera.far = 800;
-            camera.updateProjectionMatrix();
             lockEnabled = true;
             if (lockCheckbox) lockCheckbox.checked = true;
             lockPlanetName = 'Earth';
@@ -1139,12 +1099,12 @@ COSMOS 2251 DEB
             speedIdx = parseInt(e.target.value);
             setText('speed-val', SPEED_STEPS[speedIdx].toLocaleString() + '×');
             saveSolarPrefs();
-        });
+        };
 
         bind('sim-time', 'onchange', e => {
             simDate = new Date(e.target.value);
             playing = false;
-        });
+        };
 
         document.querySelectorAll('[data-view]').forEach(btn => {
             btn.onclick = withBusy(null, () => setViewMode(btn.dataset.view));
@@ -1158,18 +1118,18 @@ COSMOS 2251 DEB
                 lockInitialized = false;
                 lastPlanetPos.set(0, 0, 0);
             }
-        });
+        };
 
         bind('lock-planet', 'onchange', e => {
             lockPlanetName = e.target.value;
             resetCameraLock(parseFloat((el('lock-distance') && el('lock-distance').value) || '8'));
-        });
+        };
 
         bind('lock-distance', 'oninput', e => {
             const dist = parseFloat(e.target.value);
             setText('lock-dist-val', dist.toFixed(1));
             if (lockEnabled) setLockDistance(dist);
-        });
+        };
 
         document.querySelectorAll('[data-archive]').forEach(btn => {
             btn.onclick = withBusy(null, () => {
@@ -1195,19 +1155,19 @@ COSMOS 2251 DEB
         bind('gfx-bloom', 'onchange', () => {});
         bind('gfx-trails', 'onchange', e => {
             orbitLines.forEach(l => l.visible = e.target.checked);
-        });
+        };
         bind('gfx-labels', 'onchange', e => {
             labelSprites.forEach(s => s.visible = e.target.checked);
-        });
+        };
         bind('gfx-atmo', 'onchange', e => {
             if (earthAtmosphere) earthAtmosphere.visible = e.target.checked;
-        });
+        };
         bind('debris-size', 'oninput', e => {
             if (debrisPoints) {
                 const mult = viewMode === 'solar' ? 0.003 : viewMode === 'earth' ? 0.01 : 0.02;
                 debrisPoints.material.size = parseFloat(e.target.value) * mult;
             }
-        });
+        };
 
         bind('search-input', 'oninput', e => {
             const q = e.target.value.trim().toLowerCase();
@@ -1220,7 +1180,7 @@ COSMOS 2251 DEB
                 showObjectInfo(found);
                 setViewMode('debris');
             }
-        });
+        };
 
         simDate = new Date();
         updateSimTimeInput();
@@ -1257,10 +1217,7 @@ COSMOS 2251 DEB
             }
         }
         setText('speed-val', SPEED_STEPS[speedIdx].toLocaleString() + '×');
-        const startView = (pref && (pref.viewMode === 'earth' || pref.viewMode === 'debris' || pref.viewMode === 'solar'))
-            ? pref.viewMode
-            : 'solar';
-        setViewMode(startView);
+        updateLockDistanceUI(lockOffset.length());
 
         function copyFocusSummary() {
             const name = document.getElementById('info-name')?.textContent || '—';
@@ -1312,20 +1269,11 @@ COSMOS 2251 DEB
 
     // ─── Boot ──────────────────────────────────────────────────────────────────
     async function boot() {
-        try {
-            initScene();
-            setupUI();
-            await loadDebrisData();
-            document.getElementById('loading-overlay').classList.add('hidden');
-            animate(performance.now());
-        } catch (err) {
-            console.error(err);
-            setStatus('offline', 'Tracker failed to start');
-            const t = document.getElementById('loading-text');
-            if (t) t.textContent = 'Could not start the 3D view. ' + ((err && err.message) || 'script error');
-            const ring = document.querySelector('#loading-overlay .loader-ring');
-            if (ring) ring.style.animation = 'none';
-        }
+        initScene();
+        setupUI();
+        await loadDebrisData();
+        document.getElementById('loading-overlay').classList.add('hidden');
+        animate(performance.now());
     }
 
     boot();
