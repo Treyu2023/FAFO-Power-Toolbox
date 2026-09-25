@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Typing Assistant Trainer — T90</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Typing Assistant Trainer — T101</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
   <script src="shared/vendor/pdfjs/pdf.min.js"></script>
   <style>
@@ -33,8 +33,9 @@
         var(--bg);
       color: var(--text);
       font-family: "Segoe UI", system-ui, sans-serif;
-      padding: 10px clamp(8px, 1.4vw, 18px) 28px;
+      padding: calc(10px + env(safe-area-inset-top, 0px)) clamp(8px, 1.4vw, 18px) calc(28px + env(safe-area-inset-bottom, 0px));
       overflow: hidden;
+      touch-action: manipulation;
     }
     body.combo-glow {
       animation: comboBg 0.55s ease;
@@ -389,9 +390,11 @@
     /* Floating particles canvas */
     #fxCanvas {
       position: fixed;
-      inset: 0;
+      left: 0;
+      top: 0;
       pointer-events: none;
       z-index: 40;
+      /* JS sets width/height in CSS px so the bitmap is not stretched into a mid-text line */
     }
     #screenFlash {
       position: fixed;
@@ -826,9 +829,13 @@
       flex: 1 1 auto;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start;
       width: 100%;
       min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      scroll-padding: 22% 0 28%;
       /* Scale children off this box's width */
       container-type: inline-size;
       container-name: promptbox;
@@ -851,7 +858,7 @@
       word-break: normal;
       overflow-wrap: anywhere;
       white-space: normal;
-      padding: clamp(8px, 1.2vw, 16px) clamp(4px, 0.8vw, 10px);
+      padding: clamp(8px, 1.2vw, 16px) clamp(4px, 0.8vw, 10px) clamp(84px, 22%, 160px);
       user-select: none;
       cursor: text;
       box-sizing: border-box;
@@ -934,6 +941,7 @@
       bottom: 8px;
       width: 1px;
       height: 1px;
+      font-size: 16px;
       opacity: 0;
       border: 0;
       padding: 0;
@@ -6779,15 +6787,83 @@ html[data-tat-rm="1"] .tat85-mouth > i {
   // ——— Particles / FX (sparks + smoke + flames) ———
   let ambientFireTimer = 0;
   let fireHeatLevel = 0; // 0–3 from streak tiers
+  let fxCssW = 1;
+  let fxCssH = 1;
+  let fxDpr = 1;
+
+  function fxMetrics() {
+    const vv = window.visualViewport;
+    return {
+      w: Math.max(1, Math.round(vv ? vv.width : window.innerWidth)),
+      h: Math.max(1, Math.round(vv ? vv.height : window.innerHeight)),
+      ox: vv ? vv.offsetLeft : 0,
+      oy: vv ? vv.offsetTop : 0,
+      dpr: Math.min(2, window.devicePixelRatio || 1),
+    };
+  }
+
+  /** Viewport point → canvas CSS pixels (phone chrome / keyboard included). */
+  function fxXY(clientX, clientY) {
+    const m = fxMetrics();
+    return { x: clientX - m.ox, y: clientY - m.oy };
+  }
+
+  /** Bottom edge of the visible lesson window, in canvas CSS pixels. */
+  function lessonStage() {
+    const wrap = document.getElementById('promptWrap');
+    const m = fxMetrics();
+    if (!wrap) {
+      return { left: 0, right: m.w, width: m.w, floor: m.h - 8 };
+    }
+    const r = wrap.getBoundingClientRect();
+    const left = r.left - m.ox;
+    const width = Math.max(1, r.width);
+    const floor = Math.max(12, (r.bottom - m.oy) - 10);
+    return { left, right: left + width, width, floor };
+  }
+
+  function placeFireRibbon() {
+    const rib = document.getElementById('fireRibbon');
+    const wrap = document.getElementById('promptWrap');
+    if (!rib || !wrap) return;
+    const r = wrap.getBoundingClientRect();
+    const h = Math.min(180, Math.max(72, r.height * 0.28));
+    rib.style.left = Math.round(r.left) + 'px';
+    rib.style.width = Math.max(0, Math.round(r.width)) + 'px';
+    rib.style.right = 'auto';
+    rib.style.bottom = 'auto';
+    rib.style.height = h + 'px';
+    rib.style.top = Math.round(r.bottom - h) + 'px';
+  }
 
   function resizeCanvas() {
-    if (fxCanvas) {
-      fxCanvas.width = window.innerWidth;
-      fxCanvas.height = window.innerHeight;
+    if (fxCanvas && fxCtx) {
+      const m = fxMetrics();
+      fxCssW = m.w;
+      fxCssH = m.h;
+      fxDpr = m.dpr;
+      fxCanvas.style.left = m.ox + 'px';
+      fxCanvas.style.top = m.oy + 'px';
+      fxCanvas.style.width = m.w + 'px';
+      fxCanvas.style.height = m.h + 'px';
+      const bw = Math.max(1, Math.floor(m.w * m.dpr));
+      const bh = Math.max(1, Math.floor(m.h * m.dpr));
+      if (fxCanvas.width !== bw || fxCanvas.height !== bh) {
+        fxCanvas.width = bw;
+        fxCanvas.height = bh;
+      }
+      fxCtx.setTransform(m.dpr, 0, 0, m.dpr, 0, 0);
     }
     tatSkinResize();
+    placeFireRibbon();
+    try { keepCaretInView(); } catch (_) {}
   }
   window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', resizeCanvas);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resizeCanvas);
+    window.visualViewport.addEventListener('scroll', resizeCanvas);
+  }
   resizeCanvas();
 
   function heatFromStreak(s) {
@@ -7136,18 +7212,17 @@ html[data-tat-rm="1"] .tat85-mouth > i {
   /** Floor jets of flame/smoke while heat is high */
   function ambientFireTick() {
     if (!$('optFx')?.checked || fireHeatLevel < 1 || finished) return;
-    const w = fxCanvas.width || window.innerWidth;
-    const h = fxCanvas.height || window.innerHeight;
+    const stage = lessonStage();
     const rate = fireHeatLevel === 1 ? 0.35 : fireHeatLevel === 2 ? 0.7 : 1.1;
     ambientFireTimer += rate;
     while (ambientFireTimer >= 1) {
       ambientFireTimer -= 1;
-      const x = Math.random() * w;
-      const y = h - 4 - Math.random() * 10;
+      const x = stage.left + Math.random() * stage.width;
+      const y = stage.floor - Math.random() * 8;
       if (Math.random() < 0.55) spawnFlames(x, y, fireHeatLevel * 0.7);
       else spawnSmoke(x, y, fireHeatLevel * 0.9);
       if (fireHeatLevel >= 3 && Math.random() < 0.25) {
-        spawnFlames(w * 0.5 + (Math.random() - 0.5) * w * 0.4, h - 8, 2.2);
+        spawnFlames(stage.left + stage.width * (0.2 + Math.random() * 0.6), stage.floor, 2.2);
       }
     }
   }
@@ -7170,7 +7245,8 @@ html[data-tat-rm="1"] .tat85-mouth > i {
   function tickFx() {
     if (document.hidden) { rafId = null; return; }
     if (!fxCtx || !fxCanvas) { rafId = null; return; }
-    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    fxCtx.setTransform(fxDpr || 1, 0, 0, fxDpr || 1, 0, 0);
+    fxCtx.clearRect(0, 0, fxCssW || fxCanvas.width, fxCssH || fxCanvas.height);
     ambientFireTick();
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -7618,22 +7694,21 @@ html[data-tat-rm="1"] .tat85-mouth > i {
     void document.body.offsetWidth;
     document.body.classList.add('combo-glow');
     const rect = promptEl.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + Math.min(60, rect.height * 0.35);
-    spawnSparkles(cx, cy, tier.mult);
+    const mid = fxXY(rect.left + rect.width / 2, rect.top + Math.min(60, rect.height * 0.35));
+    const stage = lessonStage();
+    spawnSparkles(mid.x, mid.y, tier.mult);
     if (tier.heat >= 1) {
-      spawnSmoke(cx, cy + 20, 1 + tier.heat * 0.5);
-      spawnFlames(cx, cy + 10, 0.8 + tier.heat * 0.6);
+      spawnSmoke(mid.x, stage.floor, 1 + tier.heat * 0.5);
+      spawnFlames(mid.x, stage.floor, 0.8 + tier.heat * 0.6);
     }
     if (tier.heat >= 2) {
-      spawnFlames(cx - 40, cy + 30, tier.heat);
-      spawnFlames(cx + 40, cy + 30, tier.heat);
-      spawnSmoke(cx, cy + 40, tier.heat);
+      spawnFlames(mid.x - 40, stage.floor, tier.heat);
+      spawnFlames(mid.x + 40, stage.floor, tier.heat);
+      spawnSmoke(mid.x, stage.floor, tier.heat);
     }
     if (tier.heat >= 3) {
-      // screen-edge flare
       for (let i = 0; i < 6; i++) {
-        spawnFlames(Math.random() * window.innerWidth, window.innerHeight - 8, 2.5);
+        spawnFlames(stage.left + Math.random() * stage.width, stage.floor, 2.5);
       }
       flashScreen('rgba(255,80,0,0.28)');
     }
@@ -7810,6 +7885,23 @@ html[data-tat-rm="1"] .tat85-mouth > i {
     }
     promptEl.innerHTML = html;
     try { tatT65OnRender(); } catch (_) {}
+    keepCaretInView();
+  }
+
+  /** Keep the live letter inside the lesson window as the passage grows. */
+  function keepCaretInView() {
+    const wrap = document.getElementById('promptWrap');
+    const cur = promptEl && promptEl.querySelector('.current');
+    if (!wrap || !cur) return;
+    const wr = wrap.getBoundingClientRect();
+    const r = cur.getBoundingClientRect();
+    const topPad = Math.max(28, wr.height * 0.22);
+    const botPad = Math.max(56, wr.height * 0.30);
+    if (r.top < wr.top + topPad) {
+      wrap.scrollTop -= (wr.top + topPad) - r.top;
+    } else if (r.bottom > wr.bottom - botPad) {
+      wrap.scrollTop += r.bottom - (wr.bottom - botPad);
+    }
   }
 
   // ——— Stats ———
@@ -8619,9 +8711,11 @@ html[data-tat-rm="1"] .tat85-mouth > i {
       const cur = promptEl.querySelector('.current');
       if (cur && $('optFx')?.checked) {
         const r = cur.getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
+        const at = fxXY(r.left + r.width / 2, r.top + r.height / 2);
+        const cx = at.x;
+        const cy = at.y;
         const heat = heatFromStreak(streak);
+        const stage = lessonStage();
         const color = tierForStreak(streak)?.color || '#00f3ff';
         // Explode the glyph into shards / little letter pieces
         const fontPx = parseFloat(getComputedStyle(cur).fontSize) || r.height || 48;
@@ -8653,10 +8747,10 @@ html[data-tat-rm="1"] .tat85-mouth > i {
             }
           });
         }
-        if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, cy + 4, 0.5 + heat * 0.25);
-        if (heat >= 2) spawnFlames(cx, cy + 2, 0.55 + heat * 0.25);
+        if (heat >= 1 && streak % 2 === 0) spawnSmoke(cx, stage.floor, 0.5 + heat * 0.25);
+        if (heat >= 2) spawnFlames(cx, stage.floor, 0.55 + heat * 0.25);
         if (heat >= 3 && streak % 3 === 0) {
-          spawnFlames(cx, cy, 1.4);
+          spawnFlames(cx, stage.floor, 1.4);
           flashScreen('rgba(255,90,0,0.12)');
         }
         if (streak >= 8 && streak % 4 === 0) flashScreen(color + '22');
@@ -8772,8 +8866,9 @@ html[data-tat-rm="1"] .tat85-mouth > i {
       const curMiss = promptEl.querySelector('.current');
       if (curMiss && $('optFx')?.checked) {
         const r = curMiss.getBoundingClientRect();
-        spawnSmoke(r.left + r.width / 2, r.top, 1.2);
-        spawnBurst(r.left + r.width / 2, r.top, '#ff4d6a', 6, 2);
+        const missAt = fxXY(r.left + r.width / 2, r.top + r.height / 2);
+        spawnSmoke(missAt.x, missAt.y, 1.2);
+        spawnBurst(missAt.x, missAt.y, '#ff4d6a', 6, 2);
       }
       updateComboUI(false);
       renderPrompt();
@@ -10646,13 +10741,15 @@ html[data-tat-rm="1"] .tat85-mouth > i {
     TAT62.canvas = c;
     TAT62.ctx = c.getContext('2d');
     const r = wrap.getBoundingClientRect();
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(1, Math.floor(r.width * dpr));
-    const h = Math.max(1, Math.floor(r.height * dpr));
-    if (c.width !== w || c.height !== h) {
-      c.width = w;
-      c.height = h;
+    const cssW = Math.max(1, Math.round(r.width));
+    const cssH = Math.max(1, Math.round(r.height));
+    c.style.width = cssW + 'px';
+    c.style.height = cssH + 'px';
+    if (c.width !== cssW || c.height !== cssH) {
+      c.width = cssW;
+      c.height = cssH;
     }
+    if (TAT62.ctx) TAT62.ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
   function updateCaret() {
     const wrap = $('promptWrap');
@@ -20949,8 +21046,8 @@ function tat73Init() {
     confirmNearDedup();
     try {
       var ver = document.getElementById('tatVer');
-      if (ver) { ver.textContent = 'T100'; ver.title = 'PET-T100 META wave seal — cite THE-T100 / 784c1748'; }
-      if (document.body) document.body.setAttribute('data-tat-ver', 'T100');
+      if (ver) { ver.textContent = 'T101'; ver.title = 'T101 — scrolling lesson stage, effects locked to the stage floor'; }
+      if (document.body) document.body.setAttribute('data-tat-ver', 'T101');
     } catch(_){}
   };
 })();
