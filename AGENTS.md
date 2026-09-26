@@ -133,3 +133,14 @@ Direct local channel between Grok Build and a persistent host PowerShell sidecar
 
 Skill folder: `.grok/skills/grok-powershell-bridge/`. After install, restart Grok Build or run `grok inspect`. Slash command: `/grok-powershell-bridge`.
 
+## Grok Crew Router
+
+Do not create a second Commander bot. Rank and queue with:
+
+```powershell
+& ".\Scripts\Invoke-GrokCrew.ps1" -Action rank -Text "describe the task"
+& ".\Scripts\Invoke-GrokCrew.ps1" -Action queue -Text "describe the task"
+```
+
+App: `Developer Tools\Grok Crew Router.html`. Standing duties that two bots could own must be confirmed with the user; default owner is Commander.
+

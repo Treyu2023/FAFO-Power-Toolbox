@@ -10,6 +10,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$crewLib = Join-Path $PSScriptRoot 'GrokCrew-Lib.ps1'
+if (Test-Path -LiteralPath $crewLib) { . $crewLib }
+
 
 function Get-BridgeRoots {
     $local = Join-Path $env:LOCALAPPDATA 'FAFO\GrokPsBridge'
@@ -263,6 +266,49 @@ try {
                         Write-JsonResponse $res @{ items = @(Get-Pending (Join-Path $roots.Local 'outbox')) }
                     }
                 }
+
+                '/bots/roster' {
+                    if (Get-Command Get-GrokCrewRoster -ErrorAction SilentlyContinue) {
+                        Write-JsonResponse $res (Get-GrokCrewRoster)
+                    } else {
+                        Write-JsonResponse $res @{ error = 'GrokCrew-Lib.ps1 not loaded' } 500
+                    }
+                }
+                '/bots/route' {
+                    $body = Read-JsonBody $req
+                    $text = [string]$body.text
+                    if (-not $text) { $text = [string]$body.task }
+                    $rank = Get-GrokCrewRank -Text $text
+                    Write-Host "[bots/route] pick=$($rank.pick.name) ask=$($rank.ask_user)" -ForegroundColor Cyan
+                    Write-JsonResponse $res $rank
+                }
+                '/bots/jobs' {
+                    if ($req.HttpMethod -eq 'GET') {
+                        $items = @(Get-Pending (Join-Path $roots.Local 'outbox') | Where-Object { $_.kind -eq 'bot-job' })
+                        Write-JsonResponse $res @{ items = $items }
+                    } else {
+                        $body = Read-JsonBody $req
+                        $envJob = New-Envelope -From 'crew-router' -To 'grok-build' -Kind 'bot-job' -Text $body.text
+                        # attach pick fields
+                        $payload = [ordered]@{
+                            v = 1
+                            id = $envJob.id
+                            ts = $envJob.ts
+                            from = 'crew-router'
+                            to = 'grok-build'
+                            kind = 'bot-job'
+                            text = [string]$body.text
+                            pick = $body.pick
+                            ask = $body.ask
+                            reason = $body.reason
+                        }
+                        Write-EnvelopeFile -Envelope ([pscustomobject]$payload) -Folder (Join-Path $roots.Local 'outbox')
+                        Write-EnvelopeFile -Envelope ([pscustomobject]$payload) -Folder (Join-Path $roots.Home 'outbox')
+                        Write-Host "[bots/jobs] queued $($payload.id)" -ForegroundColor Green
+                        Write-JsonResponse $res $payload
+                    }
+                }
+
                 '/reply' {
                     $body = Read-JsonBody $req
                     $envRep = New-Envelope -From $(if ($body.from) { $body.from } else { 'grok-ps' }) -To $(if ($body.to) { $body.to } else { 'grok-build' }) -Kind result -Id $body.id -Text $body.text -Ok $body.ok -Stdout $body.stdout -Stderr $body.stderr -ExitCode $body.exit_code
