@@ -38,7 +38,29 @@ try {
     exit 0
 }
 
-$toolbox = (Resolve-Path -LiteralPath (Join-Path $here '..\..')).Path
+function Find-ToolboxRoot {
+    $dir = $here
+    for ($i = 0; $i -lt 6; $i++) {
+        if (Test-Path -LiteralPath (Join-Path $dir 'server\aitoolbox_server.py')) {
+            return (Resolve-Path -LiteralPath $dir).Path
+        }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    $pointer = Join-Path $work 'toolbox-root.txt'
+    if (Test-Path -LiteralPath $pointer) {
+        $saved = (Get-Content -LiteralPath $pointer -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($saved -and (Test-Path -LiteralPath (Join-Path $saved 'server\aitoolbox_server.py'))) {
+            return (Resolve-Path -LiteralPath $saved).Path
+        }
+    }
+    return $null
+}
+$toolbox = Find-ToolboxRoot
+if ($toolbox) {
+    Set-Content -LiteralPath (Join-Path $work 'toolbox-root.txt') -Value $toolbox -Encoding ASCII
+}
 $srcPy = @(
     (Join-Path $here 'ImagineVault.py')
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
@@ -53,11 +75,14 @@ foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launc
 }
 
 function Find-Python {
-    $venv = Join-Path $toolbox '.venv\Scripts'
-    $list = @(
-        (Join-Path $venv 'pythonw.exe'),
-        (Join-Path $venv 'python.exe')
-    )
+    $list = @()
+    if ($toolbox) {
+        $venv = Join-Path $toolbox '.venv\Scripts'
+        $list = @(
+            (Join-Path $venv 'pythonw.exe'),
+            (Join-Path $venv 'python.exe')
+        )
+    }
     if ($env:FAFO_PYTHON) { $list = @($env:FAFO_PYTHON) + $list }
     foreach ($c in $list) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
     foreach ($name in @('pythonw', 'python', 'py')) {

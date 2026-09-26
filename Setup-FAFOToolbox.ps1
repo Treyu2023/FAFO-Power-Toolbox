@@ -3,7 +3,7 @@
 
 Write-Host "=== Setting up FAFO Power Toolbox ===" -ForegroundColor Cyan
 
-$root = "C:\Users\rkey2\OneDrive\Desktop\AI HTML TOOLBOX"
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 
 # 1. Create module folder
 $secretsModule = Join-Path $root "Scripts\Modules\FAFO.Secrets"

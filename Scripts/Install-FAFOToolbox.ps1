@@ -285,11 +285,21 @@ try {
             }
         } catch {}
     }
-    # Seed explorer-meta path if discoverable
+    # Seed from the saved local-paths entry or the sibling checkout.
     $metaCandidates = @(
-        'D:\Chrome python_HTML AI apps\FAFO Ultimate Tab\explorer-meta'
-        (Join-Path $env:USERPROFILE 'Desktop\FAFO Ultimate Tab\explorer-meta')
+        (Join-Path (Split-Path (Split-Path $ToolboxRoot -Parent) -Parent) 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
+        (Join-Path (Split-Path $ToolboxRoot -Parent) 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
+        (Join-Path $ToolboxRoot 'explorer-meta')
     )
+    $lpFile = Join-Path $env:LOCALAPPDATA 'FAFO\local-paths.json'
+    if (Test-Path -LiteralPath $lpFile) {
+        try {
+            $lp = Get-Content -LiteralPath $lpFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($k in @('ExplorerMetaRoot', 'FafoMetaRoot', 'fafoMetaRoot')) {
+                if ($lp.$k) { $metaCandidates = @([string]$lp.$k) + @($metaCandidates) }
+            }
+        } catch {}
+    }
     if (-not $prefs.fafoMetaRoot) {
         foreach ($c in $metaCandidates) {
             if ($c -and (Test-Path -LiteralPath (Join-Path $c 'server.py'))) {
