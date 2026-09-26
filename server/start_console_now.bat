@@ -1,13 +1,5 @@
 @echo off
-cd /d "%~dp0"
-title AI Toolbox Server
-call "%~dp0..\Scripts\use-fafo-python.bat"
-if errorlevel 1 (
-  echo Run INSTALL-PYTHON.bat from the toolbox root first.
-  pause
-  exit /b 1
-)
-echo [%date% %time%] Starting console server...>> startup.log
-echo Using %FAFO_PYTHON%
-"%FAFO_PYTHON%" "%~dp0aitoolbox_server.py"
-pause
+cd /d "%~dp0\.."
+title AI Toolbox Server (Console)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%~dp0.." -Console -NoFafoMeta
+exit /b %ERRORLEVEL%

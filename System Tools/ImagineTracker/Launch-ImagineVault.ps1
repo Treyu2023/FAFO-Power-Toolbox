@@ -38,13 +38,11 @@ try {
     exit 0
 }
 
+$toolbox = (Resolve-Path -LiteralPath (Join-Path $here '..\..')).Path
 $srcPy = @(
-    (Join-Path $here 'ImagineVault.py'),
-    (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\System Tools\ImagineTracker\ImagineVault.py'),
-    'C:\_Git\repos\html\HTML Toolbox AI tools\production\System Tools\ImagineTracker\ImagineVault.py',
-    'C:\_Git\repos\html\fafo-chrome-extensions\FAFO Imagine Tracker\companion\ImagineVault.py'
+    (Join-Path $here 'ImagineVault.py')
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $srcPy) { throw 'ImagineVault.py not found' }
+if (-not $srcPy) { throw 'ImagineVault.py not found next to this script' }
 
 Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
 foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
@@ -55,18 +53,13 @@ foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launc
 }
 
 function Find-Python {
+    $venv = Join-Path $toolbox '.venv\Scripts'
     $list = @(
-        (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\.venv\Scripts\pythonw.exe'),
-        (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\.venv\Scripts\python.exe'),
-        'C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv\Scripts\pythonw.exe',
-        'C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv\Scripts\python.exe',
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python314\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe')
+        (Join-Path $venv 'pythonw.exe'),
+        (Join-Path $venv 'python.exe')
     )
-    foreach ($c in $list) { if (Test-Path -LiteralPath $c) { return $c } }
+    if ($env:FAFO_PYTHON) { $list = @($env:FAFO_PYTHON) + $list }
+    foreach ($c in $list) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
     foreach ($name in @('pythonw', 'python', 'py')) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
         if ($cmd) { return $cmd.Source }
