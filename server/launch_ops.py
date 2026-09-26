@@ -270,16 +270,8 @@ def _candidate_meta_roots() -> list[Path]:
     extra = [
         root.parent.parent / "fafo-chrome-extensions" / "FAFO Local Media LOAD THIS" / "explorer-meta",
         root.parent / "fafo-chrome-extensions" / "FAFO Local Media LOAD THIS" / "explorer-meta",
-        root.parent / "FAFO Ultimate Tab" / "explorer-meta",
         root / "explorer-meta",
-        root / "companion" / "explorer-meta",
-        Path.home() / "Documents" / "FAFO Ultimate Tab" / "explorer-meta",
-        Path.home() / "Desktop" / "FAFO Ultimate Tab" / "explorer-meta",
     ]
-    onedrive = os.environ.get("OneDrive")
-    if onedrive:
-        extra.append(Path(onedrive) / "Desktop" / "FAFO Ultimate Tab" / "explorer-meta")
-        extra.append(Path(onedrive) / "Documents" / "FAFO Ultimate Tab" / "explorer-meta")
     roots.extend(extra)
     # Dedupe while preserving order
     seen: set[str] = set()

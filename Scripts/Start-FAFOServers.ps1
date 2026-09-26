@@ -123,16 +123,8 @@ function Resolve-FafoMetaRoot([string]$Preferred) {
     @(
         (Join-Path $grand 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
         (Join-Path $parent 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
-        (Join-Path $parent 'FAFO Ultimate Tab\explorer-meta')
         (Join-Path $ToolboxRoot 'explorer-meta')
-        (Join-Path $ToolboxRoot 'companion\explorer-meta')
-        (Join-Path $env:USERPROFILE 'Documents\FAFO Ultimate Tab\explorer-meta')
-        (Join-Path $env:USERPROFILE 'Desktop\FAFO Ultimate Tab\explorer-meta')
     ) | ForEach-Object { if ($_) { [void]$candidates.Add($_) } }
-    if ($env:OneDrive) {
-        [void]$candidates.Add((Join-Path $env:OneDrive 'Desktop\FAFO Ultimate Tab\explorer-meta'))
-        [void]$candidates.Add((Join-Path $env:OneDrive 'Documents\FAFO Ultimate Tab\explorer-meta'))
-    }
 
     foreach ($c in $candidates) {
         if (-not $c) { continue }
