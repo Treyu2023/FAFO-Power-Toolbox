@@ -118,3 +118,18 @@ System diagnostics: `Invoke-FAFOSystemDiagnostics` → same device store + PC Re
 ## When unsure
 
 Ask the user. Local toolbox > clever automation that risks data loss or secret leakage.
+
+## Grok Build <-> Grok PowerShell
+
+Direct local channel between Grok Build and a persistent host PowerShell sidecar. Loopback only (`127.0.0.87:17321`, fallback `127.0.0.1:17321`). Mailbox lives under `%LOCALAPPDATA%\FAFO\GrokPsBridge\` (mirrored to `%USERPROFILE%\.grok\ps-bridge\`). Never put secrets on the wire.
+
+```powershell
+& ".\Scripts\Install-GrokPsBridge.ps1"   # copies skill to ~/.grok/skills and repo .grok/skills
+& ".\Scripts\Start-GrokPsBridge.ps1"     # leave this window open
+& ".\Scripts\Invoke-GrokPs.ps1" -Action status
+& ".\Scripts\Invoke-GrokPs.ps1" -Action say -Text "hello from Build"
+& ".\Scripts\Invoke-GrokPs.ps1" -Action exec -Command "Test-FAFOHealth"
+```
+
+Skill folder: `.grok/skills/grok-powershell-bridge/`. After install, restart Grok Build or run `grok inspect`. Slash command: `/grok-powershell-bridge`.
+
