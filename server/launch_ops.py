@@ -248,6 +248,12 @@ def save_prefs(updates: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _candidate_meta_roots() -> list[Path]:
+    """S2 folder: prefs, env, local-paths, then paths relative to this toolbox.
+
+    No machine-specific absolute paths. Pin a checkout with
+    ``fafoMetaRoot`` in ``%LOCALAPPDATA%\\FAFO\\launch-prefs.json``
+    or ``FAFO_META_ROOT``.
+    """
     prefs = get_prefs()
     roots: list[Path] = []
     if prefs.get("fafoMetaRoot"):
@@ -255,21 +261,20 @@ def _candidate_meta_roots() -> list[Path]:
     env = os.environ.get("FAFO_META_ROOT", "").strip()
     if env:
         roots.append(Path(env))
-    # Canonical home first, then legacy aliases / siblings
+    lp = _read_json(local_paths_path()) or {}
+    for key in ("ExplorerMetaRoot", "FafoMetaRoot", "fafoMetaRoot"):
+        val = str(lp.get(key) or "").strip()
+        if val:
+            roots.append(Path(val))
+    root = toolbox_root()
     extra = [
-        # New single home: C:\_Git\repos\html\fafo-chrome-extensions
-        toolbox_root().parent.parent / "fafo-chrome-extensions" / "FAFO Local Media LOAD THIS" / "explorer-meta",
-        toolbox_root().parent / "fafo-chrome-extensions" / "FAFO Local Media LOAD THIS" / "explorer-meta",
-        Path(r"C:\_Git\repos\html\fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta"),
-        # Junction / old D: path (if still linked)
-        Path(r"D:\Chrome python_HTML AI apps\FAFO Local Media LOAD THIS\explorer-meta"),
-        Path(r"D:\Chrome python_HTML AI apps\FAFO Local Media\explorer-meta"),
-        Path(r"D:\Chrome python_HTML AI apps\FAFO Ultimate Tab\explorer-meta"),
+        root.parent.parent / "fafo-chrome-extensions" / "FAFO Local Media LOAD THIS" / "explorer-meta",
+        root.parent / "fafo-chrome-extensions" / "FAFO Local Media LOAD THIS" / "explorer-meta",
+        root.parent / "FAFO Ultimate Tab" / "explorer-meta",
+        root / "explorer-meta",
+        root / "companion" / "explorer-meta",
         Path.home() / "Documents" / "FAFO Ultimate Tab" / "explorer-meta",
         Path.home() / "Desktop" / "FAFO Ultimate Tab" / "explorer-meta",
-        toolbox_root().parent / "FAFO Ultimate Tab" / "explorer-meta",
-        toolbox_root() / "explorer-meta",
-        toolbox_root() / "companion" / "explorer-meta",
     ]
     onedrive = os.environ.get("OneDrive")
     if onedrive:
@@ -308,8 +313,9 @@ def resolve_fafo_meta_root(persist: bool = False) -> dict[str, Any]:
         "hasServerPy": False,
         "hasStartBat": False,
         "hint": (
-            "Set fafoMetaRoot to FAFO Local Media explorer-meta "
-            "(…\\fafo-chrome-extensions\\FAFO Local Media LOAD THIS\\explorer-meta)."
+            "Set fafoMetaRoot in %LOCALAPPDATA%\\FAFO\\launch-prefs.json "
+            "to the explorer-meta folder that contains server.py. "
+            "Or run: powershell -File Scripts\\Start-FAFOServers.ps1 -SetMetaRoot \"C:\\path\\to\\explorer-meta\""
         ),
     }
 

@@ -1,9 +1,20 @@
 ﻿# Start-FAFOServers.ps1
-# Start configured companion servers only (no Chrome UI).
-# Used by one-click launch and optional Windows Startup.
+# Single entry for companion servers (no Chrome UI).
 #
-#   S1 HTML Toolbox Server       → 127.0.0.87:18765  (media, Verifone, system tools)
-#   S2 FAFO Local Media Tagger   → 127.0.0.1:8765    (Chrome extension tags/ratings)
+#   S1 HTML Toolbox Server       → bind in shared\aitoolbox-bind.json (default 127.0.0.87:18765)
+#   S2 FAFO Local Media Tagger   → 127.0.0.1:8765
+#
+#   -Force            start S1+S2 now, hidden
+#   -NoFafoMeta       S1 only
+#   -NoToolbox        S2 only
+#   -Console          S1 in this window (visible). Does not force S2.
+#   -Stop             sleep S1+S2 (watchdog will not revive)
+#   -Restart          stop listeners, then start
+#   -SetMetaRoot PATH save S2 folder to %LOCALAPPDATA%\FAFO\launch-prefs.json
+#   -TrayOnly         tray helper only
+#
+# S2 folder: -SetMetaRoot, FAFO_META_ROOT, launch-prefs.json fafoMetaRoot,
+# then local-paths.json, then folders relative to this toolbox. No machine paths.
 
 [CmdletBinding()]
 param(
@@ -15,7 +26,11 @@ param(
     [switch]$Quiet,
     [switch]$NoTray,
     [switch]$TrayOnly,
-    [switch]$Restart
+    [switch]$Restart,
+    [switch]$Console,
+    [switch]$Stop,
+    [string]$SetMetaRoot,
+    [string]$MetaRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,6 +107,7 @@ function Test-PortOpen([string]$HostName, [int]$Port, [int]$TimeoutMs = 400) {
 function Resolve-FafoMetaRoot([string]$Preferred) {
     $candidates = New-Object System.Collections.Generic.List[string]
     if ($Preferred) { [void]$candidates.Add($Preferred) }
+    if ($script:MetaRoot) { [void]$candidates.Add($script:MetaRoot) }
     if ($env:FAFO_META_ROOT) { [void]$candidates.Add($env:FAFO_META_ROOT) }
     $lp = Join-Path $env:LOCALAPPDATA 'FAFO\local-paths.json'
     if (Test-Path -LiteralPath $lp) {
@@ -102,18 +118,21 @@ function Resolve-FafoMetaRoot([string]$Preferred) {
             }
         } catch {}
     }
+    $parent = Split-Path $ToolboxRoot -Parent
+    $grand = Split-Path $parent -Parent
     @(
-        'C:\_Git\repos\html\fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta'
-        (Join-Path (Split-Path (Split-Path $ToolboxRoot -Parent) -Parent) 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
-        (Join-Path (Split-Path $ToolboxRoot -Parent) 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
-        'D:\Chrome python_HTML AI apps\FAFO Local Media LOAD THIS\explorer-meta'
-        'D:\Chrome python_HTML AI apps\FAFO Local Media\explorer-meta'
-        'D:\Chrome python_HTML AI apps\FAFO Ultimate Tab\explorer-meta'
+        (Join-Path $grand 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
+        (Join-Path $parent 'fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta')
+        (Join-Path $parent 'FAFO Ultimate Tab\explorer-meta')
+        (Join-Path $ToolboxRoot 'explorer-meta')
+        (Join-Path $ToolboxRoot 'companion\explorer-meta')
         (Join-Path $env:USERPROFILE 'Documents\FAFO Ultimate Tab\explorer-meta')
         (Join-Path $env:USERPROFILE 'Desktop\FAFO Ultimate Tab\explorer-meta')
-        (Join-Path (Split-Path $ToolboxRoot -Parent) 'FAFO Ultimate Tab\explorer-meta')
-        (Join-Path $ToolboxRoot 'explorer-meta')
     ) | ForEach-Object { if ($_) { [void]$candidates.Add($_) } }
+    if ($env:OneDrive) {
+        [void]$candidates.Add((Join-Path $env:OneDrive 'Desktop\FAFO Ultimate Tab\explorer-meta'))
+        [void]$candidates.Add((Join-Path $env:OneDrive 'Documents\FAFO Ultimate Tab\explorer-meta'))
+    }
 
     foreach ($c in $candidates) {
         if (-not $c) { continue }
@@ -192,25 +211,14 @@ function Test-PythonExe([string]$Exe) {
 }
 
 function Get-ToolboxPython {
-    # Prefer local .venv, then known production tree, then Resolve-FAFOPython / system.
-    $candidates = New-Object System.Collections.Generic.List[string]
-    [void]$candidates.Add((Join-Path $ToolboxRoot '.venv\Scripts\python.exe'))
-    # Canonical production install (Desktop copy often lacks .venv after OneDrive/sync)
-    [void]$candidates.Add('C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv\Scripts\python.exe')
-    [void]$candidates.Add((Join-Path (Split-Path $ToolboxRoot -Parent) 'HTML Toolbox AI tools\production\.venv\Scripts\python.exe'))
-    [void]$candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'))
-    [void]$candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'))
-    foreach ($py in $candidates) {
-        if (-not (Test-Path -LiteralPath $py)) { continue }
-        # Prefer first existing path; soft-test but don't discard solely on flaky probe
-        if (Test-PythonExe $py) {
-            return (Resolve-Path -LiteralPath $py).Path
+    # Local .venv only, then Resolve-FAFOPython.ps1. No machine-specific paths.
+    $venvPy = Join-Path $ToolboxRoot '.venv\Scripts\python.exe'
+    if (Test-Path -LiteralPath $venvPy) {
+        if (Test-PythonExe $venvPy) {
+            return (Resolve-Path -LiteralPath $venvPy).Path
         }
-        # Fallback: path exists and is python.exe — try anyway (probe can false-negative)
-        if ($py -match 'python\.exe$') {
-            Write-Srv " [i] Using python without probe OK: $py" 'DarkGray'
-            return (Resolve-Path -LiteralPath $py).Path
-        }
+        Write-Srv " [i] Using .venv python without probe OK: $venvPy" 'DarkGray'
+        return (Resolve-Path -LiteralPath $venvPy).Path
     }
     $resolver = Join-Path $PSScriptRoot 'Resolve-FAFOPython.ps1'
     if (Test-Path -LiteralPath $resolver) {
@@ -384,6 +392,51 @@ function Stop-ListenerOnPort([int]$Port) {
     } catch {}
 }
 
+if ($SetMetaRoot) {
+    if (-not (Test-Path -LiteralPath $SetMetaRoot)) {
+        throw "S2 folder not found: $SetMetaRoot"
+    }
+    $resolvedMeta = (Resolve-Path -LiteralPath $SetMetaRoot).Path
+    $metaEntry = Join-Path $resolvedMeta 'server.py'
+    if (-not (Test-Path -LiteralPath $metaEntry)) {
+        throw "No server.py in $resolvedMeta — point -SetMetaRoot at the explorer-meta folder."
+    }
+    Save-MetaRootHint $resolvedMeta
+    Write-Srv " Saved fafoMetaRoot -> $resolvedMeta" 'Green'
+    Write-Srv " Prefs: $(Join-Path $env:LOCALAPPDATA 'FAFO\launch-prefs.json')" 'DarkGray'
+    if (-not $Stop -and -not $Force -and -not $Restart -and -not $Console) {
+        exit 0
+    }
+}
+
+if ($Stop) {
+    Write-Srv " Sleeping S1 + S2 (watchdog will not revive them)..." 'Yellow'
+    $py = Get-ServerPython
+    if ($py) {
+        $mark = @'
+import sys
+from pathlib import Path
+root = Path(r"""TOOLBOX_ROOT""")
+sys.path.insert(0, str(root / "server"))
+import launch_ops
+r = launch_ops.sleep_companions(True, True)
+print("sleeping:", r.get("sleeping"))
+print("killed:", r.get("killed"))
+'@
+        $mark = $mark.Replace('TOOLBOX_ROOT', $ToolboxRoot.Replace('\', '\\'))
+        $tmp = Join-Path $env:TEMP 'fafo-sleep-servers.py'
+        Set-Content -LiteralPath $tmp -Value $mark -Encoding UTF8
+        & $py $tmp
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Srv " No .venv python — stopping listeners only (tray may still auto-keep)." 'Yellow'
+        Stop-ListenerOnPort $tbPort
+        Stop-ListenerOnPort 8765
+    }
+    Write-Srv " Done. Wake from the tray, or run Start Servers." 'Green'
+    exit 0
+}
+
 $prefs = Get-LaunchPrefs
 # Lifecycle (independent products):
 #   S1 → with HTML Toolbox session (open Toolbox / -Force S1)
@@ -402,11 +455,13 @@ try {
 } catch { $chromeUp = $false }
 
 # Simple rules:
-#   AUTO  (no -Force/-Restart): S1 if Toolbox session · S2 if Chrome
-#   MANUAL (-Force or -Restart, or dedicated S1/S2 bats): start that server NOW
+#   AUTO  (no -Force/-Restart/-Console): S1 if Toolbox session · S2 if Chrome
+#   MANUAL (-Force or -Restart): start that server NOW
+#   -Console: S1 in this window (visible). Does not by itself force S2.
 $manualStart = $Force -or $Restart
+$manualS1 = $manualStart -or $Console
 $wantToolbox = (-not $NoToolbox) -and (
-    $manualStart -or (
+    $manualS1 -or (
         $prefs.startWithOneClick.toolboxServer -and -not $sleepTb -and $sessionTb
     )
 )
@@ -423,10 +478,10 @@ Write-Srv "   S1 = HTML Toolbox Server (Toolbox apps only)" 'DarkGray'
 Write-Srv "   S2 = Ultimate Tab / Local Media (Chrome auto; Start All forces S2)" 'DarkGray'
 Write-Srv " Root: $ToolboxRoot"
 Write-Srv "   Chrome running: $chromeUp · Toolbox session: $sessionTb · Manual: $manualStart" 'DarkGray'
-if ($sleepTb -and -not $manualStart) {
+if ($sleepTb -and -not $manualS1) {
     Write-Srv "   S1 is SLEEPING — skipped (tray: S1 → Start / wake)" 'Yellow'
 }
-if (-not $sessionTb -and -not $manualStart -and -not $NoToolbox) {
+if (-not $sessionTb -and -not $manualS1 -and -not $NoToolbox) {
     Write-Srv "   S1 skipped — open HTML Toolbox to start S1" 'DarkGray'
 }
 if ($sleepMeta -and -not $manualStart) {
@@ -449,7 +504,7 @@ if ($Restart) {
 $started = @()
 $pyServer = Get-ServerPython
 if (-not $pyServer -and ($wantToolbox -or $wantMeta)) {
-    throw "Missing Python venv — run INSTALL-PYTHON.bat first (or keep production .venv at C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv)"
+    throw "Missing Python venv at $ToolboxRoot\.venv — run INSTALL-PYTHON.bat"
 }
 if ($pyServer) {
     Write-Srv " Python: $pyServer" 'DarkGray'
@@ -460,24 +515,26 @@ if ($wantToolbox) {
     $null = Ensure-LoopbackHost $tbHost
 }
 
+$script:HoldConsole = $false
 # --- S1 HTML Toolbox Server ---
 if ($wantToolbox) {
-    if (Test-HttpOk $tbHealth) {
+    $serverPy = Join-Path $ToolboxRoot 'server\aitoolbox_server.py'
+    if (-not (Test-Path -LiteralPath $serverPy)) {
+        throw "Missing $serverPy"
+    }
+    if ($Console) {
+        if (Test-PortOpen $tbHost $tbPort) {
+            Write-Srv " Stopping existing S1 so this console can own ${tbHost}:${tbPort}..." 'Yellow'
+            Stop-ListenerOnPort $tbPort
+            Start-Sleep -Milliseconds 700
+        }
+        $script:HoldConsole = $true
+        $started += [pscustomobject]@{ id = 'toolbox'; ok = $true; console = $true }
+    } elseif (Test-HttpOk $tbHealth) {
         Write-Srv " [OK] S1 HTML Toolbox already online @ ${tbHost}:${tbPort}" 'Green'
         $started += [pscustomobject]@{ id = 'toolbox'; ok = $true; already = $true }
     } else {
         Write-Srv " Starting S1 HTML Toolbox Server (hidden)..." 'Yellow'
-        $serverPy = Join-Path $ToolboxRoot 'server\aitoolbox_server.py'
-        if (-not (Test-Path -LiteralPath $serverPy)) {
-            # Fall back to canonical production tree
-            $alt = 'C:\_Git\repos\html\HTML Toolbox AI tools\production\server\aitoolbox_server.py'
-            if (Test-Path -LiteralPath $alt) {
-                $serverPy = $alt
-                Write-Srv "     using production server.py" 'DarkGray'
-            } else {
-                throw "Missing $serverPy"
-            }
-        }
         try {
             $workDir = Split-Path -Parent $serverPy
             $null = Start-HiddenProcess -FilePath $pyServer -ArgumentList @($serverPy) -WorkingDirectory $workDir
@@ -529,7 +586,8 @@ if ($wantMeta) {
         $metaRoot = Resolve-FafoMetaRoot -Preferred $prefs.fafoMetaRoot
         if (-not $metaRoot) {
             Write-Srv " [!] S2 FAFO Tagger path not found (explorer-meta)." 'Yellow'
-            Write-Srv "     Expected: ...\fafo-chrome-extensions\FAFO Local Media LOAD THIS\explorer-meta" 'DarkGray'
+            Write-Srv "     Set fafoMetaRoot in %LOCALAPPDATA%\FAFO\launch-prefs.json" 'DarkGray'
+            Write-Srv "     or: powershell -File Scripts\Start-FAFOServers.ps1 -SetMetaRoot `"C:\path\to\explorer-meta`"" 'DarkGray'
             $started += [pscustomobject]@{ id = 'fafo_meta'; ok = $false; error = 'path not found' }
         } else {
             Save-MetaRootHint $metaRoot
@@ -552,6 +610,34 @@ if ($wantMeta) {
     }
 } else {
     Write-Srv " [SKIP] S2 FAFO Local Media Tagger (disabled in launch prefs)" 'DarkGray'
+}
+
+if ($script:HoldConsole) {
+    if (-not $pyServer) {
+        throw "Missing Python venv at $ToolboxRoot\.venv — run INSTALL-PYTHON.bat"
+    }
+    $consolePy = Join-Path $ToolboxRoot 'server\aitoolbox_server.py'
+    if ($wantMeta) {
+        $metaDeadline = (Get-Date).AddSeconds([Math]::Min($HealthTimeoutSec, 8))
+        while ((Get-Date) -lt $metaDeadline -and -not (Test-HttpOk $metaHealth)) {
+            Start-Sleep -Milliseconds 400
+        }
+    }
+    Start-FafoTray
+    Write-Srv ""
+    Write-Srv " S1 console @ ${tbHost}:${tbPort}" 'Cyan'
+    Write-Srv " This window is the server. Close it to stop S1." 'Yellow'
+    Write-Srv ""
+    $workDir = Split-Path -Parent $consolePy
+    Push-Location $workDir
+    try {
+        & $pyServer $consolePy
+        $ec = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    if ($null -eq $ec) { $ec = 0 }
+    exit $ec
 }
 
 # --- Wait for health ---
