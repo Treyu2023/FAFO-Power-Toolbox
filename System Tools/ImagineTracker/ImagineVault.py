@@ -14,10 +14,12 @@ Design (v2.4):
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -37,6 +39,15 @@ DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) /
 DEFAULT_LIBRARY = Path.home() / "Downloads" / "GrokImagine"
 X_GROK = Path(r"D:\OUTPUTS\__X_GROK")
 NEW_DOWNLOADS = X_GROK / "NEW DOWNLOADS"
+TOOLBOX_ORIGINS = frozenset({"null", "http://127.0.0.87:18765", "http://127.0.0.1:18765"})
+GROK_ORIGIN = "https://grok.com"
+SNAPSHOT_PATHS = ("/snapshot", "/api/snapshot")
+OVERLAY_PATHS = ("/overlay.js", "/api/overlay.js")
+SIDE_EFFECT_GETS = {"/reveal", "/api/reveal", "/open-library", "/api/open-library"}
+TOKEN_HEADER = "X-FAFO-Vault-Token"
+TOKEN_FILE_NAME = ".env.vault-token.js"
+VAULT_TOKEN = secrets.token_urlsafe(32)
+VAULT_HEADER = "X-FAFO-Vault"
 
 UUID_RE = re.compile(
     r"(?:grok-video-|grok-image-|share-videos/|share-images/|generated/|/imagine/(?:post/|saved/)?)"
@@ -493,16 +504,22 @@ def stats_view() -> dict:
 
 
 def snapshot(rev: int | None = None) -> dict:
-    current = int(_state.get("rev") or 1)
-    if rev is not None and int(rev) == current and not _state.get("compact_stale"):
-        st = stats_view()
-        st["unchanged"] = True
-        st["items"] = None
+    with _lock:
+        cat = _state["catalog"]
+        current = int(_state.get("rev") or 1)
+        st = {
+            "ok": True,
+            "rev": current,
+            "count": len(cat),
+            "haveFile": sum(1 for v in cat.values() if v.get("hasFile")),
+        }
+        if rev is not None and int(rev) == current:
+            st["unchanged"] = True
+            st["items"] = None
+        else:
+            st["unchanged"] = False
+            st["items"] = {iid: {"hasFile": bool(v.get("hasFile"))} for iid, v in cat.items()}
         return st
-    st = stats_view()
-    st["unchanged"] = False
-    st["items"] = compact_ids()
-    return st
 
 
 def catalog_view() -> dict:
@@ -858,6 +875,26 @@ def watch_roots() -> list[Path]:
     return out
 
 
+def _allowed_roots() -> list[str]:
+    cfg = _state.get("config") or {}
+    return [
+        os.path.normcase(os.path.realpath(str(s)))
+        for s in [cfg.get("libraryDir"), *(cfg.get("watchDirs") or []), *(cfg.get("deepIndexDirs") or [])]
+        if str(s or "").strip()
+    ]
+
+
+def path_allowed(p: str | Path) -> bool:
+    if not p or "\x00" in str(p):
+        return False
+    real = os.path.normcase(os.path.realpath(str(p)))
+    for r in _allowed_roots():
+        base = r.rstrip("\\/")
+        if real == base or real.startswith(base + os.sep):
+            return True
+    return False
+
+
 def pick_directory(title: str = "Watch folder") -> str:
     desc = title.replace("'", "''")
     ps = (
@@ -885,6 +922,48 @@ def pick_directory(title: str = "Watch folder") -> str:
         return (r.stdout or "").strip()
     except Exception:
         return ""
+
+
+def _bad_root(p) -> bool:
+    real = os.path.normcase(os.path.realpath(str(p)))
+    if os.path.dirname(real) == real:
+        return True
+    for key in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)"):
+        v = os.environ.get(key)
+        if not v:
+            continue
+        base = os.path.normcase(os.path.realpath(os.path.expandvars(v))).rstrip("\\/")
+        if real == base or real.startswith(base + os.sep):
+            return True
+    return False
+
+
+def apply_picked_root(role: str, picked: str) -> tuple[int, dict]:
+    if not picked:
+        return 200, {"ok": False, "cancelled": True}
+    if _bad_root(picked):
+        return 403, {"ok": False, "error": "bad-root"}
+    with _lock:
+        cfg = dict(_state["config"])
+        if role == "library":
+            cfg["libraryDir"] = picked
+            dirs = _norm_dir_list(cfg.get("watchDirs"))
+            if picked not in dirs:
+                dirs.insert(0, picked)
+            cfg["watchDirs"] = dirs
+        else:
+            dirs = _norm_dir_list(cfg.get("watchDirs"))
+            if picked not in dirs:
+                dirs.append(picked)
+            cfg["watchDirs"] = dirs
+        try:
+            Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        _state["config"] = cfg
+    persist(force=True)
+    threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
+    return 200, {"ok": True, "path": picked, "config": _state["config"]}
 
 
 def scan_once(deep: bool = False) -> dict:
@@ -1140,10 +1219,20 @@ def reveal_item(iid: str) -> bool:
         lib = str((_state.get("config") or {}).get("libraryDir") or "")
         target = lib if lib and Path(lib).exists() else (str(NEW_DOWNLOADS) if NEW_DOWNLOADS.is_dir() else "")
         if target:
-            subprocess.Popen(["explorer.exe", target], shell=False)
+            if not path_allowed(target):
+                return "forbidden"
+            try:
+                subprocess.Popen(["explorer.exe", target], shell=False)
+            except OSError:
+                return False
             return True
         return False
-    subprocess.Popen(["explorer.exe", "/select,", str(path)], shell=False)
+    if not path_allowed(path):
+        return "forbidden"
+    try:
+        subprocess.Popen(["explorer.exe", "/select,", str(path)], shell=False)
+    except OSError:
+        return False
     return True
 
 
@@ -1167,10 +1256,48 @@ class Handler(BaseHTTPRequestHandler):
             return
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), msg))
 
+    def _gate(self, method: str) -> bool:
+        self._acao = None
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        origin = self.headers.get("Origin")
+        err = None
+        if origin is None:
+            pass
+        elif origin in TOOLBOX_ORIGINS:
+            self._acao = origin
+            if origin == "null" and method != "OPTIONS":
+                tok = (self.headers.get(TOKEN_HEADER) or "").encode("utf-8", "replace")
+                if not hmac.compare_digest(tok, VAULT_TOKEN.encode("ascii")):
+                    err = "bad-token"
+        elif origin == GROK_ORIGIN and path in SNAPSHOT_PATHS + OVERLAY_PATHS and method in ("GET", "OPTIONS"):
+            self._acao = origin
+        else:
+            err = "origin-forbidden"
+        if err is None and (method == "POST" or (method == "GET" and path in SIDE_EFFECT_GETS)):
+            if self.headers.get(VAULT_HEADER) != "1":
+                err = "missing-header"
+        if err is None:
+            return True
+        self._acao = "null" if err == "bad-token" else None
+        raw = json.dumps({"ok": False, "error": err}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.close_connection = True
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Connection", "close")
+        if self._acao:
+            self.send_header("Access-Control-Allow-Origin", self._acao)
+            self.send_header("Vary", "Origin")
+        self.end_headers()
+        self.wfile.write(raw)
+        return False
+
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range")
+        if self._acao:
+            self.send_header("Access-Control-Allow-Origin", self._acao)
+            self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS" if self._acao == GROK_ORIGIN else "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, X-FAFO-Vault, X-FAFO-Vault-Token")
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
         self.send_header("Cache-Control", "no-store")
 
@@ -1198,6 +1325,9 @@ class Handler(BaseHTTPRequestHandler):
         path = Path(pick_preview_path(item) or "")
         if not path.is_file():
             self._send(404, {"ok": False, "error": "no-file"})
+            return
+        if not path_allowed(path):
+            self._send(403, {"ok": False, "error": "path-outside-roots"})
             return
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         size = path.stat().st_size
@@ -1235,8 +1365,12 @@ class Handler(BaseHTTPRequestHandler):
                 left -= len(chunk)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not self._gate("OPTIONS"):
+            return
         self.send_response(204)
         self._cors()
+        if self.headers.get("Access-Control-Request-Private-Network") is not None:
+            self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
 
     def _body(self) -> dict:
@@ -1260,6 +1394,8 @@ class Handler(BaseHTTPRequestHandler):
         note_demand("imagine-http")
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._gate("GET"):
+            return
         u = urlparse(self.path)
         q = parse_qs(u.query)
         path = u.path.rstrip("/") or "/"
@@ -1299,7 +1435,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/reveal", "/api/reveal"):
             self._touch_if_client()
             iid = str((q.get("id") or [""])[0]).lower()
-            self._send(200, {"ok": reveal_item(iid)})
+            r = reveal_item(iid)
+            if r == "forbidden":
+                self._send(403, {"ok": False, "error": "path-outside-roots"})
+                return
+            self._send(200, {"ok": bool(r)})
             return
         if path in ("/export/prompts", "/api/export/prompts"):
             self._touch_if_client()
@@ -1361,6 +1501,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"ok": False, "error": "not-found"})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._gate("POST"):
+            return
         u = urlparse(self.path)
         path = u.path.rstrip("/") or "/"
         body = self._body()
@@ -1374,6 +1516,9 @@ class Handler(BaseHTTPRequestHandler):
             results = []
             for it in items:
                 if isinstance(it, dict):
+                    if str(it.get("path") or "").strip() and not path_allowed(it["path"]):
+                        results.append({"ok": False, "error": "path-outside-roots", "id": str(it.get("id") or "")})
+                        continue
                     results.append(upsert_item(it, source=str(body.get("source") or "overlay")))
             persist()
             self._send(200, {"ok": True, "results": results, "rev": int(_state.get("rev") or 1), "total": len(_state["catalog"])})
@@ -1400,19 +1545,32 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/config", "/api/config"):
             self._touch_if_client()
             with _lock:
-                nxt = {**_state["config"], **body}
+                have = set(_allowed_roots())
+                asked = []
+                if "libraryDir" in body and str(body["libraryDir"] or "").strip():
+                    asked.append(body["libraryDir"])
                 if "watchDirs" in body:
-                    nxt["watchDirs"] = _norm_dir_list(body.get("watchDirs"))
+                    asked.extend(_norm_dir_list(body.get("watchDirs")))
                 if "deepIndexDirs" in body:
-                    nxt["deepIndexDirs"] = _norm_dir_list(body.get("deepIndexDirs"))
-                lib = str(nxt.get("libraryDir") or "").strip()
-                if lib:
-                    nxt["libraryDir"] = lib
-                    try:
-                        Path(lib).mkdir(parents=True, exist_ok=True)
-                    except OSError:
-                        pass
-                _state["config"] = nxt
+                    asked.extend(_norm_dir_list(body.get("deepIndexDirs")))
+                bad = [a for a in asked if os.path.normcase(os.path.realpath(str(a))) not in have]
+                if not bad:
+                    nxt = {**_state["config"], **body}
+                    if "watchDirs" in body:
+                        nxt["watchDirs"] = _norm_dir_list(body.get("watchDirs"))
+                    if "deepIndexDirs" in body:
+                        nxt["deepIndexDirs"] = _norm_dir_list(body.get("deepIndexDirs"))
+                    lib = str(nxt.get("libraryDir") or "").strip()
+                    if lib:
+                        nxt["libraryDir"] = lib
+                        try:
+                            Path(lib).mkdir(parents=True, exist_ok=True)
+                        except OSError:
+                            pass
+                    _state["config"] = nxt
+            if bad:
+                self._send(403, {"ok": False, "error": "roots-via-picker-only"})
+                return
             persist(force=True)
             threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
             self._send(200, {"ok": True, "config": _state["config"]})
@@ -1422,35 +1580,17 @@ class Handler(BaseHTTPRequestHandler):
             role = str(body.get("role") or "watch").lower()
             title = "Library folder (HAVE files live here)" if role == "library" else "Add a watch folder"
             picked = pick_directory(title)
-            if not picked:
-                self._send(200, {"ok": False, "cancelled": True})
-                return
-            with _lock:
-                cfg = dict(_state["config"])
-                if role == "library":
-                    cfg["libraryDir"] = picked
-                    dirs = _norm_dir_list(cfg.get("watchDirs"))
-                    if picked not in dirs:
-                        dirs.insert(0, picked)
-                    cfg["watchDirs"] = dirs
-                else:
-                    dirs = _norm_dir_list(cfg.get("watchDirs"))
-                    if picked not in dirs:
-                        dirs.append(picked)
-                    cfg["watchDirs"] = dirs
-                try:
-                    Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
-                except OSError:
-                    pass
-                _state["config"] = cfg
-            persist(force=True)
-            threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
-            self._send(200, {"ok": True, "path": picked, "config": _state["config"]})
+            code, body = apply_picked_root(role, picked)
+            self._send(code, body)
             return
         if path in ("/reveal", "/api/reveal"):
             self._touch_if_client()
             iid = str(body.get("id") or "").lower()
-            self._send(200, {"ok": reveal_item(iid)})
+            r = reveal_item(iid)
+            if r == "forbidden":
+                self._send(403, {"ok": False, "error": "path-outside-roots"})
+                return
+            self._send(200, {"ok": bool(r)})
             return
         if path in ("/unmark", "/api/unmark"):
             self._touch_if_client()
@@ -1525,6 +1665,35 @@ def _no_window_flags() -> int:
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
 
 
+def _token_page_dir() -> Path | None:
+    try:
+        root = (DATA / "toolbox-root.txt").read_text(encoding="utf-8-sig").strip()
+    except OSError:
+        root = ""
+    if root:
+        d = Path(root) / "System Tools" / "ImagineTracker"
+        if (d / "Imagine Tracker.html").is_file():
+            return d
+    here = Path(__file__).resolve().parent
+    if (here / "Imagine Tracker.html").is_file():
+        return here
+    return None
+
+
+def write_token_file() -> None:
+    d = _token_page_dir()
+    if d is None:
+        log_activity("token-no-page-dir")
+        return
+    try:
+        text = "window.FAFO_VAULT_TOKEN=" + json.dumps(VAULT_TOKEN) + ";\n"
+        tmp = d / (TOKEN_FILE_NAME + "." + str(os.getpid()) + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, d / TOKEN_FILE_NAME)
+    except OSError:
+        log_activity("token-write-failed")
+
+
 def main() -> None:
     global _httpd
     mutex = _win_mutex("Local\\FAFOImagineVaultHttp")
@@ -1538,6 +1707,7 @@ def main() -> None:
     except OSError as exc:
         print(f"[imagine-vault] port {PORT} in use — {exc}", flush=True)
         return
+    write_token_file()
     _httpd = httpd
     print(f"[imagine-vault] http://{HOST}:{PORT}  v{VERSION}  data={DATA}", flush=True)
     threading.Thread(target=scan_loop, name="imagine-scan", daemon=True).start()
