@@ -156,7 +156,7 @@
         .media-box { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
         .media-box video {
             display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none;
-            filter: brightness(var(--vid-brightness)%) contrast(var(--vid-contrast)%) saturate(var(--vid-saturate)%);
+            filter: brightness(calc(var(--vid-brightness) * 1%)) contrast(calc(var(--vid-contrast) * 1%)) saturate(calc(var(--vid-saturate) * 1%));
         }
         #box-before { will-change: clip-path, opacity; z-index: 2; }
         #box-after { z-index: 1; }
@@ -285,11 +285,15 @@
         .toast.warn { background: #fbbf24; }
         .slider-line { width: 2px; }
         .collapse-tab { font-family: inherit; }
+        #vidCompareNav { flex: 0 0 auto !important; }
+        .viewer-container { min-height: 320px; }
+        .control-panel-wrapper.collapsed { transform: none; }
+        .control-panel-wrapper.collapsed > .control-panel { display: none; }
     </style>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
 </head>
-<body data-fx="none">
+<body data-fx="none" data-tb-esc="off">
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
 <div data-fafo-layout-root data-fafo-layout-app="video-tools-video-comparison-slider-tool" data-fafo-layout-type="columns" class="fafo-auto-shell" style="min-height:100vh;display:flex;flex-direction:column">
 <a class="toolbox-back" href="../Toolbox Launcher.html">← Toolbox</a>
@@ -463,7 +467,7 @@
         <div class="settings-row"><span>Brightness:</span><input type="range" id="set-brightness" min="50" max="150" step="1" value="100" style="width:100px;"></div>
         <div class="settings-row"><span>Contrast:</span><input type="range" id="set-contrast" min="50" max="200" step="1" value="100" style="width:100px;"></div>
         <div class="settings-row"><span>Saturation:</span><input type="range" id="set-saturate" min="0" max="200" step="1" value="100" style="width:100px;"></div>
-        <div class="settings-row"><span>Sync Tolerance:</span><input type="range" id="set-sync-tol" min="0.02" max="0.5" step="0.01" value="0.1" style="width:100px;"></div>
+        <div class="settings-row"><span>Sync Tolerance:</span><input type="range" id="set-sync-tol" min="0.02" max="0.5" step="0.01" value="0.04" style="width:100px;"></div>
         <div class="settings-row"><span>Preload:</span><select id="set-preload"><option value="auto" selected>Auto</option><option value="metadata">Metadata</option></select></div>
         <div class="settings-row"><span>Frame Step (fps):</span><select id="set-fps"><option value="24">24</option><option value="30" selected>30</option><option value="60">60</option></select></div>
 
@@ -568,6 +572,7 @@
             boxAfter.innerHTML = '';
             elBefore = elAfter = null;
             revokeBlobs();
+            if (audioFxRaf) { cancelAnimationFrame(audioFxRaf); audioFxRaf = 0; }
             if (audioCtx) {
                 try { audioCtx.close(); } catch { /* ignore */ }
                 audioCtx = null;
@@ -699,10 +704,12 @@
                 chip.title = item.name;
                 chip.textContent = item.name;
                 chip.addEventListener('click', async () => {
-                    if (item.handle && await ensurePermission(item.handle)) {
-                        const file = await item.handle.getFile();
-                        ingestFile(slot, file, item.name, item.handle);
-                    }
+                    try {
+                        if (item.handle && await ensurePermission(item.handle)) {
+                            const file = await item.handle.getFile();
+                            ingestFile(slot, file, item.name, item.handle);
+                        }
+                    } catch (e) { console.warn(e); showToast('Could not reopen ' + item.name, 'warn'); }
                 });
                 row.appendChild(chip);
             });
@@ -731,6 +738,7 @@
             const st = document.getElementById(`status-${slot}`);
             st.innerText = `Loaded: ${name || file.name}`;
             st.style.color = 'var(--neon-accent)';
+            if (slot === 'before') knownBeforePath = null; else knownAfterPath = null;
             if (slot === 'before') { fileCacheBefore = file; handleBefore = handle || null; checkReady(); }
             else { fileCacheAfter = file; handleAfter = handle || null; checkReady(); }
             try { window.AIToolboxCatalogPick && AIToolboxCatalogPick.syncNames(fileCacheBefore && fileCacheBefore.name, fileCacheAfter && fileCacheAfter.name); } catch (_) {}
@@ -807,14 +815,16 @@
                 showToast('Offline: re-browse files in Chrome/Edge to save locally.');
                 return;
             }
-            const pair = await AIToolbox.savePair({
-                name, kind: 'video', pinned,
-                beforeHandle: handleBefore, afterHandle: handleAfter,
-                beforeName: fileCacheBefore.name, afterName: fileCacheAfter.name,
-            });
-            rememberPair(pair);
-            renderPairList();
-            showToast(`Saved locally: ${name}`);
+            try {
+                const pair = await AIToolbox.savePair({
+                    name, kind: 'video', pinned,
+                    beforeHandle: handleBefore, afterHandle: handleAfter,
+                    beforeName: fileCacheBefore.name, afterName: fileCacheAfter.name,
+                });
+                rememberPair(pair);
+                renderPairList();
+                showToast(`Saved locally: ${name}`);
+            } catch (e) { console.warn(e); showToast('Local save failed', 'warn'); }
         }
 
         let cachedPairList = [];
@@ -920,36 +930,42 @@
 
         async function togglePairPin(pair, e) {
             e?.stopPropagation();
-            if (!(await AIToolboxAPI.isOnline())) {
-                showToast('Start server first (▶ Start Server in Media Library / Launcher)');
-                return;
-            }
-            const p = normalizePair(pair);
-            await AIToolboxAPI.updatePair(p.id, { pinned: !p.pinned });
-            renderPairList();
+            try {
+                if (!(await AIToolboxAPI.isOnline())) {
+                    showToast('Start server first (▶ Start Server in Media Library / Launcher)');
+                    return;
+                }
+                const p = normalizePair(pair);
+                await AIToolboxAPI.updatePair(p.id, { pinned: !p.pinned });
+                renderPairList();
+            } catch (err) { console.warn(err); showToast('Could not update pin', 'warn'); }
         }
 
         async function deletePair(id) {
-            if (await AIToolboxAPI.isOnline()) await AIToolboxAPI.deletePair(id);
-            else await AIToolbox.deletePair(id);
-            if (activePairId === id) activePairId = null;
-            renderPairList();
+            try {
+                if (await AIToolboxAPI.isOnline()) await AIToolboxAPI.deletePair(id);
+                else await AIToolbox.deletePair(id);
+                if (activePairId === id) activePairId = null;
+                renderPairList();
+            } catch (e) { console.warn(e); showToast('Could not delete pair', 'warn'); }
         }
 
         async function renderPairList() {
             let pairs = [];
-            if (await AIToolboxAPI.isOnline()) {
-                pairs = await AIToolboxAPI.listPairs('video');
-            } else {
-                pairs = (await AIToolbox.listPairs()).filter(p => p.kind !== 'image');
-            }
+            try {
+                if (await AIToolboxAPI.isOnline()) {
+                    pairs = await AIToolboxAPI.listPairs('video');
+                } else {
+                    pairs = (await AIToolbox.listPairs()).filter(p => p.kind !== 'image');
+                }
+            } catch (e) { console.warn(e); pairs = []; showToast('Pair list unavailable', 'warn'); }
             cachedPairList = (pairs || []).map(normalizePair);
             pairList.innerHTML = '';
-            if (!pairs.length) {
+            if (!(pairs || []).length) {
                 pairList.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:20px;">No locked pairs yet.<br>Pair files in Media Library or save here with server online.</div>';
                 return;
             }
-            pairs.forEach(pair => {
+            (pairs || []).forEach(pair => {
                 const p = normalizePair(pair);
                 const div = document.createElement('div');
                 div.className = 'pair-item' + (p.id === activePairId ? ' active' : '') + (p.pinned ? ' pinned' : '');
@@ -978,7 +994,7 @@
                 showToast('Start server first (▶ Start Server in Media Library / Launcher)');
                 return;
             }
-            const pair = await AIToolboxAPI.getPair(c);
+            let pair = null; try { pair = await AIToolboxAPI.getPair(c); } catch (_) {}
             if (!pair) { showToast('Pair not found: ' + c); return; }
             await loadPair(pair);
             pairLibrary.classList.remove('collapsed');
@@ -1039,7 +1055,7 @@
             panelWrapper.classList.toggle('collapsed');
             const collapsed = panelWrapper.classList.contains('collapsed');
             const tab = document.getElementById('btn-collapse');
-            tab.innerText = collapsed ? '▼ Expand' : '▼ Collapse';
+            tab.innerText = collapsed ? '▼ Expand' : '▲ Collapse';
             tab.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
             setTimeout(fitToScreen, 400);
         });
@@ -1070,7 +1086,7 @@
             document.getElementById('set-brightness').value = s.brightness ?? 100;
             document.getElementById('set-contrast').value = s.contrast ?? 100;
             document.getElementById('set-saturate').value = s.saturate ?? 100;
-            document.getElementById('set-sync-tol').value = s.syncTol ?? 0.1;
+            document.getElementById('set-sync-tol').value = (s.syncTol == null || s.syncTol === '' || parseFloat(s.syncTol) === 0.1) ? 0.04 : s.syncTol;
             document.getElementById('set-preload').value = s.preload || 'auto';
             document.getElementById('set-fps').value = s.fps || '30';
             document.getElementById('set-audio-mode').value = s.audioMode || 'none';
@@ -1189,10 +1205,12 @@
         ['dz-before', 'dz-after'].forEach((id, i) => {
             const dz = document.getElementById(id);
             dz.addEventListener('keydown', ev => {
+                if (ev.target !== dz) return;
                 if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickFile(i ? 'after' : 'before'); }
             });
         });
         window.addEventListener('pagehide', tearDownVideos);
+        ['dragover', 'drop'].forEach(t => window.addEventListener(t, e => { if (!(e.target.closest && e.target.closest('.drop-zone'))) e.preventDefault(); }));
 
         function checkReady() { if (fileCacheBefore instanceof Blob && fileCacheAfter instanceof Blob) loadVideos(fileCacheBefore, fileCacheAfter); }
 
@@ -1206,9 +1224,10 @@
             elBefore.muted = true;
             elAfter.muted = document.getElementById('btn-mute').classList.contains('active');
             elAfter.volume = document.getElementById('vol-slider').value;
+            const rate = parseFloat(document.getElementById('sel-speed').value) || 1; [elBefore, elAfter].forEach(v => { v.defaultPlaybackRate = rate; v.playbackRate = rate; });
             const preload = document.getElementById('set-preload').value;
             [elBefore, elAfter].forEach(v => {
-                v.loop = !abLoopActive; v.playsInline = true; v.preload = preload;
+                v.loop = (v === elAfter) && !abLoopActive; v.playsInline = true; v.preload = preload;
                 v.onerror = () => showToast('Video failed to load — check server & file path');
             });
 
@@ -1233,8 +1252,12 @@
             elBefore.muted = true;
             elAfter.muted = document.getElementById('btn-mute').classList.contains('active');
             elAfter.volume = document.getElementById('vol-slider').value;
+            const rate = parseFloat(document.getElementById('sel-speed').value) || 1; [elBefore, elAfter].forEach(v => { v.defaultPlaybackRate = rate; v.playbackRate = rate; });
             const preload = document.getElementById('set-preload').value;
-            [elBefore, elAfter].forEach(v => { v.loop = !abLoopActive; v.playsInline = true; v.preload = preload; });
+            [elBefore, elAfter].forEach(v => {
+                v.loop = (v === elAfter) && !abLoopActive; v.playsInline = true; v.preload = preload;
+                v.onerror = () => showToast('Cannot decode ' + ((v === elBefore ? fileB : fileA).name || 'file') + ' — use MP4/WebM (H.264/VP9/AV1)', 'warn');
+            });
 
             let count = 0;
             const onMeta = () => { count++; if (count === 2) initDisplay(); };
@@ -1256,6 +1279,7 @@
             transformLayer.style.width = `${nativeWidth}px`;
             transformLayer.style.height = `${nativeHeight}px`;
             updateUI();
+            formatTime();
             viewerContainer.style.display = 'block';
             applyCompareMode();
             fitToScreen();
@@ -1287,6 +1311,7 @@
         document.getElementById('split-orient').addEventListener('change', e => {
             viewerContainer.dataset.orient = e.target.value;
             setSliderPosition(currentSliderPercent);
+            applyTransform();
         });
 
         // --- Sweep ---
@@ -1323,7 +1348,7 @@
 
             elAfter.addEventListener('play', () => {
                 stopReversePlay();
-                elBefore.play().catch(console.warn);
+                if (elAfter.currentTime < (elBefore.duration || Infinity) - 0.05) elBefore.play().catch(() => {});
                 document.getElementById('btn-play').innerText = 'Pause';
                 startRVFCSync();
             });
@@ -1334,17 +1359,28 @@
             });
 
             elAfter.addEventListener('waiting', () => elBefore.pause());
-            elAfter.addEventListener('playing', () => { if (elBefore.paused) elBefore.play(); startRVFCSync(); });
+            elAfter.addEventListener('playing', () => { if (elBefore.paused && elAfter.currentTime < (elBefore.duration || Infinity) - 0.05) elBefore.play().catch(() => {}); startRVFCSync(); });
         }
 
         function startRVFCSync() {
             if (!elAfter || elAfter.paused) return;
             cancelSyncLoop();
-            const tol = parseFloat(document.getElementById('set-sync-tol')?.value) || 0.1;
             const sync = () => {
-                if (!elAfter || elAfter.paused) return;
-                if (Math.abs(elBefore.currentTime - elAfter.currentTime) > tol) {
-                    elBefore.currentTime = elAfter.currentTime;
+                if (!elAfter || !elBefore || elAfter.paused) return;
+                if (!elAfter.seeking && elAfter.readyState >= 3) {
+                    const tol = parseFloat(document.getElementById('set-sync-tol')?.value) || getFrameStep();
+                    const bEnd = (elBefore.duration || Infinity) - 0.05, t = elAfter.currentTime, base = elAfter.playbackRate || 1;
+                    checkABLoop();
+                    if (t >= bEnd) {
+                        if (!elBefore.paused) elBefore.pause();
+                        if (!elBefore.seeking && Math.abs(elBefore.currentTime - bEnd) > 0.1) elBefore.currentTime = bEnd;
+                    } else {
+                        if (elBefore.paused) elBefore.play().catch(() => {});
+                        const d = elBefore.currentTime - t;
+                        if (Math.abs(d) > 0.3) { if (!elBefore.seeking) elBefore.currentTime = t; elBefore.playbackRate = base; }
+                        else if (Math.abs(d) > tol) elBefore.playbackRate = base * (d > 0 ? 0.95 : 1.05);
+                        else elBefore.playbackRate = base;
+                    }
                 }
                 if ('requestVideoFrameCallback' in elAfter) {
                     rvfcId = elAfter.requestVideoFrameCallback(sync);
@@ -1359,7 +1395,7 @@
             if (!abLoopActive || abPointA === null || abPointB === null || !elAfter) return;
             if (elAfter.currentTime >= abPointB) {
                 elAfter.currentTime = abPointA;
-                elBefore.currentTime = abPointA;
+                elBefore.currentTime = Math.min(abPointA, elBefore.duration || Infinity);
             }
         }
 
@@ -1379,6 +1415,7 @@
         });
 
         function showToast(msg, kind) {
+            if (viewerContainer.style.display !== 'block' && window.AIToolboxUI && AIToolboxUI.toast) { try { AIToolboxUI.toast(msg, kind === 'warn' ? 'warn' : ''); } catch (_) {} return; }
             if (!toastMsg) return;
             toastMsg.innerText = msg;
             toastMsg.classList.toggle('warn', kind === 'warn');
@@ -1390,7 +1427,7 @@
         const timeline = document.getElementById('timeline');
         document.getElementById('btn-play').addEventListener('click', () => {
             if (!elAfter || !elBefore) { showToast('Load both videos first', 'warn'); return; }
-            initAudioEngine();
+            if (document.body.getAttribute('data-fx') !== 'none') initAudioEngine();
             stopReversePlay();
             if (elAfter.paused) Promise.all([elAfter.play(), elBefore.play()]).catch(console.warn);
             else { elAfter.pause(); elBefore.pause(); }
@@ -1432,7 +1469,7 @@
             elAfter.pause();
             const step = getFrameStep();
             elAfter.currentTime += step;
-            elBefore.currentTime += step;
+            elBefore.currentTime = Math.min(elAfter.currentTime, elBefore.duration || Infinity);
         });
         document.getElementById('btn-prev-frame').addEventListener('click', () => {
             if (!elAfter || !elBefore) return;
@@ -1440,10 +1477,11 @@
             elAfter.pause();
             const step = getFrameStep();
             elAfter.currentTime = Math.max(0, elAfter.currentTime - step);
-            elBefore.currentTime = Math.max(0, elBefore.currentTime - step);
+            elBefore.currentTime = Math.min(elAfter.currentTime, elBefore.duration || Infinity);
         });
 
         document.getElementById('btn-rev-play').addEventListener('click', e => {
+            if (!elAfter || !elBefore) { showToast('Load both videos first', 'warn'); return; }
             if (reverseInterval) stopReversePlay();
             else {
                 elAfter.pause(); elBefore.pause();
@@ -1477,7 +1515,7 @@
 
         document.getElementById('sel-speed').addEventListener('change', e => {
             if (!elAfter || !elBefore) return;
-            elAfter.playbackRate = elBefore.playbackRate = parseFloat(e.target.value);
+            elAfter.playbackRate = elBefore.playbackRate = elAfter.defaultPlaybackRate = elBefore.defaultPlaybackRate = parseFloat(e.target.value);
         });
 
         document.getElementById('btn-mute').addEventListener('click', e => {
@@ -1502,14 +1540,14 @@
                 abPointA = elAfter.currentTime;
                 abPointB = Math.min(elAfter.duration, abPointA + 5);
                 updateABMarkers();
-                elBefore.loop = elAfter.loop = false;
+                elAfter.loop = false;
                 showToast(`A-B Loop: ${abPointA.toFixed(1)}s → ${abPointB.toFixed(1)}s (press 1/2 to adjust)`);
             } else {
                 abPointA = abPointB = null;
                 document.getElementById('abMarkerA').style.display = 'none';
                 document.getElementById('abMarkerB').style.display = 'none';
                 document.getElementById('abRegion').style.display = 'none';
-                elBefore.loop = elAfter.loop = true;
+                elAfter.loop = true;
             }
         });
 
@@ -1559,8 +1597,8 @@
             transformLayer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
             sliderButton.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
             const orient = viewerContainer.dataset.orient;
-            if (orient === 'vertical') sliderLine.style.height = `${Math.max(1, 2 / scale)}px`;
-            else sliderLine.style.width = `${Math.max(1, 2 / scale)}px`;
+            if (orient === 'vertical') { sliderLine.style.width = '100%'; sliderLine.style.height = `${Math.max(1, 2 / scale)}px`; }
+            else { sliderLine.style.height = '100%'; sliderLine.style.width = `${Math.max(1, 2 / scale)}px`; }
             zoomBadge.textContent = `${Math.round(scale * 100)}%`;
         }
 
@@ -1693,7 +1731,7 @@
             const ctx = cvs.getContext('2d');
             const bg = isSwapped ? elBefore : elAfter;
             const fg = isSwapped ? elAfter : elBefore;
-            ctx.drawImage(bg, 0, 0);
+            ctx.drawImage(bg, 0, 0, cvs.width, cvs.height);
             if (viewerContainer.dataset.mode === 'slider') {
                 ctx.save();
                 const orient = viewerContainer.dataset.orient;
@@ -1706,13 +1744,15 @@
                     ctx.rect(0, 0, cvs.width * currentSliderPercent, cvs.height);
                     ctx.clip();
                 }
-                ctx.drawImage(fg, 0, 0);
+                ctx.drawImage(fg, 0, 0, cvs.width, cvs.height);
                 ctx.restore();
             }
             const a = document.createElement('a');
             a.download = `video-compare-${Date.now()}.png`;
-            a.href = cvs.toDataURL('image/png');
-            a.click();
+            try {
+                a.href = cvs.toDataURL('image/png');
+                a.click();
+            } catch (e) { showToast('Screenshot blocked for server media (cross-origin)', 'warn'); return; }
             showToast('Screenshot saved!');
         });
 
@@ -1780,8 +1820,8 @@
 
         // --- Init ---
         try { const raw = lsGet(SETTINGS_KEY); if (raw) applySettings(JSON.parse(raw)); } catch (e) {}
-        ['before', 'after'].forEach(async slot => { await updateFolderHint(slot); await renderRecents(slot); });
-        loadPairFromUrl();
+        ['before', 'after'].forEach(async slot => { try { await updateFolderHint(slot); await renderRecents(slot); } catch (e) { console.warn(e); } });
+        loadPairFromUrl().catch(e => { console.warn(e); showToast('Could not open pair from URL', 'warn'); });
     </script>
 <script>
 
