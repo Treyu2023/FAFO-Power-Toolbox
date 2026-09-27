@@ -572,12 +572,15 @@
   const MSG_OFFLINE = 'Toolbox server offline - live view unavailable. The desktop app still works: use Launch Transfer Monitor above (or the .bat below).';
   const MSG_RESTART = 'Live helper not started: the toolbox server is up but does not know "transfer-helper" yet (it needs a restart). Use Launch Transfer Monitor above meanwhile.';
   const MSG_NOANSWER = 'Live helper did not answer on 127.0.0.1:18769. Click Start live helper to try again, or use Launch Transfer Monitor above.';
+  const MSG_TOKEN = 'Live helper refused the page key (403). Re-reading the key file and retrying automatically.';
   const $ = (id) => document.getElementById(id);
   let tmToken = null, tokenPromise = null;
   let helperBusy = false;      // own flag: never touches the page's actionBusy (L374), so btnRun stays usable
   let helperSeenUp = false;    // true after any successful /health or /transfers on this page load
-  let autoRelaunchUsed = false; // at most ONE automatic re-launch, and only after the helper was seen up
-  let pollTimer = 0;
+  let autoRelaunchUsed = false; // at most ONE automatic re-launch per page load, only after the helper was seen up
+  let pollTimer = 0, polling = false, loopOn = false; // one setTimeout chain; polling = a /transfers fetch is in flight
+  let fails = 0, lastOk = false, launchMsg = '';      // consecutive failed polls; last poll ok; last startHelper failure text
+  const POLL_MS = 2000, BACKOFF_CAP_MS = 30000, TIMEOUT_MS = 4000, FIRST_TIMEOUT_MS = 12000;
 
   function setMsg(text) { const n = $('tmHelperMsg'); if (n) n.textContent = String(text || ''); }
   function setHelperPill(ok, text) {
@@ -585,17 +588,22 @@
     p.className = 'pill' + (ok ? ' ok' : ' bad'); p.textContent = String(text || '');
   }
   function showStart(show) { const b = $('btnHelper'); if (b) b.hidden = !show; }
-  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; } }
+  function nextDelay() { return fails ? Math.min(BACKOFF_CAP_MS, POLL_MS * Math.pow(2, fails - 1)) : POLL_MS; } // 2,2,4,8,16,30,30... s
+  function schedule(ms) { if (pollTimer) clearTimeout(pollTimer); pollTimer = setTimeout(tick, ms); }
   function startPolling() {
-    helperSeenUp = true; setHelperPill(true, 'helper live'); setMsg(''); showStart(false);
-    if (!pollTimer) { pollTimer = setInterval(tick, 2000); tick(); }
+    helperSeenUp = true; fails = 0; launchMsg = ''; setHelperPill(true, 'helper live'); setMsg(''); showStart(false);
+    loopOn = true; if (!polling) schedule(0);
   }
-  function showOffline(text) { stopPolling(); setHelperPill(false, 'helper offline'); setMsg(text); showStart(true); }
+  function showOffline(text) { // shows the state only: the poll loop keeps running with backoff
+    setHelperPill(false, 'helper offline'); setMsg(text); showStart(true);
+    loopOn = true; if (!polling && !pollTimer) schedule(nextDelay());
+  }
 
   function loadTmToken() {
     if (location.protocol !== 'file:') return Promise.resolve(null);
     if (tokenPromise) return tokenPromise;
     tokenPromise = new Promise((resolve) => {
+      window.FAFO_TM_TOKEN = undefined;   // a failed re-read must not keep the old key
       const s = document.createElement('script');
       s.src = '.env.transfer-token.js?r=' + Date.now();
       s.onload = s.onerror = () => { tmToken = window.FAFO_TM_TOKEN || null; tokenPromise = null; s.remove(); resolve(tmToken); };
@@ -603,16 +611,16 @@
     });
     return tokenPromise;
   }
-  async function tmFetch(path, retried) {
+  async function tmFetch(path, retried, timeoutMs) {
     if (location.protocol === 'file:' && !tmToken) await loadTmToken();
     const r = await fetch(TM_HELPER + path, {
       cache: 'no-store', credentials: 'omit',
       headers: tmToken ? { 'X-FAFO-TM-Token': tmToken } : {},
-      signal: AbortSignal.timeout(4000)
+      signal: AbortSignal.timeout(timeoutMs || TIMEOUT_MS)
     });
     if (r.status === 403 && !retried && location.protocol === 'file:') {
       const j = await r.json().catch(() => ({}));
-      if (j && j.error === 'bad-token') { tmToken = null; await loadTmToken(); return tmFetch(path, true); }
+      if (j && j.error === 'bad-token') { tmToken = null; await loadTmToken(); return tmFetch(path, true, timeoutMs); } // ONE re-read + ONE retry per poll
     }
     return r;
   }
@@ -627,7 +635,7 @@
   async function startHelper() {
     if (helperBusy) return;
     const api = window.AIToolboxAPI;
-    if (!api || typeof api.launchLocalTool !== 'function') { showOffline(MSG_OFFLINE); return; }
+    if (!api || typeof api.launchLocalTool !== 'function') { launchMsg = MSG_OFFLINE; showOffline(MSG_OFFLINE); return; }
     helperBusy = true;
     const btn = $('btnHelper'); if (btn) btn.disabled = true;
     setHelperPill(false, 'starting'); setMsg('Starting live helper...');
@@ -637,14 +645,14 @@
       } catch (_) {
         let s1Up = false;
         try { s1Up = await api.isOnline(false); } catch (_) { s1Up = false; }   // cached by the probe above: no new request
-        showOffline(s1Up ? MSG_RESTART : MSG_OFFLINE);
+        launchMsg = s1Up ? MSG_RESTART : MSG_OFFLINE; showOffline(launchMsg);
         return;
       }
       for (let i = 0; i < 12; i++) {                   // bounded: about 8.4 s, then stop
         await new Promise((r) => setTimeout(r, 700));
         if (await helperUp()) { startPolling(); return; }
       }
-      showOffline(MSG_NOANSWER);
+      launchMsg = MSG_NOANSWER; showOffline(MSG_NOANSWER);
     } finally {
       helperBusy = false; if (btn) btn.disabled = false;
     }
@@ -679,25 +687,33 @@
     });
   }
   async function tick() {
-    if (document.hidden) return;
+    pollTimer = 0;
+    if (polling) return;
+    if (document.hidden || helperBusy) { schedule(nextDelay()); return; } // no fetch, no failure counted
+    polling = true;
     try {
-      const r = await tmFetch('/transfers');
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const r = await tmFetch('/transfers', false, lastOk ? TIMEOUT_MS : FIRST_TIMEOUT_MS);
+      if (!r.ok) { const e = new Error('HTTP ' + r.status); e.tmBadToken = r.status === 403; throw e; }
       render(await r.json());
-    } catch (_) {
-      stopPolling();
-      if (helperSeenUp && !autoRelaunchUsed) { autoRelaunchUsed = true; startHelper(); return; }
-      showOffline(MSG_NOANSWER);
+      if (!lastOk || fails) startPolling(); // recovery: pill live, message cleared, backoff reset
+      lastOk = true;
+    } catch (e) {
+      lastOk = false; fails++;
+      if (fails >= 2 && helperSeenUp && !autoRelaunchUsed) { autoRelaunchUsed = true; await startHelper(); }
+      if (fails) showOffline(e && e.tmBadToken ? MSG_TOKEN : (launchMsg || MSG_NOANSWER));
+    } finally {
+      polling = false; if (loopOn) schedule(nextDelay());
     }
   }
 
   const btnHelper = $('btnHelper');
   if (btnHelper) btnHelper.addEventListener('click', () => { startHelper(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && loopOn && !polling && !helperBusy) schedule(0); });
   (async () => {
     try {
       if (await helperUp()) startPolling();
       else await startHelper();
-    } catch (_) { showOffline(MSG_OFFLINE); }
+    } catch (_) { launchMsg = MSG_OFFLINE; showOffline(MSG_OFFLINE); }
   })();
 })();
 </script>
