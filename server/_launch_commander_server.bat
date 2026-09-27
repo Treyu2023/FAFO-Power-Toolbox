@@ -1,7 +1,5 @@
 @echo off
-title AI Toolbox Server - Commander
-cd /d "C:\Users\rkey2\OneDrive\Desktop\AI HTML TOOLBOX\server"
-"C:\Users\rkey2\OneDrive\Desktop\AI HTML TOOLBOX\.venv\Scripts\python.exe" aitoolbox_server.py
-echo.
-echo Server exited. Press any key...
-pause >nul
+cd /d "%~dp0\.."
+title AI Toolbox Server (Console)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%~dp0.." -Console -NoFafoMeta
+exit /b %ERRORLEVEL%

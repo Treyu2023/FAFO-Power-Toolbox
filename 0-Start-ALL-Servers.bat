@@ -1,5 +1,4 @@
 @echo off
-:: S1 HTML Toolbox + S2 FAFO Local Media Tagger (hidden + tray)
-title Start ALL FAFO Servers (S1 + S2)
 cd /d "%~dp0"
-call "%~dp0Start Servers.bat"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%~dp0." -Force -Quiet
+exit /b 0
