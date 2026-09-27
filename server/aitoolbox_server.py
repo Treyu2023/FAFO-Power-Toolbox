@@ -7,8 +7,11 @@ so it never fights FAFO companion or other apps on 127.0.0.1:8765.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import secrets
+import urllib.request
 import threading
 import time
 import traceback
@@ -84,11 +87,21 @@ def load_bind() -> tuple[str, int]:
 TOOLBOX_VERSION = read_version()
 BIND_HOST, BIND_PORT = load_bind()
 
-ALLOWED_CORS_ORIGINS = [
-    "http://127.0.0.87:18765",
-    "http://127.0.0.1:18765",
-    "null",
-]
+TOOLBOX_HTTP_ORIGINS = frozenset(
+    f"http://{h}:{p}"
+    for h in ("127.0.0.87", "127.0.0.1", BIND_HOST)
+    for p in (18765, BIND_PORT)
+)
+ALLOWED_CORS_ORIGINS = sorted(TOOLBOX_HTTP_ORIGINS) + ["null"]
+
+S1_TOKEN_HEADER = "X-FAFO-S1-Token"
+S1_TOKEN_QUERY = "s1t"
+S1_TOKEN = secrets.token_urlsafe(32)   # new every process start; never logged or returned
+S1_TOKEN_FILE = ROOT / "shared" / ".env.s1-token.js"
+S1_ALLOW_HEADERS = ("Content-Type", "Accept", S1_TOKEN_HEADER)
+S1_MEDIA_READ_PATHS = frozenset({"/api/media/file", "/api/thumb", "/api/files/serve"})
+S1_MEDIA_READ_PREFIXES = ("/api/icons/file/",)
+S1_MEDIA_DESTS = frozenset({"image", "video", "audio", "track"})
 
 
 def _origin_allows_pna(origin: str | None) -> bool:
@@ -96,6 +109,47 @@ def _origin_allows_pna(origin: str | None) -> bool:
     if origin is None or origin == "":
         return True
     return origin in ALLOWED_CORS_ORIGINS
+
+
+def _s1_token_ok(request: Request) -> bool:
+    got = request.headers.get(S1_TOKEN_HEADER) or ""
+    if not got and request.method in ("GET", "HEAD"):
+        got = request.query_params.get(S1_TOKEN_QUERY) or ""
+    return bool(got) and hmac.compare_digest(
+        got.encode("utf-8", "replace"), S1_TOKEN.encode("ascii"))
+
+def _s1_gate(request: Request, origin: str | None) -> str | None:
+    """None = allow, else the 403 detail. Table rows 1-9 in the S-1b plan §0(a)."""
+    method = request.method
+    if method == "OPTIONS" and request.headers.get("access-control-request-method"):
+        return None
+    if origin and origin not in ALLOWED_CORS_ORIGINS:
+        return "origin-forbidden"
+    path = request.url.path
+    if path == "/api/health":
+        return None
+    if origin in TOOLBOX_HTTP_ORIGINS:
+        return None
+    if origin == "null":
+        return None if _s1_token_ok(request) else "bad-token"
+    site = request.headers.get("sec-fetch-site")
+    if site == "same-origin":
+        return None
+    if method in ("GET", "HEAD"):
+        if not path.startswith("/api/"):
+            return None
+        if (path in S1_MEDIA_READ_PATHS or path.startswith(S1_MEDIA_READ_PREFIXES)) and (
+                site is None or request.headers.get("sec-fetch-dest") in S1_MEDIA_DESTS):
+            return None
+    return None if _s1_token_ok(request) else "bad-token"
+
+def _s1_deny(origin: str | None, detail: str) -> JSONResponse:
+    headers = {"Vary": "Origin"}
+    if origin in ALLOWED_CORS_ORIGINS:          # 'null' / toolbox: page can read bad-token
+        headers["Access-Control-Allow-Origin"] = origin
+    if _origin_allows_pna(origin):
+        headers["Access-Control-Allow-Private-Network"] = "true"
+    return JSONResponse(status_code=403, content={"detail": detail}, headers=headers)
 
 
 app = FastAPI(title="AI Toolbox Server", version=TOOLBOX_VERSION)
@@ -106,7 +160,7 @@ app.add_middleware(
     allow_origins=list(ALLOWED_CORS_ORIGINS),
     allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=list(S1_ALLOW_HEADERS),
     expose_headers=["*"],
 )
 
@@ -129,9 +183,7 @@ async def debug_request_middleware(request: Request, call_next):
 
         headers = {
             "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": request.headers.get(
-                "access-control-request-headers", "*"
-            ),
+            "Access-Control-Allow-Headers": ", ".join(S1_ALLOW_HEADERS),
         }
         if origin in ALLOWED_CORS_ORIGINS:
             headers["Access-Control-Allow-Origin"] = origin
@@ -140,7 +192,14 @@ async def debug_request_middleware(request: Request, call_next):
         if pna_ok:
             headers["Access-Control-Allow-Private-Network"] = "true"
         return Response(status_code=204, headers=headers)
+    denied = _s1_gate(request, origin or None)
+    if denied:
+        dbg.log("server", "warn", f"s1-gate {denied}: {request.method} {request.url.path}")
+        return _s1_deny(origin or None, denied)
     response = await call_next(request)
+    if request.url.path == "/api/health" and request.headers.get(S1_TOKEN_HEADER) \
+            and not _s1_token_ok(request):
+        response.headers["X-FAFO-S1-Token-State"] = "stale"
     if pna_ok:
         response.headers.setdefault("Access-Control-Allow-Private-Network", "true")
     if response.status_code >= 500:
@@ -2864,11 +2923,18 @@ def api_query_media(
     )
 
 
+def _refuse_secret_file(p: Path) -> None:
+    n = p.name.lower()
+    if n == ".env" or n.startswith(".env.") or p.suffix.lower() in {".env", ".db", ".db-wal", ".db-shm"}:
+        raise HTTPException(403, "Forbidden")
+
+
 def _serve_media_file(mid: str):
     m = ops.get_media(mid)
     if not m:
         raise HTTPException(404, "Not found")
     p = ops.resolve_path(m)
+    _refuse_secret_file(p)
     if not p.exists():
         raise HTTPException(404, "File missing on disk")
     mt = ops.mime_for_path(m["name"], m["type"])
@@ -2892,6 +2958,7 @@ def api_serve_thumb_query(mid: str = Query(...)):
     if not m or not m.get("thumb_path"):
         raise HTTPException(404, "No thumbnail")
     p = Path(m["thumb_path"])
+    _refuse_secret_file(p)
     if not p.exists():
         raise HTTPException(404, "File missing")
     return FileResponse(p, media_type="image/jpeg")
@@ -6468,6 +6535,33 @@ def _safe_stdio() -> None:
             pass
 
 
+def _s1_publish_token_when_serving(host: str, port: int) -> None:
+    def run() -> None:
+        url = f"http://{host}:{port}/api/health?probe=1"
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # loopback probe: never via a proxy
+        for _ in range(300):                      # ~30 s
+            time.sleep(0.1)
+            try:
+                with opener.open(url, timeout=1) as r:
+                    pid = json.loads(r.read().decode("utf-8")).get("pid")
+            except Exception:
+                continue
+            if pid != os.getpid():
+                return                            # another S1 owns the port: keep its token file
+            tmp = S1_TOKEN_FILE.with_name(f"{S1_TOKEN_FILE.name}.{os.getpid()}.tmp")
+            try:
+                tmp.write_text("window.AITOOLBOX_S1_TOKEN=" + json.dumps(S1_TOKEN) + ";\n", encoding="utf-8")
+                os.replace(tmp, S1_TOKEN_FILE)
+            except OSError as exc:
+                print(f" S1 token file not written ({exc}); file:// pages get bad-token", flush=True)
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+            return
+    threading.Thread(target=run, name="s1-token-publish", daemon=True).start()
+
+
 def main():
     _safe_stdio()
     host, port = load_bind()
@@ -6480,6 +6574,7 @@ def main():
     print(f"  FFmpeg: {'yes' if ops.find_ffmpeg() else 'install ffmpeg for pro thumbnails'}", flush=True)
     print("  Press Ctrl+C to stop\n", flush=True)
     try:
+        _s1_publish_token_when_serving(host, port)
         uvicorn.run(app, host=host, port=port, log_level="warning")
     except OSError as exc:
         if host == "127.0.0.87":
@@ -6487,6 +6582,7 @@ def main():
             print(f"  Bind {host}:{port} failed ({exc}) — retrying {alt}:{port}", flush=True)
             BIND_HOST = alt
             print(f"  AI Toolbox Server -> http://{alt}:{port}", flush=True)
+            _s1_publish_token_when_serving(alt, port)
             uvicorn.run(app, host=alt, port=port, log_level="warning")
         else:
             raise
