@@ -5,6 +5,104 @@
 (function (global) {
     'use strict';
 
+    // --- S1 per-launch token: file:// pages only (http /toolbox/ pages are same-origin) ---
+    const S1_TOKEN_HEADER = 'X-FAFO-S1-Token';
+    const S1_SELF_SRC = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src) || '';
+    const S1_IS_FILE = (function () { try { return global.location.protocol === 'file:'; } catch (_) { return false; } })();
+    let s1Token = null, s1TokenLoading = null, s1TokenAt = 0;
+
+    function s1LoadToken(force) {
+        if (!S1_IS_FILE || typeof document === 'undefined') return Promise.resolve(null);
+        if (s1TokenLoading) return s1TokenLoading;
+        if (s1TokenAt && (!force || Date.now() - s1TokenAt < 2000)) return Promise.resolve(s1Token);
+        let src;
+        try { src = new URL('.env.s1-token.js', S1_SELF_SRC || (getToolboxRoot() + 'shared/')).href; }
+        catch (_) { return Promise.resolve(null); }
+        s1TokenLoading = new Promise(function (res) {
+            const s = document.createElement('script');
+            let done = false;
+            const fin = function () {
+                if (done) return; done = true;
+                try { s.remove(); } catch (_) { /* ignore */ }
+                const t = global.AITOOLBOX_S1_TOKEN;
+                s1Token = (typeof t === 'string' && t) ? t : null;
+                s1TokenAt = Date.now(); s1TokenLoading = null; res(s1Token);
+            };
+            global.AITOOLBOX_S1_TOKEN = undefined;      // a failed reload must not keep the old value
+            s.onload = s.onerror = fin;
+            setTimeout(fin, 3000);
+            s.src = src + '?r=' + Date.now();
+            (document.head || document.documentElement).appendChild(s);
+        });
+        return s1TokenLoading;
+    }
+
+    function isS1Url(u) {
+        try {
+            const o = new URL(String(u), global.location.href).origin;
+            const set = new Set();
+            [resolveApiBase(), toolboxOrigin()].forEach(function (b) {
+                try {
+                    const x = new URL(b).origin;
+                    set.add(x); set.add(x.replace('//127.0.0.87:', '//127.0.0.1:')); set.add(x.replace('//127.0.0.1:', '//127.0.0.87:'));
+                } catch (_) { /* ignore */ }
+            });
+            return set.has(o);
+        } catch (_) { return false; }
+    }
+
+    function s1WithQuery(u) {
+        if (!S1_IS_FILE || !s1Token || !u || !isS1Url(u)) return u;
+        return u + (String(u).indexOf('?') >= 0 ? '&' : '?') + 's1t=' + encodeURIComponent(s1Token);
+    }
+
+    if (S1_IS_FILE && typeof global.fetch === 'function' && !global.__aitoolboxS1Fetch) {
+        global.__aitoolboxS1Fetch = true;
+        const nativeFetch = global.fetch.bind(global);
+        const isReq = function (x) { return typeof Request !== 'undefined' && x instanceof Request; };
+        const s1Init = function (input, init) {
+            const h = new Headers((init && init.headers) || (isReq(input) ? input.headers : undefined) || {});
+            if (s1Token) h.set(S1_TOKEN_HEADER, s1Token);
+            return Object.assign({}, init || {}, { headers: h });
+        };
+        const canResend = function (input, init) {
+            const b = init && init.body;
+            return !isReq(input) && !(b && typeof b.getReader === 'function');
+        };
+        global.fetch = async function (input, init) {
+            const url = isReq(input) ? input.url : String(input);
+            if (!isS1Url(url)) return nativeFetch(input, init);
+            if (!s1Token) await s1LoadToken(false);
+            let r = await nativeFetch(input, s1Init(input, init));
+            if (r.status === 403 && canResend(input, init)) {
+                let j = null;
+                try { j = await r.clone().json(); } catch (_) { /* not JSON */ }
+                if (j && j.detail === 'bad-token') {
+                    await s1LoadToken(true);
+                    r = await nativeFetch(input, s1Init(input, init));   // exactly one retry
+                }
+            } else if (r.headers.get('X-FAFO-S1-Token-State') === 'stale') {
+                s1LoadToken(true);                                    // background heal, no retry
+            }
+            return r;
+        };
+    }
+
+    if (S1_IS_FILE && typeof global.EventSource === 'function' && !global.__aitoolboxS1ES) {
+        global.__aitoolboxS1ES = true;
+        const NativeES = global.EventSource;
+        global.EventSource = class extends NativeES {
+            constructor(url, cfg) {
+                super(s1WithQuery(String(url)), cfg);
+                if (isS1Url(String(url))) {
+                    this.addEventListener('error', () => { if (this.readyState === 2) s1LoadToken(true); });
+                }
+            }
+        };
+    }
+
+    if (S1_IS_FILE) s1LoadToken(false);   // start early; first S1 fetch awaits it
+
     function resolveApiBase() {
         const cfg = global.AITOOLBOX_CONFIG;
         if (cfg && cfg.API_BASE) return cfg.API_BASE;
@@ -1637,11 +1735,11 @@
         },
 
         mediaFileUrl(mediaId) {
-            return `${apiBase()}/media/file?mid=${encodeURIComponent(mediaId)}`;
+            return s1WithQuery(`${apiBase()}/media/file?mid=${encodeURIComponent(mediaId)}`);
         },
 
         thumbUrl(mediaId) {
-            return `${apiBase()}/thumb?mid=${encodeURIComponent(mediaId)}`;
+            return s1WithQuery(`${apiBase()}/thumb?mid=${encodeURIComponent(mediaId)}`);
         },
 
         async resolvePaths(ids) {
@@ -1750,7 +1848,7 @@
         /** Stream a local file path through the toolbox server (for dual preview). */
         fileServeUrl(path) {
             if (!path) return '';
-            return `${apiBase()}/files/serve?path=${encodeURIComponent(path)}`;
+            return s1WithQuery(`${apiBase()}/files/serve?path=${encodeURIComponent(path)}`);
         },
         /**
          * Still preview URL: images pass through; videos use a first-frame JPEG
@@ -1761,7 +1859,7 @@
         filePreviewUrl(path, t = 0.5) {
             if (!path) return '';
             const sec = Number.isFinite(Number(t)) ? Number(t) : 0.5;
-            return `${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`;
+            return s1WithQuery(`${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`);
         },
 
         async getPairPaths(pairId) {
