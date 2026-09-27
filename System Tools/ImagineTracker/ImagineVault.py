@@ -14,10 +14,12 @@ Design (v2.4):
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -42,6 +44,9 @@ GROK_ORIGIN = "https://grok.com"
 SNAPSHOT_PATHS = ("/snapshot", "/api/snapshot")
 OVERLAY_PATHS = ("/overlay.js", "/api/overlay.js")
 SIDE_EFFECT_GETS = {"/reveal", "/api/reveal", "/open-library", "/api/open-library"}
+TOKEN_HEADER = "X-FAFO-Vault-Token"
+TOKEN_FILE_NAME = ".env.vault-token.js"
+VAULT_TOKEN = secrets.token_urlsafe(32)
 VAULT_HEADER = "X-FAFO-Vault"
 THUMBS_DIR = DATA / "thumbs"
 THUMB_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -1181,6 +1186,48 @@ def pick_directory(title: str = "Watch folder") -> str:
         return ""
 
 
+def _bad_root(p) -> bool:
+    real = os.path.normcase(os.path.realpath(str(p)))
+    if os.path.dirname(real) == real:
+        return True
+    for key in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)"):
+        v = os.environ.get(key)
+        if not v:
+            continue
+        base = os.path.normcase(os.path.realpath(os.path.expandvars(v))).rstrip("\\/")
+        if real == base or real.startswith(base + os.sep):
+            return True
+    return False
+
+
+def apply_picked_root(role: str, picked: str) -> tuple[int, dict]:
+    if not picked:
+        return 200, {"ok": False, "cancelled": True}
+    if _bad_root(picked):
+        return 403, {"ok": False, "error": "bad-root"}
+    with _lock:
+        cfg = dict(_state["config"])
+        if role == "library":
+            cfg["libraryDir"] = picked
+            dirs = _norm_dir_list(cfg.get("watchDirs"))
+            if picked not in dirs:
+                dirs.insert(0, picked)
+            cfg["watchDirs"] = dirs
+        else:
+            dirs = _norm_dir_list(cfg.get("watchDirs"))
+            if picked not in dirs:
+                dirs.append(picked)
+            cfg["watchDirs"] = dirs
+        try:
+            Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        _state["config"] = cfg
+    persist(force=True)
+    threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
+    return 200, {"ok": True, "path": picked, "config": _state["config"]}
+
+
 def scan_once(deep: bool = False) -> dict:
     added = 0
     updated = 0
@@ -1483,6 +1530,10 @@ class Handler(BaseHTTPRequestHandler):
             pass
         elif origin in TOOLBOX_ORIGINS:
             self._acao = origin
+            if origin == "null" and method != "OPTIONS":
+                tok = (self.headers.get(TOKEN_HEADER) or "").encode("utf-8", "replace")
+                if not hmac.compare_digest(tok, VAULT_TOKEN.encode("ascii")):
+                    err = "bad-token"
         elif origin == GROK_ORIGIN and path in SNAPSHOT_PATHS + OVERLAY_PATHS and method in ("GET", "OPTIONS"):
             self._acao = origin
         else:
@@ -1492,13 +1543,16 @@ class Handler(BaseHTTPRequestHandler):
                 err = "missing-header"
         if err is None:
             return True
-        self._acao = None
+        self._acao = "null" if err == "bad-token" else None
         raw = json.dumps({"ok": False, "error": err}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.close_connection = True
         self.send_response(403)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Connection", "close")
+        if self._acao:
+            self.send_header("Access-Control-Allow-Origin", self._acao)
+            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(raw)
         return False
@@ -1508,7 +1562,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", self._acao)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS" if self._acao == GROK_ORIGIN else "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, X-FAFO-Vault")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, X-FAFO-Vault, X-FAFO-Vault-Token")
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
         self.send_header("Cache-Control", cache)
 
@@ -1859,19 +1913,32 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/config", "/api/config"):
             self._touch_if_client()
             with _lock:
-                nxt = {**_state["config"], **body}
+                have = set(_allowed_roots())
+                asked = []
+                if "libraryDir" in body and str(body["libraryDir"] or "").strip():
+                    asked.append(body["libraryDir"])
                 if "watchDirs" in body:
-                    nxt["watchDirs"] = _norm_dir_list(body.get("watchDirs"))
+                    asked.extend(_norm_dir_list(body.get("watchDirs")))
                 if "deepIndexDirs" in body:
-                    nxt["deepIndexDirs"] = _norm_dir_list(body.get("deepIndexDirs"))
-                lib = str(nxt.get("libraryDir") or "").strip()
-                if lib:
-                    nxt["libraryDir"] = lib
-                    try:
-                        Path(lib).mkdir(parents=True, exist_ok=True)
-                    except OSError:
-                        pass
-                _state["config"] = nxt
+                    asked.extend(_norm_dir_list(body.get("deepIndexDirs")))
+                bad = [a for a in asked if os.path.normcase(os.path.realpath(str(a))) not in have]
+                if not bad:
+                    nxt = {**_state["config"], **body}
+                    if "watchDirs" in body:
+                        nxt["watchDirs"] = _norm_dir_list(body.get("watchDirs"))
+                    if "deepIndexDirs" in body:
+                        nxt["deepIndexDirs"] = _norm_dir_list(body.get("deepIndexDirs"))
+                    lib = str(nxt.get("libraryDir") or "").strip()
+                    if lib:
+                        nxt["libraryDir"] = lib
+                        try:
+                            Path(lib).mkdir(parents=True, exist_ok=True)
+                        except OSError:
+                            pass
+                    _state["config"] = nxt
+            if bad:
+                self._send(403, {"ok": False, "error": "roots-via-picker-only"})
+                return
             persist(force=True)
             threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
             self._send(200, {"ok": True, "config": _state["config"]})
@@ -1881,30 +1948,8 @@ class Handler(BaseHTTPRequestHandler):
             role = str(body.get("role") or "watch").lower()
             title = "Library folder (HAVE files live here)" if role == "library" else "Add a watch folder"
             picked = pick_directory(title)
-            if not picked:
-                self._send(200, {"ok": False, "cancelled": True})
-                return
-            with _lock:
-                cfg = dict(_state["config"])
-                if role == "library":
-                    cfg["libraryDir"] = picked
-                    dirs = _norm_dir_list(cfg.get("watchDirs"))
-                    if picked not in dirs:
-                        dirs.insert(0, picked)
-                    cfg["watchDirs"] = dirs
-                else:
-                    dirs = _norm_dir_list(cfg.get("watchDirs"))
-                    if picked not in dirs:
-                        dirs.append(picked)
-                    cfg["watchDirs"] = dirs
-                try:
-                    Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
-                except OSError:
-                    pass
-                _state["config"] = cfg
-            persist(force=True)
-            threading.Thread(target=lambda: scan_once(deep=False), name="imagine-rescan", daemon=True).start()
-            self._send(200, {"ok": True, "path": picked, "config": _state["config"]})
+            code, body = apply_picked_root(role, picked)
+            self._send(code, body)
             return
         if path in ("/reveal", "/api/reveal"):
             self._touch_if_client()
@@ -1994,6 +2039,35 @@ def _no_window_flags() -> int:
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
 
 
+def _token_page_dir() -> Path | None:
+    try:
+        root = (DATA / "toolbox-root.txt").read_text(encoding="utf-8-sig").strip()
+    except OSError:
+        root = ""
+    if root:
+        d = Path(root) / "System Tools" / "ImagineTracker"
+        if (d / "Imagine Tracker.html").is_file():
+            return d
+    here = Path(__file__).resolve().parent
+    if (here / "Imagine Tracker.html").is_file():
+        return here
+    return None
+
+
+def write_token_file() -> None:
+    d = _token_page_dir()
+    if d is None:
+        log_activity("token-no-page-dir")
+        return
+    try:
+        text = "window.FAFO_VAULT_TOKEN=" + json.dumps(VAULT_TOKEN) + ";\n"
+        tmp = d / (TOKEN_FILE_NAME + "." + str(os.getpid()) + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, d / TOKEN_FILE_NAME)
+    except OSError:
+        log_activity("token-write-failed")
+
+
 def main() -> None:
     global _httpd
     mutex = _win_mutex("Local\\FAFOImagineVaultHttp")
@@ -2007,6 +2081,7 @@ def main() -> None:
     except OSError as exc:
         print(f"[imagine-vault] port {PORT} in use — {exc}", flush=True)
         return
+    write_token_file()
     _httpd = httpd
     print(f"[imagine-vault] http://{HOST}:{PORT}  v{VERSION}  data={DATA}", flush=True)
     threading.Thread(target=scan_loop, name="imagine-scan", daemon=True).start()
