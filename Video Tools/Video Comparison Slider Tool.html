@@ -291,8 +291,9 @@
         .viewer-container { min-height: 320px; }
         .control-panel-wrapper.collapsed { transform: none; }
         .control-panel-wrapper.collapsed > .control-panel { display: none; }
-        /* Touch: the stage owns one-finger split drag and two-finger pinch/pan. Deck and pair list keep default touch-action. */
-        .viewer-container, .transform-layer { touch-action: none; }
+        /* Touch: pan-y lets a mostly vertical one-finger swipe on the stage scroll the page; the stage keeps horizontal split drag and two-finger pinch/pan (pan-y has no pinch-zoom, so the browser stays out of two-finger gestures). */
+        .viewer-container, .transform-layer { touch-action: pan-y; }
+        .viewer-container[data-orient="vertical"], .viewer-container[data-orient="vertical"] .transform-layer, .video-deck { touch-action: none; }   /* vertical split drags vertically; the deck keeps its 72e0bea behaviour */
         .res-badge, .zoom-badge { top: max(15px, env(safe-area-inset-top)); }
         .res-left { left: max(15px, env(safe-area-inset-left)); } .res-right { right: max(15px, env(safe-area-inset-right)); }
         .settings-modal { max-width: calc(100vw - 16px); }
@@ -1651,7 +1652,7 @@
             if (e.button === 0 && viewerContainer.dataset.mode === 'slider') {
                 if (isSweeping) document.getElementById('btn-sweep').click();
                 isDraggingSlider = true;
-                updateSliderFromEvent(e);
+                updateSliderFromEvent(e.pointerType === 'mouse' ? { clientX: Math.floor(e.clientX), clientY: Math.floor(e.clientY) } : e);   // mouse: whole pixels, as base's mousedown gave, so dblclick sync ties
             } else if (e.button === 2) {
                 isPanning = true;
                 panStartX = e.clientX - translateX;
@@ -1679,8 +1680,9 @@
             if (touchMulti) return;   // a second finger was down: nothing until every finger is up
             if (touchTap) {
                 if (Math.hypot(e.clientX - touchTap.x, e.clientY - touchTap.y) < 8) return;
+                const vert = Math.abs(e.clientY - touchTap.y) + 0.01 >= Math.abs(e.clientX - touchTap.x);   // axis lock: mostly vertical; a tie (within 0.01 px) counts as vertical, as in Chromium's pan-y
                 touchTap = null;
-                if (viewerContainer.dataset.mode !== 'slider') return;
+                if (viewerContainer.dataset.mode !== 'slider' || (vert && viewerContainer.dataset.orient !== 'vertical')) return;   // vertical: native page scroll takes it (pointercancel ends it)
                 if (isSweeping) document.getElementById('btn-sweep').click();
                 isDraggingSlider = true; dragId = e.pointerId;
             }
@@ -1714,6 +1716,7 @@
         window.addEventListener('pointerup', endPointer);
         window.addEventListener('pointercancel', endPointer);
         viewerContainer.addEventListener('lostpointercapture', endPointer);
+        viewerContainer.addEventListener('touchmove', e => { if (isDraggingSlider && e.cancelable) e.preventDefault(); }, { passive: false });   // axis lock: once a split drag has started, native scroll can't take it over
         window.addEventListener('dblclick', e => {   // a touch double-tap may also fire dblclick: keep it from the time-sync handler
             if (viewerContainer.contains(e.target) && performance.now() - lastTouchTapAt < 800) e.stopPropagation();
         }, true);
