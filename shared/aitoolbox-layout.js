@@ -46,6 +46,13 @@
       return Number.isFinite(v) && v > 0.05 ? v : 1;
     } catch (_) { return 1; }
   }
+
+  /** Phone/narrow window. Layout pixel cages stay in memory for desktop;
+   *  they are not written onto the page and not saved back from this width. */
+  function isNarrowAutosize() {
+    try { return window.matchMedia('(max-width: 720px)').matches; }
+    catch (_) { return (window.innerWidth || 1200) <= 720; }
+  }
   const STORAGE_PREFIX = 'fafo_layout_v2_';
   const INDEX_KEY = 'fafo_layout_v2__index';
   const instances = new Map();
@@ -587,11 +594,30 @@
       }
     }
 
+    const phone = isNarrowAutosize();
+    if (phone) root.setAttribute('data-fafo-autosize', '1');
+    else root.removeAttribute('data-fafo-autosize');
+
     // Size every panel first. Growing one panel must NOT shrink its neighbors:
     // flex-shrink stays 0. Rows without a user size are height:auto (content).
+    // Narrow windows ignore saved pixel boxes so sections stack at content height.
     order.forEach((id) => {
       const panel = byId[id];
       if (!panel) return;
+      if (phone) {
+        panel.style.flex = '0 0 auto';
+        panel.style.flexShrink = '0';
+        panel.style.width = '100%';
+        panel.style.height = 'auto';
+        panel.style.minWidth = '0';
+        panel.style.minHeight = '0';
+        panel.style.maxWidth = '100%';
+        panel.style.maxHeight = 'none';
+        panel.removeAttribute('data-fafo-box');
+        panel.removeAttribute('data-fafo-sized');
+        delete panel.dataset.fafoSize;
+        return;
+      }
       const isFlex = panel.getAttribute('data-fafo-flex') === '1' || (state.flex && state.flex[id]);
       const min = parseInt(panel.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
       const max = parseInt(panel.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
@@ -716,6 +742,22 @@
         const s = bySid[sid];
         if (s) body.appendChild(s);
         if (s && sectionIsResizable(s)) {
+          if (phone) {
+            if (!(state.collapsed && state.collapsed[sid])) {
+              s.style.flex = '0 0 auto';
+              s.style.flexShrink = '0';
+              s.style.width = '';
+              s.style.height = '';
+              s.style.maxWidth = '100%';
+              s.style.maxHeight = 'none';
+              s.style.minHeight = '0';
+              delete s.dataset.fafoHeight;
+              s.removeAttribute('data-fafo-user-sized');
+              s.removeAttribute('data-fafo-box');
+            }
+            applyCollapsedClass(s, !!(state.collapsed && state.collapsed[sid]));
+            return;
+          }
           const sbox = state.sectionBoxes && state.sectionBoxes[sid];
           if (sbox && Number.isFinite(sbox.w) && Number.isFinite(sbox.h) && sbox.w > 40 && sbox.h > 40) {
             s.style.flex = '0 0 auto';
@@ -1878,6 +1920,8 @@
 
     function saveNow() {
       try {
+        // Phone content height must not overwrite the desktop pane sizes.
+        if (isNarrowAutosize()) return null;
         // Never freeze a collapsed shell into localStorage (slim banner death spiral)
         if (looksLikeCollapsedCapture(root, opts)) {
           return null;
@@ -2090,8 +2134,21 @@
     // Always also expose floating controls so reset is never lost off-screen
     ensureFloatingToolbar(appId, api);
 
-    // Persist when window resizes (flex panels change absolute sizes)
+    // Persist when window resizes (flex panels change absolute sizes).
+    // Crossing into a narrow window only releases pixel cages; it does not
+    // capture those content heights back over the desktop layout.
+    let wasNarrow = isNarrowAutosize();
     onResize = debounce(() => {
+        const narrow = isNarrowAutosize();
+        if (narrow || wasNarrow) {
+          wasNarrow = narrow;
+          pinViewport(root);
+          applyState(root, state, opts);
+          rebindAll();
+          wireResets();
+          markScrollPanes(root);
+          return;
+        }
         pinViewport(root);
         const cur = sanitizeState(root, captureState(root, opts), opts);
         applyState(root, cur, opts);

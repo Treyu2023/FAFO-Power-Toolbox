@@ -654,6 +654,10 @@
                 }
                 @media (pointer:coarse),(max-width:640px){
                     .tb-btn{min-height:44px;min-width:44px;padding:10px 12px}
+                    .tb-bar-back{min-height:44px;display:inline-flex;align-items:center;padding:10px 12px}
+                }
+                @media (max-width:430px){
+                    .tb-companion-bar{max-height:none;flex-wrap:wrap;row-gap:6px}
                 }
                 .tb-btn.primary{background:rgba(0,243,255,.18);border-color:#00f3ff}
                 .tb-btn.primary.state-online{background:rgba(0,255,136,.2);border-color:#00ff88;color:#b7ffd9}
