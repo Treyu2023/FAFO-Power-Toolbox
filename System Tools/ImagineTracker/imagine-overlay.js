@@ -80,8 +80,10 @@
       badge.className = 'fafo-im-stamp';
       card.appendChild(badge);
     }
-    badge.className = 'fafo-im-stamp ' + (have ? 'have' : 'miss');
-    badge.textContent = have ? 'HAVE' : 'MISS';
+    const cls = 'fafo-im-stamp ' + (have ? 'have' : 'miss');
+    if (badge.className !== cls) badge.className = cls;
+    const txt = have ? 'HAVE' : 'MISS';
+    if (badge.textContent !== txt) badge.textContent = txt;
   }
 
   async function loadMap() {

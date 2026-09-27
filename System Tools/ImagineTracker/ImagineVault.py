@@ -2,7 +2,7 @@
 """FAFO Imagine Vault — local HAVE/MISS catalog for grok.com/imagine.
 
 Listens on 127.0.0.1:18767. The Chrome overlay talks to this; grok.com never does.
-No third-party packages.
+No required third-party packages (Pillow and ffmpeg are optional, used only by /thumb).
 
 Design (v2.4):
   • HTTP binds first. Disk work is background and mtime/fingerprint cheap.
@@ -48,6 +48,19 @@ TOKEN_HEADER = "X-FAFO-Vault-Token"
 TOKEN_FILE_NAME = ".env.vault-token.js"
 VAULT_TOKEN = secrets.token_urlsafe(32)
 VAULT_HEADER = "X-FAFO-Vault"
+THUMBS_DIR = DATA / "thumbs"
+THUMB_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+THUMB_MAX_BYTES = 4_000_000
+THUMB_SRC_MAX_BYTES = 64_000_000
+THUMB_WAIT_SEC = 10.0
+_thumb_probe_lock = threading.Lock()
+_PIL_MOD = None
+_PIL_TRIED = False
+_FFMPEG = None
+_FFMPEG_TRIED = False
+_PIL_SEM = threading.BoundedSemaphore(2)
+_FFMPEG_SEM = threading.BoundedSemaphore(2)
+_thumb_fail: dict[str, int] = {}
 
 UUID_RE = re.compile(
     r"(?:grok-video-|grok-image-|share-videos/|share-images/|generated/|/imagine/(?:post/|saved/)?)"
@@ -75,6 +88,7 @@ DEMAND_TTL_SEC = 8 * 60.0
 PERSIST_DEBOUNCE_SEC = 1.6
 
 _lock = threading.RLock()
+_persist_lock = threading.Lock()
 _state: dict[str, Any] = {}
 _httpd: ThreadingHTTPServer | None = None
 _stop = threading.Event()
@@ -94,14 +108,35 @@ def load_json(path: Path, default):
 
 
 def save_json(path: Path, obj, pretty: bool = False) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
     if pretty:
         text = json.dumps(obj, indent=2, ensure_ascii=False)
     else:
         text = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    save_text(path, text)
+
+
+def save_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + "." + str(os.getpid()) + "." + str(threading.get_ident()) + ".tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        for attempt in range(6):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt >= 5:
+                    raise
+                time.sleep(0.05)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def append_jsonl(path: Path, obj: dict) -> None:
@@ -268,27 +303,40 @@ def _lower_priority() -> None:
 
 
 def note_demand(app: str = "imagine-overlay") -> None:
-    rec = {"at": time.time(), "app": app, "which": "vault"}
-    try:
-        p = paths()["demand"]
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(rec), encoding="utf-8")
-    except OSError:
-        pass
+    now = time.time()
+    rec = {"at": now, "app": app, "which": "vault"}
     with _lock:
-        _state["last_client"] = time.time()
+        _state["last_client"] = now
+        if now - float(_state.get("demand_written_at") or 0) < 1.0:
+            return
+        _state["demand_written_at"] = now
+        try:
+            p = paths()["demand"]
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_name(p.name + "." + str(os.getpid()) + ".tmp")
+            tmp.write_text(json.dumps(rec), encoding="utf-8")
+            os.replace(tmp, p)
+        except OSError:
+            pass
 
 
-def demand_fresh(ttl: float = DEMAND_TTL_SEC) -> bool:
+def demand_fresh(ttl: float = DEMAND_TTL_SEC) -> bool | None:
     with _lock:
         last = float(_state.get("last_client") or 0)
     if last and (time.time() - last) <= ttl:
         return True
-    raw = load_json(paths()["demand"], {}) or {}
     try:
-        at = float(raw.get("at") or 0)
+        raw = json.loads(paths()["demand"].read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    try:
+        at = float(raw.get("at"))
     except (TypeError, ValueError):
-        at = 0
+        return None
     return at > 0 and (time.time() - at) <= ttl
 
 
@@ -301,36 +349,63 @@ def mark_dirty() -> None:
 
 def persist(force: bool = False) -> None:
     p = paths()
-    with _lock:
-        if not force and not _state.get("dirty"):
-            return
-        now = time.time()
-        if not force and (now - float(_state.get("last_persist") or 0)) < PERSIST_DEBOUNCE_SEC:
-            return
-        catalog = _state["catalog"]
-        unique = _state["unique"]
-        seen = _state["seen"]
-        cfg = _state["config"]
-        fps = _state.get("fingerprints") or {}
-        _state["last_persist"] = now
     try:
-        save_json(p["catalog"], catalog, pretty=False)
-        save_json(p["unique"], unique, pretty=True)
-        save_json(p["seen_sentences"], sorted(seen) if len(seen) < 20000 else list(seen)[:20000], pretty=False)
-        save_json(p["config"], cfg, pretty=True)
-        save_json(p["fingerprints"], fps, pretty=False)
+        with _lock:
+            if not force and not _state.get("dirty"):
+                return
+            now = time.time()
+            if not force and (now - float(_state.get("last_persist") or 0)) < PERSIST_DEBOUNCE_SEC:
+                return
+            seen = _state["seen"]
+            texts = [
+                (p["catalog"], json.dumps(_state["catalog"], ensure_ascii=False, separators=(",", ":"))),
+                (p["unique"], json.dumps(_state["unique"], indent=2, ensure_ascii=False)),
+                (
+                    p["seen_sentences"],
+                    json.dumps(
+                        sorted(seen) if len(seen) < 20000 else list(seen)[:20000],
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                ),
+                (p["config"], json.dumps(_state["config"], indent=2, ensure_ascii=False)),
+                (p["fingerprints"], json.dumps(_state.get("fingerprints") or {}, ensure_ascii=False, separators=(",", ":"))),
+            ]
+            _state["last_persist"] = now
+        with _persist_lock:
+            for path, text in texts:
+                save_text(path, text)
         with _lock:
             _state["dirty"] = False
-    except OSError as exc:
+    except Exception as exc:
         with _lock:
             _state["dirty"] = True
         log_activity("persist-error", error=str(exc)[-300:])
+
+
+def _keep_corrupt_json(path: Path) -> None:
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return
+        json.loads(path.read_text(encoding="utf-8"))
+        return
+    except OSError:
+        return
+    except Exception:
+        pass
+    bad = path.with_name(path.name + ".bad-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+    try:
+        shutil.copy2(path, bad)
+    except OSError:
+        pass
+    log_activity("json-corrupt", file=str(path))
 
 
 def init_state() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     p = paths()
     dflt = default_config()
+    _keep_corrupt_json(p["config"])
     disk = load_json(p["config"], {})
     had_user = bool(isinstance(disk, dict) and str(disk.get("libraryDir") or "").strip())
     cfg = {**dflt, **(disk if isinstance(disk, dict) else {})}
@@ -351,6 +426,7 @@ def init_state() -> None:
     except OSError:
         pass
     save_json(p["config"], cfg, pretty=True)
+    _keep_corrupt_json(p["catalog"])
     with _lock:
         _state["config"] = cfg
         _state["catalog"] = load_json(p["catalog"], {}) or {}
@@ -529,6 +605,71 @@ def catalog_view() -> dict:
     return st
 
 
+def catalog_page(q: dict) -> dict:
+    try:
+        offset = max(0, int((q.get("offset") or ["0"])[0]))
+    except ValueError:
+        offset = 0
+    try:
+        limit = int((q.get("limit") or ["120"])[0])
+    except ValueError:
+        limit = 120
+    limit = max(1, min(500, limit))
+    tab = (q.get("tab") or ["all"])[0]
+    if tab not in ("all", "miss", "have"):
+        tab = "all"
+    mtype = (q.get("type") or [""])[0]
+    if mtype not in ("", "video", "image"):
+        mtype = ""
+    needle = str((q.get("q") or [""])[0]).strip().lower()[:200]
+
+    def s(x) -> str:
+        return "" if x is None else str(x)
+
+    with _lock:
+        rev = _state.get("rev")
+        rows = list(_state["catalog"].items())
+    rows.reverse()
+    filtered = []
+    for iid, v in rows:
+        if tab == "miss" and v.get("hasFile"):
+            continue
+        if tab == "have" and not v.get("hasFile"):
+            continue
+        if mtype and (v.get("mediaType") or "") != mtype:
+            continue
+        if needle:
+            tags = " ".join(str(t) for t in v["tags"]) if isinstance(v.get("tags"), list) else ""
+            blob = " ".join([s(v.get("filename")), s(v.get("prompt")), s(v.get("id")), s(v.get("title")), tags]).lower()
+            if needle not in blob:
+                continue
+        filtered.append((iid, v))
+    total = len(filtered)
+    page = filtered[offset:offset + limit]
+    items = []
+    for iid, v in page:
+        items.append({
+            "id": v.get("id") or iid,
+            "hasFile": bool(v.get("hasFile")),
+            "mediaType": v.get("mediaType") or "",
+            "filename": v.get("filename") or "",
+            "title": v.get("title") or "",
+            "prompt": str(v.get("prompt") or "")[:300],
+            "thumbUrl": v.get("thumbUrl") or "",
+            "thumb": thumb_kind(v),
+        })
+    nxt = offset + len(page)
+    return {
+        "ok": True,
+        "rev": rev,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "nextOffset": nxt if nxt < total else None,
+        "items": items,
+    }
+
+
 def pick_preview_path(item: dict) -> str:
     for key in ("pathOrig", "pathPreview", "path"):
         p = item.get(key)
@@ -538,6 +679,116 @@ def pick_preview_path(item: dict) -> str:
     if best and Path(best).is_file():
         return best
     return ""
+
+
+def _pil():
+    global _PIL_MOD, _PIL_TRIED
+    with _thumb_probe_lock:
+        if not _PIL_TRIED:
+            try:
+                from PIL import Image, ImageOps
+
+                _PIL_MOD = (Image, ImageOps)
+            except Exception:
+                _PIL_MOD = None
+            _PIL_TRIED = True
+        return _PIL_MOD
+
+
+def _ffmpeg():
+    global _FFMPEG, _FFMPEG_TRIED
+    with _thumb_probe_lock:
+        if not _FFMPEG_TRIED:
+            try:
+                _FFMPEG = shutil.which("ffmpeg")
+            except Exception:
+                _FFMPEG = None
+            _FFMPEG_TRIED = True
+        return _FFMPEG
+
+
+def thumb_kind(v: dict) -> str:
+    if not v.get("hasFile") or not THUMB_ID_RE.fullmatch(str(v.get("id") or "").lower()):
+        return ""
+    if (v.get("mediaType") or "") == "image":
+        return "img" if _pil() else ""
+    return "poster" if _ffmpeg() else ""
+
+
+def _thumb_source(item: dict) -> tuple[Path | None, str]:
+    outside = False
+    for key in ("pathOrig", "pathPreview", "path", "pathBest"):
+        p = item.get(key)
+        if not p:
+            continue
+        if not path_allowed(p):
+            outside = True
+            continue
+        if Path(str(p)).is_file():
+            return (Path(str(p)), "")
+    return (None, "path-outside-roots" if outside else "no-file")
+
+
+def _thumb_cache_path(iid: str) -> Path | None:
+    c = THUMBS_DIR / (iid + ".jpg")
+    if os.path.normcase(os.path.realpath(c.parent)) != os.path.normcase(os.path.realpath(THUMBS_DIR)):
+        return None
+    THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+    return c
+
+
+def _make_thumb(src: Path, src_st, cache: Path, iid: str, is_image: bool) -> bool:
+    tmp = THUMBS_DIR / f"{iid}.{os.getpid()}.{threading.get_ident()}.tmp.jpg"
+    ok = False
+    try:
+        if is_image:
+            mods = _pil()
+            if mods and src_st.st_size <= THUMB_SRC_MAX_BYTES:
+                Image, ImageOps = mods
+                with Image.open(src) as im0:
+                    im0.draft("RGB", (640, 640))
+                    im = ImageOps.exif_transpose(im0)
+                    im.thumbnail((320, 320))
+                    im = im if im.mode == "RGB" else im.convert("RGB")
+                    im.save(tmp, "JPEG", quality=80, optimize=True)
+                ok = True
+        else:
+            ff = _ffmpeg()
+            if ff:
+                src_abs = os.path.realpath(src)
+                for ss in ("1", "0"):
+                    args = [ff, "-hide_banner", "-loglevel", "error", "-nostdin",
+                            "-ss", ss, "-i", "file:" + src_abs,
+                            "-frames:v", "1", "-an",
+                            "-vf", "scale=320:320:force_original_aspect_ratio=decrease:force_divisible_by=2",
+                            "-q:v", "5", "-update", "1", "-y", str(tmp)]
+                    try:
+                        res = subprocess.run(
+                            args,
+                            shell=False,
+                            timeout=10,
+                            capture_output=True,
+                            stdin=subprocess.DEVNULL,
+                            creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0),
+                        )
+                    except subprocess.TimeoutExpired:
+                        break
+                    if res.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0:
+                        ok = True
+                        break
+        if ok:
+            os.utime(tmp, ns=(src_st.st_atime_ns, src_st.st_mtime_ns))
+            os.replace(tmp, cache)
+    except Exception:
+        ok = False
+    if not ok:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        with _thumb_probe_lock:
+            _thumb_fail[iid] = src_st.st_mtime_ns
+    return ok
 
 
 def write_sidecar(item: dict) -> None:
@@ -614,11 +865,19 @@ def _touch_item_path(item: dict, path: Path, stage: str, size: int) -> None:
     item["hasFile"] = True
     if stage == "orig" or not item.get("pathOrig"):
         if stage == "orig":
-            item["pathOrig"] = str(path)
+            cur_orig = str(item.get("pathOrig") or "")
+            repoint = (
+                not cur_orig
+                or not Path(cur_orig).is_file()
+                or os.path.normcase(os.path.realpath(cur_orig)) == os.path.normcase(os.path.realpath(str(path)))
+            )
+            if repoint:
+                item["pathOrig"] = str(path)
             item["pathPreview"] = str(path)
-            item["filename"] = path.name
-            item["path"] = str(path)
-            item["bytes"] = size
+            if repoint:
+                item["filename"] = path.name
+                item["path"] = str(path)
+                item["bytes"] = size
     if stage_rank(stage) >= stage_rank(item.get("stage") or "orig"):
         item["stage"] = stage
         item["pathBest"] = str(path)
@@ -792,36 +1051,39 @@ def fast_index_file(path: Path) -> bool:
     return added
 
 
-def folder_stamp(root: Path) -> tuple:
-    """Cheap change detector: dir mtime + top-level entry count."""
+def folder_stamp(root: Path, depth: int = 0) -> tuple:
+    """Cheap change detector: directory count + newest directory mtime, down to depth."""
+    root_s = str(root)
+    count = 0
+    newest = 0
     try:
-        st = root.stat()
-        n = 0
-        newest = st.st_mtime
-        with os.scandir(root) as it:
-            for i, ent in enumerate(it):
-                n += 1
-                if i >= 80:
-                    break
-                try:
-                    newest = max(newest, ent.stat(follow_symlinks=False).st_mtime)
-                except OSError:
-                    continue
-        return (int(st.st_mtime), n, int(newest))
+        for dirpath, dirnames, _filenames in os.walk(root_s):
+            rel = os.path.relpath(dirpath, root_s)
+            d = 0 if rel in (".", "") else rel.count(os.sep) + 1
+            if d > depth:
+                dirnames[:] = []
+                continue
+            dirnames[:] = [x for x in dirnames if x.lower() not in SKIP_DIRS]
+            count += 1
+            try:
+                newest = max(newest, os.stat(dirpath).st_mtime_ns)
+            except OSError:
+                continue
     except OSError:
-        return (0, 0, 0)
+        return (0, 0)
+    return (count, newest)
 
 
-def folder_unchanged(root: Path) -> bool:
-    stamp = folder_stamp(root)
+def folder_unchanged(root: Path, depth: int = 0) -> bool:
+    stamp = folder_stamp(root, depth)
     key = str(root).lower()
     with _lock:
         prev = _state["folder_stamp"].get(key)
         return prev == stamp
 
 
-def remember_folder_stamp(root: Path) -> None:
-    stamp = folder_stamp(root)
+def remember_folder_stamp(root: Path, depth: int = 0) -> None:
+    stamp = folder_stamp(root, depth)
     key = str(root).lower()
     with _lock:
         _state["folder_stamp"][key] = stamp
@@ -1020,11 +1282,11 @@ def scan_once(deep: bool = False) -> dict:
         for root in watch_roots():
             if not safe_is_dir(root):
                 continue
-            if folder_unchanged(root) and not deep:
-                skipped += 1
-                continue
             recursive = not _is_shallow_root(root)
             depth = 1 if _is_shallow_root(root) else depth_default
+            if folder_unchanged(root, depth if recursive else 0) and not deep:
+                skipped += 1
+                continue
             for f in iter_dir_files(root, recursive=recursive, max_depth=depth):
                 if f.suffix.lower() == ".json":
                     try:
@@ -1063,7 +1325,7 @@ def scan_once(deep: bool = False) -> dict:
                     updated += 1
                     if r.get("item", {}).get("prompt") and not (before or {}).get("prompt"):
                         recovered += 1
-            remember_folder_stamp(root)
+            remember_folder_stamp(root, depth if recursive else 0)
         persist()
         return {
             "added": added,
@@ -1161,7 +1423,10 @@ def idle_watch() -> None:
         time.sleep(8.0)
         if clients_idle(scan=False):
             log_activity("idle-exit", idleForSec=int(time.time() - float(_state.get("last_client") or 0)))
-            persist(force=True)
+            try:
+                persist(force=True)
+            except Exception as exc:
+                log_activity("persist-error", error=str(exc)[-300:])
             httpd = _httpd
             if httpd is not None:
                 threading.Thread(target=httpd.shutdown, name="imagine-idle-stop", daemon=True).start()
@@ -1252,7 +1517,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args) -> None:
         msg = fmt % args if args else str(fmt)
-        if "/health" in msg or "/snapshot" in msg:
+        if "/health" in msg or "/snapshot" in msg or "/preview" in msg or "/thumb" in msg:
             return
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), msg))
 
@@ -1292,14 +1557,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
         return False
 
-    def _cors(self) -> None:
+    def _cors(self, cache: str = "no-store") -> None:
         if self._acao:
             self.send_header("Access-Control-Allow-Origin", self._acao)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS" if self._acao == GROK_ORIGIN else "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, X-FAFO-Vault, X-FAFO-Vault-Token")
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
 
     def _send_text(self, text: str, ctype: str = "text/plain; charset=utf-8") -> None:
         raw = text.encode("utf-8")
@@ -1354,15 +1619,107 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self._cors()
         self.end_headers()
-        with path.open("rb") as fh:
-            fh.seek(start)
-            left = length
-            while left > 0:
-                chunk = fh.read(min(256 * 1024, left))
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                left -= len(chunk)
+        try:
+            with path.open("rb") as fh:
+                fh.seek(start)
+                left = length
+                while left > 0:
+                    chunk = fh.read(min(256 * 1024, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
+
+    def _send_thumb(self, iid: str) -> None:
+        with _lock:
+            item = dict(_state["catalog"].get(iid) or {})
+        if not item:
+            self._send(404, {"ok": False, "error": "no-thumb"})
+            return
+        src, err = _thumb_source(item)
+        if src is None:
+            if err == "path-outside-roots":
+                self._send(403, {"ok": False, "error": "path-outside-roots"})
+            else:
+                self._send(404, {"ok": False, "error": "no-thumb"})
+            return
+        try:
+            src_st = src.stat()
+            cache = _thumb_cache_path(iid)
+        except OSError:
+            self._send(404, {"ok": False, "error": "no-thumb"})
+            return
+        if cache is None:
+            self._send(400, {"ok": False, "error": "bad-id"})
+            return
+
+        def cache_valid() -> bool:
+            try:
+                return cache.stat().st_mtime_ns == src_st.st_mtime_ns
+            except OSError:
+                return False
+
+        def serve(how: str) -> None:
+            try:
+                if cache.stat().st_size > THUMB_MAX_BYTES:
+                    self._send(413, {"ok": False, "error": "too-large"})
+                    return
+                raw = cache.read_bytes()
+            except OSError:
+                self._send(404, {"ok": False, "error": "no-thumb"})
+                return
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("X-Thumb", how)
+                self._cors(cache="private, max-age=86400")
+                self.end_headers()
+                self.wfile.write(raw)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
+
+        if cache_valid():
+            serve("hit")
+            return
+        with _thumb_probe_lock:
+            known_bad = _thumb_fail.get(iid) == src_st.st_mtime_ns
+        if known_bad:
+            self._send(404, {"ok": False, "error": "no-thumb"})
+            return
+        is_image = (item.get("mediaType") or "") == "image"
+        if (is_image and not _pil()) or (not is_image and not _ffmpeg()):
+            self._send(404, {"ok": False, "error": "no-thumb"})
+            return
+        sem = _PIL_SEM if is_image else _FFMPEG_SEM
+        if not sem.acquire(timeout=THUMB_WAIT_SEC):
+            raw = json.dumps({"ok": False, "error": "busy"}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            try:
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Retry-After", "2")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(raw)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+            return
+        try:
+            if cache_valid():
+                how = "hit"
+            elif _make_thumb(src, src_st, cache, iid, is_image):
+                how = "made"
+            else:
+                how = ""
+        finally:
+            sem.release()
+        if not how:
+            self._send(404, {"ok": False, "error": "no-thumb"})
+            return
+        serve(how)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         if not self._gate("OPTIONS"):
@@ -1420,6 +1777,9 @@ class Handler(BaseHTTPRequestHandler):
             if (q.get("compact") or ["0"])[0] in ("1", "true"):
                 self._send(200, {"ok": True, "rev": int(_state.get("rev") or 1), "count": len(compact_ids()), "items": compact_ids()})
                 return
+            if "offset" in q or "limit" in q:
+                self._send(200, catalog_page(q))
+                return
             self._send(200, catalog_view())
             return
         if path in ("/ids", "/api/ids"):
@@ -1431,6 +1791,14 @@ class Handler(BaseHTTPRequestHandler):
             self._touch_if_client()
             iid = str((q.get("id") or [""])[0]).lower()
             self._send_preview(iid)
+            return
+        if path in ("/thumb", "/api/thumb"):
+            iid = str((q.get("id") or [""])[0]).lower()
+            if not THUMB_ID_RE.fullmatch(iid):
+                self._send(400, {"ok": False, "error": "bad-id"})
+                return
+            self._touch_if_client()
+            self._send_thumb(iid)
             return
         if path in ("/reveal", "/api/reveal"):
             self._touch_if_client()
@@ -1608,6 +1976,12 @@ class VaultServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+    def handle_error(self, request, client_address) -> None:
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return
+        sys.stderr.write(f"[imagine-vault] handler error: {exc!r}\n")
+
 
 def _win_mutex(name: str):
     if os.name != "nt":
@@ -1770,10 +2144,13 @@ def run_watch() -> None:
                     pass
         child = None
 
+    last_wanted = True
     try:
         while not stop.is_file():
             up = _health_ok()
-            wanted = demand_fresh()
+            w = demand_fresh()
+            wanted = last_wanted if w is None else w
+            last_wanted = wanted
             if up and not wanted:
                 kill_child()
                 time.sleep(10)
@@ -1786,6 +2163,12 @@ def run_watch() -> None:
                 continue
             kill_child()
             time.sleep(0.3)
+            for lp in (stdout, stderr):
+                try:
+                    if lp.is_file() and lp.stat().st_size > 5_000_000:
+                        os.replace(lp, lp.with_name(lp.name + ".1"))
+                except OSError:
+                    pass
             with stdout.open("a", encoding="utf-8") as out, stderr.open("a", encoding="utf-8") as err:
                 child = subprocess.Popen(
                     [py, "-u", script.name],
