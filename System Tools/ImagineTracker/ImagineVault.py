@@ -860,11 +860,19 @@ def _touch_item_path(item: dict, path: Path, stage: str, size: int) -> None:
     item["hasFile"] = True
     if stage == "orig" or not item.get("pathOrig"):
         if stage == "orig":
-            item["pathOrig"] = str(path)
+            cur_orig = str(item.get("pathOrig") or "")
+            repoint = (
+                not cur_orig
+                or not Path(cur_orig).is_file()
+                or os.path.normcase(os.path.realpath(cur_orig)) == os.path.normcase(os.path.realpath(str(path)))
+            )
+            if repoint:
+                item["pathOrig"] = str(path)
             item["pathPreview"] = str(path)
-            item["filename"] = path.name
-            item["path"] = str(path)
-            item["bytes"] = size
+            if repoint:
+                item["filename"] = path.name
+                item["path"] = str(path)
+                item["bytes"] = size
     if stage_rank(stage) >= stage_rank(item.get("stage") or "orig"):
         item["stage"] = stage
         item["pathBest"] = str(path)
@@ -1571,9 +1579,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def _send_thumb(self, iid: str) -> None:
-        if not THUMB_ID_RE.fullmatch(iid):
-            self._send(400, {"ok": False, "error": "bad-id"})
-            return
         with _lock:
             item = dict(_state["catalog"].get(iid) or {})
         if not item:
@@ -1734,8 +1739,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send_preview(iid)
             return
         if path in ("/thumb", "/api/thumb"):
-            self._touch_if_client()
             iid = str((q.get("id") or [""])[0]).lower()
+            if not THUMB_ID_RE.fullmatch(iid):
+                self._send(400, {"ok": False, "error": "bad-id"})
+                return
+            self._touch_if_client()
             self._send_thumb(iid)
             return
         if path in ("/reveal", "/api/reveal"):
