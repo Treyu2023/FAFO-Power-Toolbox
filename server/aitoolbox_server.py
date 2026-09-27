@@ -4723,6 +4723,21 @@ def api_tools_launch(body: ToolsLaunchBody):
             return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.ps1"}
         raise HTTPException(404, "Imagine Vault scripts missing")
 
+    if tid == "transfer-helper":
+        # Read-only loopback helper for the Transfer Monitor page (127.0.0.1:18769). No request data reaches argv.
+        folder = ROOT / "System Tools" / "TransferMonitor"
+        helper = folder / "TransferMonitor-Helper.ps1"
+        if not helper.is_file():
+            raise HTTPException(404, "TransferMonitor-Helper.ps1 missing")
+        ps = os.path.expandvars(r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
+        subprocess.Popen(
+            [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", str(helper)],
+            cwd=str(folder),
+            shell=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return {"ok": True, "launched": "transfer-helper", "via": "TransferMonitor-Helper.ps1"}
+
     raise HTTPException(400, f"Unknown or blocked tool launch id: {tid}")
 @app.get("/api/launch/watchdog/status")
 def api_watchdog_status():
