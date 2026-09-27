@@ -336,6 +336,36 @@
       const MAX_THUMB_INFLIGHT = 3;
       let thumbQ = [], thumbInflight = new Set();
       const wrapBox = document.querySelector('.wrap');
+      let scrollOnWrap = null, scrollTarget = null;
+      function wrapScrolls() {
+        if (!wrapBox) return false;
+        const oy = getComputedStyle(wrapBox).overflowY;
+        if (oy !== 'auto' && oy !== 'scroll') return false;
+        const probe = document.createElement('div');
+        probe.style.height = (window.innerHeight * 2 + 100) + 'px';
+        wrapBox.appendChild(probe);
+        const clipped = wrapBox.scrollHeight > wrapBox.clientHeight + 1;
+        probe.remove();
+        return clipped;
+      }
+      function scrollCtx() {
+        if (scrollOnWrap !== false && wrapBox) {
+          return {
+            root: wrapBox,
+            top: function () { return wrapBox.scrollTop; },
+            setTop: function (y) { wrapBox.scrollTop = y; },
+            band: function () { return wrapBox.getBoundingClientRect(); },
+            rectTop: function (n) { return n.getBoundingClientRect().top - wrapBox.getBoundingClientRect().top + wrapBox.scrollTop; }
+          };
+        }
+        return {
+          root: null,
+          top: function () { return window.scrollY; },
+          setTop: function (y) { window.scrollTo(0, y); },
+          band: function () { return { top: 0, height: window.innerHeight }; },
+          rectTop: function (n) { return n.getBoundingClientRect().top + window.scrollY; }
+        };
+      }
 
       function vaultFetchOnce(path, opts) {
         const ctrl = new AbortController();
@@ -541,7 +571,7 @@
         try { v.load(); } catch (_) {}
         liveVideos = Math.max(0, liveVideos - 1);
       }
-      const tileIO = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+      function onTileIO(entries) {
         entries.forEach(function (en) {
           const n = en.target;
           if (n.tagName === 'VIDEO') {
@@ -565,7 +595,8 @@
             if (qi >= 0) thumbQ.splice(qi, 1);
           }
         });
-      }, { root: wrapBox, rootMargin: '50% 0px' }) : null;
+      }
+      let tileIO = null;
       function pumpThumbs() {
         while (thumbInflight.size < MAX_THUMB_INFLIGHT && thumbQ.length) {
           const img = thumbQ.shift();
@@ -653,10 +684,10 @@
       function listTop() {
         const box = el('list');
         if (!box || !wrapBox) return 0;
-        return box.getBoundingClientRect().top - wrapBox.getBoundingClientRect().top + wrapBox.scrollTop;
+        return scrollCtx().rectTop(box);
       }
       function nearTop() {
-        return !!wrapBox && (wrapBox.scrollTop - listTop()) <= 400;
+        return !!wrapBox && (scrollCtx().top() - listTop()) <= 400;
       }
       function listQuery(offset) {
         return '/catalog?offset=' + offset + '&limit=' + PAGE +
@@ -695,7 +726,7 @@
         box.innerHTML = '';
         box.className = 'pages';
         setListStatus('');
-        if (wrapBox && wrapBox.scrollTop > listTop()) wrapBox.scrollTop = listTop() - 8;
+        if (wrapBox && scrollCtx().top() > listTop()) scrollCtx().setTop(listTop() - 8);
         if (!vaultOn) {
           box.innerHTML = '<div class="empty">Start the vault to load your real HAVE / MISS thumbs.</div>';
           return;
@@ -752,7 +783,7 @@
       }
       function updateWindow() {
         if (!isGridTab() || !wrapBox || !pages.length) return;
-        const wr = wrapBox.getBoundingClientRect();
+        const wr = scrollCtx().band();
         const mid = wr.top + wr.height / 2;
         let cur = 0;
         pages.forEach(function (pg) { if (pg.el.getBoundingClientRect().top <= mid) cur = pg.i; });
@@ -787,11 +818,40 @@
             }
           });
         }
+        applyScrollRoot();
         updateWindow();
       }
-      const sentinelIO = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+      function onSentinelIO(entries) {
         if (entries.some(function (en) { return en.isIntersecting; })) loadNext();
-      }, { root: wrapBox, rootMargin: '0px 0px 150% 0px' }) : null;
+      }
+      let sentinelIO = null;
+      let winRaf = 0;
+      function onListScroll() {
+        if (winRaf) return;
+        winRaf = requestAnimationFrame(function () {
+          winRaf = 0;
+          if (pendingReset && isGridTab() && nearTop()) { resetList(); return; }
+          updateWindow();
+        });
+      }
+      function applyScrollRoot() {
+        const onWrap = wrapScrolls();
+        if (onWrap === scrollOnWrap) return;
+        scrollOnWrap = onWrap;
+        const target = onWrap ? wrapBox : window;
+        if (scrollTarget) scrollTarget.removeEventListener('scroll', onListScroll);
+        target.addEventListener('scroll', onListScroll, { passive: true });
+        scrollTarget = target;
+        if (!('IntersectionObserver' in window)) return;
+        if (tileIO) tileIO.disconnect();
+        if (sentinelIO) sentinelIO.disconnect();
+        const root = scrollCtx().root;
+        tileIO = new IntersectionObserver(onTileIO, { root: root, rootMargin: '50% 0px' });
+        sentinelIO = new IntersectionObserver(onSentinelIO, { root: root, rootMargin: '0px 0px 150% 0px' });
+        pages.forEach(function (pg) { if (pg.live) observeTiles(pg.el); });
+        const s = el('listSentinel');
+        if (s) sentinelIO.observe(s);
+      }
       function onViewChange() {
         if (tab === 'prompts' || tab === 'log') renderList();
         else resetList();
@@ -997,23 +1057,16 @@
         const t = e.target.closest && e.target.closest('.tile[data-id]');
         if (t) reveal(t.getAttribute('data-id'));
       });
-      if (wrapBox) {
-        let winRaf = 0;
-        wrapBox.addEventListener('scroll', function () {
-          if (winRaf) return;
-          winRaf = requestAnimationFrame(function () {
-            winRaf = 0;
-            if (pendingReset && isGridTab() && nearTop()) { resetList(); return; }
-            updateWindow();
-          });
-        }, { passive: true });
-      }
       let resizeTimer = 0;
       window.addEventListener('resize', function () {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(onWindowResize, 200);
       });
-      if (sentinelIO && el('listSentinel')) sentinelIO.observe(el('listSentinel'));
+      applyScrollRoot();
+      const narrowMq = window.matchMedia ? window.matchMedia('(max-width: 720px)') : null;
+      const onNarrowChange = function () { clearTimeout(resizeTimer); onWindowResize(); };
+      if (narrowMq && narrowMq.addEventListener) narrowMq.addEventListener('change', onNarrowChange);
+      else if (narrowMq && narrowMq.addListener) narrowMq.addListener(onNarrowChange);
 
       renderKpis();
       renderList();
