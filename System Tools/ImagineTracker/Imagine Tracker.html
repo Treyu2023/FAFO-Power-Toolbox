@@ -154,6 +154,11 @@
     .prompt-block .s { font-size: 10px; color: #64748b; margin-top: 6px; font-family: Consolas, monospace; }
     :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
     button:disabled { opacity: .55; cursor: wait; }
+    .pages { display: block; }
+    .pg.grid { min-height: 0; padding-bottom: 14px; }
+    .pg.unloaded { display: block; }
+    .list-status { min-height: 28px; padding: 6px 0; text-align: center; font-size: 12px; color: var(--muted); }
+    .list-status:empty { min-height: 0; padding: 0; }
   </style>
 </head>
 <body>
@@ -209,6 +214,7 @@
       </select>
     </div>
     <div class="grid" id="list"></div>
+    <div id="listStatus" class="list-status" aria-live="polite"></div><div id="listSentinel" style="height:1px"></div>
   </div>
 
   <script src="../../shared/aitoolbox-config.js?v=3.5.06"></script>
@@ -216,6 +222,7 @@
     <script src="../../shared/aitoolbox-runtime.js?v=3.5.06"></script>
     <script src="../../shared/aitoolbox-media.js?v=3.5.06"></script>
     <script src="../../shared/aitoolbox-dom.js?v=3.5.06"></script>
+    <script>window.AITOOLBOX_SKIP_KEEPALIVE = true;</script>
     <script src="../../shared/aitoolbox-api.js?v=3.5.06"></script>
   <script src="../../shared/aitoolbox-ui.js?v=3.5.06"></script>
   <script src="../../shared/aitoolbox-layout.js?v=3.5.06"></script>
@@ -315,22 +322,32 @@
 
       let vaultOn = false;
       let demo = false;
+      let hadLive = false, liveAt = '';
       let tab = 'all';
       let catalog = { items: {}, haveFile: 0, missingFile: 0, uniquePrompts: 0, count: 0 };
       let prompts = [];
       let delta = [];
+      let listGen = 0, listLoading = false, listNext = 0, listTotal = 0, listRev = 0, pendingReset = false;
+      const PAGE = 120;
+      let pages = [];
+      const MAX_LIVE_VIDEOS = 48;
+      let liveVideos = 0;
+      const thumbFailed = new Set();
+      const MAX_THUMB_INFLIGHT = 3;
+      let thumbQ = [], thumbInflight = new Set();
+      const wrapBox = document.querySelector('.wrap');
 
       function vaultFetchOnce(path, opts) {
         const ctrl = new AbortController();
-        const ms = (opts && opts.timeout) || 800;
+        const ms = (opts && opts.timeout) || 5000;
         const t = setTimeout(function () { try { ctrl.abort(); } catch (_) {} }, ms);
         const init = Object.assign({ cache: 'no-store', signal: ctrl.signal }, opts || {});
         init.headers = Object.assign({ 'X-FAFO-Vault': '1' }, vaultToken ? { 'X-FAFO-Vault-Token': vaultToken } : {}, init.headers || {});
         delete init.timeout;
         return fetch(VAULT + path, init).finally(function () { clearTimeout(t); });
       }
-      async function vaultGet(path) {
-        const r = await vaultFetch(path);
+      async function vaultGet(path, timeoutMs) {
+        const r = await vaultFetch(path, timeoutMs ? { timeout: timeoutMs } : undefined);
         if (!r.ok) throw new Error('vault ' + r.status);
         const ct = r.headers.get('content-type') || '';
         if (ct.indexOf('json') >= 0) return r.json();
@@ -433,6 +450,8 @@
 
       function applyLive(stats, itemMap, uniqueRows, deltaRows) {
         demo = false;
+        hadLive = true;
+        liveAt = new Date().toLocaleTimeString();
         renderWatch({ libraryDir: stats.libraryDir, watchDirs: stats.watchDirs });
         catalog = {
           items: itemMap || {},
@@ -448,11 +467,16 @@
         if (b) { b.className = 'banner'; b.textContent = ''; }
       }
 
+      function showOffline(msg) {
+        vaultOn = false;
+        const b = el('banner');
+        if (b) { b.className = 'banner show demo'; b.textContent = msg; }
+      }
+
       function renderKpis() {
         setText('kpiHave', catalog.haveFile);
         setText('kpiMiss', catalog.missingFile);
         setText('kpiPrompts', catalog.uniquePrompts);
-        setText('kpiCount', catalog.count);
         const pill = el('vaultPill');
         if (!pill) return;
         if (vaultOn) {
@@ -481,14 +505,296 @@
 
       function mediaTag(it) {
         if (it.thumbUrl) return '<img alt="" src="' + esc(it.thumbUrl) + '">';
-        if (vaultOn && it.hasFile && it.id) {
-          const src = VAULT + '/preview?id=' + encodeURIComponent(it.id);
-          if ((it.mediaType || '') === 'image' || /\.(png|jpe?g|webp|gif)$/i.test(it.filename || '')) {
-            return '<img alt="" src="' + esc(src) + '">';
-          }
-          return '<video muted loop playsinline preload="none" src="' + esc(src) + '"></video>';
+        const ph = esc(svgThumb(it));
+        const isImage = (it.mediaType || '') === 'image' || /\.(png|jpe?g|webp|gif)$/i.test(it.filename || '');
+        if (vaultOn && it.hasFile && it.id && it.thumb && !thumbFailed.has(it.id)) {
+          return '<img alt="" decoding="async" loading="lazy" width="320" height="200" src="' + ph +
+            '" data-stage="thumb" data-kind="' + (it.thumb === 'poster' ? 'video' : 'image') +
+            '" data-want="' + esc(VAULT + '/thumb?id=' + encodeURIComponent(it.id)) + '">';
         }
-        return '<img alt="" src="' + esc(svgThumb(it)) + '">';
+        if (vaultOn && it.hasFile && it.id && isImage) {
+          return '<img alt="" decoding="async" loading="lazy" width="320" height="200" src="' + ph +
+            '" data-stage="orig" data-want="' + esc(VAULT + '/preview?id=' + encodeURIComponent(it.id)) + '">';
+        }
+        if (vaultOn && it.hasFile && it.id) {
+          return '<video muted playsinline preload="metadata" data-src="' +
+            esc(VAULT + '/preview?id=' + encodeURIComponent(it.id) + '#t=0.1') + '"></video>';
+        }
+        return '<img alt="" src="' + ph + '">';
+      }
+
+      function tileHtml(it) {
+        const have = !!it.hasFile;
+        const name = it.filename || it.title || (have ? 'On disk' : 'Not downloaded');
+        return '<article class="tile ' + (have ? 'have' : 'miss') + '" data-id="' + esc(it.id || '') + '">' +
+          '<div class="frame">' + mediaTag(it) +
+          '<span class="stamp">' + (have ? 'HAVE' : 'MISS') + '</span>' +
+          '<span class="bar">' + (have ? 'HAVE — ON DISK' : 'MISS — NOT SAVED') + '</span></div>' +
+          '<div class="cap"><strong>' + esc(name) + '</strong>' + esc(it.prompt || 'No prompt captured yet') + '</div></article>';
+      }
+      function tilesHtml(items) {
+        return (items || []).map(tileHtml).join('');
+      }
+
+      function releaseVideo(v) {
+        v.removeAttribute('src');
+        try { v.load(); } catch (_) {}
+        liveVideos = Math.max(0, liveVideos - 1);
+      }
+      const tileIO = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          const n = en.target;
+          if (n.tagName === 'VIDEO') {
+            if (en.isIntersecting) {
+              if (!n.getAttribute('src') && liveVideos < MAX_LIVE_VIDEOS) {
+                n.src = n.dataset.src;
+                liveVideos++;
+              }
+            } else if (n.getAttribute('src')) {
+              releaseVideo(n);
+            }
+            return;
+          }
+          if (en.isIntersecting) {
+            if (n.dataset.want && thumbQ.indexOf(n) < 0 && !thumbInflight.has(n)) {
+              thumbQ.push(n);
+              pumpThumbs();
+            }
+          } else {
+            const qi = thumbQ.indexOf(n);
+            if (qi >= 0) thumbQ.splice(qi, 1);
+          }
+        });
+      }, { root: wrapBox, rootMargin: '50% 0px' }) : null;
+      function pumpThumbs() {
+        while (thumbInflight.size < MAX_THUMB_INFLIGHT && thumbQ.length) {
+          const img = thumbQ.shift();
+          if (!img.isConnected) continue;
+          thumbInflight.add(img);
+          img.onload = thumbDone;
+          img.onerror = thumbFail;
+          img.src = img.dataset.want;
+        }
+      }
+      function thumbDone(ev) {
+        const img = ev.target;
+        thumbInflight.delete(img);
+        img.onload = null;
+        img.onerror = null;
+        img.removeAttribute('data-want');
+        if (tileIO) tileIO.unobserve(img);
+        pumpThumbs();
+      }
+      function thumbFail(ev) {
+        const img = ev.target;
+        thumbInflight.delete(img);
+        img.onload = null;
+        img.onerror = null;
+        const tile = img.closest('.tile[data-id]');
+        const id = tile ? tile.getAttribute('data-id') : '';
+        const stage = img.getAttribute('data-stage');
+        if (stage === 'thumb' && !img.hasAttribute('data-try')) {
+          img.setAttribute('data-try', '1');
+          img.dataset.want = img.dataset.want + '&r=1';
+          setTimeout(function () {
+            if (img.isConnected) { thumbQ.push(img); pumpThumbs(); }
+          }, 2000);
+        } else if (stage === 'thumb') {
+          thumbFailed.add(id);
+          if (img.getAttribute('data-kind') === 'video') {
+            if (tileIO) tileIO.unobserve(img);
+            const v = document.createElement('video');
+            v.muted = true;
+            v.setAttribute('muted', '');
+            v.setAttribute('playsinline', '');
+            v.setAttribute('preload', 'metadata');
+            v.setAttribute('data-src', VAULT + '/preview?id=' + encodeURIComponent(id) + '#t=0.1');
+            img.replaceWith(v);
+            if (tileIO) tileIO.observe(v);
+          } else {
+            img.setAttribute('data-stage', 'orig');
+            img.dataset.want = VAULT + '/preview?id=' + encodeURIComponent(id);
+            img.removeAttribute('data-try');
+            thumbQ.push(img);
+          }
+        } else if (stage === 'orig') {
+          img.setAttribute('data-stage', 'svg');
+          img.removeAttribute('data-want');
+          if (tileIO) tileIO.unobserve(img);
+          img.src = svgThumb({ id: id, hasFile: true });
+        }
+        pumpThumbs();
+      }
+      function observeTiles(root) {
+        if (!tileIO || !root) return;
+        root.querySelectorAll('video[data-src], img[data-want]').forEach(function (n) { tileIO.observe(n); });
+      }
+      function releaseTiles(root) {
+        if (!root) return;
+        root.querySelectorAll('video[src]').forEach(function (v) { releaseVideo(v); });
+        thumbInflight.forEach(function (img) {
+          if (root.contains(img)) {
+            thumbInflight.delete(img);
+            img.onload = null;
+            img.onerror = null;
+            img.removeAttribute('src');
+          }
+        });
+        thumbQ = thumbQ.filter(function (img) { return !root.contains(img); });
+        if (tileIO) {
+          root.querySelectorAll('video[data-src], img[data-want]').forEach(function (n) { tileIO.unobserve(n); });
+        }
+        pumpThumbs();
+      }
+
+      function isGridTab() {
+        return tab !== 'prompts' && tab !== 'log';
+      }
+      function listTop() {
+        const box = el('list');
+        if (!box || !wrapBox) return 0;
+        return box.getBoundingClientRect().top - wrapBox.getBoundingClientRect().top + wrapBox.scrollTop;
+      }
+      function nearTop() {
+        return !!wrapBox && (wrapBox.scrollTop - listTop()) <= 400;
+      }
+      function listQuery(offset) {
+        return '/catalog?offset=' + offset + '&limit=' + PAGE +
+          '&tab=' + encodeURIComponent(tab) +
+          '&type=' + encodeURIComponent((el('typeFilter') && el('typeFilter').value) || '') +
+          '&q=' + encodeURIComponent(((el('search') && el('search').value) || '').trim());
+      }
+      function setListStatus(k) {
+        const s = el('listStatus');
+        if (!s) return;
+        s.textContent = '';
+        if (k === 'loading') {
+          s.textContent = 'Loading more…';
+        } else if (k === 'end') {
+          s.textContent = 'End of library — ' + listTotal + ' items';
+        } else if (k === 'error') {
+          s.appendChild(document.createTextNode('Couldn\'t load more '));
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = 'Retry';
+          b.addEventListener('click', function () { loadNext(); });
+          s.appendChild(b);
+        } else if (k === 'offline') {
+          s.textContent = 'Vault offline — Start vault to load more';
+        }
+      }
+      function resetList() {
+        listGen++;
+        listLoading = false;
+        listNext = 0;
+        pendingReset = false;
+        pages.forEach(function (pg) { releaseTiles(pg.el); });
+        pages = [];
+        const box = el('list');
+        if (!box) return;
+        box.innerHTML = '';
+        box.className = 'pages';
+        setListStatus('');
+        if (wrapBox && wrapBox.scrollTop > listTop()) wrapBox.scrollTop = listTop() - 8;
+        if (!vaultOn) {
+          box.innerHTML = '<div class="empty">Start the vault to load your real HAVE / MISS thumbs.</div>';
+          return;
+        }
+        loadNext();
+      }
+      async function loadNext() {
+        if (listLoading || listNext == null || !isGridTab()) return;
+        if (!vaultOn) { if (pages.length) setListStatus('offline'); return; }
+        const gen = listGen;
+        listLoading = true;
+        setListStatus('loading');
+        try {
+          const r = await vaultGet(listQuery(listNext), 10000);
+          if (gen !== listGen) return;
+          if (!r || r.total === 0) {
+            const box = el('list');
+            if (box) box.innerHTML = '<div class="empty">Nothing in this filter. Harvest from grok.com/imagine/saved or Scan disk.</div>';
+            listNext = null;
+            listTotal = 0;
+            listRev = r ? r.rev : listRev;
+            setText('kpiCount', 0);
+            setListStatus('');
+            return;
+          }
+          appendPage(r);
+          listNext = r.nextOffset;
+          listTotal = r.total;
+          listRev = r.rev;
+          setText('kpiCount', listTotal);
+          setListStatus(listNext == null ? 'end' : '');
+        } catch (_) {
+          if (gen === listGen) setListStatus('error');
+        } finally {
+          if (gen === listGen) listLoading = false;
+        }
+      }
+      function appendPage(r) {
+        const box = el('list');
+        if (!box) return;
+        const items = r.items || [];
+        const i = pages.length;
+        const div = document.createElement('div');
+        div.className = 'grid pg';
+        div.setAttribute('data-page', String(i));
+        div.innerHTML = tilesHtml(items);
+        box.appendChild(div);
+        pages.push({ i: i, offset: r.offset, items: items, el: div, live: true, h: 0 });
+        observeTiles(div);
+        if (i === 0) { try { performance.mark('it-first-tiles'); } catch (_) {} }
+        updateWindow();
+        const s = el('listSentinel');
+        if (sentinelIO && s) { sentinelIO.unobserve(s); sentinelIO.observe(s); }
+      }
+      function updateWindow() {
+        if (!isGridTab() || !wrapBox || !pages.length) return;
+        const wr = wrapBox.getBoundingClientRect();
+        const mid = wr.top + wr.height / 2;
+        let cur = 0;
+        pages.forEach(function (pg) { if (pg.el.getBoundingClientRect().top <= mid) cur = pg.i; });
+        pages.forEach(function (pg) {
+          if (Math.abs(pg.i - cur) > 2) {
+            if (pg.live) {
+              pg.h = pg.el.offsetHeight;
+              releaseTiles(pg.el);
+              pg.el.innerHTML = '';
+              pg.el.style.height = pg.h + 'px';
+              pg.el.classList.add('unloaded');
+              pg.live = false;
+            }
+          } else if (!pg.live) {
+            pg.el.innerHTML = tilesHtml(pg.items);
+            pg.el.style.height = '';
+            pg.el.classList.remove('unloaded');
+            pg.live = true;
+            observeTiles(pg.el);
+          }
+        });
+      }
+      function onWindowResize() {
+        const live = pages.filter(function (pg) { return pg.live && pg.items.length; })[0];
+        if (live) {
+          const cols = getComputedStyle(live.el).gridTemplateColumns.split(' ').length;
+          const pitch = live.el.offsetHeight / Math.ceil(live.items.length / cols);
+          pages.forEach(function (pg) {
+            if (!pg.live) {
+              pg.h = Math.ceil(pg.items.length / cols) * pitch;
+              pg.el.style.height = pg.h + 'px';
+            }
+          });
+        }
+        updateWindow();
+      }
+      const sentinelIO = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+        if (entries.some(function (en) { return en.isIntersecting; })) loadNext();
+      }, { root: wrapBox, rootMargin: '0px 0px 150% 0px' }) : null;
+      function onViewChange() {
+        if (tab === 'prompts' || tab === 'log') renderList();
+        else resetList();
       }
 
       function renderList() {
@@ -513,26 +819,8 @@
           }).join('');
           return;
         }
-        box.className = 'grid';
-        const rows = filteredClips();
-        if (!rows.length) {
-          box.innerHTML = '<div class="empty">' + (vaultOn
-            ? 'Nothing in this filter. Harvest from grok.com/imagine/saved or Scan disk.'
-            : 'Start the vault to load your real HAVE / MISS thumbs.') + '</div>';
-          return;
-        }
-        box.innerHTML = rows.map(function (it) {
-          const have = !!it.hasFile;
-          const name = it.filename || it.title || (have ? 'On disk' : 'Not downloaded');
-          return '<article class="tile ' + (have ? 'have' : 'miss') + '" data-id="' + esc(it.id || '') + '">' +
-            '<div class="frame">' + mediaTag(it) +
-            '<span class="stamp">' + (have ? 'HAVE' : 'MISS') + '</span>' +
-            '<span class="bar">' + (have ? 'HAVE — ON DISK' : 'MISS — NOT SAVED') + '</span></div>' +
-            '<div class="cap"><strong>' + esc(name) + '</strong>' + esc(it.prompt || 'No prompt captured yet') + '</div></article>';
-        }).join('');
-        box.querySelectorAll('.tile[data-id]').forEach(function (tile) {
-          tile.addEventListener('click', function () { reveal(tile.getAttribute('data-id')); });
-        });
+        resetList();
+        return;
       }
 
       async function reveal(id) {
@@ -542,31 +830,58 @@
         catch (_) { toast('Could not reveal that file', 'warn'); }
       }
 
+      function offlineMsg() {
+        return hadLive
+          ? 'Vault offline — showing the library as last loaded at ' + liveAt + '. Click Start vault to reconnect.'
+          : 'Vault offline — click Start vault to load your HAVE / MISS library.';
+      }
+
       async function refresh() {
         try {
           const health = await vaultGet('/health');
           vaultOn = !!(health && health.ok);
         } catch (_) { vaultOn = false; }
         if (!vaultOn) {
-          applyDemo();
+          showOffline(offlineMsg());
           renderKpis();
-          renderList();
           return;
         }
+        let stats = null;
         try {
           const pack = await Promise.all([
             vaultGet('/stats'),
-            vaultGet('/catalog'),
             vaultGet('/prompts/unique'),
             vaultGet('/prompts/delta?limit=80')
           ]);
-          applyLive(pack[0], (pack[1] && pack[1].items) || {}, pack[2], pack[3]);
+          stats = pack[0] || {};
+          applyLive(pack[0], null, pack[1], pack[2]);
         } catch (e) {
-          applyDemo();
+          showOffline('Vault read failed — ' + offlineMsg());
           toast((e && e.message) || 'Vault read failed', 'warn');
+          renderKpis();
+          return;
         }
         renderKpis();
-        renderList();
+        if (!isGridTab()) { renderList(); return; }
+        if (pages.length === 0) { resetList(); return; }
+        if (stats.rev !== listRev) {
+          if (nearTop()) {
+            const gen = listGen;
+            try {
+              const r = await vaultGet(listQuery(0), 10000);
+              if (gen !== listGen) return;
+              const a = (r && r.items) || [];
+              const b = pages[0] ? pages[0].items : [];
+              const same = a.length === b.length && a.every(function (x, i) {
+                return x.id === b[i].id && !!x.hasFile === !!b[i].hasFile;
+              });
+              if (same) listRev = r.rev;
+              else resetList();
+            } catch (_) {}
+          } else {
+            pendingReset = true;
+          }
+        }
       }
 
       async function startVault() {
@@ -577,7 +892,8 @@
           if (window.AIToolboxAPI && AIToolboxAPI.launchLocalTool) {
             await AIToolboxAPI.launchLocalTool('imagine-tracker', { action: 'run' });
           } else {
-            location.href = 'aitoolbox://imagine-tracker';
+            toast('Launcher API unavailable — run Launch-ImagineVault.vbs in System Tools\\ImagineTracker', 'warn');
+            return;
           }
           for (let i = 0; i < 12; i++) {
             await new Promise(function (r) { setTimeout(r, 700); });
@@ -634,11 +950,11 @@
         btn.addEventListener('click', function () {
           tab = btn.dataset.tab;
           document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('active', b === btn); });
-          renderList();
+          onViewChange();
         });
       });
-      bind('search', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch) ? AIToolboxMedia.bindSearch(renderList, 200) : renderList);
-      bind('typeFilter', 'change', renderList);
+      bind('search', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch) ? AIToolboxMedia.bindSearch(onViewChange, 200) : onViewChange);
+      bind('typeFilter', 'change', onViewChange);
       bind('btnStart', 'click', startVault);
       bind('btnScan', 'click', scanDisk);
       bind('vaultPill', 'click', function () { if (!vaultOn) startVault(); else refresh(); });
@@ -677,11 +993,32 @@
         counterparts: ['media-hub', 'media-library', 'file-organizer']
       };
 
-      applyDemo();
+      bind('list', 'click', function (e) {
+        const t = e.target.closest && e.target.closest('.tile[data-id]');
+        if (t) reveal(t.getAttribute('data-id'));
+      });
+      if (wrapBox) {
+        let winRaf = 0;
+        wrapBox.addEventListener('scroll', function () {
+          if (winRaf) return;
+          winRaf = requestAnimationFrame(function () {
+            winRaf = 0;
+            if (pendingReset && isGridTab() && nearTop()) { resetList(); return; }
+            updateWindow();
+          });
+        }, { passive: true });
+      }
+      let resizeTimer = 0;
+      window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(onWindowResize, 200);
+      });
+      if (sentinelIO && el('listSentinel')) sentinelIO.observe(el('listSentinel'));
+
       renderKpis();
       renderList();
-      startVault();
-      const vaultTick = function () { if (vaultOn) refresh(); else startVault(); };
+      refresh();
+      const vaultTick = function () { refresh(); };
       if (window.AIToolboxMedia && AIToolboxMedia.watchServer) {
         AIToolboxMedia.watchServer(vaultTick, { onlineMs: 20000, offlineMs: 8000, iframeMs: 40000 });
       } else {
