@@ -86,6 +86,7 @@
 
   async function loadMap() {
     const r = await fetch(VAULT + '/snapshot', { cache: 'no-store' });
+    if (!r.ok) throw new Error('vault ' + r.status);
     const j = await r.json();
     return (j && (j.items || {})) || {};
   }
