@@ -38,13 +38,33 @@ try {
     exit 0
 }
 
+function Find-ToolboxRoot {
+    $dir = $here
+    for ($i = 0; $i -lt 6; $i++) {
+        if (Test-Path -LiteralPath (Join-Path $dir 'server\aitoolbox_server.py')) {
+            return (Resolve-Path -LiteralPath $dir).Path
+        }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    $pointer = Join-Path $work 'toolbox-root.txt'
+    if (Test-Path -LiteralPath $pointer) {
+        $saved = (Get-Content -LiteralPath $pointer -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($saved -and (Test-Path -LiteralPath (Join-Path $saved 'server\aitoolbox_server.py'))) {
+            return (Resolve-Path -LiteralPath $saved).Path
+        }
+    }
+    return $null
+}
+$toolbox = Find-ToolboxRoot
+if ($toolbox) {
+    Set-Content -LiteralPath (Join-Path $work 'toolbox-root.txt') -Value $toolbox -Encoding ASCII
+}
 $srcPy = @(
-    (Join-Path $here 'ImagineVault.py'),
-    (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\System Tools\ImagineTracker\ImagineVault.py'),
-    'C:\_Git\repos\html\HTML Toolbox AI tools\production\System Tools\ImagineTracker\ImagineVault.py',
-    'C:\_Git\repos\html\fafo-chrome-extensions\FAFO Imagine Tracker\companion\ImagineVault.py'
+    (Join-Path $here 'ImagineVault.py')
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $srcPy) { throw 'ImagineVault.py not found' }
+if (-not $srcPy) { throw 'ImagineVault.py not found next to this script' }
 
 Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
 foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
@@ -55,18 +75,16 @@ foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launc
 }
 
 function Find-Python {
-    $list = @(
-        (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\.venv\Scripts\pythonw.exe'),
-        (Join-Path $env:USERPROFILE 'Desktop\FAFO-Power-Toolbox\.venv\Scripts\python.exe'),
-        'C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv\Scripts\pythonw.exe',
-        'C:\_Git\repos\html\HTML Toolbox AI tools\production\.venv\Scripts\python.exe',
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python314\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\pythonw.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe')
-    )
-    foreach ($c in $list) { if (Test-Path -LiteralPath $c) { return $c } }
+    $list = @()
+    if ($toolbox) {
+        $venv = Join-Path $toolbox '.venv\Scripts'
+        $list = @(
+            (Join-Path $venv 'pythonw.exe'),
+            (Join-Path $venv 'python.exe')
+        )
+    }
+    if ($env:FAFO_PYTHON) { $list = @($env:FAFO_PYTHON) + $list }
+    foreach ($c in $list) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
     foreach ($name in @('pythonw', 'python', 'py')) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
         if ($cmd) { return $cmd.Source }
