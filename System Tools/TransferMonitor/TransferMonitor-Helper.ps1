@@ -10,6 +10,8 @@
   Routes: GET /health and GET /transfers. Serves no files and reads no request body.
   Started by S1 (/api/tools/launch id "transfer-helper"); exits by itself after
   -IdleMinutes without a /transfers request. One instance per port.
+  /transfers leaves out partial files unchanged for -StaleMinutes (counted in counts.stale);
+  BITS jobs, processes and files that grow or appear while the helper runs are always listed.
 
   Copied verbatim from TransferMonitor.ps1 (same folder):
     L26-36    $script:WatchStore + Read-WatchFolders (read-only; the L37-43 writer is not copied)
@@ -24,6 +26,7 @@ param(
   [int]$IdleMinutes = 10,
   [int]$PollMs = 1500,
   [int]$HistoryMax = 200,
+  [int]$StaleMinutes = 120,
   [string[]]$WatchFolders = @(
     "$env:USERPROFILE\Downloads",
     "$env:USERPROFILE\Desktop",
@@ -264,12 +267,48 @@ function Merge-Snapshot {
 # ---- end of L151-340 ----
 
 $script:LastCollect = [datetime]::MinValue
+$script:FileMtime = @{}    # file key -> LastWriteTimeUtc from a fresh stat (not the directory listing), every collect
+$script:Grew = @{}         # file keys whose size grew while this helper watched them
+$script:Hidden = @{}       # file keys left out of /transfers as stale at the last collect
+$script:Quiet = @{}        # stale keys that later vanished: their history rows are not served (not real completions)
+$script:BaselineAt = $null # end of the first collect; files first seen after it appeared while the helper ran
 function Invoke-Collect {
   $ErrorActionPreference = 'SilentlyContinue'
   if (((Get-Date) - $script:LastCollect).TotalMilliseconds -lt $PollMs) { return }
   $script:LastCollect = Get-Date
   Update-WatchLive
   try { Merge-Snapshot } catch {}
+  try { Update-TmFreshness } catch {}
+}
+
+function Test-TmShown($a) {
+  # Visibility only: never adds, removes or moves State items, so nothing reaches history because of it.
+  if ($StaleMinutes -le 0) { return $true }
+  $k = [string]$a.Key
+  if (-not $k.StartsWith('file::')) { return $true }                              # BITS jobs and processes
+  if ($script:Grew.ContainsKey($k)) { return $true }                              # grew while watched
+  if ($script:BaselineAt -and $a.FirstSeen -gt $script:BaselineAt) { return $true } # appeared after the first scan
+  if (-not $script:FileMtime.ContainsKey($k)) { return $true }                    # no stat yet
+  return (([datetime]::UtcNow - $script:FileMtime[$k]).TotalMinutes -lt $StaleMinutes)
+}
+
+function Update-TmFreshness {
+  $live = @{}
+  foreach ($a in @($script:State.Active.Values)) {
+    $k = [string]$a.Key
+    if (-not $k.StartsWith('file::')) { continue }
+    $live[$k] = $a
+    try { $script:FileMtime[$k] = [System.IO.File]::GetLastWriteTimeUtc([string]$a.Path) } catch {}  # gone -> 1601 (stale)
+    if ([double]$a.Rate -gt 0) { $script:Grew[$k] = $true }
+  }
+  foreach ($k in @($script:FileMtime.Keys)) {
+    if ($live.ContainsKey($k)) { continue }
+    if ($script:Hidden.ContainsKey($k)) { $script:Quiet[$k] = $true }
+    $script:FileMtime.Remove($k); $script:Grew.Remove($k)
+  }
+  if ($null -eq $script:BaselineAt) { $script:BaselineAt = Get-Date }
+  $script:Hidden = @{}
+  foreach ($k in @($live.Keys)) { if (-not (Test-TmShown $live[$k])) { $script:Hidden[$k] = $true } }
 }
 
 function ConvertTo-IsoUtc($d) {
@@ -278,7 +317,7 @@ function ConvertTo-IsoUtc($d) {
 }
 
 function ConvertTo-TmJson {
-  $active = [object[]]@($script:State.Active.Values |
+  $active = [object[]]@($script:State.Active.Values | Where-Object { -not $script:Hidden.ContainsKey([string]$_.Key) } |
     Sort-Object -Property @{ Expression = { [double]$_.Rate }; Descending = $true }, @{ Expression = { [string]$_.Name }; Descending = $false } |
     ForEach-Object {
       $pct = if ([long]$_.Total -gt 0) { [math]::Round(100.0 * [double]$_.Bytes / [double]$_.Total, 1) } else { -1 }
@@ -291,7 +330,8 @@ function ConvertTo-TmJson {
         status = [string]$_.Status
       }
     })
-  $history = [object[]]@($script:State.History | ForEach-Object {
+  $history = [object[]]@($script:State.History | Where-Object { -not $script:Quiet.ContainsKey([string]$_.Key) } |
+    Select-Object -First 50 | ForEach-Object {
       [ordered]@{
         time = (ConvertTo-IsoUtc $_.Time); status = [string]$_.Status; name = [string]$_.Name
         direction = [string]$_.Direction; protocol = [string]$_.Protocol
@@ -302,11 +342,11 @@ function ConvertTo-TmJson {
     })
   $o = [ordered]@{
     ok = $true; service = 'fafo-transfer-helper'; schema = 1; readOnly = $true
-    at = (Get-Date).ToUniversalTime().ToString('o'); pollMs = $PollMs
+    at = (Get-Date).ToUniversalTime().ToString('o'); pollMs = $PollMs; staleMinutes = $StaleMinutes
     watchFolders = [object[]]@($script:WatchLive)
     net = [ordered]@{ inBps = [double]$script:State.NetInRate; outBps = [double]$script:State.NetOutRate }
     active = $active; history = $history
-    counts = [ordered]@{ active = $active.Count; history = $history.Count }
+    counts = [ordered]@{ active = $active.Count; history = $history.Count; stale = $script:Hidden.Count }
   }
   return ($o | ConvertTo-Json -Depth 5 -Compress)
 }
@@ -514,6 +554,7 @@ try {
   }
   if ($bound) {
     Write-TmTokenFile
+    Invoke-Collect   # warm-up before serving: first BITS query (~4.3 s cold) and the stale baseline leave the request path
     $script:LastUse = Get-Date
     $idle = [TimeSpan]::FromMinutes($IdleMinutes)
     while (((Get-Date) - $script:LastUse) -lt $idle) {
