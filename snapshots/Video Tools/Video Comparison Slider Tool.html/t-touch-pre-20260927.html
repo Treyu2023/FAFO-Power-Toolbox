@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pro AI Video Comparator</title>
     <style>
         :root {
@@ -49,6 +49,7 @@
             min-height: 100vh;
             height: 100vh;
             overflow: auto;
+            min-width: 720px;
         }
 
         .control-panel-wrapper { position: relative; z-index: 40; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -175,8 +176,8 @@
         .viewer-container[data-mode="difference"] .slider-line { display: none; }
 
         .slider-button {
-            position: absolute; top: 50%; left: 50%; width: var(--fafo-touch-min, 44px); height: var(--fafo-touch-min, 44px); background: var(--bg-color);
-            border: 2px solid var(--neon-accent); border-radius: 50%; box-shadow: var(--neon-glow); pointer-events: auto;
+            position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; background: var(--bg-color);
+            border: 2px solid var(--neon-accent); border-radius: 50%; box-shadow: var(--neon-glow);
             display: flex; align-items: center; justify-content: center; transform-origin: center center;
         }
         .slider-button::before, .slider-button::after {
@@ -185,9 +186,6 @@
         }
         .slider-button::before { transform: rotate(135deg); margin-right: 3px; }
         .slider-button::after { transform: rotate(-45deg); margin-left: 3px; }
-        /* Hit strip along the split line; applyTransform keeps it 24 px wide on screen at any zoom. */
-        .slider-hit { position: absolute; top: 0; left: 50%; height: 100%; transform: translateX(-50%); pointer-events: auto; }
-        .viewer-container[data-orient="vertical"] .slider-hit { top: 50%; left: 0; width: 100%; transform: translateY(-50%); }
 
         .ab-marker {
             position: absolute; top: 0; width: 2px; height: 100%;
@@ -291,12 +289,6 @@
         .viewer-container { min-height: 320px; }
         .control-panel-wrapper.collapsed { transform: none; }
         .control-panel-wrapper.collapsed > .control-panel { display: none; }
-        /* Touch: the stage owns one-finger split drag and two-finger pinch/pan. Deck and pair list keep default touch-action. */
-        .viewer-container, .transform-layer { touch-action: none; }
-        .res-badge, .zoom-badge { top: max(15px, env(safe-area-inset-top)); }
-        .res-left { left: max(15px, env(safe-area-inset-left)); } .res-right { right: max(15px, env(safe-area-inset-right)); }
-        .settings-modal { max-width: calc(100vw - 16px); }
-        @media (max-width: 720px) { .viewer-container { min-height: max(320px, 75dvh); } }
     </style>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
@@ -427,7 +419,7 @@
             <div class="ab-region" id="abRegion" style="display:none;"></div>
             <div class="ab-marker a" id="abMarkerA" style="display:none; left:0;"></div>
             <div class="ab-marker b" id="abMarkerB" style="display:none; left:100%;"></div>
-            <div class="slider-line" id="sliderLine"><div class="slider-hit"></div><div class="slider-button"></div></div>
+            <div class="slider-line" id="sliderLine"><div class="slider-button"></div></div>
         </div>
 
         <div class="video-deck fx-border" id="videoDeck">
@@ -511,7 +503,6 @@
         const boxAfter = document.getElementById('box-after');
         const sliderLine = document.getElementById('sliderLine');
         const sliderButton = document.querySelector('.slider-button');
-        const sliderHit = sliderLine.querySelector('.slider-hit');
         const toastMsg = document.getElementById('toastMsg');
         const panelWrapper = document.getElementById('panelWrapper');
         const pairLibrary = document.getElementById('pairLibrary');
@@ -1152,9 +1143,6 @@
         document.addEventListener('mousemove', () => {
             if (document.body.classList.contains('is-fullscreen')) { document.body.classList.remove('idle'); startIdleTimer(); }
         });
-        document.addEventListener('pointerdown', e => {   // touch and pen wake the fullscreen deck too (mousemove above covers the mouse)
-            if (e.pointerType !== 'mouse' && document.body.classList.contains('is-fullscreen')) { document.body.classList.remove('idle'); startIdleTimer(); }
-        });
         function startIdleTimer() {
             clearTimeout(idleTimeout);
             idleTimeout = setTimeout(() => { if (document.fullscreenElement) document.body.classList.add('idle'); }, 3000);
@@ -1609,20 +1597,15 @@
             transformLayer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
             sliderButton.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
             const orient = viewerContainer.dataset.orient;
-            if (orient === 'vertical') { sliderLine.style.width = '100%'; sliderLine.style.height = `${Math.max(1, 2 / scale)}px`; sliderHit.style.width = '100%'; sliderHit.style.height = `${24 / scale}px`; }
-            else { sliderLine.style.height = '100%'; sliderLine.style.width = `${Math.max(1, 2 / scale)}px`; sliderHit.style.height = '100%'; sliderHit.style.width = `${24 / scale}px`; }
+            if (orient === 'vertical') { sliderLine.style.width = '100%'; sliderLine.style.height = `${Math.max(1, 2 / scale)}px`; }
+            else { sliderLine.style.height = '100%'; sliderLine.style.width = `${Math.max(1, 2 / scale)}px`; }
             zoomBadge.textContent = `${Math.round(scale * 100)}%`;
-        }
-
-        function deckReserve() {   // room kept under Fit and 1:1 for the deck: 110 px as before, more when a narrow screen wraps the deck
-            const deck = document.getElementById('videoDeck');
-            return Math.max(110, (deck ? deck.offsetHeight : 0) + 20);
         }
 
         function fitToScreen() {
             if (!nativeWidth) return;
             const rect = viewerContainer.getBoundingClientRect();
-            const padding = document.fullscreenElement ? 20 : deckReserve();
+            const padding = document.fullscreenElement ? 20 : 110;
             const sX = rect.width / nativeWidth;
             const sY = (rect.height - padding) / nativeHeight;
             scale = Math.min(sX, sY) * 0.95;
@@ -1632,22 +1615,9 @@
         }
 
         viewerContainer.addEventListener('contextmenu', e => e.preventDefault());
-        // Pointer input. Mouse/pen: one pointerdown starts one drag (left = split in slider mode, right = pan), captured, and only
-        // that pointer moves it. Touch: one finger drags the split after an 8 px move (a tap never moves it), two fingers
-        // pinch-zoom and pan, and a double-tap toggles 1:1 / Fit. pointerup, pointercancel and lostpointercapture all end a drag.
-        const onStageUi = e => e.target.closest('.video-deck') || e.target.closest('.pair-library') || e.target.closest('.toast');
-        const touchPts = new Map();   // touch pointers that started on the stage: pointerId -> {x, y}
-        let dragId = null, touchTap = null, touchMulti = false, pinch = null, lastTap = null, lastTouchTapAt = -1e9;
-        viewerContainer.addEventListener('mousedown', e => { if (!onStageUi(e)) e.preventDefault(); });   // no text selection or native drag; no drag start here
-        viewerContainer.addEventListener('pointerdown', e => {
-            if (onStageUi(e)) return;
-            if (e.pointerType === 'touch') {
-                touchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-                try { viewerContainer.setPointerCapture(e.pointerId); } catch (_) {}
-                if (touchPts.size === 1) { touchMulti = false; touchTap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() }; }
-                else { touchMulti = true; touchTap = null; isDraggingSlider = false; dragId = null; pinch = null; pinchMove(); }
-                return;
-            }
+        viewerContainer.addEventListener('mousedown', e => {
+            if (e.target.closest('.video-deck') || e.target.closest('.pair-library') || e.target.closest('.toast')) return;
+            e.preventDefault();
             if (e.button === 0 && viewerContainer.dataset.mode === 'slider') {
                 if (isSweeping) document.getElementById('btn-sweep').click();
                 isDraggingSlider = true;
@@ -1657,66 +1627,18 @@
                 panStartX = e.clientX - translateX;
                 panStartY = e.clientY - translateY;
                 viewerContainer.style.cursor = 'grabbing';
-            } else return;
-            dragId = e.pointerId;
-            try { viewerContainer.setPointerCapture(e.pointerId); } catch (_) {}
+            }
         });
-        function pinchMove() {   // zoom around the two-finger midpoint and pan with it (same maths and 0.1-50 limits as the wheel)
-            const [a, b] = touchPts.values();
-            const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-            if (pinch && nativeWidth) {
-                const oldScale = scale;
-                scale = Math.max(0.1, Math.min(scale * d / pinch.d, 50));
-                const rect = transformLayer.getBoundingClientRect();
-                translateX -= (pinch.mx - rect.left) * (scale / oldScale - 1) - (mx - pinch.mx);
-                translateY -= (pinch.my - rect.top) * (scale / oldScale - 1) - (my - pinch.my);
-                applyTransform();
-            }
-            pinch = { d, mx, my };
-        }
-        function touchMove(e) {
-            if (touchPts.size > 1) { pinchMove(); return; }
-            if (touchMulti) return;   // a second finger was down: nothing until every finger is up
-            if (touchTap) {
-                if (Math.hypot(e.clientX - touchTap.x, e.clientY - touchTap.y) < 8) return;
-                touchTap = null;
-                if (viewerContainer.dataset.mode !== 'slider') return;
-                if (isSweeping) document.getElementById('btn-sweep').click();
-                isDraggingSlider = true; dragId = e.pointerId;
-            }
-            if (isDraggingSlider && e.pointerId === dragId) updateSliderFromEvent(e);
-        }
         window.addEventListener('pointermove', e => {
-            const p = touchPts.get(e.pointerId);
-            if (p) { p.x = e.clientX; p.y = e.clientY; touchMove(e); return; }
-            if (e.pointerId !== dragId) return;   // only the pointer that started the drag moves the split or the view
             if (isDraggingSlider) updateSliderFromEvent(e);
             else if (isPanning) { translateX = e.clientX - panStartX; translateY = e.clientY - panStartY; applyTransform(); }
         });
-        function onTap(e) {   // touch double-tap: 1:1 <-> Fit (the mouse dblclick keeps its time sync)
-            const now = performance.now();
-            lastTouchTapAt = now;
-            if (lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
-                lastTap = null;
-                document.getElementById(Math.abs(scale - 1) < 0.001 ? 'btn-fit' : 'btn-100').click();
-            } else lastTap = { x: e.clientX, y: e.clientY, t: now };
-        }
         function endPointer(e) {
-            if (touchPts.delete(e.pointerId)) {
-                pinch = null; if (touchPts.size > 1) pinchMove();   // re-baseline on the fingers still down
-                if (touchTap && touchTap.id === e.pointerId) {
-                    if (e.type === 'pointerup' && performance.now() - touchTap.t < 400) onTap(e);
-                    touchTap = null;
-                }
-            } else if (e.pointerId === dragId && isPanning) { isPanning = false; viewerContainer.style.cursor = 'crosshair'; }
-            if (e.pointerId === dragId) { dragId = null; isDraggingSlider = false; }
+            if (e.button === 2 || isPanning) { isPanning = false; viewerContainer.style.cursor = 'crosshair'; }
+            isDraggingSlider = false;
         }
         window.addEventListener('pointerup', endPointer);
         window.addEventListener('pointercancel', endPointer);
-        viewerContainer.addEventListener('lostpointercapture', endPointer);
-        window.addEventListener('dblclick', e => {   // a touch double-tap may also fire dblclick: keep it from the time-sync handler
-            if (viewerContainer.contains(e.target) && performance.now() - lastTouchTapAt < 800) e.stopPropagation();
-        }, true);
 
         function updateSliderFromEvent(e) {
             const rect = transformLayer.getBoundingClientRect();
@@ -1743,11 +1665,8 @@
             scale = 1;
             const rect = viewerContainer.getBoundingClientRect();
             translateX = (rect.width - nativeWidth) / 2;
-            translateY = ((rect.height - deckReserve()) - nativeHeight) / 2;
+            translateY = ((rect.height - 110) - nativeHeight) / 2;
             applyTransform();
-        });
-        matchMedia('(orientation: portrait)').addEventListener('change', () => {   // phones: refit after a rotate
-            if (matchMedia('(pointer: coarse)').matches) setTimeout(fitToScreen, 250);
         });
 
         document.getElementById('btn-swap').addEventListener('click', () => {
