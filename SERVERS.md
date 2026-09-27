@@ -27,6 +27,29 @@ Chrome / Toolbox do **not** need to be open:
 
 Manual start sets a short **manual hold** so the auto Chrome lifecycle does not kill S2 the next second. **Sleep** clears the hold.
 
+## One launcher
+
+Every start/stop bat calls `Scripts\Start-FAFOServers.ps1`. Do not start `aitoolbox_server.py` from its own CMD window.
+
+| Switch | What it does |
+|--------|----------------|
+| `-Force` | Start S1 and S2 now, hidden (no console) |
+| `-NoFafoMeta` | S1 only |
+| `-NoToolbox` | S2 only |
+| `-Console` | S1 in **this** window. `START SERVER (Console).bat` |
+| `-Stop` | Sleep S1 and S2 so the watchdog does not revive them |
+| `-SetMetaRoot "C:\path\to\explorer-meta"` | Save S2's folder and exit |
+
+S2 is not guessed from old `C:\_Git` or `D:\` checkouts. Set it once:
+
+```powershell
+powershell -File Scripts\Start-FAFOServers.ps1 -SetMetaRoot "C:\path\to\explorer-meta"
+```
+
+That writes `fafoMetaRoot` to `%LOCALAPPDATA%\FAFO\launch-prefs.json`. Example shape: `shared/launch-prefs.example.json`. Override for one run with `FAFO_META_ROOT`.
+
+Python is the toolbox `.venv` next to this repo (`INSTALL-PYTHON.bat`). There is no fallback to another checkout's venv.
+
 ## One-liners
 
 ```text

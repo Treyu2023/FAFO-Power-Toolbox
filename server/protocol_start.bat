@@ -95,12 +95,7 @@ start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\L
 exit /b 0
 
 :do_console
-if exist "%cd%\START SERVER (Console).bat" (
-  start "" "%cd%\START SERVER (Console).bat"
-) else (
-  call "%~dp0start_console_now.bat" 2>nul
-  if errorlevel 1 start "" cmd /k "cd /d "%cd%\server" && call ..\Scripts\use-fafo-python.bat && "%FAFO_PYTHON%" aitoolbox_server.py"
-)
+start "AI Toolbox Server (Console)" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Console -NoFafoMeta
 exit /b 0
 
 :do_diagnostics
@@ -135,16 +130,5 @@ if exist "%cd%\Scripts\Start-FAFOServers.ps1" (
   start "" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%cd%\Scripts\Start-FAFOServers.ps1" -ToolboxRoot "%cd%" -Force -Quiet
   exit /b 0
 )
-if exist "%cd%\Start Servers.bat" (
-  start "" /b "%cd%\Start Servers.bat"
-  exit /b 0
-)
-REM Fallback: pythonw hidden
-call "%~dp0..\Scripts\use-fafo-python.bat"
-if errorlevel 1 exit /b 1
-if exist "%FAFO_ROOT%\.venv\Scripts\pythonw.exe" (
-  start "" /b "%FAFO_ROOT%\.venv\Scripts\pythonw.exe" "%~dp0aitoolbox_server.py"
-) else (
-  start "" /b "%FAFO_PYTHON%" "%~dp0aitoolbox_server.py"
-)
-exit /b 0
+echo Missing Scripts\Start-FAFOServers.ps1
+exit /b 1
