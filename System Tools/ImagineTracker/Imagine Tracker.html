@@ -264,6 +264,35 @@
         try { window.AIToolboxUI && AIToolboxUI.toast && AIToolboxUI.toast(msg, kind || 'ok'); } catch (_) {}
       }
 
+      let vaultToken = null, tokenLoading = null;
+      function loadVaultToken() {
+        if (location.protocol !== 'file:') return Promise.resolve(null);
+        if (tokenLoading) return tokenLoading;
+        tokenLoading = new Promise(function (res) {
+          const s = document.createElement('script');
+          s.src = '.env.vault-token.js?r=' + Date.now();
+          s.onload = s.onerror = function () {
+            s.remove();
+            vaultToken = (typeof window.FAFO_VAULT_TOKEN === 'string' && window.FAFO_VAULT_TOKEN) || null;
+            tokenLoading = null;
+            res(vaultToken);
+          };
+          document.head.appendChild(s);
+        });
+        return tokenLoading;
+      }
+      let tokenTried = false;
+      async function vaultFetch(path, opts) {
+        if (location.protocol === 'file:' && !vaultToken && !tokenTried) { tokenTried = true; await loadVaultToken(); }
+        let r = await vaultFetchOnce(path, opts);
+        if (r.status === 403 && location.protocol === 'file:') {
+          let j = null;
+          try { j = await r.clone().json(); } catch (_) {}
+          if (j && j.error === 'bad-token') { await loadVaultToken(); r = await vaultFetchOnce(path, opts); }
+        }
+        return r;
+      }
+
       function svgThumb(it) {
         const have = !!it.hasFile;
         const neon = have ? '#00f0ff' : '#ff2bd6';
@@ -291,11 +320,12 @@
       let prompts = [];
       let delta = [];
 
-      function vaultFetch(path, opts) {
+      function vaultFetchOnce(path, opts) {
         const ctrl = new AbortController();
         const ms = (opts && opts.timeout) || 800;
         const t = setTimeout(function () { try { ctrl.abort(); } catch (_) {} }, ms);
         const init = Object.assign({ cache: 'no-store', signal: ctrl.signal }, opts || {});
+        init.headers = Object.assign({ 'X-FAFO-Vault': '1' }, vaultToken ? { 'X-FAFO-Vault-Token': vaultToken } : {}, init.headers || {});
         delete init.timeout;
         return fetch(VAULT + path, init).finally(function () { clearTimeout(t); });
       }
