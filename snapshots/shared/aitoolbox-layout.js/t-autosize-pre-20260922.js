@@ -38,6 +38,14 @@
 
   // v2 prefix: one-time break from corrupt "slim banner" saves in v1 (tiny fixed row heights).
   // Old v1 keys are left in place but ignored so first open heals to a full window.
+
+  function readUiScale() {
+    try {
+      if (document.documentElement.getAttribute('data-atx-iframe') === '1') return 1;
+      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--atx-ui-scale'));
+      return Number.isFinite(v) && v > 0.05 ? v : 1;
+    } catch (_) { return 1; }
+  }
   const STORAGE_PREFIX = 'fafo_layout_v2_';
   const INDEX_KEY = 'fafo_layout_v2__index';
   const instances = new Map();
@@ -144,7 +152,24 @@
     return Array.from(body.querySelectorAll(':scope > [data-fafo-section]'));
   }
 
+  /** Sections are resizable unless the app opts out with data-fafo-resizable="0". */
+  function sectionIsResizable(section) {
+    if (!section) return false;
+    const flag = section.getAttribute('data-fafo-resizable');
+    if (flag === '0' || flag === 'false' || flag === 'off') return false;
+    return true;
+  }
+
+  function markSectionResizable(section) {
+    if (!section || !sectionIsResizable(section)) return false;
+    if (!section.getAttribute('data-fafo-resizable')) {
+      section.setAttribute('data-fafo-resizable', '1');
+    }
+    return true;
+  }
+
   function defaultStateFromDom(root) {
+    const type = (root && root.getAttribute('data-fafo-layout-type')) || 'columns';
     const panels = panelEls(root);
     const order = panels.map((p) => p.getAttribute('data-fafo-panel'));
     const sizes = {};
@@ -154,7 +179,10 @@
       const def = parseInt(p.getAttribute('data-fafo-panel-default') || '', 10);
       const isFlex = p.getAttribute('data-fafo-flex') === '1';
       flex[id] = isFlex;
-      if (!isFlex && Number.isFinite(def) && def > 0) sizes[id] = def;
+      // Columns: a default width is useful (content doesn't define it).
+      // Rows: never seed a 120–140px cage — height comes from content until
+      // the user drags. Seeding defaults was the "one grows, neighbor shrinks" bug.
+      if (type === 'columns' && !isFlex && Number.isFinite(def) && def > 0) sizes[id] = def;
     });
     const sections = {};
     panels.forEach((p) => {
@@ -163,15 +191,26 @@
       if (secs.length) sections[id] = secs;
     });
     const sectionHeights = {};
+    const collapsed = {};
+    const box = {};
+    const sectionBoxes = {};
     // Do not seed sectionHeights from data-fafo-section-default.
-    // Those 140–160px values were being persisted as "user sizes" and
-    // locked lists into a tiny strip. Defaults only apply after a drag.
-    return { order, sizes, flex, sections, sectionHeights };
+    return { order, sizes, flex, sections, sectionHeights, collapsed, box, sectionBoxes };
   }
 
   function ensureChrome(panel) {
+    if (!panel) return;
+    // Hub iframe shells and other full-bleed workspaces: a title chrome
+    // sits on top of position:absolute children and steals toolbar clicks.
+    if (panel.getAttribute('data-fafo-chrome') === '0') {
+      const existing = panel.querySelector(':scope > .fafo-panel-chrome');
+      if (existing) existing.remove();
+      panel.classList.add('fafo-layout-panel');
+      return;
+    }
     if (panel.querySelector(':scope > .fafo-panel-chrome')) {
       panel.classList.add('fafo-layout-panel');
+      ensureCornerHandle(panel);
       return;
     }
     const id = panel.getAttribute('data-fafo-panel') || 'panel';
@@ -196,17 +235,33 @@
     panel.appendChild(chrome);
     panel.appendChild(body);
     panel.classList.add('fafo-layout-panel');
+    ensureCornerHandle(panel);
+  }
+
+  function ensureCornerHandle(panel) {
+    if (!panel || panel.getAttribute('data-fafo-chrome') === '0') return;
+    if (panel.querySelector(':scope > .fafo-corner-resize')) return;
+    panel.appendChild(
+      el('div', 'fafo-corner-resize', {
+        title: 'Drag corner to resize width and height. Layout auto-saves.',
+      })
+    );
   }
 
   function ensureSectionChrome(section) {
+    const canResize = markSectionResizable(section);
     if (section.querySelector(':scope > .fafo-section-chrome')) {
       // Still ensure resize handle exists for resizable sections
-      if (
-        section.getAttribute('data-fafo-resizable') === '1' &&
-        !section.querySelector(':scope > .fafo-section-resize')
-      ) {
+      if (canResize && !section.querySelector(':scope > .fafo-section-resize')) {
         section.appendChild(
-          el('div', 'fafo-section-resize', { title: 'Drag to resize section height' })
+          el('div', 'fafo-section-resize', { title: 'Drag the bottom edge to resize height. Layout auto-saves.' })
+        );
+      }
+      if (canResize && !section.querySelector(':scope > .fafo-section-corner')) {
+        section.appendChild(
+          el('div', 'fafo-section-corner', {
+            title: 'Drag corner to resize width and height. Layout auto-saves.',
+          })
         );
       }
       return;
@@ -239,11 +294,17 @@
     section.appendChild(chrome);
     section.appendChild(body);
 
-    if (section.getAttribute('data-fafo-resizable') === '1') {
-      const handle = el('div', 'fafo-section-resize', {
-        title: 'Drag to resize section height',
-      });
-      section.appendChild(handle);
+    if (canResize) {
+      section.appendChild(
+        el('div', 'fafo-section-resize', {
+          title: 'Drag the bottom edge to resize height. Layout auto-saves.',
+        })
+      );
+      section.appendChild(
+        el('div', 'fafo-section-corner', {
+          title: 'Drag corner to resize width and height. Layout auto-saves.',
+        })
+      );
     }
   }
 
@@ -263,12 +324,15 @@
       rootW = r.width || 0;
       rootH = r.height || 0;
     } catch (_) { /* ignore */ }
+    const scale = readUiScale();
     if (type === 'columns') {
-      // Trust root width only when it looks like a real shell
-      return rootW >= 280 ? rootW : vw;
+      // Trust root width only when it looks like a real shell (CSS px, not zoomed paint)
+      const cssW = rootW / scale;
+      return cssW >= 280 ? cssW : vw;
     }
     // rows: if root is shorter than ~half the viewport, treat as collapsed / corrupt
-    return rootH >= Math.min(320, vh * 0.4) ? rootH : vh;
+    const cssH = rootH / scale;
+    return cssH >= Math.min(320, vh * 0.4) ? cssH : vh;
   }
 
   /**
@@ -401,13 +465,12 @@
       flex: { ...(state.flex || {}) },
       sections: { ...(state.sections || {}) },
       sectionHeights: { ...(state.sectionHeights || {}) },
+      collapsed: { ...(state.collapsed || {}) },
     };
     out = healBannerStripState(root, out, opts);
 
-    // Cap fixed panel sizes to ~85% of usable span so neighbors stay reachable
-    const maxPanel = Math.max(220, Math.floor(span * 0.85));
-    // Banner-strip floor: never re-persist 40–120px as "the whole workspace"
-    // for a non-nav panel when the viewport is tall/wide.
+    // No viewport ceiling — the user may drag a panel larger than the window
+    // and scroll. Tiny sizes still get healed so we never freeze a slim banner.
     const minContent =
       type === 'rows'
         ? Math.min(280, Math.max(160, Math.floor(span * 0.25)))
@@ -424,17 +487,27 @@
         return;
       }
       if (w < 40) w = 40;
-      // Nav/toolbars may stay short; content-like ids get a higher floor
       const looksNav = /^(nav|header|toolbar|tabs|chrome|status)$/i.test(id) || /nav|toolbar|header|tabs/i.test(id);
-      if (!looksNav && w < minContent && span > 400) {
-        // Drop corrupt tiny size so defaults / flex heal apply next applyState
+      if (type === 'rows') {
+        // Drop auto-saved default cages (exact or near data-fafo-panel-default)
+        try {
+          const p = root.querySelector('[data-fafo-panel="' + id.replace(/"/g, '') + '"]');
+          const def = parseInt(p && p.getAttribute('data-fafo-panel-default') || '', 10);
+          if (Number.isFinite(def) && def > 0 && Math.abs(w - def) <= 12) {
+            delete out.sizes[id];
+            return;
+          }
+        } catch (_) { /* keep */ }
+        if (!looksNav && w < minContent && span > 400) {
+          delete out.sizes[id];
+          return;
+        }
+      } else if (!looksNav && w < minContent && span > 400) {
         delete out.sizes[id];
         return;
       }
-      if (w > maxPanel) w = maxPanel;
       out.sizes[id] = Math.round(w);
     });
-    const maxSec = Math.max(120, Math.floor((window.innerHeight || 800) * 0.7));
     Object.keys(out.sectionHeights).forEach((id) => {
       let h = out.sectionHeights[id];
       if (!Number.isFinite(h) || h <= 0) {
@@ -451,9 +524,17 @@
           return;
         }
       } catch (_) { /* keep */ }
-      if (h < 60) h = 60;
-      if (h > maxSec) h = maxSec;
+      let minH = 60;
+      try {
+        const sec2 = root.querySelector('[data-fafo-section="' + id.replace(/"/g, '') + '"]');
+        const attrMin = parseInt(sec2 && sec2.getAttribute('data-fafo-section-min') || '', 10);
+        if (Number.isFinite(attrMin) && attrMin > 0) minH = Math.max(24, attrMin);
+      } catch (_) { /* keep */ }
+      if (h < minH) h = minH;
       out.sectionHeights[id] = Math.round(h);
+    });
+    Object.keys(out.collapsed || {}).forEach((id) => {
+      if (!out.collapsed[id]) delete out.collapsed[id];
     });
     return out;
   }
@@ -506,16 +587,36 @@
       }
     }
 
-    // Size every panel first
+    // Size every panel first. Growing one panel must NOT shrink its neighbors:
+    // flex-shrink stays 0. Rows without a user size are height:auto (content).
     order.forEach((id) => {
       const panel = byId[id];
       if (!panel) return;
       const isFlex = panel.getAttribute('data-fafo-flex') === '1' || (state.flex && state.flex[id]);
       const min = parseInt(panel.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
       const max = parseInt(panel.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
+      const box = state.box && state.box[id];
+      if (box && Number.isFinite(box.w) && Number.isFinite(box.h) && box.w > 40 && box.h > 40) {
+        const bw = Math.max(min, box.w);
+        const bh = Math.max(80, box.h);
+        panel.style.flex = '0 0 auto';
+        panel.style.flexShrink = '0';
+        panel.style.width = bw + 'px';
+        panel.style.height = bh + 'px';
+        panel.style.minWidth = min + 'px';
+        panel.style.minHeight = '80px';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+        panel.setAttribute('data-fafo-box', '1');
+        panel.setAttribute('data-fafo-sized', '1');
+        panel.dataset.fafoSize = String(type === 'columns' ? bw : bh);
+        if (state.box) state.box[id] = { w: Math.round(bw), h: Math.round(bh) };
+        return;
+      }
       if (isFlex) {
-        panel.style.flex = '1 1 auto';
-        panel.style.minHeight = type === 'rows' ? Math.max(min, 120) + 'px' : '';
+        panel.style.flex = '1 0 auto';
+        panel.style.flexShrink = '0';
+        panel.style.minHeight = type === 'rows' ? Math.max(min, 200) + 'px' : '';
         panel.style.minWidth = type === 'columns' ? min + 'px' : '';
         panel.style.width = '';
         panel.style.height = '';
@@ -527,31 +628,48 @@
         if (state.sizes) delete state.sizes[id];
       } else {
         let w = state.sizes && state.sizes[id];
-        if (!Number.isFinite(w) || w <= 0) {
-          w = parseInt(panel.getAttribute('data-fafo-panel-default') || String(min), 10) || min;
-        }
-        w = Math.max(min, w);
-        if (max > 0) w = Math.min(max, w);
-        // Viewport clamp using real window when root is collapsed
-        const span = layoutSpan(root, type);
-        if (span > 80) w = Math.min(w, Math.max(min, Math.floor(span * 0.85)));
-        if (type === 'columns') {
+        if (type === 'rows') {
+          if (!Number.isFinite(w) || w <= 0) {
+            panel.style.flex = '0 0 auto';
+            panel.style.flexShrink = '0';
+            panel.style.height = 'auto';
+            panel.style.maxHeight = 'none';
+            panel.style.minHeight = Math.min(min, 80) + 'px';
+            panel.style.width = '';
+            panel.style.maxWidth = '';
+            panel.removeAttribute('data-fafo-sized');
+            delete panel.dataset.fafoSize;
+            if (state.sizes) delete state.sizes[id];
+          } else {
+            w = Math.max(min, w);
+            if (max > 0) w = Math.min(max, w);
+            panel.style.flex = '0 0 auto';
+            panel.style.flexShrink = '0';
+            panel.style.height = w + 'px';
+            panel.style.minHeight = min + 'px';
+            panel.style.maxHeight = 'none';
+            panel.style.width = '';
+            panel.style.maxWidth = '';
+            panel.setAttribute('data-fafo-sized', '1');
+            panel.dataset.fafoSize = String(w);
+            if (state.sizes) state.sizes[id] = w;
+          }
+        } else {
+          if (!Number.isFinite(w) || w <= 0) {
+            w = parseInt(panel.getAttribute('data-fafo-panel-default') || String(min), 10) || min;
+          }
+          w = Math.max(min, w);
+          if (max > 0) w = Math.min(max, w);
           panel.style.flex = '0 0 auto';
+          panel.style.flexShrink = '0';
           panel.style.width = w + 'px';
           panel.style.minWidth = min + 'px';
           panel.style.height = '';
           panel.style.maxHeight = '';
-        } else {
-          panel.style.flex = '0 0 auto';
-          panel.style.height = w + 'px';
-          panel.style.minHeight = min + 'px';
-          panel.style.width = '';
-          panel.style.maxWidth = '';
+          panel.setAttribute('data-fafo-sized', '1');
+          panel.dataset.fafoSize = String(w);
+          if (state.sizes) state.sizes[id] = w;
         }
-        panel.setAttribute('data-fafo-sized', '1');
-        panel.dataset.fafoSize = String(w);
-        // Keep store honest after clamp
-        if (state.sizes) state.sizes[id] = w;
       }
     });
 
@@ -568,7 +686,9 @@
           frag.appendChild(
             el('div', 'fafo-split-handle', {
               'data-fafo-split-after': id,
-              title: type === 'columns' ? 'Drag to resize columns' : 'Drag to resize rows',
+              title: type === 'columns'
+                ? 'Drag to resize columns — layout auto-saves'
+                : 'Drag to resize rows — layout auto-saves',
             })
           );
         }
@@ -595,7 +715,22 @@
       secOrder.forEach((sid) => {
         const s = bySid[sid];
         if (s) body.appendChild(s);
-        if (s && s.getAttribute('data-fafo-resizable') === '1') {
+        if (s && sectionIsResizable(s)) {
+          const sbox = state.sectionBoxes && state.sectionBoxes[sid];
+          if (sbox && Number.isFinite(sbox.w) && Number.isFinite(sbox.h) && sbox.w > 40 && sbox.h > 40) {
+            s.style.flex = '0 0 auto';
+            s.style.flexShrink = '0';
+            s.style.width = sbox.w + 'px';
+            s.style.height = sbox.h + 'px';
+            s.style.maxWidth = 'none';
+            s.style.maxHeight = 'none';
+            s.dataset.fafoHeight = String(sbox.h);
+            s.setAttribute('data-fafo-user-sized', '1');
+            s.setAttribute('data-fafo-box', '1');
+            if (state.sectionBoxes) state.sectionBoxes[sid] = { w: Math.round(sbox.w), h: Math.round(sbox.h) };
+            applyCollapsedClass(s, !!(state.collapsed && state.collapsed[sid]));
+            return;
+          }
           let h = state.sectionHeights && state.sectionHeights[sid];
           const minH = parseInt(s.getAttribute('data-fafo-section-min') || '80', 10) || 80;
           if (!Number.isFinite(h) || h <= 0) {
@@ -608,17 +743,33 @@
             if (state.sectionHeights) delete state.sectionHeights[sid];
           } else {
             h = Math.max(minH, h);
-            const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 0.7));
-            h = Math.min(h, maxH);
             s.style.flex = '0 0 auto';
+            s.style.flexShrink = '0';
             s.style.height = h + 'px';
+            s.style.maxHeight = 'none';
             s.dataset.fafoHeight = String(h);
             s.setAttribute('data-fafo-user-sized', '1');
             if (state.sectionHeights) state.sectionHeights[sid] = h;
           }
         }
+        applyCollapsedClass(s, !!(state.collapsed && state.collapsed[sid]));
       });
     });
+  }
+
+  function applyCollapsedClass(section, on) {
+    if (!section) return;
+    if (on) {
+      section.classList.add('fafo-section-collapsed');
+      section.setAttribute('data-fafo-collapsed', '1');
+      section.style.height = '';
+      section.style.flex = '0 0 auto';
+      section.style.flexShrink = '0';
+      section.style.maxHeight = 'none';
+    } else {
+      section.classList.remove('fafo-section-collapsed');
+      section.removeAttribute('data-fafo-collapsed');
+    }
   }
 
   function captureState(root, opts) {
@@ -632,25 +783,53 @@
       const isFlex = p.getAttribute('data-fafo-flex') === '1';
       flex[id] = isFlex;
       if (isFlex) return;
+      // Rows: only persist a height the user actually dragged. Capturing
+      // content height on every save froze panels and made neighbors shrink.
+      if (type === 'rows' && p.getAttribute('data-fafo-sized') !== '1') return;
       const rect = p.getBoundingClientRect();
-      const px = type === 'columns' ? rect.width : rect.height;
+      const scale = readUiScale() || 1;
+      const px = (type === 'columns' ? rect.width : rect.height) / scale;
       if (px > 0) sizes[id] = Math.round(px);
     });
     const sections = {};
     const sectionHeights = {};
+    const collapsed = {};
+    const box = {};
+    const sectionBoxes = {};
+    panels.forEach((p) => {
+      const pid = p.getAttribute('data-fafo-panel');
+      if (pid && p.getAttribute('data-fafo-box') === '1') {
+        const scale = readUiScale() || 1;
+        const r = p.getBoundingClientRect();
+        if (r.width > 40 && r.height > 40) {
+          box[pid] = { w: Math.round(r.width / scale), h: Math.round(r.height / scale) };
+        }
+      }
+    });
     panels.forEach((p) => {
       const id = p.getAttribute('data-fafo-panel');
       const secs = sectionEls(p);
       sections[id] = secs.map((s) => s.getAttribute('data-fafo-section'));
       secs.forEach((s) => {
-        if (s.getAttribute('data-fafo-resizable') !== '1') return;
-        if (s.getAttribute('data-fafo-user-sized') !== '1') return;
         const sid = s.getAttribute('data-fafo-section');
-        const h = Math.round(s.getBoundingClientRect().height);
+        if (sid && (s.getAttribute('data-fafo-collapsed') === '1' || s.classList.contains('fafo-section-collapsed'))) {
+          collapsed[sid] = true;
+        }
+        if (!sectionIsResizable(s)) return;
+        if (s.getAttribute('data-fafo-user-sized') !== '1') return;
+        if (s.getAttribute('data-fafo-collapsed') === '1') return;
+        const h = Math.round(s.getBoundingClientRect().height / (readUiScale() || 1));
         if (sid && h > 0) sectionHeights[sid] = h;
+        if (sid && s.getAttribute('data-fafo-box') === '1') {
+          const br = s.getBoundingClientRect();
+          const sc = readUiScale() || 1;
+          if (br.width > 40 && br.height > 40) {
+            sectionBoxes[sid] = { w: Math.round(br.width / sc), h: Math.round(br.height / sc) };
+          }
+        }
       });
     });
-    return { order, sizes, flex, sections, sectionHeights };
+    return { order, sizes, flex, sections, sectionHeights, collapsed, box, sectionBoxes };
   }
 
   /**
@@ -718,14 +897,14 @@
         const leftFlex = left.getAttribute('data-fafo-flex') === '1';
         const rightFlex = right.getAttribute('data-fafo-flex') === '1';
         const target = leftFlex && !rightFlex ? right : left;
-        const other = target === left ? right : left;
         const min = parseInt(target.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
         const maxAttr = parseInt(target.getAttribute('data-fafo-panel-max') || '0', 10) || 0;
+        const scale = readUiScale();
         const start = type === 'columns' ? ev.clientX : ev.clientY;
         const startSize =
-          type === 'columns'
+          ((type === 'columns'
             ? target.getBoundingClientRect().width
-            : target.getBoundingClientRect().height;
+            : target.getBoundingClientRect().height) / scale);
         const sign = target === left ? 1 : -1;
 
         handle.classList.add('is-active');
@@ -745,23 +924,22 @@
         function onMove(e) {
           if (finished) return;
           const cur = type === 'columns' ? e.clientX : e.clientY;
-          let next = startSize + sign * (cur - start);
+          let next = startSize + sign * ((cur - start) / scale);
           next = Math.max(min, next);
           if (maxAttr > 0) next = Math.min(maxAttr, next);
-          // Don't crush the other panel below its min
-          const otherMin = parseInt(other.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
-          const rootRect = root.getBoundingClientRect();
-          const rootSpan = type === 'columns' ? rootRect.width : rootRect.height;
-          const maxAllowed = rootSpan - otherMin - 12; // handles
-          if (maxAllowed > min) next = Math.min(next, maxAllowed);
+          // Independent sizes: do NOT clamp to leftover so the neighbor
+          // would have to shrink. The page/root grows instead.
 
           target.style.flex = '0 0 auto';
+          target.style.flexShrink = '0';
+          target.setAttribute('data-fafo-sized', '1');
           if (type === 'columns') {
             target.style.width = next + 'px';
             target.style.minWidth = min + 'px';
           } else {
             target.style.height = next + 'px';
             target.style.minHeight = min + 'px';
+            target.style.maxHeight = 'none';
           }
           target.dataset.fafoSize = String(Math.round(next));
         }
@@ -805,8 +983,9 @@
         const section = handle.closest('[data-fafo-section]');
         if (!section) return;
         const minH = parseInt(section.getAttribute('data-fafo-section-min') || '80', 10) || 80;
+        const scale = readUiScale();
         const startY = ev.clientY;
-        const startH = section.getBoundingClientRect().height;
+        const startH = section.getBoundingClientRect().height / scale;
         handle.classList.add('is-active');
         document.body.classList.add('fafo-layout-resizing-row');
         try {
@@ -815,13 +994,12 @@
         let finished = false;
         function onMove(e) {
           if (finished) return;
-          let h = startH + (e.clientY - startY);
+          let h = startH + ((e.clientY - startY) / scale);
           h = Math.max(minH, h);
-          // Soft cap so sections can't push UI into a permanent drag feel
-          const maxH = Math.max(minH + 40, Math.floor((window.innerHeight || 800) * 0.75));
-          h = Math.min(h, maxH);
           section.style.flex = '0 0 auto';
+          section.style.flexShrink = '0';
           section.style.height = h + 'px';
+          section.style.maxHeight = 'none';
           section.dataset.fafoHeight = String(Math.round(h));
           section.setAttribute('data-fafo-user-sized', '1');
         }
@@ -833,6 +1011,110 @@
           try {
             handle.releasePointerCapture?.(ev.pointerId);
           } catch (_) { /* ignore */ }
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          save();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+    });
+  }
+
+  function bindCornerResize(root, save) {
+    root.querySelectorAll(':scope > .fafo-layout-panel > .fafo-corner-resize, :scope > [data-fafo-panel] > .fafo-corner-resize').forEach((handle) => {
+      if (handle._fafoBound) return;
+      handle._fafoBound = true;
+      handle.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const panel = handle.closest('[data-fafo-panel]');
+        if (!panel) return;
+        const min = parseInt(panel.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
+        const scale = readUiScale();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const startW = panel.getBoundingClientRect().width / scale;
+        const startH = panel.getBoundingClientRect().height / scale;
+        handle.classList.add('is-active');
+        document.body.classList.add('fafo-layout-resizing');
+        try { handle.setPointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+        let finished = false;
+        function onMove(e) {
+          if (finished) return;
+          let w = Math.max(min, startW + (e.clientX - startX) / scale);
+          let h = Math.max(80, startH + (e.clientY - startY) / scale);
+          panel.style.flex = '0 0 auto';
+          panel.style.flexShrink = '0';
+          panel.style.width = w + 'px';
+          panel.style.height = h + 'px';
+          panel.style.maxWidth = 'none';
+          panel.style.maxHeight = 'none';
+          panel.setAttribute('data-fafo-box', '1');
+          panel.setAttribute('data-fafo-sized', '1');
+          panel.dataset.fafoSize = String(Math.round(w));
+        }
+        function onUp() {
+          if (finished) return;
+          finished = true;
+          handle.classList.remove('is-active');
+          clearLayoutPointerState(root);
+          try { handle.releasePointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          save();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+    });
+  }
+
+  function bindSectionCornerResize(root, save) {
+    root.querySelectorAll('.fafo-section-corner').forEach((handle) => {
+      if (handle._fafoBound) return;
+      handle._fafoBound = true;
+      handle.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const section = handle.closest('[data-fafo-section]');
+        if (!section) return;
+        const minH = parseInt(section.getAttribute('data-fafo-section-min') || '80', 10) || 80;
+        const scale = readUiScale();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const startW = section.getBoundingClientRect().width / scale;
+        const startH = section.getBoundingClientRect().height / scale;
+        handle.classList.add('is-active');
+        document.body.classList.add('fafo-layout-resizing');
+        try { handle.setPointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
+        let finished = false;
+        function onMove(e) {
+          if (finished) return;
+          let w = Math.max(120, startW + (e.clientX - startX) / scale);
+          let h = Math.max(minH, startH + (e.clientY - startY) / scale);
+          section.style.flex = '0 0 auto';
+          section.style.flexShrink = '0';
+          section.style.width = w + 'px';
+          section.style.height = h + 'px';
+          section.style.maxWidth = 'none';
+          section.style.maxHeight = 'none';
+          section.dataset.fafoHeight = String(Math.round(h));
+          section.setAttribute('data-fafo-user-sized', '1');
+          section.setAttribute('data-fafo-box', '1');
+        }
+        function onUp() {
+          if (finished) return;
+          finished = true;
+          handle.classList.remove('is-active');
+          clearLayoutPointerState(root);
+          try { handle.releasePointerCapture?.(ev.pointerId); } catch (_) { /* ignore */ }
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
           window.removeEventListener('pointercancel', onUp);
@@ -980,7 +1262,7 @@
       <button type="button" class="fafo-layout-btn" data-act="save" title="Save layout now (also auto-saves)">Save layout</button>
       <button type="button" class="fafo-layout-btn" data-act="reset" title="Reset this app's panel layout to defaults (fixes off-screen / skewed panels)">Reset layout</button>
       <button type="button" class="fafo-layout-btn danger" data-act="reset-all" title="Reset saved layouts for every toolbox app on this PC">Reset all apps</button>
-      <span class="fafo-layout-hint" title="Drag panel headers to reorder · drag edges to resize · ↺ on each panel/section resets just that piece · layout always remembers last position">Layout remembers · auto-saves</span>
+      <span class="fafo-layout-hint" title="Drag ⠿ headers to move · drag the cyan edges to resize · changes auto-save on this PC">Drag to move · drag edges to resize · auto-saves</span>
     `;
     bar.querySelector('[data-act="save"]').addEventListener('click', () => {
       try {
@@ -1008,6 +1290,12 @@
 
   /** Always-visible floating dock when a page has no toolbar host. */
   function ensureFloatingToolbar(appId, instance) {
+    try {
+      if (window.self !== window.top) return;
+    } catch (_) { return; }
+    const root = document.querySelector('[data-fafo-layout-root]');
+    if (root && root.getAttribute('data-fafo-layout-dock') === '0') return;
+    if (document.body && document.body.getAttribute('data-fafo-layout-dock') === '0') return;
     let dock = document.getElementById('fafo-layout-float-dock');
     if (!dock) {
       dock = el('div', 'fafo-layout-float-dock');
@@ -1048,8 +1336,38 @@
       const label = el('span', 'fafo-layout-float-label', { text: 'Layout' });
       host.appendChild(label);
       dock.appendChild(host);
+      restoreDockSize(host);
+      watchDockSize(host);
     }
     mountToolbar(host, appId, instance);
+  }
+
+  function restoreDockSize(host) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('fafo_layout_dock_size') || 'null');
+      if (!saved || !saved.w || !saved.h) return;
+      host.style.width = Math.max(160, saved.w) + 'px';
+      host.style.height = Math.max(36, saved.h) + 'px';
+    } catch (_) { /* ignore */ }
+  }
+
+  function watchDockSize(host) {
+    if (host.dataset.sizeWatch === '1' || typeof ResizeObserver !== 'function') return;
+    host.dataset.sizeWatch = '1';
+    let t = 0;
+    new ResizeObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const r = host.getBoundingClientRect();
+        if (r.width < 80 || r.height < 24) return;
+        try {
+          localStorage.setItem('fafo_layout_dock_size', JSON.stringify({
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+          }));
+        } catch (_) { /* ignore */ }
+      }, 180);
+    }).observe(host);
   }
 
   function wirePanelReset(panel, instance) {
@@ -1084,9 +1402,37 @@
       actions = el('span', 'fafo-section-actions');
       chrome.appendChild(actions);
     }
-    if (actions.querySelector('[data-fafo-reset-section]')) return;
     const sid = section.getAttribute('data-fafo-section');
     const pid = panel.getAttribute('data-fafo-panel');
+    if (!actions.querySelector('[data-fafo-collapse-section]')) {
+      const collapsed = section.getAttribute('data-fafo-collapsed') === '1' ||
+        section.classList.contains('fafo-section-collapsed');
+      const fold = el('button', 'fafo-chrome-btn', {
+        type: 'button',
+        title: collapsed ? 'Expand this section' : 'Collapse this section to its header',
+        'data-fafo-collapse-section': sid || '1',
+        'aria-pressed': collapsed ? 'true' : 'false',
+        text: collapsed ? '▸' : '▾',
+      });
+      fold.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (instance && typeof instance.toggleSection === 'function') {
+          instance.toggleSection(pid, sid);
+        }
+      });
+      fold.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      fold.draggable = false;
+      actions.appendChild(fold);
+    } else {
+      const fold = actions.querySelector('[data-fafo-collapse-section]');
+      const collapsed = section.getAttribute('data-fafo-collapsed') === '1' ||
+        section.classList.contains('fafo-section-collapsed');
+      fold.textContent = collapsed ? '▸' : '▾';
+      fold.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+      fold.title = collapsed ? 'Expand this section' : 'Collapse this section to its header';
+    }
+    if (actions.querySelector('[data-fafo-reset-section]')) return;
     const btn = el('button', 'fafo-chrome-btn', {
       type: 'button',
       title: 'Reset this section height to default',
@@ -1122,6 +1468,7 @@
   }
 
   const SETTINGS_RE = /option|setting|control|scan|filter|config|pref|keep|action|sidebar|intro|assist/i;
+  const COMPACT_RE = /summary|stat|footer|hint|toolbar|action|head|nav|status|tally/i;
   const LIST_RE = /list|result|group|file|preview|library|grid|log|queue|detail-list|timeline|tile|catalog/i;
   const LIST_CHILD_SEL =
     '.groups-wrap, .list, .results, .file-list, .item-list, .grid-wrap, .table-wrap, .detail-list, .detail-list-inner, .log, .timeline, #groupsWrap, #fileGrid, #toolGrid, [data-fafo-scroll]';
@@ -1140,13 +1487,44 @@
       (s.getAttribute('data-fafo-section-title') || '');
     return LIST_RE.test(id);
   }
+  function isCompactSection(s) {
+    if (!s) return false;
+    const flag = s.getAttribute('data-fafo-compact');
+    if (flag === '1') return true;
+    if (flag === '0') return false;
+    const id =
+      (s.getAttribute('data-fafo-section') || '') +
+      ' ' +
+      (s.getAttribute('data-fafo-section-title') || '');
+    return SETTINGS_RE.test(id) || COMPACT_RE.test(id);
+  }
+  function isCollapsedSection(s) {
+    return !!(s && (s.getAttribute('data-fafo-collapsed') === '1' || s.classList.contains('fafo-section-collapsed')));
+  }
 
   /**
-   * Pin the layout root to the remaining viewport so each panel gets a real
-   * height and overflow:auto actually kicks in (instead of growing the page).
+   * Pin is OPT-IN (`data-fafo-layout-pin="1"`). Default is document scroll so
+   * enlarging one panel grows the page instead of stealing height from siblings.
    */
+  function wantsViewportPin(root) {
+    if (!root) return false;
+    if (root.getAttribute('data-fafo-layout-page-scroll') === '1') return false;
+    return root.getAttribute('data-fafo-layout-pin') === '1';
+  }
+
+  function unpinViewport(root) {
+    try {
+      document.documentElement.classList.remove('fafo-layout-locked');
+      document.body.classList.remove('fafo-layout-locked');
+      if (root) root.classList.remove('fafo-viewport-pin');
+    } catch (_) { /* ignore */ }
+  }
+
   function pinViewport(root) {
-    if (!root || root.getAttribute('data-fafo-layout-page-scroll') === '1') return;
+    if (!wantsViewportPin(root)) {
+      unpinViewport(root);
+      return;
+    }
     const html = document.documentElement;
     html.classList.add('fafo-layout-locked');
     document.body.classList.add('fafo-layout-locked');
@@ -1159,16 +1537,18 @@
         top = Math.max(0, Math.round(r.top));
       } catch (_) { /* ignore */ }
       let bottom = 0;
-      ['atx-pro-bar', 'tbSharedServerBar', 'tbCompanionBar', 'fafo-layout-float-dock'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
+      // Only the fixed bottom pro bar reserves layout space. The LAYOUT dock
+      // and S1/S2 companion bar are overlays / top chrome — counting them here
+      // was eating a third of the viewport on every tool page.
+      const pro = document.getElementById('atx-pro-bar');
+      if (pro && pro.style.display !== 'none' && !document.body.classList.contains('atx-pro-min')) {
         try {
-          const br = el.getBoundingClientRect();
-          if (br.height > 0 && br.top >= window.innerHeight * 0.6) {
-            bottom = Math.max(bottom, Math.round(window.innerHeight - br.top));
-          }
+          const br = pro.getBoundingClientRect();
+          if (br.height > 0) bottom = Math.min(56, Math.max(0, Math.round(br.height)));
         } catch (_) { /* ignore */ }
-      });
+      } else if (document.body.classList.contains('atx-pro-min')) {
+        bottom = 8;
+      }
       html.style.setProperty('--fafo-chrome-top', top + 'px');
       html.style.setProperty('--fafo-chrome-bottom', bottom + 'px');
     }
@@ -1197,24 +1577,26 @@
       if (secs.length >= 2) {
         body.classList.add('fafo-body-split');
         let flexed = false;
-        secs.forEach((s, i) => {
-          const last = i === secs.length - 1;
+        secs.forEach((s) => {
           const userSized = s.getAttribute('data-fafo-user-sized') === '1';
+          if (isCompactSection(s) || isCollapsedSection(s)) {
+            s.classList.add('fafo-section-compact');
+            s.classList.remove('fafo-section-flex');
+            s.style.flexShrink = '0';
+            return;
+          }
           if (userSized) return;
-          if (!flexed && (isListSection(s) || (last && !isSettingsSection(s)))) {
+          if (!flexed && isListSection(s)) {
             s.classList.add('fafo-section-flex');
+            s.style.flexShrink = '0';
             flexed = true;
           } else {
             s.classList.add('fafo-section-compact');
+            s.style.flexShrink = '0';
           }
         });
-        if (!flexed) {
-          const last = secs[secs.length - 1];
-          if (last.getAttribute('data-fafo-user-sized') !== '1') {
-            last.classList.add('fafo-section-flex');
-            last.classList.remove('fafo-section-compact');
-          }
-        }
+        // Never dump leftover height into a compact footer/summary/actions pane.
+        // If no list is present, leftover stays as empty panel background.
       }
       try {
         body.querySelectorAll(LIST_CHILD_SEL).forEach((el) => {
@@ -1425,6 +1807,7 @@
         'Section ' + (i + 1);
       el.setAttribute('data-fafo-section', 'sec-' + i);
       el.setAttribute('data-fafo-section-title', title);
+      if (!el.getAttribute('data-fafo-resizable')) el.setAttribute('data-fafo-resizable', '1');
     });
   }
 
@@ -1511,6 +1894,14 @@
       }
     }
     const save = debounce(saveNow, 180);
+    function saveUser() {
+      const snap = saveNow();
+      if (snap) toast('Layout saved');
+      return snap;
+    }
+    let onResize = null;
+    let flush = null;
+    let onVis = null;
 
     const api = {
       appId,
@@ -1586,8 +1977,10 @@
           sec.style.maxHeight = '';
           delete sec.dataset.fafoHeight;
           sec.removeAttribute('data-fafo-user-sized');
+          applyCollapsedClass(sec, false);
         }
         if (cur.sectionHeights) delete cur.sectionHeights[sectionId];
+        if (cur.collapsed) delete cur.collapsed[sectionId];
         // Restore section order slot to default for that panel
         if (panelId && cur.sections && defaults.sections && defaults.sections[panelId]) {
           cur.sections[panelId] = defaults.sections[panelId].slice();
@@ -1602,31 +1995,47 @@
       getState() {
         return captureState(root, opts);
       },
+      /** Collapse or expand one section to chrome-only height. */
+      toggleSection(panelId, sectionId) {
+        if (!sectionId) return;
+        const panel = panelEls(root).find((p) => p.getAttribute('data-fafo-panel') === panelId);
+        const sec =
+          panel &&
+          sectionEls(panel).find((s) => s.getAttribute('data-fafo-section') === sectionId);
+        if (!sec) return;
+        const on = sec.getAttribute('data-fafo-collapsed') !== '1';
+        applyCollapsedClass(sec, on);
+        const cur = captureState(root, opts);
+        cur.collapsed = cur.collapsed || {};
+        if (on) cur.collapsed[sectionId] = true;
+        else delete cur.collapsed[sectionId];
+        const next = sanitizeState(root, cur, opts);
+        applyState(root, next, opts);
+        rebindAll();
+        wireResets();
+        markScrollPanes(root);
+        saveNow();
+        toast(on ? 'Section collapsed' : 'Section expanded');
+      },
       destroy() {
+        if (onResize) try { window.removeEventListener('resize', onResize); } catch (_) {}
+        if (flush) {
+          try { window.removeEventListener('pagehide', flush); } catch (_) {}
+          try { window.removeEventListener('beforeunload', flush); } catch (_) {}
+        }
+        if (onVis) try { document.removeEventListener('visibilitychange', onVis); } catch (_) {}
         instances.delete(appId);
       },
     };
 
     function rebindAll() {
-      // re-query handles after DOM reorder
-      root.querySelectorAll('.fafo-split-handle').forEach((h) => {
-        h._fafoBound = false;
-      });
-      root.querySelectorAll('.fafo-section-resize').forEach((h) => {
-        h._fafoBound = false;
-      });
-      panelEls(root).forEach((p) => {
-        const c = p.querySelector(':scope > .fafo-panel-chrome');
-        if (c) c._fafoDrag = false;
-        sectionEls(p).forEach((s) => {
-          const sc = s.querySelector(':scope > .fafo-section-chrome');
-          if (sc) sc._fafoDrag = false;
-        });
-      });
-      bindSplitResize(root, opts, save);
-      bindSectionResize(root, save);
-      bindPanelDrag(root, opts, save, rebindAll);
-      bindSectionDrag(root, opts, save, rebindAll);
+      // Do not clear _fafoBound / _fafoDrag — those flags are the listener guard.
+      bindSplitResize(root, opts, saveUser);
+      bindSectionResize(root, saveUser);
+      bindCornerResize(root, saveUser);
+      bindSectionCornerResize(root, saveUser);
+      bindPanelDrag(root, opts, saveUser, rebindAll);
+      bindSectionDrag(root, opts, saveUser, rebindAll);
     }
 
     function wireResets() {
@@ -1682,10 +2091,7 @@
     ensureFloatingToolbar(appId, api);
 
     // Persist when window resizes (flex panels change absolute sizes)
-    window.addEventListener(
-      'resize',
-      debounce(() => {
-        // Re-clamp if viewport shrank under a huge saved panel
+    onResize = debounce(() => {
         pinViewport(root);
         const cur = sanitizeState(root, captureState(root, opts), opts);
         applyState(root, cur, opts);
@@ -1693,20 +2099,16 @@
         wireResets();
         markScrollPanes(root);
         saveNow();
-      }, 400)
-    );
+      }, 400);
+    window.addEventListener('resize', onResize);
 
-    // Always remember last position — flush on leave / hide
-    const flush = () => {
-      try {
-        saveNow();
-      } catch (_) { /* ignore */ }
+    flush = () => {
+      try { saveNow(); } catch (_) { /* ignore */ }
     };
+    onVis = () => { if (document.hidden) flush(); };
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', flush);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) flush();
-    });
+    document.addEventListener('visibilitychange', onVis);
 
     instances.set(appId, api);
     return api;
@@ -1719,6 +2121,7 @@
       flex: { ...(defaults.flex || {}), ...(saved.flex || {}) },
       sections: { ...(defaults.sections || {}) },
       sectionHeights: { ...(defaults.sectionHeights || {}), ...(saved.sectionHeights || {}) },
+      collapsed: { ...(defaults.collapsed || {}), ...(saved.collapsed || {}) },
     };
     // append any new default panels not in saved order
     (defaults.order || []).forEach((id) => {

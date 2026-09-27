@@ -233,14 +233,6 @@
     }
   }
 
-  /** Viewport autosize. Independent of the Look layout pref so a saved
-   *  desktop scale never zooms a phone, and a forced phone layout on a
-   *  wide monitor does not wipe that scale. */
-  function isNarrowAutosize() {
-    try { return window.matchMedia('(max-width: 720px)').matches; }
-    catch (_) { return (window.innerWidth || 1200) <= 720; }
-  }
-
   function resolvedLayout(p) {
     return wantsPhone(p) ? 'phone' : 'desktop';
   }
@@ -271,13 +263,9 @@
     html.style.setProperty('--atx-accent3', pal.accent3);
     html.style.setProperty('--atx-accent-rgb', pal.rgb);
     html.style.setProperty('--atx-glow-mul', String(glowMul));
-    const narrow = isNarrowAutosize();
-    if (narrow) html.setAttribute('data-fafo-autosize', '1');
-    else html.removeAttribute('data-fafo-autosize');
-    // Phone width always lays out at 1:1. Saved uiScale stays in prefs for desktop.
-    const ui = narrow ? 1 : clamp(p.uiScale != null ? p.uiScale : 100, UI_SCALE_MIN, UI_SCALE_MAX) / 100;
-    const tx = narrow ? 1 : clamp(p.textScale != null ? p.textScale : 100, UI_SCALE_MIN, UI_SCALE_MAX) / 100;
-    const chrome = narrow ? 1 : (p.scaleChrome === false ? 1 : ui);
+    const ui = clamp(p.uiScale != null ? p.uiScale : 100, UI_SCALE_MIN, UI_SCALE_MAX) / 100;
+    const tx = clamp(p.textScale != null ? p.textScale : 100, UI_SCALE_MIN, UI_SCALE_MAX) / 100;
+    const chrome = p.scaleChrome === false ? 1 : ui;
     html.style.setProperty('--atx-ui-scale', String(ui));
     html.style.setProperty('--atx-text-scale', String(tx));
     html.style.setProperty('--atx-chrome-scale', String(chrome));
@@ -367,10 +355,6 @@
     }
     html.removeAttribute('data-atx-iframe');
     if (!body) return;
-    if (isNarrowAutosize()) {
-      body.querySelectorAll('.fafo-scale-root').forEach(function (n) { n.classList.remove('fafo-scale-root'); });
-      return;
-    }
     Array.prototype.forEach.call(body.children, function (el) {
       if (isOverlayNode(el)) el.classList.remove('fafo-scale-root');
       else el.classList.add('fafo-scale-root');
@@ -428,21 +412,6 @@ body.tat-stage .fafo-scale-root,
 html:fullscreen .fafo-scale-root,
 html:-webkit-full-screen .fafo-scale-root {
   zoom: 1;
-}
-@media (max-width: 720px) {
-  .fafo-scale-root,
-  #atx-pro-bar, #tbSharedServerBar, #tbCompanionBar,
-  .fafo-layout-float-dock, #atx-look-chip {
-    zoom: 1 !important;
-  }
-  .atx-scale-controls { display: none !important; }
-  #atx-look { align-items: flex-start; overflow: auto; padding: 12px; }
-  #atx-look .atx-look-panel {
-    width: min(640px, 100%);
-    max-height: none;
-    overflow: visible;
-    margin-bottom: 24px;
-  }
 }
 .fafo-panel-body, .panel, .ui-card,
 .hs-list, .history-list, .tips, .section-title, .section-label {
@@ -721,21 +690,17 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
           { v: 'comfortable', l: 'Comfortable' },
           { v: 'compact', l: 'Compact' },
         ], p.density) +
-        (isNarrowAutosize()
-          ? '<p class="atx-look-hint">This screen sizes itself. Sections stack full width and the page scrolls. UI scale comes back on a wider window.</p>'
-          : '<div class="atx-scale-controls">' +
-            '<label class="row"><span>UI scale</span><input type="range" min="0" max="1000" step="1" id="atxUiScale" value="' + scaleToSlider(p.uiScale) + '"><input type="number" min="' + UI_SCALE_MIN + '" max="' + UI_SCALE_MAX + '" step="1" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"> <span id="atxUiScalePct">' + p.uiScale + '%</span></label>' +
-            '<label class="row"><span>Text scale</span><input type="range" min="0" max="1000" step="1" id="atxTextScale" value="' + scaleToSlider(p.textScale) + '"><input type="number" min="' + UI_SCALE_MIN + '" max="' + UI_SCALE_MAX + '" step="1" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
-            '<div class="toggles" style="margin:6px 0 4px">' +
-              '<button type="button" class="atx-chip" data-scale-preset="50">50%</button>' +
-              '<button type="button" class="atx-chip" data-scale-preset="75">75%</button>' +
-              '<button type="button" class="atx-chip" data-scale-preset="100">100%</button>' +
-              '<button type="button" class="atx-chip" data-scale-preset="125">125%</button>' +
-              '<button type="button" class="atx-chip" data-scale-preset="tv">4K TV</button>' +
-            '</div>' +
-            '<label><input type="checkbox" id="atxScaleChrome"' + (p.scaleChrome !== false ? ' checked' : '') + '> Scale docks &amp; bars with UI</label>' +
-            '<p class="atx-look-hint">Slider is finer below 100% (4K TV / Windows scaling). 100% = match Windows. 4K TV picks a starting size from this screen. Docks follow UI scale unless you uncheck that. Ctrl+wheel also changes UI scale. Type 10–400% in the box.</p>' +
-            '</div>') +
+        '<label class="row"><span>UI scale</span><input type="range" min="0" max="1000" step="1" id="atxUiScale" value="' + scaleToSlider(p.uiScale) + '"><input type="number" min="' + UI_SCALE_MIN + '" max="' + UI_SCALE_MAX + '" step="1" id="atxUiScaleN" value="' + p.uiScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"> <span id="atxUiScalePct">' + p.uiScale + '%</span></label>' +
+        '<label class="row"><span>Text scale</span><input type="range" min="0" max="1000" step="1" id="atxTextScale" value="' + scaleToSlider(p.textScale) + '"><input type="number" min="' + UI_SCALE_MIN + '" max="' + UI_SCALE_MAX + '" step="1" id="atxTextScaleN" value="' + p.textScale + '" style="width:64px;background:#10141c;color:#e8eef6;border:1px solid #445;border-radius:6px;padding:4px"></label>' +
+        '<div class="toggles" style="margin:6px 0 4px">' +
+          '<button type="button" class="atx-chip" data-scale-preset="50">50%</button>' +
+          '<button type="button" class="atx-chip" data-scale-preset="75">75%</button>' +
+          '<button type="button" class="atx-chip" data-scale-preset="100">100%</button>' +
+          '<button type="button" class="atx-chip" data-scale-preset="125">125%</button>' +
+          '<button type="button" class="atx-chip" data-scale-preset="tv">4K TV</button>' +
+        '</div>' +
+        '<label><input type="checkbox" id="atxScaleChrome"' + (p.scaleChrome !== false ? ' checked' : '') + '> Scale docks &amp; bars with UI</label>' +
+        '<p class="atx-look-hint">Slider is finer below 100% (4K TV / Windows scaling). 100% = match Windows. 4K TV picks a starting size from this screen. Docks follow UI scale unless you uncheck that. Ctrl+wheel also changes UI scale. Type 10–400% in the box.</p>' +
       '</div>' +
 
       '<div class="atx-look-sec">' +
@@ -973,11 +938,8 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
   }
 
   function onResize() {
-    const wasNarrow = document.documentElement.getAttribute('data-fafo-autosize') === '1';
-    const nowNarrow = isNarrowAutosize();
-    if (prefs.layout !== 'auto' && wasNarrow === nowNarrow) return;
+    if (prefs.layout !== 'auto') return;
     apply();
-    if (document.getElementById('atx-look')?.classList.contains('open')) renderPanel();
   }
 
   function loadThemeFx() {
@@ -1026,7 +988,6 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
     }
     document.addEventListener('wheel', function (e) {
       if (!e.ctrlKey) return;
-      if (isNarrowAutosize()) return;
       if (inIframe()) return;
       const body = document.body;
       if (body && (body.classList.contains('run-active') || body.classList.contains('tat-stage'))) return;

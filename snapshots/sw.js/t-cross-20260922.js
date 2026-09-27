@@ -1,16 +1,12 @@
 /* FAFO Toolbox service worker — cache the phone shell only. No phone-home. */
-/* Shell = entry, manifest, icons, and this site's install helper.          */
-/* Tool HTML/JS beyond that stays on the network.                           */
 /* eslint-disable no-restricted-globals */
 'use strict';
 
-var CACHE = 'fafo-shell-v2';
+var CACHE = 'fafo-shell-v1';
 var SHELL = [
   './',
   './index.html',
-  './404.html',
   './manifest.webmanifest',
-  './shared/fafo-pwa.js',
   './shared/pwa/icon-192.png',
   './shared/pwa/icon-512.png',
   './shared/pwa/icon-180.png',
@@ -43,24 +39,17 @@ self.addEventListener('activate', function (event) {
   );
 });
 
-function sameOrigin(url) {
-  return url.origin === self.location.origin;
-}
-
 self.addEventListener('fetch', function (event) {
   var request = event.request;
   if (request.method !== 'GET') return;
   var url;
   try { url = new URL(request.url); } catch (e) { return; }
-  if (!sameOrigin(url)) return;
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
     caches.match(request).then(function (cached) {
       if (cached) return cached;
-      return fetch(request).catch(function () {
-        if (request.mode === 'navigate') return caches.match('./index.html');
-        return Promise.reject(new Error('offline'));
-      });
+      return fetch(request);
     })
   );
 });
