@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from db import connect, file_type, media_id, row_to_media
+from db import connect, file_type, media_id, parse_stored_tags, row_to_media
 
 THUMB_DIR = Path(__file__).parent / "thumbnails"
 THUMB_DIR.mkdir(exist_ok=True)
@@ -313,17 +313,25 @@ def scan_directory(
             file_tags_json = json.dumps(file_meta_tags)
 
             if existing:
-                # Keep catalog tags if already set; otherwise import from file
+                # Keep catalog tags if they are already a real JSON list.
+                # Chopped blobs (``[],UP-0058``, cut-off Signature text) get rewritten.
+                raw_tags = existing["tags"] or "[]"
                 try:
-                    cat_tags = json.loads(existing["tags"] or "[]")
+                    loaded = json.loads(raw_tags)
+                    tags_ok = isinstance(loaded, list)
                 except Exception:
-                    cat_tags = []
-                if cat_tags:
-                    tags = existing["tags"]
-                elif file_meta_tags:
-                    tags = json.dumps(file_meta_tags)
+                    loaded = None
+                    tags_ok = False
+                if tags_ok and loaded:
+                    tags = raw_tags
                 else:
-                    tags = existing["tags"] or "[]"
+                    salvaged = parse_stored_tags(raw_tags)
+                    if salvaged:
+                        tags = json.dumps(salvaged)
+                    elif file_meta_tags:
+                        tags = json.dumps(file_meta_tags)
+                    else:
+                        tags = "[]"
                 notes = existing["notes"] if existing else ""
                 thumb = existing["thumb_path"] if existing else None
                 pair_id = existing["pair_id"] if existing else None
@@ -343,7 +351,10 @@ def scan_directory(
                    ON CONFLICT(id) DO UPDATE SET
                      name=excluded.name, size=excluded.size, mtime=excluded.mtime,
                      file_tags=excluded.file_tags,
-                     tags=CASE WHEN media.tags IS NULL OR media.tags='[]' THEN excluded.tags ELSE media.tags END,
+                     tags=CASE
+                       WHEN media.tags IS NULL OR media.tags IN ('', '[]')
+                            OR IFNULL(json_valid(media.tags), 0) = 0
+                       THEN excluded.tags ELSE media.tags END,
                      rank=CASE WHEN IFNULL(media.rank,0)=0 AND excluded.rank>0 THEN excluded.rank ELSE media.rank END""",
                 (
                     mid, dir_id, rel, full.name, full.suffix.lower(),

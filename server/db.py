@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -142,12 +143,82 @@ def init_db() -> None:
             """
         )
         _migrate_schema(conn)
+        repair_media_tag_blobs(conn)
+
+
+_QUOTED_TAG = re.compile(r'"((?:[^"\\]|\\.){1,120})"')
+_PAIR_CODE = re.compile(r"\bUP-\d{3,}\b", re.I)
+
+
+def parse_stored_tags(raw: Any) -> list[str]:
+    """Turn a catalog tag cell into a list.
+
+    Pair bots sometimes stored ``[],UP-0058`` or a Signature blob chopped
+    mid-JSON. Those rows used to 500 the comparator (``/api/pairs``).
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        items: list[Any] = list(raw)
+    else:
+        text = str(raw).strip()
+        if not text:
+            return []
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, str) and data.strip():
+            items = [data]
+        else:
+            items = []
+            if text.startswith("[]"):
+                rest = text[2:].lstrip(" \t,;")
+                if rest:
+                    items.extend(part.strip().strip('"') for part in rest.split(","))
+            else:
+                items.extend(_QUOTED_TAG.findall(text))
+            items.extend(m.group(0) for m in _PAIR_CODE.finditer(text))
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        s = str(item).replace("\x00", "").strip()
+        if not s or s.lower().startswith("signature:"):
+            continue
+        if len(s) > 100:
+            continue
+        key = s.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+    return out
+
+
+def repair_media_tag_blobs(conn: sqlite3.Connection) -> int:
+    """Rewrite tag cells that are not a JSON list of short keywords."""
+    changed = 0
+    rows = conn.execute("SELECT id, tags, file_tags FROM media").fetchall()
+    for row in rows:
+        for col in ("tags", "file_tags"):
+            raw = row[col]
+            if raw is None:
+                continue
+            cleaned = parse_stored_tags(raw)
+            encoded = json.dumps(cleaned)
+            if encoded == raw:
+                continue
+            conn.execute(f"UPDATE media SET {col}=? WHERE id=?", (encoded, row["id"]))
+            changed += 1
+    return changed
 
 
 def row_to_media(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
-    d["tags"] = json.loads(d.get("tags") or "[]")
-    d["file_tags"] = json.loads(d.get("file_tags") or "[]")
+    d["tags"] = parse_stored_tags(d.get("tags"))
+    d["file_tags"] = parse_stored_tags(d.get("file_tags"))
     d["rank"] = int(d.get("rank") or 0)
     d["category"] = d.get("category") or ""
     d["status"] = d.get("status") or ""

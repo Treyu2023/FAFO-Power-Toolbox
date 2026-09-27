@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grok Crew Router — FAFO</title>
+  <meta name="aitoolbox-tool-id" content="grok-crew-router">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
+  <script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+  <style>
+    :root {
+      --bg: #05080f;
+      --panel: rgba(10,16,28,.92);
+      --accent: #00f3ff;
+      --mint: #2ef5c9;
+      --gold: #ffd166;
+      --warn: #ff9f1c;
+      --ok: #34d399;
+      --text: #e8eef4;
+      --muted: #8b9bb0;
+      --border: rgba(0,243,255,.32);
+      --font: "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100dvh; color: var(--text); font-family: var(--font);
+      background:
+        radial-gradient(ellipse at 12% 0%, rgba(0,243,255,.12), transparent 42%),
+        radial-gradient(ellipse at 90% 100%, rgba(46,245,201,.08), transparent 40%),
+        var(--bg);
+      padding: 18px 16px 48px;
+    }
+    a.back {
+      position: fixed; top: 12px; left: 14px; z-index: 20;
+      color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 700;
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px;
+      background: rgba(5,8,15,.92);
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    header { text-align: center; padding: 42px 8px 14px; }
+    header h1 {
+      font-size: clamp(22px, 4vw, 30px); letter-spacing: 3px; font-weight: 800;
+      background: linear-gradient(100deg, var(--accent), var(--mint), var(--gold));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header p { color: var(--muted); font-size: 13px; margin-top: 8px; line-height: 1.45; }
+    .panel {
+      background: linear-gradient(155deg, rgba(12,18,32,.96), rgba(6,10,18,.98));
+      border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; margin-bottom: 14px;
+    }
+    .panel h2 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px;
+      color: var(--accent); margin-bottom: 12px;
+    }
+    textarea {
+      width: 100%; min-height: 96px; resize: vertical;
+      background: rgba(0,12,18,.55); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+      font: 14px/1.4 ui-monospace, Consolas, monospace;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    button {
+      background: transparent; color: var(--accent); border: 1px solid var(--accent);
+      border-radius: 8px; padding: 8px 14px; font-weight: 700; font-size: 12px;
+      letter-spacing: .4px; text-transform: uppercase; cursor: pointer;
+    }
+    button:hover { background: var(--accent); color: #041018; }
+    button.alt { border-color: var(--mint); color: var(--mint); }
+    button.alt:hover { background: var(--mint); color: #041018; }
+    .status { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .status.ok { color: var(--ok); }
+    .status.bad { color: var(--warn); }
+    .pick {
+      border: 1px solid rgba(46,245,201,.4); background: rgba(46,245,201,.08);
+      border-radius: 12px; padding: 12px 14px; margin-top: 10px;
+    }
+    .pick.ask { border-color: rgba(255,209,102,.5); background: rgba(255,209,102,.08); }
+    .pick b { color: var(--mint); }
+    .list { display: grid; gap: 8px; }
+    .bot {
+      display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center;
+      border: 1px solid rgba(0,243,255,.18); border-radius: 10px; padding: 8px 10px;
+    }
+    .score {
+      font-family: ui-monospace, Consolas, monospace; color: var(--gold); font-weight: 700;
+    }
+    .bot small { color: var(--muted); display: block; }
+    pre {
+      white-space: pre-wrap; word-break: break-word; font-size: 12px;
+      color: #cfe8f2; max-height: 240px; overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="wrap">
+    <header>
+      <h1>GROK CREW ROUTER</h1>
+      <p>Rank the live Grok Bots, pick the best one, or queue the job for Commander when several could own it. Uses the same loopback bridge as Grok PowerShell. No second boss bot.</p>
+    </header>
+
+    <div class="panel">
+      <h2>Bridge</h2>
+      <div class="row">
+        <button type="button" id="btnPing">Ping bridge</button>
+        <button type="button" class="alt" id="btnRoster">Reload roster</button>
+      </div>
+      <div class="status" id="bridgeStatus">Bridge not checked yet. Start Scripts\\Start-GrokPsBridge.ps1 if ping fails.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Task</h2>
+      <textarea id="task" placeholder="e.g. Patch the Git UI zoom bug in the toolbox, then have the crew review."></textarea>
+      <div class="row">
+        <button type="button" id="btnRank">Rank bots</button>
+        <button type="button" class="alt" id="btnQueue">Queue job</button>
+      </div>
+      <div id="pickBox"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Ranked crew</h2>
+      <div class="list" id="rankList"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Last payload</h2>
+      <pre id="raw">{}</pre>
+    </div>
+  </div>
+  <script>
+    const DEFAULT_ROSTER = {
+      bots: [
+        { id: "fb2e38d1-0598-404d-846a-1025ce1ab222", name: "Commander", title: "MAIN HNIC", role: "orchestrator", keywords: ["crew","all bots","together","delegate","orchestrat","assign","milestone","workflow","standing","coordinate"] },
+        { id: "084c5874-1ae3-481d-a888-edb8f1b05a97", name: "Chief Tester and strategist", title: "Chief Tester", role: "qa-strategy", keywords: ["test","qa","strateg","verify","assert","eval"] },
+        { id: "13ee10d7-c80e-4a6b-bc8b-ec7c9c52103a", name: "Task rabbit", title: "Task rabbit", role: "small-tasks", keywords: ["small","quick","one-off","rabbit","feature test"] },
+        { id: "4c199856-d523-4325-9540-5cbeef3ae4a2", name: "Theoretical Problem solver", title: "Plans", role: "planning", keywords: ["plan","spec","design","theory","architecture","approach"] },
+        { id: "c8c3b05b-7ca3-49a2-a238-db68b9dc2e39", name: "Programmer 1", title: "Code Green", role: "code", keywords: ["code","implement","fix","patch","html","python","powershell","refactor"] },
+        { id: "2e4f1529-a922-4426-85e8-6b4376df5f32", name: "Creativity Pro Codemaster Guru Extraordinair", title: "Muse", role: "creative", keywords: ["creative","polish","muse","idea","prompt","visual","theme"] },
+        { id: "78a04b7d-4b57-496a-be52-58c34299f3be", name: "Git Er Done", title: "Git Er Done", role: "git-docs", keywords: ["git","commit","push","docs","reconcile","markdown"] },
+        { id: "752a57ba-66c7-441a-bf9a-1b2912c3b67f", name: "Build Scout", title: "Scout", role: "scout", keywords: ["scout","preflight","survey","sprites","manifest"] },
+        { id: "fe5a68b6-9643-49bb-866f-f88a56323e45", name: "Chain Gang HNIC", title: "Foreman", role: "crew-chase", keywords: ["chase","idle","round","foreman","keep","apply","escalate"] }
+      ]
+    };
+
+    const BASES = ["http://127.0.0.87:17321", "http://127.0.0.1:17321"];
+    let base = BASES[0];
+    let roster = DEFAULT_ROSTER;
+    let lastRank = null;
+
+    const $ = (id) => document.getElementById(id);
+    const setRaw = (obj) => { $("raw").textContent = JSON.stringify(obj, null, 2); };
+    const setStatus = (msg, cls) => { const el = $("bridgeStatus"); el.textContent = msg; el.className = "status " + (cls || ""); };
+
+    async function ping() {
+      for (const url of BASES) {
+        try {
+          const r = await fetch(url + "/health", { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          base = (j.bind || url).replace(/\/$/, "");
+          setStatus("Bridge online at " + base + "  pid=" + (j.pid || "?"), "ok");
+          setRaw(j);
+          return true;
+        } catch (_) {}
+      }
+      setStatus("Bridge offline. Start Scripts\\\\Start-GrokPsBridge.ps1 — local ranking still works.", "bad");
+      return false;
+    }
+
+    function localRank(text) {
+      const hay = String(text || "").toLowerCase();
+      const standing = /from now on|every day|daily|standing|recurring|routine/.test(hay);
+      const together = /together|all bots|the crew|coordinate|orchestrat/.test(hay);
+      const ranked = roster.bots.map((bot) => {
+        const blob = [bot.name, bot.title, bot.role].concat(bot.keywords || []).join(" ").toLowerCase();
+        let score = 0;
+        hay.split(/[^a-z0-9]+/).filter((w) => w.length >= 3).forEach((w) => { if (blob.includes(w)) score += 1; });
+        (bot.keywords || []).forEach((kw) => { if (hay.includes(String(kw).toLowerCase())) score += 3; });
+        if (together && bot.role === "orchestrator") score += 8;
+        if (standing && bot.role === "orchestrator") score += 4;
+        return { id: bot.id, name: bot.name, title: bot.title, role: bot.role, score };
+      }).sort((a, b) => b.score - a.score);
+      const best = ranked[0];
+      const second = ranked[1];
+      const gap = second ? best.score - second.score : best.score;
+      const ask = standing || (together && gap < 4) || (gap < 2 && best.score > 0);
+      return {
+        task: text,
+        standing,
+        together,
+        ask_user: ask,
+        pick: best,
+        alternates: ranked.slice(1, 4),
+        ranked,
+        reason: ask
+          ? "Several bots could own this, or it is standing work. Confirm before assign. Default owner: Commander."
+          : "Best match: " + best.name + " (" + best.role + ") score " + best.score + "."
+      };
+    }
+
+    function renderRank(rank) {
+      lastRank = rank;
+      const box = $("pickBox");
+      if (!rank || !rank.pick) { box.innerHTML = ""; return; }
+      box.className = "";
+      box.innerHTML = '<div class="pick' + (rank.ask_user ? " ask" : "") + '"><b>' +
+        (rank.ask_user ? "Confirm owner" : "Best bot") + "</b> — " +
+        rank.pick.name + " · " + rank.pick.role + "<div style='margin-top:6px;color:var(--muted);font-size:13px'>" +
+        rank.reason + "</div></div>";
+      $("rankList").innerHTML = (rank.ranked || []).map((b) =>
+        '<div class="bot"><div class="score">' + b.score + '</div><div>' + b.name +
+        "<small>" + (b.title || "") + " · " + b.role + "</small></div><div class='score'>" +
+        String(b.id).slice(0, 8) + "</div></div>"
+      ).join("");
+      setRaw(rank);
+    }
+
+    async function rankTask() {
+      const text = $("task").value.trim();
+      if (!text) { $("task").focus(); return; }
+      try {
+        const r = await fetch(base + "/bots/route", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        if (r.ok) { renderRank(await r.json()); return; }
+      } catch (_) {}
+      renderRank(localRank(text));
+    }
+
+    async function queueTask() {
+      const text = $("task").value.trim();
+      if (!text) { $("task").focus(); return; }
+      const rank = lastRank && lastRank.task === text ? lastRank : localRank(text);
+      renderRank(rank);
+      const job = { v: 1, kind: "bot-job", from: "crew-router", text, pick: rank.pick, ask: rank.ask_user, reason: rank.reason };
+      try {
+        const r = await fetch(base + "/bots/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(job)
+        });
+        if (r.ok) {
+          const j = await r.json();
+          setStatus("Queued " + (j.id || "job") + " for " + rank.pick.name, "ok");
+          setRaw(j);
+          return;
+        }
+      } catch (_) {}
+      setStatus("Could not reach bridge. Ranking is local-only until the sidecar is up.", "bad");
+      setRaw(job);
+    }
+
+    async function loadRoster() {
+      try {
+        const r = await fetch(base + "/bots/roster", { cache: "no-store" });
+        if (r.ok) {
+          const j = await r.json();
+          if (j && j.bots) roster = j;
+          setRaw(j);
+        }
+      } catch (_) {}
+      renderRank(lastRank || { ranked: roster.bots.map((b) => ({ ...b, score: 0 })), pick: roster.bots[0], reason: "Idle roster. Rank a task." });
+    }
+
+    $("btnPing").onclick = ping;
+    $("btnRoster").onclick = loadRoster;
+    $("btnRank").onclick = rankTask;
+    $("btnQueue").onclick = queueTask;
+    ping().then(loadRoster);
+  </script>
+</body>
+</html>

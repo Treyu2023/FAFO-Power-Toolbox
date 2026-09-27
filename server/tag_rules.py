@@ -6,7 +6,7 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from db import connect
+from db import connect, parse_stored_tags
 from video_probe import probe_video
 
 DEFAULT_RULES = {
@@ -82,7 +82,7 @@ def apply_tag_rules_after_scan(dir_id: str | None = None) -> dict:
     tagged_archive = []
     for row in rows:
         d = dict(row)
-        d["tags"] = json.loads(d["tags"] or "[]")
+        d["tags"] = parse_stored_tags(d.get("tags"))
         try:
             p = resolve_path(d)
             if p.exists():
