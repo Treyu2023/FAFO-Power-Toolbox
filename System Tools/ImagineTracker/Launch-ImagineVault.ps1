@@ -66,11 +66,14 @@ $srcPy = @(
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $srcPy) { throw 'ImagineVault.py not found next to this script' }
 
-Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
-foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
-    $src = Join-Path $here $name
-    if (Test-Path -LiteralPath $src) {
-        Copy-Item -LiteralPath $src -Destination (Join-Path $work $name) -Force
+$sameDir = ((Resolve-Path -LiteralPath $here).Path.TrimEnd('\') -ieq (Resolve-Path -LiteralPath $work).Path.TrimEnd('\'))
+if (-not $sameDir) {
+    Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
+    foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
+        $src = Join-Path $here $name
+        if (Test-Path -LiteralPath $src) {
+            Copy-Item -LiteralPath $src -Destination (Join-Path $work $name) -Force
+        }
     }
 }
 
