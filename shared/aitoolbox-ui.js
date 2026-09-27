@@ -125,23 +125,99 @@
         tooltipEl.style.top = top + 'px';
     }
 
-    function toast(msg, type = '') {
-        let t = document.getElementById('ui-toast-global');
-        if (!t) {
-            t = document.createElement('div');
-            t.id = 'ui-toast-global';
-            t.className = 'ui-toast';
-            t.setAttribute('role', 'status');
-            t.addEventListener('click', () => t.classList.remove('show'));
-            document.body.appendChild(t);
+    const TOAST_TYPES = ['ok', 'warn', 'error', 'info'];
+
+    function toastDismiss(el) {
+        if (el._gone) return;
+        el._gone = true;
+        clearTimeout(el._hide);
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 400);
+    }
+
+    function toastArm(el, ms) {
+        clearTimeout(el._hide);
+        el._paused = false;
+        el._left = ms;
+        el._t0 = Date.now();
+        el._hide = setTimeout(() => toastDismiss(el), ms);
+    }
+
+    /**
+     * toast(msg, type?, opts?). type: 'ok' | 'warn' | 'error' | 'info'; anything else gets the default look.
+     * opts, or an object in place of type: { type, timeout, action: { label, onClick } }.
+     * Stack of at most 3 (newest at the bottom, oldest dropped). The same msg + type without an action
+     * restarts the visible toast's timer instead of stacking a copy. Text goes through textContent only.
+     */
+    function toast(msg, type = '', opts) {
+        if (type && typeof type === 'object') { opts = type; type = opts.type; }
+        opts = opts && typeof opts === 'object' ? opts : {};
+        const kind = TOAST_TYPES.includes(type) ? type : '';
+        const a = opts.action;
+        const act = a && typeof a.onClick === 'function' && a.label != null && String(a.label) !== '' ? a : null;
+        const ms = Number.isFinite(opts.timeout) && opts.timeout > 0 ? opts.timeout
+            : (kind === 'warn' || kind === 'error' || act ? 5600 : 2800);
+        let box = document.getElementById('ui-toast-global');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'ui-toast-global';
+            box.setAttribute('role', 'status');
+            box.setAttribute('aria-live', 'polite');
+            document.body.appendChild(box);
         }
-        t.className = 'ui-toast' + (type ? ' ' + type : '');
-        t.textContent = msg;
-        t.title = 'Click to dismiss';
-        requestAnimationFrame(() => t.classList.add('show'));
-        clearTimeout(t._hide);
-        const ms = type === 'warn' || type === 'error' ? 5600 : 2800;
-        t._hide = setTimeout(() => t.classList.remove('show'), ms);
+        const key = kind + '\n' + (msg == null ? '' : String(msg));
+        const live = [];
+        Array.from(box.children).forEach((n) => { if (n._gone) n.remove(); else live.push(n); });
+        const dup = act ? null : live.find((n) => n._key === key && !n._act);
+        if (dup) {
+            if (dup._paused) dup._left = ms; else toastArm(dup, ms);
+            return;
+        }
+        while (live.length >= 3) { const old = live.shift(); clearTimeout(old._hide); old._gone = true; old.remove(); }
+        const el = document.createElement('div');
+        el.className = 'ui-toast' + (kind ? ' ' + kind : '');
+        if (kind === 'warn' || kind === 'error') el.setAttribute('role', 'alert');
+        el.title = 'Click to dismiss';
+        el._key = key;
+        el._act = !!act;
+        const text = document.createElement('span');
+        text.className = 'ui-toast-msg';
+        text.textContent = msg;
+        el.appendChild(text);
+        if (act) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ui-toast-action';
+            b.textContent = String(act.label);
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toastDismiss(el);
+                try { act.onClick(); } catch (err) { console.error('[AIToolbox] toast action', err); }
+            });
+            el.appendChild(b);
+        }
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'ui-toast-close';
+        x.setAttribute('aria-label', 'Dismiss');
+        x.textContent = '\u00d7';
+        el.appendChild(x);
+        el.addEventListener('click', () => toastDismiss(el));
+        const pause = () => {
+            if (el._gone || el._paused) return;
+            clearTimeout(el._hide);
+            el._paused = true;
+            el._left = Math.max(0, el._left - (Date.now() - el._t0));
+        };
+        const resume = () => { if (!el._gone && el._paused) toastArm(el, Math.max(el._left, 1000)); };
+        el.addEventListener('mouseenter', pause);
+        el.addEventListener('focusin', pause);
+        el.addEventListener('mouseleave', () => { if (!el.contains(document.activeElement)) resume(); });
+        el.addEventListener('focusout', (e) => { if (!el.contains(e.relatedTarget) && !el.matches(':hover')) resume(); });
+        box.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('show');
+        toastArm(el, ms);
     }
 
     function hideTooltip() {
