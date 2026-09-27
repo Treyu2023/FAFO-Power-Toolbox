@@ -248,6 +248,16 @@
         min-width:var(--fafo-touch-min,44px)
       }
     }
+    /* Live section (read-only helper on 127.0.0.1:18769) */
+    .tm-live { margin: 0 0 18px; }
+    .tm-live table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .tm-live th, .tm-live td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+    .tm-live th { color: var(--cyan); font-weight: 600; }
+    .tm-bar { display: block; height: 4px; margin-top: 3px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+    .tm-bar > i { display: block; height: 100%; background: var(--cyan); }
+    .tm-muted { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .fill.live { animation: none; }
+    #btnHelper[hidden] { display: none; }
 
   </style>
 </head>
@@ -273,8 +283,7 @@
     <div class="badge">System · Network · Pin-on-top</div>
     <h1>📡 Transfer Monitor</h1>
     <p>
-      Always-on-top desktop window that tracks <strong>live incoming / outgoing</strong> transfers
-      with animated bars, detail pane, and session history.
+      Live incoming/outgoing transfers from a read-only local helper (127.0.0.1:18769), plus the optional pin-on-top desktop app.
     </p>
 
     <div class="bars" aria-label="Live NIC rate preview">
@@ -289,6 +298,14 @@
       <li>Live NIC in/out rates + completed-transfer history</li>
       <li>Runs with no PowerShell console — system tray icon; close/minimize sends to tray</li>
     </ul>
+
+    <section id="tmLive" class="tm-live" aria-live="polite">
+      <div class="tm-live-head"><strong>Live transfers</strong> <span id="tmHelperPill" class="pill">checking</span>
+        <button type="button" class="secondary" id="btnHelper" hidden>▶ Start live helper</button></div>
+      <div id="tmHelperMsg" class="tm-muted" role="status"></div>
+      <table><thead><tr><th>Name</th><th>Dir</th><th>Via</th><th>Bytes</th><th>Total</th><th>%</th><th>Rate</th><th>Detail</th></tr></thead><tbody id="tmActive"></tbody></table>
+      <table><thead><tr><th>Time</th><th>Status</th><th>Name</th><th>Dir</th><th>Bytes</th></tr></thead><tbody id="tmHistory"></tbody></table>
+    </section>
 
     <div class="status" id="status">Ready — click Launch to open the pin-on-top monitor.</div>
     <div id="offlineBox" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fcd34d;font-size:13px;line-height:1.5">
@@ -317,6 +334,7 @@
       Fallback: run <code>System Tools\TransferMonitor\Launch-TransferMonitor.bat</code>
       · or protocol <code>aitoolbox://transfer-monitor</code> after SETUP.
       Same app lives in Grok skill <code>download-monitor</code>.
+      · Live data: <code>TransferMonitor-Helper.ps1</code> (started by S1; read-only).
     </div>
   </div>
 
@@ -546,6 +564,143 @@
       } catch (_) {}
     })();
   </script>
+<script data-tm-live="1">
+/* Transfer Monitor live section: read-only helper on 127.0.0.1:18769. DOM + textContent only. */
+(function () {
+  'use strict';
+  const TM_HELPER = 'http://127.0.0.1:18769';
+  const MSG_OFFLINE = 'Toolbox server offline - live view unavailable. The desktop app still works: use Launch Transfer Monitor above (or the .bat below).';
+  const MSG_RESTART = 'Live helper not started: the toolbox server is up but does not know "transfer-helper" yet (it needs a restart). Use Launch Transfer Monitor above meanwhile.';
+  const MSG_NOANSWER = 'Live helper did not answer on 127.0.0.1:18769. Click Start live helper to try again, or use Launch Transfer Monitor above.';
+  const $ = (id) => document.getElementById(id);
+  let tmToken = null, tokenPromise = null;
+  let helperBusy = false;      // own flag: never touches the page's actionBusy (L374), so btnRun stays usable
+  let helperSeenUp = false;    // true after any successful /health or /transfers on this page load
+  let autoRelaunchUsed = false; // at most ONE automatic re-launch, and only after the helper was seen up
+  let pollTimer = 0;
+
+  function setMsg(text) { const n = $('tmHelperMsg'); if (n) n.textContent = String(text || ''); }
+  function setHelperPill(ok, text) {
+    const p = $('tmHelperPill'); if (!p) return;
+    p.className = 'pill' + (ok ? ' ok' : ' bad'); p.textContent = String(text || '');
+  }
+  function showStart(show) { const b = $('btnHelper'); if (b) b.hidden = !show; }
+  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; } }
+  function startPolling() {
+    helperSeenUp = true; setHelperPill(true, 'helper live'); setMsg(''); showStart(false);
+    if (!pollTimer) { pollTimer = setInterval(tick, 2000); tick(); }
+  }
+  function showOffline(text) { stopPolling(); setHelperPill(false, 'helper offline'); setMsg(text); showStart(true); }
+
+  function loadTmToken() {
+    if (location.protocol !== 'file:') return Promise.resolve(null);
+    if (tokenPromise) return tokenPromise;
+    tokenPromise = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = '.env.transfer-token.js?r=' + Date.now();
+      s.onload = s.onerror = () => { tmToken = window.FAFO_TM_TOKEN || null; tokenPromise = null; s.remove(); resolve(tmToken); };
+      document.head.appendChild(s);
+    });
+    return tokenPromise;
+  }
+  async function tmFetch(path, retried) {
+    if (location.protocol === 'file:' && !tmToken) await loadTmToken();
+    const r = await fetch(TM_HELPER + path, {
+      cache: 'no-store', credentials: 'omit',
+      headers: tmToken ? { 'X-FAFO-TM-Token': tmToken } : {},
+      signal: AbortSignal.timeout(4000)
+    });
+    if (r.status === 403 && !retried && location.protocol === 'file:') {
+      const j = await r.json().catch(() => ({}));
+      if (j && j.error === 'bad-token') { tmToken = null; await loadTmToken(); return tmFetch(path, true); }
+    }
+    return r;
+  }
+  async function helperUp() {
+    try {
+      const r = await tmFetch('/health');
+      const j = r.ok ? await r.json() : null;
+      return !!(j && j.service === 'fafo-transfer-helper');
+    } catch (_) { return false; }
+  }
+
+  async function startHelper() {
+    if (helperBusy) return;
+    const api = window.AIToolboxAPI;
+    if (!api || typeof api.launchLocalTool !== 'function') { showOffline(MSG_OFFLINE); return; }
+    helperBusy = true;
+    const btn = $('btnHelper'); if (btn) btn.disabled = true;
+    setHelperPill(false, 'starting'); setMsg('Starting live helper...');
+    try {
+      try {
+        await api.launchLocalTool('transfer-helper');   // api.js L966-992: throws at L991 when S1 is offline or refuses the id
+      } catch (_) {
+        let s1Up = false;
+        try { s1Up = await api.isOnline(false); } catch (_) { s1Up = false; }   // cached by the probe above: no new request
+        showOffline(s1Up ? MSG_RESTART : MSG_OFFLINE);
+        return;
+      }
+      for (let i = 0; i < 12; i++) {                   // bounded: about 8.4 s, then stop
+        await new Promise((r) => setTimeout(r, 700));
+        if (await helperUp()) { startPolling(); return; }
+      }
+      showOffline(MSG_NOANSWER);
+    } finally {
+      helperBusy = false; if (btn) btn.disabled = false;
+    }
+  }
+
+  function fmtBytes(n) {
+    n = Number(n) || 0; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (i ? n.toFixed(1) : String(Math.round(n))) + ' ' + u[i];
+  }
+  function cell(tr, text) { const td = document.createElement('td'); td.textContent = String(text == null ? '' : text); tr.appendChild(td); return td; }
+  function render(j) {
+    const act = $('tmActive'), hist = $('tmHistory'); if (!act || !hist) return;
+    act.replaceChildren(); hist.replaceChildren();
+    (Array.isArray(j.active) ? j.active : []).forEach((row) => {
+      const tr = document.createElement('tr'); tr.title = String(row.path || '');
+      cell(tr, row.name); cell(tr, row.direction); cell(tr, row.protocol);
+      cell(tr, fmtBytes(row.bytes)); cell(tr, row.total > 0 ? fmtBytes(row.total) : '-');
+      const pct = Number(row.pct);
+      const td = cell(tr, pct >= 0 ? pct.toFixed(1) + '%' : '-');
+      const bar = document.createElement('span'); bar.className = 'tm-bar';
+      const fill = document.createElement('i'); fill.style.width = Math.max(0, Math.min(100, pct >= 0 ? pct : 0)) + '%';
+      bar.appendChild(fill); td.appendChild(bar);
+      cell(tr, fmtBytes(row.rateBps) + '/s'); cell(tr, row.detail);
+      act.appendChild(tr);
+    });
+    (Array.isArray(j.history) ? j.history : []).slice(0, 50).forEach((row) => {
+      const tr = document.createElement('tr'); tr.title = String(row.path || '');
+      cell(tr, row.time ? new Date(row.time).toLocaleTimeString() : ''); cell(tr, row.status);
+      cell(tr, row.name); cell(tr, row.direction); cell(tr, fmtBytes(row.bytes));
+      hist.appendChild(tr);
+    });
+  }
+  async function tick() {
+    if (document.hidden) return;
+    try {
+      const r = await tmFetch('/transfers');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      render(await r.json());
+    } catch (_) {
+      stopPolling();
+      if (helperSeenUp && !autoRelaunchUsed) { autoRelaunchUsed = true; startHelper(); return; }
+      showOffline(MSG_NOANSWER);
+    }
+  }
+
+  const btnHelper = $('btnHelper');
+  if (btnHelper) btnHelper.addEventListener('click', () => { startHelper(); });
+  (async () => {
+    try {
+      if (await helperUp()) startPolling();
+      else await startHelper();
+    } catch (_) { showOffline(MSG_OFFLINE); }
+  })();
+})();
+</script>
 <script data-tool-polish="transfer-monitor">
 /* Tool polish: transfer-monitor — Esc → launcher, load toast, error surface */
 (function(){
