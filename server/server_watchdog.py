@@ -943,19 +943,29 @@ def heal_if_needed(session: dict[str, Any]) -> list[str]:
     snap = _server_state(st)
 
     if snap.get("sleep_tb") and snap.get("sleep_meta"):
-        # Both intentionally off — free resources; keep tray so user can Wake
-        if not session.get("logged_both_sleep"):
-            log("both S1+S2 sleeping — auto-heal suspended (wake from tray)", "INFO")
-            session["logged_both_sleep"] = True
-        if not snap.get("tray_pids"):
-            try:
-                r = launch_ops.start_tray()
-                if r.get("started"):
-                    actions.append("start_tray_while_sleeping")
-                    log("started tray (servers still sleeping — use tray to wake)")
-            except Exception as e:
-                log(f"tray start while sleeping failed: {e}", "WARN")
-        return actions
+        # Both closed by the user. A browser launched after that close may resume them.
+        try:
+            resume = bool(
+                launch_ops.should_auto_run_s1(st.get("prefs"))
+                or launch_ops.should_auto_run_s2(st.get("prefs"))
+            )
+        except Exception:
+            resume = False
+        if resume:
+            session["logged_both_sleep"] = False
+        else:
+            if not session.get("logged_both_sleep"):
+                log("both S1+S2 sleeping — auto-heal suspended (wake from tray)", "INFO")
+                session["logged_both_sleep"] = True
+            if not snap.get("tray_pids"):
+                try:
+                    r = launch_ops.start_tray()
+                    if r.get("started"):
+                        actions.append("start_tray_while_sleeping")
+                        log("started tray (servers still sleeping — use tray to wake)")
+                except Exception as e:
+                    log(f"tray start while sleeping failed: {e}", "WARN")
+            return actions
     session["logged_both_sleep"] = False
 
     # Lifecycle: S1 with Toolbox session, S2 with Chrome (independent products)

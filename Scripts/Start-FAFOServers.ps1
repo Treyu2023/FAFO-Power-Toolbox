@@ -486,6 +486,19 @@ if ($wantMeta -and -not $chromeUp -and $manualStart) {
     Write-Srv "   S2 manual start (Chrome not required)" 'Yellow'
 }
 
+if (-not $manualStart -and -not $Console) {
+    Write-Srv " Auto mode — boot delay, then a browser launch. Idle servers sleep after 5 minutes." 'DarkGray'
+    try { Ensure-LoopbackHost $tbHost } catch {}
+    $pyLife = Get-ServerPython
+    if ($pyLife) {
+        $srv = Join-Path $ToolboxRoot 'server'
+        & $pyLife -c "import sys; sys.path.insert(0, r'$srv'); import launch_ops; r = launch_ops.apply_lifecycle(ensure_tray=True); print('actions', r.get('actions')); print('want', r.get('want'))"
+    } else {
+        Write-Srv " No toolbox Python — lifecycle skipped." 'Yellow'
+    }
+    exit 0
+}
+
 if ($Restart) {
     Write-Srv " Restart requested — stopping listeners first..." 'Yellow'
     if ($wantToolbox) { Stop-ListenerOnPort $tbPort }
@@ -554,11 +567,11 @@ want_meta = WANT_META
 if want_tb:
     launch_ops.set_toolbox_session(True)
     launch_ops.set_servers_sleeping(toolbox=False)
-    launch_ops.set_manual_hold(toolbox=True)
+    launch_ops.note_demand("s1", app="manual-start")
 if want_meta:
     launch_ops.set_servers_sleeping(fafo_meta=False)
-    launch_ops.set_manual_hold(fafo_meta=True)
-print("session/hold updated")
+    launch_ops.note_demand("s2", app="manual-start")
+print("session updated")
 '@
         $mark = $mark.Replace('TOOLBOX_ROOT', $ToolboxRoot.Replace('\', '\\'))
         $mark = $mark.Replace('WANT_TB', $(if ($wantToolbox) { 'True' } else { 'False' }))

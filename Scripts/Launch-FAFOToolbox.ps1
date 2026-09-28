@@ -223,7 +223,7 @@ if (-not $NoServer) {
         if (Test-Path -LiteralPath $venvPy) {
             Start-Process -FilePath $venvPy -ArgumentList @(
                 '-c',
-                "import sys; sys.path.insert(0, r'$($ToolboxRoot)\server'); import launch_ops; launch_ops.set_toolbox_session(True); launch_ops.set_servers_sleeping(toolbox=False)"
+                "import sys; sys.path.insert(0, r'$($ToolboxRoot)\server'); import launch_ops; launch_ops.set_toolbox_session(True); launch_ops.set_servers_sleeping(toolbox=False); launch_ops.note_demand('s1', app='toolbox-open')"
             ) -WorkingDirectory $ToolboxRoot -WindowStyle Hidden | Out-Null
         }
     }
