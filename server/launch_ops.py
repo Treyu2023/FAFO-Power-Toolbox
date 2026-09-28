@@ -111,9 +111,8 @@ def _default_prefs() -> dict[str, Any]:
             "toolboxActive": False,
             "fafoMediaActive": False,
         },
-        # Manual hold: user explicitly started a server (Start All / Start S2 / wake).
-        # Keeps it up until Sleep even if Chrome is closed (S2) or Toolbox session ends (S1).
-        # Auto lifecycle (Chrome open/close) still works when hold is false.
+        # Manual hold is recorded for the tray. It does not keep a server
+        # running past the idle window. Idle sleep is 5 minutes without real use.
         "manualHold": {
             "toolboxServer": False,
             "fafoMetaServer": False,
@@ -375,8 +374,15 @@ _HOST_BROWSER_NAMES = {
     "opera",
 }
 
-DEMAND_TTL_SEC = 8 * 60  # keep S1/S2 up this long after last real app ping
-
+# Real app use keeps a server up this long. A process starting itself does not.
+DEMAND_TTL_SEC = 5 * 60
+# Same pause as a Windows service set to Automatic (Delayed Start).
+BOOT_QUIET_SEC = 120
+# A browser that appears in this window was restored with Windows, not opened later.
+EARLY_BOOT_SEC = 45
+# Watcher started after this: the boot window was missed. Do not scan mid-work.
+LATE_WATCHER_SEC = BOOT_QUIET_SEC + 30
+_IGNORED_DEMAND_APPS = {"fafo-meta-startup", "startup"}
 
 
 def demand_path(which: str = "s2") -> Path:
@@ -397,14 +403,263 @@ def note_demand(which: str = "s2", *, app: str = "") -> None:
         pass
 
 
-def demand_fresh(which: str = "s2", ttl_sec: float | None = None) -> bool:
-    ttl = DEMAND_TTL_SEC if ttl_sec is None else float(ttl_sec)
+def demand_at(which: str = "s2") -> float:
+    """Unix time of the last real demand ping. Startup self-stamps return 0."""
     raw = _read_json(demand_path(which)) or {}
+    app = str(raw.get("app") or "")
+    if app in _IGNORED_DEMAND_APPS:
+        return 0.0
     try:
         at = float(raw.get("at") or 0)
     except (TypeError, ValueError):
-        return False
+        return 0.0
+    return at if at > 0 else 0.0
+
+
+def demand_fresh(which: str = "s2", ttl_sec: float | None = None) -> bool:
+    ttl = DEMAND_TTL_SEC if ttl_sec is None else float(ttl_sec)
+    at = demand_at(which)
     return at > 0 and (time.time() - at) <= ttl
+
+
+def _uptime_sec() -> float:
+    if IS_WINDOWS:
+        try:
+            import ctypes
+
+            return float(ctypes.windll.kernel32.GetTickCount64()) / 1000.0
+        except Exception:
+            pass
+    return 0.0
+
+
+def _boot_time() -> float:
+    up = _uptime_sec()
+    if up <= 0:
+        return time.time()
+    return time.time() - up
+
+
+def _life_path() -> Path:
+    return _localappdata() / "FAFO" / "lifecycle-state.json"
+
+
+def _blank_life(boot_at: float) -> dict[str, Any]:
+    return {
+        "bootAt": float(boot_at),
+        "bootHandled": False,
+        "armedBrowserAt": 0.0,
+        "s1ClosedAt": 0.0,
+        "s2ClosedAt": 0.0,
+    }
+
+
+def _load_life() -> dict[str, Any]:
+    """Boot flags reset each boot. Close stamps survive reboot."""
+    raw = _read_json(_life_path()) or {}
+    boot = _boot_time()
+    life = _blank_life(boot)
+    stored_boot = 0.0
+    try:
+        stored_boot = float(raw.get("bootAt") or 0)
+    except (TypeError, ValueError):
+        stored_boot = 0.0
+    if stored_boot > 0 and abs(stored_boot - boot) < 90:
+        life["bootAt"] = stored_boot
+        life["bootHandled"] = bool(raw.get("bootHandled"))
+        try:
+            life["armedBrowserAt"] = float(raw.get("armedBrowserAt") or 0)
+        except (TypeError, ValueError):
+            life["armedBrowserAt"] = 0.0
+    for key in ("s1ClosedAt", "s2ClosedAt"):
+        try:
+            life[key] = float(raw.get(key) or 0)
+        except (TypeError, ValueError):
+            life[key] = 0.0
+    return life
+
+
+def _save_life(life: dict[str, Any]) -> None:
+    _write_json(_life_path(), life)
+
+
+def host_browser_list() -> list[dict[str, Any]] | None:
+    """Running host browsers. None means the process scan failed."""
+    if not IS_WINDOWS:
+        return []
+    try:
+        import psutil  # type: ignore
+
+        found: list[dict[str, Any]] = []
+        for proc in psutil.process_iter(["name", "create_time"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                if name not in _HOST_BROWSER_NAMES:
+                    continue
+                found.append(
+                    {
+                        "name": name,
+                        "pid": int(proc.pid),
+                        "create_time": float(proc.info.get("create_time") or 0),
+                    }
+                )
+            except Exception:
+                continue
+        return found
+    except Exception:
+        return None
+
+
+def explain_server_reason(
+    *,
+    enabled: bool,
+    blocked: bool,
+    sleeping: bool,
+    closed_at: float,
+    demand_at: float,
+    now: float,
+    boot_at: float,
+    uptime: float,
+    boot_handled: bool,
+    armed_browser_at: float,
+    browsers: list[dict[str, Any]] | None,
+) -> str:
+    """Why S1 or S2 should be running. Empty string means leave it stopped.
+
+    Login-restored browsers wait BOOT_QUIET_SEC. A browser opened after that
+    window starts the server on this call. Five minutes without real demand
+    is idle. A user close stays down until a browser process starts after it.
+    """
+    if not enabled or blocked:
+        return ""
+    if browsers is None:
+        return "unknown"
+    # Chrome keeps spawning helper processes. A launch is the oldest process
+    # of each browser, not every new helper.
+    sessions: list[dict[str, Any]] = []
+    earliest: dict[str, float] = {}
+    for item in browsers:
+        name = str(item.get("name") or "browser").lower().replace(".exe", "")
+        started = float(item.get("create_time") or 0)
+        if started <= 0:
+            continue
+        if name not in earliest or started < earliest[name]:
+            earliest[name] = started
+    sessions = [{"name": name, "create_time": started} for name, started in earliest.items()]
+    browsers = sessions
+    armed = float(armed_browser_at or 0)
+    early_cut = float(boot_at) + EARLY_BOOT_SEC
+
+    def _opened_now(candidates: list[dict[str, Any]]) -> bool:
+        if not candidates:
+            return False
+        if uptime < BOOT_QUIET_SEC and all(
+            float(item.get("create_time") or 0) <= early_cut for item in candidates
+        ):
+            return False
+        return True
+
+    if sleeping or float(closed_at or 0) > 0:
+        stamp = float(closed_at or 0)
+        after_close = [
+            item
+            for item in browsers
+            if float(item.get("create_time") or 0) > stamp + 1.0
+        ]
+        if _opened_now(after_close):
+            return "resume-after-close"
+        return ""
+    if float(demand_at or 0) > 0 and (now - float(demand_at)) <= DEMAND_TTL_SEC:
+        return "demand"
+    fresh = [
+        item
+        for item in browsers
+        if float(item.get("create_time") or 0) > armed + 1.0
+    ]
+    if _opened_now(fresh):
+        return "browser-opened"
+    early = [
+        item
+        for item in browsers
+        if float(item.get("create_time") or 0) <= early_cut
+    ]
+    if early and (not boot_handled) and uptime >= BOOT_QUIET_SEC:
+        return "boot-delay-elapsed"
+    return ""
+
+
+def refresh_lifecycle_state(
+    browsers: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Remember this boot's browsers so a later poll does not look like a new open."""
+    if browsers is None:
+        browsers = host_browser_list()
+    life = _load_life()
+    up = _uptime_sec()
+    boot = float(life.get("bootAt") or _boot_time())
+    armed_now = float(life.get("armedBrowserAt") or 0)
+    if armed_now <= 0 and (life.get("bootHandled") or up > LATE_WATCHER_SEC):
+        # Already-open browsers are not a new launch. This also covers a watcher
+        # that attached long after boot.
+        created = [float(item.get("create_time") or 0) for item in (browsers or [])]
+        life["armedBrowserAt"] = max(created) if created else time.time()
+        life["bootHandled"] = True
+    elif armed_now <= 0 and not life.get("bootHandled") and up < EARLY_BOOT_SEC:
+        created = [float(item.get("create_time") or 0) for item in (browsers or [])]
+        life["armedBrowserAt"] = max(created) if created else boot
+    prefs = get_prefs()
+    sleep = servers_sleeping(prefs)
+    now = time.time()
+    if sleep.get("toolboxServer") and not float(life.get("s1ClosedAt") or 0):
+        life["s1ClosedAt"] = now
+        life["armedBrowserAt"] = max(float(life.get("armedBrowserAt") or 0), now)
+    if sleep.get("fafoMetaServer") and not float(life.get("s2ClosedAt") or 0):
+        life["s2ClosedAt"] = now
+        life["armedBrowserAt"] = max(float(life.get("armedBrowserAt") or 0), now)
+    _save_life(life)
+    return life
+
+
+def _mark_browser_consumed() -> None:
+    """Current browsers are already handled. A newer process is a new open."""
+    life = _load_life()
+    browsers = host_browser_list() or []
+    top = max((float(item.get("create_time") or 0) for item in browsers), default=0.0)
+    life["bootHandled"] = True
+    life["armedBrowserAt"] = max(float(life.get("armedBrowserAt") or 0), top, time.time())
+    _save_life(life)
+
+
+def _reason_for(
+    which: str,
+    prefs: dict[str, Any],
+    life: dict[str, Any],
+    browsers: list[dict[str, Any]] | None,
+) -> str:
+    s1 = which == "s1"
+    key = "toolboxServer" if s1 else "fafoMetaServer"
+    one = prefs.get("startWithOneClick") or {}
+    block = prefs.get("blockAutoStart") or {}
+    return explain_server_reason(
+        enabled=bool(one.get(key, True)),
+        blocked=bool(block.get(key)),
+        sleeping=bool(servers_sleeping(prefs).get(key)),
+        closed_at=float(life.get("s1ClosedAt" if s1 else "s2ClosedAt") or 0),
+        demand_at=demand_at("s1" if s1 else "s2"),
+        now=time.time(),
+        boot_at=float(life.get("bootAt") or _boot_time()),
+        uptime=_uptime_sec(),
+        boot_handled=bool(life.get("bootHandled")),
+        armed_browser_at=float(life.get("armedBrowserAt") or 0),
+        browsers=browsers,
+    )
+
+
+def _auto_reason(which: str, prefs: dict[str, Any] | None = None) -> str:
+    browsers = host_browser_list()
+    life = refresh_lifecycle_state(browsers)
+    prefs = prefs or get_prefs()
+    return _reason_for(which, prefs, life, browsers)
 
 
 def host_browser_running() -> bool | None:
@@ -470,92 +725,105 @@ def set_manual_hold(
 
 
 def should_auto_run_s1(prefs: dict[str, Any] | None = None) -> bool:
-    """S1 with Toolbox session, or manual hold after explicit Start/Wake."""
-    p = prefs or get_prefs()
-    if servers_sleeping(p).get("toolboxServer"):
-        return False
-    if p.get("blockAutoStart", {}).get("toolboxServer"):
-        return False
-    if not p.get("startWithOneClick", {}).get("toolboxServer", True):
-        return False
-    if bool(get_sessions(p).get("toolboxActive")):
-        return True
-    if demand_fresh("s1"):
-        return True
-    return bool(manual_hold(p).get("toolboxServer"))
+    """S1 while the Toolbox is in use, a browser just opened, or the boot delay ended.
+
+    A sticky session or manual hold does not keep it up. Idle is 5 minutes.
+    """
+    reason = _auto_reason("s1", prefs)
+    if reason == "unknown":
+        return _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
+    return bool(reason)
 
 
 def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
-    """S2 while FAFO/Ultimate Tab is actually using it, or manual hold.
+    """S2 for a real FAFO ping, a browser open, or the delayed boot start.
 
-    Chrome being open is NOT enough — people leave Chrome up all day. The new
-    tab / tag writes ping demand-s2.json; when that goes stale the watchdog
-    parks S2 so the PC can rest.
+    Chrome left open all day is not a reason to keep scanning. After a user
+    close, only a browser process that starts later turns S2 back on.
     """
-    p = prefs or get_prefs()
-    if servers_sleeping(p).get("fafoMetaServer"):
-        return False
-    if p.get("blockAutoStart", {}).get("fafoMetaServer"):
-        return False
-    if not p.get("startWithOneClick", {}).get("fafoMetaServer", True):
-        return False
-    if demand_fresh("s2"):
-        return True
-    if bool(get_sessions(p).get("fafoMediaActive")):
-        return True
-    return bool(manual_hold(p).get("fafoMetaServer"))
+    reason = _auto_reason("s2", prefs)
+    if reason == "unknown":
+        return _port_open(META_HOST, META_PORT)
+    return bool(reason)
+
+
+def _release_close_for_reason(which: str, reason: str) -> None:
+    if reason != "resume-after-close":
+        return
+    if which == "s1":
+        set_servers_sleeping(toolbox=False)
+    else:
+        set_servers_sleeping(fafo_meta=False)
+
+
+def _park_idle(which: str) -> None:
+    """Stop was for idle, not a user close. Do not treat the open browser as a new launch."""
+    _mark_browser_consumed()
+    if which == "s1":
+        set_manual_hold(toolbox=False)
+    else:
+        set_manual_hold(fafo_meta=False)
 
 
 def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
-    """Align S1/S2 with host apps + manual holds (tray + watchdog).
+    """Start or stop S1/S2 from browser launch, boot delay, and 5-minute idle.
 
-    S1 HTML Toolbox  → toolbox session or demand-s1.json or manual hold
-    S2 Ultimate Tab  → FAFO demand / new-tab use or manual hold (Chrome open ≠ demand)
+    A browser restored at login waits about 2 minutes. A browser opened after
+    that starts the servers on the next check. Idle servers are stopped and
+    stay down until the next browser launch or real use. User close stays
+    down until a browser process starts after the close.
     """
+    browsers = host_browser_list()
+    life = refresh_lifecycle_state(browsers)
     prefs = get_prefs()
-    actions: list[str] = []
-    want_s1 = should_auto_run_s1(prefs)
-    want_s2 = should_auto_run_s2(prefs)
+    r1 = _reason_for("s1", prefs, life, browsers)
+    r2 = _reason_for("s2", prefs, life, browsers)
     s1_up = _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
     s2_up = _port_open(META_HOST, META_PORT)
-    hold = manual_hold(prefs)
     browser = host_browser_running()
+    actions: list[str] = []
+    want_s1 = s1_up if r1 == "unknown" else bool(r1)
+    want_s2 = s2_up if r2 == "unknown" else bool(r2)
+
+    _release_close_for_reason("s1", r1)
+    _release_close_for_reason("s2", r2)
 
     if want_s1 and not s1_up:
-        r = start_toolbox_server()
-        actions.append(f"start_s1:{r.get('started') or r.get('alreadyRunning') or r.get('error')}")
-        if r.get("started"):
+        started = start_toolbox_server(reason=r1)
+        actions.append(
+            f"start_s1:{started.get('started') or started.get('alreadyRunning') or started.get('error')}"
+        )
+        if started.get("started"):
             for _ in range(12):
                 if _port_open(TOOLBOX_HOST, TOOLBOX_PORT):
                     break
                 time.sleep(0.4)
-    elif (
-        (not want_s1)
-        and s1_up
-        and not servers_sleeping(prefs).get("toolboxServer")
-        and not hold.get("toolboxServer")
-        and not demand_fresh("s1")
-    ):
+    elif want_s1 and s1_up and r1 not in ("", "demand", "unknown"):
+        note_demand("s1", app=r1 or "s1-keep")
+        _mark_browser_consumed()
+        actions.append(f"keep_s1:{r1}")
+    elif (not want_s1) and s1_up and not servers_sleeping().get("toolboxServer"):
         killed = stop_companions(toolbox=True, fafo_meta=False, mark_sleep=False)
+        _park_idle("s1")
         actions.append(f"stop_s1_idle:killed={killed.get('killed')}")
 
     if want_s2 and not s2_up:
-        r = start_fafo_meta_server()
-        actions.append(f"start_s2:{r.get('started') or r.get('alreadyRunning') or r.get('error')}")
-        if r.get("started"):
+        started = start_fafo_meta_server(reason=r2)
+        actions.append(
+            f"start_s2:{started.get('started') or started.get('alreadyRunning') or started.get('error')}"
+        )
+        if started.get("started"):
             for _ in range(16):
                 if _port_open(META_HOST, META_PORT):
                     break
                 time.sleep(0.4)
-    elif (
-        (not want_s2)
-        and s2_up
-        and not servers_sleeping(prefs).get("fafoMetaServer")
-        and not hold.get("fafoMetaServer")
-        and not demand_fresh("s2")
-    ):
-        # FAFO has not pinged recently — free resources even if Chrome is still open
+    elif want_s2 and s2_up and r2 not in ("", "demand", "unknown"):
+        note_demand("s2", app=r2 or "s2-keep")
+        _mark_browser_consumed()
+        actions.append(f"keep_s2:{r2}")
+    elif (not want_s2) and s2_up and not servers_sleeping().get("fafoMetaServer"):
         killed = stop_companions(toolbox=False, fafo_meta=True, mark_sleep=False)
+        _park_idle("s2")
         actions.append(f"stop_s2_idle:killed={killed.get('killed')}")
 
     tray_info: dict[str, Any] = {}
@@ -605,7 +873,21 @@ def set_servers_sleeping(
         updates["fafoMetaServer"] = bool(fafo_meta)
     else:
         updates["fafoMetaServer"] = cur["fafoMetaServer"]
-    return save_prefs({"serversSleeping": updates})
+    saved = save_prefs({"serversSleeping": updates})
+    life = _load_life()
+    now = time.time()
+    if updates["toolboxServer"] and not cur["toolboxServer"]:
+        life["s1ClosedAt"] = now
+        life["armedBrowserAt"] = max(float(life.get("armedBrowserAt") or 0), now)
+    elif (not updates["toolboxServer"]) and cur["toolboxServer"]:
+        life["s1ClosedAt"] = 0.0
+    if updates["fafoMetaServer"] and not cur["fafoMetaServer"]:
+        life["s2ClosedAt"] = now
+        life["armedBrowserAt"] = max(float(life.get("armedBrowserAt") or 0), now)
+    elif (not updates["fafoMetaServer"]) and cur["fafoMetaServer"]:
+        life["s2ClosedAt"] = 0.0
+    _save_life(life)
+    return saved
 
 
 def sleep_companions(
@@ -756,10 +1038,11 @@ def companion_status() -> dict[str, Any]:
             "blockAutoStart": bool(block.get("fafoMetaServer")),
             "sleeping": sleep["fafoMetaServer"],
             "chromeRunning": chrome_up,
-            "lifecycle": "with_chrome",
+            "lifecycle": "browser_launch_or_idle",
             "role": (
-                "Separate product: starts when Google Chrome is running "
-                "(Ultimate Tab extension) — not launched by HTML Toolbox"
+                "Starts when a browser opens. A browser restored at login waits "
+                "about 2 minutes. Sleeps after 5 minutes without use. Close stays "
+                "off until the next browser launch."
             ),
             "serves": [
                 "FAFO Ultimate Tab / Local Media (Chrome extension)",
@@ -1052,6 +1335,7 @@ def _popen_hidden(
     args: list[str],
     cwd: Path,
     log_stem: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.Popen:
     """Start without a console. Prefer list-args (no shell) so paths with spaces work.
 
@@ -1077,6 +1361,9 @@ def _popen_hidden(
     child_env = os.environ.copy()
     child_env.setdefault("PYTHONIOENCODING", "utf-8")
     child_env.setdefault("PYTHONUTF8", "1")
+    child_env.setdefault("PYTHONUNBUFFERED", "1")
+    if extra_env:
+        child_env.update({str(k): str(v) for k, v in extra_env.items()})
     kwargs: dict[str, Any] = {
         "cwd": str(cwd),
         "stdin": subprocess.DEVNULL,
@@ -1139,8 +1426,20 @@ def start_tray() -> dict[str, Any]:
         return {"ok": False, "id": "tray", "error": str(e)}
 
 
-def start_toolbox_server() -> dict[str, Any]:
+def _clear_meta_stop_flag() -> None:
+    flag = _localappdata() / "FAFO" / "ExplorerMeta" / "stop.flag"
+    try:
+        if flag.is_file():
+            flag.unlink()
+    except OSError:
+        pass
+
+
+def start_toolbox_server(reason: str = "") -> dict[str, Any]:
     if _port_open(TOOLBOX_HOST, TOOLBOX_PORT):
+        if reason and reason not in ("demand", "unknown"):
+            note_demand("s1", app=reason)
+            _mark_browser_consumed()
         return {"ok": True, "alreadyRunning": True, "id": "toolbox", "hidden": True}
     root = toolbox_root()
     py = _server_python()
@@ -1151,13 +1450,19 @@ def start_toolbox_server() -> dict[str, Any]:
         return {"ok": False, "error": f"Missing {server_py}", "id": "toolbox"}
     try:
         _popen_hidden([str(py), str(server_py)], root / "server", log_stem="S1-toolbox-server")
+        if reason not in ("demand", "unknown"):
+            note_demand("s1", app=reason or "s1-start")
+        _mark_browser_consumed()
         return {"ok": True, "started": True, "via": "python-hidden", "id": "toolbox", "hidden": True}
     except OSError as e:
         return {"ok": False, "error": str(e), "id": "toolbox"}
 
 
-def start_fafo_meta_server() -> dict[str, Any]:
+def start_fafo_meta_server(reason: str = "") -> dict[str, Any]:
     if _port_open(META_HOST, META_PORT):
+        if reason and reason not in ("demand", "unknown"):
+            note_demand("s2", app=reason)
+            _mark_browser_consumed()
         return {"ok": True, "alreadyRunning": True, "id": "fafo_meta", "hidden": True}
     meta = resolve_fafo_meta_root(persist=True)
     if not meta.get("ok") or not meta.get("path"):
@@ -1170,9 +1475,19 @@ def start_fafo_meta_server() -> dict[str, Any]:
     root = Path(str(meta["path"]))
     py = _server_python()
     server_py = root / "server.py"
+    scan_now = reason in {"browser-opened", "resume-after-close", "boot-delay-elapsed", "manual-start"}
     try:
         if py and server_py.is_file():
-            _popen_hidden([str(py), str(server_py)], root, log_stem="S2-fafo-meta-server")
+            _clear_meta_stop_flag()
+            _popen_hidden(
+                [str(py), str(server_py)],
+                root,
+                log_stem="S2-fafo-meta-server",
+                extra_env={"FAFO_SCAN_NOW": "1"} if scan_now else None,
+            )
+            if reason not in ("demand", "unknown"):
+                note_demand("s2", app=reason or "s2-start")
+            _mark_browser_consumed()
             return {
                 "ok": True,
                 "started": True,
@@ -1339,6 +1654,40 @@ def start_companions(
     }
 
 
+def _stop_meta_tree() -> list[int]:
+    """Stop the tagger and its --watch parent so idle sleep is not undone."""
+    flag = _localappdata() / "FAFO" / "ExplorerMeta" / "stop.flag"
+    try:
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.write_text("stop\n", encoding="utf-8")
+    except OSError:
+        pass
+    killed = stop_listener_on_port(META_PORT, META_HOST)
+    try:
+        import psutil  # type: ignore
+
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                if name not in ("python.exe", "pythonw.exe"):
+                    continue
+                cmd = " ".join(str(part) for part in (proc.info.get("cmdline") or [])).lower()
+                if "server.py" not in cmd:
+                    continue
+                if "explorer-meta" not in cmd and "explorermeta" not in cmd:
+                    continue
+                pid = int(proc.info["pid"])
+                if pid in killed:
+                    continue
+                proc.terminate()
+                killed.append(pid)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return killed
+
+
 def stop_listener_on_port(port: int, host_hint: str | None = None) -> list[int]:
     """Terminate process(es) listening on port. Returns killed PIDs."""
     killed: list[int] = []
@@ -1392,7 +1741,7 @@ def stop_companions(
     killed: dict[str, list[int]] = {"toolbox": [], "fafo_meta": []}
     # Stop tagger first so S1 can still answer the stop API call
     if want_meta:
-        killed["fafo_meta"] = stop_listener_on_port(META_PORT, META_HOST)
+        killed["fafo_meta"] = _stop_meta_tree()
     if want_tb:
         killed["toolbox"] = stop_listener_on_port(TOOLBOX_PORT, TOOLBOX_HOST)
     return {
