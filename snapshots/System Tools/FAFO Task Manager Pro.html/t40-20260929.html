@@ -219,22 +219,6 @@
     .chip-list .chip button {
       border: none; background: none; color: var(--danger); cursor: pointer; margin-left: 4px; font-weight: 800;
     }
-    .group-bar {
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      margin: 0 0 12px; padding: 10px 12px;
-      background: rgba(255,255,255,.035);
-      border: 1px solid var(--border); border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(0,0,0,.28);
-    }
-    .sel-count { font-size: 12px; color: var(--text); min-width: 12em; font-weight: 600; }
-    .group-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-    .btn.solid, .fafo-btn.solid {
-      background: var(--danger); color: #1a0909; border-color: transparent;
-    }
-    .btn.solid:hover, .fafo-btn.solid:hover { filter: brightness(1.08); color: #1a0909; }
-    th.pick, td.pick { width: 42px; text-align: center; vertical-align: middle; }
-    tr.picked td { background: rgba(0,243,255,.07); }
-    .mode-card { box-shadow: 0 10px 28px rgba(0,0,0,.22); }
 
     .nav-btn:focus-visible, .btn:focus-visible, .inp:focus-visible, .sel:focus-visible,
     .nav a:focus-visible, a:focus-visible, input:focus-visible, button:focus-visible, select:focus-visible {
@@ -402,17 +386,9 @@
       <!-- PROCS -->
       <section class="view" id="view-procs" data-fafo-primary>
         <h1>Processes + Intel</h1>
-        <p class="sub">Check the apps you want in a kill group, press <strong>Add selected</strong>, then <strong>Kill group</strong> ends every running copy of those names. The M1 / M2 / M3 toggles on each row do the same thing per app. One app can sit in more than one group.</p>
+        <p class="sub">Click a row for purpose, disable guidance, efficiency, and any cached CVE flags.
+          Use <strong>M1 / M2 / M3</strong> toggles to put a process into one or more efficiency kill profiles (overlap allowed).</p>
         <div class="mode-bar" id="procModeBar"></div>
-        <div class="group-bar" id="groupBar">
-          <span class="sel-count" id="selCount">No apps selected</span>
-          <label class="group-field">Group
-            <select id="activeGroup" class="sel" data-tip-title="Active group" data-tip="Kill group that receives the selected apps."></select>
-          </label>
-          <button class="btn" type="button" id="btnAddSelected" data-tip-title="Add selected" data-tip="Put the checked app names into the group shown here.">Add selected</button>
-          <button class="btn danger solid" type="button" id="btnKillActive" data-tip-title="Kill group" data-tip="End every running process whose name is in this group.">Kill group</button>
-          <button class="btn sm" type="button" id="btnClearPick" data-tip-title="Clear selection" data-tip="Uncheck the apps in this list. Does not empty the group.">Clear selection</button>
-        </div>
         <div class="panel">
           <div class="panel-h">
             <h2>Running processes</h2>
@@ -440,11 +416,10 @@
             <table>
               <thead>
                 <tr>
-                  <th class="pick"><input type="checkbox" id="pickVisible" data-tip-title="Select visible" data-tip="Check every app name currently shown in this list." title="Select visible apps"></th>
                   <th>PID</th><th>Name</th><th>CPU%</th><th>RAM</th><th>Score</th><th>Flags</th><th>Modes</th><th>Safe off?</th>
                 </tr>
               </thead>
-              <tbody id="procBody"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
+              <tbody id="procBody"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -453,10 +428,10 @@
       <!-- EFFICIENCY MODES -->
       <section class="view" id="view-modes">
         <h1>Efficiency modes</h1>
-        <p class="sub">Three kill groups. Check apps on the process list and use <strong>Add selected</strong>, or toggle M1/M2/M3 on a row. <strong>Kill all in this group</strong> ends every running copy of those names, including ones past the first screen of the list.</p>
+        <p class="sub">Three kill profiles. Assign processes with the M1/M2/M3 toggles on the process list — the same process can sit in all three modes. Press a mode button to end every matching running process in that list.</p>
         <div class="callout">
           <strong>Safety:</strong> Hard-protected system processes (csrss, lsass, services, …) are never killed.
-          By default, processes marked <em>not safe to disable</em> are skipped. Turn that off only if you mean to. Force kill is a separate, more aggressive end.
+          By default, processes marked <em>not safe to disable</em> in the knowledge base are also skipped unless you enable force below.
         </div>
         <div class="mode-bar" id="modesPageBar"></div>
         <div class="panel">
@@ -473,19 +448,10 @@
               </label>
               <button class="btn sm" type="button" id="btnSeedCommonHogs" data-tip-title="Seed common hogs" data-tip="Add common optional apps (browsers, chat, etc.) to M2/M3 mode lists." title="Add common optional hogs to M2/M3">+ Seed common optional apps</button>
               <button class="btn sm" type="button" id="btnClearAllModes" data-tip-title="Clear modes" data-tip="Clear all efficiency-mode process lists.">Clear all mode lists</button>
-              <label class="group-field">At login
-                <select id="launchProfile" class="sel" data-tip-title="Login group" data-tip="Which group to kill when Windows starts, if the startup shortcut is on.">
-                  <option value="">Do not kill at login</option>
-                </select>
-              </label>
-              <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="winStartup" data-tip-title="Login shortcut" data-tip="Add a Startup shortcut that opens Task Manager Pro and runs the login group.">
-                Run that group when Windows starts
-              </label>
             </div>
           </div>
           <div class="panel-b">
-            <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Groups are saved on this PC (and mirrored in this browser) by process name, not PID. The same app can sit in more than one group.</p>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Mode membership is stored in this browser (by process name, not PID). Overlap is intentional — e.g. Discord can be in Focus + Gaming + Deep clean.</p>
             <div id="modeListsDetail"></div>
           </div>
         </div>
@@ -669,7 +635,6 @@
     let online = false;
     let selectedPid = null;
     let lastProcs = [];
-    const selectedNames = new Set();
 
     /* ── Efficiency modes (3 profiles, overlapping membership by process name) ── */
     const MODES_KEY = 'fafo_tmpro_efficiency_modes_v1';
@@ -687,69 +652,22 @@
         members: {}, // key -> { m1, m2, m3 }
         skipUnsafe: true,
         forceKill: false,
-        launchProfile: '',
-        activeProfile: 'm1',
-      };
-    }
-
-    function normalizeModes(raw) {
-      const base = defaultModesState();
-      if (!raw || typeof raw !== 'object') return base;
-      const names = { ...base.names, ...(raw.names || {}) };
-      MODE_IDS.forEach((mid) => {
-        names[mid] = String(names[mid] || base.names[mid]).trim().slice(0, 48) || base.names[mid];
-      });
-      const members = {};
-      Object.entries(raw.members || {}).forEach(([k, v]) => {
-        const key = procKey(k);
-        if (!key || !v || typeof v !== 'object') return;
-        const flags = { m1: !!v.m1, m2: !!v.m2, m3: !!v.m3 };
-        if (flags.m1 || flags.m2 || flags.m3) members[key] = flags;
-      });
-      const launch = String(raw.launchProfile || '').toLowerCase();
-      const active = String(raw.activeProfile || 'm1').toLowerCase();
-      return {
-        names,
-        members,
-        skipUnsafe: raw.skipUnsafe !== false,
-        forceKill: !!raw.forceKill,
-        launchProfile: MODE_IDS.includes(launch) ? launch : '',
-        activeProfile: MODE_IDS.includes(active) ? active : 'm1',
       };
     }
 
     function loadModesState() {
       try {
-        return normalizeModes(JSON.parse(lsGet(MODES_KEY, 'null')));
+        const raw = JSON.parse(lsGet(MODES_KEY, 'null'));
+        if (!raw || !raw.names || !raw.members) return defaultModesState();
+        return {
+          names: { ...defaultModesState().names, ...raw.names },
+          members: raw.members || {},
+          skipUnsafe: raw.skipUnsafe !== false,
+          forceKill: !!raw.forceKill,
+        };
       } catch {
         return defaultModesState();
       }
-    }
-
-    function mergeModes(local, remote) {
-      const a = normalizeModes(local);
-      const b = normalizeModes(remote);
-      const defaults = defaultModesState().names;
-      const names = { ...defaults };
-      MODE_IDS.forEach((mid) => {
-        if (b.names[mid] && b.names[mid] !== defaults[mid]) names[mid] = b.names[mid];
-        else names[mid] = a.names[mid] || b.names[mid] || defaults[mid];
-      });
-      const members = {};
-      new Set([...Object.keys(a.members), ...Object.keys(b.members)]).forEach((k) => {
-        const left = a.members[k] || {};
-        const right = b.members[k] || {};
-        const flags = { m1: !!(left.m1 || right.m1), m2: !!(left.m2 || right.m2), m3: !!(left.m3 || right.m3) };
-        if (flags.m1 || flags.m2 || flags.m3) members[k] = flags;
-      });
-      return {
-        names,
-        members,
-        skipUnsafe: a.skipUnsafe !== false || b.skipUnsafe !== false,
-        forceKill: !!a.forceKill,
-        launchProfile: b.launchProfile || a.launchProfile || '',
-        activeProfile: b.activeProfile || a.activeProfile || 'm1',
-      };
     }
 
     function saveModesState(st) {
@@ -769,45 +687,16 @@
       return !!(modesState.members[k] && modesState.members[k][modeId]);
     }
 
-    let modesPushTimer = null;
-    let modesReady = false;
-
-    function modePayload() {
-      return {
-        names: modesState.names,
-        members: modesState.members,
-        skipUnsafe: modesState.skipUnsafe !== false,
-        forceKill: !!modesState.forceKill,
-        launchProfile: modesState.launchProfile || '',
-        activeProfile: modesState.activeProfile || 'm1',
-      };
-    }
-
-    async function pushModes() {
-      if (!online) return null;
-      const saved = await api('/tmpro/modes', { method: 'POST', body: JSON.stringify(modePayload()) });
-      if (saved && saved.names) {
-        modesState.launchProfile = saved.launchProfile || '';
-        modesState.activeProfile = saved.activeProfile || modesState.activeProfile;
-      }
-      return saved;
-    }
-
-    function persistModes() {
-      saveModesState(modesState);
-      if (!modesReady || !online) return;
-      clearTimeout(modesPushTimer);
-      modesPushTimer = setTimeout(() => { pushModes().catch((e) => console.warn('modes save', e)); }, 280);
-    }
-
     function setInMode(name, modeId, on) {
       const k = procKey(name);
       if (!k) return;
       if (!modesState.members[k]) modesState.members[k] = { m1: false, m2: false, m3: false };
       modesState.members[k][modeId] = !!on;
+      // drop empty
       if (!modesState.members[k].m1 && !modesState.members[k].m2 && !modesState.members[k].m3) {
         delete modesState.members[k];
       }
+      saveModesState(modesState);
     }
 
     function countMode(modeId) {
@@ -841,8 +730,7 @@
           const key = cb.dataset.pkey;
           const mid = cb.dataset.mode;
           setInMode(key, mid, cb.checked);
-          persistModes();
-          updateModeChrome();
+          renderModeBars();
           const lab = cb.closest('label');
           if (lab) lab.classList.toggle('on-' + mid, cb.checked);
         });
@@ -857,7 +745,7 @@
           <h3>⚡ ${esc(mid.toUpperCase())}</h3>
           <input class="rename" data-rename="${mid}" value="${esc(name)}" title="Rename mode">
           <div class="meta">${n} process name${n === 1 ? '' : 's'} assigned · overlap OK</div>
-          <button class="btn danger solid" type="button" data-run-mode="${mid}">Kill all in this group</button>
+          <button class="btn danger" type="button" data-run-mode="${mid}">Run — kill list</button>
         </div>`;
       }).join('');
       ['dashModeBar', 'procModeBar', 'modesPageBar'].forEach(id => {
@@ -871,12 +759,14 @@
           inp.onchange = () => {
             const mid = inp.dataset.rename;
             modesState.names[mid] = inp.value.trim() || mid;
-            persistModes();
-            updateModeChrome();
+            saveModesState(modesState);
+            updateNavModeLabels();
+            renderModeDetailLists();
           };
         });
       });
-      updateModeChrome();
+      updateNavModeLabels();
+      renderModeDetailLists();
       // options checkboxes
       const skip = $('modeSkipUnsafe');
       const force = $('modeForceKill');
@@ -884,41 +774,16 @@
       if (force) { force.checked = !!modesState.forceKill; }
     }
 
-    function fillGroupSelects() {
-      const opts = MODE_IDS.map((mid) => `<option value="${mid}">${esc(modesState.names[mid] || mid)}</option>`).join('');
-      const sel = $('activeGroup');
-      if (sel && document.activeElement !== sel) {
-        sel.innerHTML = opts;
-        sel.value = modesState.activeProfile || 'm1';
-      }
-      const launch = $('launchProfile');
-      if (launch && document.activeElement !== launch) {
-        launch.innerHTML = '<option value="">Do not kill at login</option>' + opts;
-        launch.value = modesState.launchProfile || '';
-      }
-    }
-
     function updateNavModeLabels() {
+      MODE_IDS.forEach(mid => {
+        const b = document.querySelector(`#navRun${mid.toUpperCase()}`) || document.querySelector(`[data-run-mode="${mid}"]`);
+        // nav buttons
+        const nav = $('navRun' + mid.toUpperCase().replace('M', 'M'));
+      });
       const n1 = $('navRunM1'), n2 = $('navRunM2'), n3 = $('navRunM3');
       if (n1) n1.textContent = `⚡ ${modesState.names.m1 || 'M1'} (${countMode('m1')})`;
       if (n2) n2.textContent = `⚡ ${modesState.names.m2 || 'M2'} (${countMode('m2')})`;
       if (n3) n3.textContent = `⚡ ${modesState.names.m3 || 'M3'} (${countMode('m3')})`;
-    }
-
-    function updateModeChrome() {
-      MODE_IDS.forEach((mid) => {
-        const n = countMode(mid);
-        const name = modesState.names[mid] || mid;
-        document.querySelectorAll('.mode-card.' + mid + ' .meta').forEach((node) => {
-          node.textContent = n + ' process name' + (n === 1 ? '' : 's') + ' assigned · overlap OK';
-        });
-        document.querySelectorAll('.mode-card.' + mid + ' input.rename').forEach((inp) => {
-          if (document.activeElement !== inp && inp.value !== name) inp.value = name;
-        });
-      });
-      updateNavModeLabels();
-      fillGroupSelects();
-      renderModeDetailLists();
     }
 
     function renderModeDetailLists() {
@@ -928,7 +793,7 @@
         const keys = listModeKeys(mid);
         const chips = keys.length
           ? keys.map(k => `<span class="chip">${esc(k)}<button type="button" data-rm="${mid}" data-k="${esc(k)}" title="Remove from mode">×</button></span>`).join('')
-          : '<span style="font-size:11px;color:var(--muted)">Empty — check apps and use Add selected</span>';
+          : '<span style="font-size:11px;color:var(--muted)">Empty — toggle M1/M2/M3 on the process list</span>';
         return `<div style="margin-bottom:14px">
           <strong style="color:var(--accent)">${esc(modesState.names[mid])} (${mid.toUpperCase()})</strong>
           <div class="chip-list">${chips}</div>
@@ -937,8 +802,7 @@
       box.querySelectorAll('button[data-rm]').forEach(b => {
         b.onclick = () => {
           setInMode(b.dataset.k, b.dataset.rm, false);
-          persistModes();
-          updateModeChrome();
+          renderModeBars();
           if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
         };
       });
@@ -949,26 +813,35 @@
       return NEVER_KILL.has(k) || NEVER_KILL.has(k + '.exe') || NEVER_KILL.has(String(name || '').toLowerCase());
     }
 
-    function showModeLog(lines) {
-      const logEl = $('modeRunLog');
-      if (logEl) logEl.textContent = (lines || []).join('\n');
-    }
-
-    async function mapPool(items, width, fn) {
-      const queue = items.slice();
-      const n = Math.max(1, Math.min(width, queue.length || 1));
-      await Promise.all(Array.from({ length: n }, async () => {
-        while (queue.length) {
-          const item = queue.shift();
-          if (item) await fn(item);
-        }
-      }));
-    }
-
-    async function runEfficiencyModeLocal(modeId) {
+    async function runEfficiencyMode(modeId) {
+      return withBusy(async () => {
+      if (!online) {
+        AIToolboxUI?.toast?.('Start server first', 'warn');
+        return;
+      }
       const keys = listModeKeys(modeId);
       const label = modesState.names[modeId] || modeId;
-      const data = await api('/tmpro/processes?sort_by=name&limit=8000');
+      if (!keys.length) {
+        AIToolboxUI?.toast?.(label + ' list is empty — toggle processes into this mode first', 'warn');
+        selectView('procs');
+        return;
+      }
+      modesState.skipUnsafe = $('modeSkipUnsafe') ? $('modeSkipUnsafe').checked : modesState.skipUnsafe !== false;
+      modesState.forceKill = $('modeForceKill') ? $('modeForceKill').checked : !!modesState.forceKill;
+      saveModesState(modesState);
+
+      const conf = await (window.AIToolboxUI?.confirmAction
+        ? AIToolboxUI.confirmAction({
+            title: `Run efficiency mode “${label}”?`,
+            body: `Will attempt to end <strong>${keys.length}</strong> process name(s) currently running:<br><code style="font-size:11px">${keys.slice(0, 24).map(esc).join(', ')}${keys.length > 24 ? '…' : ''}</code>`,
+            confirmText: 'Kill matching processes',
+            cancelText: 'Cancel',
+            showSafetyNote: true,
+          })
+        : Promise.resolve({ confirmed: confirm(`Run ${label} and kill ${keys.length} process name(s)?`) }));
+      if (!conf.confirmed) return;
+
+      const data = await api('/tmpro/processes?sort_by=cpu&limit=400');
       const running = data.processes || [];
       const keySet = new Set(keys);
       const targets = [];
@@ -979,20 +852,24 @@
           targets.push({ p, skip: 'protected' });
           continue;
         }
+        const safe = p.intel?.safe_to_disable !== false;
         if (modesState.skipUnsafe && p.intel?.safe_to_disable === false) {
           targets.push({ p, skip: 'unsafe' });
           continue;
         }
-        targets.push({ p, skip: null });
+        targets.push({ p, skip: null, safe });
       }
-      const toKill = targets.filter((t) => !t.skip);
-      const log = [`[${new Date().toLocaleTimeString()}] Mode ${modeId} “${label}” (page fallback)`];
-      if (data.limited) log.push('WARN process list was still truncated');
+
+      const toKill = targets.filter(t => !t.skip);
+      const log = [];
+      log.push(`[${new Date().toLocaleTimeString()}] Mode ${modeId} “${label}”`);
       log.push(`Assigned names: ${keys.length} · Running matches: ${targets.length} · Will kill: ${toKill.length}`);
-      targets.filter((t) => t.skip).forEach((t) => log.push(`SKIP ${t.p.name} (pid ${t.p.pid}): ${t.skip}`));
-      let killed = 0;
-      let failed = 0;
-      await mapPool(toKill, 6, async (t) => {
+      targets.filter(t => t.skip).forEach(t => {
+        log.push(`SKIP ${t.p.name} (pid ${t.p.pid}): ${t.skip}`);
+      });
+
+      let killed = 0, failed = 0;
+      for (const t of toKill) {
         try {
           await api('/network/processes/kill', {
             method: 'POST',
@@ -1004,74 +881,11 @@
           failed++;
           log.push(`ERR ${t.p.name} (pid ${t.p.pid}): ${e.message || e}`);
         }
-      });
+      }
       log.push(`Done — killed ${killed}, failed ${failed}, skipped ${targets.length - toKill.length}`);
-      return { label, killed, failed, log };
-    }
-
-    async function runEfficiencyMode(modeId, opts = {}) {
-      return withBusy(async () => {
-      if (!online) {
-        AIToolboxUI?.toast?.('Start server first', 'warn');
-        return;
-      }
-      const keys = listModeKeys(modeId);
-      const label = modesState.names[modeId] || modeId;
-      if (!keys.length) {
-        if (!opts.unattended) {
-          AIToolboxUI?.toast?.(label + ' is empty — select apps and add them to this group first', 'warn');
-          selectView('procs');
-        }
-        return;
-      }
-      modesState.skipUnsafe = $('modeSkipUnsafe') ? $('modeSkipUnsafe').checked : modesState.skipUnsafe !== false;
-      modesState.forceKill = $('modeForceKill') ? $('modeForceKill').checked : !!modesState.forceKill;
-      persistModes();
-      clearTimeout(modesPushTimer);
-      try { await pushModes(); } catch (e) { console.warn('modes save before kill', e); }
-
-      if (!opts.unattended) {
-        const conf = await (window.AIToolboxUI?.confirmAction
-          ? AIToolboxUI.confirmAction({
-              title: `Kill every app in “${label}”?`,
-              body: `Ends every running copy of <strong>${keys.length}</strong> app name(s):<br><code style="font-size:11px">${keys.slice(0, 24).map(esc).join(', ')}${keys.length > 24 ? '…' : ''}</code>`,
-              confirmText: 'Kill group',
-              cancelText: 'Cancel',
-              showSafetyNote: true,
-            })
-          : Promise.resolve({ confirmed: confirm(`Kill ${keys.length} app name(s) in ${label}?`) }));
-        if (!conf.confirmed) return;
-      }
-
-      let result;
-      try {
-        const res = await api('/tmpro/modes/run', {
-          method: 'POST',
-          body: JSON.stringify({
-            mode: modeId,
-            skipUnsafe: modesState.skipUnsafe !== false,
-            forceKill: !!modesState.forceKill,
-          }),
-        });
-        result = {
-          label: res.label || label,
-          killed: res.killed || 0,
-          failed: res.failed || 0,
-          log: [`[${new Date().toLocaleTimeString()}]`].concat(res.log || []),
-        };
-      } catch (e) {
-        const msg = String(e && e.message || e);
-        if (!/not found|404/i.test(msg)) {
-          AIToolboxUI?.toast?.(msg, 'warn');
-          return;
-        }
-        result = await runEfficiencyModeLocal(modeId);
-      }
-      showModeLog(result.log);
-      AIToolboxUI?.toast?.(
-        `${result.label}: ended ${result.killed} process(es)` + (result.failed ? `, ${result.failed} failed` : ''),
-        result.failed ? 'warn' : 'ok'
-      );
+      const logEl = $('modeRunLog');
+      if (logEl) logEl.textContent = log.join('\n');
+      AIToolboxUI?.toast?.(`${label}: ended ${killed} process(es)` + (failed ? `, ${failed} failed` : ''), failed ? 'warn' : 'ok');
       loadProcs();
       loadDash();
       });
@@ -1087,7 +901,6 @@
       MODE_IDS.forEach(mid => {
         (seeds[mid] || []).forEach(k => setInMode(k, mid, true));
       });
-      persistModes();
       renderModeBars();
       AIToolboxUI?.toast?.('Seeded common optional apps into M1/M2/M3 (edit freely)', 'ok');
       if (document.querySelector('.nav-btn.active')?.dataset.view === 'procs') loadProcs();
@@ -1137,7 +950,7 @@
       document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
       const pane = $('view-' + v);
       if (pane) pane.classList.add('active');
-      updateModeChrome();
+      renderModeBars();
       if (!online && v !== 'modes') return;
       if (v === 'dash') loadDash();
       else if (v === 'procs') loadProcs();
@@ -1166,7 +979,7 @@
         { l: 'Resource hogs', v: r.hogs ?? 0 },
         { l: 'Heavy/critical', v: (r.heavy || 0) + (r.critical || 0) },
       ].map(x => `<div class="stat"><div class="l">${x.l}</div><div class="v">${x.v}</div></div>`).join('');
-      updateNavModeLabels();
+      renderModeBars();
       } catch (e) { console.warn('loadDash', e); }
     }
 
@@ -1196,75 +1009,6 @@
       }, { passive: true });
     }
 
-    function updateSelCount() {
-      const n = selectedNames.size;
-      const node = $('selCount');
-      if (node) node.textContent = n ? (n + ' app name' + (n === 1 ? '' : 's') + ' selected') : 'No apps selected';
-    }
-
-    function syncPickHeader() {
-      const box = $('pickVisible');
-      updateSelCount();
-      if (!box) return;
-      const keys = [...new Set(lastProcs.map((p) => procKey(p.name)).filter(Boolean))];
-      const on = keys.filter((k) => selectedNames.has(k)).length;
-      box.indeterminate = on > 0 && on < keys.length;
-      box.checked = keys.length > 0 && on === keys.length;
-    }
-
-    function paintPickedRows() {
-      document.querySelectorAll('#procBody input[data-pick]').forEach((cb) => {
-        cb.checked = selectedNames.has(cb.dataset.pick);
-      });
-      document.querySelectorAll('#procBody tr[data-pkey]').forEach((tr) => {
-        tr.classList.toggle('picked', selectedNames.has(tr.dataset.pkey));
-      });
-      syncPickHeader();
-    }
-
-    function bindPickClicks(root) {
-      root.querySelectorAll('input[data-pick]').forEach((cb) => {
-        cb.addEventListener('click', (e) => e.stopPropagation());
-        cb.addEventListener('change', (e) => {
-          e.stopPropagation();
-          const key = cb.dataset.pick;
-          if (!key) return;
-          if (cb.checked) selectedNames.add(key);
-          else selectedNames.delete(key);
-          paintPickedRows();
-        });
-      });
-    }
-
-    function wirePickVisible() {
-      const box = $('pickVisible');
-      if (!box || box.dataset.wired) return;
-      box.dataset.wired = '1';
-      box.addEventListener('click', (e) => e.stopPropagation());
-      box.addEventListener('change', () => {
-        const keys = [...new Set(lastProcs.map((p) => procKey(p.name)).filter(Boolean))];
-        keys.forEach((k) => {
-          if (box.checked) selectedNames.add(k);
-          else selectedNames.delete(k);
-        });
-        paintPickedRows();
-      });
-    }
-
-    function addSelectedToActive() {
-      const mid = modesState.activeProfile || 'm1';
-      if (!selectedNames.size) {
-        AIToolboxUI?.toast?.('Check one or more apps first', 'warn');
-        return;
-      }
-      selectedNames.forEach((k) => setInMode(k, mid, true));
-      persistModes();
-      updateModeChrome();
-      paintPickedRows();
-      if (online) loadProcs();
-      AIToolboxUI?.toast?.('Added ' + selectedNames.size + ' app name(s) to ' + (modesState.names[mid] || mid), 'ok');
-    }
-
     async function loadProcs() {
       try {
       if (listScrollFrozen) {
@@ -1287,8 +1031,7 @@
       const tb = el('procBody');
       if (!tb) return;
       if (!lastProcs.length) {
-        tb.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">No processes</td></tr>';
-        syncPickHeader();
+        tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No processes</td></tr>';
         return;
       }
       // Preserve scroll position across refresh so the row under the cursor doesn't jump
@@ -1302,10 +1045,7 @@
           i.vulnerabilities?.flagged ? `<span class="tag vuln">CVE×${i.vulnerabilities.count}</span>` : '',
           i.in_knowledge_base ? '<span class="tag kb">KB</span>' : '<span class="tag unk">?</span>',
         ].filter(Boolean).join(' ');
-        const key = procKey(p.name);
-        const picked = selectedNames.has(key);
-        return `<tr data-pid="${p.pid}" data-pkey="${esc(key)}" class="${selectedPid === p.pid ? 'sel' : ''}${picked ? ' picked' : ''}">
-          <td class="pick"><input type="checkbox" data-pick="${esc(key)}" ${picked ? 'checked' : ''} aria-label="Select ${esc(p.name)}"></td>
+        return `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'sel' : ''}">
           <td class="mono">${p.pid}</td>
           <td><strong>${esc(p.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(i.title || '')}</div></td>
           <td>${Number(p.cpu_percent || 0).toFixed(1)}</td>
@@ -1325,11 +1065,10 @@
         tr.onclick = () => openDrawer(+tr.dataset.pid);
       });
       bindModeToggleClicks(tb);
-      bindPickClicks(tb);
-      syncPickHeader();
+      renderModeBars();
       if (wrap) wrap.scrollTop = prevScroll;
       wireProcScrollFreeze();
-      } catch (e) { console.warn('loadProcs', e); const tb2 = el('procBody'); if (tb2 && !tb2.innerHTML) tb2.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">Could not load processes</td></tr>'; }
+      } catch (e) { console.warn('loadProcs', e); const tb2 = el('procBody'); if (tb2 && !tb2.innerHTML) tb2.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">Could not load processes</td></tr>'; }
     }
 
     async function openDrawer(pid) {
@@ -1573,147 +1312,29 @@
     });
     $('modeSkipUnsafe')?.addEventListener('change', (e) => {
       modesState.skipUnsafe = !!e.target.checked;
-      persistModes();
+      saveModesState(modesState);
     });
     $('modeForceKill')?.addEventListener('change', (e) => {
       modesState.forceKill = !!e.target.checked;
-      persistModes();
+      saveModesState(modesState);
     });
     $('btnSeedCommonHogs')?.addEventListener('click', seedCommonHogs);
     $('btnClearAllModes')?.addEventListener('click', () => {
-      if (!confirm('Clear all kill groups?')) return;
+      if (!confirm('Clear all M1/M2/M3 process lists?')) return;
       modesState.members = {};
-      persistModes();
+      saveModesState(modesState);
       renderModeBars();
       loadProcs();
-      AIToolboxUI?.toast?.('All kill groups cleared', 'ok');
+      AIToolboxUI?.toast?.('All mode lists cleared', 'ok');
     });
-    $('activeGroup')?.addEventListener('change', (e) => {
-      const mid = String(e.target.value || 'm1');
-      modesState.activeProfile = MODE_IDS.includes(mid) ? mid : 'm1';
-      persistModes();
-    });
-    $('btnAddSelected')?.addEventListener('click', addSelectedToActive);
-    $('btnKillActive')?.addEventListener('click', () => runEfficiencyMode(modesState.activeProfile || 'm1'));
-    $('btnClearPick')?.addEventListener('click', () => {
-      selectedNames.clear();
-      paintPickedRows();
-    });
-    $('launchProfile')?.addEventListener('change', async (e) => {
-      modesState.launchProfile = MODE_IDS.includes(e.target.value) ? e.target.value : '';
-      persistModes();
-      clearTimeout(modesPushTimer);
-      try { await pushModes(); } catch (err) { console.warn(err); }
-      if (!$('winStartup')?.checked) return;
-      if (!modesState.launchProfile) {
-        $('winStartup').checked = false;
-        try {
-          await api('/tmpro/windows-startup', { method: 'POST', body: JSON.stringify({ enabled: false, launchProfile: '' }) });
-        } catch (err) { console.warn(err); }
-        AIToolboxUI?.toast?.('Login kill turned off', 'ok');
-        return;
-      }
-      try {
-        await api('/tmpro/windows-startup', {
-          method: 'POST',
-          body: JSON.stringify({ enabled: true, launchProfile: modesState.launchProfile }),
-        });
-      } catch (err) {
-        AIToolboxUI?.toast?.(err.message || String(err), 'warn');
-      }
-    });
-    $('winStartup')?.addEventListener('change', async (e) => {
-      const enabled = !!e.target.checked;
-      const lp = $('launchProfile')?.value || modesState.launchProfile || '';
-      if (enabled && !MODE_IDS.includes(lp)) {
-        e.target.checked = false;
-        AIToolboxUI?.toast?.('Pick a login group first', 'warn');
-        return;
-      }
-      if (enabled) {
-        const label = modesState.names[lp] || lp;
-        const ok = confirm('Add a Startup shortcut that opens Task Manager Pro and kills the “' + label + '” group at login?');
-        if (!ok) { e.target.checked = false; return; }
-      }
-      modesState.launchProfile = MODE_IDS.includes(lp) ? lp : '';
-      persistModes();
-      clearTimeout(modesPushTimer);
-      try {
-        await pushModes();
-        await api('/tmpro/windows-startup', {
-          method: 'POST',
-          body: JSON.stringify({ enabled, launchProfile: modesState.launchProfile }),
-        });
-        AIToolboxUI?.toast?.(enabled ? 'Login kill group armed' : 'Login kill group off', 'ok');
-      } catch (err) {
-        e.target.checked = !enabled;
-        AIToolboxUI?.toast?.(err.message || String(err), 'warn');
-      }
-    });
-    wirePickVisible();
     renderModeBars();
-
-    function modesSignature(st) {
-      const s = st || modesState;
-      return JSON.stringify({
-        names: s.names,
-        members: s.members,
-        skipUnsafe: s.skipUnsafe !== false,
-        forceKill: !!s.forceKill,
-        launchProfile: s.launchProfile || '',
-        activeProfile: s.activeProfile || 'm1',
-      });
-    }
-
-    async function hydrateModes() {
-      const local = loadModesState();
-      modesState = local;
-      if (online) {
-        try {
-          const remote = await api('/tmpro/modes');
-          const before = modesSignature(local);
-          modesState = mergeModes(local, remote);
-          saveModesState(modesState);
-          if (modesSignature(modesState) !== before) await pushModes();
-        } catch (e) {
-          console.warn('modes sync', e);
-        }
-        try {
-          const st = await api('/tmpro/windows-startup');
-          const box = $('winStartup');
-          if (box) box.checked = !!st.enabled;
-          if (st.launchProfile && MODE_IDS.includes(st.launchProfile)) modesState.launchProfile = st.launchProfile;
-          saveModesState(modesState);
-        } catch (e) {
-          console.warn('windows startup', e);
-        }
-      }
-      modesReady = true;
-      renderModeBars();
-    }
-
-    async function maybeAutostart() {
-      const params = new URLSearchParams(location.search);
-      if (params.get('autostart') !== '1') return;
-      try {
-        const url = new URL(location.href);
-        url.searchParams.delete('autostart');
-        history.replaceState({}, '', url.pathname + url.search + url.hash);
-      } catch (_) {}
-      const mid = modesState.launchProfile;
-      if (!mid || !online) return;
-      await runEfficiencyMode(mid, { unattended: true });
-    }
 
     async function startServer() {
       return withBusy(async () => {
       if (window.AIToolboxAPI?.startServer) {
         await AIToolboxAPI.startServer({ mode: 'tray', onStatus: (m) => AIToolboxUI?.toast?.(m, '') });
         await checkServer();
-        if (online) {
-          await hydrateModes();
-          selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash');
-        }
+        if (online) selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash');
       } else {
         UI()?.toast?.('Use Launcher ▶ Start Server', 'warn');
       }
@@ -1726,21 +1347,14 @@
       AIToolboxUI.bindServerControls({
         statusEl: '#serverPill',
         startBtn: '#btnStart',
-        onOnline: () => {
-          online = true;
-          hydrateModes()
-            .then(() => selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash'))
-            .catch(() => {});
-        },
+        onOnline: () => { online = true; selectView(document.querySelector('.nav-btn.active')?.dataset.view || 'dash'); },
         onOffline: () => { online = false; },
       });
     }
 
     (async () => {
       await checkServer();
-      await hydrateModes();
       if (online) loadDash();
-      await maybeAutostart();
       // Adaptive poll: pause when tab hidden; slower when idle views; normal for live process list
       let pollMs = 8000;
       let pollTimer = null;

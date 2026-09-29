@@ -358,6 +358,95 @@ def kill_process(pid: int, force: bool = False) -> dict[str, Any]:
         raise PermissionError(f"Access denied terminating PID {pid}")
 
 
+def _process_gone(proc: psutil.Process) -> bool:
+    try:
+        return not proc.is_running()
+    except psutil.NoSuchProcess:
+        return True
+    except psutil.Error:
+        return False
+
+
+def kill_processes(pids: list[int], force: bool = False) -> dict[str, Any]:
+    """End many PIDs with one wait instead of a multi-second wait per process."""
+    wanted: list[int] = []
+    seen: set[int] = set()
+    for raw in pids or []:
+        try:
+            pid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if pid <= 0 or pid in seen:
+            continue
+        seen.add(pid)
+        wanted.append(pid)
+
+    failed: list[dict[str, Any]] = []
+    failed_pids: set[int] = set()
+
+    def mark_fail(pid: int, name: str, error: str) -> None:
+        if pid in failed_pids:
+            return
+        failed_pids.add(pid)
+        failed.append({"pid": pid, "name": name, "error": error})
+
+    named: list[tuple[psutil.Process, str]] = []
+    for pid in wanted:
+        try:
+            proc = psutil.Process(pid)
+            try:
+                name = proc.name()
+            except psutil.Error:
+                name = ""
+            named.append((proc, name))
+        except psutil.NoSuchProcess:
+            mark_fail(pid, "", "not found")
+        except psutil.AccessDenied:
+            mark_fail(pid, "", "access denied")
+
+    for proc, name in named:
+        try:
+            if force:
+                proc.kill()
+            else:
+                proc.terminate()
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.AccessDenied:
+            mark_fail(proc.pid, name, "access denied")
+        except psutil.Error as exc:
+            mark_fail(proc.pid, name, str(exc))
+
+    waiting = [proc for proc, _name in named if proc.pid not in failed_pids]
+    _gone, alive = psutil.wait_procs(waiting, timeout=3)
+    for proc in alive:
+        name = ""
+        try:
+            name = proc.name()
+        except psutil.Error:
+            pass
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.Error as exc:
+            mark_fail(proc.pid, name, str(exc))
+    if alive:
+        _gone2, still = psutil.wait_procs(alive, timeout=2)
+        for proc in still:
+            mark_fail(proc.pid, "", "still running")
+
+    killed: list[dict[str, Any]] = []
+    for proc, name in named:
+        if proc.pid in failed_pids:
+            continue
+        if not _process_gone(proc):
+            mark_fail(proc.pid, name, "still running")
+            continue
+        killed.append({"pid": proc.pid, "name": name, "force": bool(force)})
+    return {"ok": not failed, "killed": killed, "failed": failed}
+
+
 def _run_command(cmd: list[str], timeout: float = 60) -> tuple[str, str, int]:
     creationflags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
     proc = subprocess.run(

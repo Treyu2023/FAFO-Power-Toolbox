@@ -4251,6 +4251,12 @@ class TmproWindowsStartupBody(BaseModel):
     launchProfile: str | None = None
 
 
+class TmproRunMode(BaseModel):
+    mode: str
+    skipUnsafe: bool | None = None
+    forceKill: bool | None = None
+
+
 @app.get("/api/tmpro/overview")
 def api_tmpro_overview():
     try:
@@ -4343,6 +4349,21 @@ def api_tmpro_modes_save(body: TmproModesBody = TmproModesBody()):
     try:
         payload = body.model_dump(exclude_none=True)
         return tmpro.save_modes(payload)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/tmpro/modes/run")
+def api_tmpro_modes_run(body: TmproRunMode):
+    """End every running process in one saved kill group."""
+    try:
+        return tmpro.run_efficiency_mode(
+            body.mode,
+            skip_unsafe=body.skipUnsafe,
+            force=body.forceKill,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, str(e))
 

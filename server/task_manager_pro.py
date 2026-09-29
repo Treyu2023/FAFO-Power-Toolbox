@@ -84,10 +84,23 @@ def _lookup_kb(name: str, kb: dict[str, Any] | None = None) -> dict[str, Any] | 
         return dict(procs[key], key=key)
     if f"{key}.exe" in procs:
         return dict(procs[f"{key}.exe"], key=key)
-    # partial: chrome helpers etc.
+    # Helper names only (chrome -> chrome_proxy). A short live name must not
+    # inherit a longer KB entry — that mis-labels unrelated processes.
+    best_len = 0
+    best: dict[str, Any] | None = None
+    best_key = ""
     for k, v in procs.items():
-        if key.startswith(k) or k.startswith(key):
-            return dict(v, key=k, match="prefix")
+        nk = _norm_proc_key(str(k))
+        if len(nk) < 5 or len(key) <= len(nk) or not key.startswith(nk):
+            continue
+        if key[len(nk)] not in "._- ":
+            continue
+        if len(nk) > best_len:
+            best_len = len(nk)
+            best = v if isinstance(v, dict) else None
+            best_key = nk
+    if best is not None:
+        return dict(best, key=best_key, match="prefix")
     return None
 
 
@@ -297,6 +310,8 @@ def list_processes_intel(
     return {
         "timestamp": raw.get("timestamp") or _utc_now(),
         "count": len(enriched),
+        "total": raw.get("total"),
+        "limited": bool(raw.get("limited")),
         "processes": enriched,
         "knowledge_version": kb.get("version"),
         "knowledge_count": len(kb.get("processes") or {}),
@@ -778,3 +793,137 @@ def set_windows_startup(enabled: bool, launch_profile: str | None = None) -> dic
     else:
         launch._remove_shortcut(link)
     return windows_startup_status()
+
+
+# Hard-protected names. Killing these takes down the session or a host service.
+_NEVER_KILL = {
+    "system",
+    "system idle process",
+    "idle",
+    "csrss",
+    "smss",
+    "wininit",
+    "services",
+    "lsass",
+    "winlogon",
+    "fontdrvhost",
+    "dwm",
+    "svchost",
+    "conhost",
+    "registry",
+    "memory compression",
+    "secure system",
+    "sihost",
+    "lsm",
+}
+
+
+def _exact_safe_to_disable(name: str, exe: str, kb: dict[str, Any]) -> bool | None:
+    """Exact KB hit, or False for a System32 path. None means unknown (allowed)."""
+    key = _norm_proc_key(name)
+    procs = kb.get("processes") or {}
+    info = procs.get(key) or procs.get(f"{key}.exe")
+    if isinstance(info, dict) and "safe_to_disable" in info:
+        return bool(info.get("safe_to_disable"))
+    path = (exe or "").lower().replace("/", "\\")
+    if "\\windows\\system32\\" in path or "\\windows\\syswow64\\" in path:
+        return False
+    return None
+
+
+def run_efficiency_mode(
+    mode_id: str,
+    skip_unsafe: bool | None = None,
+    force: bool | None = None,
+) -> dict[str, Any]:
+    """End every running process whose name is in one kill group.
+
+    Walks the full process list (no top-N cap) and ends matches in one batch.
+    """
+    import psutil
+
+    mid = (mode_id or "").strip().lower()
+    if mid not in MODE_IDS:
+        raise ValueError(f"Unknown mode '{mode_id}'")
+    modes = load_modes()
+    members = modes.get("members") or {}
+    keys = [k for k, flags in members.items() if isinstance(flags, dict) and flags.get(mid)]
+    if skip_unsafe is None:
+        skip_unsafe = modes.get("skipUnsafe", True) is not False
+    if force is None:
+        force = bool(modes.get("forceKill"))
+    label = str((modes.get("names") or {}).get(mid) or mid)
+    keyset = set(keys)
+    kb = load_knowledge()
+    protect = {os.getpid(), os.getppid()}
+    targets: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    seen_pid: set[int] = set()
+
+    for proc in psutil.process_iter(["pid", "name", "exe"]):
+        try:
+            info = proc.info or {}
+            pid = int(info.get("pid") or 0)
+            name = str(info.get("name") or "")
+            exe = str(info.get("exe") or "")
+        except (psutil.Error, TypeError, ValueError):
+            continue
+        if pid <= 4 or pid in seen_pid:
+            continue
+        seen_pid.add(pid)
+        key = _norm_proc_key(name)
+        if key not in keyset:
+            continue
+        if pid in protect or key in _NEVER_KILL:
+            skipped.append({"pid": pid, "name": name, "reason": "protected"})
+            continue
+        if skip_unsafe and _exact_safe_to_disable(name, exe, kb) is False:
+            skipped.append({"pid": pid, "name": name, "reason": "unsafe"})
+            continue
+        targets.append({"pid": pid, "name": name})
+
+    killed_rows: list[dict[str, Any]] = []
+    failed_rows: list[dict[str, Any]] = []
+    if targets:
+        batch = net.kill_processes([int(t["pid"]) for t in targets], force=bool(force))
+        by_pid = {int(t["pid"]): t["name"] for t in targets}
+        for row in batch.get("killed") or []:
+            pid = int(row.get("pid") or 0)
+            killed_rows.append({"pid": pid, "name": row.get("name") or by_pid.get(pid) or ""})
+        for row in batch.get("failed") or []:
+            pid = int(row.get("pid") or 0)
+            failed_rows.append({
+                "pid": pid,
+                "name": row.get("name") or by_pid.get(pid) or "",
+                "error": row.get("error") or "failed",
+            })
+
+    log = [
+        f"Mode {mid} “{label}”",
+        (
+            f"Assigned names: {len(keys)} · Running matches: {len(targets) + len(skipped)}"
+            f" · Will kill: {len(targets)}"
+        ),
+    ]
+    for row in skipped:
+        log.append(f"SKIP {row['name']} (pid {row['pid']}): {row['reason']}")
+    for row in killed_rows:
+        log.append(f"OK  {row['name']} (pid {row['pid']})")
+    for row in failed_rows:
+        log.append(f"ERR {row['name']} (pid {row['pid']}): {row['error']}")
+    log.append(
+        f"Done — killed {len(killed_rows)}, failed {len(failed_rows)}, skipped {len(skipped)}"
+    )
+    return {
+        "ok": not failed_rows,
+        "mode": mid,
+        "label": label,
+        "assigned": len(keys),
+        "matched": len(targets) + len(skipped),
+        "killed": len(killed_rows),
+        "failed": len(failed_rows),
+        "skipped": skipped,
+        "errors": failed_rows,
+        "log": log,
+        "force": bool(force),
+    }
