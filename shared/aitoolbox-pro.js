@@ -42,7 +42,12 @@
   const REGISTRY = {
     'toolbox launcher': {
       id: 'launcher', title: 'Toolbox Launcher', emoji: '🚀',
-      counterparts: ['startup-command-board', 'setup-configurator'],
+      counterparts: ['phone-launcher', 'startup-command-board', 'setup-configurator'],
+    },
+    'phone launcher': {
+      id: 'phone-launcher', title: 'Phone Launcher', emoji: '📱',
+      path: 'Phone Launcher.html',
+      counterparts: ['phone-assist', 'launcher'],
     },
     'startup command board': {
       id: 'startup-command-board', title: 'Startup Command Board', emoji: '🖥',
@@ -267,7 +272,7 @@
     'phone assist navigator': {
       id: 'phone-assist', title: 'Phone Assist Navigator', emoji: '📞',
       path: 'Verifone Tools/Phone Assist Navigator.html',
-      counterparts: ['commander-console', 'pre-reload'],
+      counterparts: ['phone-launcher', 'commander-console', 'pre-reload'],
     },
     'pre-reload punch list': {
       id: 'pre-reload', title: 'Pre-Reload Punch List', emoji: '✅',

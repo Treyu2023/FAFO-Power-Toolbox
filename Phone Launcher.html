@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en" data-fafo-phone="1" data-atx-layout="phone">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#04060a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FAFO Phone">
+  <meta name="aitoolbox-tool-id" content="phone-launcher">
+  <title>FAFO Phone · Toolbox</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="shared/pwa/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="shared/pwa/icon-180.png">
+  <link rel="stylesheet" href="shared/fafo-chrome.css?v=3.6.00">
+  <script src="shared/aitoolbox-version.js?v=3.6.00"></script>
+  <script src="shared/fafo-chrome.js?v=3.6.00" defer></script>
+  <script src="shared/fafo-pwa.js?v=3.6.00" defer></script>
+  <script src="shared/fafo-qr.js?v=3.6.00" defer></script>
+  <style>
+    :root {
+      --bg: #04060a;
+      --panel: #0a1018;
+      --panel2: #101820;
+      --text: #e8eef4;
+      --muted: #8b9bb0;
+      --accent: #00f3ff;
+      --accent2: #2ef5c9;
+      --gold: #f5c542;
+      --warn: #fbbf24;
+      --line: rgba(0, 243, 255, .22);
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-border: var(--line);
+      --fafo-touch-min: 44px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { max-width: 100%; overflow-x: hidden; }
+    body {
+      min-height: 100dvh;
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 40% at 50% -8%, rgba(0, 243, 255, .16), transparent 55%),
+        radial-gradient(ellipse 50% 30% at 100% 80%, rgba(46, 245, 201, .08), transparent 50%),
+        var(--bg);
+      padding:
+        max(12px, env(safe-area-inset-top))
+        max(14px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(14px, env(safe-area-inset-left));
+    }
+    header { text-align: center; margin-bottom: 14px; }
+    .brand { letter-spacing: .28em; font-size: 13px; color: var(--accent); font-weight: 800; }
+    h1 { font-weight: 300; letter-spacing: .12em; font-size: 1.35rem; color: var(--accent); margin: 4px 0; }
+    .sub { color: var(--muted); font-size: 13px; line-height: 1.45; max-width: 36rem; margin: 0 auto; }
+    .ver { opacity: .55; font-size: 11px; margin-top: 6px; }
+    nav {
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+      margin: 12px 0 16px;
+    }
+    .btn {
+      appearance: none; min-height: 44px; padding: 10px 14px; border-radius: 12px;
+      border: 1px solid var(--accent); background: rgba(0, 243, 255, .1);
+      color: var(--accent); font: 700 13px/1 system-ui; cursor: pointer;
+      text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+    .btn.gold { border-color: var(--gold); color: var(--gold); background: rgba(245, 197, 66, .08); }
+    .share {
+      display: none; margin: 0 auto 16px; max-width: 420px; padding: 14px;
+      border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    }
+    .share.open { display: block; }
+    .share h2 { font-size: 14px; color: var(--gold); margin-bottom: 8px; }
+    .share p, .share li { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .share ol { margin: 8px 0 0 1.2em; }
+    .urlbox {
+      margin: 10px 0; padding: 10px 12px; border-radius: 10px;
+      background: var(--panel2); border: 1px solid var(--line);
+      font: 600 13px/1.4 ui-monospace, Consolas, monospace;
+      color: var(--accent); word-break: break-all; min-height: 44px;
+    }
+    .qr { width: min(240px, 70vw); margin: 12px auto; background: #e8eef4; border-radius: 12px; padding: 8px; }
+    .sec { margin: 18px 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--accent2); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 360px) { .grid { grid-template-columns: 1fr; } }
+    .tile {
+      display: flex; flex-direction: column; justify-content: center; gap: 6px;
+      min-height: 88px; padding: 12px; border-radius: 16px; text-decoration: none;
+      color: var(--text); background: var(--panel); border: 1px solid var(--line);
+    }
+    .tile:active { border-color: var(--accent); }
+    .tile .em { font-size: 22px; line-height: 1; }
+    .tile .nm { font-weight: 700; font-size: 14px; }
+    .tile .ds { font-size: 12px; color: var(--muted); line-height: 1.3; }
+    .tile.pc { opacity: .88; }
+    .tile .need { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--warn); text-transform: uppercase; }
+    footer { margin-top: 22px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">FAFO</div>
+    <h1>PHONE TOOLBOX</h1>
+    <p class="sub">Same toolbox as the PC — this home is the field set. No fork. Add to Home screen after you open it in Chrome.</p>
+    <p class="ver" id="ver"></p>
+  </header>
+
+  <nav>
+    <button type="button" class="btn gold" id="btnShare">Get on this phone</button>
+    <a class="btn" href="Verifone Tools/Phone Assist Navigator.html">📞 On a call</a>
+    <a class="btn ghost" href="Toolbox Launcher.html">Full catalog</a>
+  </nav>
+
+  <section class="share" id="share" aria-label="Install on phone">
+    <h2>Put this on the phone</h2>
+    <p id="shareLead">Same repo as the PC. Do not fork a phone copy — this page is the phone home.</p>
+    <div class="urlbox" id="shareUrl"></div>
+    <div class="qr" id="qr" hidden></div>
+    <nav>
+      <button type="button" class="btn" id="btnCopy">Copy link</button>
+      <button type="button" class="btn ghost" id="btnCloseShare">Close</button>
+    </nav>
+    <ol id="shareSteps"></ol>
+  </section>
+
+  <p class="sec">On a call</p>
+  <div class="grid" id="gCall"></div>
+  <p class="sec">Field</p>
+  <div class="grid" id="gField"></div>
+  <p class="sec">Notes &amp; calc</p>
+  <div class="grid" id="gDesk"></div>
+  <p class="sec">Create</p>
+  <div class="grid" id="gCreate"></div>
+  <p class="sec">Play</p>
+  <div class="grid" id="gPlay"></div>
+
+  <footer>
+    PC media, diagnostics, and live Commander probes stay on the laptop loopback.
+    Phone path: <strong>Start-Phone-LAN.bat</strong> on the PC, or GitHub Pages when it is enabled.
+    <div><a href="docs/PHONE.md">docs/PHONE.md</a> · <a href="Toolbox Launcher.html?desktop=1">Desktop launcher</a></div>
+  </footer>
+
+  <script>
+    (function () {
+      var V = (typeof AITOOLBOX_VERSION === 'string' && AITOOLBOX_VERSION) || '3.6.00';
+      var verEl = document.getElementById('ver');
+      if (verEl) verEl.textContent = 'v' + V;
+
+      var GROUPS = {
+        gCall: [
+          { em: '📞', nm: 'Phone Assist', ds: 'CSR / Commander / TLS scripts', href: 'Verifone Tools/Phone Assist Navigator.html' },
+          { em: '✅', nm: 'Pre-Reload', ds: 'CITGO VAPS punch list', href: 'Verifone Tools/Pre-Reload Punch List.html' }
+        ],
+        gField: [
+          { em: '⛽', nm: 'Site Console', ds: 'Dossiers & tech desk', href: 'Verifone Tools/Commander Site Console.html', pc: true },
+          { em: '📡', nm: 'Status HUD', ds: 'Live probe — needs PC', href: 'Verifone Tools/Commander Status HUD.html', pc: true }
+        ],
+        gDesk: [
+          { em: '📋', nm: 'Drawing Board', ds: 'Notes, roadmap, Ω', href: 'Drawing Board.html' },
+          { em: '🧮', nm: 'Converter', ds: 'Units, RAM, electrical', href: 'Accounting Tools and calculators/Universal Converter.html' },
+          { em: '💰', nm: 'Loan calc', ds: 'Amortization & extra pay', href: 'Accounting Tools and calculators/Amoritization loan calculator2.html' },
+          { em: '🖼️', nm: 'Image shop', ds: 'Crop / banners / ICO', href: 'Video Tools/FAFO_VID_TRIM.html#image' }
+        ],
+        gCreate: [
+          { em: '🎵', nm: 'Songforge', ds: 'Lyrics & Suno pack', href: 'Songforge.html' },
+          { em: '🎬', nm: 'Lyric shots', ds: 'Verse → camera prompts', href: 'AI Creator/Lyric Shot Board.html' },
+          { em: '📥', nm: 'Prompt queue', ds: 'Next job clipboard', href: 'AI Creator/Prompt Queue.html' },
+          { em: '📖', nm: 'Style Bible', ds: 'Looks & negatives', href: 'AI Creator/Style Bible.html' }
+        ],
+        gPlay: [
+          { em: '⌨️', nm: 'KEYFLARE', ds: 'Typing arcade', href: 'Typing Assistant Trainer.html' },
+          { em: '🦇', nm: 'Bloodmoon', ds: 'Survival arena', href: 'Bloodmoon Survivor.html' },
+          { em: '🏛️', nm: 'Empire Seed', ds: '3D 4X sandbox', href: 'Empire Seed.html' },
+          { em: '🪐', nm: 'Debris tracker', ds: 'Orbital TLE view', href: 'Solar System Debris Tracker.html' }
+        ]
+      };
+
+      function tile(t) {
+        var a = document.createElement('a');
+        a.className = 'tile' + (t.pc ? ' pc' : '');
+        a.href = t.href;
+        a.innerHTML = '<span class="em">' + t.em + '</span><span class="nm">' + t.nm + '</span>' +
+          (t.pc ? '<span class="need">Needs PC server</span>' : '') +
+          '<span class="ds">' + t.ds + '</span>';
+        return a;
+      }
+      Object.keys(GROUPS).forEach(function (id) {
+        var host = document.getElementById(id);
+        if (!host) return;
+        GROUPS[id].forEach(function (t) { host.appendChild(tile(t)); });
+      });
+
+      var share = document.getElementById('share');
+      var shareUrl = document.getElementById('shareUrl');
+      var shareLead = document.getElementById('shareLead');
+      var shareSteps = document.getElementById('shareSteps');
+      var qr = document.getElementById('qr');
+      var current = location.href.split('#')[0];
+
+      function hostKind() {
+        var h = location.hostname || '';
+        if (location.protocol === 'file:') return 'file';
+        if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return 'loopback';
+        if (/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(h)) return 'lan';
+        if (/github\.io$/i.test(h)) return 'pages';
+        return 'http';
+      }
+
+      function drawQr(url) {
+        if (!qr || !globalThis.FafoQR) return;
+        try {
+          FafoQR.draw(qr, url, { dark: '#041018', light: '#e8eef4' });
+          qr.hidden = false;
+        } catch (e) { qr.hidden = true; }
+      }
+
+      function steps(items) {
+        shareSteps.innerHTML = items.map(function (s) { return '<li>' + s + '</li>'; }).join('');
+      }
+
+      function openShare(url, lead, list) {
+        shareUrl.textContent = url;
+        shareLead.textContent = lead;
+        steps(list);
+        share.classList.add('open');
+        drawQr(url);
+      }
+
+      function showShare() {
+        var kind = hostKind();
+        if (kind === 'file') {
+          openShare(
+            'Start-Phone-LAN.bat',
+            'Opening this HTML from disk will not load on the phone. Share it over Wi-Fi from the PC.',
+            [
+              'On the PC, double-click <strong>Start-Phone-LAN.bat</strong> (same folder as the toolbox).',
+              'Keep that window open. Scan the QR or type the <code>http://192.168.…:18780/</code> address in Chrome on the phone (same Wi-Fi).',
+              'Chrome menu → <strong>Add to Home screen</strong> / Install app.'
+            ]
+          );
+          qr.hidden = true;
+          return;
+        }
+        if (kind === 'loopback') {
+          fetch('phone-lan.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (j) {
+              var url = (j && j.urls && j.urls[0]) || '';
+              if (!url) throw new Error('no lan');
+              openShare(
+                url,
+                'Phone LAN is up. Same Wi-Fi — scan this QR on the phone. Static HTML only; the PC API stays local.',
+                [
+                  'Phone Chrome: open the link / scan the QR.',
+                  'Menu → <strong>Add to Home screen</strong>.',
+                  'Phone Assist and the other tiles here work in the browser. Live Commander probes still need the laptop.'
+                ]
+              );
+            })
+            .catch(function () {
+              openShare(
+                current,
+                'This tab is on the PC only. Start the phone share so the phone can reach it.',
+                [
+                  'Double-click <strong>Start-Phone-LAN.bat</strong> on the PC.',
+                  'A QR for <code>http://&lt;PC-LAN-IP&gt;:18780/</code> appears here after that server is up — refresh this page.',
+                  'Same Wi-Fi. Then Add to Home screen in Chrome.'
+                ]
+              );
+              qr.hidden = true;
+            });
+          return;
+        }
+        openShare(
+          current.replace(/[?&]share=1/, '').replace(/\?$/, ''),
+          kind === 'lan'
+            ? 'You are on the phone path. Install it to the home screen so you do not retype the address.'
+            : 'HTTPS home-screen install works from this URL.',
+          [
+            'Chrome menu → <strong>Add to Home screen</strong> / Install app.',
+            'Use <strong>On a call</strong> for Phone Assist while you walk a site through menus.',
+            'Full PC catalog is still one tap away if you need it.'
+          ]
+        );
+      }
+
+      document.getElementById('btnShare').addEventListener('click', showShare);
+      document.getElementById('btnCloseShare').addEventListener('click', function () {
+        share.classList.remove('open');
+      });
+      document.getElementById('btnCopy').addEventListener('click', function () {
+        var t = shareUrl.textContent || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).catch(function () {});
+        }
+        document.getElementById('btnCopy').textContent = 'Copied';
+        setTimeout(function () { document.getElementById('btnCopy').textContent = 'Copy link'; }, 1200);
+      });
+
+      if (/[?&]share=1/.test(location.search)) showShare();
+    })();
+  </script>
+</body>
+</html>

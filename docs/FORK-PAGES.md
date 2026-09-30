@@ -1,6 +1,6 @@
 # Publish a public Pages copy without leaking private apps
 
-Use this only when **this** repo cannot serve GitHub Pages.
+A **phone launcher is not a reason to fork.** Phone and PC stay in this repo (`Phone Launcher.html` + `Start-Phone-LAN.bat`). Use this file only when **this** repo cannot serve GitHub Pages.
 
 As of **2026-09-22** the preferred fix is simpler: [Treyu2023/FAFO-Power-Toolbox](https://github.com/Treyu2023/FAFO-Power-Toolbox) is **public**, and [https://treyu2023.github.io/FAFO-Power-Toolbox/](https://treyu2023.github.io/FAFO-Power-Toolbox/) 404s because Pages is not enabled. Turn it on (Settings → Pages → Deploy from branch → `main` → `/ (root)`). Do not create a second repo for that.
 

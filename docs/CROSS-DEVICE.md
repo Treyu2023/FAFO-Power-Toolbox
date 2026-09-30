@@ -1,6 +1,6 @@
 # Cross-device — one toolbox, phone and desktop
 
-Same HTML. Android Chrome and desktop/laptop browsers share `shared/fafo-chrome.css`, `shared/fafo-chrome.js`, and `shared/fafo-pwa.js`. There is no phone-only app.
+Same HTML, same git repo. **Do not fork** a phone copy. `Phone Launcher.html` is the field home; `Toolbox Launcher.html` is the full PC catalog. Android Chrome and desktop browsers share `shared/fafo-chrome.css`, `shared/fafo-chrome.js`, and `shared/fafo-pwa.js`.
 
 Checked **2026-09-22**: [https://treyu2023.github.io/FAFO-Power-Toolbox/](https://treyu2023.github.io/FAFO-Power-Toolbox/) returns **HTTP 404**. The repo is **public**. Enabling Pages from this agent failed with **403** (`pages=write` + `administration=write` not granted). Details and the Actions workflow are in [PHONE.md](PHONE.md). If the repo is private again, use [FORK-PAGES.md](FORK-PAGES.md) instead of the Fork button.
 
@@ -9,10 +9,11 @@ Checked **2026-09-22**: [https://treyu2023.github.io/FAFO-Power-Toolbox/](https:
 | Path | URL |
 |------|-----|
 | Pages (after Settings → Pages → `main` / root) | https://treyu2023.github.io/FAFO-Power-Toolbox/ |
-| Launcher | https://treyu2023.github.io/FAFO-Power-Toolbox/Toolbox%20Launcher.html |
+| Phone Launcher | https://treyu2023.github.io/FAFO-Power-Toolbox/Phone%20Launcher.html |
+| Desktop launcher | https://treyu2023.github.io/FAFO-Power-Toolbox/Toolbox%20Launcher.html |
 | Drawing Board | https://treyu2023.github.io/FAFO-Power-Toolbox/Drawing%20Board.html |
 | Typing Trainer | https://treyu2023.github.io/FAFO-Power-Toolbox/Typing%20Assistant%20Trainer.html |
-| LAN | `python -m http.server 8080` from the repo root, then `http://<PC-LAN-IP>:8080/` |
+| LAN (preferred) | `Start-Phone-LAN.bat` → `http://<PC-LAN-IP>:18780/` |
 
 `file://` is out of scope. Relative `shared/` paths need HTTP or HTTPS.
 

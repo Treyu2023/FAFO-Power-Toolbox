@@ -4,13 +4,15 @@
 /* eslint-disable no-restricted-globals */
 'use strict';
 
-var CACHE = 'fafo-shell-v2';
+var CACHE = 'fafo-shell-v3';
 var SHELL = [
   './',
   './index.html',
   './404.html',
+  './Phone Launcher.html',
   './manifest.webmanifest',
   './shared/fafo-pwa.js',
+  './shared/fafo-qr.js',
   './shared/pwa/icon-192.png',
   './shared/pwa/icon-512.png',
   './shared/pwa/icon-180.png',
