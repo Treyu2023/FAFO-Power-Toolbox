@@ -102,6 +102,13 @@ New-FafoShortcut -Path (Join-Path $desktop 'AI HTML Toolbox - Start Servers.lnk'
   -Target $StartServersBat `
   -Description 'Relaunch FAFO servers in background + tray'
 
+$phoneLanBat = Join-Path $ToolboxRoot 'Start-Phone-LAN.bat'
+if (Test-Path -LiteralPath $phoneLanBat) {
+  New-FafoShortcut -Path (Join-Path $desktop 'AI HTML Toolbox - Phone LAN.lnk') `
+    -Target $phoneLanBat `
+    -Description 'Share Phone Launcher on Wi-Fi (QR) — static HTML only'
+}
+
 if ($wantStartMenu) {
   $smDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\AI HTML Toolbox'
   New-FafoShortcut -Path (Join-Path $smDir 'AI HTML Toolbox.lnk') `
@@ -110,6 +117,11 @@ if ($wantStartMenu) {
   New-FafoShortcut -Path (Join-Path $smDir 'Start Servers.lnk') `
     -Target $StartServersBat `
     -Description 'Relaunch companion servers (hidden) + system tray'
+  if (Test-Path -LiteralPath $phoneLanBat) {
+    New-FafoShortcut -Path (Join-Path $smDir 'Phone LAN.lnk') `
+      -Target $phoneLanBat `
+      -Description 'Share Phone Launcher on Wi-Fi (QR) — static HTML only'
+  }
   $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $ps1 = Join-Path $ToolboxRoot 'Scripts\Start-FAFOServers.ps1'
   if (Test-Path -LiteralPath $ps1) {

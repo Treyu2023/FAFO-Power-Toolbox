@@ -30,7 +30,9 @@ Full rules: root `AGENTS.md`.
 
 | Path | Purpose |
 |------|---------|
-| `Toolbox Launcher.html` | App catalog / sections / icons |
+| `Toolbox Launcher.html` | App catalog / sections / icons (PC) |
+| `Phone Launcher.html` | Field home for the phone (same repo, no fork) |
+| `Start-Phone-LAN.bat` | Allowlisted static share on `:18780` |
 | `shared/` | Bind config, UI CSS/JS, API helpers |
 | `server/` | FastAPI-style loopback backend ops |
 | `Scripts/` | PowerShell modules, session, pre-push |

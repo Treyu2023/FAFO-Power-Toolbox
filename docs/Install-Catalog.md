@@ -80,5 +80,6 @@ Users who pick only Verifone never get S2 start scripts forced on them.
 | `2-Start-FAFO-Local-Media-Tagger.bat` | S2 only |
 | `Stop-ALL-Servers.bat` | Stop |
 | `Launch-AI-HTML-Toolbox.bat` | Open app |
+| `Start-Phone-LAN.bat` | Share Phone Launcher on Wi-Fi (QR, :18780, HTML only) |
 
 See catalog JSON for the complete inventory.

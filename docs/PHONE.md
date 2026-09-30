@@ -1,8 +1,23 @@
 # Phone (Android Chrome) — FAFO Power Toolbox
 
-Open the toolbox in the **phone browser**. No APK. No sideload of HTML from chat.
+**Do not fork a phone repo.** Phone and PC are the same toolbox. `Phone Launcher.html` is the field home; `Toolbox Launcher.html` is the full PC catalog.
 
-Static HTML + `shared/` assets only. Server-backed desks (Media Library, diagnostics, Verifone probes) still need the PC loopback server; the launcher and Drawing Board work as a catalog / notes UI without it. Typing Trainer is browser-local too.
+Open it in **Chrome on the phone**. No APK. No sideload of HTML from chat.
+
+## Fastest path that works today (LAN)
+
+GitHub Pages for this repo is often still off. Use the PC as a static share:
+
+1. On the PC, double-click **`Start-Phone-LAN.bat`** (Desktop shortcut **AI HTML Toolbox - Phone LAN** after you re-run `Install-Desktop-Shortcut.bat`).
+2. Keep that Python window open. Chrome on the PC shows a QR.
+3. Phone, **same Wi-Fi**, Chrome: scan the QR (or type `http://<PC-LAN-IP>:18780/`).
+4. Chrome menu → **Add to Home screen** / Install app.
+
+That share is **HTML/JS/CSS only** on port **18780**. It does **not** open the loopback API (`127.0.0.87:18765`). Investor Portal, TaxForge, `server/`, and secrets are not in the allowlist.
+
+`Phone Launcher.html` is the home: Phone Assist, punch list, notes, converters, creator tools, games. Live Commander probes still need the laptop.
+
+Static HTML + `shared/` assets. Server-backed desks (Media Library, diagnostics, Verifone probes) still need the PC loopback server.
 
 Phone and desktop share one chrome kit (`shared/fafo-chrome.css` / `fafo-chrome.js`). Viewport checks for 390 / 430 / 1280 are in [CROSS-DEVICE.md](CROSS-DEVICE.md).
 
@@ -30,7 +45,9 @@ After Pages is live, open this on the phone:
 
 **https://treyu2023.github.io/FAFO-Power-Toolbox/**
 
-That root page sends you to the launcher:
+That root page (`index.html`) sends a phone-sized browser to **Phone Launcher** and a desktop browser to **Toolbox Launcher**. `?phone=1` / `?desktop=1` override.
+
+**https://treyu2023.github.io/FAFO-Power-Toolbox/Phone%20Launcher.html**
 
 **https://treyu2023.github.io/FAFO-Power-Toolbox/Toolbox%20Launcher.html**
 
@@ -74,24 +91,19 @@ The web manifest (`manifest.webmanifest`, relative `id` so Pages and LAN both qu
 
 ## LAN fallback (no Pages)
 
-From a checkout of this repo (the production HTML tree — repo root, not a nested `docs/` publish):
-
-```bash
-cd /path/to/FAFO-Power-Toolbox
-python -m http.server 8080
-```
-
-On Windows PowerShell, from the toolbox folder:
+Prefer **`Start-Phone-LAN.bat`** (allowlisted static share on **:18780**). That is safer than serving the whole repo.
 
 ```powershell
-python -m http.server 8080
+.\Start-Phone-LAN.bat
+# or
+.\Scripts\Start-PhoneLan.ps1
 ```
 
 Then on the phone, same Wi-Fi:
 
-`http://<PC-LAN-IP>:8080/`
+`http://<PC-LAN-IP>:18780/` → Phone Launcher.
 
-Example: `http://192.168.1.40:8080/` → launcher.
+Example: `http://192.168.1.40:18780/Phone%20Launcher.html`
 
 `file://` open of HTML on the phone is out of scope. HTTP(S) keeps relative `shared/` paths working.
 
@@ -115,9 +127,9 @@ On phone-width (≤640px), the Launcher skips the full-screen cinematic intro an
 
 | Works in the browser | Needs the PC toolbox server |
 |----------------------|-----------------------------|
-| Launcher catalog, search, sections | Media Library, VSR, most System Tools |
-| Drawing Board (localStorage) | Verifone live probes, diagnostics HUD |
-| Typing Trainer (local drills) | Anything that talks to `127.0.0.87:18765` |
-| Other offline-OK HTML tools | |
+| **Phone Launcher** (this home) | Media Library, VSR, most System Tools |
+| Phone Assist Navigator, punch list | Verifone live probes, diagnostics HUD |
+| Drawing Board, converter, loan calc | Anything that talks to `127.0.0.87:18765` |
+| Typing Trainer / KEYFLARE, games | |
 
-Phone Chrome cannot reach `127.0.0.87` on the PC. Treat Pages as the **launcher + offline tools** path.
+Phone Chrome cannot reach `127.0.0.87` on the PC. Treat LAN :18780 or Pages as the **Phone Launcher + offline tools** path.

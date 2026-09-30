@@ -2,13 +2,13 @@
 
 Local browser-based tools for media cataloging, VSR pipeline renaming, and before/after comparison. No cloud — files stay on your machine.
 
-**Current version:** `3.5.06`
+**Current version:** `3.6.00`
 
 **Deep dive (pairs, Explorer tags, moves, storage Q&A):** [`MEDIA_LIBRARY_AND_PAIRS.md`](MEDIA_LIBRARY_AND_PAIRS.md)
 
 **Sharing / Chrome Web Store / GitHub:** [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) — full media+server stack is **not** a Chrome Web Store extension; GitHub (local install) is the right channel.
 
-**Phone (Android Chrome, no APK):** [`docs/PHONE.md`](docs/PHONE.md) — GitHub Pages URL, Add to Home screen, LAN `python -m http.server` fallback.
+**Phone (Android Chrome, no APK, no fork):** [`Phone Launcher.html`](Phone%20Launcher.html) + [`docs/PHONE.md`](docs/PHONE.md). Double-click **`Start-Phone-LAN.bat`**, scan the QR on the same Wi-Fi, then Chrome → Add to Home screen. GitHub Pages is the HTTPS install path once it is enabled.
 
 ---
 
