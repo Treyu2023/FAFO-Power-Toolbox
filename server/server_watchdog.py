@@ -362,6 +362,109 @@ def _trim_duplicate_s1() -> int:
     return _trim_extra_trees("S1", procs, keep_root=keep, prefer_newest=True)
 
 
+_S2_TRIM_CFG_WARNED = False
+
+
+def _s2_path_key(path: str) -> str | None:
+    """Comparable form of a path: realpath (junctions/symlinks/8.3 names), normpath, normcase."""
+    try:
+        return os.path.normcase(os.path.normpath(os.path.realpath(path)))
+    except (OSError, ValueError):
+        return None
+
+
+def _s2_is_full_path(path: str) -> bool:
+    """True only for drive- or UNC-anchored absolute paths (not '\\x' or 'C:x')."""
+    drive, rest = os.path.splitdrive(path)
+    return bool(drive) and rest[:1] in ("\\", "/")
+
+
+def _s2_script_arg(argv: list[str]) -> str | None:
+    """The script path python was started with (argv already split by psutil), or None."""
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-c", "-m", "-"):
+            return None
+        if a in ("-W", "-X"):
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        return a
+    return None
+
+
+def _s2_dev_port_ok(args: list[str]) -> bool:
+    """Yardmaster rule (b): no --dev-port at all, or every --dev-port is exactly 8765."""
+    for i, a in enumerate(args):
+        if a == "--dev-port":
+            val = args[i + 1] if i + 1 < len(args) else ""
+        elif a.startswith("--dev-port="):
+            val = a.split("=", 1)[1]
+        else:
+            continue
+        if val.strip() != str(launch_ops.META_PORT):
+            return False
+    return True
+
+
+def _s2_root_keys() -> dict[str, str] | None:
+    """Canonical S2 roots for the trim: configured fafoMetaRoot + %LOCALAPPDATA%\\FAFO\\ExplorerMeta.
+
+    Read-only (launch_ops.get_prefs: launch-prefs.json, local-paths.json, FAFO_META_ROOT).
+    Returns None when fafoMetaRoot is missing, unreadable or not a folder with server.py:
+    the caller then kills nothing.
+    """
+    try:
+        meta = launch_ops.get_prefs().get("fafoMetaRoot")
+    except Exception:
+        meta = None
+    meta = meta.strip() if isinstance(meta, str) else ""
+    if not meta or not _s2_is_full_path(meta) or not os.path.isfile(os.path.join(meta, "server.py")):
+        return None
+    cfg_key = _s2_path_key(meta)
+    local_key = _s2_path_key(str(launch_ops._localappdata() / "FAFO" / "ExplorerMeta"))
+    if not cfg_key:
+        return None
+    keys = {"fafoMetaRoot": cfg_key}
+    if local_key:
+        keys["LOCALAPPDATA"] = local_key
+    return keys
+
+
+def _s2_dup_folder(argv: list[str], get_cwd: Any, root_keys: dict[str, str]) -> str | None:
+    """Resolved server.py folder if this python argv is a trim-eligible S2, else None.
+
+    Eligible = script basename server.py, its folder resolves to a root in root_keys,
+    and rule (b) holds. Relative scripts are joined to the process cwd; get_cwd() is
+    called only then, and any failure means "not eligible".
+    """
+    script = _s2_script_arg(argv)
+    if not script or os.path.basename(script).lower() != "server.py":
+        return None
+    if not _s2_is_full_path(script):
+        try:
+            cwd = get_cwd()
+        except Exception:
+            return None
+        if not cwd or not _s2_is_full_path(str(cwd)):
+            return None
+        script = os.path.join(str(cwd), script)
+        if not _s2_is_full_path(script):
+            return None
+    try:
+        folder = os.path.realpath(os.path.dirname(script))
+    except (OSError, ValueError):
+        return None
+    if _s2_path_key(folder) not in root_keys.values():
+        return None
+    if not _s2_dev_port_ok(argv[1:]):
+        return None
+    return folder
+
+
 def _trim_duplicate_s2() -> int:
     """If multiple explorer-meta server.py processes, keep the tree that owns port 8765.
 
@@ -387,17 +490,33 @@ def _trim_duplicate_s2() -> int:
     if not holders:
         return 0  # can't identify owner — do not risk killing live S2
 
+    root_keys = _s2_root_keys()
+    global _S2_TRIM_CFG_WARNED
+    if root_keys is None:
+        if not _S2_TRIM_CFG_WARNED:
+            _S2_TRIM_CFG_WARNED = True
+            log(
+                "S2 duplicate trim skipped: fafoMetaRoot missing, unreadable or has no server.py "
+                f"(prefs {launch_ops.prefs_path()}) - no S2 process will be killed until it is set",
+                "WARN",
+            )
+        return 0
+    _S2_TRIM_CFG_WARNED = False
+
     procs: list[Any] = []
     by_pid: dict[int, Any] = {}
+    dup_info: dict[int, tuple[list[str], str]] = {}
     for p in psutil.process_iter(["pid", "name", "cmdline", "ppid", "create_time"]):
         try:
             name = (p.info.get("name") or "").lower()
             if name not in ("python.exe", "pythonw.exe"):
                 continue
-            cmd = " ".join(str(x) for x in (p.info.get("cmdline") or [])).lower()
-            if "explorer-meta" in cmd and "server.py" in cmd:
+            argv = [str(x) for x in (p.info.get("cmdline") or [])]
+            folder = _s2_dup_folder(argv, p.cwd, root_keys)
+            if folder:
                 procs.append(p)
                 by_pid[int(p.info["pid"])] = p
+                dup_info[int(p.info["pid"])] = (argv, folder)
         except Exception:
             continue
     if len(procs) <= 1:
@@ -439,11 +558,17 @@ def _trim_duplicate_s2() -> int:
                 protected.add(pid)
                 changed = True
 
+    import subprocess
+
     killed = 0
     for p in procs:
         pid = int(p.pid)
         if pid in protected:
             continue
+        argv, folder = dup_info.get(pid, ([], "?"))
+        if "--watch" in argv[1:] and _s2_path_key(folder) == root_keys["fafoMetaRoot"]:
+            continue  # never kill the canonical fafoMetaRoot --watch supervisor (Yardmaster, S-4b)
+        cmdline = subprocess.list2cmdline(argv).replace("\r", "\\r").replace("\n", "\\n")
         try:
             p.terminate()
             try:
@@ -452,12 +577,12 @@ def _trim_duplicate_s2() -> int:
                 p.kill()
             killed += 1
             log(
-                f"killed orphan S2 PID {pid} (protected tree={sorted(protected)}, "
-                f"holders={sorted(holders)})",
+                f"killed orphan S2 PID {pid} folder={folder} cmdline={cmdline} "
+                f"(protected tree={sorted(protected)}, holders={sorted(holders)})",
                 "WARN",
             )
         except Exception as e:
-            log(f"could not kill S2 PID {pid}: {e}", "WARN")
+            log(f"could not kill S2 PID {pid} folder={folder} cmdline={cmdline}: {e}", "WARN")
 
     # Verify S2 still up; if not, start it immediately
     time.sleep(0.4)
