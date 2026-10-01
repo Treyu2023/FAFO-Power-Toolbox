@@ -105,11 +105,6 @@
       background: transparent; color: var(--muted); padding: 7px 12px; cursor: pointer;
     }
     .tab.active { background: rgba(0,240,255,.16); color: #fff; border-color: var(--have); }
-    .tab-count { margin-left: 6px; font-weight: 800; color: var(--text); }
-    .tab-count:empty { display: none; }
-    .tab[data-tab="miss"] .tab-count { color: var(--miss); }
-    .tab[data-tab="have"] .tab-count { color: var(--have); }
-    .tab-count.lib { opacity: .6; }
     .toolbar input, .toolbar select { border-radius: 8px; color: var(--text); cursor: text; background: #05080c; }
     .toolbar input { flex: 1; min-width: 160px; }
     .grid {
@@ -150,11 +145,6 @@
     }
     .cap strong { display: block; color: var(--text); font-size: 11px; letter-spacing: .04em; margin-bottom: 2px; }
     .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 48px 16px; }
-    .empty-title { display: block; color: var(--text); font-size: 15px; margin-bottom: 6px; }
-    .empty-act {
-      margin-top: 12px; font-size: 12px; font-weight: 700; padding: 8px 14px; border-radius: 999px;
-      border: 1px solid var(--have); background: transparent; color: var(--have); cursor: pointer;
-    }
     .log-list { display: flex; flex-direction: column; gap: 8px; min-height: 240px; }
     .prompt-block {
       background: var(--panel); border: 1px solid rgba(255,255,255,.06);
@@ -208,12 +198,12 @@
       <div class="kpi"><div class="lbl">Unique prompts</div><div class="val gold" id="kpiPrompts">—</div></div>
       <div class="kpi"><div class="lbl">Tiles</div><div class="val" id="kpiCount">—</div></div>
     </div>
-    <div class="tabs" role="tablist" aria-label="Library filter">
-      <button type="button" class="tab active" data-tab="all" role="tab" id="tab-all" aria-selected="true" aria-controls="list">All thumbs<span class="tab-count"></span></button>
-      <button type="button" class="tab" data-tab="miss" role="tab" id="tab-miss" aria-selected="false" aria-controls="list" tabindex="-1">No file<span class="tab-count"></span></button>
-      <button type="button" class="tab" data-tab="have" role="tab" id="tab-have" aria-selected="false" aria-controls="list" tabindex="-1">Have<span class="tab-count"></span></button>
-      <button type="button" class="tab" data-tab="prompts" role="tab" id="tab-prompts" aria-selected="false" aria-controls="list" tabindex="-1">Unique prompts<span class="tab-count"></span></button>
-      <button type="button" class="tab" data-tab="log" role="tab" id="tab-log" aria-selected="false" aria-controls="list" tabindex="-1">Scrape log<span class="tab-count"></span></button>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="all">All thumbs</button>
+      <button type="button" class="tab" data-tab="miss">Missing</button>
+      <button type="button" class="tab" data-tab="have">Have</button>
+      <button type="button" class="tab" data-tab="prompts">Unique prompts</button>
+      <button type="button" class="tab" data-tab="log">Scrape log</button>
     </div>
     <div class="toolbar">
       <input type="search" id="search" placeholder="Filter name, prompt, id…" />
@@ -223,7 +213,7 @@
         <option value="image">Images</option>
       </select>
     </div>
-    <div class="grid" id="list" role="tabpanel" aria-labelledby="tab-all" tabindex="0"></div>
+    <div class="grid" id="list"></div>
     <div id="listStatus" class="list-status" aria-live="polite"></div><div id="listSentinel" style="height:1px"></div>
   </div>
 
@@ -517,7 +507,6 @@
         setText('kpiHave', catalog.haveFile);
         setText('kpiMiss', catalog.missingFile);
         setText('kpiPrompts', catalog.uniquePrompts);
-        renderTabCounts();
         const pill = el('vaultPill');
         if (!pill) return;
         if (vaultOn) {
@@ -527,85 +516,6 @@
           pill.className = 'pill bad';
           setText('vaultPill', demo ? 'Sample — start vault' : 'Vault offline');
         }
-      }
-
-      // Tab counts: /stats totals + Log rows; the active grid tab shows its own query total (#kpiCount).
-      let qTotal = null, qTab = '';
-      function renderTabCounts() {
-        const q = ((el('search') && el('search').value) || '').trim();
-        const filtered = !!(q || (el('typeFilter') && el('typeFilter').value));
-        const lib = {
-          all: catalog.count || 0,
-          have: catalog.haveFile || 0,
-          prompts: catalog.uniquePrompts || 0,
-          log: delta.length
-        };
-        document.querySelectorAll('.tab').forEach(function (b) {
-          const k = b.dataset.tab;
-          const name = String((b.firstChild && b.firstChild.nodeValue) || k).trim();
-          const c = b.querySelector('.tab-count');
-          let text = '', aria = '', wide = false;
-          if (k === tab && isGridTab() && qTab === tab && qTotal != null) {
-            text = qTotal.toLocaleString();
-            aria = name + ', ' + text + (filtered ? ' matching the search and type filter' : '');
-          } else if (k === 'miss') {
-            if (hadLive) aria = name + ', count shown only when this tab is selected';
-          } else if (hadLive) {
-            const n = lib[k];
-            const capped = k === 'log' && n >= 80;
-            text = capped ? '80+' : n.toLocaleString();
-            wide = filtered;
-            aria = name + ', ' + (capped ? 'latest 80' : text) + (k === 'log' ? ' rows' : '') +
-              (wide ? (k === 'log' ? ', ignores the search and type filter' : ' library-wide, ignores the search and type filter') : '');
-          }
-          if (c) { c.textContent = text; c.classList.toggle('lib', wide); }
-          if (aria) { b.setAttribute('aria-label', aria); b.title = aria; }
-          else { b.removeAttribute('aria-label'); b.removeAttribute('title'); }
-        });
-      }
-
-      // Tailored empty states. The paging code writes a generic .empty; this rewrites it with textContent only.
-      function clearSearch() {
-        const s = el('search');
-        if (s) { s.value = ''; s.focus(); }
-        renderTabCounts();
-        onViewChange();
-      }
-      function tailorEmpty(box) {
-        const q = ((el('search') && el('search').value) || '').trim();
-        const type = (el('typeFilter') && el('typeFilter').value) || '';
-        const grid = isGridTab();
-        let kind = '', title = '', body = '', label = '', act = null;
-        if (!vaultOn) {
-          kind = 'offline'; title = 'Vault offline'; label = 'Start vault'; act = startVault;
-          body = hadLive ? 'Start the vault to reload this view.' : 'Start the vault to load your real HAVE / MISS thumbs.';
-        } else if (q && (grid || tab === 'prompts')) {
-          kind = 'search'; title = 'No results for \u201c' + q + '\u201d'; label = 'Clear search'; act = clearSearch;
-          body = 'Nothing in this view matches your search.' + (type ? ' The type filter is on too.' : '');
-        } else if (grid && ((tab === 'all' && !type) || (hadLive && (catalog.haveFile || 0) + (catalog.missingFile || 0) === 0))) {
-          kind = 'library'; title = 'Your library is empty'; label = 'Scan disk'; act = scanDisk;
-          body = 'Harvest from grok.com/imagine/saved, then Scan disk to match your files.';
-        } else if (grid && tab === 'miss') {
-          kind = 'caught-up'; title = 'All caught up'; label = 'Scan disk'; act = scanDisk;
-          body = 'Every saved Imagine ' + (type || 'item') + ' is on disk.';
-        } else {
-          return;
-        }
-        box.setAttribute('data-kind', kind);
-        box.textContent = '';
-        const h = document.createElement('strong');
-        h.className = 'empty-title';
-        h.textContent = title;
-        const p = document.createElement('div');
-        p.textContent = body;
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'empty-act';
-        b.textContent = label;
-        b.addEventListener('click', function () { act(); });
-        box.appendChild(h);
-        box.appendChild(p);
-        box.appendChild(b);
       }
 
       function filteredClips() {
@@ -1099,52 +1009,12 @@
       document.querySelectorAll('.tab').forEach(function (btn) {
         btn.addEventListener('click', function () {
           tab = btn.dataset.tab;
-          document.querySelectorAll('.tab').forEach(function (b) {
-            const on = b === btn;
-            b.classList.toggle('active', on);
-            b.setAttribute('aria-selected', on ? 'true' : 'false');
-            b.tabIndex = on ? 0 : -1;
-          });
-          const panel = el('list');
-          if (panel) panel.setAttribute('aria-labelledby', btn.id);
+          document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('active', b === btn); });
           onViewChange();
-          renderTabCounts();
         });
       });
-      const tabList = document.querySelector('.tabs[role="tablist"]');
-      if (tabList) tabList.addEventListener('keydown', function (e) {
-        if (e.altKey || e.ctrlKey || e.metaKey) return;
-        const tabs = Array.prototype.slice.call(tabList.querySelectorAll('[role="tab"]'));
-        const i = tabs.indexOf(document.activeElement);
-        if (i < 0) return;
-        let j = -1;
-        if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
-        else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
-        else if (e.key === 'Home') j = 0;
-        else if (e.key === 'End') j = tabs.length - 1;
-        if (j < 0) return;
-        e.preventDefault();
-        tabs[j].focus();
-      });
-      if ('MutationObserver' in window) {
-        const listBox = el('list');
-        if (listBox) new MutationObserver(function () {
-          const n = listBox.firstElementChild;
-          if (n && n === listBox.lastElementChild && n.classList.contains('empty') && !n.hasAttribute('data-kind')) tailorEmpty(n);
-        }).observe(listBox, { childList: true });
-        const kpiCountEl = el('kpiCount');
-        if (kpiCountEl) new MutationObserver(function () {
-          const t = kpiCountEl.textContent;
-          const n = Number(t);
-          qTotal = t !== '' && isFinite(n) ? n : null;
-          qTab = tab;
-          renderTabCounts();
-        }).observe(kpiCountEl, { childList: true, characterData: true, subtree: true });
-      }
       bind('search', 'input', (window.AIToolboxMedia && AIToolboxMedia.bindSearch) ? AIToolboxMedia.bindSearch(onViewChange, 200) : onViewChange);
       bind('typeFilter', 'change', onViewChange);
-      bind('search', 'input', renderTabCounts);
-      bind('typeFilter', 'change', renderTabCounts);
       bind('btnStart', 'click', startVault);
       bind('btnScan', 'click', scanDisk);
       bind('vaultPill', 'click', function () { if (!vaultOn) startVault(); else refresh(); });
