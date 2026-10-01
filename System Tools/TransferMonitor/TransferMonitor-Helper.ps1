@@ -10,6 +10,9 @@
   Routes: GET /health and GET /transfers. Serves no files and reads no request body.
   Started by S1 (/api/tools/launch id "transfer-helper"); exits by itself after
   -IdleMinutes without a /transfers request. One instance per port.
+  /transfers serves real partial downloads only: files under *_files folders and *.js/*.css.download
+  (saved-page assets) and BITS jobs not Transferring/Queued/Connecting/TransientError are left out;
+  partials untouched for more than 24 h are only counted (counts.stale). The collector below is unchanged.
 
   Copied verbatim from TransferMonitor.ps1 (same folder):
     L26-36    $script:WatchStore + Read-WatchFolders (read-only; the L37-43 writer is not copied)
@@ -264,12 +267,44 @@ function Merge-Snapshot {
 # ---- end of L151-340 ----
 
 $script:LastCollect = [datetime]::MinValue
+$script:StaleAfter = [TimeSpan]::FromHours(24)
+$script:View = @{}    # key -> 'show' | 'stale' | 'skip' at the last collect (served view only; State is untouched)
+$script:Shown = @{}   # keys served as active at least once; only their history rows are served
 function Invoke-Collect {
   $ErrorActionPreference = 'SilentlyContinue'
   if (((Get-Date) - $script:LastCollect).TotalMilliseconds -lt $PollMs) { return }
   $script:LastCollect = Get-Date
   Update-WatchLive
   try { Merge-Snapshot } catch {}
+  try { Update-TmView } catch {}
+}
+
+function Get-TmClass($t) {
+  # Served-view rules only: never adds, removes or moves State items, so no history row comes from a rule.
+  $k = [string]$t.Key
+  if ($k.StartsWith('bits::')) {
+    if ([string]$t.Detail -match '^State: (Transferring|Queued|Connecting|TransientError)$') { return 'show' }
+    return 'skip'
+  }
+  if (-not $k.StartsWith('file::')) { return 'show' }                     # processes
+  $p = [string]$t.Path; $src = [string]$t.Source
+  if ($p -match '\.(js|css)\.download$') { return 'skip' }              # saved-page asset anywhere
+  $rel = $p
+  if ($src -and $p.StartsWith($src, [StringComparison]::OrdinalIgnoreCase)) { $rel = $p.Substring($src.Length) }
+  if ($rel -match '(^|\\)[^\\]*_files\\') { return 'skip' }        # under a *_files folder below the watched root
+  try { $m = [System.IO.File]::GetLastWriteTimeUtc($p) } catch { return 'show' }
+  if ($m.Year -lt 1700) { return 'show' }                                 # gone: the collector drops it next pass
+  if (([datetime]::UtcNow - $m) -gt $script:StaleAfter) { return 'stale' }
+  return 'show'
+}
+
+function Update-TmView {
+  $v = @{}
+  foreach ($t in @($script:State.Active.Values)) {
+    $k = [string]$t.Key; $c = Get-TmClass $t; $v[$k] = $c
+    if ($c -eq 'show') { $script:Shown[$k] = $true }
+  }
+  $script:View = $v
 }
 
 function ConvertTo-IsoUtc($d) {
@@ -278,7 +313,7 @@ function ConvertTo-IsoUtc($d) {
 }
 
 function ConvertTo-TmJson {
-  $active = [object[]]@($script:State.Active.Values |
+  $active = [object[]]@($script:State.Active.Values | Where-Object { $c = $script:View[[string]$_.Key]; (-not $c) -or $c -eq 'show' } |
     Sort-Object -Property @{ Expression = { [double]$_.Rate }; Descending = $true }, @{ Expression = { [string]$_.Name }; Descending = $false } |
     ForEach-Object {
       $pct = if ([long]$_.Total -gt 0) { [math]::Round(100.0 * [double]$_.Bytes / [double]$_.Total, 1) } else { -1 }
@@ -291,7 +326,8 @@ function ConvertTo-TmJson {
         status = [string]$_.Status
       }
     })
-  $history = [object[]]@($script:State.History | ForEach-Object {
+  $history = [object[]]@($script:State.History | Where-Object { $script:Shown.ContainsKey([string]$_.Key) } |
+    Select-Object -First 50 | ForEach-Object {
       [ordered]@{
         time = (ConvertTo-IsoUtc $_.Time); status = [string]$_.Status; name = [string]$_.Name
         direction = [string]$_.Direction; protocol = [string]$_.Protocol
@@ -302,11 +338,11 @@ function ConvertTo-TmJson {
     })
   $o = [ordered]@{
     ok = $true; service = 'fafo-transfer-helper'; schema = 1; readOnly = $true
-    at = (Get-Date).ToUniversalTime().ToString('o'); pollMs = $PollMs
+    at = (Get-Date).ToUniversalTime().ToString('o'); pollMs = $PollMs; staleHours = [int]$script:StaleAfter.TotalHours
     watchFolders = [object[]]@($script:WatchLive)
     net = [ordered]@{ inBps = [double]$script:State.NetInRate; outBps = [double]$script:State.NetOutRate }
     active = $active; history = $history
-    counts = [ordered]@{ active = $active.Count; history = $history.Count }
+    counts = [ordered]@{ active = $active.Count; history = $history.Count; stale = @($script:View.Values | Where-Object { $_ -eq 'stale' }).Count }
   }
   return ($o | ConvertTo-Json -Depth 5 -Compress)
 }
@@ -514,6 +550,7 @@ try {
   }
   if ($bound) {
     Write-TmTokenFile
+    Invoke-Collect   # warm-up before serving: the first Get-BitsTransfer (~4.3 s cold) leaves the first request
     $script:LastUse = Get-Date
     $idle = [TimeSpan]::FromMinutes($IdleMinutes)
     while (((Get-Date) - $script:LastUse) -lt $idle) {
