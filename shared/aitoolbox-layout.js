@@ -364,6 +364,21 @@
       }
     });
 
+    // A declared workspace/main panel owns leftover space. Drop flex that an
+    // older visit auto-saved onto a toolbar, or that bar grows into a tall
+    // block and covers the tool (Compare Hub header did this).
+    const declaredFlex = panels.some((p) => p.getAttribute('data-fafo-flex') === '1');
+    if (declaredFlex) {
+      panels.forEach((p) => {
+        const id = p.getAttribute('data-fafo-panel') || '';
+        if (!id || p.getAttribute('data-fafo-flex') === '1') return;
+        if (/nav|toolbar|header|tabs|status|chrome/i.test(id)) {
+          delete out.flex[id];
+          try { p.removeAttribute('data-fafo-flex'); } catch (_) { /* ignore */ }
+        }
+      });
+    }
+
     const visible = panels.filter((p) => {
       try {
         return getComputedStyle(p).display !== 'none' && !p.hasAttribute('hidden') && !p.classList.contains('hidden');
