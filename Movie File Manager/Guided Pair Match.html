@@ -1033,6 +1033,7 @@
       centerIdSource: null,
       centerIdMatch: null,
       autoNeedle: '',
+      autoNeedleSource: '',
     };
 
     function extractPidFromName(name) {
@@ -2875,7 +2876,7 @@
     }
 
     function rememberMatched(cand) {
-      const id = cand?.after_id || cand?.candidate_id;
+      const id = cand.after_id || cand.candidate_id;
       if (!id) return;
       libState.matched = libState.matched.filter((m) => m.id !== id && m.id !== cand.before_id);
       libState.matched.unshift({
@@ -2885,11 +2886,10 @@
         name: cand.after_name || cand.candidate_name || id,
         beforeName: cand.before_name,
       });
-      if (libState.matched.length > 40) libState.matched.length = 40;
-      renderMatchedTray();
+      renderMatched();
     }
 
-    function renderMatchedTray() {
+    function renderMatched() {
       const track = el('gpmMatchedTrack');
       const count = el('gpmMatchedCount');
       if (count) count.textContent = String(libState.matched.length);
@@ -2899,11 +2899,11 @@
         return;
       }
       track.innerHTML = libState.matched.map((m) => {
-        const src = thumbSrc(m.id);
-        return `<div class="gpm-flip-card is-active" data-mid="${esc(m.id)}" title="${esc(m.beforeName || '')} → ${esc(m.name || '')}">
-          ${src ? `<img alt="" src="${esc(src)}" loading="lazy">` : '<div style="height:88px;background:#111"></div>'}
-          <div class="cap">${esc(m.name || m.id)}</div>
-        </div>`;
+        const src = thumbSrc(m.afterId || m.id);
+        return `<button type="button" class="gpm-matched-card" data-mid="${esc(m.id)}" title="${esc(m.beforeName || '')} → ${esc(m.name)}">
+          ${src ? `<img alt="" src="${esc(src)}" loading="lazy">` : ''}
+          <div class="cap">${esc(m.name)}</div>
+        </button>`;
       }).join('');
     }
 
@@ -2933,6 +2933,18 @@
       }
       syncDualSelectionToStage();
       toast(pane === 'source' ? 'Source set' : 'Match set', 'ok');
+      const pid = extractPidFromName(item.name || '') || extractPidFromName(item.path || '');
+      if (pane === 'source') {
+        if (pid && libState.autoNeedle !== pid) {
+          libState.autoNeedle = pid;
+          setPaneNeedle('match', pid, true);
+        }
+      } else {
+        if (pid && libState.autoNeedleSource !== pid) {
+          libState.autoNeedleSource = pid;
+          setPaneNeedle('source', pid, true);
+        }
+      }
     }
 
     function updateFlipCenter(pane) {
@@ -2984,12 +2996,22 @@
       const otherId = pane === 'source' ? libState.matchSel?.id : libState.sourceSel?.id;
       const items = (res.items || []).filter((it) => it.id !== otherId && !matchedIds.has(it.id) && !reject.has(it.id));
       const nLower = (needle || '').toLowerCase();
+      const refName = (pane === 'source'
+        ? (libState.matchSel?.name || '')
+        : ((libState.sourceSel || currentAnchor())?.name || '')).toLowerCase();
       items.sort((a, b) => {
         const score = (it) => {
           const n = String(it.name || '').toLowerCase();
           let s = 0;
           if (nLower && n.includes(nLower)) s += 50;
-          if (nLower && String(it.id || '').toLowerCase().includes(nLower)) s += 40;
+          const pidA = extractPidFromName(pane === 'source'
+            ? (libState.matchSel?.name || '')
+            : ((libState.sourceSel || currentAnchor())?.name || ''));
+          const pidB = extractPidFromName(it.name);
+          if (pidA && pidB && pidA === pidB) s += 80;
+          const ta = new Set((refName.match(/[a-z0-9]{3,}/g) || []));
+          const tb = n.match(/[a-z0-9]{3,}/g) || [];
+          tb.forEach((t) => { if (ta.has(t)) s += /^\d+$/.test(t) ? 8 : 3; });
           return s;
         };
         return score(b) - score(a);
@@ -2997,10 +3019,13 @@
       if (pane === 'source') libState.unmatchedSource = items;
       else libState.unmatchedMatch = items;
       if (!items.length) {
+        const hint = pane === 'source'
+          ? '. Highlight a slice of the match name (e.g. 420) or type in the search box.'
+          : '. Highlight a slice of the source name (e.g. 420) or type in the search box.';
         track.innerHTML = '<div class="gpm-lib-empty">No unmatched '
           + (pane === 'source' ? 'source' : 'match') + ' hits'
           + (needle ? ' for “' + esc(needle) + '”' : '')
-          + '.</div>';
+          + hint + '</div>';
         return;
       }
       track.innerHTML = items.map((it) => {
