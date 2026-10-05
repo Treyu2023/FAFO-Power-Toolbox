@@ -602,9 +602,10 @@ def query_media(
         q = f"%{search.lower()}%"
         clauses.append(
             "(LOWER(name) LIKE ? OR LOWER(rel_path) LIKE ? OR LOWER(notes) LIKE ? "
-            "OR LOWER(tags) LIKE ? OR LOWER(category) LIKE ? OR LOWER(status) LIKE ?)"
+            "OR LOWER(tags) LIKE ? OR LOWER(category) LIKE ? OR LOWER(status) LIKE ? "
+            "OR LOWER(id) LIKE ?)"
         )
-        params.extend([q, q, q, q, q, q])
+        params.extend([q, q, q, q, q, q, q])
     if media_type:
         clauses.append("type=?")
         params.append(media_type)
