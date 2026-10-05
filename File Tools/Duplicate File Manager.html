@@ -516,6 +516,10 @@
                     <button class="ui-btn ghost" id="btnRefresh" disabled data-tip-title="Rescan" data-tip="Run the scan again from scratch.">↻ Rescan</button>
                     <button class="ui-btn ghost" id="btnClearScan" disabled
                             data-tip-title="Clear results" data-tip="Drop scan results from this browser (does not delete files). Kept away from Merge so it cannot slide under the cursor.">✕ Clear results</button>
+                    <button class="ui-btn ghost" type="button" id="btnShowDismissed"
+                            data-tip-title="Show dismissed" data-tip="List groups/files you marked Not a match (local only).">Show dismissed (0)</button>
+                    <button class="ui-btn ghost" type="button" id="btnUndoDismiss" style="display:none"
+                            data-tip-title="Undo dismiss" data-tip="Undo the last Not a match dismissal.">↩ Undo dismiss</button>
                 </div>
                 <div class="toolbar-merge">
                     <button class="ui-btn primary" id="btnMergeAllLowest" disabled
@@ -524,6 +528,7 @@
                             data-tip-pro="Top keep rule wins. Before / After copies stay locked. Pauses the scan first so this button cannot jump.">⊕ Merge all (keep rules)</button>
                 </div>
             </div>
+            <div id="dismissedPanel" class="dismissed-panel" style="display:none;border-bottom:1px solid var(--border);max-height:220px;overflow:auto;background:rgba(0,0,0,.25);"></div>
             <div class="groups-wrap" id="groupsWrap">
                 <div class="empty" id="emptyState">
                     <strong style="color:var(--text)">No scan yet</strong><br>
@@ -644,6 +649,11 @@
         let bulkMerging = false;
         const LS_DUP = 'fafo_duplicate_manager_settings_v1';
         const LS_DUP_SCAN = 'fafo_duplicate_manager_scan_v1';
+        const LS_NOT_A_MATCH = 'dfm.notAMatch.v1';
+        const NOT_A_MATCH_CAP = 2000;
+        let notAMatchStore = { groups: [], files: [], undo: null };
+        let notAMatchMem = null;
+        let showDismissedPanel = false;
 
         const KEEP_CATALOG = {
             prefer_prescaled: {
@@ -938,6 +948,322 @@
                 .sort(compareGroups);
         }
 
+        function normPathForSig(p) {
+            return String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+        }
+
+        /** Signature: normalized path + size + mtime (items carry mtime from light_entry). */
+        function fileSig(item) {
+            if (!item) return '';
+            const path = normPathForSig(item.path);
+            const size = Number(item.size) || 0;
+            const mtime = Number(item.mtime) || 0;
+            return path + '\0' + size + '\0' + mtime;
+        }
+
+        function loadNotAMatchStore() {
+            const empty = { groups: [], files: [], undo: null };
+            try {
+                const raw = lsGet(LS_NOT_A_MATCH, null);
+                if (!raw) {
+                    notAMatchStore = notAMatchMem || empty;
+                    return notAMatchStore;
+                }
+                const parsed = JSON.parse(raw);
+                notAMatchStore = {
+                    groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+                    files: Array.isArray(parsed.files) ? parsed.files : [],
+                    undo: parsed.undo || null,
+                };
+                return notAMatchStore;
+            } catch (_) {
+                notAMatchStore = notAMatchMem || empty;
+                return notAMatchStore;
+            }
+        }
+
+        function saveNotAMatchStore() {
+            trimNotAMatchStore();
+            notAMatchMem = notAMatchStore;
+            try {
+                const ok = lsSet(LS_NOT_A_MATCH, JSON.stringify(notAMatchStore));
+                if (!ok) notAMatchMem = JSON.parse(JSON.stringify(notAMatchStore));
+            } catch (_) {
+                notAMatchMem = JSON.parse(JSON.stringify(notAMatchStore));
+            }
+        }
+
+        function trimNotAMatchStore() {
+            const g = notAMatchStore.groups || [];
+            const f = notAMatchStore.files || [];
+            const total = g.length + f.length;
+            if (total <= NOT_A_MATCH_CAP) return;
+            const all = [
+                ...g.map((e, i) => ({ kind: 'g', i, at: e.at || 0 })),
+                ...f.map((e, i) => ({ kind: 'f', i, at: e.at || 0 })),
+            ].sort((a, b) => a.at - b.at);
+            let drop = total - NOT_A_MATCH_CAP;
+            const dropG = new Set();
+            const dropF = new Set();
+            for (const x of all) {
+                if (drop <= 0) break;
+                if (x.kind === 'g') dropG.add(x.i); else dropF.add(x.i);
+                drop--;
+            }
+            notAMatchStore.groups = g.filter((_, i) => !dropG.has(i));
+            notAMatchStore.files = f.filter((_, i) => !dropF.has(i));
+        }
+
+        function dismissedCount() {
+            loadNotAMatchStore();
+            return (notAMatchStore.groups?.length || 0) + (notAMatchStore.files?.length || 0);
+        }
+
+        function filterDismissedGroups(rawGroups) {
+            loadNotAMatchStore();
+            const groupEntries = notAMatchStore.groups || [];
+            const fileEntries = notAMatchStore.files || [];
+            let hiddenGroupCount = 0;
+            let removedFileCount = 0;
+            const active = [];
+
+            for (const g of (rawGroups || [])) {
+                const items = Array.isArray(g.items) ? g.items.slice() : [];
+                const sigSet = new Set(items.map(fileSig));
+
+                const kept = [];
+                for (const it of items) {
+                    const sig = fileSig(it);
+                    let drop = false;
+                    for (const fe of fileEntries) {
+                        if (fe.sig !== sig) continue;
+                        const peers = fe.peers || [];
+                        if (peers.some((p) => sigSet.has(p))) { drop = true; break; }
+                    }
+                    if (drop) removedFileCount++;
+                    else kept.push(it);
+                }
+
+                if (kept.length < 2) {
+                    if (items.length >= 2) hiddenGroupCount++;
+                    continue;
+                }
+
+                const keptSigs = kept.map(fileSig);
+                let groupHidden = false;
+                for (const ge of groupEntries) {
+                    const mem = new Set(ge.members || []);
+                    if (keptSigs.length && keptSigs.every((sg) => mem.has(sg))) {
+                        groupHidden = true;
+                        break;
+                    }
+                }
+                if (groupHidden) {
+                    hiddenGroupCount++;
+                    continue;
+                }
+
+                active.push({ ...g, items: kept, count: kept.length });
+            }
+            return {
+                active: normalizeGroupsList(active),
+                hiddenGroupCount,
+                removedFileCount,
+            };
+        }
+
+        function getActiveGroups() {
+            return filterDismissedGroups(scanResult?.groups || []).active;
+        }
+
+        function currentActiveGroup() {
+            const groups = getActiveGroups();
+            if (activeGroupIndex < 0 || activeGroupIndex >= groups.length) return null;
+            return groups[activeGroupIndex] || null;
+        }
+
+        function pruneSelectionsAgainstActive() {
+            const groups = getActiveGroups();
+            const paths = new Set();
+            groups.forEach((g) => (g.items || []).forEach((it) => it.path && paths.add(it.path)));
+            [...deleteSelection].forEach((p) => { if (!paths.has(p)) deleteSelection.delete(p); });
+            [...compareSelection].forEach((p) => { if (!paths.has(p)) compareSelection.delete(p); });
+            if (keeperPath && !paths.has(keeperPath)) keeperPath = null;
+        }
+
+        function afterDismissUi(label) {
+            pruneSelectionsAgainstActive();
+            const groups = getActiveGroups();
+            if (activeGroupIndex >= groups.length) activeGroupIndex = groups.length ? 0 : -1;
+            if (activeGroupIndex >= 0 && groups[activeGroupIndex]) {
+                activeGroupKey = groups[activeGroupIndex].key || null;
+                const grp = groups[activeGroupIndex];
+                if (!keeperPath || !grp.items.some((it) => it.path === keeperPath)) {
+                    keeperPath = grp.suggested_keep || pickKeeper(grp.items);
+                }
+            } else {
+                activeGroupKey = null;
+                keeperPath = null;
+            }
+            renderGroups();
+            updateStats();
+            updateActionButtons();
+            const grp = currentActiveGroup();
+            if (grp) renderDetail(grp);
+            else {
+                setHtml('detailHead', '<h2>Select a duplicate group</h2><p class="hint" style="margin:0;">Choose which copy to keep. Merge sends extras to Recycle Bin.</p>');
+                setHtml('detailList', '');
+            }
+            renderDismissChrome(label);
+            if (showDismissedPanel) renderDismissedPanel();
+        }
+
+        function dismissActiveGroup() {
+            const grp = currentActiveGroup();
+            if (!grp || !(grp.items || []).length) return;
+            loadNotAMatchStore();
+            const entry = {
+                members: (grp.items || []).map(fileSig).filter(Boolean),
+                at: Date.now(),
+                names: (grp.items || []).map((it) => it.name || it.path || '').slice(0, 8),
+            };
+            notAMatchStore.undo = { type: 'group', entry: JSON.parse(JSON.stringify(entry)) };
+            notAMatchStore.groups.push(entry);
+            (grp.items || []).forEach((it) => {
+                if (!it.path) return;
+                deleteSelection.delete(it.path);
+                compareSelection.delete(it.path);
+            });
+            saveNotAMatchStore();
+            afterDismissUi('Group dismissed as not a match');
+        }
+
+        function dismissFileInActiveGroup(path) {
+            const grp = currentActiveGroup();
+            if (!grp) return;
+            const item = (grp.items || []).find((it) => it.path === path);
+            if (!item) return;
+            loadNotAMatchStore();
+            const peers = (grp.items || []).filter((it) => it.path !== path).map(fileSig).filter(Boolean);
+            const entry = {
+                sig: fileSig(item),
+                peers,
+                at: Date.now(),
+                name: item.name || item.path || '',
+                path: item.path || '',
+            };
+            notAMatchStore.undo = { type: 'file', entry: JSON.parse(JSON.stringify(entry)) };
+            notAMatchStore.files.push(entry);
+            deleteSelection.delete(path);
+            compareSelection.delete(path);
+            if (keeperPath === path) keeperPath = null;
+            saveNotAMatchStore();
+            afterDismissUi('File dismissed as not a match');
+        }
+
+        function undoLastDismiss() {
+            loadNotAMatchStore();
+            const u = notAMatchStore.undo;
+            if (!u || !u.entry) {
+                UI()?.toast?.('Nothing to undo', 'warn');
+                return;
+            }
+            if (u.type === 'group') {
+                const mem = JSON.stringify(u.entry.members || []);
+                notAMatchStore.groups = (notAMatchStore.groups || []).filter(
+                    (e) => JSON.stringify(e.members || []) !== mem
+                );
+            } else if (u.type === 'file') {
+                notAMatchStore.files = (notAMatchStore.files || []).filter(
+                    (e) => !(e.sig === u.entry.sig && JSON.stringify(e.peers || []) === JSON.stringify(u.entry.peers || []))
+                );
+            }
+            notAMatchStore.undo = null;
+            saveNotAMatchStore();
+            afterDismissUi('Dismiss undone');
+        }
+
+        function restoreGroupEntry(idx) {
+            loadNotAMatchStore();
+            if (idx < 0 || idx >= (notAMatchStore.groups || []).length) return;
+            notAMatchStore.groups.splice(idx, 1);
+            notAMatchStore.undo = null;
+            saveNotAMatchStore();
+            afterDismissUi('Group restored');
+        }
+
+        function restoreFileEntry(idx) {
+            loadNotAMatchStore();
+            if (idx < 0 || idx >= (notAMatchStore.files || []).length) return;
+            notAMatchStore.files.splice(idx, 1);
+            notAMatchStore.undo = null;
+            saveNotAMatchStore();
+            afterDismissUi('File restored');
+        }
+
+        function clearAllDismissals() {
+            notAMatchStore = { groups: [], files: [], undo: null };
+            saveNotAMatchStore();
+            afterDismissUi('All dismissals cleared');
+        }
+
+        function renderDismissChrome(statusLabel) {
+            const undoBtn = el('btnUndoDismiss');
+            if (undoBtn) {
+                loadNotAMatchStore();
+                undoBtn.style.display = notAMatchStore.undo ? '' : 'none';
+            }
+            if (statusLabel && !scanning) {
+                const st = el('scanStatus');
+                if (st) st.textContent = statusLabel;
+            }
+            const tog = el('btnShowDismissed');
+            if (tog) {
+                const n = dismissedCount();
+                tog.textContent = showDismissedPanel ? ('Hide dismissed (' + n + ')') : ('Show dismissed (' + n + ')');
+            }
+        }
+
+        function renderDismissedPanel() {
+            const panel = el('dismissedPanel');
+            if (!panel) return;
+            if (!showDismissedPanel) {
+                panel.style.display = 'none';
+                panel.innerHTML = '';
+                return;
+            }
+            loadNotAMatchStore();
+            panel.style.display = '';
+            const gRows = (notAMatchStore.groups || []).map((e, i) => {
+                const names = (e.names || []).map((n) => escapeHtml(n)).join(', ') || '(group)';
+                return '<div class="dismissed-row" style="display:flex;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px;">'
+                    + '<span>Group · ' + names + '</span>'
+                    + '<button type="button" class="ui-btn ghost" data-restore-group="' + i + '">Restore</button></div>';
+            }).join('');
+            const fRows = (notAMatchStore.files || []).map((e, i) => {
+                const label = escapeHtml(e.name || e.path || 'file');
+                return '<div class="dismissed-row" style="display:flex;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px;">'
+                    + '<span>File · ' + label + '</span>'
+                    + '<button type="button" class="ui-btn ghost" data-restore-file="' + i + '">Restore</button></div>';
+            }).join('');
+            if (!gRows && !fRows) {
+                panel.innerHTML = '<div class="hint" style="padding:8px;">No dismissed matches.</div>';
+                return;
+            }
+            panel.innerHTML =
+                '<div class="section-label" style="padding:8px 8px 0;">Dismissed as not a match (local only — files untouched)</div>'
+                + gRows + fRows
+                + '<div style="padding:8px;"><button type="button" class="ui-btn ghost" id="btnClearDismissals">Clear all dismissals</button></div>';
+            panel.querySelectorAll('button[data-restore-group]').forEach((btn) => {
+                btn.onclick = (ev) => { ev.stopPropagation(); restoreGroupEntry(Number(btn.getAttribute('data-restore-group'))); };
+            });
+            panel.querySelectorAll('button[data-restore-file]').forEach((btn) => {
+                btn.onclick = (ev) => { ev.stopPropagation(); restoreFileEntry(Number(btn.getAttribute('data-restore-file'))); };
+            });
+            el('btnClearDismissals')?.addEventListener('click', () => clearAllDismissals());
+        }
+
+
         function applyKeepersNow({ resetManual } = {}) {
             if (resetManual) keeperPath = null;
             if (scanResult?.groups) applyScanToUi({ restored: true, partial: scanning, quiet: !scanning });
@@ -1191,9 +1517,10 @@
             if (data.summaryOnly && !(scanResult.groups || []).length) {
                 UI()?.toast?.('Last scan summary restored — groups were too large; Rescan to refill the list', 'warn');
             }
-            if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
+            const activeRestored = getActiveGroups();
+            if (activeGroupIndex >= 0 && activeRestored[activeGroupIndex]) {
                 selectGroup(activeGroupIndex);
-            } else if (scanResult.groups.length) {
+            } else if (activeRestored.length) {
                 selectGroup(0);
             }
             return true;
@@ -1247,41 +1574,43 @@
             scanResult.duplicate_groups = scanResult.groups.length;
             scanResult.wasted_bytes = scanResult.groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0);
 
-            const g = scanResult.duplicate_groups ?? scanResult.groups?.length ?? 0;
+            const active = getActiveGroups();
+            const g = active.length;
+            const dismissedN = filterDismissedGroups(scanResult.groups || []).hiddenGroupCount;
+            const dismissedMsg = dismissedN ? ` (${dismissedN} dismissed)` : '';
             if (!partial) {
                 el('scanProgress').style.width = '100%';
                 if (!quiet) {
                     const sk = scanResult.skipped_partial_downloads;
                     const skMsg = (sk != null && sk > 0) ? ` · ${sk} partial downloads skipped` : '';
                     el('scanStatus').textContent = restored
-                        ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups (not rescanned).${skMsg}`
-                        : `Done — ${scanResult.scanned} files, ${g} duplicate groups.${skMsg}`;
+                        ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups${dismissedMsg} (not rescanned).${skMsg}`
+                        : `Done — ${scanResult.scanned} files, ${g} duplicate groups${dismissedMsg}.${skMsg}`;
                 }
                 setLiveScanPill(false);
             } else {
                 setLiveScanPill(true);
             }
+            const wastedActive = active.reduce((a, x) => a + (x.wasted_bytes || 0), 0);
             el('toolbarInfo').textContent = partial
-                ? `Live · ${g} groups so far · ${fmtBytesFull(scanResult.wasted_bytes || 0)} recoverable`
-                : `${g} groups · ${fmtBytesFull(scanResult.wasted_bytes || 0)} recoverable`;
+                ? `Live · ${g} groups so far${dismissedMsg} · ${fmtBytesFull(wastedActive)} recoverable`
+                : `${g} groups${dismissedMsg} · ${fmtBytesFull(wastedActive)} recoverable`;
             el('btnOpenFolder').disabled = false;
             el('btnRefresh').disabled = false;
             el('btnClearScan').disabled = false;
             el('btnMergeAllLowest').disabled = !g || bulkMerging;
-            // Preserve selection by group key when list reshuffles
             if (activeGroupKey) {
-                const idx = scanResult.groups.findIndex((x) => x.key === activeGroupKey);
+                const idx = active.findIndex((x) => x.key === activeGroupKey);
                 if (idx >= 0) activeGroupIndex = idx;
-                else if (activeGroupIndex >= scanResult.groups.length) {
-                    activeGroupIndex = scanResult.groups.length ? 0 : -1;
-                    activeGroupKey = scanResult.groups[activeGroupIndex]?.key || null;
+                else if (activeGroupIndex >= active.length) {
+                    activeGroupIndex = active.length ? 0 : -1;
+                    activeGroupKey = active[activeGroupIndex]?.key || null;
                 }
             }
             renderGroups();
             updateStats();
-            if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
-                const grp = scanResult.groups[activeGroupIndex];
-                // Keep user's manual keeper if still in group; else keep-rules winner
+            if (activeGroupIndex >= 0 && active[activeGroupIndex]) {
+                const grp = active[activeGroupIndex];
                 if (!keeperPath || !grp.items.some((it) => it.path === keeperPath)) {
                     keeperPath = grp.suggested_keep || pickLowestCountKeeper(grp.items);
                 }
@@ -1386,24 +1715,18 @@
             scanResult.groups = normalizeGroupsList(scanResult.groups);
             scanResult.duplicate_groups = scanResult.groups.length;
             scanResult.wasted_bytes = scanResult.groups.reduce((a, g) => a + (g.wasted_bytes || 0), 0);
-            if (activeGroupKey) {
-                const idx = scanResult.groups.findIndex((x) => x.key === activeGroupKey);
-                activeGroupIndex = idx >= 0 ? idx : (scanResult.groups.length ? 0 : -1);
-                activeGroupKey = scanResult.groups[activeGroupIndex]?.key || null;
-            } else if (activeGroupIndex >= scanResult.groups.length) {
-                activeGroupIndex = scanResult.groups.length ? 0 : -1;
-            }
-            if (activeGroupIndex >= 0) {
-                const g = scanResult.groups[activeGroupIndex];
-                keeperPath = g.suggested_keep || pickLowestCountKeeper(g.items);
-            } else {
-                keeperPath = null;
-                activeGroupKey = null;
-            }
             compareSelection.clear();
             deleteSelection.clear();
             applyScanToUi({ restored: !scanning, partial: scanning });
-            if (activeGroupIndex >= 0 && scanResult.groups[activeGroupIndex]) {
+            const active = getActiveGroups();
+            if (activeGroupKey) {
+                const idx = active.findIndex((x) => x.key === activeGroupKey);
+                activeGroupIndex = idx >= 0 ? idx : (active.length ? 0 : -1);
+                activeGroupKey = active[activeGroupIndex]?.key || null;
+            } else if (activeGroupIndex >= active.length) {
+                activeGroupIndex = active.length ? 0 : -1;
+            }
+            if (activeGroupIndex >= 0 && active[activeGroupIndex]) {
                 selectGroup(activeGroupIndex);
             } else {
                 el('detailList').innerHTML = '';
@@ -1460,18 +1783,24 @@
         }
 
         function updateStats() {
-            setText('statGroups', scanResult?.duplicate_groups ?? scanResult?.groups?.length ?? 0);
+            const filtered = filterDismissedGroups(scanResult?.groups || []);
+            const activeN = filtered.active.length;
+            const dismissedN = filtered.hiddenGroupCount;
+            setText('statGroups', dismissedN
+                ? `${activeN} (${dismissedN} dismissed)`
+                : String(activeN));
             setText('statScanned', scanResult?.scanned ?? 0);
-            const wasted = scanResult?.wasted_bytes ?? 0;
+            const wasted = filtered.active.reduce((a, g) => a + (g.wasted_bytes || 0), 0);
             const wastedEl = el('statWasted');
             if (wastedEl) { wastedEl.textContent = fmtBytes(wasted); wastedEl.title = fmtBytesFull(wasted); }
             setText('statSelected', activeGroupIndex >= 0 ? `#${activeGroupIndex + 1}` : '—');
+            renderDismissChrome();
         }
 
         function renderGroupsNow() {
             const wrap = el('groupsWrap');
             if (!wrap) return;
-            const groups = scanResult?.groups || [];
+            const groups = getActiveGroups();
             if (!groups.length) {
                 if (scanning) {
                     wrap.innerHTML =
@@ -1524,6 +1853,7 @@
                                 ${g.deletable_count != null ? `<span>${g.deletable_count} deletable</span>` : ''}
                                 ${prov ? '<span style="color:var(--warn)">size match</span>' : '<span style="color:var(--ok)">hashed</span>'}
                                 <span class="dup-folder" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
+                                <button type="button" class="ui-btn ghost" data-dismiss-group="${i}" title="Hide this group as not a match (local only)">Not a match</button>
                             </div>
                         </div>
                     </div>`;
@@ -1549,6 +1879,15 @@
                     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectGroup(Number(card.dataset.index)); }
                 };
             });
+            wrap.querySelectorAll('button[data-dismiss-group]').forEach((btn) => {
+                btn.onclick = (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    selectGroup(Number(btn.getAttribute('data-dismiss-group')));
+                    dismissActiveGroup();
+                };
+            });
+            renderDismissChrome();
         }
 
         let _rgLast = 0;
@@ -1573,7 +1912,7 @@
 
         function selectGroup(index, opts) {
             if (!opts || !opts.fromLive) freezeForInteraction();
-            const groups = scanResult?.groups || [];
+            const groups = getActiveGroups();
             activeGroupIndex = index;
             const group = groups[index];
             if (!group) return;
@@ -1708,7 +2047,9 @@
                 <p class="hint" style="margin:0;">${group.count} copies · <span class="size-exact">${fmtBytesFull(group.wasted_bytes)}</span> recoverable if merged.
                 <br>Keeper from keep rules — currently <strong>${escapeHtml(keepName)}</strong>.
                 ${scanning ? '<br><span style="color:var(--ok)">Scan still running — you can merge this group now.</span>' : ''}
-                <br>Previews autoplay muted below so you can compare without opening full Compare.</p>`);
+                <br>Previews autoplay muted below so you can compare without opening full Compare.</p>
+                <div style="margin-top:8px;"><button type="button" class="ui-btn ghost" id="btnDismissGroup" title="Hide this group as not a match (local only — no files deleted)">Not a match (group)</button></div>`);
+            el('btnDismissGroup')?.addEventListener('click', () => dismissActiveGroup());
             const list = el('detailList');
             if (!list) return;
             const rows = group.items.map(item => {
@@ -1738,13 +2079,14 @@
                         <div class="file-meta">
                             <div class="size-exact" title="Exact size in bytes">${fmtBytesFull(item.size)}</div>
                             <div style="margin-top:4px">${fmtDate(item.mtime)}</div>
-                            <div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end;">
+                            <div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
                                 <label style="font-size:9px;color:var(--muted);display:flex;align-items:center;gap:4px;">
                                     <input type="checkbox" class="cmp-chk" data-path="${encodeURIComponent(item.path)}" ${cmpChecked}> cmp
                                 </label>
                                 <label style="font-size:9px;color:var(--danger);display:flex;align-items:center;gap:4px;">
                                     <input type="checkbox" class="del-chk" data-path="${encodeURIComponent(item.path)}" ${delChecked}${(isKeeper || locked) ? ' disabled' : ''}> ${locked ? 'lock' : 'del'}
                                 </label>
+                                <button type="button" class="ui-btn ghost" data-dismiss-file="${encodeURIComponent(item.path)}" title="Remove this file from the match (local only)">Not a match</button>
                             </div>
                         </div>
                     </div>`;
@@ -1784,6 +2126,13 @@
                     updateActionButtons();
                 };
             });
+            list.querySelectorAll('button[data-dismiss-file]').forEach((btn) => {
+                btn.onclick = (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    dismissFileInActiveGroup(decodeURIComponent(btn.getAttribute('data-dismiss-file')));
+                };
+            });
 
             // Browsers often need a tick after insert for autoplay
             requestAnimationFrame(() => {
@@ -1797,7 +2146,7 @@
             setDisabled('btnCompare', !hasGroup || compareSelection.size !== 2);
             setDisabled('btnMerge', !hasGroup || !keeperPath);
             setDisabled('btnDeleteSelected', !hasGroup || deleteSelection.size === 0);
-            const gCount = scanResult?.groups?.length || 0;
+            const gCount = getActiveGroups().length;
             setDisabled('btnMergeAllLowest', !gCount || bulkMerging);
         }
 
@@ -2016,12 +2365,14 @@
                     };
                 }
                 applyScanToUi({ restored: false, partial: false });
-                if (scanResult.groups.length) {
+                if (getActiveGroups().length) {
                     if (activeGroupIndex < 0) selectGroup(0);
-                    else selectGroup(activeGroupIndex);
+                    else selectGroup(Math.min(activeGroupIndex, getActiveGroups().length - 1));
                 }
+                const activeN = getActiveGroups().length;
+                const hid = filterDismissedGroups(scanResult.groups || []).hiddenGroupCount;
                 UI()?.toast?.(
-                    `Scan complete — ${scanResult.groups.length} groups (keepers from your keep rules)`,
+                    `Scan complete — ${activeN} groups` + (hid ? ` (${hid} dismissed)` : '') + ` (keepers from your keep rules)`,
                     'ok'
                 );
             } catch (e) {
@@ -2043,7 +2394,7 @@
 
         async function mergeGroup() {
             freezeForInteraction();
-            const group = scanResult?.groups?.[activeGroupIndex];
+            const group = currentActiveGroup();
             if (!group || !keeperPath) return;
             const others = group.items
                 .filter((i) => i.path !== keeperPath && !isProtectedItem(i))
@@ -2096,7 +2447,7 @@
         async function mergeAllToLowest() {
             freezeForInteraction();
             if (bulkMerging) return;
-            const groups = (scanResult?.groups || []).slice();
+            const groups = getActiveGroups().slice();
             if (!groups.length) {
                 UI().toast('No duplicate groups to merge', 'warn');
                 return;
@@ -2183,15 +2534,18 @@
 
         async function deleteSelected() {
             freezeForInteraction();
+            const active = getActiveGroups();
+            const activePaths = new Set(active.flatMap((g) => (g.items || []).map((it) => it.path).filter(Boolean)));
             const paths = [...deleteSelection].filter((p) => {
                 if (p === keeperPath) return false;
-                const item = (scanResult?.groups || []).flatMap((g) => g.items || []).find((it) => it.path === p);
+                if (!activePaths.has(p)) return false;
+                const item = active.flatMap((g) => g.items || []).find((it) => it.path === p);
                 return !isProtectedItem(item);
             });
             if (!paths.length) return;
-            // Estimate bytes from scan items before delete (API also returns bytes_freed)
+            // Estimate bytes from active scan items before delete (API also returns bytes_freed)
             const sizeMap = new Map();
-            (scanResult?.groups || []).forEach((g) => (g.items || []).forEach((it) => {
+            active.forEach((g) => (g.items || []).forEach((it) => {
                 if (it.path) sizeMap.set(it.path, it.size || 0);
             }));
             const estBytes = paths.reduce((a, p) => a + (sizeMap.get(p) || 0), 0);
@@ -2311,7 +2665,7 @@
             // Return focus to the group list — scan data is still in memory
             el('groupsWrap')?.focus?.();
             // Resume inline group previews if a group is selected
-            if (activeGroupIndex >= 0 && scanResult?.groups?.[activeGroupIndex]) {
+            if (currentActiveGroup()) {
                 kickDetailAutoplay();
             }
         }
@@ -2322,7 +2676,7 @@
                 UI()?.toast?.('Check exactly two files with “cmp”', 'warn');
                 return;
             }
-            const group = scanResult?.groups?.[activeGroupIndex];
+            const group = currentActiveGroup();
             if (!group) {
                 UI()?.toast?.('Select a duplicate group first', 'warn');
                 return;
@@ -2562,6 +2916,14 @@
         el('btnPauseScan')?.addEventListener('click', pauseOrResumeScan);
         el('btnCancelScan')?.addEventListener('click', cancelScan);
         el('btnClearScan')?.addEventListener('click', () => clearPersistedScan());
+        el('btnShowDismissed')?.addEventListener('click', () => {
+            showDismissedPanel = !showDismissedPanel;
+            renderDismissChrome();
+            renderDismissedPanel();
+        });
+        el('btnUndoDismiss')?.addEventListener('click', () => undoLastDismiss());
+        loadNotAMatchStore();
+        renderDismissChrome();
         el('btnEmptyScan')?.addEventListener('click', () => scanWithSave());
         el('btnEmptyPick')?.addEventListener('click', () => el('btnPickFolder')?.click());
         bind('btnPickFolder', 'click', async () => {
