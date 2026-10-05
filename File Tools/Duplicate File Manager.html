@@ -634,6 +634,8 @@
         let compareSelection = new Set();
         let deleteSelection = new Set();
         let scanning = false;
+        const UI_GROUP_RENDER_CAP = 100;
+        let groupRenderLimit = UI_GROUP_RENDER_CAP;
         let scanPaused = false;
         let freezeLive = false;
         let scanHandle = null;
@@ -1239,6 +1241,7 @@
 
         function applyScanToUi({ restored, partial, quiet } = {}) {
             if (!scanResult) return;
+            if (restored) groupRenderLimit = UI_GROUP_RENDER_CAP;
             // Re-normalize keepers from the ranked keep-rules stack
             scanResult.groups = normalizeGroupsList(scanResult.groups || []);
             scanResult.duplicate_groups = scanResult.groups.length;
@@ -1488,7 +1491,9 @@
                 el('btnNoDupPick')?.addEventListener('click', () => el('btnPickFolder')?.click());
                 return;
             }
-            wrap.innerHTML = groups.map((g, i) => {
+            const limit = Math.max(UI_GROUP_RENDER_CAP, groupRenderLimit | 0);
+            const visible = groups.slice(0, limit);
+            wrap.innerHTML = visible.map((g, i) => {
                 const keepPath = g.suggested_keep || pickKeeper(g.items);
                 const sample = (g.items || []).find((it) => it.path === keepPath) || g.items[0] || {};
                 const perFile = sample.size != null ? sample.size : Math.round((g.total_bytes || 0) / Math.max(1, g.count || 1));
@@ -1521,6 +1526,19 @@
                         </div>
                     </div>`;
             }).join('');
+            const remaining = groups.length - visible.length;
+            if (remaining > 0) {
+                const next = Math.min(UI_GROUP_RENDER_CAP, remaining);
+                wrap.insertAdjacentHTML('beforeend',
+                    `<div class="dup-show-more" style="padding:12px;text-align:center;">
+                        <button type="button" class="ui-btn" id="btnShowMoreGroups">Show more (${next} of ${remaining} remaining)</button>
+                        <div style="font-size:11px;color:var(--muted);margin-top:6px;">Showing ${visible.length} of ${groups.length} groups</div>
+                    </div>`);
+                el('btnShowMoreGroups')?.addEventListener('click', () => {
+                    groupRenderLimit = Math.min(groups.length, (groupRenderLimit | 0) + UI_GROUP_RENDER_CAP);
+                    renderGroupsNow();
+                });
+            }
             wrap.querySelectorAll('.dup-group').forEach(card => {
                 card.setAttribute('tabindex', '0');
                 card.setAttribute('role', 'button');
@@ -1864,6 +1882,7 @@
             scanPaused = false;
             freezeLive = false;
             scanHandle = null;
+            groupRenderLimit = UI_GROUP_RENDER_CAP;
             activeGroupIndex = -1;
             activeGroupKey = null;
             keeperPath = null;
@@ -1896,13 +1915,17 @@
             setDisabled('btnScan', true);
             setDisabled('btnMergeAllLowest', true);
             setStyle('scanProgress', 'width', '0%');
-            setText('scanStatus', cross
+            const fullMode = (opts.matchMode || '') === 'full';
+            const fullHint = fullMode
+                ? ' Full mode reads entire colliding files (may be slow on large/USB files).'
+                : '';
+            setText('scanStatus', (cross
                 ? 'Cross-source: Inbox vs Pre-scaled (size/hash) + After via PID…'
                 : (whole
                     ? 'Whole system: walking all local drives (Windows / Program Files skipped)…'
                     : (opts.recursive === false
                         ? 'This folder only (no subfolders) — quick size pass…'
-                        : 'Phase 1: quick size pass — groups appear immediately, then hashes confirm…')));
+                        : 'Phase 1: quick size pass — groups appear immediately, then hashes confirm…'))) + fullHint);
             setText('toolbarInfo', 'Quick scan…');
             setLiveScanPill(true);
             updateScanDock();
@@ -1945,8 +1968,15 @@
                     const shortFile = file
                         ? String(file).split(/[/\\]/).slice(-2).join('/')
                         : '';
+                    const mode = evt?.match_mode || el('matchMode')?.value || '';
+                    const phaseLabel = phase === 'hash'
+                        ? (mode === 'full' ? 'Hashing same-size peers (full)' : 'Hashing same-size peers (quick)')
+                        : (phase === 'quick_done' ? 'Quick pass done' : (phase === 'quick' ? 'Walking…' : (phase || 'Scanning')));
+                    const fullWarn = (mode === 'full' && (phase === 'hash' || phase === 'quick' || phase === 'quick_done'))
+                        ? ' · Full mode reads entire colliding files (may be slow on large/USB files)'
+                        : '';
                     el('scanStatus').textContent =
-                        `${msg}${gN ? ' · ' + gN + ' groups' : ''}${prov != null && phase.startsWith('quick') ? ' (likely)' : ''}${shortFile ? ' · ' + shortFile : ''}`;
+                        `${phaseLabel} · ${msg}${gN ? ' · ' + gN + ' groups' : ''}${prov != null && phase.startsWith('quick') ? ' (likely)' : ''}${fullWarn}${shortFile ? ' · ' + shortFile : ''}`;
                     el('statScanned').textContent = String(
                         evt?.walk_total != null && phase === 'hash'
                             ? evt.walk_total
