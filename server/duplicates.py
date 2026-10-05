@@ -53,6 +53,15 @@ SKIP_SCAN_DIRS = {
     "system32", "syswow64", "winsxs", "windowsapps",
 }
 
+# Browser download stubs — skip in walks (never delete); saves stat/hash on incomplete transfers.
+PARTIAL_DOWNLOAD_SUFFIXES = ('.download', '.crdownload', '.partial')
+
+
+def is_partial_download_name(name: str) -> bool:
+    n = (name or '').lower()
+    return n.endswith(PARTIAL_DOWNLOAD_SUFFIXES)
+
+
 THIS_PC_TOKENS = {"", "*", "__this_pc__", "this pc", "thispc", "all drives", "whole system"}
 
 # Cross-source roles: inbox copies may be deleted; before/after are evidence and stay locked.
@@ -672,6 +681,7 @@ def scan_folder_duplicates(
     EMIT_EVERY_S = 0.25
     STREAM_GROUP_CAP = 250
     cancelled = False
+    skipped_partial_downloads = 0
 
     def should_stop() -> bool:
         nonlocal cancelled
@@ -737,6 +747,7 @@ def scan_folder_duplicates(
             )
         if extra:
             payload_kw.update(extra)
+        payload_kw["skipped_partial_downloads"] = skipped_partial_downloads
         try:
             on_progress(idx, str(path), **payload_kw)
         except TypeError:
@@ -767,6 +778,10 @@ def scan_folder_duplicates(
                     if should_skip_entry(entry.name, True):
                         continue
                     stack.append(entry)
+                    continue
+                # Skip incomplete browser downloads before is_file/stat (never delete).
+                if is_partial_download_name(entry.name):
+                    skipped_partial_downloads += 1
                     continue
                 if not entry.is_file():
                     continue
@@ -848,6 +863,7 @@ def scan_folder_duplicates(
             "partial": False,
             "phase": "cancelled" if cancelled else phase,
             "cancelled": cancelled,
+            "skipped_partial_downloads": skipped_partial_downloads,
         }
 
     if cancelled:
@@ -940,6 +956,7 @@ def scan_cross_source_duplicates(
     EMIT_EVERY_N = 20
     EMIT_EVERY_S = 0.25
     STREAM_GROUP_CAP = 250
+    skipped_partial_downloads = 0
 
     def current_groups() -> list[dict[str, Any]]:
         groups = [g for g in groups_by_key.values() if g.get("deletable_count", 0) >= 1]
@@ -996,6 +1013,7 @@ def scan_cross_source_duplicates(
             )
         if extra:
             payload_kw.update(extra)
+        payload_kw["skipped_partial_downloads"] = skipped_partial_downloads
         try:
             on_progress(idx, str(path), **payload_kw)
         except TypeError:
@@ -1029,6 +1047,10 @@ def scan_cross_source_duplicates(
                         if should_skip_entry(entry.name, True):
                             continue
                         stack.append(entry)
+                        continue
+                    # Skip incomplete browser downloads before is_file/stat (never delete).
+                    if is_partial_download_name(entry.name):
+                        skipped_partial_downloads += 1
                         continue
                     if not entry.is_file():
                         continue
@@ -1138,6 +1160,7 @@ def scan_cross_source_duplicates(
             "partial": False,
             "phase": "cancelled" if cancelled else phase,
             "cancelled": cancelled,
+            "skipped_partial_downloads": skipped_partial_downloads,
             "protected_roots": protected_roots,
             "inbox_roots": inbox_roots,
             "before_roots": before_roots,
