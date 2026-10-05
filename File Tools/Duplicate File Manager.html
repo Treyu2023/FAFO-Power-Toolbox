@@ -1251,9 +1251,11 @@
             if (!partial) {
                 el('scanProgress').style.width = '100%';
                 if (!quiet) {
+                    const sk = scanResult.skipped_partial_downloads;
+                    const skMsg = (sk != null && sk > 0) ? ` · ${sk} partial downloads skipped` : '';
                     el('scanStatus').textContent = restored
-                        ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups (not rescanned).`
-                        : `Done — ${scanResult.scanned} files, ${g} duplicate groups.`;
+                        ? `Restored last scan — ${scanResult.scanned || '?'} files, ${g} groups (not rescanned).${skMsg}`
+                        : `Done — ${scanResult.scanned} files, ${g} duplicate groups.${skMsg}`;
                 }
                 setLiveScanPill(false);
             } else {
@@ -1975,8 +1977,12 @@
                     const fullWarn = (mode === 'full' && (phase === 'hash' || phase === 'quick' || phase === 'quick_done'))
                         ? ' · Full mode reads entire colliding files (may be slow on large/USB files)'
                         : '';
+                    const skippedN = evt?.skipped_partial_downloads;
+                    const skippedMsg = (skippedN != null && skippedN > 0)
+                        ? ` · ${skippedN} partial downloads skipped`
+                        : '';
                     el('scanStatus').textContent =
-                        `${phaseLabel} · ${msg}${gN ? ' · ' + gN + ' groups' : ''}${prov != null && phase.startsWith('quick') ? ' (likely)' : ''}${fullWarn}${shortFile ? ' · ' + shortFile : ''}`;
+                        `${phaseLabel} · ${msg}${gN ? ' · ' + gN + ' groups' : ''}${prov != null && phase.startsWith('quick') ? ' (likely)' : ''}${fullWarn}${skippedMsg}${shortFile ? ' · ' + shortFile : ''}`;
                     el('statScanned').textContent = String(
                         evt?.walk_total != null && phase === 'hash'
                             ? evt.walk_total
