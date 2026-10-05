@@ -653,7 +653,13 @@
         const NOT_A_MATCH_CAP = 2000;
         let notAMatchStore = { groups: [], files: [], undo: null };
         let notAMatchMem = null;
+        let notAMatchLoaded = false;
+        let notAMatchVersion = 0;
         let showDismissedPanel = false;
+        let _namFileBySig = null; // Map sig -> [file entries], rebuilt per version
+        let _namGroupMemSets = null; // [{set:Set, entry}] per version
+        let _namLookupVersion = -1;
+        let _activeFilterCache = null; // { rawRef, version, exclSize, result }
 
         const KEEP_CATALOG = {
             prefer_prescaled: {
@@ -961,36 +967,65 @@
             return path + '\0' + size + '\0' + mtime;
         }
 
+        function bumpNotAMatchVersion() {
+            notAMatchVersion = (notAMatchVersion | 0) + 1;
+            _activeFilterCache = null;
+            _namLookupVersion = -1;
+        }
+
         function loadNotAMatchStore() {
             const empty = { groups: [], files: [], undo: null };
+            if (notAMatchLoaded) return notAMatchStore;
             try {
                 const raw = lsGet(LS_NOT_A_MATCH, null);
                 if (!raw) {
                     notAMatchStore = notAMatchMem || empty;
-                    return notAMatchStore;
+                } else {
+                    const parsed = JSON.parse(raw);
+                    notAMatchStore = {
+                        groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+                        files: Array.isArray(parsed.files) ? parsed.files : [],
+                        undo: parsed.undo || null,
+                    };
+                    notAMatchMem = notAMatchStore;
                 }
-                const parsed = JSON.parse(raw);
-                notAMatchStore = {
-                    groups: Array.isArray(parsed.groups) ? parsed.groups : [],
-                    files: Array.isArray(parsed.files) ? parsed.files : [],
-                    undo: parsed.undo || null,
-                };
-                return notAMatchStore;
             } catch (_) {
                 notAMatchStore = notAMatchMem || empty;
-                return notAMatchStore;
             }
+            notAMatchLoaded = true;
+            return notAMatchStore;
         }
 
         function saveNotAMatchStore() {
             trimNotAMatchStore();
             notAMatchMem = notAMatchStore;
+            notAMatchLoaded = true;
+            bumpNotAMatchVersion();
             try {
                 const ok = lsSet(LS_NOT_A_MATCH, JSON.stringify(notAMatchStore));
                 if (!ok) notAMatchMem = JSON.parse(JSON.stringify(notAMatchStore));
             } catch (_) {
                 notAMatchMem = JSON.parse(JSON.stringify(notAMatchStore));
             }
+        }
+
+        function ensureNotAMatchLookups() {
+            loadNotAMatchStore();
+            if (_namLookupVersion === notAMatchVersion && _namFileBySig && _namGroupMemSets) return;
+            const fileBySig = new Map();
+            for (const fe of (notAMatchStore.files || [])) {
+                if (!fe || !fe.sig) continue;
+                const arr = fileBySig.get(fe.sig);
+                if (arr) arr.push(fe);
+                else fileBySig.set(fe.sig, [fe]);
+            }
+            const groupMemSets = (notAMatchStore.groups || []).map((ge) => ({
+                entry: ge,
+                set: new Set(ge.members || []),
+            }));
+            _namFileBySig = fileBySig;
+            _namGroupMemSets = groupMemSets;
+            _namLookupVersion = notAMatchVersion;
         }
 
         function trimNotAMatchStore() {
@@ -1020,25 +1055,40 @@
         }
 
         function filterDismissedGroups(rawGroups) {
-            loadNotAMatchStore();
-            const groupEntries = notAMatchStore.groups || [];
-            const fileEntries = notAMatchStore.files || [];
+            ensureNotAMatchLookups();
+            const exclSize = excludedPaths ? excludedPaths.size : 0;
+            const cache = _activeFilterCache;
+            if (
+                cache
+                && cache.rawRef === rawGroups
+                && cache.version === notAMatchVersion
+                && cache.exclSize === exclSize
+            ) {
+                return cache.result;
+            }
+
+            const fileBySig = _namFileBySig;
+            const groupMemSets = _namGroupMemSets;
             let hiddenGroupCount = 0;
             let removedFileCount = 0;
             const active = [];
 
             for (const g of (rawGroups || [])) {
                 const items = Array.isArray(g.items) ? g.items.slice() : [];
-                const sigSet = new Set(items.map(fileSig));
+                const sigs = items.map(fileSig);
+                const sigSet = new Set(sigs);
 
                 const kept = [];
-                for (const it of items) {
-                    const sig = fileSig(it);
+                for (let i = 0; i < items.length; i++) {
+                    const it = items[i];
+                    const sig = sigs[i];
                     let drop = false;
-                    for (const fe of fileEntries) {
-                        if (fe.sig !== sig) continue;
-                        const peers = fe.peers || [];
-                        if (peers.some((p) => sigSet.has(p))) { drop = true; break; }
+                    const entries = fileBySig.get(sig);
+                    if (entries) {
+                        for (const fe of entries) {
+                            const peers = fe.peers || [];
+                            if (peers.some((p) => sigSet.has(p))) { drop = true; break; }
+                        }
                     }
                     if (drop) removedFileCount++;
                     else kept.push(it);
@@ -1051,9 +1101,8 @@
 
                 const keptSigs = kept.map(fileSig);
                 let groupHidden = false;
-                for (const ge of groupEntries) {
-                    const mem = new Set(ge.members || []);
-                    if (keptSigs.length && keptSigs.every((sg) => mem.has(sg))) {
+                for (const ge of groupMemSets) {
+                    if (keptSigs.length && keptSigs.every((sg) => ge.set.has(sg))) {
                         groupHidden = true;
                         break;
                     }
@@ -1065,11 +1114,18 @@
 
                 active.push({ ...g, items: kept, count: kept.length });
             }
-            return {
+            const result = {
                 active: normalizeGroupsList(active),
                 hiddenGroupCount,
                 removedFileCount,
             };
+            _activeFilterCache = {
+                rawRef: rawGroups,
+                version: notAMatchVersion,
+                exclSize,
+                result,
+            };
+            return result;
         }
 
         function getActiveGroups() {
@@ -1601,11 +1657,17 @@
             el('btnMergeAllLowest').disabled = !g || bulkMerging;
             if (activeGroupKey) {
                 const idx = active.findIndex((x) => x.key === activeGroupKey);
-                if (idx >= 0) activeGroupIndex = idx;
-                else if (activeGroupIndex >= active.length) {
+                if (idx >= 0) {
+                    activeGroupIndex = idx;
+                } else {
+                    // Key gone (dismissed/removed) — same fallback as afterDismissUi
                     activeGroupIndex = active.length ? 0 : -1;
                     activeGroupKey = active[activeGroupIndex]?.key || null;
+                    keeperPath = null;
                 }
+            } else if (activeGroupIndex >= active.length) {
+                activeGroupIndex = active.length ? 0 : -1;
+                activeGroupKey = active[activeGroupIndex]?.key || null;
             }
             renderGroups();
             updateStats();
@@ -1615,6 +1677,10 @@
                     keeperPath = grp.suggested_keep || pickLowestCountKeeper(grp.items);
                 }
                 renderDetail(grp);
+            } else {
+                keeperPath = null;
+                setHtml('detailHead', '<h2>Select a duplicate group</h2><p class="hint" style="margin:0;">Choose which copy to keep. Merge sends extras to Recycle Bin.</p>');
+                setHtml('detailList', '');
             }
             if (!partial) persistScan();
             updateActionButtons();
@@ -1692,16 +1758,37 @@
                 partial: true,
             };
             applyScanToUi({ partial: true });
-            // Auto-select first group once one appears so user can act immediately
-            if (activeGroupIndex < 0 && scanResult.groups.length) {
+            // Auto-select / re-bind against ACTIVE list (never raw indices)
+            const activeLive = getActiveGroups();
+            if (activeGroupIndex < 0 && activeLive.length) {
                 selectGroup(0, { fromLive: true });
             } else if (prevKey) {
-                const idx = scanResult.groups.findIndex((x) => x.key === prevKey);
+                const idx = activeLive.findIndex((x) => x.key === prevKey);
                 if (idx >= 0) {
                     activeGroupIndex = idx;
                     activeGroupKey = prevKey;
+                    const grp = activeLive[idx];
+                    if (!keeperPath || !grp.items.some((it) => it.path === keeperPath)) {
+                        keeperPath = grp.suggested_keep || pickKeeper(grp.items);
+                    }
                     renderGroups();
-                    renderDetail(scanResult.groups[idx]);
+                    renderDetail(grp);
+                } else {
+                    // prevKey hidden by dismiss — fall back like afterDismissUi
+                    activeGroupIndex = activeLive.length ? 0 : -1;
+                    activeGroupKey = activeLive[activeGroupIndex]?.key || null;
+                    if (activeGroupIndex >= 0) {
+                        const grp = activeLive[activeGroupIndex];
+                        keeperPath = grp.suggested_keep || pickKeeper(grp.items);
+                        renderGroups();
+                        renderDetail(grp);
+                    } else {
+                        keeperPath = null;
+                        renderGroups();
+                        setHtml('detailHead', '<h2>Select a duplicate group</h2><p class="hint" style="margin:0;">Choose which copy to keep. Merge sends extras to Recycle Bin.</p>');
+                        setHtml('detailList', '');
+                        updateActionButtons();
+                    }
                 }
             }
         }
@@ -2979,7 +3066,7 @@
             }
             if (e.key === 's' || e.key === 'S') { e.preventDefault(); withBusy('scanClick', scanWithSave, 'btnScan'); }
             if (e.key === 'e' || e.key === 'E') { e.preventDefault(); withBusy('report', copyDupReport, 'btnDupReport'); }
-            const nGroups = scanResult?.groups?.length || 0;
+            const nGroups = getActiveGroups().length;
             if (nGroups && (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J')) {
                 e.preventDefault();
                 selectGroup(Math.min(nGroups - 1, Math.max(0, activeGroupIndex) + 1));
