@@ -48,6 +48,9 @@ TOKEN_HEADER = "X-FAFO-Vault-Token"
 TOKEN_FILE_NAME = ".env.vault-token.js"
 VAULT_TOKEN = secrets.token_urlsafe(32)
 VAULT_HEADER = "X-FAFO-Vault"
+# --autostart: always-on headless mode (logon shortcut). No idle exit, no scan parking, restarts without demand.
+AUTOSTART = "--autostart" in sys.argv
+CONFIG_HEARTBEAT_SEC = 600.0
 THUMBS_DIR = DATA / "thumbs"
 THUMB_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 THUMB_MAX_BYTES = 4_000_000
@@ -77,7 +80,7 @@ GROK_HINT = re.compile(
 )
 MEDIA_EXT = {".mp4", ".webm", ".mov", ".m4v", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
-SKIP_DIRS = {"$recycle.bin", "system volume information", ".git", "node_modules", "__pycache__", ".tmp"}
+SKIP_DIRS = {"$recycle.bin", "system volume information", ".git", "node_modules", "__pycache__", ".tmp", "_duplicates"}
 SHALLOW_NAMES = {"downloads", "desktop", "documents", "pictures", "videos"}
 
 # Pause disk walks after this many seconds without an overlay client.
@@ -425,6 +428,8 @@ def init_state() -> None:
         Path(cfg["libraryDir"]).mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
+    prev_run = dict(cfg.get("lastRun") or {}) if isinstance(cfg.get("lastRun"), dict) else {}
+    cfg["lastRun"] = {**prev_run, "startedAt": time.time(), "autostart": AUTOSTART}
     save_json(p["config"], cfg, pretty=True)
     _keep_corrupt_json(p["catalog"])
     with _lock:
@@ -450,6 +455,7 @@ def init_state() -> None:
             "message": "idle",
         }
         _state["started_at"] = time.time()
+        _state["prev_run"] = prev_run
 
 
 def record_prompt(item: dict, prompt: str, source: str) -> dict:
@@ -576,6 +582,8 @@ def stats_view() -> dict:
             "libraryDir": (_state.get("config") or {}).get("libraryDir"),
             "watchDirs": list((_state.get("config") or {}).get("watchDirs") or []),
             "deepIndexDirs": list((_state.get("config") or {}).get("deepIndexDirs") or []),
+            "autostart": AUTOSTART,
+            "lastRun": dict((_state.get("config") or {}).get("lastRun") or {}),
         }
 
 
@@ -1349,6 +1357,9 @@ def scan_once(deep: bool = False) -> dict:
             _state["scan"]["running"] = False
             _state["scan"]["message"] = "deep done" if deep else "idle"
             _state["last_scan"] = time.time()
+            run = (_state.get("config") or {}).setdefault("lastRun", {})
+            if isinstance(run, dict):
+                run["lastScanAt"] = _state["last_scan"]
 
 
 def import_loose_prompts() -> int:
@@ -1395,20 +1406,30 @@ def clients_idle(scan: bool = True) -> bool:
 
 def scan_loop() -> None:
     first = True
+    last_hb = time.time()
     while not _stop.is_set():
         try:
+            if time.time() - last_hb >= CONFIG_HEARTBEAT_SEC:
+                # lastRun survives a hard logoff even when nothing else marks the state dirty.
+                last_hb = time.time()
+                with _lock:
+                    text = json.dumps(_state["config"], indent=2, ensure_ascii=False)
+                with _persist_lock:
+                    save_text(paths()["config"], text)
             sc = _state.get("scan") or {}
             if sc.get("running") and sc.get("deep"):
                 time.sleep(1.0)
                 continue
-            if clients_idle(scan=True) and not first:
+            if not AUTOSTART and clients_idle(scan=True) and not first:
                 with _lock:
                     _state["scan"]["message"] = "parked"
                 time.sleep(4.0)
                 continue
-            scan_once(deep=False)
+            r = scan_once(deep=False)
             if first:
                 first = False
+                prev = _state.get("prev_run") or {}
+                log_activity("catch-up", since=prev.get("lastScanAt"), added=r.get("added"), updated=r.get("updated"))
                 if (_state.get("config") or {}).get("deepIndexDirs"):
                     threading.Thread(target=lambda: scan_once(deep=True), name="imagine-first-deep", daemon=True).start()
         except Exception:
@@ -1906,12 +1927,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True, "imported": n, "unique": len(_state["unique"])})
             return
         if path in ("/idle", "/api/idle"):
+            if AUTOSTART:
+                self._send(200, {"ok": True, "parking": False})
+                return
             with _lock:
                 _state["last_client"] = time.time() - IDLE_HTTP_SEC
             self._send(200, {"ok": True, "parking": True})
             return
         if path in ("/config", "/api/config"):
             self._touch_if_client()
+            body.pop("lastRun", None)
             with _lock:
                 have = set(_allowed_roots())
                 asked = []
@@ -1973,7 +1998,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class VaultServer(ThreadingHTTPServer):
-    allow_reuse_address = True
+    # Windows SO_REUSEADDR lets a second vault bind the same port; keep the bind exclusive there.
+    allow_reuse_address = os.name != "nt"
     daemon_threads = True
 
     def handle_error(self, request, client_address) -> None:
@@ -2085,7 +2111,8 @@ def main() -> None:
     _httpd = httpd
     print(f"[imagine-vault] http://{HOST}:{PORT}  v{VERSION}  data={DATA}", flush=True)
     threading.Thread(target=scan_loop, name="imagine-scan", daemon=True).start()
-    threading.Thread(target=idle_watch, name="imagine-idle", daemon=True).start()
+    if not AUTOSTART:
+        threading.Thread(target=idle_watch, name="imagine-idle", daemon=True).start()
     try:
         httpd.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
@@ -2118,6 +2145,10 @@ def run_watch() -> None:
         if old and old != me and _pid_alive(old):
             return
     lock.write_text(str(me), encoding="utf-8")
+    try:
+        (DATA / "vault-watch.mode").write_text("autostart" if AUTOSTART else "manual", encoding="utf-8")
+    except OSError:
+        pass
     if stop.is_file():
         try:
             stop.unlink()
@@ -2148,7 +2179,7 @@ def run_watch() -> None:
     try:
         while not stop.is_file():
             up = _health_ok()
-            w = demand_fresh()
+            w = True if AUTOSTART else demand_fresh()
             wanted = last_wanted if w is None else w
             last_wanted = wanted
             if up and not wanted:
@@ -2171,7 +2202,7 @@ def run_watch() -> None:
                     pass
             with stdout.open("a", encoding="utf-8") as out, stderr.open("a", encoding="utf-8") as err:
                 child = subprocess.Popen(
-                    [py, "-u", script.name],
+                    [py, "-u", script.name] + (["--autostart"] if AUTOSTART else []),
                     cwd=cwd,
                     stdout=out,
                     stderr=err,

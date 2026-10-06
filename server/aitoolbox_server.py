@@ -4704,29 +4704,11 @@ def api_tools_launch(body: ToolsLaunchBody):
             )
             return {"ok": True, "launched": "ui", "path": str(html)}
 
-        bat = folder / "Launch-ImagineVault.bat"
-        vbs = folder / "Launch-ImagineVault.vbs"
         ps1 = folder / "Launch-ImagineVault.ps1"
         creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        if vbs.is_file():
-            subprocess.Popen(
-                ["wscript.exe", "//B", str(vbs)],
-                cwd=str(folder),
-                shell=False,
-                creationflags=creation,
-            )
-            return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.vbs"}
-        if bat.is_file():
-            subprocess.Popen(
-                ["cmd.exe", "/c", str(bat)],
-                cwd=str(folder),
-                shell=False,
-                creationflags=creation,
-            )
-            return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.bat"}
         if ps1.is_file():
             ps = os.path.expandvars(r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 [
                     ps,
                     "-NoProfile",
@@ -4741,7 +4723,13 @@ def api_tools_launch(body: ToolsLaunchBody):
                 shell=False,
                 creationflags=creation,
             )
-            return {"ok": True, "launched": "imagine-tracker", "via": "Launch-ImagineVault.ps1"}
+            # The ps1 exits 1 when /health never answered, so ok means the vault is really up.
+            try:
+                rc = proc.wait(timeout=45)
+            except subprocess.TimeoutExpired:
+                rc = None
+            ok = rc == 0
+            return {"ok": ok, "launched": "imagine-tracker" if ok else None, "via": "Launch-ImagineVault.ps1", "rc": rc}
         raise HTTPException(404, "Imagine Vault scripts missing")
 
     if tid == "transfer-helper":
