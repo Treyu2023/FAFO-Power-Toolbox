@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "2.5.0"
+VERSION = "2.5.1"
 HOST = "127.0.0.1"
 PORT = 18767
 DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "FAFO" / "ImagineTracker"
@@ -1752,8 +1752,9 @@ class Handler(BaseHTTPRequestHandler):
             if mut and not self._token_ok():
                 err = "bad-token"
         elif origin in TOOLBOX_ORIGINS:
+            # "null" (file: page) needs the token on every route; the http toolbox origins on mutating ones.
             self._acao = origin
-            if origin == "null" and method != "OPTIONS" and not self._token_ok():
+            if ((origin == "null" and method != "OPTIONS") or mut) and not self._token_ok():
                 err = "bad-token"
         elif origin in ext_origins():
             # Allowlisted extension: token on every route except /health, /pair and preflight.
