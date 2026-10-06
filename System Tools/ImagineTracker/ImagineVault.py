@@ -17,7 +17,9 @@ import hashlib
 import hmac
 import json
 import mimetypes
+import itertools
 import os
+import queue
 import re
 import secrets
 import shutil
@@ -95,6 +97,14 @@ _persist_lock = threading.Lock()
 _state: dict[str, Any] = {}
 _httpd: ThreadingHTTPServer | None = None
 _stop = threading.Event()
+# Media hash: q1 = sha256("q1|<size>|" + first HASH_EDGE + last HASH_EDGE bytes), 128-bit. One throttled worker.
+HASH_EDGE = 2 << 20
+HASH_RATE = 8 << 20
+_hash_q: "queue.PriorityQueue" = queue.PriorityQueue()   # (prio 0=ingest 1=scan 2=backfill, seq, key, path, event|None)
+_hash_seq = itertools.count()
+_hash_idx: dict[str, list[str]] = {}                     # mh -> fingerprint keys, earliest first
+_hash_pending: set[str] = set()
+_hash_skip: set[str] = set()                             # unreadable or outside roots this run
 
 
 def utc_now() -> str:
@@ -264,6 +274,7 @@ def default_config() -> dict:
         "watchDepth": 4,
         "idleScanSeconds": IDLE_SCAN_SEC,
         "idleHttpSeconds": IDLE_HTTP_SEC,
+        "hashBytesPerSec": HASH_RATE,
     }
 
 
@@ -438,6 +449,10 @@ def init_state() -> None:
         _state["unique"] = load_json(p["unique"], {}) or {}
         _state["seen"] = set(load_json(p["seen_sentences"], []) or [])
         _state["fingerprints"] = load_json(p["fingerprints"], {}) or {}
+        _hash_idx.clear()
+        hashed = [(k, v) for k, v in _state["fingerprints"].items() if isinstance(v, dict) and v.get("mh")]
+        for k, v in sorted(hashed, key=lambda kv: kv[1].get("mtime") or 0):
+            _hash_idx.setdefault(v["mh"], []).append(k)
         _state["last_scan"] = 0.0
         _state["last_client"] = 0.0
         _state["last_persist"] = 0.0
@@ -538,6 +553,7 @@ def compact_item(v: dict, iid: str = "") -> dict:
         "filename": v.get("filename") or "",
         "stage": v.get("stage") or "",
         "copies": int(v.get("copies") or 0),
+        "dupes": int(v.get("dupeCount") or 0),
     }
 
 
@@ -584,6 +600,10 @@ def stats_view() -> dict:
             "deepIndexDirs": list((_state.get("config") or {}).get("deepIndexDirs") or []),
             "autostart": AUTOSTART,
             "lastRun": dict((_state.get("config") or {}).get("lastRun") or {}),
+            "hash": {
+                "queued": _hash_q.qsize(),
+                "backfillLeft": sum(1 for v in (_state.get("fingerprints") or {}).values() if isinstance(v, dict) and not v.get("mh")),
+            },
         }
 
 
@@ -665,6 +685,7 @@ def catalog_page(q: dict) -> dict:
             "prompt": str(v.get("prompt") or "")[:300],
             "thumbUrl": v.get("thumbUrl") or "",
             "thumb": thumb_kind(v),
+            "dupeCount": int(v.get("dupeCount") or 0),
         })
     nxt = offset + len(page)
     return {
@@ -1055,6 +1076,7 @@ def fast_index_file(path: Path) -> bool:
         _touch_item_path(item, path, stage, size)
         _state["catalog"][iid] = item
         _state["fingerprints"][key] = {"mtime": mtime, "size": size, "id": iid, "stage": stage}
+    enqueue_hash(path, 1)
     mark_dirty()
     return added
 
@@ -1327,6 +1349,7 @@ def scan_once(deep: bool = False) -> dict:
                     }
                     _state["scan"]["done"] += 1
                     _state["scan"]["added"] = added
+                enqueue_hash(f, 1)
                 if not before:
                     added += 1
                 else:
@@ -1360,6 +1383,155 @@ def scan_once(deep: bool = False) -> dict:
             run = (_state.get("config") or {}).setdefault("lastRun", {})
             if isinstance(run, dict):
                 run["lastScanAt"] = _state["last_scan"]
+
+
+def _in_dup_dir(p) -> bool:
+    return any(part.lower() == "_duplicates" for part in re.split(r"[\\/]+", str(p)))
+
+
+def media_hash(p: Path, rate: float = HASH_RATE) -> str | None:
+    """q1 content hash: whole file up to 2*HASH_EDGE, else head + tail. None if the file changed meanwhile."""
+    st = p.stat()
+    size = st.st_size
+    h = hashlib.sha256(b"q1|%d|" % size)
+    rate = max(float(rate or HASH_RATE), 64 * 1024)
+    t0 = time.monotonic()
+    done = 0
+
+    def take(f, n: int) -> bool:
+        nonlocal done
+        while n > 0 and not _stop.is_set():
+            b = f.read(min(1 << 20, n))
+            if not b:
+                break
+            h.update(b)
+            n -= len(b)
+            done += len(b)
+            lag = done / rate - (time.monotonic() - t0)   # bytes/sec cap
+            if lag > 0:
+                time.sleep(lag)
+        return n == 0
+
+    with open(p, "rb", buffering=0) as f:
+        if size <= 2 * HASH_EDGE:
+            ok = take(f, size)
+        else:
+            ok = take(f, HASH_EDGE)
+            if ok:
+                f.seek(size - HASH_EDGE)
+                ok = take(f, HASH_EDGE)
+    if not ok:
+        return None
+    st2 = p.stat()
+    if (st2.st_size, st2.st_mtime) != (size, st.st_mtime):
+        return None   # still being written: backfill retries it later
+    return "q1:" + h.hexdigest()[:32]
+
+
+def enqueue_hash(p, prio: int = 1, ev=None) -> bool:
+    if _in_dup_dir(p):
+        return False
+    key = str(p).lower()
+    with _lock:
+        if ev is None and key in _hash_pending:
+            return False
+        _hash_pending.add(key)
+    _hash_q.put((prio, next(_hash_seq), key, str(p), ev))
+    return True
+
+
+def enqueue_backfill(n: int = 50) -> int:
+    """Queue unhashed fingerprints under the configured roots, oldest mtime first (originals before re-downloads)."""
+    with _lock:
+        cand = sorted(
+            (float(v.get("mtime") or 0), k)
+            for k, v in (_state.get("fingerprints") or {}).items()
+            if isinstance(v, dict) and not v.get("mh") and k not in _hash_pending and k not in _hash_skip
+        )
+    out = 0
+    for _mt, k in cand:
+        if out >= n:
+            break
+        if _in_dup_dir(k) or not path_allowed(k):
+            with _lock:
+                _hash_skip.add(k)
+            continue
+        if enqueue_hash(k, 2):
+            out += 1
+    return out
+
+
+def apply_hash(key: str, p: str, mh: str) -> dict:
+    """Dupe = same content as an earlier-indexed copy that is still on disk. A moved file is not a dupe."""
+    with _lock:
+        fp = _state["fingerprints"].setdefault(key, {})
+        old = fp.get("mh")
+        if old and old != mh and key in _hash_idx.get(old, []):
+            _hash_idx[old].remove(key)
+        fp["mh"] = mh
+        lst = _hash_idx.setdefault(mh, [])
+        prior = lst[: lst.index(key)] if key in lst else list(lst)
+        if key not in lst:
+            lst.append(key)
+        iid = fp.get("id")
+    others = [k for k in prior if k != key and os.path.isfile(k)]
+    with _lock:
+        item = _state["catalog"].get(iid) if iid else None
+        if item is not None:
+            pmap = item.get("paths") or {}
+            pe = next((v for k2, v in pmap.items() if k2.lower() == key and isinstance(v, dict)), None)
+            if pe is not None:
+                pe["mh"] = mh
+                if others:
+                    pe["dupeOf"] = others[0]
+                else:
+                    pe.pop("dupeOf", None)
+            item.setdefault("mediaHash", mh)
+            item["dupeCount"] = sum(1 for v in pmap.values() if isinstance(v, dict) and v.get("dupeOf"))
+        dupe_id = (_state["fingerprints"].get(others[0]) or {}).get("id") if others else None
+    mark_dirty()
+    return {"dupe": bool(others), "dupeOf": ({"id": dupe_id, "path": others[0]} if others else None), "mediaHash": mh}
+
+
+def hash_worker() -> None:
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            k32 = ctypes.windll.kernel32
+            k32.SetThreadPriority(k32.GetCurrentThread(), 0x00010000)   # THREAD_MODE_BACKGROUND_BEGIN: low I/O + CPU
+        except Exception:
+            pass
+    while not _stop.is_set():
+        try:
+            _prio, _seq, key, p, ev = _hash_q.get(timeout=5)
+        except queue.Empty:
+            try:
+                enqueue_backfill(50)   # lazy backfill only when idle
+            except Exception:
+                log_activity("hash-error", error=traceback.format_exc()[-300:])
+            continue
+        mh = None
+        verdict = None
+        try:
+            mh = media_hash(Path(p), float((_state.get("config") or {}).get("hashBytesPerSec") or HASH_RATE))
+        except OSError:
+            with _lock:
+                _hash_skip.add(key)
+        except Exception:
+            log_activity("hash-error", error=traceback.format_exc()[-300:])
+        finally:
+            with _lock:
+                _hash_pending.discard(key)
+        if mh:
+            try:
+                verdict = apply_hash(key, p, mh)
+            except Exception:
+                log_activity("hash-error", error=traceback.format_exc()[-300:])
+        if ev is not None:
+            ev.result = verdict
+            ev.set()
+        time.sleep(0.05)
 
 
 def import_loose_prompts() -> int:
@@ -1903,12 +2075,37 @@ class Handler(BaseHTTPRequestHandler):
             self._touch_if_client()
             items = body.get("items") if isinstance(body.get("items"), list) else [body]
             results = []
+            waits = []
             for it in items:
                 if isinstance(it, dict):
                     if str(it.get("path") or "").strip() and not path_allowed(it["path"]):
                         results.append({"ok": False, "error": "path-outside-roots", "id": str(it.get("id") or "")})
                         continue
-                    results.append(upsert_item(it, source=str(body.get("source") or "overlay")))
+                    r = upsert_item(it, source=str(body.get("source") or "overlay"))
+                    if r.get("ok"):
+                        r.update({"dupe": None, "dupeOf": None, "mediaHash": None})
+                        pth = str(it.get("path") or "").strip()
+                        if pth and os.path.isfile(pth):
+                            try:
+                                st = os.stat(pth)
+                                with _lock:
+                                    _state["fingerprints"][pth.lower()] = {
+                                        "mtime": st.st_mtime,
+                                        "size": st.st_size,
+                                        "id": r.get("id"),
+                                        "stage": stage_of(Path(pth).name),
+                                    }
+                                ev = threading.Event()
+                                ev.result = None
+                                if enqueue_hash(pth, 0, ev):
+                                    waits.append((r, ev))
+                            except OSError:
+                                pass
+                    results.append(r)
+            deadline = time.monotonic() + 3.0
+            for r, ev in waits:
+                if ev.wait(max(0.0, deadline - time.monotonic())) and ev.result:
+                    r.update(ev.result)
             persist()
             self._send(200, {"ok": True, "results": results, "rev": int(_state.get("rev") or 1), "total": len(_state["catalog"])})
             return
@@ -2111,6 +2308,7 @@ def main() -> None:
     _httpd = httpd
     print(f"[imagine-vault] http://{HOST}:{PORT}  v{VERSION}  data={DATA}", flush=True)
     threading.Thread(target=scan_loop, name="imagine-scan", daemon=True).start()
+    threading.Thread(target=hash_worker, name="imagine-hash", daemon=True).start()
     if not AUTOSTART:
         threading.Thread(target=idle_watch, name="imagine-idle", daemon=True).start()
     try:
