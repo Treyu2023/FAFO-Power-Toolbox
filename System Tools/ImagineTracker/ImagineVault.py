@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 HOST = "127.0.0.1"
 PORT = 18767
 DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "FAFO" / "ImagineTracker"
@@ -1992,6 +1992,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in PAIR_PATHS:
             # The run token goes only to an allowlisted extension origin that sent X-FAFO-Vault: 1.
+            # Kept for extension pages that send Origin on GET; the service worker pairs with POST (below).
             if self.headers.get("Origin") in ext_origins() and self.headers.get(VAULT_HEADER) == "1":
                 self._send(200, {"ok": True, "token": VAULT_TOKEN})
             else:
@@ -2108,6 +2109,15 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         path = u.path.rstrip("/") or "/"
         body = self._body()
+        if path in PAIR_PATHS:
+            # Service-worker pairing: Chrome sends Origin chrome-extension://<id> on POST (never on a worker GET).
+            # _gate already refused other origins (pair-forbidden), no-Origin callers without the token
+            # (bad-token) and a missing X-FAFO-Vault header; this re-checks so only the allowlist gets the token.
+            if self.headers.get("Origin") in ext_origins() and self.headers.get(VAULT_HEADER) == "1":
+                self._send(200, {"ok": True, "token": VAULT_TOKEN})
+            else:
+                self._send(403, {"ok": False, "error": "pair-forbidden"})
+            return
         if path in ("/touch", "/api/touch"):
             note_demand(str(body.get("app") or "imagine-overlay"))
             self._send(200, {"ok": True, "idle": False, "rev": int(_state.get("rev") or 1)})
