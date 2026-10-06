@@ -1,6 +1,8 @@
 # Start Imagine Vault and keep a supervisor up.
 # Always runs the Python files from %LOCALAPPDATA%\FAFO\ImagineTracker so
 # venv python launchers cannot split on spaces in "System Tools".
+# -Autostart (logon shortcut) runs the supervisor in always-on mode.
+param([switch]$Autostart)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $work = Join-Path $env:LOCALAPPDATA 'FAFO\ImagineTracker'
@@ -35,7 +37,7 @@ try {
         if (Test-VaultUpEarly) { exit 0 }
         Start-Sleep -Milliseconds 300
     } while ((Get-Date) -lt $waitUntil)
-    exit 0
+    exit 1
 }
 
 function Find-ToolboxRoot {
@@ -69,7 +71,7 @@ if (-not $srcPy) { throw 'ImagineVault.py not found next to this script' }
 $sameDir = ((Resolve-Path -LiteralPath $here).Path.TrimEnd('\') -ieq (Resolve-Path -LiteralPath $work).Path.TrimEnd('\'))
 if (-not $sameDir) {
     Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
-    foreach ($name in @('Launch-ImagineVault.ps1', 'Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
+    foreach ($name in @('Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
         $src = Join-Path $here $name
         if (Test-Path -LiteralPath $src) {
             Copy-Item -LiteralPath $src -Destination (Join-Path $work $name) -Force
@@ -103,14 +105,34 @@ if ($py -match 'python\.exe$') {
     if (Test-Path -LiteralPath $alt) { $pyw = $alt }
 }
 
-$vbs = Join-Path $work 'Launch-ImagineVault.vbs'
-$prot = 'HKCU:\Software\Classes\imaginevault'
-New-Item -Path $prot -Force | Out-Null
-Set-ItemProperty $prot -Name '(default)' -Value 'URL:Imagine Vault'
-New-ItemProperty -Path $prot -Name 'URL Protocol' -Value '' -PropertyType String -Force | Out-Null
-$cmdKey = Join-Path $prot 'shell\open\command'
-New-Item -Path $cmdKey -Force | Out-Null
-Set-ItemProperty $cmdKey -Name '(default)' -Value ("wscript.exe //B `"$vbs`"")
+# imaginevault:// handler -> this repo script. Only the repo copy writes it, and only when missing or
+# different; a %LOCALAPPDATA% copy started by an old handler must never point HKCU at itself.
+$self = $PSCommandPath
+$isRepoCopy = [bool]($self -and $toolbox -and -not $sameDir -and
+    $here.StartsWith(($toolbox.TrimEnd('\') + '\'), [System.StringComparison]::OrdinalIgnoreCase))
+if ($isRepoCopy) {
+    $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+    $build = 0
+    [void][int]::TryParse([string](Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue).CurrentBuild, [ref]$build)
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$self`""
+    # conhost --headless (no console flash) is verified on build 26100+; older builds use the Hidden form.
+    if ($build -ge 26100 -and (Test-Path -LiteralPath $conhost)) {
+        $want = "`"$conhost`" --headless `"$psExe`" $psArgs"
+    } else {
+        $want = "`"$psExe`" $psArgs"
+    }
+    $prot = 'HKCU:\Software\Classes\imaginevault'
+    $cmdKey = Join-Path $prot 'shell\open\command'
+    $cur = (Get-ItemProperty -LiteralPath $cmdKey -ErrorAction SilentlyContinue).'(default)'
+    if ($cur -ne $want) {
+        New-Item -Path $prot -Force | Out-Null
+        Set-ItemProperty $prot -Name '(default)' -Value 'URL:Imagine Vault'
+        New-ItemProperty -Path $prot -Name 'URL Protocol' -Value '' -PropertyType String -Force | Out-Null
+        New-Item -Path $cmdKey -Force | Out-Null
+        Set-ItemProperty $cmdKey -Name '(default)' -Value $want
+    }
+}
 
 function Test-VaultUp {
     try {
@@ -132,6 +154,17 @@ function Test-WatchAlive {
 $stop = Join-Path $work 'stop.flag'
 if (Test-Path -LiteralPath $stop) { Remove-Item -LiteralPath $stop -Force -ErrorAction SilentlyContinue }
 
+# -Autostart over a manual supervisor: restart it in autostart mode (run_watch exits on stop.flag and stops its child).
+if ($Autostart -and (Test-WatchAlive)) {
+    $mode = (Get-Content -LiteralPath (Join-Path $work 'vault-watch.mode') -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($mode -ne 'autostart') {
+        Set-Content -LiteralPath $stop -Value '1' -Encoding ASCII
+        $t = (Get-Date).AddSeconds(20)
+        while ((Test-WatchAlive) -and (Get-Date) -lt $t) { Start-Sleep -Milliseconds 500 }
+        Remove-Item -LiteralPath $stop -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if ((Test-WatchAlive) -and -not (Test-VaultUp)) {
     $pidFile = Join-Path $work 'vault-watch.pid'
     $raw = (Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -143,7 +176,9 @@ if ((Test-WatchAlive) -and -not (Test-VaultUp)) {
 
 # Supervisor starts the HTTP server. Script name only — never a path with spaces.
 if (-not (Test-WatchAlive)) {
-    Start-Process -FilePath $pyw -ArgumentList @('-u', 'ImagineVault.py', '--watch') -WorkingDirectory $work -WindowStyle Hidden | Out-Null
+    $pyArgs = @('-u', 'ImagineVault.py', '--watch')
+    if ($Autostart) { $pyArgs += '--autostart' }
+    Start-Process -FilePath $pyw -ArgumentList $pyArgs -WorkingDirectory $work -WindowStyle Hidden | Out-Null
 }
 
 if (Test-VaultUp) { exit 0 }
@@ -152,4 +187,4 @@ do {
     Start-Sleep -Milliseconds 300
     if (Test-VaultUp) { exit 0 }
 } while ((Get-Date) -lt $deadline)
-exit 0
+exit 1

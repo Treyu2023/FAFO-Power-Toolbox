@@ -1,3 +1,4 @@
+' Unused: VBScript is not installed on RWK; launch via Launch-ImagineVault.ps1
 Option Explicit
 Dim sh, fso, here, ps1, cmd
 Set sh = CreateObject("WScript.Shell")
