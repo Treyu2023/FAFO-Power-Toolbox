@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 HOST = "127.0.0.1"
 PORT = 18767
 DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "FAFO" / "ImagineTracker"
@@ -43,6 +43,10 @@ X_GROK = Path(r"D:\OUTPUTS\__X_GROK")
 NEW_DOWNLOADS = X_GROK / "NEW DOWNLOADS"
 TOOLBOX_ORIGINS = frozenset({"null", "http://127.0.0.87:18765", "http://127.0.0.1:18765"})
 GROK_ORIGIN = "https://grok.com"
+# Extension origins come only from config.json allowedExtensionIds (unpacked IDs); empty = no extension access.
+EXT_ID_RE = re.compile(r"[a-p]{32}")
+PAIR_PATHS = ("/pair", "/api/pair")
+HEALTH_PATHS = ("/health", "/api/health")
 SNAPSHOT_PATHS = ("/snapshot", "/api/snapshot")
 OVERLAY_PATHS = ("/overlay.js", "/api/overlay.js")
 SIDE_EFFECT_GETS = {"/reveal", "/api/reveal", "/open-library", "/api/open-library"}
@@ -275,7 +279,23 @@ def default_config() -> dict:
         "idleScanSeconds": IDLE_SCAN_SEC,
         "idleHttpSeconds": IDLE_HTTP_SEC,
         "hashBytesPerSec": HASH_RATE,
+        "allowedExtensionIds": [],
     }
+
+
+def ext_origins() -> frozenset[str]:
+    """chrome-extension:// origins allowed to pair, read from config at request time (edit file + restart)."""
+    ids = (_state.get("config") or {}).get("allowedExtensionIds") or []
+    if isinstance(ids, str):
+        ids = [ids]
+    if not isinstance(ids, list):
+        return frozenset()
+    return frozenset("chrome-extension://" + i for i in ids if isinstance(i, str) and EXT_ID_RE.fullmatch(i))
+
+
+def _clip_url(raw) -> str:
+    s = str(raw or "").strip()
+    return s[:2048] if re.match(r"https?://", s, re.I) else ""
 
 
 def paths() -> dict[str, Path]:
@@ -929,6 +949,7 @@ def upsert_item(payload: dict, source: str = "ingest") -> dict:
     if not iid:
         return {"ok": False, "error": "no-id"}
     prompt = (payload.get("prompt") or payload.get("originalPrompt") or "").strip()
+    post_id = str(payload.get("postId") or "").strip().lower()
     with _lock:
         prev = dict(_state["catalog"].get(iid) or {})
         item = {
@@ -945,6 +966,8 @@ def upsert_item(payload: dict, source: str = "ingest") -> dict:
             "folders": payload.get("folders") or prev.get("folders") or [],
             "tags": payload.get("tags") or prev.get("tags") or [],
             "bytes": payload.get("bytes") or prev.get("bytes") or 0,
+            "referrer": _clip_url(payload.get("referrer")) or prev.get("referrer") or "",
+            "postId": post_id if THUMB_ID_RE.fullmatch(post_id) else (prev.get("postId") or ""),
             "hasFile": bool(prev.get("hasFile")),
             "copies": int(prev.get("copies") or 0) or (1 if prev.get("hasFile") else 0),
             "stage": prev.get("stage") or payload.get("stage") or "",
@@ -1714,29 +1737,39 @@ class Handler(BaseHTTPRequestHandler):
             return
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), msg))
 
+    def _token_ok(self) -> bool:
+        tok = (self.headers.get(TOKEN_HEADER) or "").encode("utf-8", "replace")
+        return hmac.compare_digest(tok, VAULT_TOKEN.encode("ascii"))
+
     def _gate(self, method: str) -> bool:
         self._acao = None
         path = urlparse(self.path).path.rstrip("/") or "/"
         origin = self.headers.get("Origin")
+        mut = method == "POST" or (method == "GET" and path in SIDE_EFFECT_GETS)
         err = None
         if origin is None:
-            pass
+            # Native/CLI callers: mutating routes need the run token.
+            if mut and not self._token_ok():
+                err = "bad-token"
         elif origin in TOOLBOX_ORIGINS:
             self._acao = origin
-            if origin == "null" and method != "OPTIONS":
-                tok = (self.headers.get(TOKEN_HEADER) or "").encode("utf-8", "replace")
-                if not hmac.compare_digest(tok, VAULT_TOKEN.encode("ascii")):
-                    err = "bad-token"
+            if origin == "null" and method != "OPTIONS" and not self._token_ok():
+                err = "bad-token"
+        elif origin in ext_origins():
+            # Allowlisted extension: token on every route except /health, /pair and preflight.
+            self._acao = origin
+            if method != "OPTIONS" and path not in PAIR_PATHS + HEALTH_PATHS and not self._token_ok():
+                err = "bad-token"
         elif origin == GROK_ORIGIN and path in SNAPSHOT_PATHS + OVERLAY_PATHS and method in ("GET", "OPTIONS"):
             self._acao = origin
         else:
-            err = "origin-forbidden"
-        if err is None and (method == "POST" or (method == "GET" and path in SIDE_EFFECT_GETS)):
-            if self.headers.get(VAULT_HEADER) != "1":
-                err = "missing-header"
+            err = "pair-forbidden" if path in PAIR_PATHS else "origin-forbidden"
+        if err is None and mut and self.headers.get(VAULT_HEADER) != "1":
+            err = "missing-header"
         if err is None:
             return True
-        self._acao = "null" if err == "bad-token" else None
+        # bad-token keeps the exact caller origin ("null" page or allowlisted extension) so it can read the JSON and re-pair.
+        self._acao = origin if err == "bad-token" and origin is not None else None
         raw = json.dumps({"ok": False, "error": err}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.close_connection = True
         self.send_response(403)
@@ -1956,6 +1989,13 @@ class Handler(BaseHTTPRequestHandler):
                 "port": PORT,
             })
             return
+        if path in PAIR_PATHS:
+            # The run token goes only to an allowlisted extension origin that sent X-FAFO-Vault: 1.
+            if self.headers.get("Origin") in ext_origins() and self.headers.get(VAULT_HEADER) == "1":
+                self._send(200, {"ok": True, "token": VAULT_TOKEN})
+            else:
+                self._send(403, {"ok": False, "error": "pair-forbidden"})
+            return
         if path in ("/snapshot", "/api/snapshot"):
             self._touch_if_client()
             rev_raw = (q.get("rev") or [None])[0]
@@ -2134,6 +2174,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/config", "/api/config"):
             self._touch_if_client()
             body.pop("lastRun", None)
+            body.pop("allowedExtensionIds", None)   # allowlist is file-only; a token holder can't widen it over HTTP
             with _lock:
                 have = set(_allowed_roots())
                 asked = []
