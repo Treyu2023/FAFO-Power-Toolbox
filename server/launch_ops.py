@@ -1241,7 +1241,7 @@ def runtime_stack(
             "up": bool(vault_h.get("ok") or vault_up),
             "level": _level(up=bool(vault_h.get("ok") or vault_up), required=False),
             "detail": "127.0.0.1:18767 HAVE/MISS download checker",
-            "how": "Imagine Vault page → Start vault (Launch-ImagineVault.vbs)",
+            "how": "Imagine Tracker tile → Start vault (also auto-starts at logon)",
             "apps": ["Imagine Tracker", "grok.com/imagine overlay"],
         },
         {

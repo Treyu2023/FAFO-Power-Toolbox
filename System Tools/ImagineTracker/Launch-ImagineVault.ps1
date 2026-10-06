@@ -71,7 +71,7 @@ if (-not $srcPy) { throw 'ImagineVault.py not found next to this script' }
 $sameDir = ((Resolve-Path -LiteralPath $here).Path.TrimEnd('\') -ieq (Resolve-Path -LiteralPath $work).Path.TrimEnd('\'))
 if (-not $sameDir) {
     Copy-Item -LiteralPath $srcPy -Destination (Join-Path $work 'ImagineVault.py') -Force
-    foreach ($name in @('Launch-ImagineVault.vbs', 'Launch-ImagineVault.bat', 'imagine-overlay.js')) {
+    foreach ($name in @('imagine-overlay.js')) {
         $src = Join-Path $here $name
         if (Test-Path -LiteralPath $src) {
             Copy-Item -LiteralPath $src -Destination (Join-Path $work $name) -Force
