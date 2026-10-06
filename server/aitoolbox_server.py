@@ -528,6 +528,42 @@ def _resolve_toolbox_file(file_path: str) -> Path:
     return target
 
 
+VAULT_TOKEN_FILE = ROOT / "System Tools" / "ImagineTracker" / ".env.vault-token.js"
+_VAULT_TOKEN_PREFIX = "window.FAFO_VAULT_TOKEN="
+
+
+def _read_vault_token() -> str | None:
+    """Current Imagine Vault run token from window.FAFO_VAULT_TOKEN="..."; (rewritten at every vault start)."""
+    try:
+        raw = VAULT_TOKEN_FILE.read_text(encoding="utf-8-sig").strip()
+        if not raw.startswith(_VAULT_TOKEN_PREFIX):
+            return None
+        tok = json.loads(raw[len(_VAULT_TOKEN_PREFIX):].rstrip(";").strip())
+    except (OSError, ValueError):
+        return None
+    if isinstance(tok, str) and 16 <= len(tok) <= 128 and tok.isascii() and all(c.isalnum() or c in "-_" for c in tok):
+        return tok
+    return None
+
+
+# Vault token handoff for http-served toolbox pages (Imagine Tracker). Read fresh on every call.
+# POST so Chrome sends Origin even same-origin; X-FAFO-S1-Vault is deliberately NOT in
+# S1_ALLOW_HEADERS, so no cross-origin preflight can ever be granted for it.
+# Limit: any same-user local process can still call this (it can forge Origin); it stops web pages.
+@app.post("/api/vault-token")
+def vault_token_handoff(request: Request):
+    headers = {"Cache-Control": "no-store", "Vary": "Origin"}
+    site = request.headers.get("sec-fetch-site")
+    if (request.headers.get("origin") not in TOOLBOX_HTTP_ORIGINS
+            or request.headers.get("x-fafo-s1-vault") != "1"
+            or (site is not None and site != "same-origin")):
+        return JSONResponse(status_code=403, content={"detail": "vault-token-forbidden"}, headers=headers)
+    tok = _read_vault_token()
+    if not tok:
+        return JSONResponse(status_code=503, content={"detail": "vault-token-missing"}, headers=headers)
+    return JSONResponse(content={"ok": True, "token": tok}, headers=headers)
+
+
 # Serve toolbox HTML/tools from the same origin as the API so browsers do not
 # block fetch() (file:// → 127.x private network / CORS edge cases).
 @app.get("/toolbox/{file_path:path}")

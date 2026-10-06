@@ -287,7 +287,21 @@
       }
 
       let vaultToken = null, tokenLoading = null;
+      // http (served by S1 /toolbox/): S1 hands over the current vault token, same-origin only.
+      function loadS1VaultToken() {
+        if (tokenLoading) return tokenLoading;
+        tokenLoading = fetch(location.origin + '/api/vault-token', { method: 'POST', cache: 'no-store', headers: { 'X-FAFO-S1-Vault': '1' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; })
+          .then(function (j) {
+            vaultToken = (j && typeof j.token === 'string' && j.token) || null;
+            tokenLoading = null;
+            return vaultToken;
+          });
+        return tokenLoading;
+      }
       function loadVaultToken() {
+        if (location.protocol === 'http:') return loadS1VaultToken();
         if (location.protocol !== 'file:') return Promise.resolve(null);
         if (tokenLoading) return tokenLoading;
         tokenLoading = new Promise(function (res) {
@@ -304,10 +318,11 @@
         return tokenLoading;
       }
       let tokenTried = false;
+      const TOKEN_PAGE = location.protocol === 'file:' || location.protocol === 'http:';
       async function vaultFetch(path, opts) {
-        if (location.protocol === 'file:' && !vaultToken && !tokenTried) { tokenTried = true; await loadVaultToken(); }
+        if (TOKEN_PAGE && !vaultToken && !tokenTried) { tokenTried = true; await loadVaultToken(); }
         let r = await vaultFetchOnce(path, opts);
-        if (r.status === 403 && location.protocol === 'file:') {
+        if (r.status === 403 && TOKEN_PAGE) {
           let j = null;
           try { j = await r.clone().json(); } catch (_) {}
           if (j && j.error === 'bad-token') { await loadVaultToken(); r = await vaultFetchOnce(path, opts); }
