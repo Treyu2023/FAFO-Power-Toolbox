@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Typing Trainer">
-  <title>Typing Assistant Trainer — T101</title>
+  <title>Typing Assistant Trainer — T102</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="shared/pwa/icon-180.png">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
@@ -376,11 +376,12 @@
       z-index: 38;
       opacity: 0;
       transition: opacity 0.4s;
-      background: linear-gradient(to top,
+      /* S-6: placeFireRibbon keeps it below the typewell, so the glow starts at the box floor and fades down.
+         No mix-blend-mode: it must not recolor any text it overlaps. */
+      background: linear-gradient(to bottom,
         rgba(255, 40, 0, 0.35) 0%,
         rgba(255, 120, 0, 0.12) 40%,
         transparent 100%);
-      mix-blend-mode: screen;
     }
     body.fire-warm #fireRibbon { opacity: 0.45; }
     body.fire-hot #fireRibbon { opacity: 0.75; height: 160px; }
@@ -6889,22 +6890,43 @@ body.run-active #promptWrap {
     const r = wrap.getBoundingClientRect();
     const left = r.left - m.ox;
     const width = Math.max(1, r.width);
-    const floor = Math.max(12, (r.bottom - m.oy) - 10);
+    // S-6: flames start just below the box bottom (they rise and are clipped at the box edge in tickFx).
+    // No room below (phone keyboard, short window): the floor sits at the viewport bottom and the clip hides
+    // what would enter the box; the in-box plate fire (z 0-4, under .prompt z5) carries the effect.
+    const floor = Math.min(m.h - 2, Math.max(12, (r.bottom - m.oy) + 6));
     return { left, right: left + width, width, floor };
   }
 
+  /** Typewell box in canvas CSS px: #fxCanvas never paints inside it (S-6, glyphs stay clean). */
+  function fxGlyphBox() {
+    const wrap = document.getElementById('promptWrap');
+    if (!wrap) return null;
+    const r = wrap.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    const m = fxMetrics();
+    return { x: r.left - m.ox, y: r.top - m.oy, w: r.width, h: r.height };
+  }
+
+  const FIRE_RIBBON_MIN_PX = 16;
+  /** Ribbon top = typewell bottom (never over the glyphs); height shrinks to the room left in the viewport,
+   *  hidden when that room is under FIRE_RIBBON_MIN_PX. */
   function placeFireRibbon() {
     const rib = document.getElementById('fireRibbon');
     const wrap = document.getElementById('promptWrap');
     if (!rib || !wrap) return;
     const r = wrap.getBoundingClientRect();
-    const h = Math.min(180, Math.max(72, r.height * 0.28));
+    const vv = window.visualViewport;
+    const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const top = Math.ceil(r.bottom);
+    const room = Math.floor(viewBottom - top);
+    const h = Math.max(0, Math.min(180, Math.max(72, r.height * 0.28), room));
     rib.style.left = Math.round(r.left) + 'px';
     rib.style.width = Math.max(0, Math.round(r.width)) + 'px';
     rib.style.right = 'auto';
     rib.style.bottom = 'auto';
     rib.style.height = h + 'px';
-    rib.style.top = Math.round(r.bottom - h) + 'px';
+    rib.style.top = top + 'px';
+    rib.style.visibility = room < FIRE_RIBBON_MIN_PX ? 'hidden' : '';
   }
 
   function resizeCanvas() {
@@ -7319,6 +7341,15 @@ body.run-active #promptWrap {
     fxCtx.setTransform(fxDpr || 1, 0, 0, fxDpr || 1, 0, 0);
     fxCtx.clearRect(0, 0, fxCssW || fxCanvas.width, fxCssH || fxCanvas.height);
     ambientFireTick();
+    const glyphBox = particles.length ? fxGlyphBox() : null;
+    fxCtx.save();
+    if (glyphBox) {
+      // Everything except the typewell (evenodd): sparks/flames/shards stop at the box edge, never over glyphs.
+      fxCtx.beginPath();
+      fxCtx.rect(0, 0, fxCssW || fxCanvas.width, fxCssH || fxCanvas.height);
+      fxCtx.rect(glyphBox.x, glyphBox.y, glyphBox.w, glyphBox.h);
+      fxCtx.clip('evenodd');
+    }
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       if (p.kind === 'flame') {
@@ -7447,6 +7478,7 @@ body.run-active #promptWrap {
         fxCtx.fill();
       }
     }
+    fxCtx.restore();
     // Cap particle budget for smooth 60fps (higher when showering hard)
     if (particles.length > 780) particles.splice(0, particles.length - 780);
     fxCtx.globalAlpha = 1;
@@ -21160,8 +21192,8 @@ function tat73Init() {
     confirmNearDedup();
     try {
       var ver = document.getElementById('tatVer');
-      if (ver) { ver.textContent = 'T101'; ver.title = 'T101 — scrolling lesson stage, effects locked to the stage floor'; }
-      if (document.body) document.body.setAttribute('data-tat-ver', 'T101');
+      if (ver) { ver.textContent = 'T102'; ver.title = 'T102 — Duration per mode, fire stays below the text'; }
+      if (document.body) document.body.setAttribute('data-tat-ver', 'T102');
     } catch(_){}
   };
 })();
