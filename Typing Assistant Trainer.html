@@ -6930,15 +6930,7 @@ body.run-active #promptWrap {
     // body, not the viewport, while body runs a filter animation (combo-glow comboBg / fire-inferno
     // infernoPulse): a filtered ancestor is the containing block of fixed descendants. On a scrolled
     // document that put the ribbon at -scrollY. Measure where it really lands and correct by the offset.
-    rib.style.left = left + 'px';
-    rib.style.top = top + 'px';
-    let rr = rib.getBoundingClientRect();
-    const dx = rr.left - left, dy = rr.top - top;
-    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-      rib.style.left = (left - dx) + 'px';
-      rib.style.top = (top - dy) + 'px';
-      rr = rib.getBoundingClientRect();
-    }
+    const rr = tatPlaceFixed(rib, left, top);
     // Hard invariant (S-6 T3/T4), on the ribbon's real rect: hidden if it meets the typewell or leaves the viewport.
     const meets = rr.top < r.bottom && rr.bottom > r.top && rr.left < r.right && rr.right > r.left;
     const offView = rr.bottom <= viewTop || rr.top >= viewBottom;
@@ -6949,12 +6941,32 @@ body.run-active #promptWrap {
   // which fire no resize event. Re-place the ribbon at most once per frame. One capture listener on document
   // sees window scroll and every element scroll (the typewell's pane is .fafo-panel-body.fafo-scroll-pane,
   // overflow:auto); the typewell's own inner scroll does not move its rect, so it is skipped.
+  /** Put a position:fixed body child at viewport (left, top) whatever its real containing block is
+   *  (body while a filter animation runs, else the viewport): write, measure, correct by the offset (S-6 T4/T5). */
+  function tatPlaceFixed(el, left, top) {
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    let rr = el.getBoundingClientRect();
+    const dx = rr.left - left, dy = rr.top - top;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      el.style.left = (left - dx) + 'px';
+      el.style.top = (top - dy) + 'px';
+      rr = el.getBoundingClientRect();
+    }
+    return rr;
+  }
+  /** #fxCanvas origin must sit at the visual viewport origin, or fxXY/fxGlyphBox (the glyph clip) are off (S-6 T5). */
+  function placeFxCanvasOrigin() {
+    if (!fxCanvas) return;
+    const m = fxMetrics();
+    tatPlaceFixed(fxCanvas, m.ox, m.oy);
+  }
   let ribbonRaf = 0;
   function scheduleFireRibbon(ev) {
     const t = ev && ev.target;
     if (t && t.nodeType === 1 && t.closest && t.closest('#promptWrap')) return;
     if (ribbonRaf) return;
-    ribbonRaf = requestAnimationFrame(() => { ribbonRaf = 0; placeFireRibbon(); });
+    ribbonRaf = requestAnimationFrame(() => { ribbonRaf = 0; placeFxCanvasOrigin(); placeFireRibbon(); });
   }
   document.addEventListener('scroll', scheduleFireRibbon, { capture: true, passive: true });
   // Body's filter animations start/stop without scroll or resize, and that switches the ribbon's containing
@@ -6972,10 +6984,9 @@ body.run-active #promptWrap {
       fxCssW = m.w;
       fxCssH = m.h;
       fxDpr = m.dpr;
-      fxCanvas.style.left = m.ox + 'px';
-      fxCanvas.style.top = m.oy + 'px';
       fxCanvas.style.width = m.w + 'px';
       fxCanvas.style.height = m.h + 'px';
+      tatPlaceFixed(fxCanvas, m.ox, m.oy);
       const bw = Math.max(1, Math.floor(m.w * m.dpr));
       const bh = Math.max(1, Math.floor(m.h * m.dpr));
       if (fxCanvas.width !== bw || fxCanvas.height !== bh) {
