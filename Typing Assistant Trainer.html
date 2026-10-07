@@ -6898,16 +6898,22 @@ body.run-active #promptWrap {
   }
 
   /** Typewell box in canvas CSS px: #fxCanvas never paints inside it (S-6, glyphs stay clean). */
-  function fxGlyphBox() {
-    const wrap = document.getElementById('promptWrap');
-    if (!wrap) return null;
-    const r = wrap.getBoundingClientRect();
+  function fxGlyphBox(rect) {
+    const wrap = rect ? null : document.getElementById('promptWrap');
+    if (!rect && !wrap) return null;
+    const r = rect || wrap.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return null;
     const m = fxMetrics();
-    return { x: r.left - m.ox, y: r.top - m.oy, w: r.width, h: r.height };
+    // S-6 T6: snap the hole outward to device pixels. A fractional box edge (e.g. bottom 674.125 at dpr 2)
+    // left one antialiased canvas row half inside the box, lit over the edge glyph line.
+    const d = fxDpr || m.dpr || 1;
+    const x0 = Math.floor((r.left - m.ox) * d) / d, y0 = Math.floor((r.top - m.oy) * d) / d;
+    const x1 = Math.ceil((r.right - m.ox) * d) / d, y1 = Math.ceil((r.bottom - m.oy) * d) / d;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
 
   const FIRE_RIBBON_MIN_PX = 16;
+  let ribbonForBox = null; // typewell rect the ribbon was last placed for (S-6 T6)
   /** Ribbon top = typewell bottom (never over the glyphs); height shrinks to the room left in the viewport,
    *  hidden when that room is under FIRE_RIBBON_MIN_PX. */
   function placeFireRibbon() {
@@ -6915,6 +6921,7 @@ body.run-active #promptWrap {
     const wrap = document.getElementById('promptWrap');
     if (!rib || !wrap) return;
     const r = wrap.getBoundingClientRect();
+    ribbonForBox = r;
     const vv = window.visualViewport;
     const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
     const viewTop = vv ? vv.offsetTop : 0;
@@ -7389,7 +7396,13 @@ body.run-active #promptWrap {
     fxCtx.setTransform(fxDpr || 1, 0, 0, fxDpr || 1, 0, 0);
     fxCtx.clearRect(0, 0, fxCssW || fxCanvas.width, fxCssH || fxCanvas.height);
     ambientFireTick();
-    const glyphBox = particles.length ? fxGlyphBox() : null;
+    // S-6 T6: one typewell rect per frame for the glyph clip and the ribbon. The typewell can move or change
+    // height with no scroll/resize and no ResizeObserver entry (RO reports size only, never position).
+    const wrapEl = document.getElementById('promptWrap');
+    const wrapRect = wrapEl ? wrapEl.getBoundingClientRect() : null;
+    if (wrapRect && (!ribbonForBox || Math.abs(wrapRect.top - ribbonForBox.top) > 0.25 || Math.abs(wrapRect.bottom - ribbonForBox.bottom) > 0.25
+        || Math.abs(wrapRect.left - ribbonForBox.left) > 0.25 || Math.abs(wrapRect.right - ribbonForBox.right) > 0.25)) placeFireRibbon();
+    const glyphBox = particles.length && wrapRect ? fxGlyphBox(wrapRect) : null;
     fxCtx.save();
     if (glyphBox) {
       // Everything except the typewell (evenodd): sparks/flames/shards stop at the box edge, never over glyphs.
