@@ -6921,15 +6921,28 @@ body.run-active #promptWrap {
     const top = Math.ceil(r.bottom);
     const room = Math.floor(viewBottom - top);
     const h = Math.max(0, Math.min(180, Math.max(72, r.height * 0.28), room));
-    rib.style.left = Math.round(r.left) + 'px';
+    const left = Math.round(r.left);
     rib.style.width = Math.max(0, Math.round(r.width)) + 'px';
     rib.style.right = 'auto';
     rib.style.bottom = 'auto';
     rib.style.height = h + 'px';
+    // S-6 T4: top/left are viewport px, but #fireRibbon (position:fixed, child of body) is laid out against
+    // body, not the viewport, while body runs a filter animation (combo-glow comboBg / fire-inferno
+    // infernoPulse): a filtered ancestor is the containing block of fixed descendants. On a scrolled
+    // document that put the ribbon at -scrollY. Measure where it really lands and correct by the offset.
+    rib.style.left = left + 'px';
     rib.style.top = top + 'px';
-    // Hard invariant (S-6 T3): never show a ribbon whose rect meets the typewell's (same fresh rect).
-    const meets = top < r.bottom && top + h > r.top && r.left < r.right;
-    const hide = room < FIRE_RIBBON_MIN_PX || meets || top + h <= viewTop;
+    let rr = rib.getBoundingClientRect();
+    const dx = rr.left - left, dy = rr.top - top;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      rib.style.left = (left - dx) + 'px';
+      rib.style.top = (top - dy) + 'px';
+      rr = rib.getBoundingClientRect();
+    }
+    // Hard invariant (S-6 T3/T4), on the ribbon's real rect: hidden if it meets the typewell or leaves the viewport.
+    const meets = rr.top < r.bottom && rr.bottom > r.top && rr.left < r.right && rr.right > r.left;
+    const offView = rr.bottom <= viewTop || rr.top >= viewBottom;
+    const hide = room < FIRE_RIBBON_MIN_PX || meets || offView;
     rib.style.visibility = hide ? 'hidden' : '';
   }
   // S-6 T3: the typewell moves on page/pane scroll and when a run resizes it (body.run-active max-height),
@@ -6944,6 +6957,11 @@ body.run-active #promptWrap {
     ribbonRaf = requestAnimationFrame(() => { ribbonRaf = 0; placeFireRibbon(); });
   }
   document.addEventListener('scroll', scheduleFireRibbon, { capture: true, passive: true });
+  // Body's filter animations start/stop without scroll or resize, and that switches the ribbon's containing
+  // block (viewport <-> body): re-place on those edges (body-targeted only; letters animate constantly).
+  ['animationstart', 'animationend', 'animationcancel'].forEach((t) => document.addEventListener(t, (ev) => {
+    if (ev.target === document.body) scheduleFireRibbon();
+  }, { passive: true }));
   if (typeof ResizeObserver === 'function') {
     try { const pw = document.getElementById('promptWrap'); if (pw) new ResizeObserver(() => scheduleFireRibbon()).observe(pw); } catch (_) {}
   }
