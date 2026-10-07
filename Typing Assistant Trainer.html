@@ -6547,6 +6547,8 @@ body.run-active #promptWrap {
   let startedAt = 0;
   let timerId = null;
   let durationSec = 30;
+  // The user's own #duration choice (persisted). Territories, minigames and the Daily default never write it.
+  let durationPref = 30;
   let errors = 0;
   let totalKeystrokes = 0;
   let correctKeystrokes = 0;
@@ -6835,6 +6837,7 @@ body.run-active #promptWrap {
     if (finished || !running) return false;
     if (boardsRun) return lives > 0;
     try { if (typeof tat72KeepFeeding === 'function' && tat72KeepFeeding()) return true; } catch (_) {}
+    if (mode === 'daily' && !campaignRun && !miniRun) return false; // the Daily passage is fixed; time or completion ends it
     if (isTimedModeActive()) return true;
     // Novel Mode ends at chapter boundary (then auto-next can open the next chapter)
     if (mode === 'practice' || mode === 'lesson' || mode === 'code' || mode === 'custom') return true;
@@ -8027,7 +8030,7 @@ body.run-active #promptWrap {
     if (errEl) errEl.className = 'val' + (errors === 0 ? ' ok' : errors > 10 ? ' err' : ' warn');
     if (scEl) scEl.className = 'val' + (score > 0 ? ' ok' : '');
 
-    if (isTimedModeActive() && durationSec > 0) {
+    if (timedRunConfigured()) {
       const dur = durationSec;
       const left = Math.max(0, dur - elapsedMs() / 1000);
       // Friendly display for long runs
@@ -8139,8 +8142,15 @@ body.run-active #promptWrap {
     }
     // Boards: optional countdown when duration > 0 ("No limit" = 0 → lives only)
     if (boardsRun && durationSec > 0) return true;
-    return mode === 'timed' || (campaignRun && selectedTerritory?.mode === 'timed');
+    // Daily is a timed run (the countdown and finishTest('time') must fire; tat91 scores reason 'time').
+    return mode === 'timed' || mode === 'daily' || (campaignRun && selectedTerritory?.mode === 'timed');
   }
+  // One answer to "is this run timed": the countdown/end check (updateStats) and the T92 Castle gate
+  // (isTimedRunActive, a separate script that cannot see this scope) both use it.
+  function timedRunConfigured() {
+    return isTimedModeActive() && durationSec > 0;
+  }
+  window.tatTimedRunActive = function () { return !!running && timedRunConfigured(); };
 
   // ——— Text generation ———
   function randWords(n, bank) {
@@ -8288,6 +8298,7 @@ body.run-active #promptWrap {
 
   // ——— Run lifecycle ———
   function newTest(reuseText) {
+    tatSyncDurationLock();
     stopTimer();
     clearPendingTimers();
     setRunActive(false);
@@ -8342,6 +8353,7 @@ body.run-active #promptWrap {
     const durRaw = parseInt($('duration')?.value, 10);
     durationSec = Number.isFinite(durRaw) ? durRaw : 30;
     if (mode === 'timed' && durationSec <= 0) durationSec = 30; // timed needs a clock
+    if (mode === 'daily' && durationSec <= 0) durationSec = 60; // so does Daily (tat77 default)
     // Mini-game / bonus may force duration
     if (miniRun && miniConfig) {
       if (miniConfig.duration) durationSec = miniConfig.duration;
@@ -9595,6 +9607,30 @@ body.run-active #promptWrap {
     if (on) el.removeAttribute('hidden');
     else el.setAttribute('hidden', '');
   }
+  const DURATION_LOCK = { campaign: 'Set by territory', minigames: 'Set by minigame' };
+  /** Campaign/minigames own the clock: the select stays visible but disabled; leaving restores the user's value. */
+  function tatSyncDurationLock() {
+    const sel = $('duration');
+    if (!sel) return;
+    const lock = (campaignRun || mode === 'campaign') ? DURATION_LOCK.campaign : ((miniRun || mode === 'minigames') ? DURATION_LOCK.minigames : '');
+    const wasLocked = sel.disabled && !!sel.dataset.durLock;
+    sel.disabled = !!lock;
+    if (lock) {
+      sel.title = lock;
+      sel.dataset.durLock = '1';
+    } else {
+      sel.removeAttribute('title');
+      delete sel.dataset.durLock;
+      if (wasLocked) sel.value = String(durationPref);
+    }
+  }
+  function tatValidDuration(v) {
+    const sel = $('duration');
+    const n = parseInt(v, 10);
+    if (!sel || !Number.isFinite(n)) return 30;
+    return Array.prototype.some.call(sel.options, (o) => Number(o.value) === n) ? n : 30;
+  }
+
   function setMode(next) {
     mode = next;
     try { tat70OnPlayMode(next); } catch (_) {}
@@ -9615,7 +9651,8 @@ body.run-active #promptWrap {
       p.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     // Boards can use optional timer (pick "No limit" for lives-only)
-    if ($('durationField')) $('durationField').style.display = (mode === 'timed' || mode === 'boards') ? '' : 'none';
+    if ($('durationField')) $('durationField').style.display = (mode === 'timed' || mode === 'boards' || mode === 'daily' || mode === 'campaign' || mode === 'minigames') ? '' : 'none';
+    tatSyncDurationLock();
     if ($('lessonField')) $('lessonField').style.display = mode === 'lesson' ? '' : 'none';
     if ($('difficultyField')) $('difficultyField').style.display = (mode === 'timed' || mode === 'practice') ? '' : 'none';
     customArea?.classList.toggle('show', mode === 'custom');
@@ -9662,8 +9699,7 @@ body.run-active #promptWrap {
       boardCleanChars = 0;
       cleanSinceLife = 0;
       totalCleanRun = 0;
-      // Boards default to lives-only; timer is optional (user can pick 5/10 min etc.)
-      if ($('duration')) $('duration').value = '0';
+      // Boards honor the Duration select (S-6); "No limit" keeps the lives-only run.
       newTest(false);
       setCompanion('focus', 'Boards: stages cycle forever — only lives (or a timer you set) end the run.');
     } else {
@@ -9874,6 +9910,8 @@ body.run-active #promptWrap {
     if (Number.isFinite(prefs.novelChapterIndex)) novelChapterIndex = Math.max(0, prefs.novelChapterIndex | 0);
     if (prefs.novelDone && typeof prefs.novelDone === 'object') novelDoneChapters = prefs.novelDone;
     if (prefs.novelPace && $('novelPace')) $('novelPace').value = prefs.novelPace;
+    durationPref = tatValidDuration(prefs.duration != null ? prefs.duration : 30);
+    if ($('duration')) $('duration').value = String(durationPref);
     applyAmbientPref();
     applyPromptStyle();
     allowedSelect('optReducedMotion', prefs.reducedMotion, ['auto','on','off'], 'auto');
@@ -9899,7 +9937,7 @@ body.run-active #promptWrap {
     if ($('playerName')) $('playerName').value = name;
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
-  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium','uiSkinOpen','uiStyleOpen','character','playMode','campaign','streakAudio','bonusLetters','extraFxFamilies','globalBonuses','dailyLoginStreak','achievements','dailyChallenge','lastClaimDate','wordPackTheme','wordPackDailyBind','pityTimer','weeklyQuests','prestige','lastActiveDate','comebackGrantedFor','tat81Achievements','permanentAbilities','campaignClears','campaignRun','classUnlockProgress','contentPrivate','contentPublic','permanentAbilityClaimed'];
+  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium','uiSkinOpen','uiStyleOpen','character','playMode','campaign','streakAudio','bonusLetters','extraFxFamilies','globalBonuses','dailyLoginStreak','achievements','dailyChallenge','lastClaimDate','wordPackTheme','wordPackDailyBind','pityTimer','weeklyQuests','prestige','lastActiveDate','comebackGrantedFor','tat81Achievements','permanentAbilities','campaignClears','campaignRun','classUnlockProgress','contentPrivate','contentPublic','permanentAbilityClaimed','duration'];
   function pickAllowed(obj, allow) {
     const out = {};
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
@@ -9951,6 +9989,7 @@ body.run-active #promptWrap {
       dailyLoginStreak: (typeof tat73GetPrefsBlob === 'function') ? tat73GetPrefsBlob().dailyLoginStreak : (prev.dailyLoginStreak || { count: 0, lastDate: '', graceRemaining: 0, academyChars: 0, endlessCleared: 0 }),
       achievements: (typeof tat73GetPrefsBlob === 'function') ? tat73GetPrefsBlob().achievements : (Array.isArray(prev.achievements) ? prev.achievements.slice(0, 64) : []),
       pityTimer: (typeof tat79GetPityPrefs === 'function') ? tat79GetPityPrefs() : (prev.pityTimer || { on: true, n: 24 }),
+      duration: durationPref,
     });
     try { localStorage.setItem(KEYS.name, getPlayerName()); } catch (_) {}
     applyAmbientPref();
@@ -10060,7 +10099,12 @@ body.run-active #promptWrap {
     }
   });
   $('duration')?.addEventListener('change', () => {
-    if (mode === 'timed' && !campaignRun) newTest(false);
+    if (campaignRun || miniRun || DURATION_LOCK[mode]) return;
+    const opt = $('duration').selectedOptions && $('duration').selectedOptions[0];
+    if (opt && opt.disabled) return; // T92 Castle-locked length: not the user's saved choice
+    durationPref = tatValidDuration($('duration').value);
+    try { savePrefs(); } catch (_) {}
+    if (mode === 'timed' || mode === 'daily' || mode === 'boards') newTest(false);
   });
   $('difficulty')?.addEventListener('change', () => {
     if (!campaignRun) newTest(false);
@@ -18378,13 +18422,10 @@ function tat73Init() {
   }
 
   function isTimedRunActive(){
+    // S-6: same answer as the trainer's countdown (window.tatTimedRunActive, main script).
+    // The old check read `running`/`mode`, which are private to the main script, so it was always false.
     try {
-      if (typeof running !== 'undefined' && running) {
-        var modeNow = (typeof mode !== 'undefined') ? mode : '';
-        var dur = Number(($('duration') && $('duration').value) || 0);
-        if (modeNow === 'timed' && dur > 0) return true;
-        if (modeNow === 'daily') return true;
-      }
+      if (typeof window.tatTimedRunActive === 'function') return !!window.tatTimedRunActive();
     } catch(_){}
     return false;
   }
