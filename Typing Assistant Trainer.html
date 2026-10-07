@@ -6917,6 +6917,7 @@ body.run-active #promptWrap {
     const r = wrap.getBoundingClientRect();
     const vv = window.visualViewport;
     const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const viewTop = vv ? vv.offsetTop : 0;
     const top = Math.ceil(r.bottom);
     const room = Math.floor(viewBottom - top);
     const h = Math.max(0, Math.min(180, Math.max(72, r.height * 0.28), room));
@@ -6926,7 +6927,25 @@ body.run-active #promptWrap {
     rib.style.bottom = 'auto';
     rib.style.height = h + 'px';
     rib.style.top = top + 'px';
-    rib.style.visibility = room < FIRE_RIBBON_MIN_PX ? 'hidden' : '';
+    // Hard invariant (S-6 T3): never show a ribbon whose rect meets the typewell's (same fresh rect).
+    const meets = top < r.bottom && top + h > r.top && r.left < r.right;
+    const hide = room < FIRE_RIBBON_MIN_PX || meets || top + h <= viewTop;
+    rib.style.visibility = hide ? 'hidden' : '';
+  }
+  // S-6 T3: the typewell moves on page/pane scroll and when a run resizes it (body.run-active max-height),
+  // which fire no resize event. Re-place the ribbon at most once per frame. One capture listener on document
+  // sees window scroll and every element scroll (the typewell's pane is .fafo-panel-body.fafo-scroll-pane,
+  // overflow:auto); the typewell's own inner scroll does not move its rect, so it is skipped.
+  let ribbonRaf = 0;
+  function scheduleFireRibbon(ev) {
+    const t = ev && ev.target;
+    if (t && t.nodeType === 1 && t.closest && t.closest('#promptWrap')) return;
+    if (ribbonRaf) return;
+    ribbonRaf = requestAnimationFrame(() => { ribbonRaf = 0; placeFireRibbon(); });
+  }
+  document.addEventListener('scroll', scheduleFireRibbon, { capture: true, passive: true });
+  if (typeof ResizeObserver === 'function') {
+    try { const pw = document.getElementById('promptWrap'); if (pw) new ResizeObserver(() => scheduleFireRibbon()).observe(pw); } catch (_) {}
   }
 
   function resizeCanvas() {
@@ -9647,11 +9666,15 @@ body.run-active #promptWrap {
     const lock = (campaignRun || mode === 'campaign') ? DURATION_LOCK.campaign : ((miniRun || mode === 'minigames') ? DURATION_LOCK.minigames : '');
     const wasLocked = sel.disabled && !!sel.dataset.durLock;
     sel.disabled = !!lock;
+    // The disabled <select> gets no hover in Chrome; the enabled wrapper carries the same tooltip (S-6 T3).
+    const fld = $('durationField');
     if (lock) {
       sel.title = lock;
+      if (fld) fld.title = lock;
       sel.dataset.durLock = '1';
     } else {
       sel.removeAttribute('title');
+      if (fld) fld.removeAttribute('title');
       delete sel.dataset.durLock;
       if (wasLocked) sel.value = String(durationPref);
     }
