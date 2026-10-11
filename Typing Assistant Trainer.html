@@ -3596,6 +3596,18 @@ body.tat-rm-on .tat78-pack-chip.is-selected {
 .wpm-chart svg { width: 100%; height: 120px; display: block; }
 .wpm-chart .lbl { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
 body.tat-user-paused #promptWrap .prompt { opacity: 0.45; transition: opacity 0.15s; } /* T-RESTORE R9 */
+/* T-RESTORE R7 (972212bf L1065-1068, L4375-4408) */
+#keyboard .key.heat-1 { box-shadow: inset 0 0 0 1px rgba(255, 200, 0, 0.35); background: rgba(255, 200, 0, 0.08); }
+#keyboard .key.heat-2 { box-shadow: inset 0 0 0 1px rgba(255, 140, 40, 0.5); background: rgba(255, 120, 40, 0.16); }
+#keyboard .key.heat-3 { box-shadow: inset 0 0 0 1px rgba(255, 77, 106, 0.6); background: rgba(255, 77, 106, 0.22); }
+#keyboard .key.heat-4 { box-shadow: inset 0 0 0 1px #ff4d6a, 0 0 12px rgba(255, 77, 106, 0.35); background: rgba(255, 40, 80, 0.32); color: #fff; }
+#coachCard { display: none; margin: 8px 0 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 159, 67, 0.35); background: rgba(255, 120, 40, 0.08); text-align: left; }
+#coachCard.show { display: block; }
+#coachCard .cc-title { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #ffb86b; font-weight: 800; }
+#coachCard .cc-keys { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+#coachCard .cc-key { min-width: 32px; padding: 4px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 77, 106, 0.35); font: 800 14px/1.2 var(--font-mono); text-align: center; }
+#coachCard .cc-key small { display: block; font-size: 9px; color: var(--muted); font-weight: 600; }
+#kbHeatLegend { font-size: 11px; color: var(--muted); margin-top: 6px; }
 /* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
 #promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 /* T-NUKE (Ryan 2026-10-11 01:19): miss-streak escalation on the target char. Visuals sit over the text, under every dialog/bar, no pointer events. */
@@ -5813,6 +5825,17 @@ body.run-active #promptWrap {
       <div class="fafo-panel-body fafo-scroll-pane">
       <div class="section-title">Keyboard guide</div>
       <div class="kb" id="keyboard" aria-hidden="true"></div>
+      <!-- T-RESTORE R7: miss heat + coach (972212bf L5335-5338, L5369). Additive; hidden in Daily mode. -->
+      <details class="fafo-fold tat-fold" id="tatCoachFold" data-fafo-fold="coach" open>
+      <summary class="section-label">Miss heat · coach</summary>
+      <label class="toggle" title="Tint keys by how often you miss them"><input type="checkbox" id="optKbHeat" checked><span><span class="hi">Miss heat</span> — tint keys you miss</span></label>
+      <div id="kbHeatLegend">Cool keys are clean. Hot keys are the ones you miss — Coach drills those.</div>
+      <div id="coachCard">
+        <div class="cc-title">Coach — letters that bit you</div>
+        <div class="cc-keys" id="coachKeys"></div>
+        <button type="button" class="btn gold" id="btnCoachDrill" data-tip="Load a drill of your weak keys into Custom mode.">Drill weak keys</button>
+      </div>
+      </details>
           </div>
 </div>
 
@@ -9468,6 +9491,7 @@ body.run-active #promptWrap {
         index++;
       }
       nukeMiss = 0; nukeMissAt = -1; // T-NUKE: a correct key ends the miss streak
+      try { noteGlyph(expected, true); } catch (_) {}
       index = tatNukeSkip(index);
       try { tatT65OnIndex(); } catch (_) {}
       if (gain && score % 100 < gain) popStat('statScore');
@@ -9565,6 +9589,7 @@ body.run-active #promptWrap {
         spawnSmoke(missAt.x, missAt.y, 1.2);
         spawnBurst(missAt.x, missAt.y, '#ff4d6a', 6, 2);
       }
+      try { noteGlyph(expected, false); } catch (_) {}
       let nuked = false;
       try { nuked = tatNukeOnMiss(); } catch (_) {}
       if (nuked && index >= target.length) {
@@ -9793,6 +9818,99 @@ body.run-active #promptWrap {
     });
   }
 
+  // ——— T-RESTORE R7: miss heat map + coach card (972212bf L8887-9027), additive, outside Daily ———
+  // Storage: NEW key aitoolbox.typingTrainer.keyStats.v1 {hits:{}, miss:{}} (the old roster stats are gone); toggle = prefs.v3.kbHeat.
+  const TAT_KEYSTATS = 'aitoolbox.typingTrainer.keyStats.v1';
+  const COACH_BANK = 'the and for you are but not all can her was one our out day get has him his how man new now old see two way who boy did its let put say she too use sad dad add all as ask bad bag cab cad fad glad had jam lab mad nag pal sad salad flask glass class grass'.split(/\s+/);
+  let tatKs = null;
+  function tatKeyStats() {
+    if (!tatKs) {
+      const v = loadJson(TAT_KEYSTATS, {});
+      tatKs = { hits: (v && v.hits && typeof v.hits === 'object') ? v.hits : {}, miss: (v && v.miss && typeof v.miss === 'object') ? v.miss : {} };
+    }
+    return tatKs;
+  }
+  function tatHashStr(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function noteGlyph(ch, ok) {
+    if (mode === 'daily') return;
+    const k = String(ch || '').toLowerCase();
+    if (k.length !== 1 || !/[a-z]/.test(k)) return;
+    const st = tatKeyStats();
+    const b = ok ? st.hits : st.miss;
+    b[k] = (b[k] || 0) + 1;
+  }
+  function tatSaveKeyStats() { if (tatKs) saveJson(TAT_KEYSTATS, tatKs); }
+  function weakKeyRows(n) {
+    const st = tatKeyStats();
+    const rows = 'abcdefghijklmnopqrstuvwxyz'.split('').map((k) => {
+      const h = st.hits[k] || 0, m = st.miss[k] || 0, t = h + m;
+      return { k, h, m, t, rate: t >= 4 ? m / t : 0 };
+    }).filter((r) => r.t >= 4 && r.m >= 1);
+    rows.sort((a, b) => b.rate - a.rate || b.m - a.m);
+    return rows.slice(0, n || 5);
+  }
+  function paintKeyboardHeat() {
+    if (!keyboardEl) return;
+    const on = !$('optKbHeat') || !!$('optKbHeat').checked;
+    keyboardEl.querySelectorAll('.key').forEach((el) => el.classList.remove('heat-1', 'heat-2', 'heat-3', 'heat-4'));
+    if (!on || mode === 'daily') return;
+    const st = tatKeyStats();
+    keyboardEl.querySelectorAll('.key').forEach((el) => {
+      const id = el.id || '';
+      if (id.indexOf('key-') !== 0) return;
+      let k = '';
+      try { k = decodeURIComponent(id.slice(4)); } catch (_) { k = id.slice(4); }
+      if (k.length !== 1) return;
+      const h = st.hits[k] || 0, m = st.miss[k] || 0, t = h + m;
+      if (t < 4 || m < 1) return;
+      const rate = m / t;
+      el.classList.add(rate >= 0.45 ? 'heat-4' : rate >= 0.3 ? 'heat-3' : rate >= 0.18 ? 'heat-2' : 'heat-1');
+    });
+  }
+  function buildCoachText(keys) {
+    const ks = (keys && keys.length ? keys : ['a', 's', 'e', 't']).map((k) => String(k).toLowerCase()).filter((k) => /[a-z]/.test(k)).slice(0, 6);
+    const parts = [];
+    ks.forEach((k) => {
+      parts.push(k + k + k, k + 'at', k + 'as', 'sa' + k);
+      COACH_BANK.filter((w) => w.indexOf(k) >= 0).slice(0, 6).forEach((w) => parts.push(w));
+    });
+    for (let i = 0; i < 12; i++) {
+      const a = ks[i % ks.length], b = ks[(i + 1) % ks.length];
+      parts.push(a + b + a + b);
+    }
+    for (let i = parts.length - 1; i > 0; i--) {
+      const j = (tatHashStr(ks.join('') + i) + i) % (i + 1);
+      const tmp = parts[i]; parts[i] = parts[j]; parts[j] = tmp;
+    }
+    return parts.join(' ');
+  }
+  function renderCoachCard() {
+    const card = $('coachCard');
+    const host = $('coachKeys');
+    if (!card || !host) return;
+    const rows = mode === 'daily' ? [] : weakKeyRows(5);
+    if (!rows.length) { card.classList.remove('show'); return; }
+    host.innerHTML = rows.map((r) =>
+      '<span class="cc-key">' + escapeHtml(r.k.toUpperCase()) + '<small>' + Math.round(r.rate * 100) + '% miss</small></span>'
+    ).join('');
+    card.classList.add('show');
+  }
+  /** The old coach mode needed its own run type; here the drill goes through Custom mode (additive). */
+  function startCoachDrill() {
+    const rows = weakKeyRows(5);
+    const keys = (rows.length ? rows : [{ k: 'a' }, { k: 's' }, { k: 'e' }, { k: 'r' }, { k: 't' }]).map((r) => r.k);
+    const ta = $('customText');
+    if (!ta) return;
+    ta.value = buildCoachText(keys);
+    setMode('custom');
+    newTest(false);
+    try { setCompanion('focus', 'Coach drill — the hot keys first.'); } catch (_) {}
+  }
+  function tatR7Paint() { try { paintKeyboardHeat(); renderCoachCard(); } catch (_) {} }
   /** T-RESTORE R8: ported drawWpmChart; source = history.v2 (newest first) instead of the old roster player history. */
   function drawWpmChart() {
     const svg = $('wpmChart');
@@ -9837,6 +9955,7 @@ body.run-active #promptWrap {
   }
   function renderHistory() {
     try { drawWpmChart(); } catch (_) {}
+    try { tatSaveKeyStats(); tatR7Paint(); } catch (_) {}
     const list = loadJson(KEYS.history, []);
     const ul = $('historyList');
     const empty = $('emptyHist');
@@ -10321,6 +10440,7 @@ body.run-active #promptWrap {
     // Boards can use optional timer (pick "No limit" for lives-only)
     if ($('durationField')) $('durationField').style.display = (mode === 'timed' || mode === 'boards' || mode === 'daily' || mode === 'campaign' || mode === 'minigames') ? '' : 'none';
     tatSyncDurationLock();
+    tatR7Paint(); // T-RESTORE R7: hide heat/coach in Daily
     if ($('lessonField')) $('lessonField').style.display = mode === 'lesson' ? '' : 'none';
     if ($('difficultyField')) $('difficultyField').style.display = (mode === 'timed' || mode === 'practice') ? '' : 'none';
     customArea?.classList.toggle('show', mode === 'custom');
@@ -10565,6 +10685,7 @@ body.run-active #promptWrap {
     if (prefs.noCaps && $('optNoCaps')) $('optNoCaps').checked = true;
     if (prefs.noPunct && $('optNoPunct')) $('optNoPunct').checked = true;
     if (prefs.sound === false && $('optSound')) $('optSound').checked = false;
+    if (prefs.kbHeat === false && $('optKbHeat')) $('optKbHeat').checked = false;
     if (prefs.missTone && $('optMissTone') && Array.prototype.some.call($('optMissTone').options, (o) => o.value === prefs.missTone)) $('optMissTone').value = prefs.missTone;
     if (prefs.fx === false && $('optFx')) $('optFx').checked = false;
     if (prefs.ambient === false && $('optAmbient')) $('optAmbient').checked = false;
@@ -10606,7 +10727,7 @@ body.run-active #promptWrap {
     if ($('playerName')) $('playerName').value = name;
     if ($('resultName') && !$('resultName').value) $('resultName').value = name;
   }
-  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium','uiSkinOpen','uiStyleOpen','character','playMode','campaign','streakAudio','bonusLetters','extraFxFamilies','globalBonuses','dailyLoginStreak','achievements','dailyChallenge','lastClaimDate','wordPackTheme','wordPackDailyBind','pityTimer','weeklyQuests','prestige','lastActiveDate','comebackGrantedFor','tat81Achievements','permanentAbilities','campaignClears','campaignRun','classUnlockProgress','contentPrivate','contentPublic','permanentAbilityClaimed','duration','missTone'];
+  const PREF_ALLOW = ['noCaps','noPunct','sound','fx','ambient','burn','novelAuto','font','color','textFx','textAnim','fxLevel','novelBookId','novelChapterIndex','novelDone','novelPace','skin','reducedMotion','masterProfile','ghostReplay','sprintPodium','uiSkinOpen','uiStyleOpen','character','playMode','campaign','streakAudio','bonusLetters','extraFxFamilies','globalBonuses','dailyLoginStreak','achievements','dailyChallenge','lastClaimDate','wordPackTheme','wordPackDailyBind','pityTimer','weeklyQuests','prestige','lastActiveDate','comebackGrantedFor','tat81Achievements','permanentAbilities','campaignClears','campaignRun','classUnlockProgress','contentPrivate','contentPublic','permanentAbilityClaimed','duration','missTone','kbHeat'];
   function pickAllowed(obj, allow) {
     const out = {};
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
@@ -10624,6 +10745,7 @@ body.run-active #promptWrap {
       noPunct: !!$('optNoPunct')?.checked,
       sound: $('optSound') ? !!$('optSound').checked : true,
       missTone: $('optMissTone') ? $('optMissTone').value : 'thud',
+      kbHeat: $('optKbHeat') ? !!$('optKbHeat').checked : true,
       fx: $('optFx') ? !!$('optFx').checked : true,
       ambient: $('optAmbient') ? $('optAmbient').checked : true,
       burn: $('optBurn') ? $('optBurn').checked : true,
@@ -10789,6 +10911,8 @@ body.run-active #promptWrap {
     });
   });
   $('optMissTone')?.addEventListener('change', () => { try { savePrefs(); } catch (_) {} });
+  $('optKbHeat')?.addEventListener('change', () => { try { savePrefs(); } catch (_) {} tatR7Paint(); });
+  $('btnCoachDrill')?.addEventListener('click', () => startCoachDrill());
   $('btnPreviewMissTone')?.addEventListener('click', () => playMissTone(($('optMissTone') && $('optMissTone').value) || 'thud'));
   ['optSound', 'optFx', 'optAmbient', 'optBurn', 'optGhostReplay', 'optSprintPodium'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
