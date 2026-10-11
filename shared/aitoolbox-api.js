@@ -320,7 +320,12 @@
         // act: start | restart | tray | console | folder | setup | launch | watchdog* …
         const url = 'aitoolbox://' + act;
         dbg()?.log('api', 'info', 'Protocol launch: ' + url);
-        try {
+        // S7-SC10: aitoolbox://start fires at most once per browser session; if sessionStorage throws, fail closed (no fire).
+        let fire = act !== 'start';
+        if (!fire) {
+            try { fire = sessionStorage.getItem('aitoolbox.protocol.startFired') !== '1'; if (fire) sessionStorage.setItem('aitoolbox.protocol.startFired', '1'); } catch { fire = false; }
+        }
+        if (fire) try {
             // Hidden iframe is enough for registered URL handlers; avoids navigation + double fire.
             const iframe = document.createElement('iframe');
             iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;pointer-events:none;opacity:0';
