@@ -3608,6 +3608,10 @@ body.tat-user-paused #promptWrap .prompt { opacity: 0.45; transition: opacity 0.
 #coachCard .cc-key { min-width: 32px; padding: 4px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 77, 106, 0.35); font: 800 14px/1.2 var(--font-mono); text-align: center; }
 #coachCard .cc-key small { display: block; font-size: 9px; color: var(--muted); font-weight: 600; }
 #kbHeatLegend { font-size: 11px; color: var(--muted); margin-top: 6px; }
+/* T-RESTORE R12 (972212bf L3502-3531 + Shipwright R-i): full screen hides the shared/W3 bars; Esc or the toggle restores them */
+html.tat-fs #atx-pro-bar, html.tat-fs #tbSharedServerBar, html.tat-fs #fafo-layout-float-dock, html.tat-fs .fafo-layout-toolbar, html.tat-fs #fafo-a2hs { display: none !important; }
+html.tat-fs, html.tat-fs body { overflow: auto; }
+.btn.tat-fs-btn[aria-pressed="true"] { border-color: rgba(0, 243, 255, 0.55); color: #bff9ff; }
 /* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
 #promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 /* T-NUKE (Ryan 2026-10-11 01:19): miss-streak escalation on the target char. Visuals sit over the text, under every dialog/bar, no pointer events. */
@@ -4845,6 +4849,7 @@ body.run-active #promptWrap {
         <button type="button" class="btn ghost" id="btnTat91ImportMeta" style="font-size:11px" data-tip-title="Import meta pack" data-tip="Import trainer-meta-pack.v1 Replace or Merge.">Import Glyphs pack</button>
         <input type="file" id="tat91ImportFile" accept="application/json,.json" hidden>
         <button type="button" class="btn ghost" id="btnExportHs" style="font-size:11px" data-tip-title="Export high scores" data-tip="Download your high-score board as a shareable text/JSON dump.">📋 Export high scores</button>
+        <button type="button" class="btn ghost tat-fs-btn" id="btnFullscreen" style="font-size:11px" aria-pressed="false" data-tip-title="Full screen" data-tip="Fill the monitor and hide the toolbars. Esc or this button exits.">⛶ Full screen</button>
         <span style="font-size:11px;color:var(--muted)">Tab restart · sound prefs persist · ? for Pro help</span>
       </div>
       <span data-fafo-layout-toolbar></span>
@@ -9076,6 +9081,30 @@ body.run-active #promptWrap {
     if (!running || finished) return;
     setPaused(!userPaused);
   }
+  /** T-RESTORE R12: full screen (972212bf L11354-11379). The browser owns Esc while full screen, so Esc always leaves full
+   *  screen first; if a run was going, leaving full screen also pauses it (R9) so the Esc the player meant still holds the clock. */
+  function tatIsFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function tatSyncFsBtn() {
+    const on = tatIsFullscreen();
+    const was = document.documentElement.classList.contains('tat-fs');
+    document.documentElement.classList.toggle('tat-fs', on);
+    const btn = $('btnFullscreen');
+    if (btn) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); btn.textContent = on ? '⛶ Exit full screen' : '⛶ Full screen'; }
+    if (was && !on && running && !finished && !userPaused) setPaused(true);
+  }
+  async function tatToggleFullscreen() {
+    try {
+      if (tatIsFullscreen()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+      } else {
+        const root = document.documentElement;
+        const req = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (req) await req.call(root);
+      }
+    } catch (_) { /* browser refused */ }
+    tatSyncFsBtn();
+  }
   function finishTest(reason) {
     if (userPaused) { userPaused = false; document.body.classList.remove('tat-user-paused'); }
     if (finished) return;
@@ -10913,6 +10942,9 @@ body.run-active #promptWrap {
   $('optMissTone')?.addEventListener('change', () => { try { savePrefs(); } catch (_) {} });
   $('optKbHeat')?.addEventListener('change', () => { try { savePrefs(); } catch (_) {} tatR7Paint(); });
   $('btnCoachDrill')?.addEventListener('click', () => startCoachDrill());
+  $('btnFullscreen')?.addEventListener('click', () => { tatToggleFullscreen(); });
+  document.addEventListener('fullscreenchange', tatSyncFsBtn);
+  document.addEventListener('webkitfullscreenchange', tatSyncFsBtn);
   $('btnPreviewMissTone')?.addEventListener('click', () => playMissTone(($('optMissTone') && $('optMissTone').value) || 'thud'));
   ['optSound', 'optFx', 'optAmbient', 'optBurn', 'optGhostReplay', 'optSprintPodium'].forEach((id) => {
     if ($(id)) $(id).addEventListener('change', savePrefs);
