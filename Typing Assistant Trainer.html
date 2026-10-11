@@ -8107,29 +8107,66 @@ body.run-active #promptWrap {
     const w = pw.getBoundingClientRect();
     return { x: r.left + r.width / 2 - w.left - pw.clientLeft, y: r.top + r.height / 2 - w.top - pw.clientTop };
   }
-  function tatNoiseBurst(dur, f0, f1, gain) {
-    if (!$('optSound')?.checked) return;
-    const ctx = ensureAudio();
+  // T-NUKE-SFX (Ryan 02:02): every stage has its own synthesized sound. Gated by #optSound (the master sound toggle).
+  // All nuke sounds share one bus with a compressor, so overlapping stages can't stack into clipping. Peaks are matched to the shotgun (~0.22).
+  var NK_BUS = null;
+  function nkBus(ctx) {
+    if (NK_BUS && NK_BUS.ctx === ctx) return NK_BUS.in;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 6; comp.ratio.value = 8; comp.attack.value = 0.003; comp.release.value = 0.2;
+    const g = ctx.createGain();
+    g.gain.value = 0.9;
+    g.connect(comp); comp.connect(ctx.destination);
+    NK_BUS = { ctx, in: g };
+    return g;
+  }
+  function nkAudio() {
+    if (!$('optSound')?.checked) return null;
+    return ensureAudio();
+  }
+  function tatNoiseBurst(dur, f0, f1, gain, ftype, when) {
+    const ctx = nkAudio();
     if (!ctx) return;
-    const t0 = ctx.currentTime;
+    const t0 = ctx.currentTime + (when || 0);
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / len, 3);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(f0, t0);
-    lp.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    const f = ctx.createBiquadFilter();
+    f.type = ftype || 'lowpass';
+    f.frequency.setValueAtTime(f0, t0);
+    f.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain, t0);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    src.connect(f); f.connect(g); g.connect(nkBus(ctx));
     src.start(t0); src.stop(t0 + dur + 0.02);
   }
-  function sfxShotgun() { tatNoiseBurst(0.35, 2600, 300, 0.22); tone(70, 0.18, 'sine', 0.08); }
-  function sfxNuke() { tatNoiseBurst(1.4, 900, 60, 0.3); tone(42, 0.9, 'sine', 0.1); }
+  function tatSweep(f0, f1, dur, type, gain, when) {
+    const ctx = nkAudio();
+    if (!ctx) return;
+    const t0 = ctx.currentTime + (when || 0);
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f0, t0);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(nkBus(ctx));
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function sfxNkPing() { tatSweep(1320, 1320, 0.16, 'sine', 0.18); tatSweep(1980, 1980, 0.09, 'sine', 0.06, 0.01); }
+  function sfxShotgun() { tatNoiseBurst(0.35, 2600, 300, 0.22); tatSweep(90, 50, 0.18, 'sine', 0.2); }
+  function sfxNkHiss() { tatNoiseBurst(0.55, 6000, 2500, 0.12, 'highpass'); }
+  function sfxNkCrackle() {
+    for (let k = 0; k < 9; k++) tatNoiseBurst(0.025 + Math.random() * 0.03, 2400 + Math.random() * 1600, 900, 0.14 + Math.random() * 0.08, 'bandpass', Math.random() * 0.45);
+  }
+  function sfxNkWhistle() { tatSweep(1700, 420, 0.62, 'sine', 0.12); }
+  function sfxNuke() { tatNoiseBurst(1.4, 900, 60, 0.22); tatSweep(58, 28, 1.3, 'sine', 0.22); tatNoiseBurst(1.1, 160, 40, 0.16, 'lowpass', 0.12); }
   // In-box particle canvas (ported art: dust, missFire, boom, nukeStem/nukeCap/nukeRing, fwSparkle).
   var NK = { cv: null, ctx: null, parts: [], raf: 0, dpr: 1 };
   function nkCanvas() {
@@ -8245,6 +8282,7 @@ body.run-active #promptWrap {
     bomb.style.left = p.x + 'px';
     bomb.style.setProperty('--nk-fall', Math.max(0, p.y) + 'px');
     layer.appendChild(bomb);
+    sfxNkWhistle();
     later(() => {
       try { bomb.remove(); } catch (_) {}
       sfxNuke();
@@ -8259,7 +8297,10 @@ body.run-active #promptWrap {
     if (!tatNukeOn()) { nukeMiss = 0; nukeMissAt = -1; return false; }
     if (nukeMissAt !== index) { nukeMiss = 0; nukeMissAt = index; }
     nukeMiss++;
+    if (nukeMiss === 1) sfxNkPing();
     if (nukeMiss === 2) sfxShotgun();
+    if (nukeMiss === 3) sfxNkHiss();
+    if (nukeMiss === 4) sfxNkCrackle();
     if (nukeMiss === 3 || nukeMiss === 4) tatNukeBeat(nukeMiss);
     if (nukeMiss < 5) return false;
     const at = index;
