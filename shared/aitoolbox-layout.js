@@ -113,6 +113,36 @@
     }
   }
 
+  /** S7 SC-17h: one-shot heal (per app) of column widths saved before SC-17
+   *  while the app had stacked its columns. Signature: 2+ fixed panels saved at
+   *  the same width >= 600px (each measured as the full stacked row). Only those
+   *  widths are dropped (defaults return); every other saved field is kept. */
+  const HEAL_PREFIX = 'fafo_layout_sc17h_';
+  function healStackedSave(appId, opts) {
+    if (((opts && opts.type) || 'columns') !== 'columns') return;
+    const mark = HEAL_PREFIX + String(appId || 'app').replace(/[^\w.\-]+/g, '_');
+    try {
+      if (localStorage.getItem(mark)) return;
+      localStorage.setItem(mark, '1');
+      const key = storageKey(appId);
+      const data = JSON.parse(localStorage.getItem(key) || 'null');
+      const sizes = data && data.sizes;
+      if (!sizes || typeof sizes !== 'object') return;
+      const flex = data.flex || {};
+      const byW = {};
+      Object.keys(sizes).forEach((id) => {
+        const w = sizes[id];
+        if (flex[id] !== true && Number.isFinite(w) && w >= 600) (byW[w] = byW[w] || []).push(id);
+      });
+      const drop = [].concat(...Object.values(byW).filter((ids) => ids.length >= 2));
+      if (!drop.length) return;
+      const w = sizes[drop[0]];
+      drop.forEach((id) => { delete sizes[id]; });
+      localStorage.setItem(key, JSON.stringify(data));
+      console.info('[AIToolboxLayout] SC-17h healed stacked column widths for ' + appId + ': ' + drop.join(',') + ' (' + w + 'px)');
+    } catch (_) { /* ignore */ }
+  }
+
   function clearStore(appId) {
     try {
       localStorage.removeItem(storageKey(appId));
@@ -1938,6 +1968,7 @@
     });
 
     const defaults = defaultStateFromDom(root);
+    healStackedSave(appId, opts);
     let state = readStore(appId) || defaults;
     // Merge any new panels/sections added in later app versions
     state = mergeState(defaults, state);
