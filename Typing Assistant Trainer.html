@@ -3591,6 +3591,10 @@ body.tat-rm-on .tat78-pack-chip.is-selected {
   overflow: hidden; border-radius: inherit;
 }
 #mainPanel { position: relative; }
+/* T-RESTORE R8 (972212bf L1677) */
+.wpm-chart { margin-top: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,243,255,0.16); background: rgba(6,8,14,0.45); }
+.wpm-chart svg { width: 100%; height: 120px; display: block; }
+.wpm-chart .lbl { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
 /* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
 #promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 /* T-NUKE (Ryan 2026-10-11 01:19): miss-streak escalation on the target char. Visuals sit over the text, under every dialog/bar, no pointer events. */
@@ -5835,6 +5839,14 @@ body.run-active #promptWrap {
           <button type="button" class="tab-btn" data-tab="tips">Tips</button>
         </div>
         <div id="tabHistory">
+          <!-- T-RESTORE R8: WPM chart (972212bf drawWpmChart L5993 / markup L5387). Reads the existing history.v2 runs; no new storage. -->
+          <details class="fafo-fold tat-fold" id="tatWpmChartFold" data-fafo-fold="wpm-chart" open>
+          <summary class="section-label">Improvement log</summary>
+          <div class="wpm-chart" id="wpmChartBox">
+            <div class="lbl"><span>WPM over recent runs</span><span id="chartHint">WPM over recent runs</span></div>
+            <svg id="wpmChart" viewBox="0 0 320 120" role="img" aria-label="WPM over time"></svg>
+          </div>
+          </details>
           <ul class="history-list" id="historyList"></ul>
           <div class="empty-hist" id="emptyHist">No runs yet.</div>
           <div style="margin-top:10px">
@@ -9750,7 +9762,50 @@ body.run-active #promptWrap {
     });
   }
 
+  /** T-RESTORE R8: ported drawWpmChart; source = history.v2 (newest first) instead of the old roster player history. */
+  function drawWpmChart() {
+    const svg = $('wpmChart');
+    if (!svg) return;
+    let pts = loadJson(KEYS.history, []);
+    pts = (Array.isArray(pts) ? pts : []).filter((h) => h && (h.wpm | 0) >= 0 && (h.at | 0) > 0)
+      .sort((a, b) => (a.at | 0) - (b.at | 0))
+      .slice(-24);
+    if ($('chartHint')) {
+      $('chartHint').textContent = pts.length
+        ? pts.length + ' logged · best ' + Math.max.apply(null, pts.map((x) => x.wpm | 0)) + ' WPM'
+        : 'WPM over recent runs';
+    }
+    if (!pts.length) {
+      svg.innerHTML = '<text x="16" y="66" fill="#8b93a7" font-size="12">Finish runs to chart your climb</text>';
+      return;
+    }
+    const w = 320, h = 120, pad = 18;
+    const ys = pts.map((x) => x.wpm | 0);
+    const min = Math.min.apply(null, ys.concat([0]));
+    const max = Math.max.apply(null, ys.concat([40]));
+    const span = Math.max(1, max - min);
+    const xAt = (i) => pad + (i / Math.max(1, pts.length - 1)) * (w - pad * 2);
+    const yAt = (v) => h - pad - ((v - min) / span) * (h - pad * 2);
+    const line = pts.map((pt, i) => (i ? 'L' : 'M') + xAt(i).toFixed(1) + ',' + yAt(pt.wpm).toFixed(1)).join(' ');
+    const lastX = xAt(pts.length - 1).toFixed(1);
+    const firstX = xAt(0).toFixed(1);
+    const area = line + ' L' + lastX + ',' + (h - pad) + ' L' + firstX + ',' + (h - pad) + ' Z';
+    const dots = pts.map((pt, i) =>
+      '<circle cx="' + xAt(i).toFixed(1) + '" cy="' + yAt(pt.wpm).toFixed(1) + '" r="2.4" fill="#ffc800"><title>'
+      + (pt.wpm | 0) + ' WPM</title></circle>'
+    ).join('');
+    const last = pts[pts.length - 1];
+    svg.innerHTML =
+      '<defs><linearGradient id="tatWpmFill" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0" stop-color="#00f3ff" stop-opacity="0.38"/>'
+      + '<stop offset="1" stop-color="#7c5cff" stop-opacity="0"/></linearGradient></defs>'
+      + '<path d="' + area + '" fill="url(#tatWpmFill)"/>'
+      + '<path d="' + line + '" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linejoin="round"/>'
+      + dots
+      + '<text x="' + (w - 8) + '" y="14" text-anchor="end" fill="#ffe08a" font-size="11">' + (last.wpm | 0) + ' WPM</text>';
+  }
   function renderHistory() {
+    try { drawWpmChart(); } catch (_) {}
     const list = loadJson(KEYS.history, []);
     const ul = $('historyList');
     const empty = $('emptyHist');
