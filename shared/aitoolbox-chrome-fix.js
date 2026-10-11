@@ -31,6 +31,7 @@
     '@media (max-width:720px){',
     'html,body{max-width:100%!important;overflow-x:clip!important}',
     'html:not(:has(body.run-active)),html:not(:has(body.run-active)) body{height:auto!important;max-height:none!important;overflow-y:auto!important}',
+    'html:not(:has(body.run-active)) body{overflow-x:auto!important}', /* S7-W0d SC-15: with overflow-y:auto the x clip computes to hidden; wide content now scrolls instead of being cut (run state untouched) */
     '#atx-pro-bar{height:auto!important;max-height:none!important;flex-wrap:wrap!important;overflow:visible!important;padding-top:6px!important;padding-bottom:max(6px,env(safe-area-inset-bottom,0px))!important}',
     '#atx-pro-bar .atx-chips,#atx-pro-bar .atx-actions{flex-wrap:wrap!important;overflow:visible!important;width:100%!important}',
     '#atx-pro-bar a.atx-chip,#atx-pro-bar button.atx-chip{min-height:44px!important;height:auto!important;padding:8px 12px!important}',
@@ -69,7 +70,17 @@
     '#atx-pro-bar{gap:6px!important}',
     '#atx-pro-bar > .atx-chips{display:contents!important}',
     '#atx-pro-bar > .atx-actions{margin-top:2px!important}',
-    '}'
+    '}',
+    /* S7-W0d SC-14: the layout dock (fixed above the pro bar) is part of the bottom reserve: --fafo-dock-h = its height + 10px gap. */
+    '@media screen{',
+    'body.atx-pro-pad:not(.run-active):not(.tat-stage):not(.atx-pro-min){padding-bottom:calc(var(--atx-pro-h,48px) + var(--fafo-dock-h,0px))!important}',
+    'html:has(> body.atx-pro-pad:not(.run-active):not(.tat-stage):not(.atx-pro-min)){scroll-padding-bottom:calc(var(--atx-pro-h,48px) + var(--fafo-dock-h,0px))!important}',
+    '}',
+    /* S7-W0d: shared chrome yields to an open modal (overlay classes from aitoolbox-ui.js Esc handling, plus the Trainer tat* dialogs, which
+       open by dropping [hidden]): hidden, so layout and reserve do not move; the toast moves to the top edge, clear of modal footers. Under the shared tour (z 9500-9502) the bars drop below it. */
+    'html:has(:is(.ui-modal-bg.open,.modal-bg.active,.vis-modal-backdrop.open,.tile-modal-backdrop.open,.cmdk-backdrop.open,dialog:modal,[id^=tat][role=dialog][aria-modal=true]:not([hidden]))) :is(#atx-pro-bar,#fafo-layout-float-dock,#atx-look-chip,#tbSharedServerBar,.tb-companion-bar){visibility:hidden!important}',
+    'html:has(:is(.ui-modal-bg.open,.modal-bg.active,.vis-modal-backdrop.open,.tile-modal-backdrop.open,.cmdk-backdrop.open,dialog:modal,[id^=tat][role=dialog][aria-modal=true]:not([hidden]))) #ui-toast-global{top:calc(8px + env(safe-area-inset-top,0px))!important;bottom:auto!important}',
+    'html:has(.ui-tutorial-bg) :is(#atx-pro-bar,#fafo-layout-float-dock,#atx-look-chip,#tbSharedServerBar,.tb-companion-bar){z-index:9400!important}'
   ].join('\n');
 
   function injectCss() {
@@ -99,6 +110,12 @@
     }
     cap('--atx-pro-h', bottom);
     cap('--fafo-chrome-bottom', bottom);
+    var dock = document.getElementById('fafo-layout-float-dock'), dh = 0; // S7-W0d SC-14 (rect height: a modal's visibility:hidden keeps it)
+    if (dock && bottom > 8) {
+      try { var r = dock.getBoundingClientRect(); if (r.height > 0) dh = Math.min(Math.ceil(r.height) + 10, Math.round(window.innerHeight * 0.4)); } catch (_) {}
+      if (!dock._fafoDockObs && typeof ResizeObserver === 'function') { dock._fafoDockObs = true; try { new ResizeObserver(measure).observe(dock); } catch (_) {} }
+    }
+    cap('--fafo-dock-h', dh);
   }
 
   function boot() {
@@ -113,6 +130,7 @@
     window.addEventListener('resize', measure);
     setTimeout(measure, 50);
     setTimeout(measure, 400);
+    setTimeout(measure, 1500);
   }
 
   if (document.readyState === 'loading') {
