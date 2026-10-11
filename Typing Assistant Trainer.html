@@ -6530,6 +6530,17 @@ body.run-active #promptWrap {
     { id: 'munchersLetter', emoji: '😋', name: 'Letter Muncher', desc: 'Feed clean letters — fill the mouth, soft belly clear', type: 'munchersLetter', hard3: 1 },
     { id: 'munchersWord', emoji: '🍪', name: 'Word Muncher', desc: 'Chew whole words — tray chips, no typo crumbs', type: 'munchersWord', hard3: 1, words: 8 },
     { id: 'blockBreaker', emoji: '🧱', name: 'Block Breaker', desc: 'Break letter bricks — leave the keystone standing', type: 'blockBreaker', hard3: 1 },
+    // T-RESTORE R-h: the 972212bf challenges (L6504-6555) as plain minigame entries; untimed, PB = fastest clear (challenges.v1).
+    { id: 'ch-alphabet', emoji: '🔤', name: 'Alphabet dash', desc: 'a → z as fast as you can. Then beat that time.', type: 'challenge', challengeId: 'alphabet', text: 'abcdefghijklmnopqrstuvwxyz' },
+    { id: 'ch-alphabet-rev', emoji: '🔃', name: 'Z to A', desc: 'Reverse alphabet. Muscle memory in reverse.', type: 'challenge', challengeId: 'alphabet-rev', text: 'zyxwvutsrqponmlkjihgfedcba' },
+    { id: 'ch-alphabet-caps', emoji: '🔠', name: 'A–Z capitals', desc: 'Hold shift. Uppercase alphabet, one shot.', type: 'challenge', challengeId: 'alphabet-caps', text: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' },
+    { id: 'ch-double-az', emoji: '⚡', name: 'Double alphabet', desc: 'a–z then A–Z. One run, one personal best.', type: 'challenge', challengeId: 'double-az', text: 'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ' },
+    { id: 'ch-digits', emoji: '🔢', name: 'Digit run', desc: '0–9 three times. Keep the cadence.', type: 'challenge', challengeId: 'digits', text: '0123456789 0123456789 0123456789' },
+    { id: 'ch-pangram', emoji: '🦊', name: 'Pangram blaze', desc: 'The quick brown fox. Then try to beat your record.', type: 'challenge', challengeId: 'pangram', text: 'The quick brown fox jumps over the lazy dog.' },
+    { id: 'ch-home-sprint', emoji: '🏠', name: 'Home-row sprint', desc: 'asdf jkl; four times. Plant and fire.', type: 'challenge', challengeId: 'home-sprint', text: 'asdf jkl; asdf jkl; asdf jkl; asdf jkl;' },
+    { id: 'ch-num-row', emoji: '⌨️', name: 'Top-row numbers', desc: '1234567890 then the reverse. No looking down.', type: 'challenge', challengeId: 'num-row', text: '1234567890 0987654321 1234567890' },
+    { id: 'ch-punct', emoji: '❗', name: 'Punctuation gauntlet', desc: 'Quotes, commas, dashes under fire.', type: 'challenge', challengeId: 'punct', text: 'Wait, what? "Hello, world!" It\'s time: 3, 2, 1 — go!' },
+    { id: 'ch-mixed-az', emoji: '🌈', name: 'aA pairs', desc: 'aA bB cC … zZ. Shift discipline.', type: 'challenge', challengeId: 'mixed-az', text: 'aA bB cC dD eE fF gG hH iI jJ kK lL mM nN oO pP qQ rR sS tT uU vV wW xX yY zZ' },
   ];
 
   /**
@@ -8909,6 +8920,7 @@ body.run-active #promptWrap {
 
   function buildMiniTarget(cfg) {
     if (!cfg) return 'ready';
+    if (cfg.type === 'challenge') return String(cfg.text || 'ready'); // T-RESTORE R-h: exact text (caps/punct kept, as in 972212bf)
     if (cfg.type === 'wordrush') {
       const n = cfg.words || 12;
       const bank = cfg.bank || (cfg.hard ? 'hard' : 'easy');
@@ -9032,7 +9044,7 @@ body.run-active #promptWrap {
   function getTargetText() {
     if (miniRun && miniConfig) {
       // mini-games text is already shaped; light simplify only if not storm/codey
-      if (miniConfig.type === 'storm' || miniConfig.type === 'echo') return getRawText() || 'ready';
+      if (miniConfig.type === 'storm' || miniConfig.type === 'echo' || miniConfig.type === 'challenge') return getRawText() || 'ready';
       return simplifyText(getRawText()) || 'ready';
     }
     if (campaignRun && selectedTerritory) {
@@ -9303,6 +9315,11 @@ body.run-active #promptWrap {
         // echo completes after 3 full phrase cycles
         title = pass ? '🔁 Echo mastered' : 'Echo incomplete';
         sub = `Rounds finished: ${Math.min(3, echoRound + (reason === 'complete' ? 1 : 0))} / 3`;
+      } else if (mt === 'challenge') { // T-RESTORE R-h
+        const r = tatChallengeRecord(miniConfig.challengeId, wpm, acc, reason === 'complete' ? elapsedMs() : 0);
+        pass = reason === 'complete';
+        title = pass ? ((r && r.pb) ? '🏆 New challenge PB!' : (miniConfig.emoji || '⚡') + ' ' + miniConfig.name + ' cleared') : (miniConfig.name + ' not finished');
+        sub = (pass ? (elapsedMs() / 1000).toFixed(2) + 's · ' : '') + wpm + ' WPM · ' + acc + '%' + (r && r.rec && r.rec.bestMs ? ' · PB ' + (r.rec.bestMs / 1000).toFixed(2) + 's' : '');
       } else if (mt === 'ghost') {
         const ghostChars = Math.round((miniConfig.targetWpm || 50) / 60 * durationSec * 5);
         pass = correctKeystrokes >= ghostChars * 0.95;
@@ -10214,6 +10231,55 @@ body.run-active #promptWrap {
     tatGmPut(db, 'local:' + String(name), name, board, tape, true);
     saveJson(TAT_GHOSTMARKS_KEY, db);
   }
+  // ——— T-RESTORE R-h: challenge records (972212bf challengeRecord/recordChallengeResult L10658-10746) under NEW key
+  //     aitoolbox.typingTrainer.challenges.v1 { <id>: {attempts, bestMs, bestWpm, bestAcc, log:[{at,ms,wpm,acc}] (last 60)} }.
+  //     Old per-player records in roster.v1 players[].challenges are merged in read-only (best kept, logs unioned).
+  const TAT_CHALLENGES_KEY = 'aitoolbox.typingTrainer.challenges.v1';
+  function tatChLoad() {
+    const v = loadJson(TAT_CHALLENGES_KEY, {});
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  }
+  function tatChMerge(all, id, rec) {
+    if (!rec || typeof rec !== 'object') return false;
+    const cur = all[id] || (all[id] = { attempts: 0, bestMs: 0, bestWpm: 0, bestAcc: 0, log: [] });
+    let ch = false;
+    const ms = rec.bestMs | 0;
+    if (ms > 0 && (!cur.bestMs || ms < cur.bestMs)) { cur.bestMs = ms; cur.bestWpm = rec.bestWpm | 0; cur.bestAcc = rec.bestAcc | 0; ch = true; }
+    const seen = new Set((cur.log || []).map((r) => r && r.at));
+    (Array.isArray(rec.log) ? rec.log : []).forEach((r) => { if (r && (r.at | 0) > 0 && !seen.has(r.at)) { cur.log.push({ at: r.at, ms: r.ms | 0, wpm: r.wpm | 0, acc: r.acc | 0 }); ch = true; } });
+    cur.log = cur.log.sort((a, b) => (a.at | 0) - (b.at | 0)).slice(-60);
+    if ((rec.attempts | 0) > (cur.attempts | 0)) { cur.attempts = rec.attempts | 0; ch = true; }
+    return ch;
+  }
+  function tatChallengesMigrate() {
+    const roster = loadJson('aitoolbox.typingTrainer.roster.v1', null);
+    const players = roster && Array.isArray(roster.players) ? roster.players : [];
+    const all = tatChLoad(); let ch = false;
+    players.forEach((pl) => { const c = pl && pl.challenges; if (c && typeof c === 'object') Object.keys(c).forEach((id) => { if (tatChMerge(all, id, c[id])) ch = true; }); });
+    if (ch) saveJson(TAT_CHALLENGES_KEY, all);
+  }
+  function tatChallengeRecord(id, wpm, acc, ms) {
+    if (!id) return null;
+    const all = tatChLoad();
+    const rec = all[id] || (all[id] = { attempts: 0, bestMs: 0, bestWpm: 0, bestAcc: 0, log: [] });
+    rec.attempts = (rec.attempts | 0) + 1;
+    rec.log = Array.isArray(rec.log) ? rec.log : [];
+    let pb = false;
+    if (ms > 0) {
+      rec.log.push({ at: Date.now(), ms: ms | 0, wpm: wpm | 0, acc: acc | 0 });
+      rec.log = rec.log.slice(-60);
+      pb = !rec.bestMs || ms < rec.bestMs;
+      if (pb) { rec.bestMs = ms | 0; rec.bestWpm = wpm | 0; rec.bestAcc = acc | 0; }
+    }
+    saveJson(TAT_CHALLENGES_KEY, all);
+    try { renderMiniLobby(); } catch (_) {}
+    return { pb, rec };
+  }
+  function tatChallengePbText(id) {
+    const rec = tatChLoad()[id];
+    if (!rec || !rec.bestMs) return 'No record yet';
+    return 'PB ' + (rec.bestMs / 1000).toFixed(2) + 's · ' + (rec.bestWpm | 0) + ' WPM' + (rec.attempts ? ' · ' + rec.attempts + ' tries' : '');
+  }
   /** T-RESTORE R8: ported drawWpmChart; source = history.v2 (newest first) instead of the old roster player history. */
   function drawWpmChart() {
     const svg = $('wpmChart');
@@ -10531,7 +10597,7 @@ body.run-active #promptWrap {
       <div class="mini-card" data-mini="${escapeHtml(g.id)}" role="button" tabindex="0">
         <div class="mi">${g.emoji}</div>
         <div class="mn">${escapeHtml(g.name)}</div>
-        <div class="md">${escapeHtml(g.desc)}</div>
+        <div class="md">${escapeHtml(g.desc)}${g.type === 'challenge' ? ' · ' + escapeHtml(tatChallengePbText(g.challengeId)) : ''}</div>
       </div>
     `).join('');
     row.querySelectorAll('.mini-card').forEach((card) => {
@@ -11221,6 +11287,7 @@ body.run-active #promptWrap {
   $('tatSparkPill')?.addEventListener('click', () => startDailySpark());
   try { paintDailyChip(); } catch (_) {}
   try { tatGhostMarksMigrate(); } catch (_) {} // T-RESTORE R-g
+  try { tatChallengesMigrate(); renderMiniLobby(); } catch (_) {} // T-RESTORE R-h
   $('btnFullscreen')?.addEventListener('click', () => { tatToggleFullscreen(); });
   document.addEventListener('fullscreenchange', tatSyncFsBtn);
   document.addEventListener('webkitfullscreenchange', tatSyncFsBtn);
