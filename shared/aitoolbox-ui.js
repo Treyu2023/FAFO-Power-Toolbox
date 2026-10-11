@@ -288,12 +288,12 @@
 
     let tutorialState = null;
 
-    // S7-W0c2: step text is the app's own static copy. Only exact <strong>/<em> tags become elements;
+    // S7-W0c2: step text is the app's own static copy. Only exact <strong>/<em>/<code> tags become elements;
     // everything else (any other tag included) stays literal text. Never innerHTML.
     function appendTutorialText(el, text) {
         const stack = [el];
-        String(text == null ? '' : text).split(/(<\/?(?:strong|em)>)/i).forEach((part) => {
-            const m = /^<(\/?)(strong|em)>$/i.exec(part);
+        String(text == null ? '' : text).split(/(<\/?(?:strong|em|code)>)/i).forEach((part) => {
+            const m = /^<(\/?)(strong|em|code)>$/i.exec(part);
             const top = stack[stack.length - 1];
             if (m && !m[1]) { const n = document.createElement(m[2].toLowerCase()); top.appendChild(n); stack.push(n); }
             else if (m && stack.length > 1 && top.tagName.toLowerCase() === m[2].toLowerCase()) stack.pop();
@@ -350,11 +350,24 @@
             </div>`;
         appendTutorialText(card.querySelector('p'), step.body);
 
+        // S7-W0c3: a card taller than the viewport scrolls its text, so Skip/Back/Next stay on screen.
+        const fitCard = () => {
+            const p = card.querySelector('p');
+            p.style.maxHeight = ''; p.style.overflowY = '';
+            const over = card.offsetHeight - (window.innerHeight - 32);
+            if (over > 0) { p.style.maxHeight = Math.max(40, p.offsetHeight - over) + 'px'; p.style.overflowY = 'auto'; }
+        };
         const centreCard = () => {
             spot.style.display = 'none';
+            fitCard();
             card.style.left = '50%';
             card.style.top = '50%';
             card.style.transform = 'translate(-50%, -50%)';
+            // S7-W0c3: a centred card over a .fafo-toolbar moves just below it when it fits there.
+            const w = card.offsetWidth, h = card.offsetHeight, x = (document.documentElement.clientWidth - w) / 2, y = (window.innerHeight - h) / 2;
+            const below = Math.max(0, ...[...document.querySelectorAll('.fafo-toolbar')].map(b => b.getBoundingClientRect())
+                .filter(b => b.height > 0 && b.top < y + h && b.bottom > y && b.left < x + w && b.right > x).map(b => b.bottom + 16));
+            if (below > y && below + h <= window.innerHeight - 16) { card.style.top = below + 'px'; card.style.transform = 'translateX(-50%)'; }
         };
         const positionSpotlight = () => {
             const target = step.target ? document.querySelector(step.target) : null;
@@ -371,9 +384,20 @@
                         target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     }
                 }
-                setTimeout(() => {
-                    const r = target.getBoundingClientRect();
+                // S7-W0c3: place after the scroll settles (rect unchanged for 3 frames, min 100ms, cap 600ms) instead of a 350ms timer.
+                const t0 = performance.now(); let last = null, still = 0;
+                const settle = () => {
+                    if (!card.isConnected) return;
+                    const q = target.getBoundingClientRect(), dt = performance.now() - t0;
+                    still = last && Math.abs(q.top - last.top) < 0.5 && Math.abs(q.left - last.left) < 0.5 ? still + 1 : 0;
+                    last = q;
+                    if ((still < 3 || dt < 100) && dt < 600) requestAnimationFrame(settle); else place();
+                };
+                const place = () => {
+                    let r = target.getBoundingClientRect();
                     if (!target.getClientRects().length || r.width < 1 || r.height < 1) { centreCard(); return; }
+                    // S7-W0c3: target still off-screen (its pane does not scroll): scroll the page itself, then measure again
+                    if (r.top < 0 || r.bottom > window.innerHeight) { window.scrollBy(0, r.top < 0 || r.height > window.innerHeight - 32 ? r.top - 16 : r.bottom - window.innerHeight + 16); r = target.getBoundingClientRect(); }
                     card.style.transform = '';
                     const pad = 8;
                     spot.style.left = (r.left - pad) + 'px';
@@ -381,11 +405,14 @@
                     spot.style.width = (r.width + pad * 2) + 'px';
                     spot.style.height = (r.height + pad * 2) + 'px';
                     spot.style.display = 'block';
+                    fitCard();
+                    const h = card.offsetHeight, ih = window.innerHeight;
                     let cardTop = r.bottom + 16;
-                    if (cardTop + 200 > window.innerHeight) cardTop = r.top - 200;
+                    if (cardTop + h > ih - 16) cardTop = r.top - 16 - h;
                     card.style.left = Math.min(Math.max(16, r.left), window.innerWidth - 380) + 'px';
-                    card.style.top = Math.max(16, cardTop) + 'px';
-                }, 350);
+                    card.style.top = Math.min(Math.max(16, cardTop), Math.max(16, ih - h - 16)) + 'px';
+                };
+                requestAnimationFrame(settle);
             } else {
                 centreCard();
             }
