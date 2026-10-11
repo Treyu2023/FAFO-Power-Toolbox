@@ -3595,6 +3595,7 @@ body.tat-rm-on .tat78-pack-chip.is-selected {
 .wpm-chart { margin-top: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,243,255,0.16); background: rgba(6,8,14,0.45); }
 .wpm-chart svg { width: 100%; height: 120px; display: block; }
 .wpm-chart .lbl { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+body.tat-user-paused #promptWrap .prompt { opacity: 0.45; transition: opacity 0.15s; } /* T-RESTORE R9 */
 /* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
 #promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 /* T-NUKE (Ryan 2026-10-11 01:19): miss-streak escalation on the target char. Visuals sit over the text, under every dialog/bar, no pointer events. */
@@ -6671,6 +6672,7 @@ body.run-active #promptWrap {
   let pausedAt = 0;
   let hiddenMs = 0;
   let lastKeyAt = 0;
+  let userPaused = false; // T-RESTORE R9
   let composing = false;
 
   // ——— Audio (soft, not annoying) ———
@@ -8943,6 +8945,7 @@ body.run-active #promptWrap {
     }
     skipNextIndexInc = false;
     tatNukeReset();
+    if (userPaused) { userPaused = false; document.body.classList.remove('tat-user-paused'); }
     if (!reuseText) target = getTargetText();
     wrongFlags = new Array(target.length).fill(false);
     resultBanner && resultBanner.classList.remove('show', 'highscore');
@@ -9025,7 +9028,33 @@ body.run-active #promptWrap {
     updateStats();
   }
 
+  /** T-RESTORE R9: user pause (972212bf setPaused L9047). Holds the clock like the hidden-tab pause; no overlay over the typewell:
+   *  the focus hint says Paused and the prompt dims (body.tat-user-paused). */
+  function setPaused(on) {
+    if (!running || finished) { userPaused = false; document.body.classList.remove('tat-user-paused'); return; }
+    if (!!on === userPaused) return;
+    userPaused = !!on;
+    if (on) {
+      if (!pausedAt) pausedAt = Date.now();
+      stopTimer();
+      fxPaused = true;
+      if (focusHint) { focusHint.textContent = 'Paused — Esc or any key to resume · Tab restarts'; focusHint.className = 'focus-hint warn'; }
+    } else {
+      if (pausedAt) { hiddenMs += Date.now() - pausedAt; pausedAt = 0; }
+      startTimer();
+      fxPaused = false;
+      if (!rafId) tickFx();
+      if (focusHint) { focusHint.textContent = 'Typing… combos multiply your score'; focusHint.className = 'focus-hint live'; }
+      typer && typer.focus();
+    }
+    document.body.classList.toggle('tat-user-paused', userPaused);
+  }
+  function togglePause() {
+    if (!running || finished) return;
+    setPaused(!userPaused);
+  }
   function finishTest(reason) {
+    if (userPaused) { userPaused = false; document.body.classList.remove('tat-user-paused'); }
     if (finished) return;
     finished = true;
     try { t63Finish(); } catch (_) {}
@@ -9293,9 +9322,11 @@ body.run-active #promptWrap {
         hideBonusOverlay();
         return;
       }
+      if (running && !finished) { togglePause(); return; } // T-RESTORE R9
       typer && typer.focus();
       return;
     }
+    if (userPaused && running) setPaused(false); // any key resumes, then counts (972212bf L9922)
     if (key.length > 1 && key !== 'Enter' && key !== 'Backspace') return;
 
     e.preventDefault();
@@ -10926,12 +10957,12 @@ body.run-active #promptWrap {
       fxPaused = true;
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     } else {
-      if (pausedAt) {
+      if (pausedAt && !userPaused) {
         hiddenMs += Date.now() - pausedAt;
         pausedAt = 0;
       }
-      fxPaused = false;
-      if (running) startTimer();
+      fxPaused = !!userPaused;
+      if (running && !userPaused) startTimer();
       if (!rafId) tickFx();
     }
   });
