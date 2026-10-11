@@ -143,6 +143,26 @@
     } catch (_) { /* ignore */ }
   }
 
+  /** S7 SC-17g: do the saved column widths (+ split handles + gaps) fit this
+   *  viewport? Panels never shrink (flex-shrink 0), so if not, the page side-scrolls. */
+  function columnsOverflow(root, state, opts) {
+    if (((opts && opts.type) || 'columns') !== 'columns' || isNarrowAutosize() || isStackedColumns(root, opts)) return 0;
+    const cs = getComputedStyle(root);
+    const avail = Math.min(root.clientWidth, document.documentElement.clientWidth - Math.max(0, root.getBoundingClientRect().left))
+      - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const items = Array.from(root.children).filter((el) => el.offsetWidth > 0 || el.offsetHeight > 0);
+    let need = (parseFloat(cs.columnGap) || 0) * Math.max(0, items.length - 1);
+    items.forEach((el) => {
+      const id = el.getAttribute('data-fafo-panel');
+      if (!id) { need += el.offsetWidth; return; }
+      const min = parseInt(el.getAttribute('data-fafo-panel-min') || '160', 10) || 160;
+      const w = state.sizes && state.sizes[id];
+      const flex = el.getAttribute('data-fafo-flex') === '1' || (state.flex && state.flex[id]);
+      need += !flex && Number.isFinite(w) ? Math.max(min, w) : min;
+    });
+    return avail > 0 && need > avail + 1 ? Math.round(need) + '>' + Math.round(avail) : 0;
+  }
+
   function clearStore(appId) {
     try {
       localStorage.removeItem(storageKey(appId));
@@ -1974,8 +1994,11 @@
     state = mergeState(defaults, state);
     state = sanitizeState(root, state, opts);
 
-    function saveNow() {
+    // SC-17g: saved widths kept aside while this load renders defaults (never written back).
+    let fit17g = null;
+    function saveNow(auto) {
       try {
+        if (fit17g && auto === true) return null;
         // Phone content height must not overwrite the desktop pane sizes.
         if (isNarrowAutosize() || isStackedColumns(root, opts)) return null;
         // Never freeze a collapsed shell into localStorage (slim banner death spiral)
@@ -1983,6 +2006,11 @@
           return null;
         }
         const snap = sanitizeState(root, captureState(root, opts), opts);
+        if (fit17g) Object.keys(fit17g).forEach((id) => {
+          if (Math.abs((snap.sizes[id] || 0) - (state.sizes[id] || 0)) <= 1) snap.sizes[id] = fit17g[id];
+          else delete fit17g[id]; // the user resized this panel: their new width wins
+        });
+        if (fit17g && !Object.keys(fit17g).length) fit17g = null;
         writeStore(appId, snap);
         root.dispatchEvent(
           new CustomEvent('fafo-layout-saved', { detail: { appId, state: snap } })
@@ -2020,6 +2048,7 @@
         markScrollPanes(root);
       },
       reset() {
+        fit17g = null;
         clearStore(appId);
         const fresh = sanitizeState(root, defaultStateFromDom(root), opts);
         applyState(root, fresh, opts);
@@ -2031,6 +2060,7 @@
       /** Reset one panel to default size (keeps others). */
       resetPanel(panelId) {
         if (!panelId) return;
+        if (fit17g) delete fit17g[panelId];
         const fresh = defaultStateFromDom(root);
         const cur = captureState(root, opts);
         if (fresh.sizes && fresh.sizes[panelId] != null) cur.sizes[panelId] = fresh.sizes[panelId];
@@ -2146,6 +2176,20 @@
     }
 
     applyState(root, state, opts);
+    const over17g = columnsOverflow(root, state, opts);
+    if (over17g) {
+      const kept = {};
+      Object.keys(state.sizes || {}).forEach((id) => {
+        const d = defaults.sizes && defaults.sizes[id];
+        if (!(state.flex && state.flex[id]) && Number.isFinite(d) && state.sizes[id] !== d) kept[id] = state.sizes[id];
+      });
+      if (Object.keys(kept).length) {
+        fit17g = kept;
+        state = sanitizeState(root, { ...state, sizes: { ...state.sizes, ...Object.fromEntries(Object.keys(kept).map((id) => [id, defaults.sizes[id]])) } }, opts);
+        applyState(root, state, opts);
+        console.info('[AIToolboxLayout] SC-17g saved column widths do not fit (' + over17g + 'px); defaults for this load only: ' + Object.keys(kept).join(','));
+      }
+    }
     rebindAll();
     wireResets();
     pinViewport(root);
@@ -2166,7 +2210,7 @@
         wireResets();
         markScrollPanes(root);
         // Only persist once layout looks like a real window
-        if (!looksLikeCollapsedCapture(root, opts)) saveNow();
+        if (!looksLikeCollapsedCapture(root, opts)) saveNow(true);
       } catch (e) {
         console.warn('[AIToolboxLayout] post-paint heal failed', appId, e);
       }
@@ -2213,12 +2257,12 @@
         rebindAll();
         wireResets();
         markScrollPanes(root);
-        saveNow();
+        saveNow(true);
       }, 400);
     window.addEventListener('resize', onResize);
 
     flush = () => {
-      try { saveNow(); } catch (_) { /* ignore */ }
+      try { saveNow(true); } catch (_) { /* ignore */ }
     };
     onVis = () => { if (document.hidden) flush(); };
     window.addEventListener('pagehide', flush);
