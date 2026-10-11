@@ -584,6 +584,8 @@
     @media (prefers-contrast: more) {
       :root { --text: #ffffff; --muted: #d5deea; --line: rgba(56, 189, 248, 0.45); }
     }
+    /* S7-W0d R1: centre-scrolled / find-in-page targets stop below the sticky header (--csc-head-h set after <header>). */
+    html { scroll-padding-top: var(--csc-head-h, 0px); }
   </style>
 </head>
 <body>
@@ -614,6 +616,21 @@
     </div>
     <span data-fafo-layout-toolbar></span>
 </header>
+<script>
+  /* S7-W0d R1: --csc-head-h = sticky header height (0 when it is not sticky); follows wraps and resizes. */
+  (function () {
+    var h = document.currentScript && document.currentScript.previousElementSibling;
+    if (!h || h.tagName !== 'HEADER') return;
+    var de = document.documentElement;
+    function sync() {
+      var pos = getComputedStyle(h).position;
+      de.style.setProperty('--csc-head-h', (pos === 'sticky' || pos === 'fixed') ? Math.ceil(h.getBoundingClientRect().height) + 'px' : '0px');
+    }
+    sync();
+    if (window.ResizeObserver) new ResizeObserver(sync).observe(h);
+    window.addEventListener('resize', sync);
+  })();
+</script>
 
   <div class="modal-backdrop" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" style="display:none">
     <div class="modal" style="width:min(960px,96vw);max-height:90vh;display:flex;flex-direction:column">
