@@ -60,9 +60,16 @@
     '#atx-pro-bar .atx-actions{flex-wrap:wrap!important;width:auto!important}',
     '.tb-companion-bar,#tbSharedServerBar{flex-wrap:wrap!important;max-height:none!important}',
     '}',
-    '#tbSharedServerBar .tb-bar-hint,.tb-companion-bar .tb-bar-hint{min-width:min(100%,200px)!important}',
+    '#tbSharedServerBar .tb-bar-hint,.tb-companion-bar .tb-bar-hint{min-width:min(100%,120px)!important}',
     '#tbSharedServerBar .tb-bar-actions,.tb-companion-bar .tb-bar-actions{flex-wrap:wrap!important;min-width:0!important;max-width:100%!important}',
-    '#fafoSkillCtl{flex-wrap:wrap!important;max-width:100%!important;min-width:0!important}'
+    '#fafoSkillCtl{flex-wrap:wrap!important;max-width:100%!important;min-width:0!important}',
+    /* S7-W0b-2: phone pro bar puts the app name on the counterpart row (no separate brand row). Chips flow in the bar,
+       so the bar takes the chips' 6px gap; the action rows keep their 8px distance (6 + 2). */
+    '@media (max-width:720px){',
+    '#atx-pro-bar{gap:6px!important}',
+    '#atx-pro-bar > .atx-chips{display:contents!important}',
+    '#atx-pro-bar > .atx-actions{margin-top:2px!important}',
+    '}'
   ].join('\n');
 
   function injectCss() {

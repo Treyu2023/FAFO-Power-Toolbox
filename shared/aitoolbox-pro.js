@@ -502,6 +502,13 @@ html:-webkit-full-screen #atx-pro-bar {
 }
 body.run-active, body.tat-stage { padding-bottom:0 !important }
 html:has(> body.run-active.atx-pro-pad), html:has(> body.tat-stage.atx-pro-pad){scroll-padding-bottom:0}
+#atx-pro-bar #atx-pro-fold{display:none!important}
+#atx-pro-bar #atx-pro-fold:focus-visible{outline:2px solid #00f3ff;outline-offset:2px}
+@media (max-width:720px){
+  #atx-pro-bar #atx-pro-fold{display:inline-flex!important}
+  #atx-pro-bar.atx-pro-folded .atx-actions{width:auto!important;margin:0 0 0 auto!important}
+  #atx-pro-bar.atx-pro-folded .atx-actions > :not(#atx-pro-fold){display:none!important}
+}
 body.atx-pro-min #atx-pro-bar{transform:translateY(calc(100% - 8px));opacity:.7}
 body.atx-pro-min #atx-pro-bar:hover, body.atx-pro-min #atx-pro-bar:focus-within{
   transform:none;opacity:1
@@ -692,7 +699,7 @@ body.atx-dense{--ui-ease:linear}
     bar.innerHTML = `
       <span class="atx-brand">${tool.emoji || '🧰'} ${escapeHtml(tool.title)}</span>
       <div class="atx-chips">${chips || '<span style="opacity:.5">No counterparts mapped</span>'}</div>
-      <div class="atx-actions">
+      <div class="atx-actions" id="atx-pro-actions">
         <a class="atx-chip" href="${launcher}">🚀 Launcher</a>
         <button type="button" class="atx-chip" data-act="help">Help <span class="atx-kbd">?</span></button>
         <button type="button" class="atx-chip" data-act="back">Back <span class="atx-kbd">B</span></button>
@@ -701,6 +708,7 @@ body.atx-dense{--ui-ease:linear}
         <button type="button" class="atx-chip" data-act="look">Look <span class="atx-kbd">O</span></button>
         <button type="button" class="atx-chip" data-act="report">Report <span class="atx-kbd">R</span></button>
         <button type="button" class="atx-chip" data-act="minibar" title="Tuck the bar away until hover">▾</button>
+        <button type="button" class="atx-chip" id="atx-pro-fold" aria-controls="atx-pro-actions" aria-expanded="true" aria-label="Bar buttons">☰</button>
       </div>`;
 
     bar.addEventListener('click', async (e) => {
@@ -737,6 +745,25 @@ body.atx-dense{--ui-ease:linear}
         toast(document.body.classList.contains('atx-pro-min') ? 'Bar tucked — hover to expand' : 'Bar pinned');
       }
     });
+
+    // S7-W0b-2: phone-width (<=720px) toggle for the action rows; C0 fold pattern: default open, per-app key
+    // "fafo-fold:<app>:pro-actions" written only while collapsed ("0"). --atx-pro-h follows via the ResizeObservers.
+    try {
+      const fold = bar.querySelector('#atx-pro-fold');
+      let app = tool.id && tool.id !== 'unknown' ? tool.id : '';
+      if (!app) { try { app = decodeURIComponent(String(location.pathname || '').split('/').pop() || '').replace(/\.html?$/i, ''); } catch (_) { app = ''; } }
+      const foldKey = 'fafo-fold:' + (app || 'app') + ':pro-actions';
+      const setFold = (open, save) => {
+        bar.classList.toggle('atx-pro-folded', !open);
+        fold.setAttribute('aria-expanded', open ? 'true' : 'false');
+        fold.title = open ? 'Hide the bar buttons' : 'Show the bar buttons';
+        if (save) { try { if (open) localStorage.removeItem(foldKey); else localStorage.setItem(foldKey, '0'); } catch (_) { /* ignore */ } }
+      };
+      let saved = null;
+      try { saved = localStorage.getItem(foldKey); } catch (_) { /* ignore */ }
+      setFold(saved !== '0', false);
+      fold.addEventListener('click', () => setFold(bar.classList.contains('atx-pro-folded'), true));
+    } catch (_) { /* never break the bar */ }
 
     document.body.appendChild(bar);
     syncProPad();
