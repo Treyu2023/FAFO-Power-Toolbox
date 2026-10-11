@@ -4870,6 +4870,8 @@ body.run-active #promptWrap {
         <button type="button" class="btn ghost" id="btnTat91ExportMeta" style="font-size:11px" data-tip-title="Export meta pack" data-tip="Download trainer-meta-pack.v1 (shards + PBs).">Export Glyphs pack</button>
         <button type="button" class="btn ghost" id="btnTat91ImportMeta" style="font-size:11px" data-tip-title="Import meta pack" data-tip="Import trainer-meta-pack.v1 Replace or Merge.">Import Glyphs pack</button>
         <input type="file" id="tat91ImportFile" accept="application/json,.json" hidden>
+        <button type="button" class="btn ghost" id="btnTatPackImport" style="font-size:11px" data-tip-title="Import old player pack" data-tip="Merge a keyflare-player-*.json or keyflare-vault.json from your disk (local file only, nothing uploaded).">📥 Import old player pack</button>
+        <input type="file" id="tatPackFile" accept="application/json,.json" hidden>
         <button type="button" class="btn ghost" id="btnExportHs" style="font-size:11px" data-tip-title="Export high scores" data-tip="Download your high-score board as a shareable text/JSON dump.">📋 Export high scores</button>
         <button type="button" class="btn ghost tat-fs-btn" id="btnFullscreen" style="font-size:11px" aria-pressed="false" data-tip-title="Full screen" data-tip="Fill the monitor and hide the toolbars. Esc or this button exits.">⛶ Full screen</button>
         <span style="font-size:11px;color:var(--muted)">Tab restart · sound prefs persist · ? for Pro help</span>
@@ -9536,6 +9538,7 @@ body.run-active #promptWrap {
       typer && typer.focus();
       return;
     }
+    if (userPaused && running && /^(Shift|Control|Alt|AltGraph|Meta|CapsLock|OS|Hyper|Super|Fn)$/.test(String(key))) return; // R9b ruling: bare modifiers don't resume
     if (userPaused && running) { // T-RESTORE R9b: the resume key only resumes; it is not typed, not a miss, no nuke/stats/keyStats. The NEXT key types.
       if (e.preventDefault) e.preventDefault();
       setPaused(false);
@@ -10279,6 +10282,67 @@ body.run-active #promptWrap {
     const rec = tatChLoad()[id];
     if (!rec || !rec.bestMs) return 'No record yet';
     return 'PB ' + (rec.bestMs / 1000).toFixed(2) + 's · ' + (rec.bestWpm | 0) + ' WPM' + (rec.attempts ? ' · ' + rec.attempts + ' tries' : '');
+  }
+  // ——— T-RESTORE R-d: old player-pack import (972212bf ingestPlayerPack/importPlayerFile L5750-5806), LOCAL FILE ONLY (FileReader).
+  //     Accepts schema fafo.keyflare.player | fafo.player | fafo.player-vault (or bare {player}/{players}). Non-destructive merge into the
+  //     restored stores: history.v2 (dedup at+wpm), keyStats.v1, challenges.v1, ghostMarks.v1. The pack's players are archived verbatim in
+  //     NEW key aitoolbox.typingTrainer.playerPacks.v1 {players:{id:player}} so a later roster restore (R-b) loses nothing.
+  const TAT_PACKS_KEY = 'aitoolbox.typingTrainer.playerPacks.v1';
+  function tatPackPlayers(pack) {
+    if (!pack || typeof pack !== 'object' || Array.isArray(pack)) throw new Error('Not a player file');
+    const okSchema = pack.schema === 'fafo.keyflare.player' || pack.schema === 'fafo.player' || pack.schema === 'fafo.player-vault';
+    if (!okSchema && !pack.player && !pack.players) throw new Error('Unknown save format');
+    const out = [];
+    if (Array.isArray(pack.players)) pack.players.forEach((p) => { if (p && typeof p === 'object') out.push(p); });
+    if (pack.player && typeof pack.player === 'object') out.push(pack.player);
+    if (!out.length) throw new Error('No player in file');
+    return out;
+  }
+  function tatPackIngest(pack) {
+    const players = tatPackPlayers(pack);
+    const arc = loadJson(TAT_PACKS_KEY, {}); const archive = (arc && arc.players && typeof arc.players === 'object') ? arc : { players: {} };
+    let hist = loadJson(KEYS.history, []); if (!Array.isArray(hist)) hist = [];
+    const seen = new Set(hist.map((h) => (h && h.at) + ':' + (h && h.wpm)));
+    const ks = tatKeyStats(); const ch = tatChLoad(); const gm = tatGmLoad();
+    let nHist = 0;
+    players.forEach((pl) => {
+      const id = String(pl.id || pl.name || 'player');
+      archive.players[id] = pl;
+      (Array.isArray(pl.history) ? pl.history : []).forEach((h) => {
+        if (!h || !((h.at | 0) > 0)) return;
+        const k = h.at + ':' + (h.wpm | 0);
+        if (seen.has(k)) return; seen.add(k); nHist++;
+        hist.push({ at: h.at, mode: 'imported', bucket: String(h.bucket || 'imported'), score: h.score | 0, wpm: h.wpm | 0, acc: h.acc | 0, errors: h.errors | 0, bestMult: h.bestMult || 1, bestStreak: h.bestStreak | 0, durationMs: h.durationMs | 0 });
+      });
+      const st = pl.stats || {};
+      ['keyHits', 'keyMiss'].forEach((f, i) => {
+        const src = st[f]; const dst = i ? ks.miss : ks.hits;
+        if (src && typeof src === 'object') Object.keys(src).forEach((k) => { if (/^[a-z]$/.test(k)) dst[k] = (dst[k] || 0) + (src[k] | 0); });
+      });
+      if (pl.challenges && typeof pl.challenges === 'object') Object.keys(pl.challenges).forEach((cid) => tatChMerge(ch, cid, pl.challenges[cid]));
+      if (pl.ghosts && typeof pl.ghosts === 'object') Object.keys(pl.ghosts).forEach((board) => {
+        const g = pl.ghosts[board] || {};
+        tatGmPut(gm, 'roster:' + id, pl.name, board, tatGmTape(g.last, pl.name), true);
+        tatGmPut(gm, 'roster:' + id, pl.name, board, tatGmTape(g.best, pl.name), false);
+      });
+    });
+    hist.sort((a, b) => (b.at | 0) - (a.at | 0));
+    if (hist.length > MAX_HISTORY) hist = hist.slice(0, MAX_HISTORY);
+    saveJson(KEYS.history, hist); saveJson(TAT_PACKS_KEY, archive); tatSaveKeyStats(); saveJson(TAT_CHALLENGES_KEY, ch); saveJson(TAT_GHOSTMARKS_KEY, gm);
+    try { renderHistory(); renderMiniLobby(); } catch (_) {}
+    return { players: players.length, history: nHist };
+  }
+  function tatPackImportFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let msg;
+      try { const r = tatPackIngest(JSON.parse(String(reader.result || '{}'))); msg = 'Imported ' + r.players + ' player' + (r.players === 1 ? '' : 's') + ' · ' + r.history + ' runs merged'; }
+      catch (err) { msg = 'Import failed: ' + String((err && err.message) || err).slice(0, 100); }
+      try { showComboToast('📥 Player pack', msg); } catch (_) {}
+      window.__tatPackLast = msg;
+    };
+    reader.readAsText(file);
   }
   /** T-RESTORE R8: ported drawWpmChart; source = history.v2 (newest first) instead of the old roster player history. */
   function drawWpmChart() {
@@ -11288,6 +11352,8 @@ body.run-active #promptWrap {
   try { paintDailyChip(); } catch (_) {}
   try { tatGhostMarksMigrate(); } catch (_) {} // T-RESTORE R-g
   try { tatChallengesMigrate(); renderMiniLobby(); } catch (_) {} // T-RESTORE R-h
+  $('btnTatPackImport')?.addEventListener('click', () => $('tatPackFile')?.click());
+  $('tatPackFile')?.addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; tatPackImportFile(f); e.target.value = ''; });
   $('btnFullscreen')?.addEventListener('click', () => { tatToggleFullscreen(); });
   document.addEventListener('fullscreenchange', tatSyncFsBtn);
   document.addEventListener('webkitfullscreenchange', tatSyncFsBtn);
