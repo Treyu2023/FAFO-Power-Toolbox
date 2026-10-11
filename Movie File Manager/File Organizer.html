@@ -215,6 +215,7 @@
         .nav-bar.fafo-toolbar { align-items: center; }
         .nav-bar.fafo-toolbar details.fafo-collapse {
             position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+            overflow: visible; /* S7-W7: shared .fafo-collapse overflow:hidden clipped the More tools drop-down */
         }
         .nav-bar.fafo-toolbar details.fafo-collapse > summary {
             padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
@@ -226,11 +227,21 @@
             border-color: var(--fafo-accent, var(--accent)); color: var(--fafo-accent, var(--accent));
         }
         .nav-bar.fafo-toolbar details.fafo-collapse > :not(summary) {
-            position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+            position: absolute; top: calc(100% + 4px); right: 0; z-index: 9991; /* S7-W7: was 40, under #tbSharedServerBar (9990) */
             min-width: 240px; max-width: min(360px, 92vw); padding: 6px;
             background: var(--fafo-panel, var(--panel));
             border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
             border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+        }
+        /* S7-W7: anchor the open menu to its summary (absolute to the page) and flip it to the summary's left edge when right-anchored
+           would run off-screen (row wrapped More tools to the line start). Without anchor positioning the right:0 drop-down above stays. */
+        @supports (anchor-name: --a) {
+            .nav-bar.fafo-toolbar details.fafo-collapse { position: static; }
+            .nav-bar.fafo-toolbar details.fafo-collapse > summary { anchor-name: --org-more-tools; }
+            .nav-bar.fafo-toolbar details.fafo-collapse > :not(summary) {
+                position-anchor: --org-more-tools; top: calc(anchor(bottom) + 4px); right: anchor(right); left: auto;
+                position-try-fallbacks: flip-inline;
+            }
         }
         .org-more-body {
             display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
