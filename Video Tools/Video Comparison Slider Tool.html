@@ -32,13 +32,13 @@
 
         * { box-sizing: border-box; }
 
-        a.toolbox-back {
+        a.toolbox-back:not(.tb-bar-back) {
             position: fixed; top: 10px; left: 12px; z-index: 50;
             color: var(--neon-accent); text-decoration: none; font: 600 12px system-ui, sans-serif;
             padding: 6px 10px; border-radius: 8px;
             background: rgba(5,5,12,.9); border: 1px solid rgba(0,243,255,.3);
         }
-        a.toolbox-back:hover { box-shadow: var(--neon-glow); }
+        a.toolbox-back:not(.tb-bar-back):hover { box-shadow: var(--neon-glow); }
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -301,6 +301,21 @@
     </style>
   <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
 <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
+<style id="vc-s7-w9a">
+/* S7-W9a declutter. Nothing removed: advanced groups sit in details.fafo-fold (C0 markup; open/closed persisted by
+   shared/fafo-chrome.js). The fold look is the shared C0 one (fafo-chrome.css, imported by aitoolbox-ui.css); these rules only
+   place the folds: a toolbar fold is one chip whose items flow as a row when open; modal groups keep the modal 10px rhythm. */
+.toolbar > details.vc-fold.fafo-fold { margin: 0; }
+.toolbar > details.vc-fold.fafo-fold[open]::details-content { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 8px 10px; }
+.toolbar > details.vc-fold.fafo-fold > :not(summary) { margin: 0; }
+.control-panel > details.vc-fold.fafo-fold { margin: 4px 0 0; }
+.settings-modal > details.vc-fold.fafo-fold { margin: 0; }
+.settings-modal > details.vc-fold.fafo-fold[open]::details-content { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.settings-modal > details.vc-fold.fafo-fold > :not(summary) { margin: 0; }
+.settings-modal > details.vc-fold.fafo-fold > summary > h3 { margin: 0; }
+/* Un-clip: the pair library is capped at calc(100% - 200px) but did not scroll, so the viewer cut its Lock/Save footer. */
+.pair-library { overflow-y: auto; }
+</style>
 </head>
 <body data-fx="none" data-tb-esc="off">
 <div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
@@ -372,13 +387,19 @@
                         <option value="vertical">↕</option>
                     </select>
                 </div>
+                <details class="fafo-fold vc-fold" data-fafo-fold="sweep" data-collapsed-default>
+                <summary>Auto-sweep</summary>
                 <div class="sweep-container">
                     <button type="button" class="btn" id="btn-sweep" data-tip-title="Sweep" data-tip="Animate the compare slider back and forth to spot differences.">Sweep</button>
                     <select id="sweep-mode"><option value="pong">Pong</option><option value="loop">Loop</option></select>
                     <input type="range" id="sweep-speed" style="width:60px;" min="0.001" max="0.03" step="0.001" value="0.005">
                 </div>
+                </details>
             </div>
+            <details class="fafo-fold vc-fold" data-fafo-fold="shortcuts" data-collapsed-default>
+            <summary>Shortcuts</summary>
             <div class="kbd-hint">[ / ]: Slider · Space: Play/Pause · ←/→: Frame · F: Fullscreen · S: Save Pair · P: Pairs · W: Swap · M: Mirror/sync · R: Report · 1/2: A-B Loop</div>
+            </details>
         </div>
         <button type="button" class="collapse-tab" id="btn-collapse" aria-expanded="true" aria-controls="panelWrapper">▲ Collapse</button>
     </div>
@@ -472,18 +493,22 @@
         <div class="settings-row"><span>Glow Level:</span><input type="range" id="set-glow" min="0" max="2" step="0.1" value="1" style="width:100px;"></div>
 
         <div class="settings-divider"></div>
-        <h3 style="font-size:13px;">Video Enhancement</h3>
+        <details class="fafo-fold vc-fold" data-fafo-fold="enhance" data-collapsed-default>
+        <summary><h3 style="font-size:13px;">Video Enhancement</h3></summary>
         <div class="settings-row"><span>Brightness:</span><input type="range" id="set-brightness" min="50" max="150" step="1" value="100" style="width:100px;"></div>
         <div class="settings-row"><span>Contrast:</span><input type="range" id="set-contrast" min="50" max="200" step="1" value="100" style="width:100px;"></div>
         <div class="settings-row"><span>Saturation:</span><input type="range" id="set-saturate" min="0" max="200" step="1" value="100" style="width:100px;"></div>
         <div class="settings-row"><span>Sync Tolerance:</span><input type="range" id="set-sync-tol" min="0.02" max="0.5" step="0.01" value="0.04" style="width:100px;"></div>
         <div class="settings-row"><span>Preload:</span><select id="set-preload"><option value="auto" selected>Auto</option><option value="metadata">Metadata</option></select></div>
         <div class="settings-row"><span>Frame Step (fps):</span><select id="set-fps"><option value="24">24</option><option value="30" selected>30</option><option value="60">60</option></select></div>
+        </details>
 
         <div class="settings-divider"></div>
-        <h3 style="font-size:13px;">Audio Reactive FX</h3>
+        <details class="fafo-fold vc-fold" data-fafo-fold="audio-fx" data-collapsed-default>
+        <summary><h3 style="font-size:13px;">Audio Reactive FX</h3></summary>
         <div class="settings-row"><span>Effect:</span><select id="set-audio-mode"><option value="none">Off</option><option value="pulse">Pulse</option><option value="chase">Chase</option><option value="rainbow">Rainbow</option></select></div>
         <div class="settings-row"><span>Sensitivity:</span><input type="range" id="set-audio-sens" min="0" max="3" step="0.1" value="1.2" style="width:100px;"></div>
+        </details>
 
         <button type="button" class="btn" id="btn-close-settings" style="margin-top:8px;">Apply & Close</button>
     </div>
@@ -498,6 +523,7 @@
     <script src="../shared/aitoolbox-catalog-pick.js?v=3.5.06"></script>
     <script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
 <script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+<script src="../shared/fafo-chrome.js?v=3.5.06"></script>
 <script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
     <script src="../shared/aitoolbox-core.js?v=3.5.06"></script>
   <script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
