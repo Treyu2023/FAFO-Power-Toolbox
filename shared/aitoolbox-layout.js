@@ -53,6 +53,14 @@
     try { return window.matchMedia('(max-width: 720px)').matches; }
     catch (_) { return (window.innerWidth || 1200) <= 720; }
   }
+  /** Columns root the app's own CSS has stacked (flex-direction:column at its
+   *  own breakpoint, e.g. 900/980/1100px). Side panels then measure the full
+   *  row width; saving that cages them at it on a wide window (S7 SC-17). */
+  function isStackedColumns(root, opts) {
+    if (((opts && opts.type) || 'columns') !== 'columns') return false;
+    try { return /^column/.test(getComputedStyle(root).flexDirection); }
+    catch (_) { return false; }
+  }
   const STORAGE_PREFIX = 'fafo_layout_v2_';
   const INDEX_KEY = 'fafo_layout_v2__index';
   const instances = new Map();
@@ -612,6 +620,8 @@
     const phone = isNarrowAutosize();
     if (phone) root.setAttribute('data-fafo-autosize', '1');
     else root.removeAttribute('data-fafo-autosize');
+    if (isStackedColumns(root, opts)) root.setAttribute('data-fafo-stacked', '1');
+    else root.removeAttribute('data-fafo-stacked');
 
     // Size every panel first. Growing one panel must NOT shrink its neighbors:
     // flex-shrink stays 0. Rows without a user size are height:auto (content).
@@ -1936,7 +1946,7 @@
     function saveNow() {
       try {
         // Phone content height must not overwrite the desktop pane sizes.
-        if (isNarrowAutosize()) return null;
+        if (isNarrowAutosize() || isStackedColumns(root, opts)) return null;
         // Never freeze a collapsed shell into localStorage (slim banner death spiral)
         if (looksLikeCollapsedCapture(root, opts)) {
           return null;
@@ -2116,7 +2126,9 @@
     requestAnimationFrame(() => {
       try {
         pinViewport(root);
-        let healed = sanitizeState(root, captureState(root, opts), opts);
+        // App-stacked columns: the DOM shows full-row widths, keep the saved cage.
+        const seen = isStackedColumns(root, opts) ? state : captureState(root, opts);
+        let healed = sanitizeState(root, seen, opts);
         healed = healBannerStripState(root, healed, opts);
         applyState(root, healed, opts);
         rebindAll();
@@ -2152,9 +2164,9 @@
     // Persist when window resizes (flex panels change absolute sizes).
     // Crossing into a narrow window only releases pixel cages; it does not
     // capture those content heights back over the desktop layout.
-    let wasNarrow = isNarrowAutosize();
+    let wasNarrow = isNarrowAutosize() || isStackedColumns(root, opts);
     onResize = debounce(() => {
-        const narrow = isNarrowAutosize();
+        const narrow = isNarrowAutosize() || isStackedColumns(root, opts);
         if (narrow || wasNarrow) {
           wasNarrow = narrow;
           pinViewport(root);
