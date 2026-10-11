@@ -6986,6 +6986,19 @@ body.run-active #promptWrap {
   if (typeof ResizeObserver === 'function') {
     try { const pw = document.getElementById('promptWrap'); if (pw) new ResizeObserver(() => scheduleFireRibbon()).observe(pw); } catch (_) {}
   }
+  /** T-REG2 C4: #promptWrap scrolls; its absolute FX children sit at the scroll origin. Shift every in-box FX layer
+   *  by the scroll offset so it always covers the visible part of the typewell. */
+  const TAT_INBOX_FX = ['tatFxCanvas', 'tat79PlateFx', 'tatNukeFx'];
+  function tatInboxFxFollow() {
+    const pw = document.getElementById('promptWrap');
+    if (!pw) return;
+    const t = (pw.scrollLeft || pw.scrollTop) ? 'translate(' + pw.scrollLeft + 'px,' + pw.scrollTop + 'px)' : '';
+    TAT_INBOX_FX.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && el.parentNode === pw && el.style.transform !== t) el.style.transform = t;
+    });
+  }
+  try { const pw = document.getElementById('promptWrap'); if (pw) pw.addEventListener('scroll', tatInboxFxFollow, { passive: true }); } catch (_) {}
 
   function resizeCanvas() {
     if (fxCanvas && fxCtx) {
@@ -10943,6 +10956,7 @@ body.run-active #promptWrap {
     const c = TAT62.canvas || $('tatFxCanvas');
     if (!wrap || !c) return;
     if (c.parentNode !== wrap) wrap.appendChild(c); // T-REG v2: out of #tatPlate (z0) so it can sit over .prompt
+    tatInboxFxFollow(); // T-REG2 C4
     TAT62.canvas = c;
     TAT62.ctx = c.getContext('2d');
     const r = wrap.getBoundingClientRect();
@@ -16067,7 +16081,7 @@ function tat73Init() {
     var host = $('promptWrap') || $('mainPanel');
     var el = $('tat79PlateFx');
     if (el) {
-      if (host && el.parentNode !== host) host.appendChild(el);
+      if (host && el.parentNode !== host) { host.appendChild(el); tatInboxFxFollow(); }
       return el;
     }
     if (!host) return null;
@@ -16075,6 +16089,7 @@ function tat73Init() {
     el.id = 'tat79PlateFx';
     el.setAttribute('aria-hidden', 'true');
     host.appendChild(el);
+    tatInboxFxFollow(); // T-REG2 C4
     return el;
   }
   function tat79CapEmitters() {
