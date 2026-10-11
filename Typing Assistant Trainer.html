@@ -3795,6 +3795,9 @@ body.tat-rm-on .tat-stage-bg::after {
 #promptWrap .prompt.caret-underline .current { outline: none; background: transparent; box-shadow: inset 0 -3px 0 var(--accent); }
 #promptWrap .prompt.caret-bar .current { outline: none; background: rgba(0, 243, 255, 0.08); box-shadow: inset 3px 0 0 var(--accent); }
 #promptWrap .prompt.caret-glow .current { outline-color: #fff; box-shadow: 0 0 10px var(--accent), 0 0 24px var(--accent), 0 0 48px rgba(124, 92, 255, 0.55); }
+/* T-RESTORE R-h2 chart legend + beat stat */
+.tat-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+.tat-chart-legend .lg-run { color: #ffc800; } .tat-chart-legend .lg-ch { color: #ff4d9a; }
 /* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
 #promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 /* T-NUKE (Ryan 2026-10-11 01:19): miss-streak escalation on the target char. Visuals sit over the text, under every dialog/bar, no pointer events. */
@@ -5945,6 +5948,7 @@ body.run-active #promptWrap {
         <div class="stat"><div class="val combo" id="statMult">×1</div><div class="lbl">Combo</div></div>
         <div class="stat"><div class="val" id="statTime">—</div><div class="lbl" id="statTimeLbl">Time</div></div>
         <div class="stat"><div class="val" id="statErr">0</div><div class="lbl">Errors</div></div>
+        <div class="stat" id="tatChBeatBox" hidden><div class="val" id="tatChBeat">—</div><div class="lbl">Beat</div></div><!-- T-RESTORE R-h2 -->
       </div>
 
       <div class="combo-bar" id="comboBar">
@@ -6113,7 +6117,8 @@ body.run-active #promptWrap {
           <summary class="section-label">Improvement log</summary>
           <div class="wpm-chart" id="wpmChartBox">
             <div class="lbl"><span>WPM over recent runs</span><span id="chartHint">WPM over recent runs</span></div>
-            <svg id="wpmChart" viewBox="0 0 320 120" role="img" aria-label="WPM over time"></svg>
+            <svg id="wpmChart" viewBox="0 0 320 120" role="img" aria-label="WPM over time; diamonds are challenge clears"></svg>
+            <div class="tat-chart-legend" id="tatChartLegend"><span class="lg-run">● runs</span><span class="lg-ch">◆ challenge clears (hover: time)</span></div>
           </div>
           </details>
           <ul class="history-list" id="historyList"></ul>
@@ -8980,7 +8985,21 @@ body.run-active #promptWrap {
     box._popT = setTimeout(() => box.classList.remove('pop'), 320);
   }
 
+  /** T-RESTORE R-h2: live "Beat X.XXs" in the stats row during a challenge with a PB (972212bf updateChallengeHud L10690). */
+  function tatChBeatPaint() {
+    const box = $('tatChBeatBox'), el = $('tatChBeat');
+    if (!box || !el) return;
+    const id = miniRun && miniConfig && miniConfig.type === 'challenge' ? miniConfig.challengeId : '';
+    const rec = id ? tatChLoad()[id] : null;
+    if (!rec || !rec.bestMs) { if (!box.hidden) box.hidden = true; return; }
+    box.hidden = false;
+    const t = 'Beat ' + (rec.bestMs / 1000).toFixed(2) + 's';
+    if (el.textContent !== t) el.textContent = t;
+    const behind = running && elapsedMs() > rec.bestMs;
+    el.className = 'val' + (behind ? ' warn' : ' ok');
+  }
   function updateStats() {
+    try { tatChBeatPaint(); } catch (_) {}
     const wpm = running || finished ? calcWpm() : 0;
     const acc = calcAccuracy();
     setText('statWpm', wpm);
@@ -10553,9 +10572,15 @@ body.run-active #promptWrap {
     const svg = $('wpmChart');
     if (!svg) return;
     let pts = loadJson(KEYS.history, []);
-    pts = (Array.isArray(pts) ? pts : []).filter((h) => h && (h.wpm | 0) >= 0 && (h.at | 0) > 0)
-      .sort((a, b) => (a.at | 0) - (b.at | 0))
-      .slice(-24);
+    pts = (Array.isArray(pts) ? pts : []).filter((h) => h && (h.wpm | 0) >= 0 && (h.at | 0) > 0 && h.mode !== 'minigame-challenge');
+    // T-RESTORE R-h2: challenge clears as a second series (◆ magenta), from challenges.v1 logs
+    let chs = [];
+    try {
+      const all = tatChLoad();
+      Object.keys(all).forEach((id) => (all[id].log || []).forEach((r) => { if (r && (r.at | 0) > 0 && (r.ms | 0) > 0) chs.push({ at: r.at, wpm: r.wpm | 0, ms: r.ms | 0, ch: id }); }));
+    } catch (_) {}
+    const merged = pts.map((x) => ({ at: x.at, wpm: x.wpm | 0 })).concat(chs).sort((a, b) => (a.at | 0) - (b.at | 0)).slice(-24);
+    pts = merged;
     if ($('chartHint')) {
       $('chartHint').textContent = pts.length
         ? pts.length + ' logged · best ' + Math.max.apply(null, pts.map((x) => x.wpm | 0)) + ' WPM'
@@ -10572,21 +10597,25 @@ body.run-active #promptWrap {
     const span = Math.max(1, max - min);
     const xAt = (i) => pad + (i / Math.max(1, pts.length - 1)) * (w - pad * 2);
     const yAt = (v) => h - pad - ((v - min) / span) * (h - pad * 2);
-    const line = pts.map((pt, i) => (i ? 'L' : 'M') + xAt(i).toFixed(1) + ',' + yAt(pt.wpm).toFixed(1)).join(' ');
-    const lastX = xAt(pts.length - 1).toFixed(1);
-    const firstX = xAt(0).toFixed(1);
-    const area = line + ' L' + lastX + ',' + (h - pad) + ' L' + firstX + ',' + (h - pad) + ' Z';
-    const dots = pts.map((pt, i) =>
-      '<circle cx="' + xAt(i).toFixed(1) + '" cy="' + yAt(pt.wpm).toFixed(1) + '" r="2.4" fill="#ffc800"><title>'
-      + (pt.wpm | 0) + ' WPM</title></circle>'
-    ).join('');
+    const runIdx = pts.map((pt, i) => (pt.ch ? -1 : i)).filter((i) => i >= 0);
+    const line = runIdx.map((i, k) => (k ? 'L' : 'M') + xAt(i).toFixed(1) + ',' + yAt(pts[i].wpm).toFixed(1)).join(' ');
+    const area = runIdx.length > 1 ? line + ' L' + xAt(runIdx[runIdx.length - 1]).toFixed(1) + ',' + (h - pad) + ' L' + xAt(runIdx[0]).toFixed(1) + ',' + (h - pad) + ' Z' : '';
+    const chName = (id) => { const g = MINI_GAMES.find((m) => m.challengeId === id); return g ? g.name : id; };
+    const dots = pts.map((pt, i) => {
+      const x = xAt(i), y = yAt(pt.wpm);
+      if (pt.ch) {
+        return '<path class="tat-ch-pt" d="M' + x.toFixed(1) + ',' + (y - 4).toFixed(1) + ' l4,4 l-4,4 l-4,-4 Z" fill="#ff4d9a" stroke="#ffd1e6" stroke-width="0.8"><title>'
+          + escapeHtml(chName(pt.ch)) + ' · ' + (pt.ms / 1000).toFixed(2) + 's · ' + (pt.wpm | 0) + ' WPM</title></path>';
+      }
+      return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="2.4" fill="#ffc800"><title>' + (pt.wpm | 0) + ' WPM</title></circle>';
+    }).join('');
     const last = pts[pts.length - 1];
     svg.innerHTML =
       '<defs><linearGradient id="tatWpmFill" x1="0" y1="0" x2="0" y2="1">'
       + '<stop offset="0" stop-color="#00f3ff" stop-opacity="0.38"/>'
       + '<stop offset="1" stop-color="#7c5cff" stop-opacity="0"/></linearGradient></defs>'
-      + '<path d="' + area + '" fill="url(#tatWpmFill)"/>'
-      + '<path d="' + line + '" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linejoin="round"/>'
+      + (area ? '<path d="' + area + '" fill="url(#tatWpmFill)"/>' : '')
+      + (line ? '<path d="' + line + '" fill="none" stroke="#00f3ff" stroke-width="2" stroke-linejoin="round"/>' : '')
       + dots
       + '<text x="' + (w - 8) + '" y="14" text-anchor="end" fill="#ffe08a" font-size="11">' + (last.wpm | 0) + ' WPM</text>';
   }
