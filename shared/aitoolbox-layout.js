@@ -1435,6 +1435,8 @@
             dock.classList.contains('collapsed') ? '1' : '0'
           );
         } catch (_) { /* ignore */ }
+        dock.removeAttribute('data-fafo-dock-auto');
+        placeDockTab(dock, tog, dockCompact());
       });
       dock.insertBefore(tog, dock.firstChild);
       let collapsed = true;
@@ -1443,6 +1445,7 @@
       } catch (_) { /* ignore */ }
       dock.classList.toggle('collapsed', collapsed);
       tog.textContent = collapsed ? 'Layout' : 'Layout ▾';
+      wireDockTab(dock, tog);
     }
     // One bar per app id inside the dock
     const safeId = String(appId || 'app').replace(/[^\w.\-]+/g, '_');
@@ -1457,6 +1460,122 @@
       watchDockSize(host);
     }
     mountToolbar(host, appId, instance);
+  }
+
+  /* S7 SC-19: narrow or short window -> the dock shows only its tab. Display only: the saved
+     open/closed choice (fafo_layout_dock_collapsed) is never written by this; a tap still opens it
+     and saves as before. The collapsed tab never sits over a page control: on a narrow/short window,
+     or once it would cover one (checked at load, on scroll and on resize), it moves into the first
+     row of the fixed pro bar, which already reserves its own space. */
+  const DOCK_COMPACT_MQ = '(max-width: 720px), (max-height: 560px)';
+  function dockCompact() {
+    try { return window.matchMedia(DOCK_COMPACT_MQ).matches; } catch (_) { return false; }
+  }
+
+  function wireDockTab(dock, tog) {
+    if (dock._fafoTabWired) return;
+    dock._fafoTabWired = true;
+    let compact = null;
+    let raf = 0;
+    const sync = () => {
+      raf = 0;
+      const c = dockCompact();
+      if (c !== compact) {
+        // A new window class starts from the saved choice (which already holds any tap).
+        compact = c;
+        let open = false;
+        try { open = localStorage.getItem('fafo_layout_dock_collapsed') === '0'; } catch (_) { /* ignore */ }
+        if (c && open) dock.setAttribute('data-fafo-dock-auto', '1');
+        else dock.removeAttribute('data-fafo-dock-auto');
+        dock.classList.toggle('collapsed', c || !open);
+        tog.textContent = dock.classList.contains('collapsed') ? 'Layout' : 'Layout ▾';
+      }
+      placeDockTab(dock, tog, c);
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(sync);
+    };
+    sync();
+    window.addEventListener('resize', schedule);
+    document.addEventListener('scroll', schedule, { capture: true, passive: true });
+    setTimeout(schedule, 400);
+    // The cover check starts once the page has settled, so load-time reflow never moves the tab.
+    setTimeout(() => {
+      dock._fafoTabArmed = true;
+      schedule();
+    }, 1500);
+    try {
+      new MutationObserver(() => {
+        schedule();
+        setTimeout(schedule, 350);
+      }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    } catch (_) { /* ignore */ }
+    // Content can also move under the tab without a scroll (a fold opens, media loads).
+    document.addEventListener('toggle', schedule, true);
+    try {
+      if (typeof ResizeObserver === 'function') new ResizeObserver(schedule).observe(document.body);
+    } catch (_) { /* ignore */ }
+  }
+
+  function placeDockTab(dock, tog, compact) {
+    let bottom = null;
+    if (dock.classList.contains('collapsed')) {
+      if (!compact && dock._fafoTabArmed && !dock._fafoTabLatched && tabOverControl(tog)) {
+        dock._fafoTabLatched = true;
+      }
+      if (compact || dock._fafoTabLatched) bottom = proBarTabBottom(dock, tog);
+    }
+    if (bottom == null) {
+      if (dock.hasAttribute('data-fafo-dock-tab')) {
+        dock.removeAttribute('data-fafo-dock-tab');
+        dock.style.removeProperty('bottom');
+        dock.style.removeProperty('z-index');
+      }
+      return;
+    }
+    dock.setAttribute('data-fafo-dock-tab', 'bar');
+    dock.style.setProperty('bottom', bottom + 'px', 'important');
+    dock.style.setProperty('z-index', '99981');
+  }
+
+  /** True when a page control (not shared chrome) is under the tab. */
+  function tabOverControl(tog) {
+    const r = tog.getBoundingClientRect();
+    if (!r.width || !r.height || typeof document.elementsFromPoint !== 'function') return false;
+    // Sample every ~6px so a small control (a checkbox) cannot slip between the points.
+    const nx = Math.max(3, Math.ceil(r.width / 6)), ny = Math.max(3, Math.ceil(r.height / 6));
+    for (let i = 0; i <= nx; i++) {
+      for (let j = 0; j <= ny; j++) {
+        const x = Math.min(r.right - 1, r.left + 1 + ((r.width - 2) * i) / nx);
+        const y = Math.min(r.bottom - 1, r.top + 1 + ((r.height - 2) * j) / ny);
+        const under = document.elementsFromPoint(x, y)
+          .find((n) => !n.closest('#fafo-layout-float-dock'));
+        if (under && under.closest('input, select, textarea, button') &&
+            !under.closest('#atx-pro-bar, #tbSharedServerBar, .tb-companion-bar, #atx-look-chip, .ui-toast')) return true;
+      }
+    }
+    return false;
+  }
+
+  /** CSS bottom (px) that centres the tab in the pro bar's first row, or null when there is no
+   *  usable bar (none, minimised, moved off-screen) or the tab would cover one of its controls. */
+  function proBarTabBottom(dock, tog) {
+    const pro = document.getElementById('atx-pro-bar');
+    if (!pro || !document.body || document.body.classList.contains('atx-pro-min')) return null;
+    const cs = getComputedStyle(pro);
+    if (cs.display === 'none' || cs.position !== 'fixed') return null;
+    const p = pro.getBoundingClientRect();
+    const t = tog.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!t.height || p.height < t.height || p.bottom > vh + 1 || p.top < vh / 3) return null;
+    const top = p.top + Math.max(0, (Math.min(p.height, 48) - t.height) / 2);
+    for (const a of pro.querySelectorAll('a, button, input, select, textarea')) {
+      const q = a.getBoundingClientRect();
+      if (q.width && q.height && q.top < top + t.height && q.bottom > top &&
+          q.left < t.right + 4 && q.right > t.left - 4) return null;
+    }
+    const cur = parseFloat(getComputedStyle(dock).bottom) || 0;
+    return Math.round(cur + (t.bottom - (top + t.height)));
   }
 
   function restoreDockSize(host) {
