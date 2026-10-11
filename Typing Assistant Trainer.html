@@ -3591,6 +3591,8 @@ body.tat-rm-on .tat78-pack-chip.is-selected {
   overflow: hidden; border-radius: inherit;
 }
 #mainPanel { position: relative; }
+/* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
+#promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 #tat79PlateFx .tat79-emit {
   position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
   border-radius: 50%; pointer-events: none;
@@ -7402,15 +7404,8 @@ body.run-active #promptWrap {
     const wrapRect = wrapEl ? wrapEl.getBoundingClientRect() : null;
     if (wrapRect && (!ribbonForBox || Math.abs(wrapRect.top - ribbonForBox.top) > 0.25 || Math.abs(wrapRect.bottom - ribbonForBox.bottom) > 0.25
         || Math.abs(wrapRect.left - ribbonForBox.left) > 0.25 || Math.abs(wrapRect.right - ribbonForBox.right) > 0.25)) placeFireRibbon();
-    const glyphBox = particles.length && wrapRect ? fxGlyphBox(wrapRect) : null;
+    // T-REG v2: no typewell hole -- sparks/flames/shards/showers paint over the typed text (Ryan 2026-10-10).
     fxCtx.save();
-    if (glyphBox) {
-      // Everything except the typewell (evenodd): sparks/flames/shards stop at the box edge, never over glyphs.
-      fxCtx.beginPath();
-      fxCtx.rect(0, 0, fxCssW || fxCanvas.width, fxCssH || fxCanvas.height);
-      fxCtx.rect(glyphBox.x, glyphBox.y, glyphBox.w, glyphBox.h);
-      fxCtx.clip('evenodd');
-    }
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       if (p.kind === 'flame') {
@@ -10947,6 +10942,7 @@ body.run-active #promptWrap {
     const wrap = $('promptWrap');
     const c = TAT62.canvas || $('tatFxCanvas');
     if (!wrap || !c) return;
+    if (c.parentNode !== wrap) wrap.appendChild(c); // T-REG v2: out of #tatPlate (z0) so it can sit over .prompt
     TAT62.canvas = c;
     TAT62.ctx = c.getContext('2d');
     const r = wrap.getBoundingClientRect();
@@ -16066,14 +16062,19 @@ function tat73Init() {
     return 'hsl(' + hue + ', 72%, 58%)';
   }
   function tat79Plate() {
+    // T-REG v2: host in #promptWrap, over the typed text. The shared layout wraps #mainPanel's children into
+    // .fafo-panel-body after tat79Init, which left a #mainPanel-hosted layer at the body's scroll origin.
+    var host = $('promptWrap') || $('mainPanel');
     var el = $('tat79PlateFx');
-    if (el) return el;
-    var panel = $('mainPanel');
-    if (!panel) return null;
+    if (el) {
+      if (host && el.parentNode !== host) host.appendChild(el);
+      return el;
+    }
+    if (!host) return null;
     el = document.createElement('div');
     el.id = 'tat79PlateFx';
     el.setAttribute('aria-hidden', 'true');
-    panel.insertBefore(el, panel.firstChild);
+    host.appendChild(el);
     return el;
   }
   function tat79CapEmitters() {
@@ -18513,7 +18514,7 @@ function tat73Init() {
     if (mode === 'minigames' && !a.minigames) return { reqRoom: 'arcade', reqTier: 1 };
     if (mode === 'timed') {
       var d = duration != null ? Number(duration) : Number(($('duration') && $('duration').value) || 30);
-      if (d >= 60 && !a.sprint60) return { reqRoom: 'barracks', reqTier: 1 };
+      void d; // T-REG: duration no longer gates timed mode
     }
     return null;
   }
@@ -18576,13 +18577,10 @@ function tat73Init() {
       Array.prototype.forEach.call(sel.options, function(opt){
         var v = Number(opt.value);
         var lock = false;
-        if (v === 15 && !a.sprint15) lock = true;
-        if (v === 30 && !a.sprint30) lock = true;
-        if (v >= 60 && !a.sprint60) lock = true;
+        // T-REG: run length is never castle-gated; every option stays pickable in every mode.
         opt.disabled = lock;
         opt.classList.toggle('tat92-dur-locked', lock);
       });
-      if (Number(sel.value) >= 60 && !a.sprint60) sel.value = '30';
     }
     var chip = $('tat78ModeThemeChip');
     if (chip) {
@@ -18761,10 +18759,7 @@ function tat73Init() {
     var a = recomputeModeAccess();
     var sel = $('duration');
     if (!sel) return;
-    if (Number(sel.value) >= 60 && !a.sprint60) {
-      sie('REFUSE_2', 'CHIP_REFUSE');
-      sel.value = '30';
-    }
+    void a; // T-REG: no refuse/reset to 30 on a long duration
   }
 
   function markGatehousePlayed(){
