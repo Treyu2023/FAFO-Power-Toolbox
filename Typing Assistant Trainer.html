@@ -9466,6 +9466,7 @@ body.run-active #promptWrap {
     });
     renderHistory();
     try { if (tatSparkRun) tatSparkDone(wpm, acc, reason); } catch (_) {} // T-RESTORE R-f
+    try { tatGhostMarksRecord(wpm, acc); } catch (_) {} // T-RESTORE R-g
     // Ops ledger: per-player (uses field name now; HS Save re-syncs name for next time)
     recordTypingOps(reason, wpm, acc, score);
     try { tatT65OnFinish(wpm, acc); } catch (_) {}
@@ -10133,6 +10134,85 @@ body.run-active #promptWrap {
     newTest(false);
     if (focusHint) focusHint.textContent = '✨ Daily Spark · 45s · same passage for everyone today — type to start';
     try { setCompanion('focus', 'Daily Spark — one clean run keeps the streak.'); } catch (_) {}
+  }
+  // ——— T-RESTORE R-g: ghost marks (972212bf L11001-11176) -> NEW key aitoolbox.typingTrainer.ghostMarks.v1 (Shipwright R-g).
+  //     Shape: { v:1, owners: { <ownerId>: { name, boards: { <boardKey>: { last:{at,wpm,acc,name,marks}, best:{...} } } } } }.
+  //     Sources (read-only, nothing deleted): roster.v1 players[].ghosts (old per-player tapes) and any ghostReplay.v1 entry in
+  //     the old shape ({last,best} wrapper, or a non-"timed:" board key). ghostReplay.v1 itself is never rewritten -> T65 replay unchanged.
+  //     New runs also append last/best per board for the current player. The multi-racer layer needs the roster (R-b, held).
+  const TAT_GHOSTMARKS_KEY = 'aitoolbox.typingTrainer.ghostMarks.v1';
+  function tatGmSanitize(raw) {
+    const out = [];
+    if (!Array.isArray(raw)) return out;
+    const n = Math.min(raw.length, TAT65_MARK_CAP);
+    for (let i = 0; i < n; i++) {
+      const m = raw[i];
+      if (!m || typeof m !== 'object') continue;
+      const tMs = Number(m.tMs), idx = Number(m.idx);
+      if (!Number.isFinite(tMs) || !Number.isFinite(idx)) continue;
+      out.push({ tMs: Math.max(0, tMs), idx: Math.max(0, idx | 0) });
+    }
+    return out;
+  }
+  function tatGmTape(rec, fallbackName) {
+    if (!rec || typeof rec !== 'object') return null;
+    const marks = tatGmSanitize(rec.marks);
+    if (!marks.length) return null;
+    return { at: Number(rec.at) || 0, wpm: Number(rec.wpm) || 0, acc: Number(rec.acc) || 0, name: String(rec.name || fallbackName || ''), marks };
+  }
+  function tatGmLoad() {
+    const v = loadJson(TAT_GHOSTMARKS_KEY, null);
+    return (v && typeof v === 'object' && v.owners && typeof v.owners === 'object') ? v : { v: 1, owners: {} };
+  }
+  function tatGmPut(db, ownerId, name, board, tape, asLast) {
+    if (!tape) return false;
+    const o = db.owners[ownerId] || (db.owners[ownerId] = { name: name || ownerId, boards: {} });
+    const b = o.boards[board] || (o.boards[board] = {});
+    let changed = false;
+    if (asLast !== false && (!b.last || (b.last.at || 0) < (tape.at || 0))) { b.last = tape; changed = true; }
+    if (!b.best || (b.best.wpm || 0) < (tape.wpm || 0)) { b.best = tape; changed = true; }
+    return changed;
+  }
+  /** One-way, idempotent copy. Never deletes or rewrites roster.v1 / ghostReplay.v1. */
+  function tatGhostMarksMigrate() {
+    const db = tatGmLoad();
+    let changed = false;
+    const roster = loadJson('aitoolbox.typingTrainer.roster.v1', null);
+    const players = roster && Array.isArray(roster.players) ? roster.players : [];
+    players.forEach((pl) => {
+      if (!pl || !pl.ghosts || typeof pl.ghosts !== 'object') return;
+      const id = 'roster:' + String(pl.id || pl.name || 'p');
+      Object.keys(pl.ghosts).forEach((board) => {
+        const g = pl.ghosts[board] || {};
+        if (tatGmPut(db, id, pl.name, board, tatGmTape(g.last, pl.name), true)) changed = true;
+        if (tatGmPut(db, id, pl.name, board, tatGmTape(g.best, pl.name), false)) changed = true;
+      });
+    });
+    const rep = loadJson(KEYS.ghostReplay, null);
+    if (rep && typeof rep === 'object' && !Array.isArray(rep)) {
+      Object.keys(rep).forEach((board) => {
+        const r = rep[board];
+        if (!r || typeof r !== 'object') return;
+        const wrapped = (r.last && typeof r.last === 'object') || (r.best && typeof r.best === 'object');
+        if (!wrapped && board.indexOf('timed:') === 0) return; // current T65 tape: stays only in ghostReplay.v1
+        if (wrapped) {
+          if (tatGmPut(db, 'legacy:replay', 'legacy', board, tatGmTape(r.last), true)) changed = true;
+          if (tatGmPut(db, 'legacy:replay', 'legacy', board, tatGmTape(r.best), false)) changed = true;
+        } else if (tatGmPut(db, 'legacy:replay', 'legacy', board, tatGmTape(r), true)) changed = true;
+      });
+    }
+    if (changed || !loadJson(TAT_GHOSTMARKS_KEY, null)) saveJson(TAT_GHOSTMARKS_KEY, db);
+  }
+  function tatGhostMarksRecord(wpm, acc) {
+    if (!ghostMarks || ghostMarks.length < 2) return;
+    let board = '';
+    try { board = optionKey(); } catch (_) { board = mode || 'timed'; }
+    if (!board) return;
+    const name = (typeof getPlayerName === 'function' && getPlayerName()) || DEFAULT_PLAYER_NAME;
+    const db = tatGmLoad();
+    const tape = { at: Date.now(), wpm: Number(wpm) || 0, acc: Number(acc) || 0, name: String(name), marks: ghostMarks.slice(0, TAT65_MARK_CAP) };
+    tatGmPut(db, 'local:' + String(name), name, board, tape, true);
+    saveJson(TAT_GHOSTMARKS_KEY, db);
   }
   /** T-RESTORE R8: ported drawWpmChart; source = history.v2 (newest first) instead of the old roster player history. */
   function drawWpmChart() {
@@ -11140,6 +11220,7 @@ body.run-active #promptWrap {
   try { tatLookWire(); } catch (_) {}
   $('tatSparkPill')?.addEventListener('click', () => startDailySpark());
   try { paintDailyChip(); } catch (_) {}
+  try { tatGhostMarksMigrate(); } catch (_) {} // T-RESTORE R-g
   $('btnFullscreen')?.addEventListener('click', () => { tatToggleFullscreen(); });
   document.addEventListener('fullscreenchange', tatSyncFsBtn);
   document.addEventListener('webkitfullscreenchange', tatSyncFsBtn);
