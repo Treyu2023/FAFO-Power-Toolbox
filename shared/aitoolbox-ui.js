@@ -288,6 +288,19 @@
 
     let tutorialState = null;
 
+    // S7-W0c2: step text is the app's own static copy. Only exact <strong>/<em> tags become elements;
+    // everything else (any other tag included) stays literal text. Never innerHTML.
+    function appendTutorialText(el, text) {
+        const stack = [el];
+        String(text == null ? '' : text).split(/(<\/?(?:strong|em)>)/i).forEach((part) => {
+            const m = /^<(\/?)(strong|em)>$/i.exec(part);
+            const top = stack[stack.length - 1];
+            if (m && !m[1]) { const n = document.createElement(m[2].toLowerCase()); top.appendChild(n); stack.push(n); }
+            else if (m && stack.length > 1 && top.tagName.toLowerCase() === m[2].toLowerCase()) stack.pop();
+            else if (part) top.appendChild(document.createTextNode(part));
+        });
+    }
+
     function startTutorial(steps, storageKey, onStep, opts) {
         const force = opts === true || (opts && opts.force);
         if (!force && storageKey && isTutorialDone(storageKey)) return;
@@ -327,7 +340,7 @@
         card.innerHTML = `
             <div class="ui-tutorial-progress">${dots}</div>
             <h4>${escapeHtml(step.title)}</h4>
-            <p>${escapeHtml(step.body)}</p>
+            <p></p>
             <div class="ui-tutorial-actions">
                 <button class="ui-btn ghost" id="tut-skip">Skip tour</button>
                 <div style="display:flex;gap:8px">
@@ -335,7 +348,14 @@
                     <button class="ui-btn" id="tut-next">${index === steps.length - 1 ? 'Finish ✓' : 'Next →'}</button>
                 </div>
             </div>`;
+        appendTutorialText(card.querySelector('p'), step.body);
 
+        const centreCard = () => {
+            spot.style.display = 'none';
+            card.style.left = '50%';
+            card.style.top = '50%';
+            card.style.transform = 'translate(-50%, -50%)';
+        };
         const positionSpotlight = () => {
             const target = step.target ? document.querySelector(step.target) : null;
             if (target) {
@@ -353,6 +373,8 @@
                 }
                 setTimeout(() => {
                     const r = target.getBoundingClientRect();
+                    if (!target.getClientRects().length || r.width < 1 || r.height < 1) { centreCard(); return; }
+                    card.style.transform = '';
                     const pad = 8;
                     spot.style.left = (r.left - pad) + 'px';
                     spot.style.top = (r.top - pad) + 'px';
@@ -365,10 +387,7 @@
                     card.style.top = Math.max(16, cardTop) + 'px';
                 }, 350);
             } else {
-                spot.style.display = 'none';
-                card.style.left = '50%';
-                card.style.top = '50%';
-                card.style.transform = 'translate(-50%, -50%)';
+                centreCard();
             }
         };
 
