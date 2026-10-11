@@ -546,3 +546,120 @@ details.ui-advanced > summary:focus-visible {
     min-height: 42dvh;
   }
 }
+
+/* ========== S7-C0 — opt-in declutter kit (additive; nothing here matches unopted markup) ==========
+ * (a) Collapsible section: <details class="fafo-fold" data-fafo-fold="section-id" [data-collapsed-default]>
+ *       <summary>Title</summary> … </details>
+ *     Open by default (primary info); data-collapsed-default = closed until the user opens it.
+ *     Open/closed persists per app + section via shared/fafo-chrome.js (localStorage "fafo-fold:<app>:<section>").
+ *     Keyboard: native <summary> (Tab, Enter/Space); focus ring below; JS mirrors aria-expanded.
+ * (b) Responsive rules: add class "fafo-resp" (or attribute data-fafo-resp) on <body> or an app root.
+ *     min-width:0 on boxes, wrapping toolbars, overflow:auto instead of clipping on panels, no scale on text,
+ *     viewport-capped modals with internal scroll, horizontally scrolling tables.
+ * Every selector in this block is under details.fafo-fold (minus fafo-collapse/ui-advanced, which keep the
+ * older look + binder), .fafo-resp or [data-fafo-resp].
+ */
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) {
+  border: 1px solid var(--fafo-border);
+  border-radius: var(--fafo-radius);
+  background: var(--fafo-panel);
+  color: var(--fafo-text);
+  margin: 0 0 10px;
+  min-width: 0;
+}
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 14px;
+  font-weight: 650;
+  border-radius: var(--fafo-radius);
+  background: color-mix(in srgb, var(--fafo-panel-2) 88%, var(--fafo-accent) 12%);
+}
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary::-webkit-details-marker { display: none; }
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.5em;
+  height: 0.5em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  opacity: 0.8;
+}
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced)[open] > summary::before { transform: rotate(45deg); }
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced)[open] > summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: 1px solid var(--fafo-border);
+}
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary:focus-visible {
+  outline: 2px solid var(--fafo-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--fafo-accent) 45%, transparent);
+}
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > :not(summary) { margin-left: 14px; margin-right: 14px; }
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > :not(summary):last-child { margin-bottom: 12px; }
+details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary + * { margin-top: 10px; }
+@media (pointer: coarse) {
+  details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary { min-height: var(--fafo-touch-min, 44px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  details.fafo-fold:not(.fafo-collapse):not(.ui-advanced) > summary::before { transition: none; }
+}
+
+/* (b) Responsive panels — opt-in scope */
+.fafo-resp :where(div, section, article, aside, main, header, footer, nav, form, fieldset, li, details),
+[data-fafo-resp] :where(div, section, article, aside, main, header, footer, nav, form, fieldset, li, details) {
+  min-width: 0;
+}
+.fafo-resp :is(.fafo-toolbar, [data-fafo-toolbar], [data-fafo-wrap], .toolbar, .actions, .btn-row),
+[data-fafo-resp] :is(.fafo-toolbar, [data-fafo-toolbar], [data-fafo-wrap], .toolbar, .actions, .btn-row) {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+/* overflow:auto instead of hidden/clip (sheen panels keep their clip; the sweep is decorative) */
+.fafo-resp :is(.fafo-panel, .panel, .card, [data-fafo-scroll]):not(.fafo-sheen),
+[data-fafo-resp] :is(.fafo-panel, .panel, .card, [data-fafo-scroll]):not(.fafo-sheen) {
+  overflow: auto;
+  max-width: 100%;
+}
+/* No scale on text. Fit-by-scale wrappers get data-fafo-noscale and must reflow instead. */
+.fafo-resp :is(h1, h2, h3, h4, h5, h6, p, label, th, td, dt, dd, legend, caption, [data-fafo-noscale]),
+[data-fafo-resp] :is(h1, h2, h3, h4, h5, h6, p, label, th, td, dt, dd, legend, caption, [data-fafo-noscale]) {
+  transform: none !important;
+}
+/* Modals: never taller/wider than the viewport; scroll inside */
+.fafo-resp :is(dialog, [role="dialog"], [aria-modal="true"], .modal, .modal-card, .fafo-modal),
+[data-fafo-resp] :is(dialog, [role="dialog"], [aria-modal="true"], .modal, .modal-card, .fafo-modal) {
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  max-width: calc(100vw - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+/* Tables: scroll sideways instead of pushing the page wide */
+.fafo-resp :is(.fafo-table-wrap, [data-fafo-table-scroll]),
+[data-fafo-resp] :is(.fafo-table-wrap, [data-fafo-table-scroll]) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.fafo-resp pre,
+[data-fafo-resp] pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+@media (max-width: 900px) {
+  .fafo-resp table:not([data-fafo-table-fixed]),
+  [data-fafo-resp] table:not([data-fafo-table-fixed]) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

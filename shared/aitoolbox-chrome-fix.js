@@ -45,7 +45,24 @@
     'body:not(.run-active) .fafo-panel-body,body:not(.run-active) .fafo-scroll-pane,body:not(.run-active) .fafo-section-body,body:not(.run-active) .fafo-body-split > [data-fafo-section],body:not(.run-active) .fafo-body-split > [data-fafo-section].fafo-section-flex,body:not(.run-active) .fafo-body-split > [data-fafo-section] > .fafo-section-body{flex:0 0 auto!important;height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important}',
     '[data-fafo-section].fafo-section-collapsed > .fafo-section-body{display:none!important;overflow:hidden!important}',
     '.fafo-split-handle,.fafo-corner-resize,.fafo-section-resize{display:none!important}',
-    '}'
+    '}',
+    /* S7-W0b un-clip (look unchanged whenever the content already fits):
+       - pro bar above 720px: stays one 48px row while brand + actions fit; counterpart chips take only leftover width
+         (basis 0, they keep their own scroll; capped at the 39px content row of the 48px bar so their scrollbar cannot grow the bar); actions size to their content (prefs' phone-layout width:100% made them claim
+         a whole row even though chrome-fix keeps the bar a row above 720px). When brand + actions cannot fit, actions wrap to a second row instead of
+         running off-screen (SC-2); --atx-pro-h follows the real height so body padding / scroll-padding reserve it.
+       - shared server bar: wraps instead of clipping at 42px (SC-4); the hint gets a min width so it wraps to its own
+         line rather than collapsing into a one-word column; the actions group (incl. #fafoSkillCtl) wraps at every width
+         so the skill control fits on a phone (SC-5). */
+    '@media (min-width:721px){',
+    '#atx-pro-bar{flex-wrap:wrap!important;height:auto!important;min-height:48px!important;max-height:none!important}',
+    '#atx-pro-bar .atx-chips{flex:1 1 0%!important;max-height:39px!important}',
+    '#atx-pro-bar .atx-actions{flex-wrap:wrap!important;width:auto!important}',
+    '.tb-companion-bar,#tbSharedServerBar{flex-wrap:wrap!important;max-height:none!important}',
+    '}',
+    '#tbSharedServerBar .tb-bar-hint,.tb-companion-bar .tb-bar-hint{min-width:min(100%,200px)!important}',
+    '#tbSharedServerBar .tb-bar-actions,.tb-companion-bar .tb-bar-actions{flex-wrap:wrap!important;min-width:0!important;max-width:100%!important}',
+    '#fafoSkillCtl{flex-wrap:wrap!important;max-width:100%!important;min-width:0!important}'
   ].join('\n');
 
   function injectCss() {
@@ -66,7 +83,7 @@
     if (pro && pro.style.display !== 'none' && !document.body.classList.contains('atx-pro-min')) {
       try {
         var h = Math.ceil(pro.getBoundingClientRect().height) || 0;
-        var capPx = 48;
+        var capPx = 160; // S7-W0b: a wrapped (2-row) bar must be fully reserved; was 48 when the bar was forced to 48px
         try { if (window.matchMedia('(max-width: 720px)').matches) capPx = 320; } catch (_) {}
         bottom = Math.min(capPx, Math.max(0, h));
       } catch (_) { bottom = 44; }

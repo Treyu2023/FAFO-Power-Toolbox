@@ -1521,6 +1521,43 @@
         }
     }
 
+    // S7-W0: collapse persistence for keyed <details> on pages that do not load shared/fafo-chrome.js.
+    // Same storage contract as fafo-chrome.js initCollapse: key "fafo-collapse:<data-fafo-collapse-key>",
+    // "1" = open, default closed, bound once via data-fafo-collapse-bound. Either binder can own an element
+    // and a later <script src="fafo-chrome.js"> takes over with no key change. Yields when window.FafoChrome
+    // exists (pages that load it, incl. defer: deferred scripts run before DOMContentLoaded), so no double bind.
+    // Persistence only: no sheen/primary/viewport side effects. Unkeyed details are left alone.
+    function bindKeyedCollapseFallback() {
+        try {
+            if (global.FafoChrome || !document.querySelectorAll) return;
+            const list = document.querySelectorAll(
+                'details.fafo-collapse[data-fafo-collapse-key], details.ui-advanced[data-fafo-collapse-key]');
+            for (let i = 0; i < list.length; i++) {
+                const el = list[i];
+                if (el.getAttribute('data-fafo-collapse-bound') === '1') continue;
+                el.setAttribute('data-fafo-collapse-bound', '1');
+                const key = 'fafo-collapse:' + el.getAttribute('data-fafo-collapse-key');
+                let saved = null;
+                try { saved = global.localStorage.getItem(key); } catch (_) { /* private mode */ }
+                if (saved === '1') el.setAttribute('open', '');
+                else el.removeAttribute('open');
+                el.addEventListener('toggle', () => {
+                    try {
+                        if (el.open) global.localStorage.setItem(key, '1');
+                        else global.localStorage.removeItem(key);
+                    } catch (_) { /* quota / private mode */ }
+                });
+            }
+        } catch (_) { /* never break the page */ }
+    }
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindKeyedCollapseFallback, { once: true });
+        } else {
+            setTimeout(bindKeyedCollapseFallback, 0);
+        }
+    }
+
     global.AIToolboxUI = {
         initTooltips,
         toast,
