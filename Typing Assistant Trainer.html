@@ -9202,7 +9202,7 @@ body.run-active #promptWrap {
       if (!pausedAt) pausedAt = Date.now();
       stopTimer();
       fxPaused = true;
-      if (focusHint) { focusHint.textContent = 'Paused — Esc or any key to resume · Tab restarts'; focusHint.className = 'focus-hint warn'; }
+      if (focusHint) { focusHint.textContent = 'Paused — Esc or any key to resume (that key is not typed) · Tab restarts'; focusHint.className = 'focus-hint warn'; }
     } else {
       if (pausedAt) { hiddenMs += Date.now() - pausedAt; pausedAt = 0; }
       startTimer();
@@ -9217,16 +9217,14 @@ body.run-active #promptWrap {
     if (!running || finished) return;
     setPaused(!userPaused);
   }
-  /** T-RESTORE R12: full screen (972212bf L11354-11379). The browser owns Esc while full screen, so Esc always leaves full
-   *  screen first; if a run was going, leaving full screen also pauses it (R9) so the Esc the player meant still holds the clock. */
+  /** T-RESTORE R12: full screen (972212bf L11354-11379). R9b: the browser owns Esc while full screen, so the first Esc only
+   *  leaves full screen (no pause); a second Esc pauses as in R9. */
   function tatIsFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   function tatSyncFsBtn() {
     const on = tatIsFullscreen();
-    const was = document.documentElement.classList.contains('tat-fs');
     document.documentElement.classList.toggle('tat-fs', on);
     const btn = $('btnFullscreen');
     if (btn) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); btn.textContent = on ? '⛶ Exit full screen' : '⛶ Full screen'; }
-    if (was && !on && running && !finished && !userPaused) setPaused(true);
   }
   async function tatToggleFullscreen() {
     try {
@@ -9514,7 +9512,12 @@ body.run-active #promptWrap {
       typer && typer.focus();
       return;
     }
-    if (userPaused && running) setPaused(false); // any key resumes, then counts (972212bf L9922)
+    if (userPaused && running) { // T-RESTORE R9b: the resume key only resumes; it is not typed, not a miss, no nuke/stats/keyStats. The NEXT key types.
+      if (e.preventDefault) e.preventDefault();
+      setPaused(false);
+      lastKeyAt = Date.now();
+      return;
+    }
     if (key.length > 1 && key !== 'Enter' && key !== 'Backspace') return;
 
     e.preventDefault();
