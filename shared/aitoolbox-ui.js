@@ -568,6 +568,7 @@
                 const result = await API().startServer({
                     mode: mode === 'console' ? 'console' : 'tray',
                     waitMs: opts.waitMs || 90000,
+                    user: true, // S7-SC10b: only reached from Start button / pill clicks
                     onStatus: (msg) => {
                         if (statusEl) statusEl.textContent = '◌ ' + msg;
                         if (hintEl) hintEl.textContent = msg;
@@ -975,6 +976,7 @@
                 const result = await API()?.startServer({
                     mode: mode === 'console' ? 'console' : 'tray',
                     waitMs: opts.waitMs || 90000,
+                    user: true, // S7-SC10b: only reached from Start / Console / pill clicks
                     companions: true,
                     onStatus: (msg) => { if (hintEl) hintEl.textContent = msg; },
                 });

@@ -271,7 +271,7 @@
                 try {
                     toast('Starting toolbox server…', 'ok');
                     if (global.AIToolboxAPI && AIToolboxAPI.startServer) {
-                        await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+                        await AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000, user: true }); // S7-SC10b: click only
                     } else {
                         location.href = launcherHref();
                         return;

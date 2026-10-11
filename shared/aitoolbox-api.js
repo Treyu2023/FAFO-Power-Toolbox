@@ -293,7 +293,7 @@
      * Do NOT window.open .hta/.bat files: Chrome/Edge download them and prompt Save As
      * (often twice if open + anchor fallback both fire).
      */
-    function tryProtocolLaunch(action = 'start') {
+    function tryProtocolLaunch(action = 'start', opts = {}) {
         const allowed = {
             start: 'start',
             tray: 'tray',
@@ -321,9 +321,11 @@
         const url = 'aitoolbox://' + act;
         dbg()?.log('api', 'info', 'Protocol launch: ' + url);
         // S7-SC10: aitoolbox://start fires at most once per browser session; if sessionStorage throws, fail closed (no fire).
+        // S7-SC10b: an explicit user click (opts.user) always fires (and still sets the key); automatic starts stay guarded.
         let fire = act !== 'start';
         if (!fire) {
-            try { fire = sessionStorage.getItem('aitoolbox.protocol.startFired') !== '1'; if (fire) sessionStorage.setItem('aitoolbox.protocol.startFired', '1'); } catch { fire = false; }
+            const user = !!(opts && opts.user === true);
+            try { fire = user || sessionStorage.getItem('aitoolbox.protocol.startFired') !== '1'; if (fire) sessionStorage.setItem('aitoolbox.protocol.startFired', '1'); } catch { fire = user; }
         }
         if (fire) try {
             // Hidden iframe is enough for registered URL handlers; avoids navigation + double fire.
@@ -663,7 +665,7 @@
         serverLaunching = true;
         try {
             onStatus?.('Starting via aitoolbox:// protocol…');
-            tryProtocolLaunch(mode === 'console' ? 'console' : 'start');
+            tryProtocolLaunch(mode === 'console' ? 'console' : 'start', { user: opts.user === true });
 
             // Brief wait — protocol handler is usually instant if registered.
             onStatus?.('Waiting for server…');
