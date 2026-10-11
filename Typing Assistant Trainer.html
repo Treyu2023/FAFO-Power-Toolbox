@@ -3632,6 +3632,8 @@ html.tat-look .prompt.anim-float .word { animation-duration: calc(3.2s * var(--k
 html.tat-look .prompt.anim-shimmer .todo, html.tat-look .prompt.anim-shimmer .done { animation-duration: calc(2.8s * var(--kf-anim-mult, 1)); }
 html.tat-look .prompt.anim-wave .word { animation-duration: calc(2.2s * var(--kf-anim-mult, 1)); }
 html.tat-look .prompt.anim-breathe { animation-duration: calc(4s * var(--kf-anim-mult, 1)); }
+/* T-RESTORE R-f Daily Spark */
+.tat-spark-chip { font-size: 10px; font-weight: 800; color: #ffe08a; margin-left: 4px; }
 /* T-REG v2: in-box FX over the typed text (.prompt z5, .current z6); still inside .panel isolation, so under every dialog/bar */
 #promptWrap > #tat79PlateFx, #promptWrap > #tatFxCanvas { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
 /* T-NUKE (Ryan 2026-10-11 01:19): miss-streak escalation on the target char. Visuals sit over the text, under every dialog/bar, no pointer events. */
@@ -4886,6 +4888,7 @@ body.run-active #promptWrap {
             <div class="pill-row" id="modePills" role="group" aria-label="Typing mode">
               <button type="button" class="tat80-weekly-chip" id="tat80WeeklyChip" title="Weekly quests" aria-pressed="true">Weekly</button>
               <button type="button" class="pill tat77-daily-pill" data-mode="daily" id="tat77DailyPill" title="Daily challenge — streak shield + grace" aria-pressed="false">Daily <span class="tat77-streak-pip" id="tat77StreakPip" aria-hidden="true"></span></button>
+              <button type="button" class="pill tat-spark-pill" id="tatSparkPill" title="Daily Spark — one 45s seeded run a day, its own streak (separate from Daily)" aria-pressed="false">✨ Spark <span id="dailyChip" class="tat-spark-chip"></span></button>
               <button type="button" class="pill active" data-mode="timed" title="Race the clock">Timed</button>
               <button type="button" class="pill" data-mode="practice" title="Open-ended practice">Practice</button>
               <button type="button" class="pill" data-mode="lesson" title="Home-row drills">Lessons</button>
@@ -8952,6 +8955,7 @@ body.run-active #promptWrap {
   }
 
   function getRawText() {
+    if (tatSparkRun) return buildDailyText(); // T-RESTORE R-f
     if (miniRun && miniConfig) return buildMiniTarget(miniConfig);
     if (boardsRun || mode === 'boards') {
       const b = STORY_BOARDS[boardIndex] || STORY_BOARDS[0];
@@ -9098,6 +9102,7 @@ body.run-active #promptWrap {
     durationSec = Number.isFinite(durRaw) ? durRaw : 30;
     if (mode === 'timed' && durationSec <= 0) durationSec = 30; // timed needs a clock
     if (mode === 'daily' && durationSec <= 0) durationSec = 60; // so does Daily (tat77 default)
+    if (tatSparkRun) durationSec = 45; // T-RESTORE R-f: Spark is always 45s (972212bf L9541)
     // Mini-game / bonus may force duration
     if (miniRun && miniConfig) {
       if (miniConfig.duration) durationSec = miniConfig.duration;
@@ -9460,6 +9465,7 @@ body.run-active #promptWrap {
       durationMs: elapsedMs(),
     });
     renderHistory();
+    try { if (tatSparkRun) tatSparkDone(wpm, acc, reason); } catch (_) {} // T-RESTORE R-f
     // Ops ledger: per-player (uses field name now; HS Save re-syncs name for next time)
     recordTypingOps(reason, wpm, acc, score);
     try { tatT65OnFinish(wpm, acc); } catch (_) {}
@@ -10079,6 +10085,55 @@ body.run-active #promptWrap {
     try { setCompanion('focus', 'Coach drill — the hot keys first.'); } catch (_) {}
   }
   function tatR7Paint() { try { paintKeyboardHeat(); renderCoachCard(); } catch (_) {} }
+  // ——— T-RESTORE R-f: Daily Spark (972212bf L8893-9040), its own entry next to Daily; Daily (tat77) untouched.
+  //     A Spark run = Timed mode + a day-seeded passage + 45s. NEW key aitoolbox.typingTrainer.dailySpark.v1 {streak,lastDay,bestWpm}.
+  const TAT_SPARK_KEY = 'aitoolbox.typingTrainer.dailySpark.v1';
+  var tatSparkRun = false;
+  function dayStamp(offset) {
+    const d = new Date();
+    if (offset) d.setDate(d.getDate() + offset);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function buildDailyText() {
+    const pool = [].concat(TEXTS.medium || [], TEXTS.hard || [], TEXTS.easy || []);
+    const h = tatHashStr(dayStamp() + ':keyflare-daily');
+    if (!pool.length) return 'daily spark — type clean, type fast, keep the streak alive.';
+    return [pool[h % pool.length], pool[(h * 13 + 7) % pool.length]].filter(Boolean).join(' ');
+  }
+  function tatSparkLoad() {
+    const d = loadJson(TAT_SPARK_KEY, {});
+    return { streak: (d && d.streak | 0) || 0, lastDay: (d && typeof d.lastDay === 'string') ? d.lastDay : '', bestWpm: (d && d.bestWpm | 0) || 0 };
+  }
+  function paintDailyChip() {
+    const el = $('dailyChip');
+    if (!el) return;
+    const d = tatSparkLoad();
+    el.textContent = (d.streak || 0) + 'd' + (d.lastDay === dayStamp() ? ' ✓' : '');
+    const pill = $('tatSparkPill');
+    if (pill) pill.title = 'Daily Spark — streak ' + d.streak + ' day' + (d.streak === 1 ? '' : 's') + (d.lastDay === dayStamp() ? ' · done today · best ' + d.bestWpm + ' WPM' : '') + ' (separate from Daily)';
+  }
+  function tatSparkPaintPill() {
+    const pill = $('tatSparkPill');
+    if (pill) { pill.classList.toggle('active', tatSparkRun); pill.setAttribute('aria-pressed', tatSparkRun ? 'true' : 'false'); }
+    if (tatSparkRun) document.querySelectorAll('#modePills .pill[data-mode]').forEach((p) => p.classList.remove('active'));
+  }
+  function tatSparkDone(wpm, acc, reason) {
+    void reason; void acc; // any finish counts (972212bf markDailyDone)
+    const day = dayStamp();
+    const d = tatSparkLoad();
+    if (d.lastDay === day) d.bestWpm = Math.max(d.bestWpm || 0, wpm | 0);
+    else { d.streak = d.lastDay === dayStamp(-1) ? (d.streak || 0) + 1 : 1; d.lastDay = day; d.bestWpm = wpm | 0; }
+    saveJson(TAT_SPARK_KEY, d);
+    paintDailyChip();
+  }
+  function startDailySpark() {
+    setMode('timed');
+    tatSparkRun = true;
+    tatSparkPaintPill();
+    newTest(false);
+    if (focusHint) focusHint.textContent = '✨ Daily Spark · 45s · same passage for everyone today — type to start';
+    try { setCompanion('focus', 'Daily Spark — one clean run keeps the streak.'); } catch (_) {}
+  }
   /** T-RESTORE R8: ported drawWpmChart; source = history.v2 (newest first) instead of the old roster player history. */
   function drawWpmChart() {
     const svg = $('wpmChart');
@@ -10588,6 +10643,7 @@ body.run-active #promptWrap {
 
   function setMode(next) {
     mode = next;
+    if (tatSparkRun) { tatSparkRun = false; tatSparkPaintPill(); } // T-RESTORE R-f: any mode pick leaves Spark
     try { tat70OnPlayMode(next); } catch (_) {}
     try { tat72OnSetMode(); } catch (_) {}
     campaignRun = false;
@@ -11082,6 +11138,8 @@ body.run-active #promptWrap {
   $('optKbHeat')?.addEventListener('change', () => { try { savePrefs(); } catch (_) {} tatR7Paint(); });
   $('btnCoachDrill')?.addEventListener('click', () => startCoachDrill());
   try { tatLookWire(); } catch (_) {}
+  $('tatSparkPill')?.addEventListener('click', () => startDailySpark());
+  try { paintDailyChip(); } catch (_) {}
   $('btnFullscreen')?.addEventListener('click', () => { tatToggleFullscreen(); });
   document.addEventListener('fullscreenchange', tatSyncFsBtn);
   document.addEventListener('webkitfullscreenchange', tatSyncFsBtn);
