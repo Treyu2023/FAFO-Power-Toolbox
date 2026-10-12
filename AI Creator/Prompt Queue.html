@@ -87,7 +87,7 @@ function seed(){return [
   {id:uid(),title:'Chorus orbit clip',kind:'video',pri:4,prompt:'orbit two dancers in neon rain, 5s',params:'5s · 24fps',out:'takes/chorus/',status:'hold',note:'wait for stills',at:Date.now()},
   {id:uid(),title:'Upscale keepers',kind:'upscale',pri:2,prompt:'upscale keep-rated stills 2x',params:'2x',out:'masters/',status:'queued',note:'',at:Date.now()}
 ]}
-function load(){try{const r=JSON.parse(localStorage.getItem(KEY));return Array.isArray(r)?r:null}catch(_){return null}}
+function load(){try{const r=JSON.parse(localStorage.getItem(KEY));if(!Array.isArray(r))return null;let n=0;r.forEach(j=>{if(j&&!j.id){j.id=uid()+n++}});if(n)localStorage.setItem(KEY,JSON.stringify(r));return r}catch(_){return null}}
 let jobs=load()||seed();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(jobs))}catch(_){}}
 function order(list){return list.slice().sort((a,b)=>{const rank={running:0,queued:1,hold:2,failed:3,done:4};return (rank[a.status]-rank[b.status])||(b.pri-a.pri)||(a.at-b.at)})}
@@ -130,11 +130,11 @@ $('list').addEventListener('click',e=>{
   const art=e.target.closest('.job'); if(!art)return;
   const j=jobs.find(x=>x.id===art.dataset.id); if(!j)return;
   if(e.target.dataset.st){j.status=e.target.dataset.st;if(e.target.dataset.st==='done')j.note='finished '+new Date().toLocaleString();save();render();return}
-  if(e.target.dataset.del){jobs=jobs.filter(x=>x.id!==j.id);save();render();return}
-  if(e.target.dataset.copy){navigator.clipboard.writeText(j.prompt);AIToolboxUI?.toast?.('Copied','ok');return}
-  if(e.target.dataset.dup){jobs.push({...j,id:uid(),title:(j.title||'Untitled')+' copy',status:'queued',note:'',at:Date.now()});save();render();return}
-  if(e.target.dataset.up){j.pri=Math.min(5,j.pri+1);save();render();return}
-  if(e.target.dataset.dn){j.pri=Math.max(1,j.pri-1);save();render();return}
+  if('del' in e.target.dataset){jobs=jobs.filter(x=>x.id!==j.id);save();render();return}
+  if('copy' in e.target.dataset){navigator.clipboard.writeText(j.prompt);AIToolboxUI?.toast?.('Copied','ok');return}
+  if('dup' in e.target.dataset){jobs.push({...j,id:uid(),title:(j.title||'Untitled')+' copy',status:'queued',note:'',at:Date.now()});save();render();return}
+  if('up' in e.target.dataset){j.pri=Math.min(5,j.pri+1);save();render();return}
+  if('dn' in e.target.dataset){j.pri=Math.max(1,j.pri-1);save();render();return}
 });
 $('btnNext').onclick=()=>{
   if(jobs.some(j=>j.status==='running')){AIToolboxUI?.toast?.('A job is already running','warn');return}
