@@ -179,9 +179,83 @@
     meta.setAttribute('content', (next ? next + ' ' : '') + 'viewport-fit=cover');
   }
 
+  /* ---- S7-C0: opt-in collapsible sections (details.fafo-fold) ----
+   * Open by default; data-collapsed-default starts closed. State persists per app + section:
+   *   localStorage "fafo-fold:<app>:<section>" = "1" open / "0" closed, stored only when it differs
+   *   from the section's default (so changing a default later is not shadowed by an untouched section).
+   * app     = closest [data-fafo-layout-app] / [data-fafo-app], else <html data-fafo-app>, else page file name.
+   * section = data-fafo-fold, else id, else summary text, else index.
+   * Keyboard is native <summary> (Enter/Space); aria-expanded mirrors the open state.
+   * Elements that also carry fafo-collapse / ui-advanced keep the older binder only.
+   */
+  var FOLD_PREFIX = 'fafo-fold:';
+  var FOLD_SELECTOR = 'details.fafo-fold:not(.fafo-collapse):not(.ui-advanced)';
+
+  function foldAppId(el) {
+    var host = el.closest ? el.closest('[data-fafo-layout-app],[data-fafo-app]') : null;
+    var id = host ? (host.getAttribute('data-fafo-layout-app') || host.getAttribute('data-fafo-app')) : '';
+    if (!id && global.document && document.documentElement) id = document.documentElement.getAttribute('data-fafo-app') || '';
+    if (!id) {
+      try {
+        var p = String((global.location && global.location.pathname) || '');
+        id = decodeURIComponent(p.split('/').pop() || '').replace(/\.html?$/i, '');
+      } catch (e) { id = ''; }
+    }
+    return id || 'app';
+  }
+
+  function foldSummary(el) {
+    for (var c = el.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.tagName === 'SUMMARY') return c;
+    }
+    return null;
+  }
+
+  function foldKey(el, index) {
+    var section = el.getAttribute('data-fafo-fold') || el.id;
+    if (!section) {
+      var s = foldSummary(el);
+      section = s ? String(s.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60) : '';
+    }
+    return FOLD_PREFIX + foldAppId(el) + ':' + (section || 'i' + index);
+  }
+
+  function syncFoldAria(el) {
+    var s = foldSummary(el);
+    if (s) s.setAttribute('aria-expanded', el.open ? 'true' : 'false');
+  }
+
+  function bindFold(el, index) {
+    if (el.getAttribute('data-fafo-fold-bound') === '1') return;
+    el.setAttribute('data-fafo-fold-bound', '1');
+    var key = foldKey(el, index);
+    var defOpen = !el.hasAttribute('data-collapsed-default');
+    var saved = readWantOpen(key);
+    var open = saved === '1' ? true : (saved === '0' ? false : defOpen);
+    if (open) el.setAttribute('open', '');
+    else el.removeAttribute('open');
+    var s = foldSummary(el);
+    if (s && s.getAttribute('tabindex') === '-1') s.removeAttribute('tabindex');
+    syncFoldAria(el);
+    el.addEventListener('toggle', function () {
+      try {
+        if (!!el.open === defOpen) global.localStorage.removeItem(key);
+        else global.localStorage.setItem(key, el.open ? '1' : '0');
+      } catch (e) { /* ignore quota / private mode */ }
+      syncFoldAria(el);
+    });
+  }
+
+  function initFold(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var list = scope.querySelectorAll(FOLD_SELECTOR);
+    for (var i = 0; i < list.length; i++) bindFold(list[i], i);
+  }
+
   function init(root) {
     ensureViewportFit();
     initCollapse(root);
+    initFold(root);
     initSheen(root);
     initPrimary(root);
     initViewport();
@@ -191,12 +265,14 @@
   var api = {
     init: init,
     initCollapse: initCollapse,
+    initFold: initFold,
     initSheen: initSheen,
     initPrimary: initPrimary,
     initViewport: initViewport,
     ensureViewportFit: ensureViewportFit,
     syncViewportHints: syncViewportHints,
     STORAGE_PREFIX: STORAGE_PREFIX,
+    FOLD_PREFIX: FOLD_PREFIX,
     MOBILE: MOBILE
   };
 

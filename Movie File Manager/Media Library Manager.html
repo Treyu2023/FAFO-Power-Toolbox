@@ -838,6 +838,45 @@
             }
             #mainLayout[data-fafo-primary] > #centerColumn { min-height: 48vh; }
         }
+        /* S7-W2 declutter + reach. Nothing removed: rare sidebar blocks sit in details.fafo-fold (look from
+           shared/fafo-chrome.css via aitoolbox-ui.css; persistence by fafo-chrome.js, keys
+           fafo-fold:media-library-manager:<id>). Layout section chrome / collapse buttons are untouched. */
+        /* Compact for the 240px sidebar; #sidebarPanel prefix outranks the shared (0,3,x) fold selectors.
+           Inset via padding (not child margins): several children carry inline width:100% / margin:0. */
+        #sidebarPanel details.mlib-fold { margin: 0 0 6px; padding: 0 8px; }
+        #sidebarPanel details.mlib-fold > summary { margin: 0 -8px; min-height: 28px; padding: 4px 8px; gap: 6px;
+            font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+        #sidebarPanel details.mlib-fold > :not(summary) { margin-left: 0; margin-right: 0; box-sizing: border-box; max-width: 100%; }
+        #sidebarPanel details.mlib-fold > summary + * { margin-top: 8px; }
+        #sidebarPanel details.mlib-fold > :not(summary):last-child { margin-bottom: 8px; }
+        #sidebarPanel details.mlib-fold:has(#tagCloud .tag-chip.active) > summary::after {
+            content: "filter on"; margin-left: auto; padding: 1px 6px; border-radius: 8px;
+            background: var(--accent); color: #000; font-weight: 800; letter-spacing: 0; }
+        /* Reach: body is a 100vh no-scroll shell, but layout.css gives unpinned column roots min-height:100dvh,
+           so #mainLayout ran ~180px past the viewport (pager, sidebar Pairs/Playlists, panel bottoms unreachable)
+           and the companion bar was squeezed. Let the layout take only the leftover height; panels scroll.
+           When the saved panel widths exceed the window (e.g. 125% zoom), scroll sideways instead of clipping. */
+        @media (min-width: 641px) {
+            #mainLayout[data-fafo-primary] { min-height: 0; overflow-x: auto; }
+        }
+        /* 641-900px the panels already stack (rule above); a pinned shell left them squashed into the few px
+           under the top chrome (844x390, 150% zoom), so the page scrolls instead, as it does at <=640px. */
+        @media (min-width: 641px) and (max-width: 900px) {
+            body { height: auto; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; overflow-y: auto; }
+            #mainLayout[data-fafo-primary] { overflow: visible; overflow-x: clip; }
+        }
+        /* The folder list is the sidebar's flex section; when the sidebar is full it was squeezed to ~16px and,
+           with layout.css overflow:visible, its rows painted over "Filter by Tag". Keep its declared
+           data-fafo-section-min (80px) and let it scroll; the panel body scrolls the rest. !important only
+           because shared/aitoolbox-chrome-fix.js injects min-height:0!important on flex sections. */
+        #mainLayout #dirList.fafo-section-flex { min-height: 80px !important; overflow-y: auto; }
+        /* Display popover is absolutely positioned below its <details>; the shared ui-advanced overflow:hidden
+           clipped it to the summary, so UI scale / tag size / panel toggles / reset layout were unreachable. */
+        #mlibDisplay[open] { overflow: visible; }
+        /* S7-W2b: the list keeps a usable height (the centre panel body scrolls the filter bar instead of squeezing it to 16px). */
+        #mainLayout #mediaList { min-height: min(200px, 40dvh); }
+        /* S7-W2b: in-flow top-bar menus scroll inside instead of running past a short viewport (no change at 800px+ tall). */
+        @media (min-width: 901px) { .top-bar details[open] > .menu-pop { max-height: calc(100dvh - 160px); overflow-y: auto; } }
     </style>
 </head>
 <body>
@@ -943,9 +982,12 @@
             <div class="sidebar-resize-handle" id="sidebarResizeHandle" title="Drag to resize folders panel"></div>
             <div class="sidebar-section" data-fafo-section="watched" data-fafo-section-title="Watched Folders">
                 <h3>Watched Folders</h3>
-                <button class="btn" id="btnAddDir2" style="width:100%;margin-bottom:6px;">+ Add Folder</button>
-                <input class="path-input" id="pathInput" placeholder="Or paste path: D:\Videos">
-                <button class="btn" id="btnPathAdd" style="width:100%;margin-top:6px;font-size:10px;">Add Path</button>
+                <details class="fafo-fold mlib-fold" data-fafo-fold="sidebar-watched" data-collapsed-default>
+                    <summary>Add folder · paste path</summary>
+                    <button class="btn" id="btnAddDir2" style="width:100%;margin-bottom:6px;">+ Add Folder</button>
+                    <input class="path-input" id="pathInput" placeholder="Or paste path: D:\Videos">
+                    <button class="btn" id="btnPathAdd" style="width:100%;margin-top:6px;font-size:10px;">Add Path</button>
+                </details>
                 <div class="suggest-panel" id="suggestPanel" style="display:none;"></div>
             </div>
             <div class="dir-list" id="dirList" data-fafo-section="dir-list" data-fafo-section-title="Directory list"
@@ -959,34 +1001,43 @@
             <div class="sidebar-section" data-fafo-section="filter-tags" data-fafo-section-title="Filter by Tag"
                  data-fafo-resizable="1" data-fafo-section-min="80" data-fafo-section-default="140">
                 <h3>Filter by Tag</h3>
-                <p style="font-size:10px;color:var(--muted);margin:0 0 6px;line-height:1.35;">Click tags to filter. Then use <strong>Smart list from tags</strong> or <strong>+ Playlist</strong> on the selection.</p>
-                <div class="tag-cloud" id="tagCloud"></div>
-                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
-                    <button type="button" class="btn" id="btnClearTagFilter" style="font-size:9px;padding:4px 8px;">Clear tags</button>
-                    <button type="button" class="btn purple" id="btnSmartFromTags" style="font-size:9px;padding:4px 8px;" data-tip="Save the currently active tag filter as a smart list">Smart list from tags</button>
-                    <button type="button" class="btn orange" id="btnPlaylistFromTags" style="font-size:9px;padding:4px 8px;" data-tip="Create a playlist from all files matching active tags (up to 500)">Playlist from tags</button>
-                </div>
+                <details class="fafo-fold mlib-fold" data-fafo-fold="sidebar-tags" data-collapsed-default>
+                    <summary>Tag filter chips</summary>
+                    <p style="font-size:10px;color:var(--muted);margin:0 0 6px;line-height:1.35;">Click tags to filter. Then use <strong>Smart list from tags</strong> or <strong>+ Playlist</strong> on the selection.</p>
+                    <div class="tag-cloud" id="tagCloud"></div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
+                        <button type="button" class="btn" id="btnClearTagFilter" style="font-size:9px;padding:4px 8px;">Clear tags</button>
+                        <button type="button" class="btn purple" id="btnSmartFromTags" style="font-size:9px;padding:4px 8px;" data-tip="Save the currently active tag filter as a smart list">Smart list from tags</button>
+                        <button type="button" class="btn orange" id="btnPlaylistFromTags" style="font-size:9px;padding:4px 8px;" data-tip="Create a playlist from all files matching active tags (up to 500)">Playlist from tags</button>
+                    </div>
+                </details>
             </div>
             <div class="sidebar-section" id="pairsSectionSidebar" data-fafo-section="pairs" data-fafo-section-title="Pairs">
                 <h3>🔗 Pairs</h3>
-                <p style="font-size:10px;color:var(--muted);margin:0 0 6px;">Click a pair to <strong>select both files</strong>. Double-click to open comparator.</p>
-                <div class="playlist-list" id="pairsList" style="max-height:200px;"></div>
-                <div class="playlist-actions">
-                    <button class="btn" id="btnRefreshPairs" style="font-size:9px;">Refresh</button>
-                    <button class="btn purple" id="btnFilterPaired" style="font-size:9px;">Show paired</button>
-                    <button class="btn" id="btnFilterUnpaired" style="font-size:9px;">Show unpaired</button>
-                </div>
+                <details class="fafo-fold mlib-fold" data-fafo-fold="sidebar-pairs" data-collapsed-default>
+                    <summary>Pair list · paired / unpaired</summary>
+                    <p style="font-size:10px;color:var(--muted);margin:0 0 6px;">Click a pair to <strong>select both files</strong>. Double-click to open comparator.</p>
+                    <div class="playlist-list" id="pairsList" style="max-height:200px;"></div>
+                    <div class="playlist-actions">
+                        <button class="btn" id="btnRefreshPairs" style="font-size:9px;">Refresh</button>
+                        <button class="btn purple" id="btnFilterPaired" style="font-size:9px;">Show paired</button>
+                        <button class="btn" id="btnFilterUnpaired" style="font-size:9px;">Show unpaired</button>
+                    </div>
+                </details>
             </div>
             <div class="sidebar-section" id="playlistSection" data-fafo-section="playlists" data-fafo-section-title="Playlists">
                 <h3>📋 Playlists</h3>
-                <p style="font-size:10px;color:var(--muted);margin:0 0 6px;">Click a name to open it. Use batch bar <strong>+ Playlist</strong> to add selected files.</p>
-                <div class="playlist-list" id="playlistList"></div>
-                <div class="playlist-actions">
-                    <button class="btn purple" id="btnNewPlaylist" data-tip="Create a new empty playlist, or from current selection">+ New playlist</button>
-                    <button class="btn" id="btnAddToPlaylistSide" data-tip="Add selected files to a playlist">+ Add selected</button>
-                    <button class="btn" id="btnCopyPlaylistPaths" data-tip="Copy full disk paths for all items in loaded playlist">Copy Paths</button>
-                    <button class="btn" id="btnExportPlaylist" data-tip="Download .txt file of paths (one per line)">Export</button>
-                </div>
+                <details class="fafo-fold mlib-fold" data-fafo-fold="sidebar-playlists" data-collapsed-default>
+                    <summary>Playlist list · new · export</summary>
+                    <p style="font-size:10px;color:var(--muted);margin:0 0 6px;">Click a name to open it. Use batch bar <strong>+ Playlist</strong> to add selected files.</p>
+                    <div class="playlist-list" id="playlistList"></div>
+                    <div class="playlist-actions">
+                        <button class="btn purple" id="btnNewPlaylist" data-tip="Create a new empty playlist, or from current selection">+ New playlist</button>
+                        <button class="btn" id="btnAddToPlaylistSide" data-tip="Add selected files to a playlist">+ Add selected</button>
+                        <button class="btn" id="btnCopyPlaylistPaths" data-tip="Copy full disk paths for all items in loaded playlist">Copy Paths</button>
+                        <button class="btn" id="btnExportPlaylist" data-tip="Download .txt file of paths (one per line)">Export</button>
+                    </div>
+                </details>
             </div>
         </aside>
 

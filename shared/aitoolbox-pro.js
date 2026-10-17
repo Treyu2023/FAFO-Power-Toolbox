@@ -486,10 +486,12 @@
 }
 #atx-pro-bar .atx-actions{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;flex:0 1 auto;min-width:0;overflow-x:auto}
 #atx-pro-bar .atx-kbd{
-  opacity:.65;font-size:9px;border:1px solid rgba(255,255,255,.12);
+  opacity:.65;font-size:11px;border:1px solid rgba(255,255,255,.12);
   border-radius:4px;padding:1px 4px;margin-left:4px;
 }
 body.atx-pro-pad{padding-bottom:var(--atx-pro-h, 44px) !important}
+html:has(> body.atx-pro-pad){scroll-padding-bottom:var(--atx-pro-h, 44px)}
+html:has(> body.atx-pro-min.atx-pro-pad){scroll-padding-bottom:8px}
 body.run-active #atx-pro-bar,
 body.tat-stage #atx-pro-bar,
 body.run-active .fafo-layout-float-dock,
@@ -499,6 +501,7 @@ html:-webkit-full-screen #atx-pro-bar {
   display:none !important;
 }
 body.run-active, body.tat-stage { padding-bottom:0 !important }
+html:has(> body.run-active.atx-pro-pad), html:has(> body.tat-stage.atx-pro-pad){scroll-padding-bottom:0}
 body.atx-pro-min #atx-pro-bar{transform:translateY(calc(100% - 8px));opacity:.7}
 body.atx-pro-min #atx-pro-bar:hover, body.atx-pro-min #atx-pro-bar:focus-within{
   transform:none;opacity:1
@@ -525,7 +528,7 @@ body.atx-dense{--ui-ease:linear}
 #atx-pro-help h2{margin:0 0 8px;font-size:15px;color:#00f3ff;letter-spacing:.06em}
 #atx-pro-help ul{margin:0;padding:0 0 0 16px;font-size:12px;line-height:1.7;color:#b8c4d4}
 #atx-pro-help kbd{
-  font:600 10px ui-monospace,Consolas,monospace;border:1px solid rgba(255,255,255,.2);
+  font:600 11px ui-monospace,Consolas,monospace;border:1px solid rgba(255,255,255,.2);
   border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:rgba(255,255,255,.06)
 }
 #atx-pro-help .row{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
@@ -653,7 +656,7 @@ body.atx-dense{--ui-ease:linear}
       return;
     }
     try {
-      const h = Math.min(56, Math.ceil(bar.getBoundingClientRect().height) || 44);
+      const h = Math.min(320, Math.ceil(bar.getBoundingClientRect().height) || 44); // S7-W0b: same cap as chrome-fix (was 56: under-reserved a wrapped bar)
       document.documentElement.style.setProperty('--atx-pro-h', h + 'px');
     } catch (_) { /* ignore */ }
   }

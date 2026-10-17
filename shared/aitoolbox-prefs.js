@@ -1004,6 +1004,38 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
     } catch (_) { /* optional */ }
   }
 
+  // S7-W0b: the floating Look chip must not sit on a page's own fixed controls (e.g. the Launcher's Marquee toggle in
+  // #lxControls). Only when it overlaps a control inside a position:fixed container does it lift to just above that
+  // control; otherwise its CSS spot (right 12px, bottom 58px) is untouched. Toasts and the Look panel are ignored.
+  function placeLookChip() {
+    const chip = document.getElementById('atx-look-chip');
+    if (!chip) return;
+    chip.style.removeProperty('bottom');
+    try {
+      if (getComputedStyle(chip).display === 'none') return;
+      const zoom = parseFloat(getComputedStyle(chip).zoom) || 1;
+      for (let pass = 0; pass < 4; pass++) {
+        const cr = chip.getBoundingClientRect();
+        let top = Infinity;
+        const list = document.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,[role=button]');
+        for (let i = 0; i < list.length; i++) {
+          const c = list[i];
+          if (c === chip || c.closest('#ui-toast-global,#atx-look')) continue;
+          const r = c.getBoundingClientRect();
+          if (r.width < 1 || r.height < 1 || r.right <= cr.left || r.left >= cr.right || r.bottom <= cr.top || r.top >= cr.bottom) continue;
+          if (c.checkVisibility && !c.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+          let fixed = false;
+          for (let p = c; p && p !== document.body; p = p.parentElement) {
+            if (getComputedStyle(p).position === 'fixed') { fixed = true; break; }
+          }
+          if (fixed && r.top < top) top = r.top;
+        }
+        if (top === Infinity) return;
+        chip.style.setProperty('bottom', Math.max(0, Math.ceil((window.innerHeight - top + 8) / zoom)) + 'px');
+      }
+    } catch (_) { /* never break the page */ }
+  }
+
   function boot() {
     injectCss();
     apply();
@@ -1023,6 +1055,14 @@ code, pre, kbd, .mono, .file-path, .dup-folder, .dbg-panel, .preview-list{
       chip.title = 'Look — layout, lighting, colors, fonts. Shortcut O';
       chip.addEventListener('click', openPanel);
       document.body.appendChild(chip);
+      placeLookChip();
+      setTimeout(placeLookChip, 400);
+      setTimeout(placeLookChip, 1500);
+      let chipRaf = 0;
+      window.addEventListener('resize', function () {
+        cancelAnimationFrame(chipRaf);
+        chipRaf = requestAnimationFrame(placeLookChip);
+      });
     }
     document.addEventListener('wheel', function (e) {
       if (!e.ctrlKey) return;
