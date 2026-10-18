@@ -4523,6 +4523,21 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
 
 <!-- T-SAVE (Loftsman 2026-10-12): named save slots. Live localStorage keys stay the working copy of the ACTIVE slot; other slots
      live in slotData.<id>.v1. Runs in <head> so a pending switch/reset/import is applied BEFORE any app script reads the keys. -->
+<style id="tat-tprog">
+.tprog-chip { display: inline-block; max-width: 100%; min-width: 0; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(255, 224, 138, 0.35); background: rgba(0, 0, 0, 0.25); font-size: 11px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
+.tprog-chip[hidden] { display: none; }
+#tprogFold .tprog-note { font-size: 11px; opacity: 0.8; margin: 4px 0; }
+#tprogFold .tprog-tree { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 8px; margin: 6px 0; }
+#tprogFold .tprog-node { min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(0, 243, 255, 0.2); background: rgba(0, 0, 0, 0.22); overflow-wrap: anywhere; }
+#tprogFold .tprog-node.ranked { border-color: rgba(0, 243, 255, 0.45); }
+#tprogFold .tprog-node.maxed { border-color: #ffe08a; }
+#tprogFold .tprog-blurb { font-size: 11px; opacity: 0.85; margin: 3px 0 6px; }
+#tprogFold .tprog-foot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+#tprogFold .tprog-pips i { display: inline-block; width: 8px; height: 8px; margin-right: 2px; border-radius: 50%; border: 1px solid rgba(0, 243, 255, 0.5); }
+#tprogFold .tprog-pips i.on { background: #00f3ff; }
+#tprogFold .tprog-foot button { font: 700 11px/1.2 inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(0, 243, 255, 0.25); background: rgba(0, 0, 0, 0.25); color: inherit; cursor: pointer; }
+#tprogFold .tprog-foot button:disabled { opacity: 0.45; cursor: default; }
+</style>
 <style id="tat-tsave">
 #tatSaveFold .tsv-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 #tatSaveFold .tsv-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 8px; margin: 6px 0; }
@@ -5418,6 +5433,13 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         </div>
 
         
+        <!-- T-PROG: skill tree (old R-c tree, 1 point per level). Logic lives in the main script (tprog*). -->
+        <details class="fafo-fold tat-fold" id="tprogFold" data-fafo-fold="skills" data-fafo-resp="stack">
+        <summary class="section-label">Skills — 1 point per level · <span id="tprogPts">0 free</span></summary>
+        <p class="tprog-note">Earn points by levelling up (sprints and Daily Spark give XP). Respec (Castle → Respec) refunds every point.</p>
+        <div class="tprog-tree" id="tprogSkills" role="list" aria-label="Skill tree"></div>
+        </details>
+
         <!-- T-SAVE: save slots (UI). Logic lives in #tat-tsave-core in <head>. -->
         <details class="fafo-fold tat-fold" id="tatSaveFold" data-fafo-fold="save-slots" data-fafo-resp="stack">
         <summary class="section-label">Save slots — all progress per slot · export · import · copy · reset</summary>
@@ -6121,6 +6143,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         <span class="tat91-today" id="tat91Today">today 0/120</span>
         <span class="tat91-pulse" id="tat91Pulse" hidden></span>
       </div>
+      <span class="tprog-chip" id="tprogChip" role="status" aria-live="polite" hidden></span>
       <div class="tat-xp-wrap" id="tatXpWrap" hidden>
         <div class="tat-xp-meta"><span id="tatXpClass">—</span> · Lv <strong id="tatXpLevel">1</strong></div>
         <div class="tat-xp-track" aria-hidden="true"><i id="tatXpFill"></i></div>
@@ -7683,10 +7706,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
 
   function fxLevelMul() {
     const v = $('optFxLevel')?.value || 'med';
-    if (v === 'low') return 0.55;
-    if (v === 'high') return 1.45;
-    if (v === 'insane') return 2.1;
-    return 1;
+    const b = v === 'low' ? 0.55 : v === 'high' ? 1.45 : v === 'insane' ? 2.1 : 1;
+    return Math.min(2.1, b * (1 + 0.15 * tprogRank('ember'))); // T-PROG R-c Ember (capped at Insane)
   }
 
   function spawnBurst(x, y, color, count, speed) {
@@ -8585,7 +8606,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     for (const t of STREAK_TIERS) {
       if (streak >= t.at) m = t.mult;
     }
-    return m;
+    return m + 0.04 * tprogRank('flow'); // T-PROG R-c Flow: combo floor +0.04/rank
   }
 
   function tierForStreak(s) {
@@ -10253,7 +10274,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       try { if (campaignRun && selectedTerritory && selectedTerritory.boss) tat71OnBossMiss(); } catch (_) {}
       // Boards lives: −0.5 per miss
       if (boardsRun && !(typeof tat72AnyZen === 'function' && tat72AnyZen())) {
-        lives = Math.max(0, Math.round((lives - MISS_LIFE_COST) * 10) / 10);
+        lives = Math.max(0, Math.round((lives - Math.max(0.2, MISS_LIFE_COST - 0.06 * tprogRank('armor'))) * 10) / 10); // T-PROG R-c Armor
         updateLivesUI();
         updateBoardHud();
         if (lives <= 0) {
@@ -10589,6 +10610,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     if (d.lastDay === day) d.bestWpm = Math.max(d.bestWpm || 0, wpm | 0);
     else { d.streak = d.lastDay === dayStamp(-1) ? (d.streak || 0) + 1 : 1; d.lastDay = day; d.bestWpm = wpm | 0; }
     saveJson(TAT_SPARK_KEY, d);
+    try { tprogSparkXp(day); } catch (_) {} // T-PROG: Daily Spark = 60 XP, 0 Glyphs
     paintDailyChip();
   }
   function startDailySpark() {
@@ -13168,7 +13190,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   function tat70XpToNext(level) {
     var n = Math.max(1, Math.min(TAT70_LEVEL_CAP, level | 0));
     if (n >= TAT70_LEVEL_CAP) return 0;
-    return Math.round(100 * Math.pow(n, 1.35));
+    return Math.round(100 * Math.pow(n, 1.15)); // T-PROG P-1: exponent 1.15 (was 1.35)
   }
   function tat70PlayModeEnum(v) {
     return TAT70_PLAY_MODES.indexOf(v) >= 0 ? v : 'timed';
@@ -13245,6 +13267,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     return false;
   }
   function tat70SyncUi() {
+    try { tprogPaintSoon(); } catch (_) {}
     var ch = tat70GetCharacter();
     var pick = $('tatSpiritPick');
     var xpWrap = $('tatXpWrap');
@@ -13328,7 +13351,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     else if (ch.classId === 'scholar') mult = 0.75 + a / 250;
     else if (ch.classId === 'streaker') mult = 0.8 + Math.min(streak, 60) / 120;
     else mult = 0.9;
-    return Math.max(1, Math.round(base * mult * (0.55 + a / 220)));
+    return Math.max(1, Math.round(base * mult * (0.55 + a / 220) * (1 + 0.12 * tprogRank('focus')))); // T-PROG R-c Focus +12%/rank
   }
   function tat70OnSprintFinish(wpm, acc) {
     if (!tat70SprintOk()) return;
@@ -13340,6 +13363,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     }
     var gain = tat70XpForSprint(wpm, acc);
     var res = tat70AddXp(gain);
+    try { tprogNoteSprintXp(gain); } catch (_) {}
     if (res.gained) {
       try {
         setCompanion('good', '+' + res.gained + ' XP' + (res.leveled ? ' · LEVEL UP!' : ''));
@@ -19518,6 +19542,7 @@ function tat73Init() {
         if (!d.pick3.heat) d.pick3.heat = { retainFloorHits: 0 };
       }
       if (Array.isArray(raw.history)) d.history = raw.history.slice(-50);
+      if (raw.prog && typeof raw.prog === 'object' && !Array.isArray(raw.prog)) d.prog = raw.prog; // T-PROG
       d.constants.dailyShardCap = 120;
       d.constants.repeatMult = 0.15;
       d.constants.respecCost = 50;
@@ -19550,6 +19575,7 @@ function tat73Init() {
     TAT91.meta = meta;
     try { saveJson(KEYS.meta, meta); } catch (_) {}
     try { if (window.TAT92) window.TAT92.modeAccess = null; } catch (_) {} // T-CASTLE: castle changed -> mode access is recomputed on next check
+    try { tprogSkillCache = null; tprogPaintSoon(); } catch (_) {}
     return meta;
   }
   // T-CASTLE: the castle hub / mode-lock scripts (tat-t92-js .. t96) are separate <script> blocks and only see globals. TAT91 and
@@ -19559,6 +19585,104 @@ function tat73Init() {
   window.tat91Save = tat91Save;
   window.tat91PaintWallet = tat91PaintWallet;
   window.tat91ReducedMotion = tat91ReducedMotion;
+  // ===== T-PROG (Loftsman 2026-10-18): XP curve 1.15, min-1 clean repeat Glyph, Daily Spark 60 XP, R-c skill tree at 1 pt/level,
+  // read-only "next unlock" chip. State: meta.v1.prog = { skills:{id:rank}, sparkXpDay, lastSprintXp } (per save slot, like castle/Glyphs).
+  var TPROG_SKILLS = [
+    { id: 'focus', name: 'Focus', ico: '◎', max: 5, blurb: 'Sprint XP +12% per rank.' },
+    { id: 'flow',  name: 'Flow',  ico: '〰', max: 5, blurb: 'Combo score multiplier +0.04 per rank.' },
+    { id: 'armor', name: 'Armor', ico: '🛡', max: 5, blurb: 'Campaign miss life cost −0.06 per rank (min 0.2).' },
+    { id: 'ember', name: 'Ember', ico: '🔥', max: 5, blurb: 'FX particles +15% per rank (never above Insane).' },
+    { id: 'gilt',  name: 'Gilt',  ico: '✦', max: 5, blurb: 'Collector rank (frames/borders are already open, R-a).' },
+    { id: 'lumen', name: 'Lumen', ico: '✧', max: 5, blurb: 'Collector rank (stage lighting is already open, R-a).' },
+    { id: 'vault', name: 'Vault', ico: '◈', max: 5, blurb: 'Collector rank (backdrops are already open, R-a).' },
+    { id: 'pulse', name: 'Pulse', ico: '♫', max: 5, blurb: 'Collector rank (all miss tones are already open, R-a).' }
+  ];
+  var tprogSkillCache = null, tprogPaintT = 0;
+  function tprogMeta() { return TAT91.meta || tat91Load(); }
+  function tprogState(m) { m = m || tprogMeta(); if (!m.prog || typeof m.prog !== 'object') m.prog = {}; if (!m.prog.skills || typeof m.prog.skills !== 'object') m.prog.skills = {}; return m.prog; }
+  function tprogRank(id) { // hot path (per keystroke / FX frame); safe before this block has run (returns 0, caches nothing)
+    try {
+      if (!TPROG_SKILLS) return 0;
+      if (!tprogSkillCache) { var m = TAT91.meta || loadJson(KEYS.meta, null); tprogSkillCache = (m && m.prog && m.prog.skills) || {}; }
+      for (var i = 0; i < TPROG_SKILLS.length; i++) if (TPROG_SKILLS[i].id === id) return Math.max(0, Math.min(TPROG_SKILLS[i].max, tprogSkillCache[id] | 0));
+    } catch (_) {}
+    return 0;
+  }
+  function tprogSpent(m) { var sk = tprogState(m).skills, n = 0; TPROG_SKILLS.forEach(function (d) { n += Math.max(0, Math.min(d.max, sk[d.id] | 0)); }); return n; }
+  function tprogPoints(m) { var ch = tat70GetCharacter(); var earned = ch.classId ? Math.max(0, (ch.level | 0) - 1) : 0; return { earned: earned, spent: tprogSpent(m), free: Math.max(0, earned - tprogSpent(m)) }; }
+  function tprogMinRepeat(raw, acc) { raw = Math.max(0, raw | 0); return ((Number(acc) || 0) >= 92 && raw < 1) ? 1 : raw; }
+  function tprogNoteSprintXp(gain) { if (!(gain > 0)) return; var m = tprogMeta(); tprogState(m).lastSprintXp = gain | 0; tat91Save(m); }
+  function tprogSparkXp(day) {
+    var m = tprogMeta(), st = tprogState(m);
+    if (st.sparkXpDay === day) return 0;
+    var r = tat70AddXp(60);
+    if (r && r.gained) { st.sparkXpDay = day; tat91Save(m); try { AIToolboxUI && AIToolboxUI.toast && AIToolboxUI.toast('Daily Spark +60 XP', 'ok'); } catch (_) {} }
+    return r ? r.gained : 0;
+  }
+  function tprogSettleLevels() { // the 1.15 curve needs less XP per level: bank any surplus as level-ups (never loses XP)
+    var ch = TAT70.character; if (!ch || !ch.classId) return;
+    var moved = false;
+    while (ch.level < TAT70_LEVEL_CAP && ch.xp >= tat70XpToNext(ch.level)) { ch.xp -= tat70XpToNext(ch.level); ch.level += 1; moved = true; }
+    if (ch.level >= TAT70_LEVEL_CAP) ch.xp = 0;
+    if (moved) { try { tat70PersistCharacter(); } catch (_) {} }
+  }
+  function tprogBuy(id) {
+    if (running) { try { AIToolboxUI && AIToolboxUI.toast && AIToolboxUI.toast('finish or quit the run first', 'warn'); } catch (_) {} return false; }
+    var def = null; TPROG_SKILLS.forEach(function (d) { if (d.id === id) def = d; }); if (!def) return false;
+    var m = tprogMeta(), sk = tprogState(m).skills;
+    if (tprogPoints(m).free <= 0 || (sk[id] | 0) >= def.max) return false;
+    sk[id] = (sk[id] | 0) + 1; tat91Save(m);
+    try { AIToolboxUI && AIToolboxUI.toast && AIToolboxUI.toast(def.name + ' → rank ' + sk[id], 'ok'); } catch (_) {}
+    return true;
+  }
+  function tprogFmtDays(gap, rate) { if (gap <= 0) return 'ready'; if (!(rate > 0)) return 'play a sprint to estimate'; var d = Math.ceil(gap / Math.min(120, rate)); return '~' + d + ' day' + (d === 1 ? '' : 's'); }
+  function tprogGlyphRate(m) { // average Glyphs per active day over the last 7 days of grants (meta.history)
+    var days = {}, cut = Date.now() - 7 * 864e5;
+    (m.history || []).forEach(function (h) { var t = Date.parse(h && h.at); if (!(t >= cut)) return; var k = new Date(t).toDateString(); days[k] = (days[k] | 0) + (h.grant | 0); });
+    var ks = Object.keys(days); if (!ks.length) return 0; var sum = 0; ks.forEach(function (k) { sum += days[k]; }); return sum / ks.length;
+  }
+  function tprogNext() {
+    var m = tprogMeta(), ch = tat70GetCharacter(), out = { castle: null, level: null };
+    try { if (typeof window.tat92NextUnlock === 'function') out.castle = window.tat92NextUnlock(); } catch (_) {}
+    if (out.castle) { var gap = Math.max(0, out.castle.cost - (m.shards | 0)), rate = tprogGlyphRate(m); out.castle.gap = gap; out.castle.rate = Math.round(rate); out.castle.eta = tprogFmtDays(gap, rate); }
+    if (ch.classId && ch.level < TAT70_LEVEL_CAP) { var need = tat70XpToNext(ch.level) - (ch.xp | 0), per = (tprogState(m).lastSprintXp | 0);
+      out.level = { to: ch.level + 1, xp: need, per: per, eta: per > 0 ? ('~' + Math.ceil(need / per) + ' sprint' + (Math.ceil(need / per) === 1 ? '' : 's')) : 'play a sprint to estimate' }; }
+    return out;
+  }
+  function tprogPaint() {
+    var chip = $('tprogChip');
+    if (chip) {
+      var n = tprogNext(), parts = [];
+      if (n.castle) parts.push('Next: ' + n.castle.name + ' T' + n.castle.tier + ' · ' + n.castle.cost + ' Glyphs · ' + n.castle.eta);
+      else if (typeof window.tat92NextUnlock === 'function') parts.push('Castle complete');
+      if (n.level) parts.push('Lv ' + n.level.to + ' (+1 skill pt): ' + n.level.xp + ' XP · ' + n.level.eta);
+      else parts.push(tat70GetCharacter().classId ? 'Max level' : 'Pick a spirit to earn XP');
+      chip.textContent = parts.join('  |  ');
+      chip.title = n.castle ? ('Need ' + n.castle.gap + ' more Glyphs at about ' + n.castle.rate + '/day (last 7 days, cap 120/day)') : '';
+      chip.hidden = false;
+    }
+    var host = $('tprogSkills');
+    if (host) {
+      var m = tprogMeta(), pt = tprogPoints(m), sk = tprogState(m).skills;
+      if ($('tprogPts')) $('tprogPts').textContent = pt.free + ' free · ' + pt.spent + '/' + pt.earned + ' spent (1 per level)';
+      host.innerHTML = TPROG_SKILLS.map(function (d) {
+        var r = Math.max(0, Math.min(d.max, sk[d.id] | 0)), maxed = r >= d.max, can = pt.free > 0 && !maxed, pips = '';
+        for (var i = 0; i < d.max; i++) pips += '<i class="' + (i < r ? 'on' : '') + '"></i>';
+        return '<div class="tprog-node' + (maxed ? ' maxed' : r ? ' ranked' : '') + '" data-skill="' + d.id + '"><div class="tprog-head"><span aria-hidden="true">' + d.ico + '</span> <b>' + d.name + '</b> <span class="tprog-rank">' + r + '/' + d.max + '</span></div>' +
+          '<div class="tprog-blurb">' + d.blurb + '</div><div class="tprog-foot"><span class="tprog-pips" aria-hidden="true">' + pips + '</span><button type="button" data-buy="' + d.id + '"' + (can ? '' : ' disabled') + '>' + (maxed ? 'MAX' : can ? 'Rank up' : 'Need pts') + '</button></div></div>';
+      }).join('');
+    }
+  }
+  function tprogPaintSoon() { clearTimeout(tprogPaintT); tprogPaintT = setTimeout(function () { try { tprogPaint(); } catch (_) {} }, 60); }
+  window.tprogResetSkills = function (m) { if (m && m.prog && typeof m.prog === 'object') m.prog.skills = {}; tprogSkillCache = null; tprogPaintSoon(); };
+  window.TPROG = { rank: tprogRank, points: function () { return tprogPoints(); }, next: tprogNext, buy: tprogBuy, skills: TPROG_SKILLS, minRepeat: tprogMinRepeat, paint: tprogPaint };
+  function tprogInit() {
+    try { tprogSettleLevels(); } catch (_) {}
+    var host = $('tprogSkills');
+    if (host && !host._tp) { host._tp = 1; host.addEventListener('click', function (e) { var b = e.target.closest && e.target.closest('[data-buy]'); if (b && tprogBuy(b.dataset.buy)) tprogPaint(); }); }
+    tprogPaint(); setTimeout(tprogPaintSoon, 900); // T92 (castle) registers tat92NextUnlock after this script
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tprogInit); else setTimeout(tprogInit, 0);
   function tat91ReducedMotion() {
     try { var p = loadJson(KEYS.prefs, {}) || {}; return !!p.reducedMotion; } catch (_) { return false; }
   }
@@ -19659,7 +19783,7 @@ function tat73Init() {
           tat91Save(meta);
           tat91GrantShards(tat91ComputeRaw(grade, 1.0, dw, false, repeatMult), { why: 'sprint-pb-' + dur });
         } else if (hadPb) {
-          tat91GrantShards(tat91ComputeRaw(grade, 1.0, dw, true, repeatMult), { why: 'sprint-repeat-' + dur });
+          tat91GrantShards(tprogMinRepeat(tat91ComputeRaw(grade, 1.0, dw, true, repeatMult), acc), { why: 'sprint-repeat-' + dur });
         }
         return;
       }
@@ -19675,7 +19799,7 @@ function tat73Init() {
           tat91Save(meta);
           tat91GrantShards(tat91ComputeRaw(gradeD, 1.25, 1.0, false, repeatMult), { why: firstClear ? 'daily-first' : 'daily-pb', firstClearBonus: !!firstClear });
         } else {
-          tat91GrantShards(tat91ComputeRaw(gradeD, 1.25, 1.0, true, repeatMult), { why: 'daily-repeat' });
+          tat91GrantShards(tprogMinRepeat(tat91ComputeRaw(gradeD, 1.25, 1.0, true, repeatMult), acc), { why: 'daily-repeat' });
         }
       }
     } catch (e) { try { console.warn('tat91OnEligibleFinish', e); } catch (_) {} }
@@ -20108,6 +20232,16 @@ function tat73Init() {
     });
   }
 
+  window.tat92NextUnlock = function(){ // T-PROG chip: cheapest upgrade that is available now; same rules/costs, read-only
+    var best = null;
+    ROOM_ORDER.forEach(function(id){
+      if (!roomAvailable(id)) return;
+      var t = roomTier(id); if (t >= (TIER_MAX[id] || 1)) return;
+      var c = (UPGRADE_COST[id] || [])[t]; if (c == null) return;
+      if (!best || c < best.cost) best = { id: id, name: ROOM_SHORT[id] || id, tier: t + 1, cost: c };
+    });
+    return best;
+  };
   function recomputeModeAccess(){
     var gh = roomTier('gatehouse'), br = roomTier('barracks'), lb = roomTier('library');
     var ob = roomTier('observatory'), th = roomTier('throne'), ar = roomTier('arcade');
@@ -22360,6 +22494,7 @@ function tat73Init() {
     resetLattice(m);
     resetCharms(m);
     resetClass();
+    try { if (window.tprogResetSkills) window.tprogResetSkills(m); } catch(_){} // T-PROG: respec refunds skill points
     clearPick3Session(m);
     m.respec.lastAt = new Date().toISOString();
     m.respec.count = (m.respec.count|0) + 1;
