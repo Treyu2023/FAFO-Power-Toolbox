@@ -4521,6 +4521,117 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
 </style>
 
 
+<!-- T-SAVE (Loftsman 2026-10-12): named save slots. Live localStorage keys stay the working copy of the ACTIVE slot; other slots
+     live in slotData.<id>.v1. Runs in <head> so a pending switch/reset/import is applied BEFORE any app script reads the keys. -->
+<style id="tat-tsave">
+#tatSaveFold .tsv-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+#tatSaveFold .tsv-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 8px; margin: 6px 0; }
+#tatSaveFold .tsv-slot { min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(0, 243, 255, 0.22); background: rgba(0, 0, 0, 0.22); overflow-wrap: anywhere; }
+#tatSaveFold .tsv-slot.on { border-color: #00f3ff; box-shadow: 0 0 0 1px rgba(0, 243, 255, 0.35); }
+#tatSaveFold .tsv-name { font-weight: 700; font-size: 13px; }
+#tatSaveFold .tsv-sum { font-size: 11px; opacity: 0.85; line-height: 1.35; margin: 2px 0 6px; }
+#tatSaveFold .tsv-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+#tatSaveFold .tsv-acts button, #tatSaveFold .tsv-row button { font: 700 11px/1.2 inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(0, 243, 255, 0.25); background: rgba(0, 0, 0, 0.25); color: inherit; cursor: pointer; }
+#tatSaveFold .tsv-acts button:disabled { opacity: 0.45; cursor: default; }
+#tatSaveFold .tsv-confirm { margin: 6px 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255, 159, 67, 0.55); background: rgba(255, 120, 40, 0.10); overflow-wrap: anywhere; }
+#tatSaveFold .tsv-confirm[hidden] { display: none; }
+#tatSaveFold .tsv-confirm input, #tatSaveFold .tsv-row input, #tatSaveFold .tsv-row select { max-width: 100%; min-width: 0; font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.3); color: inherit; }
+#tatSaveFold .tsv-msg { font-size: 11px; min-height: 1em; opacity: 0.9; }
+</style>
+<script id="tat-tsave-core">
+(function () {
+  'use strict';
+  var NS = 'aitoolbox.typingTrainer.';
+  // All 18 progress keys (grep of fef30593). Any new aitoolbox.typingTrainer.* progress key MUST be added here.
+  var SLOT_KEYS = ['prefs.v3', 'meta.v1', 'keyStats.v1', 'ghostMarks.v1', 'ghostReplay.v1', 'challenges.v1', 'dailySpark.v1', 'look.v1',
+    'playerPacks.v1', 'history.v2', 'highscores.v2', 'campaign.v3', 'campaign.v2', 'missLog.v1', 'skinSlots.v1', 'libraryMeta.v1',
+    'playerName', 'roster.v1'].map(function (k) { return NS + k; });
+  var IDX = NS + 'slots.v1', BAK = NS + 'slots.v1.backup', DATA = function (id) { return NS + 'slotData.' + id + '.v1'; };
+  var FIXED = 3, MAX = 8;
+  var LS = window.localStorage;
+  function getJ(k) { try { var v = LS.getItem(k); return v == null ? null : JSON.parse(v); } catch (_) { return null; } }
+  function setJ(k, v) { var str = JSON.stringify(v); LS.setItem(k, str); if (LS.getItem(k) !== str) throw new Error('write verify failed: ' + k); }
+  function readLive() { var o = {}; SLOT_KEYS.forEach(function (k) { var v = LS.getItem(k); if (v != null) o[k] = v; }); return o; }
+  function applyLive(data) { data = data || {}; SLOT_KEYS.forEach(function (k) { if (typeof data[k] === 'string') LS.setItem(k, data[k]); else LS.removeItem(k); }); }
+  function now() { return new Date().toISOString(); }
+  function loadIdx() { var i = getJ(IDX); return (i && i.schema === 'trainer-slots.v1' && Array.isArray(i.slots)) ? i : null; }
+  function saveIdx(i) { setJ(IDX, i); }
+  // One-time migration: live keys -> slot 1 (they simply stay live), verbatim backup, never deletes a live key.
+  function migrate() {
+    var idx = loadIdx();
+    if (idx) return { migrated: false, idx: idx };
+    var live = readLive(), bk = BAK + '0', n = 0;
+    while (LS.getItem(bk) != null) { n++; bk = BAK + n; } // never overwrite an older backup
+    setJ(bk, { at: now(), keys: SLOT_KEYS.slice(), data: live });
+    idx = { schema: 'trainer-slots.v1', active: 's1', migratedAt: now(), backupKey: bk, pending: null,
+      slots: [{ id: 's1', name: 'Main', fixed: true, savedAt: now() }, { id: 's2', name: 'Slot 2', fixed: true, savedAt: null }, { id: 's3', name: 'Slot 3', fixed: true, savedAt: null }] };
+    if (LS.getItem(DATA('s2')) == null) setJ(DATA('s2'), {});
+    if (LS.getItem(DATA('s3')) == null) setJ(DATA('s3'), {});
+    saveIdx(idx);
+    return { migrated: true, idx: idx };
+  }
+  // Finish a pending op (switch/reset/import/copy into the active slot) before any app script runs.
+  function finishPending(idx) {
+    var p = idx.pending; if (!p) return false;
+    if (p.saveFrom && p.from) setJ(DATA(p.from), readLive()); // captures anything written right before the reload
+    var target = getJ(DATA(p.to)) || {};
+    applyLive(target);
+    idx.active = p.to; idx.pending = null; saveIdx(idx);
+    LS.removeItem(DATA(p.to)); // its data is the live keys now
+    return true;
+  }
+  var state = { error: null, migrated: false, finished: false };
+  try { var m = migrate(); state.migrated = m.migrated; state.finished = finishPending(m.idx); } catch (e) { state.error = String(e && e.message || e); }
+  function idx() { return loadIdx(); }
+  function slot(id) { var i = idx(); return i && i.slots.filter(function (x) { return x.id === id; })[0]; }
+  function dataOf(id) { var i = idx(); if (!i) return {}; return id === i.active ? readLive() : (getJ(DATA(id)) || {}); }
+  function isEmpty(id) { return Object.keys(dataOf(id)).length === 0; }
+  function touch(i, id) { i.slots.forEach(function (x) { if (x.id === id) x.savedAt = now(); }); }
+  function reloadInto(to, saveFrom) { var i = idx(); i.pending = { from: i.active, to: to, saveFrom: !!saveFrom, at: now() }; saveIdx(i); location.reload(); return true; }
+  function summary(id) {
+    var d = dataOf(id), o = { level: 0, glyphs: 0, castle: 0, runs: 0, keys: Object.keys(d).length };
+    try { var pr = JSON.parse(d[NS + 'prefs.v3'] || '{}'); o.level = (pr.character && pr.character.level) | 0; } catch (_) {}
+    try { var me = JSON.parse(d[NS + 'meta.v1'] || '{}'); o.glyphs = me.shards | 0; var r = (me.castle && me.castle.rooms) || {}; Object.keys(r).forEach(function (k) { o.castle += (r[k] && r[k].tier) | 0; }); } catch (_) {}
+    try { var h = JSON.parse(d[NS + 'history.v2'] || '[]'); o.runs = Array.isArray(h) ? h.length : 0; } catch (_) {}
+    return o;
+  }
+  // Shipwright R1: no slot change mid-run (same no-switch rule as T-CHAR). Any op that reloads or swaps the live keys is refused
+  // while a run (incl. a paused one) is active; window.tatRunActive is exposed by the main script.
+  var RUN_MSG = 'finish or quit the run first';
+  function midRun() { try { return typeof window.tatRunActive === 'function' && !!window.tatRunActive(); } catch (_) { return false; } }
+  function blockRun() { if (!midRun()) return false; try { if (window.AIToolboxUI && AIToolboxUI.toast) AIToolboxUI.toast(RUN_MSG, 'warn'); } catch (_) {} return true; }
+  var API = {
+    KEYS: SLOT_KEYS.slice(), state: state, RUN_MSG: RUN_MSG,
+    touchesLive: function (id) { var i = idx(); return !!i && id === i.active; },
+    runBlocked: function () { return blockRun(); },
+    index: function () { return idx(); },
+    data: function (id) { return dataOf(id); },
+    summary: summary,
+    switchTo: function (id) { var i = idx(); if (!slot(id) || id === i.active) return false; if (blockRun()) return 'running'; touch(i, i.active); saveIdx(i); setJ(DATA(i.active), readLive()); return reloadInto(id, true); },
+    rename: function (id, name) { var i = idx(); name = String(name || '').trim().slice(0, 40); if (!name) return false; i.slots.forEach(function (x) { if (x.id === id) x.name = name; }); saveIdx(i); return true; },
+    add: function (name) { var i = idx(); if (i.slots.length >= MAX) return null; var n = 4; while (i.slots.some(function (x) { return x.id === 's' + n; })) n++;
+      var id = 's' + n; setJ(DATA(id), {}); i.slots.push({ id: id, name: String(name || ('Slot ' + n)).slice(0, 40), fixed: false, savedAt: null }); saveIdx(i); return id; },
+    remove: function (id, typed) { var i = idx(), s = slot(id); if (!s || s.fixed || id === i.active || typed !== s.name) return false;
+      i.slots = i.slots.filter(function (x) { return x.id !== id; }); saveIdx(i); LS.removeItem(DATA(id)); return true; },
+    copy: function (from, to, confirmed) { var i = idx(); if (!slot(from) || !slot(to) || from === to) return false; if (to === i.active && blockRun()) return 'running'; if (!isEmpty(to) && !confirmed) return 'confirm';
+      var d = dataOf(from); setJ(DATA(to), d); touch(i, to); saveIdx(i); if (to === i.active) return reloadInto(to, false); return true; },
+    reset: function (id, typed) { var i = idx(), s = slot(id); if (!s) return false; if (id === i.active && blockRun()) return 'running'; if (typed !== s.name) return false; setJ(DATA(id), {}); s = null;
+      i.slots.forEach(function (x) { if (x.id === id) x.savedAt = null; }); saveIdx(i); if (id === i.active) return reloadInto(id, false); return true; },
+    exportJson: function (id) { var s = slot(id); if (!s) return null;
+      return JSON.stringify({ schema: 'trainer-slot.v1', exportedAt: now(), name: s.name, keys: SLOT_KEYS.slice(), data: dataOf(id) }, null, 1); },
+    parseImport: function (text) { var o; try { o = JSON.parse(text); } catch (_) { return { ok: false, why: 'not JSON' }; }
+      if (!o || o.schema !== 'trainer-slot.v1' || !o.data || typeof o.data !== 'object') return { ok: false, why: 'not a trainer-slot.v1 file' };
+      var d = {}, bad = [];
+      Object.keys(o.data).forEach(function (k) { if (SLOT_KEYS.indexOf(k) < 0 || typeof o.data[k] !== 'string') bad.push(k); else d[k] = o.data[k]; });
+      if (bad.length) return { ok: false, why: 'unknown or bad keys: ' + bad.slice(0, 3).join(', ') };
+      return { ok: true, name: String(o.name || ''), data: d, keys: Object.keys(d).length }; },
+    importInto: function (id, parsed, confirmed) { var i = idx(); if (!slot(id) || !parsed || !parsed.ok) return false; if (id === i.active && blockRun()) return 'running'; if (!confirmed) return 'confirm';
+      setJ(DATA(id), parsed.data); touch(i, id); saveIdx(i); if (id === i.active) return reloadInto(id, false); return true; }
+  };
+  window.TATSAVE = API;
+})();
+</script>
+
 </head>
 <style id="tat-t81-sie">
 /* PET-T81 ADD: Retention glue HARD2 last slice.
@@ -5307,6 +5418,76 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         </div>
 
         
+        <!-- T-SAVE: save slots (UI). Logic lives in #tat-tsave-core in <head>. -->
+        <details class="fafo-fold tat-fold" id="tatSaveFold" data-fafo-fold="save-slots" data-fafo-resp="stack">
+        <summary class="section-label">Save slots — all progress per slot · export · import · copy · reset</summary>
+        <div class="tsv-slots" id="tsvSlots" role="list" aria-label="Save slots"></div>
+        <div class="tsv-row">
+          <button type="button" id="tsvAdd">+ Add slot</button>
+          <label class="tsv-row" style="margin:0">Copy <select id="tsvCopyFrom" aria-label="Copy from"></select> → <select id="tsvCopyTo" aria-label="Copy to"></select></label>
+          <button type="button" id="tsvCopyGo">Copy</button>
+          <label class="tsv-row" style="margin:0">Import into <select id="tsvImportTo" aria-label="Import into slot"></select></label>
+          <input type="file" id="tsvImportFile" accept="application/json,.json" aria-label="Import slot JSON">
+        </div>
+        <div class="tsv-confirm" id="tsvConfirm" role="alertdialog" aria-live="polite" hidden>
+          <div id="tsvConfirmText"></div>
+          <div class="tsv-row"><input type="text" id="tsvConfirmInput" autocomplete="off" aria-label="Type the slot name to confirm" hidden>
+          <button type="button" id="tsvConfirmYes">Confirm</button><button type="button" id="tsvConfirmNo">Cancel</button></div>
+        </div>
+        <div class="tsv-msg" id="tsvMsg" role="status"></div>
+        </details>
+        <script>
+        (function () {
+          var S = window.TATSAVE; if (!S) return;
+          var $ = function (id) { return document.getElementById(id); };
+          var pend = null;
+          function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+          function msg(t) { $('tsvMsg').textContent = t || ''; }
+          function ask(text, typedName, fn) { pend = { typed: typedName, fn: fn }; $('tsvConfirmText').textContent = text;
+            var inp = $('tsvConfirmInput'); inp.value = ''; inp.hidden = !typedName; inp.placeholder = typedName ? ('type: ' + typedName) : '';
+            $('tsvConfirm').hidden = false; (typedName ? inp : $('tsvConfirmYes')).focus(); }
+          function closeAsk() { pend = null; $('tsvConfirm').hidden = true; }
+          function render() {
+            var i = S.index(); if (!i) { msg('Save slots unavailable' + (S.state.error ? ': ' + S.state.error : '')); return; }
+            var h = '';
+            i.slots.forEach(function (s) { var on = s.id === i.active, m = S.summary(s.id);
+              h += '<div class="tsv-slot' + (on ? ' on' : '') + '" role="listitem" data-slot="' + s.id + '"><div class="tsv-name">' + esc(s.name) + (on ? ' · active' : '') + '</div>' +
+                '<div class="tsv-sum">' + (m.keys ? ('Lv ' + m.level + ' · ' + m.glyphs + ' Glyphs · castle ' + m.castle + ' · ' + m.runs + ' runs') : 'empty') + (s.savedAt ? '<br>saved ' + esc(new Date(s.savedAt).toLocaleString()) : '') + '</div>' +
+                '<div class="tsv-acts"><button type="button" data-act="switch"' + (on ? ' disabled' : '') + '>Play</button><button type="button" data-act="rename">Rename</button>' +
+                '<button type="button" data-act="export">Export</button><button type="button" data-act="reset">Reset</button>' + (s.fixed ? '' : '<button type="button" data-act="delete"' + (on ? ' disabled' : '') + '>Delete</button>') + '</div></div>'; });
+            $('tsvSlots').innerHTML = h;
+            ['tsvCopyFrom', 'tsvCopyTo', 'tsvImportTo'].forEach(function (sid) { var el = $(sid), v = el.value; el.innerHTML = i.slots.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join(''); if (v) el.value = v; });
+            $('tsvAdd').disabled = i.slots.length >= 8;
+          }
+          $('tsvSlots').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-act]'); if (!b) return; var id = b.closest('[data-slot]').dataset.slot, act = b.dataset.act;
+            var s = S.index().slots.filter(function (x) { return x.id === id; })[0];
+            if (act === 'switch') { if (S.switchTo(id) === 'running') msg(S.RUN_MSG); else msg('Switching…'); }
+            else if (act === 'rename') { var n = prompt('Slot name', s.name); if (n && S.rename(id, n)) render(); }
+            else if (act === 'export') { var t = S.exportJson(id); var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'application/json' }));
+              a.download = 'trainer-slot-' + s.name.replace(/[^\w-]+/g, '_') + '.json'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); msg('Exported ' + s.name); }
+            else if (act === 'reset' && S.touchesLive(id) && S.runBlocked()) msg(S.RUN_MSG);
+            else if (act === 'reset') ask('Reset "' + s.name + '"? This erases ALL progress in this slot only (other slots are untouched). Type the slot name to confirm.', s.name, function (typed) { var rr = S.reset(id, typed); if (rr === 'running') msg(S.RUN_MSG); else if (rr) { msg('Reset ' + s.name); render(); } else msg('Name did not match — nothing changed'); });
+            else if (act === 'delete') ask('Delete slot "' + s.name + '"? Type the slot name to confirm.', s.name, function (typed) { if (S.remove(id, typed)) { msg('Deleted'); render(); } else msg('Name did not match — nothing changed'); });
+          });
+          $('tsvAdd').addEventListener('click', function () { if (S.add()) render(); });
+          $('tsvCopyGo').addEventListener('click', function () { var f = $('tsvCopyFrom').value, t = $('tsvCopyTo').value; var r = S.copy(f, t, false);
+            if (r === 'running') msg(S.RUN_MSG);
+            else if (r === 'confirm') ask('Overwrite the progress in the target slot with a copy?', null, function () { if (S.copy(f, t, true) === 'running') msg(S.RUN_MSG); else { msg('Copied'); render(); } });
+            else if (r) { msg('Copied'); render(); } else msg('Pick two different slots'); });
+          $('tsvImportFile').addEventListener('change', function () { var f = this.files && this.files[0]; if (!f) return; var to = $('tsvImportTo').value;
+            if (S.touchesLive(to) && S.runBlocked()) { this.value = ''; msg(S.RUN_MSG); return; } var rd = new FileReader();
+            rd.onload = function () { var p = S.parseImport(String(rd.result)); $('tsvImportFile').value = '';
+              if (!p.ok) { msg('Import refused: ' + p.why); return; }
+              ask('Import "' + p.name + '" (' + p.keys + ' keys) into this slot? It replaces that slot\'s progress.', null, function () { if (S.importInto(to, p, true) === 'running') msg(S.RUN_MSG); else { msg('Imported'); render(); } }); };
+            rd.readAsText(f); });
+          $('tsvConfirmYes').addEventListener('click', function () { var p = pend; if (!p) return; var typed = $('tsvConfirmInput').value; closeAsk(); p.fn(p.typed ? typed : true); });
+          $('tsvConfirmNo').addEventListener('click', function () { closeAsk(); msg('Cancelled — nothing changed'); });
+          if (S.state.migrated) msg('Your existing progress is now in slot "Main" (backup kept).');
+          render();
+        })();
+        </script>
+
         <!-- T-RESTORE R6: Look Studio (972212bf L4617-4799), sliders clamped per Shipwright R-e. Own key look.v1. -->
         <details class="fafo-fold tat-fold" id="kfLookPanel" data-fafo-fold="look-studio" open>
         <summary class="section-label">Look studio — presets · size · spacing · glow · motion</summary>
@@ -9173,6 +9354,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     return isTimedModeActive() && durationSec > 0;
   }
   window.tatTimedRunActive = function () { return !!running && timedRunConfigured(); };
+  window.tatRunActive = function () { return !!running; }; // T-SAVE R1: any run (also paused) blocks slot changes
 
   // ——— Text generation ———
   function randWords(n, bank) {
