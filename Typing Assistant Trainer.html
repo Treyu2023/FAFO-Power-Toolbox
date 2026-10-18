@@ -5514,6 +5514,10 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
           $('tsvConfirmNo').addEventListener('click', function () { closeAsk(); msg('Cancelled — nothing changed'); });
           if (S.state.migrated) msg('Your existing progress is now in slot "Main" (backup kept).');
           var hcBtn = $('tsvHeadChip'); // T-PROG-b: open Style & library + the save-slots fold only, then bring the slot controls into view
+          if (hcBtn) window.addEventListener('keydown', function (e) { // T-PROG-c: Space activates the chip
+            if (e.target !== hcBtn || (e.key !== ' ' && e.key !== 'Spacebar') || e.ctrlKey || e.metaKey || e.altKey) return;
+            e.preventDefault(); e.stopPropagation(); if (!e.repeat) hcBtn.click();
+          }, true);
           if (hcBtn) hcBtn.addEventListener('click', function () {
             var panel = $('tatStylePanel'), fold = $('tatSaveFold');
             if (panel && !panel.open) panel.open = true;
@@ -8676,13 +8680,13 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     const m = currentMult();
     const tier = tierForStreak(streak);
     comboBar.classList.add('show');
-    $('comboMultLabel').textContent = '×' + m;
+    $('comboMultLabel').textContent = '×' + m.toFixed(2); // T-PROG-c: display only (Flow adds 0.04/rank)
     $('comboMultLabel').style.animation = 'none';
     if (pop) {
       void $('comboMultLabel').offsetWidth;
       $('comboMultLabel').style.animation = '';
     }
-    $('statMult').textContent = '×' + m;
+    $('statMult').textContent = '×' + m.toFixed(2); // T-PROG-c: display only
     $('statStreak').textContent = String(streak);
     if (tier) {
       $('comboTitle').textContent = tier.name + ' chain';
@@ -10289,15 +10293,17 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       try { if (campaignRun && selectedTerritory && selectedTerritory.boss) tat71OnBossMiss(); } catch (_) {}
       // Boards lives: −0.5 per miss
       if (boardsRun && !(typeof tat72AnyZen === 'function' && tat72AnyZen())) {
-        lives = Math.max(0, Math.round((lives - Math.max(0.2, MISS_LIFE_COST - 0.06 * tprogRank('armor'))) * 10) / 10); // T-PROG R-c Armor
+        const armorRank = tprogRank('armor'), lifeCost = Math.max(0.2, MISS_LIFE_COST - 0.06 * armorRank); // T-PROG-c: same math, named for the text below
+        lives = Math.max(0, Math.round((lives - lifeCost) * 10) / 10); // T-PROG R-c Armor
         updateLivesUI();
         updateBoardHud();
         if (lives <= 0) {
           finishTest('lives');
           return;
         }
-        setCompanion('worried', `−0.5 life → ${lives.toFixed(1)} left`);
-        showComboToast('−0.5 LIFE', lives.toFixed(1) + ' remaining');
+        const costTxt = String(Math.round(lifeCost * 100) / 100); // T-PROG-c: real Armor value (Boards mode)
+        setCompanion('worried', `−${costTxt} life (Boards · Armor ${armorRank}) → ${lives.toFixed(1)} left`);
+        showComboToast('−' + costTxt + ' LIFE', lives.toFixed(1) + ' remaining');
       }
       // Perfect Path mini-game: lose a full life
       if (miniRun && miniConfig?.type === 'perfect' && !(typeof tat72AnyZen === 'function' && tat72AnyZen())) {
@@ -19605,7 +19611,7 @@ function tat73Init() {
   var TPROG_SKILLS = [
     { id: 'focus', name: 'Focus', ico: '◎', max: 5, blurb: 'Sprint XP +12% per rank.' },
     { id: 'flow',  name: 'Flow',  ico: '〰', max: 5, blurb: 'Combo score multiplier +0.04 per rank.' },
-    { id: 'armor', name: 'Armor', ico: '🛡', max: 5, blurb: 'Campaign miss life cost −0.06 per rank (min 0.2).' },
+    { id: 'armor', name: 'Armor', ico: '🛡', max: 5, blurb: 'Boards miss life cost 0.5 → 0.2 floor (−0.06 per rank).' },
     { id: 'ember', name: 'Ember', ico: '🔥', max: 5, blurb: 'FX particles +15% per rank (never above Insane).' }
   ]; // T-PROG-b (YardMaster R1): Gilt/Lumen/Vault/Pulse dropped; their ranks are refunded once by tprogRefundDropped()
   var TPROG_DROPPED = ['gilt', 'lumen', 'vault', 'pulse'];
