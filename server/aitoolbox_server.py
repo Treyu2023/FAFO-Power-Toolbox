@@ -7,9 +7,12 @@ so it never fights FAFO companion or other apps on 127.0.0.1:8765.
 """
 from __future__ import annotations
 
+import base64
 import hmac
 import json
+import logging
 import os
+import re
 import secrets
 import urllib.request
 import threading
@@ -121,10 +124,88 @@ S1_TOKEN_HEADER = "X-FAFO-S1-Token"
 S1_TOKEN_QUERY = "s1t"
 S1_TOKEN = secrets.token_urlsafe(32)   # new every process start; never logged or returned
 S1_TOKEN_FILE = ROOT / "shared" / ".env.s1-token.js"
-S1_ALLOW_HEADERS = ("Content-Type", "Accept", S1_TOKEN_HEADER)
-S1_MEDIA_READ_PATHS = frozenset({"/api/media/file", "/api/thumb", "/api/files/serve"})
+S1_MEDIA_TICKET_HEADER = "X-FAFO-S1-Media-Ticket"   # S-SEC3: fetch callers (info/text) send the ticket here
+S1_ALLOW_HEADERS = ("Content-Type", "Accept", S1_TOKEN_HEADER, S1_MEDIA_TICKET_HEADER)
+S1_MEDIA_READ_PATHS = frozenset({"/api/media/file", "/api/thumb"})   # S-SEC3: /api/files/serve moved to the ticket gate
 S1_MEDIA_READ_PREFIXES = ("/api/icons/file/",)
 S1_MEDIA_DESTS = frozenset({"image", "video", "audio", "track"})
+
+# S-SEC3: every /api/files/* read needs the S1 header token (fetch callers) or a
+# per-path media ticket: ?mt= for <img>/<video>/<audio> (they cannot send headers),
+# or the X-FAFO-S1-Media-Ticket header for fetch() callers (keeps it out of URL logs).
+# mt = "<scope>.<exp>.<sig>"; sig = b64url(HMAC-SHA256(scope_key, "s1m1\n<scope>\n<exp>\n<path>"))[:32].
+# scope "s": key was fetched by a same-origin /toolbox/ page; the ticket is then refused
+# on a cross-site / same-site request. scope "x": key was fetched with the S1 header
+# token (file:// pages) or from another toolbox origin; browsers mark file:// subresource
+# loads cross-site, so "x" cannot be site-bound (R-SSEC3-2). Keys are per process start.
+S1_FILES_TICKET_PATHS = frozenset({"/api/files/serve", "/api/files/preview", "/api/files/info", "/api/files/text"})
+S1_MEDIA_TICKET_QUERY = "mt"
+S1_MEDIA_TICKET_TTL_S = 6 * 3600          # R-SSEC3-1: <video> Range requests reuse the src URL
+S1_MEDIA_TICKET_BUCKET_S = 900            # exp is rounded up to this, so URLs stay cacheable-stable
+_S1_MEDIA_ROOT_KEY = secrets.token_bytes(32)   # new every process start; never logged or returned
+S1_MEDIA_KID = hmac.new(_S1_MEDIA_ROOT_KEY, b"s1-media-kid-v1", "sha256").hexdigest()[:16]
+
+
+def _s1_media_scope_key(scope: str) -> bytes:
+    return hmac.new(_S1_MEDIA_ROOT_KEY, b"s1-media-key-v1|" + scope.encode("ascii"), "sha256").digest()
+
+
+def _s1_media_sig(scope: str, exp: int, path: str) -> str:
+    msg = ("s1m1\n%s\n%d\n" % (scope, exp)).encode("ascii") + path.encode("utf-8", "replace")
+    dig = hmac.new(_s1_media_scope_key(scope), msg, "sha256").digest()
+    return base64.urlsafe_b64encode(dig).rstrip(b"=").decode("ascii")[:32]
+
+
+def _s1_media_ticket_ok(request: Request) -> bool:
+    mt = request.headers.get(S1_MEDIA_TICKET_HEADER) or request.query_params.get(S1_MEDIA_TICKET_QUERY) or ""
+    path = request.query_params.get("path")
+    parts = mt.split(".")
+    if path is None or len(parts) != 3:
+        return False
+    scope, exp_s, sig = parts
+    if scope not in ("s", "x") or len(sig) != 32 or not (exp_s.isascii() and exp_s.isdigit()) or len(exp_s) > 12:
+        return False
+    exp = int(exp_s)
+    now = int(time.time())
+    if exp < now or exp > now + S1_MEDIA_TICKET_TTL_S + S1_MEDIA_TICKET_BUCKET_S:
+        return False
+    if scope == "s" and request.headers.get("sec-fetch-site") not in (None, "same-origin"):
+        return False
+    return hmac.compare_digest(sig.encode("ascii", "replace"), _s1_media_sig(scope, exp, path).encode("ascii"))
+
+
+def _s1_files_gate(request: Request, origin: str | None) -> str | None:
+    """S-SEC3 gate for S1_FILES_TICKET_PATHS (replaces rows 1-9 there). None = allow.
+    Header token or ticket only: Sec-Fetch-Site / Origin alone no longer open these
+    routes, and the ?s1t= query token is not accepted here (keeps it out of media URLs)."""
+    if origin and origin not in ALLOWED_CORS_ORIGINS:
+        return "origin-forbidden"
+    got = request.headers.get(S1_TOKEN_HEADER) or ""
+    if got and hmac.compare_digest(got.encode("utf-8", "replace"), S1_TOKEN.encode("ascii")):
+        return None
+    return None if _s1_media_ticket_ok(request) else "media-ticket"
+
+
+_S1_URL_SECRET_RE = re.compile(r"([?&](?:mt|s1t)=)[^&#\s\"]*")
+
+
+class _S1RedactUrlSecrets(logging.Filter):
+    """S-SEC3: uvicorn's access line carries the full path + query; blank mt= / s1t= values."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            if isinstance(record.msg, str):
+                record.msg = _S1_URL_SECRET_RE.sub(r"\1[redacted]", record.msg)
+            if isinstance(record.args, tuple) and record.args:
+                record.args = tuple(_S1_URL_SECRET_RE.sub(r"\1[redacted]", a) if isinstance(a, str) else a
+                                    for a in record.args)
+        except Exception:
+            pass
+        return True
+
+
+for _s1_logger_name in ("uvicorn.access", "uvicorn.error"):
+    logging.getLogger(_s1_logger_name).addFilter(_S1RedactUrlSecrets())
 
 
 def _origin_allows_pna(origin: str | None) -> bool:
@@ -217,6 +298,16 @@ def _s1_deny(origin: str | None, detail: str) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": detail}, headers=headers)
 
 
+def _s1_media_denied(origin: str | None) -> JSONResponse:
+    # S-SEC3: fixed body, no path / ticket echo; toolbox + 'null' origins may read it.
+    headers = {"Vary": "Origin", "Cache-Control": "no-store"}
+    if origin in ALLOWED_CORS_ORIGINS:
+        headers["Access-Control-Allow-Origin"] = origin
+    if _origin_allows_pna(origin):
+        headers["Access-Control-Allow-Private-Network"] = "true"
+    return JSONResponse(status_code=401, content={"detail": "media-ticket"}, headers=headers)
+
+
 app = FastAPI(title="AI Toolbox Server", version=TOOLBOX_VERSION)
 # allow_credentials=True + allow_origins=["*"] is invalid CORS and breaks
 # fetch() from file:// (Origin: null) and some Chromium private-network cases.
@@ -260,11 +351,22 @@ async def debug_request_middleware(request: Request, call_next):
         if pna_ok:
             headers["Access-Control-Allow-Private-Network"] = "true"
         return Response(status_code=204, headers=headers)
-    denied = _s1_gate(request, origin or None)
+    files_gated = request.url.path in S1_FILES_TICKET_PATHS and request.method != "OPTIONS"
+    if files_gated:                                 # S-SEC3: header token or media ticket
+        denied = _s1_files_gate(request, origin or None)
+    else:
+        denied = _s1_gate(request, origin or None)
     if denied:
         dbg.log("server", "warn", f"s1-gate {denied}: {request.method} {request.url.path}")
+        if denied == "media-ticket":
+            return _s1_media_denied(origin or None)
         return _s1_deny(origin or None, denied)
     response = await call_next(request)
+    if files_gated:                                 # ticketed URLs stay out of the HTTP cache
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    if request.url.path == "/api/health":
+        response.headers["X-FAFO-S1-Media-Kid"] = S1_MEDIA_KID   # one-way id; tells pages to refetch the key
     if request.url.path == "/api/health" and request.headers.get(S1_TOKEN_HEADER) \
             and not _s1_token_ok(request):
         response.headers["X-FAFO-S1-Token-State"] = "stale"
@@ -4349,6 +4451,20 @@ def _assert_allowed_file_path(path: str) -> Path:
         except ValueError:
             continue
     raise HTTPException(404, "File not found")
+
+
+@app.get("/api/files/media-key")
+def api_files_media_key(request: Request):
+    """S-SEC3: media-ticket key for shared/aitoolbox-api.js. Not in S1_FILES_TICKET_PATHS:
+    reached through _s1_gate, i.e. a same-origin /toolbox/ page, a toolbox origin, or a
+    file:// page sending the S1 header token. Never logged; never stored by the page."""
+    scope = "s" if request.headers.get("sec-fetch-site") == "same-origin" else "x"
+    key = base64.urlsafe_b64encode(_s1_media_scope_key(scope)).rstrip(b"=").decode("ascii")
+    return JSONResponse(
+        {"v": 1, "scope": scope, "key": key, "kid": S1_MEDIA_KID,
+         "ttl": S1_MEDIA_TICKET_TTL_S, "bucket": S1_MEDIA_TICKET_BUCKET_S},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
 
 
 @app.get("/api/files/serve")

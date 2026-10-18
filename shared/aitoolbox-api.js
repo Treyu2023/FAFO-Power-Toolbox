@@ -103,6 +103,128 @@
 
     if (S1_IS_FILE) s1LoadToken(false);   // start early; first S1 fetch awaits it
 
+    // --- S-SEC3: per-path media tickets for /api/files/* (<img>/<video> can't send headers) ---
+    // The key lives in this closure only (never localStorage, URLs or logs). A ticket is
+    // "<scope>.<exp>.<HMAC-SHA256(key, path + exp)>", valid for that one path until exp.
+    let s1Media = null, s1MediaLoading = null, s1MediaKid = '';
+    const S1_SHA_K = new Uint32Array([
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2]);
+    function s1Sha256(msg) {
+        const l = msg.length, nb = ((l + 9 + 63) >> 6) << 6;
+        const b = new Uint8Array(nb); b.set(msg); b[l] = 0x80;
+        const dv = new DataView(b.buffer);
+        dv.setUint32(nb - 4, (l * 8) >>> 0); dv.setUint32(nb - 8, Math.floor(l / 0x20000000));
+        const H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+        const W = new Uint32Array(64);
+        const r = function (x, n) { return (x >>> n) | (x << (32 - n)); };
+        for (let o = 0; o < nb; o += 64) {
+            for (let i = 0; i < 16; i++) W[i] = dv.getUint32(o + i * 4);
+            for (let i = 16; i < 64; i++) {
+                const s0 = r(W[i - 15], 7) ^ r(W[i - 15], 18) ^ (W[i - 15] >>> 3);
+                const s1 = r(W[i - 2], 17) ^ r(W[i - 2], 19) ^ (W[i - 2] >>> 10);
+                W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+            }
+            let a = H[0], c1 = H[1], c2 = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+            for (let i = 0; i < 64; i++) {
+                const t1 = (h + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + S1_SHA_K[i] + W[i]) | 0;
+                const t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & c1) ^ (a & c2) ^ (c1 & c2))) | 0;
+                h = g; g = f; f = e; e = (d + t1) | 0; d = c2; c2 = c1; c1 = a; a = (t1 + t2) | 0;
+            }
+            H[0] += a; H[1] += c1; H[2] += c2; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+        }
+        const out = new Uint8Array(32), ov = new DataView(out.buffer);
+        for (let i = 0; i < 8; i++) ov.setUint32(i * 4, H[i]);
+        return out;
+    }
+    function s1Hmac(key, msg) {
+        const kb = new Uint8Array(64); kb.set(key.length > 64 ? s1Sha256(key) : key);
+        const ip = new Uint8Array(64 + msg.length), op = new Uint8Array(96);
+        for (let i = 0; i < 64; i++) { ip[i] = kb[i] ^ 0x36; op[i] = kb[i] ^ 0x5c; }
+        ip.set(msg, 64); op.set(s1Sha256(ip), 64);
+        return s1Sha256(op);
+    }
+    function s1B64u(bytes) {
+        let s = '';
+        for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+        return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    function s1B64uDecode(str) {
+        const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(str).length + 3) % 4));
+        const out = new Uint8Array(s.length);
+        for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+        return out;
+    }
+    function s1MediaSig(m, scope, exp, path) {
+        const msg = new TextEncoder().encode('s1m1\n' + scope + '\n' + exp + '\n' + String(path));
+        return s1B64u(s1Hmac(m.key, msg)).slice(0, 32);
+    }
+    function s1MediaTicket(path) {
+        const m = s1Media;
+        if (!m) { s1MediaLoad(false); return ''; }   // first use: load, then s1MediaResign() fixes the src
+        const now = Math.floor(Date.now() / 1000);
+        const exp = Math.ceil((now + m.ttl) / m.bucket) * m.bucket;
+        return m.scope + '.' + exp + '.' + s1MediaSig(m, m.scope, exp, path);
+    }
+    /** url must already carry ?path=...; the ticket goes last as &mt=. */
+    function s1WithTicket(url, path) {
+        const t = s1MediaTicket(path);
+        return t ? url + '&mt=' + t : url;
+    }
+    /** fetch() callers send the ticket as a header: api() paths reach the debug log. */
+    function s1TicketOpts(path) {
+        const t = s1MediaTicket(path);
+        return t ? { headers: { 'X-FAFO-S1-Media-Ticket': t } } : {};
+    }
+    /** Re-sign /files/serve|preview src/poster values that are unsigned or signed by an old key. */
+    function s1MediaResign() {
+        const m = s1Media;
+        if (!m || typeof document === 'undefined' || !document.querySelectorAll) return;
+        document.querySelectorAll('img[src],video[src],audio[src],source[src],video[poster]').forEach(function (el) {
+            ['src', 'poster'].forEach(function (attr) {
+                const v = el.getAttribute(attr);
+                if (!v || !/\/files\/(serve|preview)\?path=/.test(v) || !isS1Url(v)) return;
+                let u;
+                try { u = new URL(v, global.location.href); } catch (_) { return; }
+                const p = u.searchParams.get('path');
+                if (p == null) return;
+                const old = (u.searchParams.get('mt') || '').split('.');
+                if (old.length === 3 && old[0] === m.scope && s1MediaSig(m, old[0], old[1], p) === old[2]) return;
+                const base = v.replace(/&mt=[^&#]*/g, '');
+                const t = s1MediaTicket(p);
+                if (t) el.setAttribute(attr, base + '&mt=' + t);
+            });
+        });
+    }
+    function s1MediaLoad(force) {
+        if (s1MediaLoading) return s1MediaLoading;
+        if (s1Media && !force) return Promise.resolve(s1Media);
+        if (typeof global.fetch !== 'function') return Promise.resolve(null);
+        s1MediaLoading = (async function () {
+            try {
+                const r = await global.fetch(apiBase() + '/files/media-key', { cache: 'no-store', credentials: 'omit' });
+                const j = r && r.ok ? await r.json() : null;
+                if (j && typeof j.key === 'string' && (j.scope === 's' || j.scope === 'x')) {
+                    s1Media = {
+                        scope: j.scope, key: s1B64uDecode(j.key), kid: String(j.kid || ''),
+                        ttl: Math.max(60, Number(j.ttl) || 21600), bucket: Math.max(1, Number(j.bucket) || 900),
+                    };
+                    s1MediaKid = s1Media.kid;
+                    s1MediaResign();
+                }
+            } catch (_) { /* offline: the next health probe with a new kid retries */ }
+            s1MediaLoading = null;
+            return s1Media;
+        })();
+        return s1MediaLoading;
+    }
+
     function resolveApiBase() {
         const cfg = global.AITOOLBOX_CONFIG;
         if (cfg && cfg.API_BASE) return cfg.API_BASE;
@@ -163,6 +285,8 @@
             mode: 'cors',
             credentials: 'omit',
         });
+        const kid = r && r.ok && r.headers ? r.headers.get('X-FAFO-S1-Media-Kid') : '';
+        if (kid && kid !== s1MediaKid) s1MediaLoad(true);   // S-SEC3: new S1 process -> new media key
         return !!r && r.ok;
     }
 
@@ -1848,7 +1972,7 @@
         /** Stream a local file path through the toolbox server (for dual preview). */
         fileServeUrl(path) {
             if (!path) return '';
-            return s1WithQuery(`${apiBase()}/files/serve?path=${encodeURIComponent(path)}`);
+            return s1WithTicket(`${apiBase()}/files/serve?path=${encodeURIComponent(path)}`, path);
         },
         /**
          * Still preview URL: images pass through; videos use a first-frame JPEG
@@ -1859,7 +1983,7 @@
         filePreviewUrl(path, t = 0.5) {
             if (!path) return '';
             const sec = Number.isFinite(Number(t)) ? Number(t) : 0.5;
-            return s1WithQuery(`${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`);
+            return s1WithTicket(`${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`, path);
         },
 
         async getPairPaths(pairId) {
@@ -2062,7 +2186,8 @@
         },
 
         async getFileInfo(path) {
-            return api(`/files/info?path=${encodeURIComponent(path)}`);
+            await s1MediaLoad(false);
+            return api(`/files/info?path=${encodeURIComponent(path)}`, s1TicketOpts(path));
         },
 
         /** PC Report Library / system diagnostics (this machine only). */
@@ -2083,7 +2208,8 @@
         },
 
         async getFileText(path, maxBytes = 65536) {
-            return api(`/files/text?path=${encodeURIComponent(path)}&max_bytes=${maxBytes}`);
+            await s1MediaLoad(false);
+            return api(`/files/text?path=${encodeURIComponent(path)}&max_bytes=${maxBytes}`, s1TicketOpts(path));
         },
         async getTagRules() { return api('/tag-rules'); },
         async saveTagRules(rules) { return api('/tag-rules', { method: 'PATCH', body: JSON.stringify(rules) }); },
