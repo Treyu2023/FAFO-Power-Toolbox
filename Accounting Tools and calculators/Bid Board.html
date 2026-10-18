@@ -1,2 +1,416 @@
 <!DOCTYPE html>
-<!-- placeholder will be replaced -->
+<!-- S7-N1 Bid Board: local job-bid estimator. No network, no CDN, no web fonts. Saves to localStorage only. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=auto">
+  <title>Bid Board — FAFO Power Toolbox</title>
+  <style>
+    :root {
+      --bg: #050508; --panel: rgba(16,16,28,.72); --panel-solid: #0e0e18;
+      --line: rgba(255,255,255,.12); --text: #e8e8f0; --muted: #9a9ab0;
+      --accent: #f59e0b; --ok: #34d399; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    nav.top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 14px;
+      background: var(--panel-solid); border-bottom: 1px solid var(--line); }
+    nav.top a { color: var(--accent); text-decoration: none; font-weight: 700; }
+    .nav-title { font-weight: 800; letter-spacing: .02em; }
+    .nav-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto; min-width: 0; }
+    .btn { cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; border: 1px solid var(--line);
+      padding: 6px 10px; border-radius: 999px; background: transparent; color: var(--accent); min-height: 32px; }
+    .btn.danger { color: var(--bad); border-color: rgba(248,113,113,.35); }
+    .bb-layout { max-width: 1280px; margin: 0 auto; padding: 12px; display: flex; flex-wrap: wrap; gap: 12px; }
+    .bb-main { flex: 1 1 620px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    .bb-side { flex: 1 1 300px; min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; }
+    .panel h2, details.fafo-fold > summary { font-size: 14px; font-weight: 800; margin: 0 0 8px; }
+    details.fafo-fold > summary { cursor: pointer; }
+    label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
+    input, select, textarea { font: inherit; color: var(--text); background: #0a0a14; border: 1px solid var(--line);
+      border-radius: 8px; padding: 6px 8px; min-width: 0; width: 100%; }
+    textarea { min-height: 70px; resize: vertical; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+    .table-wrap { overflow-x: auto; max-width: 100%; }
+    table.items { width: 100%; border-collapse: collapse; min-width: 560px; }
+    table.items th, table.items td { padding: 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    table.items th { font-size: 11px; color: var(--muted); font-weight: 700; }
+    table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
+    table.items input.q, table.items input.r { width: 90px; }
+    table.items select { width: 104px; }
+    .totals { width: 100%; border-collapse: collapse; }
+    .totals td { padding: 4px 2px; }
+    .totals td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .totals tr.grand td { font-size: 18px; font-weight: 800; color: var(--accent); border-top: 1px solid var(--line); }
+    .ph { color: var(--accent); font-style: italic; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .saved-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .saved-list li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+    .print-only { display: none; }
+    @media (max-width: 640px) { .nav-actions { margin-left: 0; } }
+    @media print {
+      @page { margin: 12mm; }
+      body { background: #fff; color: #000; font-size: 11pt; }
+      nav.top, .no-print, [data-fafo-layout-toolbar], .fafo-layout-dock, .bb-side .saved, button, #tbSharedServerBar, .fafo-panel-chrome, .fafo-corner-resize, .fafo-split-handle, html body #atx-pro-bar, .ui-tooltip { display: none !important; }
+      .print-only { display: block; }
+      .bb-layout { display: block; max-width: none; padding: 0; }
+      .panel { background: none; border: 0; padding: 0 0 8pt; break-inside: avoid; }
+      details.fafo-fold { display: block; }
+      details.fafo-fold > summary { list-style: none; }
+      details.fafo-fold > summary::-webkit-details-marker { display: none; }
+      details.fafo-fold::details-content { content-visibility: visible; display: block; }
+      textarea { height: auto; min-height: 0; field-sizing: content; resize: none; }
+      details.fafo-fold[data-fafo-fold="terms"] { break-inside: auto; }
+      html body.atx-pro-pad, html body.atx-pro-pad:not(.run-active):not(.tat-stage):not(.atx-pro-min) { padding-bottom: 0 !important; }
+      input, select, textarea { border: 0; background: none; color: #000; padding: 0; appearance: none; -webkit-appearance: none; }
+      table.items { min-width: 0; }
+      table.items th, table.items td, .totals td { border-color: #999; color: #000; }
+      .totals tr.grand td { color: #000; }
+      .ph { color: #000; }
+      .table-wrap { overflow: visible; }
+    }
+  </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
+</head>
+<body>
+  <nav class="top" style="position:sticky;top:0;z-index:30">
+    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <span class="nav-title">Bid Board</span>
+    <div class="nav-actions">
+      <button type="button" class="btn" id="bbNew">New bid</button>
+      <button type="button" class="btn" id="bbSave">Save</button>
+      <button type="button" class="btn" id="bbPrint">Print / PDF</button>
+      <button type="button" class="btn" id="bbExport">Export JSON</button>
+      <label class="btn" style="flex-direction:row;color:var(--accent)">Import JSON<input type="file" id="bbImport" accept="application/json,.json" style="display:none"></label>
+    </div>
+    <span data-fafo-layout-toolbar></span>
+  </nav>
+
+  <div class="bb-layout" data-fafo-layout-root data-fafo-layout-app="accounting-tools-and-calculators-bid-board" data-fafo-layout-type="columns">
+    <main class="bb-main" data-fafo-panel="main" data-fafo-panel-title="Bid" data-fafo-flex="1" data-fafo-primary data-fafo-resp>
+      <section class="panel" aria-labelledby="hJob">
+        <div class="print-only">
+          <strong>FAFO Petro Services L.L.C.</strong><br>
+          <span class="ph">[Company address — placeholder]</span> · <span class="ph">[Phone — placeholder]</span> · <span class="ph">[License # — placeholder]</span>
+        </div>
+        <h2 id="hJob">Job</h2>
+        <div class="grid2">
+          <label>Bid title<input id="bbTitle" placeholder="e.g. Dispenser swap"></label>
+          <label>Customer<input id="bbCustomer" placeholder="Customer name"></label>
+          <label>Site / location<input id="bbSite" placeholder="Site"></label>
+          <label>Bid date<input id="bbDate" type="date"></label>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="hItems">
+        <h2 id="hItems">Line items</h2>
+        <div class="table-wrap">
+          <table class="items">
+            <thead><tr><th>Description</th><th>Type</th><th class="num">Qty / hrs</th><th class="num">Rate ($)</th><th class="num">Line total</th><th class="no-print"><span class="sr-only">Remove</span></th></tr></thead>
+            <tbody id="bbRows"></tbody>
+          </table>
+        </div>
+        <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="btn" id="bbAddLabor">+ Labor line</button>
+          <button type="button" class="btn" id="bbAddMat">+ Material line</button>
+        </div>
+        <p class="muted no-print">Blank rate on a labor line uses the default labor rate below. All rates are placeholders until you enter your own.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="hTot">
+        <h2 id="hTot">Totals</h2>
+        <table class="totals" aria-live="polite">
+          <tr><td>Labor</td><td class="num" id="tLabor">$0.00</td></tr>
+          <tr><td>Material</td><td class="num" id="tMat">$0.00</td></tr>
+          <tr><td>Subtotal</td><td class="num" id="tSub">$0.00</td></tr>
+          <tr><td>Markup (<span id="tMarkupPct">0</span>%)</td><td class="num" id="tMarkup">$0.00</td></tr>
+          <tr><td>Travel</td><td class="num" id="tTravel">$0.00</td></tr>
+          <tr><td>Tax (<span id="tTaxPct">0</span>% of <span id="tTaxBaseLbl">taxable</span>)</td><td class="num" id="tTax">$0.00</td></tr>
+          <tr class="grand"><td>Bid total</td><td class="num" id="tGrand">$0.00</td></tr>
+        </table>
+      </section>
+    </main>
+
+    <aside class="bb-side" data-fafo-panel="side" data-fafo-panel-title="Settings" data-fafo-panel-min="160" data-fafo-panel-default="320">
+      <details class="fafo-fold panel" data-fafo-fold="rates" open>
+        <summary>Rates and markup</summary>
+        <div class="grid2">
+          <label>Default labor rate ($/hr)<input id="bbLaborRate" type="number" min="0" step="0.01" placeholder="0.00 (placeholder)"></label>
+          <label>Markup (%)<input id="bbMarkup" type="number" min="0" step="0.01" placeholder="0"></label>
+          <label>Sales tax (%)<input id="bbTax" type="number" min="0" step="0.001" placeholder="0"></label>
+          <label>Tax applies to<select id="bbTaxBase"><option value="all">Everything (subtotal + markup + travel)</option><option value="material">Material only (+ its markup)</option><option value="none">No tax</option></select></label>
+        </div>
+      </details>
+      <details class="fafo-fold panel" data-fafo-fold="travel" open>
+        <summary>Travel</summary>
+        <div class="grid2">
+          <label>Round-trip miles<input id="bbMiles" type="number" min="0" step="0.1" placeholder="0"></label>
+          <label>Rate per mile ($)<input id="bbMileRate" type="number" min="0" step="0.001" placeholder="0.000 (placeholder)"></label>
+          <label>Trips<input id="bbTrips" type="number" min="0" step="1" placeholder="1"></label>
+          <label>Flat trip charge ($)<input id="bbTripFee" type="number" min="0" step="0.01" placeholder="0.00"></label>
+        </div>
+      </details>
+      <details class="fafo-fold panel" data-fafo-fold="terms" data-collapsed-default>
+        <summary>Terms</summary>
+        <label>Terms and notes (printed)<textarea id="bbTerms" placeholder="[Payment terms — placeholder]. [Bid valid for N days — placeholder]."></textarea></label>
+      </details>
+      <details class="fafo-fold panel saved" data-fafo-fold="saved" open>
+        <summary>Saved bids</summary>
+        <ul class="saved-list" id="bbSaved"></ul>
+        <p class="muted">Saved in this browser only (localStorage). Use Export JSON for a backup.</p>
+      </details>
+    </aside>
+  </div>
+
+<script id="bb-math">
+/* Bid Board money math. Integer cents everywhere; percents in basis points (1% = 100 bp);
+ * quantities in thousandths (milli). Rounding: half away from zero, once per step.
+ * Order: line totals -> subtotal -> markup -> travel -> tax base -> tax -> grand. */
+(function (root) {
+  'use strict';
+  function rdiv(n, d) { // integer n/d rounded half away from zero
+    var s = (n < 0) !== (d < 0) ? -1 : 1; n = Math.abs(n); d = Math.abs(d);
+    return s * Math.floor((2 * n + d) / (2 * d));
+  }
+  function parseScaled(v, places) { // "12.345" -> integer * 10^places, no float multiply
+    var t = String(v == null ? '' : v).trim().replace(/[$,\s]/g, '');
+    if (!t || !/^-?\d*(\.\d*)?$/.test(t) || t === '-' || t === '.') return 0;
+    var neg = t[0] === '-'; if (neg) t = t.slice(1);
+    var parts = t.split('.'); var ip = parts[0] || '0'; var fp = parts[1] || '';
+    var keep = fp.slice(0, places); while (keep.length < places) keep += '0';
+    var n = parseInt(ip, 10) * Math.pow(10, places) + (places ? parseInt(keep, 10) : 0);
+    var nextDigit = fp.length > places ? parseInt(fp[places], 10) : 0;
+    if (nextDigit >= 5) n += 1; // half away from zero on the digit past precision
+    return neg ? -n : n;
+  }
+  function toCents(v) { return parseScaled(v, 2); }
+  function toMilli(v) { return parseScaled(v, 3); }
+  function toBp(v) { return parseScaled(v, 2); }       // "7.25" % -> 725 bp
+  function toBp3(v) { return parseScaled(v, 3); }      // "8.875" % -> 8875 (thousandths of a percent)
+  function fmt(c) {
+    var neg = c < 0; c = Math.abs(c);
+    var d = Math.floor(c / 100), r = c % 100;
+    return (neg ? '-$' : '$') + String(d).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + (r < 10 ? '0' : '') + r;
+  }
+  function lineCents(qtyMilli, rateCents) { return rdiv(qtyMilli * rateCents, 1000); }
+  /* bid: { items:[{type:'labor'|'material', qty, rate}], laborRate, markup, tax, taxBase, miles, mileRate, trips, tripFee }
+   * string inputs; returns integer cents. */
+  function compute(bid) {
+    var labor = 0, mat = 0, lines = [];
+    var defLabor = toCents(bid.laborRate);
+    (bid.items || []).forEach(function (it) {
+      var rate = String(it.rate == null ? '' : it.rate).trim() === '' && it.type === 'labor' ? defLabor : toCents(it.rate);
+      var c = lineCents(toMilli(it.qty), rate);
+      lines.push(c);
+      if (it.type === 'labor') labor += c; else mat += c;
+    });
+    var sub = labor + mat;
+    var mBp = toBp(bid.markup);
+    var markup = rdiv(sub * mBp, 10000);
+    var matMarkup = rdiv(mat * mBp, 10000);
+    var tripsStr = String(bid.trips == null ? '' : bid.trips).trim();
+    var trips = tripsStr === '' ? 1 : Math.max(0, Math.round(Number(tripsStr) || 0));
+    // mileRate in tenths of a cent (3 places of dollars) so 0.655/mi stays exact
+    var mileMilliDollars = parseScaled(bid.mileRate, 3);
+    var perTrip = rdiv(toMilli(bid.miles) * mileMilliDollars, 10000) + toCents(bid.tripFee); // milli-mi * milli-$ /1e6 $ -> *100 cents => /1e4
+    var travel = perTrip * trips;
+    var base = bid.taxBase === 'none' ? 0 : bid.taxBase === 'material' ? mat + matMarkup : sub + markup + travel;
+    var tRate = toBp3(bid.tax); // thousandths of a percent: 100000 = 100%
+    var tax = bid.taxBase === 'none' ? 0 : rdiv(base * tRate, 100000);
+    return { lines: lines, labor: labor, material: mat, subtotal: sub, markup: markup, travel: travel,
+      taxBase: base, tax: tax, grand: sub + markup + travel + tax };
+  }
+  var api = { rdiv: rdiv, parseScaled: parseScaled, toCents: toCents, toMilli: toMilli, toBp: toBp, fmt: fmt, lineCents: lineCents, compute: compute };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BidMath = api;
+})(this);
+</script>
+
+<script id="bb-app">
+(function () {
+  'use strict';
+  var M = window.BidMath;
+  var KEY_CUR = 'fafo.bidboard.current.v1';
+  var KEY_LIST = 'fafo.bidboard.saved.v1';
+  var $ = function (id) { return document.getElementById(id); };
+  var FIELDS = { title: 'bbTitle', customer: 'bbCustomer', site: 'bbSite', date: 'bbDate', laborRate: 'bbLaborRate',
+    markup: 'bbMarkup', tax: 'bbTax', taxBase: 'bbTaxBase', miles: 'bbMiles', mileRate: 'bbMileRate', trips: 'bbTrips',
+    tripFee: 'bbTripFee', terms: 'bbTerms' };
+  var bid;
+
+  function blank() {
+    return { id: 'bid-' + Date.now().toString(36), title: '', customer: '', site: '', date: new Date().toISOString().slice(0, 10),
+      laborRate: '', markup: '', tax: '', taxBase: 'all', miles: '', mileRate: '', trips: '', tripFee: '', terms: '',
+      items: [{ type: 'labor', desc: '', qty: '', rate: '' }, { type: 'material', desc: '', qty: '', rate: '' }] };
+  }
+  function readJSON(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
+  function writeJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function sane(b) {
+    var o = blank(); if (!b || typeof b !== 'object') return o;
+    Object.keys(FIELDS).forEach(function (f) { if (b[f] != null) o[f] = String(b[f]); });
+    if (b.id) o.id = String(b.id);
+    if (Array.isArray(b.items)) o.items = b.items.slice(0, 500).map(function (it) {
+      return { type: it && it.type === 'labor' ? 'labor' : 'material', desc: String((it && it.desc) || ''),
+        qty: String((it && it.qty) || ''), rate: String((it && it.rate) || '') };
+    });
+    if (['all', 'material', 'none'].indexOf(o.taxBase) < 0) o.taxBase = 'all';
+    return o;
+  }
+  function el(tag, attrs) { var e = document.createElement(tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  function renderRows() {
+    var tb = $('bbRows'); tb.textContent = '';
+    bid.items.forEach(function (it, i) {
+      var tr = document.createElement('tr');
+      var d = el('input', { 'aria-label': 'Description ' + (i + 1), placeholder: it.type === 'labor' ? 'Labor' : 'Material' }); d.value = it.desc;
+      var t = el('select', { 'aria-label': 'Type ' + (i + 1) });
+      ['labor', 'material'].forEach(function (v) { var o = el('option', { value: v }); o.textContent = v === 'labor' ? 'Labor' : 'Material'; t.appendChild(o); });
+      t.value = it.type;
+      var q = el('input', { 'class': 'q', type: 'number', min: '0', step: '0.001', 'aria-label': 'Quantity ' + (i + 1) }); q.value = it.qty;
+      var r = el('input', { 'class': 'r', type: 'number', min: '0', step: '0.01', 'aria-label': 'Rate ' + (i + 1) }); r.value = it.rate;
+      var tot = el('td', { 'class': 'num' });
+      var x = el('button', { type: 'button', 'class': 'btn danger', 'aria-label': 'Remove line ' + (i + 1) }); x.textContent = '×';
+      d.oninput = function () { it.desc = d.value; persist(); };
+      t.onchange = function () { it.type = t.value; recalc(); };
+      q.oninput = function () { it.qty = q.value; recalc(); };
+      r.oninput = function () { it.rate = r.value; recalc(); };
+      x.onclick = function () { bid.items.splice(i, 1); renderRows(); recalc(); };
+      [d, t, q, r].forEach(function (n, k) { var td = document.createElement('td'); if (k > 1) td.className = 'num'; td.appendChild(n); tr.appendChild(td); });
+      tr.appendChild(tot);
+      var tdx = el('td', { 'class': 'no-print' }); tdx.appendChild(x); tr.appendChild(tdx);
+      tb.appendChild(tr);
+    });
+  }
+  function recalc() {
+    var r = M.compute(bid);
+    var cells = $('bbRows').querySelectorAll('tr > td.num:nth-child(5)');
+    r.lines.forEach(function (c, i) { if (cells[i]) cells[i].textContent = M.fmt(c); });
+    $('tLabor').textContent = M.fmt(r.labor); $('tMat').textContent = M.fmt(r.material);
+    $('tSub').textContent = M.fmt(r.subtotal); $('tMarkup').textContent = M.fmt(r.markup);
+    $('tTravel').textContent = M.fmt(r.travel); $('tTax').textContent = M.fmt(r.tax); $('tGrand').textContent = M.fmt(r.grand);
+    $('tMarkupPct').textContent = bid.markup || '0'; $('tTaxPct').textContent = bid.tax || '0';
+    $('tTaxBaseLbl').textContent = bid.taxBase === 'material' ? 'material' : bid.taxBase === 'none' ? 'nothing' : 'all';
+    persist();
+  }
+  function persist() { writeJSON(KEY_CUR, bid); }
+  function fillForm() {
+    Object.keys(FIELDS).forEach(function (f) { $(FIELDS[f]).value = bid[f]; });
+    renderRows(); recalc();
+  }
+  function renderSaved() {
+    var ul = $('bbSaved'); ul.textContent = '';
+    var list = readJSON(KEY_LIST, []);
+    if (!list.length) { var li0 = document.createElement('li'); li0.className = 'muted'; li0.textContent = 'No saved bids yet.'; ul.appendChild(li0); return; }
+    list.forEach(function (b) {
+      var li = document.createElement('li');
+      var s = document.createElement('span'); s.textContent = (b.title || '(untitled)') + ' · ' + (b.customer || '—') + ' · ' + M.fmt(M.compute(b).grand);
+      var o = el('button', { type: 'button', 'class': 'btn' }); o.textContent = 'Open';
+      var del = el('button', { type: 'button', 'class': 'btn danger' }); del.textContent = 'Remove';
+      o.onclick = function () { bid = sane(b); fillForm(); };
+      del.onclick = function () {
+        if (!confirm('Remove saved bid "' + (b.title || '(untitled)') + '" from this browser?')) return;
+        writeJSON(KEY_LIST, readJSON(KEY_LIST, []).filter(function (x) { return x.id !== b.id; })); renderSaved();
+      };
+      li.appendChild(s); li.appendChild(o); li.appendChild(del); ul.appendChild(li);
+    });
+  }
+  function toast(m) { try { if (window.AIToolboxUI && AIToolboxUI.toast) AIToolboxUI.toast(m, 'ok'); } catch (e) {} }
+
+  Object.keys(FIELDS).forEach(function (f) {
+    var n = $(FIELDS[f]); n.addEventListener(n.tagName === 'SELECT' ? 'change' : 'input', function () { bid[f] = n.value; recalc(); });
+  });
+  $('bbAddLabor').onclick = function () { bid.items.push({ type: 'labor', desc: '', qty: '', rate: '' }); renderRows(); recalc(); };
+  $('bbAddMat').onclick = function () { bid.items.push({ type: 'material', desc: '', qty: '', rate: '' }); renderRows(); recalc(); };
+  $('bbNew').onclick = function () { if (confirm('Start a new blank bid? Unsaved changes to the current bid are replaced.')) { bid = blank(); fillForm(); } };
+  $('bbSave').onclick = function () {
+    var list = readJSON(KEY_LIST, []).filter(function (x) { return x.id !== bid.id; });
+    list.unshift(JSON.parse(JSON.stringify(bid)));
+    toast(writeJSON(KEY_LIST, list) ? 'Bid saved in this browser' : 'Save failed (storage full or blocked)'); renderSaved();
+  };
+  $('bbPrint').onclick = function () { window.print(); };
+  $('bbExport').onclick = function () {
+    var data = JSON.stringify({ app: 'fafo-bidboard', v: 1, current: bid, saved: readJSON(KEY_LIST, []) }, null, 2);
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    a.download = 'bidboard-' + (bid.date || 'export') + '.json'; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  };
+  $('bbImport').onchange = function (ev) {
+    var f = ev.target.files && ev.target.files[0]; if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      try {
+        var j = JSON.parse(rd.result);
+        if (!j || j.app !== 'fafo-bidboard') throw new Error('not a Bid Board export');
+        var mine = readJSON(KEY_LIST, []), ids = {};
+        mine.forEach(function (x) { ids[x.id] = 1; });
+        (Array.isArray(j.saved) ? j.saved : []).forEach(function (x) { var s = sane(x); if (!ids[s.id]) { mine.push(s); ids[s.id] = 1; } });
+        writeJSON(KEY_LIST, mine);
+        if (j.current) { bid = sane(j.current); fillForm(); }
+        renderSaved(); toast('Imported');
+      } catch (e) { alert('Import failed: ' + e.message); }
+      ev.target.value = '';
+    };
+    rd.readAsText(f);
+  };
+
+  bid = sane(readJSON(KEY_CUR, null));
+  fillForm(); renderSaved();
+})();
+</script>
+<script id="bb-print">
+/* N1-R5: every fold prints open; afterprint restores each fold's prior state.
+ * fafo-chrome.js bindFold writes fafo-fold:* on every 'toggle' (fired async for programmatic .open changes too),
+ * so while printing we stop those toggles in the capture phase and, as a backstop, restore the fafo-fold:* keys. */
+(function () {
+  'use strict';
+  var FOLDS = 'details.fafo-fold';
+  var saved = null, keys = null, guard = false, releaseTimer = 0;
+  function snapKeys() {
+    var o = {};
+    try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('fafo-fold:') === 0) o[k] = localStorage.getItem(k); } } catch (e) {}
+    return o;
+  }
+  function putKeys(o) {
+    try {
+      var now = snapKeys(), k;
+      for (k in now) if (!(k in o)) localStorage.removeItem(k);
+      for (k in o) if (now[k] !== o[k]) localStorage.setItem(k, o[k]);
+    } catch (e) {}
+  }
+  window.addEventListener('toggle', function (ev) {
+    var t = ev.target;
+    if (guard && t && t.matches && t.matches(FOLDS)) ev.stopImmediatePropagation();
+  }, true);
+  function before() {
+    if (saved) return;
+    clearTimeout(releaseTimer);
+    guard = true; keys = snapKeys(); saved = [];
+    document.querySelectorAll(FOLDS).forEach(function (d) { saved.push([d, d.open]); if (!d.open) d.open = true; });
+  }
+  function after() {
+    if (!saved) return;
+    saved.forEach(function (p) { if (p[0].open !== p[1]) p[0].open = p[1]; });
+    saved = null;
+    var k = keys;
+    // let the queued toggle events drain while still guarded, then put the keys back exactly
+    releaseTimer = setTimeout(function () { requestAnimationFrame(function () { setTimeout(function () { putKeys(k); guard = false; }, 0); }); }, 0);
+  }
+  window.addEventListener('beforeprint', before);
+  window.addEventListener('afterprint', after);
+  try {
+    var mq = window.matchMedia && window.matchMedia('print');
+    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { if (e.matches) before(); else after(); });
+  } catch (e) {}
+})();
+</script>
+<script src="../shared/fafo-chrome.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+    <script src="../shared/aitoolbox-version.js?v=3.5.06"></script>
+    <script src="../shared/aitoolbox-runtime.js?v=3.5.06"></script>
+    <script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+</body>
+</html>
