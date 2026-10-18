@@ -7061,6 +7061,10 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       bonus: { type: 'perfect', lives: 2, title: 'Sovereign Rematch', desc: 'Optional: 2-life throne decree.' },
     },
   ];
+  // T-CAMP-a (C-5): acts are data-driven; the highest node.act sets the act bound (3 until Acts IV-VI land).
+  const CAMP_ACT_MAX = TERRITORIES.reduce(function (m, t) { return Math.max(m, t.act | 0); }, 1);
+  const CAMP_ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
+  function campActMeta(n) { return (typeof TAT76_ACT_META !== 'undefined' && TAT76_ACT_META && TAT76_ACT_META[n]) || null; }
 
   const MINI_GAMES = [
     { id: 'wordrush', emoji: '⚡', name: 'Word Rush', desc: 'One word at a time — clear a chain as fast as you can', type: 'wordrush', words: 15 },
@@ -9549,7 +9553,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       return b.text();
     }
     if (campaignRun && selectedTerritory) {
-      const t = selectedTerritory;
+      const t = (running && TAT71.phaseNode && TAT71.phaseNode.id === selectedTerritory.id) ? TAT71.phaseNode : selectedTerritory; // T-CAMP-a phase pack
       if (t.mode === 'lesson') return (LESSONS[t.lesson] || LESSONS.home)();
       if (t.mode === 'code') return pick(CODE_SNIPPETS);
       // Prefer library passages during campaign free-type territories
@@ -9952,8 +9956,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         }
         if (t.boss) {
           const actId = (t.act | 0) || 1;
-          const toastTitle = actId === 3 ? 'Act III clear' : (actId === 2 ? 'Act II clear' : 'Act I clear');
-          const toastSub = t.id === 'sovereign' ? 'Keystone Sovereign falls — Throne Approach complete'
+          const toastTitle = actId >= 4 ? ('Act ' + CAMP_ROMAN[actId] + ' clear') : actId === 3 ? 'Act III clear' : (actId === 2 ? 'Act II clear' : 'Act I clear');
+          const toastSub = actId >= 4 ? (t.name + ' falls — ' + ((campActMeta(actId) || {}).title || 'act') + ' complete') : t.id === 'sovereign' ? 'Keystone Sovereign falls — Throne Approach complete'
             : (t.id === 'serpent' ? 'Syntax Serpent falls — The Road complete' : 'Home-Row Warden falls — Awakening complete');
           showComboToast(toastTitle, toastSub);
         }
@@ -11044,8 +11048,15 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   }
   function conquerTerritory(id, stars, territory) {
     const data = loadCampaign();
+    let rewardXp = 0;
     if (!data.conquered.includes(id)) {
       data.conquered.push(id);
+      // T-CAMP-a (C-1): one-time reward.xp on first clear; campaign.v3.rewarded (additive) keeps a replay from paying again
+      if (!Array.isArray(data.rewarded)) data.rewarded = [];
+      if (territory && territory.reward && (territory.reward.xp | 0) > 0 && !data.rewarded.includes(id)) {
+        data.rewarded.push(id);
+        rewardXp = territory.reward.xp | 0;
+      }
     }
     const prev = data.stars[id] | 0;
     data.stars[id] = Math.max(prev, stars | 0);
@@ -11061,6 +11072,9 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       data.journal = [entry, ...data.journal.filter((j) => j.id !== id)].slice(0, 24);
     }
     saveCampaign(data);
+    if (rewardXp) {
+      try { const g = tat70AddXp(rewardXp); showComboToast('First clear', '+' + ((g && g.gained) | 0) + ' XP · ' + territory.name); } catch (_) {}
+    }
     try { tat71OnNodeCleared(id, territory); } catch (_) {}
     renderCampaign();
     renderJournal();
@@ -11081,6 +11095,12 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       ban.classList.add('show');
       const cp0 = (typeof tat71EnsureCampaign === 'function') ? tat71EnsureCampaign() : { act: 1 };
       const actN = (cp0.act | 0) || 1;
+      const m4 = actN >= 4 ? campActMeta(actN) : null;
+      if (m4) {
+        $('storyChapter').textContent = m4.chapter; $('storyTitle').textContent = m4.title; $('storyBody').textContent = m4.blurb; $('storyQuote').textContent = m4.quote;
+        if ($('campChapterTag')) $('campChapterTag').textContent = m4.label;
+        return;
+      }
       $('storyChapter').textContent = actN === 3 ? 'Act III · Throne Approach' : (actN === 2 ? 'Act II · The Road' : 'Act I · Awakening');
       $('storyTitle').textContent = actN === 3 ? 'Throne Approach' : (actN === 2 ? 'The Road' : 'The Keyboard Awakens');
       $('storyBody').textContent = 'Keystroke Chronicles: clear Act I → II → III. Unlock Act II after Home-Row Warden; Act III after Syntax Serpent. Three lives per act — XP kept on retry.';
@@ -14714,14 +14734,15 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   };
   function tat71NormalizeCampaign(c) {
     c = (c && typeof c === 'object' && !Array.isArray(c)) ? c : {};
-    var cleared = Array.isArray(c.cleared) ? c.cleared.filter(function (id) { return typeof id === 'string'; }).slice(0, 64) : [];
+    var cleared = Array.isArray(c.cleared) ? c.cleared.filter(function (id) { return typeof id === 'string'; }).slice(0, 128) : [];
     var lives = Number.isFinite(c.lives) ? Math.max(0, Math.min(99, c.lives | 0)) : ACT1_LIVES;
     var bossHp = Number.isFinite(c.bossHp) ? Math.max(0, Math.min(99, c.bossHp | 0)) : 0;
-    var act = Number.isFinite(c.act) ? Math.max(1, Math.min(3, c.act | 0)) : 1;
+    var act = Number.isFinite(c.act) ? Math.max(1, Math.min(CAMP_ACT_MAX, c.act | 0)) : 1;
     // Derive act from boss clears so reload mid-Act II/III stays correct
     if (cleared.indexOf('sovereign') >= 0) act = Math.max(act, 3);
     else if (cleared.indexOf('serpent') >= 0) act = Math.max(act, 3);
     else if (cleared.indexOf('warden') >= 0) act = Math.max(act, 2);
+    TERRITORIES.forEach(function (t) { if (t.boss && (t.act | 0) >= 3 && cleared.indexOf(t.id) >= 0) act = Math.max(act, Math.min(CAMP_ACT_MAX, (t.act | 0) + 1)); }); // T-CAMP-a
     var nodeId = (typeof c.nodeId === 'string' && c.nodeId) ? c.nodeId : 'meadow';
     if (!TERRITORIES.some(function (t) { return t.id === nodeId; })) nodeId = 'meadow';
     var node = TERRITORIES.find(function (t) { return t.id === nodeId; });
@@ -14735,7 +14756,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       nodeId: TAT71.campaign.nodeId,
       lives: TAT71.campaign.lives | 0,
       bossHp: TAT71.campaign.bossHp | 0,
-      cleared: (TAT71.campaign.cleared || []).slice(0, 64),
+      cleared: (TAT71.campaign.cleared || []).slice(0, 128),
     };
   }
   function tat71PersistCampaign() {
@@ -14775,6 +14796,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     var cp = tat71EnsureCampaign();
     cp.nodeId = t.id;
     cp.bossHp = (t.bossHpMax | 0) || 12;
+    TAT71.phase = 0; TAT71.phaseNode = null; // T-CAMP-a boss phases
+    try { document.body.removeAttribute('data-tat-boss-phase'); } catch (_) {}
     TAT71.campaign = cp;
     tat71PersistCampaign();
     if ($('campBossHp')) $('campBossHp').textContent = String(cp.bossHp);
@@ -14782,6 +14805,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   function tat71OnBossMiss() {
     var cp = tat71EnsureCampaign();
     cp.bossHp = Math.max(0, (cp.bossHp | 0) - 1);
+    try { tat71BossPhase(selectedTerritory, cp); } catch (_) {}
     TAT71.campaign = cp;
     tat71PersistCampaign();
     if ($('campBossHp')) $('campBossHp').textContent = String(cp.bossHp);
@@ -14789,6 +14813,28 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     showComboToast(bName + ' HP ' + cp.bossHp, cp.bossHp <= 0 ? 'Patience gone — finish fails' : 'Miss drained the boss meter');
     if (cp.bossHp <= 0) {
       try { finishTest('complete'); } catch (_) {}
+    }
+  }
+  // T-CAMP-a: node.phases = [{hp, title, text, pack}] in falling hp order. Each fires once per boss run when HP reaches its hp.
+  // pack ({mode, lesson} or {diff}) swaps the untyped tail of the passage from the next word on, through getTargetText.
+  function tat71BossPhase(t, cp) {
+    var ph = (t && t.boss && Array.isArray(t.phases)) ? t.phases : [];
+    while ((cp.bossHp | 0) > 0 && (TAT71.phase | 0) < ph.length && (cp.bossHp | 0) <= (ph[TAT71.phase | 0].hp | 0)) {
+      var p = ph[TAT71.phase | 0] || {};
+      var n = TAT71.phase = (TAT71.phase | 0) + 1;
+      try { document.body.setAttribute('data-tat-boss-phase', String(n + 1)); } catch (_) {}
+      if (p.text && $('storyBody')) $('storyBody').textContent = p.text;
+      try { tat76QueueToast(function () { tat76ShowActToast(p.title || ('Phase ' + (n + 1)), p.text || ''); }); } catch (_) {}
+      if (p.pack && running && typeof target === 'string') {
+        TAT71.phaseNode = Object.assign({}, t, p.pack);
+        var cut = target.indexOf(' ', Math.max(0, index));
+        if (cut > 0) {
+          var tail = ' ' + getTargetText();
+          target = target.slice(0, cut) + tail;
+          wrongFlags = wrongFlags.slice(0, cut).concat(new Array(tail.length).fill(false));
+          try { renderPrompt(); highlightNext(); } catch (_) {}
+        }
+      }
     }
   }
   function tat71LoseLife(territory) {
@@ -14823,8 +14869,13 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         showComboToast('Act II complete', 'Keystroke Chronicles — The Road · Act III unlocked');
         try { tat82ShowDialogue('act', 3); } catch (_) {}
       } else if (id === 'sovereign') {
-        cp.act = 3;
-        showComboToast('Act III complete', 'Keystroke Chronicles — Throne Approach');
+        cp.act = Math.min(CAMP_ACT_MAX, 4);
+        if (cp.act === 4) cp.lives = ACT1_LIVES;
+        showComboToast('Act III complete', 'Keystroke Chronicles — Throne Approach' + (cp.act === 4 ? ' · Act IV unlocked' : ''));
+      } else if (actId >= 4) { // T-CAMP-a
+        cp.act = Math.min(CAMP_ACT_MAX, actId + 1);
+        cp.lives = ACT1_LIVES;
+        showComboToast('Act ' + CAMP_ROMAN[actId] + ' complete', 'Keystroke Chronicles — ' + ((campActMeta(actId) || {}).title || territory.name) + (actId < CAMP_ACT_MAX ? ' · Act ' + CAMP_ROMAN[actId + 1] + ' unlocked' : ''));
       } else {
         cp.act = Math.max(cp.act | 0, actId);
         showComboToast('Boss defeated', territory.name || 'Boss');
@@ -15924,7 +15975,7 @@ function tat73Init() {
   function tat74Grant(kind, flavor) {
     if (!TAT74.inv[kind] && TAT74.inv[kind] !== 0) return;
     TAT74.inv[kind] = (TAT74.inv[kind] | 0) + 1;
-    if (kind === 'xpNugget') {
+    if (kind === 'xpNugget' && !campaignRun) { // T-CAMP-a (C-1): campaign earns XP only from first-clear reward.xp
       try { if (typeof tat70AddXp === 'function') tat70AddXp(12); } catch (_) {}
     }
     if (kind === 'fxBurst') {
@@ -16393,7 +16444,7 @@ function tat73Init() {
       if (!tat76Rm()) panel.classList.add('tat76-act-clear-sheen');
       setTimeout(function () { try { panel.classList.remove('tat76-act-clear-sheen'); } catch (_) {} }, 1200);
     }
-    var label = actId === 3 ? 'Act III Cleared' : (actId === 2 ? 'Act II Cleared' : 'Act I Cleared');
+    var label = actId >= 4 ? ('Act ' + CAMP_ROMAN[actId] + ' Cleared') : actId === 3 ? 'Act III Cleared' : (actId === 2 ? 'Act II Cleared' : 'Act I Cleared');
     // toast queue: combo (already shown) → level (if any) → act
     tat76QueueToast(function () { tat76ShowActToast(label, sub || 'Keystroke Chronicles'); });
   }
@@ -16409,7 +16460,7 @@ function tat73Init() {
     });
   }
   function tat76SetViewAct(act, fromUser) {
-    act = Math.max(1, Math.min(3, act | 0));
+    act = Math.max(1, Math.min(CAMP_ACT_MAX, act | 0));
     var prev = TAT76.viewAct;
     TAT76.viewAct = act;
     var row = $('tat76ActChips');
@@ -16427,7 +16478,7 @@ function tat73Init() {
     }
     var ban = $('storyBanner');
     if (ban) {
-      ban.classList.remove('tat76-act-1', 'tat76-act-2', 'tat76-act-3');
+      ban.classList.remove('tat76-act-1', 'tat76-act-2', 'tat76-act-3', 'tat76-act-4', 'tat76-act-5', 'tat76-act-6');
       ban.classList.add('tat76-act-' + act);
     }
     var wm = $('tat76BannerWm');
@@ -16775,7 +16826,7 @@ function tat73Init() {
         if (territory && territory.boss) {
           var actId = tat76ActOf(territory);
           // toast queue: combo already fired in conquer path; level may follow; act last
-          var sub = id === 'sovereign' ? 'Keystone Sovereign falls'
+          var sub = actId >= 4 ? ((territory.name || 'Boss') + ' falls') : id === 'sovereign' ? 'Keystone Sovereign falls'
             : (id === 'serpent' ? 'Syntax Serpent falls' : 'Home-Row Warden falls');
           // defer act toast slightly so combo→level→act order holds
           setTimeout(function () { tat76FanfareAct(actId, sub); }, tat76Rm() ? 50 : 300);
@@ -16793,7 +16844,7 @@ function tat73Init() {
         var act = t ? tat76ActOf(t) : (TAT76.viewAct | 0);
         var ban = $('storyBanner');
         if (ban) {
-          ban.classList.remove('tat76-act-1', 'tat76-act-2', 'tat76-act-3');
+          ban.classList.remove('tat76-act-1', 'tat76-act-2', 'tat76-act-3', 'tat76-act-4', 'tat76-act-5', 'tat76-act-6');
           ban.classList.add('tat76-act-' + act);
         }
         var meta = TAT76_ACT_META[act] || TAT76_ACT_META[1];
@@ -16902,7 +16953,7 @@ function tat73Init() {
   function tat76Init() {
     try {
       var cp = typeof tat71EnsureCampaign === 'function' ? tat71EnsureCampaign() : { act: 1 };
-      TAT76.viewAct = Math.max(1, Math.min(3, (cp.act | 0) || 1));
+      TAT76.viewAct = Math.max(1, Math.min(CAMP_ACT_MAX, (cp.act | 0) || 1));
     } catch (_) { TAT76.viewAct = 1; }
     tat76BindChips();
     tat76BindFailBtns();
@@ -19500,7 +19551,7 @@ function tat73Init() {
       var _fan = tat76FanfareAct;
       tat76FanfareAct = function (actId, sub) {
         try { _fan.apply(this, arguments); } catch (_) {}
-        var label = actId === 3 ? 'Act III Cleared' : (actId === 2 ? 'Act II Cleared' : 'Act I Cleared');
+        var label = actId >= 4 ? ('Act ' + CAMP_ROMAN[actId] + ' Cleared') : actId === 3 ? 'Act III Cleared' : (actId === 2 ? 'Act II Cleared' : 'Act I Cleared');
         tat81Enqueue('act', function () {
           tat81ShowShared(label, sub || 'Keystroke Chronicles', 'act');
         });
