@@ -4539,6 +4539,9 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
 #tprogFold .tprog-foot button:disabled { opacity: 0.45; cursor: default; }
 </style>
 <style id="tat-tsave">
+#tsvHeadChip.tsv-head-chip { display: block; width: fit-content; max-width: 100%; min-width: 0; margin: 4px auto 2px; padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(0, 243, 255, 0.4); background: rgba(0, 0, 0, 0.28); color: inherit; font: 700 11px/1.3 inherit; cursor: pointer; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.tsv-head-chip:hover { border-color: #00f3ff; }
+.tsv-head-chip:focus-visible { outline: 2px solid #00f3ff; outline-offset: 2px; }
 #tatSaveFold .tsv-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 #tatSaveFold .tsv-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 8px; margin: 6px 0; }
 #tatSaveFold .tsv-slot { min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(0, 243, 255, 0.22); background: rgba(0, 0, 0, 0.22); overflow-wrap: anywhere; }
@@ -5183,6 +5186,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       <div class="fafo-panel-body fafo-scroll-pane">
       <h1>⌨️ TYPING ASSISTANT TRAINER <span id="tatVer" class="tat-ver" title="PET-T90 Trainer: Polish — cite T90 / POLISH">T90</span></h1>
       <p>Campaign · Novel Mode · boards · mini-games · combos · high scores</p>
+      <!-- T-PROG-b: active save slot chip (opens Style & library at the slot controls). Text is set by the T-SAVE UI render(). -->
+      <button type="button" class="tsv-head-chip" id="tsvHeadChip" aria-label="Active save slot. Open save slots" aria-controls="tatSaveFold">Slot: …</button>
       <details class="fafo-fold tat-fold" id="tatHeadFold" data-fafo-fold="header-tools" data-collapsed-default>
       <summary class="section-label">Save data · export · break games</summary>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center">
@@ -5480,6 +5485,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
             $('tsvSlots').innerHTML = h;
             ['tsvCopyFrom', 'tsvCopyTo', 'tsvImportTo'].forEach(function (sid) { var el = $(sid), v = el.value; el.innerHTML = i.slots.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join(''); if (v) el.value = v; });
             $('tsvAdd').disabled = i.slots.length >= 8;
+            var hc = $('tsvHeadChip'), act = i.slots.filter(function (x) { return x.id === i.active; })[0]; // T-PROG-b header chip
+            if (hc && act) { hc.textContent = 'Slot: ' + act.name; hc.setAttribute('aria-label', 'Active save slot: ' + act.name + '. Open save slots'); }
           }
           $('tsvSlots').addEventListener('click', function (e) {
             var b = e.target.closest('button[data-act]'); if (!b) return; var id = b.closest('[data-slot]').dataset.slot, act = b.dataset.act;
@@ -5506,6 +5513,14 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
           $('tsvConfirmYes').addEventListener('click', function () { var p = pend; if (!p) return; var typed = $('tsvConfirmInput').value; closeAsk(); p.fn(p.typed ? typed : true); });
           $('tsvConfirmNo').addEventListener('click', function () { closeAsk(); msg('Cancelled — nothing changed'); });
           if (S.state.migrated) msg('Your existing progress is now in slot "Main" (backup kept).');
+          var hcBtn = $('tsvHeadChip'); // T-PROG-b: open Style & library + the save-slots fold only, then bring the slot controls into view
+          if (hcBtn) hcBtn.addEventListener('click', function () {
+            var panel = $('tatStylePanel'), fold = $('tatSaveFold');
+            if (panel && !panel.open) panel.open = true;
+            if (fold && !fold.open) fold.open = true;
+            if (fold) { var rm = false; try { rm = document.body.classList.contains('tat-rm-on') || matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
+              setTimeout(function () { fold.scrollIntoView({ block: 'start', behavior: rm ? 'auto' : 'smooth' }); var sm = fold.querySelector('summary'); if (sm) sm.focus({ preventScroll: true }); }, 30); }
+          });
           render();
         })();
         </script>
@@ -19591,12 +19606,23 @@ function tat73Init() {
     { id: 'focus', name: 'Focus', ico: '◎', max: 5, blurb: 'Sprint XP +12% per rank.' },
     { id: 'flow',  name: 'Flow',  ico: '〰', max: 5, blurb: 'Combo score multiplier +0.04 per rank.' },
     { id: 'armor', name: 'Armor', ico: '🛡', max: 5, blurb: 'Campaign miss life cost −0.06 per rank (min 0.2).' },
-    { id: 'ember', name: 'Ember', ico: '🔥', max: 5, blurb: 'FX particles +15% per rank (never above Insane).' },
-    { id: 'gilt',  name: 'Gilt',  ico: '✦', max: 5, blurb: 'Collector rank (frames/borders are already open, R-a).' },
-    { id: 'lumen', name: 'Lumen', ico: '✧', max: 5, blurb: 'Collector rank (stage lighting is already open, R-a).' },
-    { id: 'vault', name: 'Vault', ico: '◈', max: 5, blurb: 'Collector rank (backdrops are already open, R-a).' },
-    { id: 'pulse', name: 'Pulse', ico: '♫', max: 5, blurb: 'Collector rank (all miss tones are already open, R-a).' }
-  ];
+    { id: 'ember', name: 'Ember', ico: '🔥', max: 5, blurb: 'FX particles +15% per rank (never above Insane).' }
+  ]; // T-PROG-b (YardMaster R1): Gilt/Lumen/Vault/Pulse dropped; their ranks are refunded once by tprogRefundDropped()
+  var TPROG_DROPPED = ['gilt', 'lumen', 'vault', 'pulse'];
+  function tprogRefundDropped() { // idempotent: dropped ranks leave prog.skills (so they are unspent), logged once in prog.refunded
+    try {
+      var m = tprogMeta(), st = tprogState(m), moved = 0;
+      TPROG_DROPPED.forEach(function (id) {
+        if (!Object.prototype.hasOwnProperty.call(st.skills, id)) return;
+        var r = Math.max(0, st.skills[id] | 0);
+        if (!st.refunded || typeof st.refunded !== 'object') st.refunded = {};
+        st.refunded[id] = (st.refunded[id] | 0) + r;
+        delete st.skills[id]; moved += r;
+      });
+      if (moved) { tprogSkillCache = null; tat91Save(m); }
+      return moved;
+    } catch (_) { return 0; }
+  }
   var tprogSkillCache = null, tprogPaintT = 0;
   function tprogMeta() { return TAT91.meta || tat91Load(); }
   function tprogState(m) { m = m || tprogMeta(); if (!m.prog || typeof m.prog !== 'object') m.prog = {}; if (!m.prog.skills || typeof m.prog.skills !== 'object') m.prog.skills = {}; return m.prog; }
@@ -19678,6 +19704,7 @@ function tat73Init() {
   window.TPROG = { rank: tprogRank, points: function () { return tprogPoints(); }, next: tprogNext, buy: tprogBuy, skills: TPROG_SKILLS, minRepeat: tprogMinRepeat, paint: tprogPaint };
   function tprogInit() {
     try { tprogSettleLevels(); } catch (_) {}
+    try { tprogRefundDropped(); } catch (_) {}
     var host = $('tprogSkills');
     if (host && !host._tp) { host._tp = 1; host.addEventListener('click', function (e) { var b = e.target.closest && e.target.closest('[data-buy]'); if (b && tprogBuy(b.dataset.buy)) tprogPaint(); }); }
     tprogPaint(); setTimeout(tprogPaintSoon, 900); // T92 (castle) registers tat92NextUnlock after this script
