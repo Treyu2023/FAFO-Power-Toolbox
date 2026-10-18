@@ -2038,6 +2038,31 @@
             }
         }
 
+        /**
+         * DFM-2: error handler for live <img> tiles. The stream gets at most ONE fallback to the
+         * preview still (data-dfm-fb); a second error (the still's own) ends in a static
+         * "No preview" with the <img> removed, so no further src is ever set.
+         * An unsigned /files URL (S-SEC3 media key not loaded yet) is not a failure: the shared
+         * helper re-signs it when the key arrives, so nothing is set here.
+         */
+        function dfmLiveImgError(img) {
+            try {
+                if (!img || img.dataset.dfmDead === '1') return;
+                const cur = img.getAttribute('src') || '';
+                if (/\/files\/(serve|preview)\?/.test(cur) && !/[?&]mt=/.test(cur)) return;
+                if (img.dataset.dfmFb !== '1') {
+                    img.dataset.dfmFb = '1';
+                    const still = previewUrl(img.dataset.dfmPath || '');
+                    if (still && still !== cur) { img.src = still; return; }
+                }
+                img.dataset.dfmDead = '1';
+                img.onerror = null;
+                const box = img.parentElement;
+                if (box) box.textContent = 'No preview';
+                else img.removeAttribute('src');
+            } catch (_) { /* ignore */ }
+        }
+
         /** Inline thumbnail / autoplay media for group comparison (muted loop for video). */
         function liveMediaHtml(item, { compact } = {}) {
             const kind = String(item.kind || '').toLowerCase();
@@ -2055,8 +2080,9 @@
                         onerror="this.parentElement.textContent='No preview'">` : ''}`;
             }
             if (kind === 'image' && stream) {
-                return `<img src="${attrEsc(stream)}" alt="" loading="lazy"
-                    onerror="${still ? `this.src='${attrEsc(still)}'` : `this.parentElement.textContent='No preview'`}">`;
+                // DFM-2: one-shot fallback (was onerror="this.src=still", which re-fired forever when the still failed too)
+                return `<img src="${attrEsc(stream)}" alt="" loading="lazy" data-dfm-path="${attrEsc(item.path)}"
+                    onerror="dfmLiveImgError(this)">`;
             }
             if (kind === 'audio' && stream) {
                 return `<audio controls preload="metadata" src="${attrEsc(stream)}" style="width:96%"></audio>`;
