@@ -4555,6 +4555,13 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
 #tatSaveFold .tsv-confirm[hidden] { display: none; }
 #tatSaveFold .tsv-confirm input, #tatSaveFold .tsv-row input, #tatSaveFold .tsv-row select { max-width: 100%; min-width: 0; font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.3); color: inherit; }
 #tatSaveFold .tsv-msg { font-size: 11px; min-height: 1em; opacity: 0.9; }
+#tatSaveFold .tch-head { font-size: 11px; opacity: 0.85; margin: 8px 0 2px; }
+#tatSaveFold .tch-chars { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+#tatSaveFold .tch-char { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 4px 6px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(0, 0, 0, 0.22); overflow-wrap: anywhere; }
+#tatSaveFold .tch-char.on { border-color: var(--tch-c, #00f3ff); box-shadow: 0 0 0 1px var(--tch-c, #00f3ff); }
+#tatSaveFold .tch-char button { font: 700 11px/1.2 inherit; padding: 4px 7px; border-radius: 999px; border: 1px solid rgba(0, 243, 255, 0.25); background: rgba(0, 0, 0, 0.25); color: inherit; cursor: pointer; }
+#tatSaveFold .tch-char button:disabled { opacity: 0.45; cursor: default; }
+#tatSaveFold .tch-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--tch-c, #00f3ff); flex: none; }
 </style>
 <script id="tat-tsave-core">
 (function () {
@@ -4690,7 +4697,22 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
     add: function (name) { var r = cidx(); if (r.chars.length >= CMAX) return null; var n = 1; while (cfind(r, 'c' + n)) n++;
       var id = 'c' + n; r.chars.push(cnew(id, String(name || '').trim().slice(0, 24) || ('Character ' + n), CCOL[(n - 1) % CCOL.length])); setJ(CK, r); return id; },
     switchTo: function (id) { var r = cidx(); if (!cfind(r, id) || id === r.active) return false; if (blockRun()) return 'running';
-      r.pending = { from: r.active, to: id, at: now() }; setJ(CK, r); location.reload(); return true; }
+      r.pending = { from: r.active, to: id, at: now() }; setJ(CK, r); location.reload(); return true; },
+    // T-CHAR-b
+    rename: function (id, name) { var r = cidx(), c = cfind(r, id); name = String(name || '').trim().slice(0, 24); if (!c || !name) return false; c.name = name; setJ(CK, r); return true; },
+    recolor: function (id) { var r = cidx(), c = cfind(r, id); if (!c) return false; c.color = CCOL[(CCOL.indexOf(c.color) + 1) % CCOL.length]; setJ(CK, r); return c.color; },
+    remove: function (id, confirmed) { var r = cidx(), c = cfind(r, id); if (!c || id === r.active) return false; if (confirmed !== true) return 'confirm';
+      r.chars = r.chars.filter(function (x) { return x.id !== id; }); setJ(CK, r); return true; },
+    // playerPacks.v1 archive -> characters, once per pack id (idempotent). Legacy xp/level kept; class defaults to sprinter so the first-run
+    // pick (which resets xp/level) never fires on a restored player; T97 Char Select changes class and keeps xp/level. Legacy skills/cosmetics not mapped.
+    fromPacks: function (archive) { var r = cidx(), pl = (cobj(archive) && cobj(archive.players)) || {}, map = {}, added = 0, full = 0, ch = false;
+      Object.keys(pl).forEach(function (pid) { var p = cobj(pl[pid]) || {}, have = r.chars.filter(function (x) { return x.packId === pid; })[0];
+        if (have) { map[pid] = have.id; return; } if (r.chars.length >= CMAX) { full++; return; }
+        var n = 1; while (cfind(r, 'c' + n)) n++; var c = cnew('c' + n, String(p.name || pid).trim().slice(0, 24) || ('Character ' + n),
+          /^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : CCOL[(n - 1) % CCOL.length]);
+        c.packId = pid; c.character = { classId: 'sprinter', xp: Math.max(0, Number(p.xp) | 0), level: Math.max(1, Math.min(30, Number(p.level) | 0 || 1)), unlockSlots: [] };
+        r.chars.push(c); map[pid] = c.id; added++; ch = true; });
+      if (ch) setJ(CK, r); return { added: added, full: full, map: map }; }
   };
 })();
 </script>
@@ -5494,6 +5516,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         <details class="fafo-fold tat-fold" id="tatSaveFold" data-fafo-fold="save-slots" data-fafo-resp="stack">
         <summary class="section-label">Save slots — all progress per slot · export · import · copy · reset</summary>
         <div class="tsv-slots" id="tsvSlots" role="list" aria-label="Save slots"></div>
+        <div class="tch-head" id="tchHead">Characters in this slot (up to 8) — level, skills, look and charm loadout follow the character; castle and Glyphs stay with the slot</div>
+        <div class="tch-chars" id="tchChars" role="list" aria-labelledby="tchHead"></div>
         <div class="tsv-row">
           <button type="button" id="tsvAdd">+ Add slot</button>
           <label class="tsv-row" style="margin:0">Copy <select id="tsvCopyFrom" aria-label="Copy from"></select> → <select id="tsvCopyTo" aria-label="Copy to"></select></label>
@@ -5530,6 +5554,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
             $('tsvSlots').innerHTML = h;
             ['tsvCopyFrom', 'tsvCopyTo', 'tsvImportTo'].forEach(function (sid) { var el = $(sid), v = el.value; el.innerHTML = i.slots.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join(''); if (v) el.value = v; });
             $('tsvAdd').disabled = i.slots.length >= 8;
+            renderChars();
             var hc = $('tsvHeadChip'), act = i.slots.filter(function (x) { return x.id === i.active; })[0]; // T-PROG-b header chip
             if (hc && act) { hc.textContent = 'Slot: ' + act.name; hc.setAttribute('aria-label', 'Active save slot: ' + act.name + '. Open save slots'); }
           }
@@ -5545,6 +5570,23 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
             else if (act === 'delete') ask('Delete slot "' + s.name + '"? Type the slot name to confirm.', s.name, function (typed) { if (S.remove(id, typed)) { msg('Deleted'); render(); } else msg('Name did not match — nothing changed'); });
           });
           $('tsvAdd').addEventListener('click', function () { if (S.add()) render(); });
+          var C = window.TATCHAR; // T-CHAR-b: roster chips (switch, rename, colour, delete with confirm, add)
+          function renderChars() { if (!C || !$('tchChars')) return; var r = C.list(), h = '';
+            r.chars.forEach(function (c) { var on = c.id === r.active, lv = (c.character && c.character.level) | 0 || 1, col = /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : '#00f3ff';
+              h += '<div class="tch-char' + (on ? ' on' : '') + '" role="listitem" data-char="' + esc(c.id) + '" style="--tch-c:' + col + '"><span class="tch-dot" aria-hidden="true"></span>' +
+                '<button type="button" data-cact="switch" aria-pressed="' + on + '"' + (on ? ' disabled' : '') + ' aria-label="' + esc((on ? 'Active character: ' : 'Play as ') + c.name + ', level ' + lv) + '">' + esc(c.name) + ' · Lv ' + lv + '</button>' +
+                '<button type="button" data-cact="rename" aria-label="Rename ' + esc(c.name) + '">Rename</button><button type="button" data-cact="color" aria-label="Change colour of ' + esc(c.name) + '">Colour</button>' +
+                '<button type="button" data-cact="delete"' + (on ? ' disabled' : '') + ' aria-label="Delete ' + esc(c.name) + '">Delete</button></div>'; });
+            h += '<button type="button" id="tchAdd"' + (r.chars.length >= C.MAX ? ' disabled' : '') + '>+ Character</button>';
+            $('tchChars').innerHTML = h; }
+          if (C && $('tchChars')) $('tchChars').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return;
+            if (b.id === 'tchAdd') { if (C.add()) { msg('Character added — Play it to pick its class'); renderChars(); } return; }
+            var id = b.closest('[data-char]').dataset.char, c = C.list().chars.filter(function (x) { return x.id === id; })[0], act = b.dataset.cact; if (!c) return;
+            if (act === 'switch') { if (C.switchTo(id) === 'running') msg(C.RUN_MSG); else msg('Switching to ' + c.name + '…'); }
+            else if (act === 'rename') { var n = prompt('Character name', c.name); if (n && C.rename(id, n)) renderChars(); }
+            else if (act === 'color') { if (C.recolor(id)) renderChars(); }
+            else if (act === 'delete') ask('Delete character "' + c.name + '"? Its level, skills, look and charm loadout are removed. Slot progress (castle, Glyphs) stays.', null,
+              function () { if (C.remove(id, true)) { msg('Deleted ' + c.name); renderChars(); } }); });
           $('tsvCopyGo').addEventListener('click', function () { var f = $('tsvCopyFrom').value, t = $('tsvCopyTo').value; var r = S.copy(f, t, false);
             if (r === 'running') msg(S.RUN_MSG);
             else if (r === 'confirm') ask('Overwrite the progress in the target slot with a copy?', null, function () { if (S.copy(f, t, true) === 'running') msg(S.RUN_MSG); else { msg('Copied'); render(); } });
@@ -10763,7 +10805,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     const name = (typeof getPlayerName === 'function' && getPlayerName()) || DEFAULT_PLAYER_NAME;
     const db = tatGmLoad();
     const tape = { at: Date.now(), wpm: Number(wpm) || 0, acc: Number(acc) || 0, name: String(name), marks: ghostMarks.slice(0, TAT65_MARK_CAP) };
-    tatGmPut(db, 'local:' + String(name), name, board, tape, true);
+    const tch = window.TATCHAR && window.TATCHAR.active(); // T-CHAR-b: owner char:<id> (R-b-1)
+    tatGmPut(db, tch ? 'char:' + tch.id : 'local:' + String(name), tch ? tch.name : name, board, tape, true);
     saveJson(TAT_GHOSTMARKS_KEY, db);
   }
   // ——— T-RESTORE R-h: challenge records (972212bf challengeRecord/recordChallengeResult L10658-10746) under NEW key
@@ -10839,6 +10882,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     let nHist = 0;
     players.forEach((pl) => {
       const id = String(pl.id || pl.name || 'player');
+      const prevSt = (archive.players[id] && archive.players[id].stats) || {}; // T-CHAR-b: keyStats delta vs the archived copy (idempotent re-import)
       archive.players[id] = pl;
       (Array.isArray(pl.history) ? pl.history : []).forEach((h) => {
         if (!h || !((h.at | 0) > 0)) return;
@@ -10849,7 +10893,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       const st = pl.stats || {};
       ['keyHits', 'keyMiss'].forEach((f, i) => {
         const src = st[f]; const dst = i ? ks.miss : ks.hits;
-        if (src && typeof src === 'object') Object.keys(src).forEach((k) => { if (/^[a-z]$/.test(k)) dst[k] = (dst[k] || 0) + (src[k] | 0); });
+        const was = (prevSt[f] && typeof prevSt[f] === 'object') ? prevSt[f] : {};
+        if (src && typeof src === 'object') Object.keys(src).forEach((k) => { if (/^[a-z]$/.test(k)) dst[k] = (dst[k] || 0) + Math.max(0, (src[k] | 0) - (was[k] | 0)); });
       });
       if (pl.challenges && typeof pl.challenges === 'object') Object.keys(pl.challenges).forEach((cid) => tatChMerge(ch, cid, pl.challenges[cid]));
       if (pl.ghosts && typeof pl.ghosts === 'object') Object.keys(pl.ghosts).forEach((board) => {
@@ -10860,6 +10905,11 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     });
     hist.sort((a, b) => (b.at | 0) - (a.at | 0));
     if (hist.length > MAX_HISTORY) hist = hist.slice(0, MAX_HISTORY);
+    try { // T-CHAR-b: archived players -> characters (once each); ghosts copied to the stable owner char:<id> if that owner has none yet
+      const rc = window.TATCHAR ? window.TATCHAR.fromPacks(archive) : null;
+      if (rc) Object.keys(rc.map).forEach((pid) => { const src = gm.owners && gm.owners['roster:' + pid], dst = 'char:' + rc.map[pid];
+        if (src && !gm.owners[dst]) gm.owners[dst] = JSON.parse(JSON.stringify(src)); });
+    } catch (_) {}
     saveJson(KEYS.history, hist); saveJson(TAT_PACKS_KEY, archive); tatSaveKeyStats(); saveJson(TAT_CHALLENGES_KEY, ch); saveJson(TAT_GHOSTMARKS_KEY, gm);
     try { renderHistory(); renderMiniLobby(); } catch (_) {}
     return { players: players.length, history: nHist };
