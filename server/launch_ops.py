@@ -1654,6 +1654,197 @@ def start_companions(
     }
 
 
+# Idle stop used to TerminateProcess the one PID it knew. On Windows the
+# toolbox venv pythonw.exe is a stub that keeps running and spawns the real
+# interpreter, so the child kept the port and the RAM. These helpers kill
+# that pair, and any workers under it, without touching the watchdog or tray.
+# DIRT-1 (R-MON-2 conditions): the watchdog, tray and Imagine Vault, and anything
+# they spawned, are never killed; a process whose command line cannot be read
+# counts as protected; every kill is checked (taskkill exit code) and confirmed
+# (psutil.wait_procs) before it is reported. Lower-case: matched on lower-cased cmdlines.
+_PROTECTED_SCRIPTS = ("server_watchdog.py", "tray_launcher.py", "imaginevault.py")
+_KILL_CONFIRM_SEC = 3.0
+_LAST_KILL_REPORT: dict[str, Any] = {}
+
+
+def same_server_parent(parent_cmd: str, child_cmd: str) -> bool:
+    """True when parent is the venv stub (or --watch supervisor) of this server."""
+    parent = (parent_cmd or "").lower()
+    child = (child_cmd or "").lower()
+    if any(script in parent for script in _PROTECTED_SCRIPTS):
+        return False
+    if "aitoolbox_server.py" in parent and "aitoolbox_server.py" in child:
+        return True
+    s2 = "explorer-meta" in parent or "explorermeta" in parent
+    return bool(s2 and "server.py" in parent and "server.py" in child)
+
+
+def _protected_cmd(cmd: str | None) -> bool:
+    """Watchdog / tray / vault, or a command line we could not read ("")."""
+    low = (cmd or "").strip().lower()
+    return not low or any(script in low for script in _PROTECTED_SCRIPTS)
+
+
+def _proc_cmd(pid: int) -> str:
+    try:
+        import psutil  # type: ignore
+
+        proc = psutil.Process(int(pid))
+        return " ".join(str(part) for part in (proc.cmdline() or []))
+    except Exception:
+        return ""
+
+
+def _server_tree_root(pid: int) -> int:
+    """Climb venv-stub parents of the same server. Stop at watchdog, tray, or a non-Python parent."""
+    try:
+        import psutil  # type: ignore
+    except ImportError:
+        return int(pid)
+    try:
+        cur = psutil.Process(int(pid))
+    except Exception:
+        return int(pid)
+    root = int(pid)
+    me = os.getpid()
+    for _ in range(5):
+        try:
+            parent = cur.parent()
+        except Exception:
+            break
+        if parent is None or int(parent.pid) in (0, 4, me):
+            break
+        name = (parent.name() or "").lower()
+        if name not in ("python.exe", "pythonw.exe"):
+            break
+        try:
+            parent_cmd = " ".join(str(part) for part in (parent.cmdline() or []))
+            child_cmd = " ".join(str(part) for part in (cur.cmdline() or []))
+        except Exception:
+            break
+        if not same_server_parent(parent_cmd, child_cmd):
+            break
+        root = int(parent.pid)
+        cur = parent
+    return root
+
+
+def _kill_pid_tree(pid: int) -> list[int]:
+    """Kill pid and the processes it spawned, except protected ones and everything under them.
+
+    No taskkill /T: each victim is killed by PID, so a watchdog, tray or vault that this
+    server started survives. Returns only the PIDs confirmed gone; details of the last call
+    (targeted, confirmed, failed, protected) are kept in _LAST_KILL_REPORT.
+    """
+    report: dict[str, Any] = {"root": pid, "targeted": [], "confirmed": [], "failed": [], "protected": []}
+    _LAST_KILL_REPORT.clear()
+    _LAST_KILL_REPORT.update(report)
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return []
+    me = os.getpid()
+    if pid <= 0 or pid == me:
+        return []
+    try:
+        import psutil  # type: ignore
+    except ImportError:
+        return []  # no psutil: command lines cannot be read, so nothing is provably unprotected
+    if _protected_cmd(_proc_cmd(pid)):
+        report["protected"].append(pid)
+        return []
+    try:
+        root = psutil.Process(pid)
+        kids = root.children(recursive=True)
+    except psutil.NoSuchProcess:
+        return []
+    except Exception:
+        kids = []
+        try:
+            root = psutil.Process(pid)
+        except Exception:
+            return []
+    # pid -> (process, parent pid, protected?) for every descendant still alive
+    tree: dict[int, tuple[Any, int, bool]] = {}
+    for child in kids:
+        try:
+            cpid = int(child.pid)
+        except (TypeError, ValueError):
+            continue
+        prot = False
+        try:
+            ppid = int(child.ppid())
+        except psutil.NoSuchProcess:
+            continue
+        except Exception:
+            ppid, prot = -1, True
+        try:
+            cmd = " ".join(str(part) for part in (child.cmdline() or []))
+        except psutil.NoSuchProcess:
+            continue
+        except Exception:
+            cmd = ""
+        tree[cpid] = (child, ppid, prot or _protected_cmd(cmd))
+
+    def shielded(cpid: int) -> bool:
+        seen: set[int] = set()
+        while cpid in tree and cpid not in seen:
+            seen.add(cpid)
+            _proc, ppid, prot = tree[cpid]
+            if prot:
+                return True
+            cpid = ppid
+        return False
+
+    victims = [root]
+    for cpid, (child, _ppid, _prot) in tree.items():
+        if shielded(cpid):
+            report["protected"].append(cpid)
+        else:
+            victims.append(child)
+    # parents first (a --watch supervisor cannot respawn), this process last
+    victims = [p for p in victims if int(p.pid) != me] + [p for p in victims if int(p.pid) == me]
+    report["targeted"] = [int(p.pid) for p in victims]
+    for proc in victims:
+        vpid = int(proc.pid)
+        try:
+            if not proc.is_running():  # gone, or the PID was reused: never kill by a stale PID
+                continue
+        except Exception:
+            continue
+        ok = False
+        if IS_WINDOWS:
+            try:
+                res = subprocess.run(
+                    ["taskkill", "/PID", str(vpid), "/F"],
+                    capture_output=True,
+                    timeout=8,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                ok = res.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+        else:
+            try:
+                proc.kill()
+                ok = True
+            except psutil.NoSuchProcess:
+                ok = True
+            except Exception:
+                ok = False
+        if not ok:
+            report["failed"].append(vpid)
+    waitable = [p for p in victims if int(p.pid) != me]
+    try:
+        gone, _alive = psutil.wait_procs(waitable, timeout=_KILL_CONFIRM_SEC)
+    except Exception:
+        gone = []
+    gone_pids = {int(p.pid) for p in gone}
+    report["confirmed"] = [v for v in report["targeted"] if v in gone_pids]
+    _LAST_KILL_REPORT.update(report)
+    return list(report["confirmed"])
+
+
 def _stop_meta_tree() -> list[int]:
     """Stop the tagger and its --watch parent so idle sleep is not undone."""
     flag = _localappdata() / "FAFO" / "ExplorerMeta" / "stop.flag"
@@ -1666,6 +1857,7 @@ def _stop_meta_tree() -> list[int]:
     try:
         import psutil  # type: ignore
 
+        extra: list[int] = []
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
                 name = (proc.info.get("name") or "").lower()
@@ -1677,24 +1869,32 @@ def _stop_meta_tree() -> list[int]:
                 if "explorer-meta" not in cmd and "explorermeta" not in cmd:
                     continue
                 pid = int(proc.info["pid"])
-                if pid in killed:
-                    continue
-                proc.terminate()
-                killed.append(pid)
+                if pid not in killed and pid not in extra:
+                    extra.append(pid)
             except Exception:
                 continue
+        roots: list[int] = []
+        for pid in extra:
+            root = _server_tree_root(pid)
+            if root not in roots and root not in killed:
+                roots.append(root)
+        for root in roots:
+            for victim in _kill_pid_tree(root):
+                if victim not in killed:
+                    killed.append(victim)
     except Exception:
         pass
     return killed
 
 
 def stop_listener_on_port(port: int, host_hint: str | None = None) -> list[int]:
-    """Terminate process(es) listening on port. Returns killed PIDs."""
+    """Kill whatever is listening on port, plus the stub and workers around it."""
     killed: list[int] = []
     try:
         import psutil  # type: ignore
     except ImportError:
         return killed
+    roots: list[int] = []
     for conn in psutil.net_connections(kind="inet"):
         try:
             if conn.status != psutil.CONN_LISTEN:
@@ -1702,20 +1902,19 @@ def stop_listener_on_port(port: int, host_hint: str | None = None) -> list[int]:
             if not conn.laddr or int(conn.laddr.port) != int(port):
                 continue
             if host_hint and conn.laddr.ip not in (host_hint, "0.0.0.0", "::", "127.0.0.1"):
-                # still allow any local listen on that port
-                pass
+                continue  # DIRT-1: a listener on another address is not ours; never tree-kill it
             pid = conn.pid
-            if not pid or pid in killed:
+            if not pid:
                 continue
-            p = psutil.Process(pid)
-            p.terminate()
-            try:
-                p.wait(timeout=3)
-            except psutil.TimeoutExpired:
-                p.kill()
-            killed.append(pid)
+            root = _server_tree_root(int(pid))
+            if root not in roots:
+                roots.append(root)
         except (psutil.Error, ValueError, TypeError):
             continue
+    for root in roots:
+        for victim in _kill_pid_tree(root):
+            if victim not in killed:
+                killed.append(victim)
     return killed
 
 
