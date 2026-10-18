@@ -408,7 +408,8 @@ async def debug_request_middleware(request: Request, call_next):
             return _s1_media_denied(origin or None)
         return _s1_deny(origin or None, denied)
     response = await call_next(request)
-    if files_gated:                                 # ticketed URLs stay out of the HTTP cache
+    if files_gated or (request.method != "OPTIONS" and _s1_ticket_class(request.url.path)):
+        # S-SEC4b: ticketed URLs (files, media/thumb, SSE) stay out of the HTTP cache and Referer
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
     if request.url.path == "/api/health":

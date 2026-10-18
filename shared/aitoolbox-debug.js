@@ -32,8 +32,24 @@
         return `[${e.ts || ''}] ${lv} ${e.source || '?'}: ${e.message}`;
     }
 
+    // S-SEC4b: URL secrets (?s1t= / mt= values) never reach the buffer, localStorage or /api/debug/log.
+    const SECRET_RE = /([?&](?:s1t|mt)=)[^&#\s"']*/g;
+    function redact(v, depth) {
+        if (typeof v === 'string') return v.replace(SECRET_RE, '$1[redacted]');
+        if (!v || typeof v !== 'object' || (depth | 0) > 6) return v;
+        if (Array.isArray(v)) return v.map(function (x) { return redact(x, (depth | 0) + 1); });
+        const o = {};
+        try { Object.keys(v).forEach(function (k) { o[k] = redact(v[k], (depth | 0) + 1); }); }
+        catch (_) { return v; }
+        return o;
+    }
+
     function push(entry) {
         if (paused) return;
+        if (entry && typeof entry === 'object') {
+            entry.message = redact(entry.message, 0);
+            if (entry.extra != null) entry.extra = redact(entry.extra, 0);
+        }
         buffer.unshift(entry);
         if (buffer.length > MAX_LOCAL) buffer.length = MAX_LOCAL;
         if (listEl) appendLine(entry);
@@ -47,14 +63,14 @@
             ts: new Date().toISOString(),
             source,
             level,
-            message: String(message),
-            extra: extra ?? null,
+            message: redact(String(message), 0),
+            extra: redact(extra ?? null, 0),
         };
         push(entry);
         if (level === 'error') {
-            try { origError.call(console, '[' + source + ']', message, extra || ''); }
+            try { origError.call(console, '[' + source + ']', entry.message, entry.extra || ''); }
             catch (_) { /* ignore */ }
-        } else if (level === 'warn') console.warn(`[${source}]`, message);
+        } else if (level === 'warn') console.warn(`[${source}]`, entry.message);
         flushToServer(entry);
         return entry;
     }

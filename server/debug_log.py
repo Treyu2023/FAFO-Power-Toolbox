@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from collections import deque
 from datetime import datetime, timezone
@@ -34,13 +35,32 @@ def _maybe_rotate_log() -> None:
         pass
 
 
+# S-SEC4b: URL secrets (?s1t= / mt= values) never reach the ring buffer or debug_runtime.log.
+_SECRET_RE = re.compile(r"([?&](?:s1t|mt)=)[^&#\s\"']*")
+
+
+def _redact(v: Any, depth: int = 0) -> Any:
+    if isinstance(v, str):
+        return _SECRET_RE.sub(r"\1[redacted]", v)
+    if depth > 6:
+        return v
+    if isinstance(v, dict):
+        return {k: _redact(x, depth + 1) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_redact(x, depth + 1) for x in v]
+    if v is None or isinstance(v, (bool, int, float)):
+        return v
+    s = str(v)
+    return _redact(s) if _SECRET_RE.search(s) else v
+
+
 def log(source: str, level: str, message: str, extra: Any = None) -> dict[str, Any]:
     entry = {
         "ts": _now(),
         "source": str(source or "?")[:80],
         "level": str(level or "info")[:16],
-        "message": str(message)[:2000],
-        "extra": extra,
+        "message": _redact(str(message))[:2000],
+        "extra": _redact(extra),
     }
     with _lock:
         _log.appendleft(entry)
