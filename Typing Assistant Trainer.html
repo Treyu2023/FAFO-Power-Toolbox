@@ -3153,6 +3153,8 @@ body.tat-rm-on .tat76-act-toast.show {
   position: fixed; width: min(92vw, 560px); margin: 0; z-index: 44; pointer-events: none;
 }
 .tat76-boss-plate .nm { font-weight: 800; font-size: 15px; margin-bottom: 2px; }
+.tat76-boss-plate .tat76-boss-clip { display: block; width: 100%; max-height: min(34vh, 240px); object-fit: cover; margin-top: 8px; border-radius: 8px; background: #000; pointer-events: none; } /* T-CAMP-b2 */
+.tat-camp-media { margin: 6px 0; font-size: 12px; } .tat-camp-media input, .tat-camp-media textarea { width: 100%; box-sizing: border-box; font: inherit; margin: 4px 0; }
 .tat76-boss-plate .tell { color: #fde68a; font-size: 12px; }
 .tat76-boss-plate.act-1 { border-color: #d4a017; box-shadow: 0 0 0 1px rgba(212,160,23,0.45); }
 .tat76-boss-plate.act-2 { border-color: #22d3ee; box-shadow: 0 0 0 1px rgba(34,211,238,0.45); color: #ecfeff; }
@@ -5369,6 +5371,16 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
             <input type="checkbox" id="optSound" checked>
             <span><span class="hi">Sounds</span> — soft clicks & chimes</span>
           </label>
+          <details class="tat-camp-media" id="tatCampMedia">
+            <summary><span class="hi">Boss intro clips</span> — local video, only when this page is opened from disk (file://)</summary>
+            <label for="optCampMediaDir">Clip folder (Windows path; blank = off). Browsers never reveal a folder's path, so type it.</label>
+            <input type="text" id="optCampMediaDir" spellcheck="false" autocomplete="off">
+            <label class="btn" for="optCampMediaPick">Pick clips</label>
+            <input type="file" id="optCampMediaPick" multiple accept="video/*,.mp4,.m4v,.webm,.ogv">
+            <label for="optCampMediaClips">Clip file names, one per line (.mp4 .m4v .webm .ogv; others are skipped). Pick clips from the folder above to fill this; only the names are kept. Each boss always gets the same clip.</label>
+            <textarea id="optCampMediaClips" rows="4" spellcheck="false"></textarea>
+            <div class="sub">Muted, skipped by any key, off under reduced motion. Kept in this browser only; never in saves or exports.</div>
+          </details>
           <div class="tat74-juice" id="tat74Juice">
             <div class="kicker">T74 juice / JUICE AUDIO</div>
             <label class="toggle" for="optStreakAudio">
@@ -17144,11 +17156,98 @@ function tat73Init() {
       orig();
       if (selectedTerritory && selectedTerritory.boss) {
         tat76ShowBossPlate(selectedTerritory, true);
+        tat76BossClip(selectedTerritory); // T-CAMP-b2
       } else {
         tat76HideBossPlate();
       }
     };
     startCampaignAttack._t76 = 1;
+  }
+  // T-CAMP-b2: boss-intro clip, read-only from a typed local folder, file:// pages only (an http(s) page may not load file:///
+  // media). The setting is NOT a slot key: it stays in this browser's localStorage, outside saves/exports. No folder, no usable
+  // name, reduced motion, an http(s) page or any load error: nothing plays and nothing is shown; the b1 intro runs as before.
+  var TAT76_MEDIA_KEY = 'aitoolbox.typingTrainer.campaignMedia.v1';
+  var TAT76_CLIP_RE = /^[^\\\/:*?"<>|]+\.(mp4|m4v|webm|ogv)$/i; // a bare file name with a video extension; anything else is skipped
+  function tat76MediaCfg() {
+    var c = null;
+    try { c = JSON.parse(localStorage.getItem(TAT76_MEDIA_KEY) || 'null'); } catch (_) {}
+    c = (c && typeof c === 'object') ? c : {};
+    return { dir: typeof c.dir === 'string' ? c.dir : '', clips: Array.isArray(c.clips) ? c.clips.map(String) : [] }; // ships blank (R-B2-4)
+  }
+  function tat76NormDir(dir) { return String(dir || '').trim().replace(/\//g, '\\').replace(/\\+$/, ''); }
+  // 'X:\a b\c#1%' -> 'file:///X:/a%20b/c%231%25/' (encodeURIComponent per segment: encodeURI would keep # and ?).
+  // Only a drive-letter folder; empty, '.', '..' or illegal segments, UNC and relative paths, and blocked pipeline names are refused.
+  function tat76DirUrl(dir) {
+    var m = /^([A-Za-z]):((?:\\[^\\]+)+)$/.exec(tat76NormDir(dir));
+    if (!m) return null;
+    var segs = m[2].split('\\').slice(1);
+    for (var i = 0; i < segs.length; i++) {
+      var g = segs[i];
+      if (g !== g.trim() || /^\.+$/.test(g) || /[:*?"<>|]/.test(g) || /__x_grok|civitai/i.test(g) || /^civ$/i.test(g)) return null;
+    }
+    return 'file:///' + m[1].toUpperCase() + ':/' + segs.map(encodeURIComponent).join('/') + '/';
+  }
+  function tat76PickClip(t) {
+    var c = tat76MediaCfg(), base = tat76DirUrl(c.dir);
+    if (!base || !t) return '';
+    var ok = c.clips.map(function (n) { return String(n).trim(); }).filter(function (n) { return TAT76_CLIP_RE.test(n); });
+    if (!ok.length) return '';
+    var h = 0, id = String(t.id || '');
+    for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    var u = base + encodeURIComponent(ok[h % ok.length]);
+    return (u.indexOf(base) === 0 && u.slice(base.length).indexOf('/') < 0) ? u : '';
+  }
+  function tat76StopClip(hidePlate) {
+    var v = $('tat76BossClip');
+    if (TAT76.clipKey) { document.removeEventListener('keydown', TAT76.clipKey, true); TAT76.clipKey = null; }
+    if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (_) {} v.remove(); }
+    if (hidePlate) { clearTimeout(TAT76.bossPlateT); tat76HideBossPlate(); try { typer && typer.focus(); } catch (_) {} }
+  }
+  function tat76BossClip(t) {
+    try {
+      tat76StopClip(false);
+      if (location.protocol !== 'file:' || tat76Rm() || !t || !t.boss) return;
+      var url = tat76PickClip(t), plate = $('tat76BossPlate');
+      if (!url || !plate) return;
+      var v = document.createElement('video');
+      v.id = 'tat76BossClip'; v.className = 'tat76-boss-clip'; v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.setAttribute('aria-hidden', 'true');
+      v.addEventListener('error', function () { tat76StopClip(!!v._on); });
+      v.addEventListener('playing', function () { // the plate's own 1.0-1.4 s hold, extended to the clip (cap 6 s) only once it plays
+        if (plate.hidden || v._on) { if (plate.hidden) tat76StopClip(false); return; }
+        v._on = 1;
+        clearTimeout(TAT76.bossPlateT);
+        var ms = (isFinite(v.duration) && v.duration > 0) ? Math.min(6000, v.duration * 1000) : 6000;
+        TAT76.bossPlateT = setTimeout(function () { tat76StopClip(true); }, ms);
+      });
+      v.addEventListener('ended', function () { tat76StopClip(true); });
+      TAT76.clipKey = function () { tat76StopClip(!!v._on); }; // any key skips; the key still reaches #typer
+      document.addEventListener('keydown', TAT76.clipKey, true);
+      v.src = url;
+      plate.appendChild(v);
+      var p = v.play();
+      if (p && p.catch) p.catch(function () { tat76StopClip(!!v._on); });
+    } catch (_) { try { tat76StopClip(false); } catch (_) {} }
+  }
+  function tat76BindMediaUi() {
+    var d = $('optCampMediaDir'), l = $('optCampMediaClips'), f = $('optCampMediaPick');
+    if (!d || !l || d.dataset.t76) return;
+    d.dataset.t76 = '1';
+    var c = tat76MediaCfg();
+    d.value = c.dir; l.value = c.clips.join('\n');
+    var save = function () {
+      try {
+        localStorage.setItem(TAT76_MEDIA_KEY, JSON.stringify({ dir: d.value.trim(), clips: l.value.split(/\r?\n/).map(function (n) { return n.trim(); }).filter(Boolean).slice(0, 200) }));
+      } catch (_) {}
+    };
+    d.addEventListener('change', save); l.addEventListener('change', save);
+    if (f) f.addEventListener('change', function () { // names only: no file is read and no object URL is made
+      var names = [];
+      for (var i = 0; i < (f.files ? f.files.length : 0); i++) { var n = String(f.files[i].name || ''); if (TAT76_CLIP_RE.test(n)) names.push(n); }
+      try { f.value = ''; } catch (_) {}
+      if (!names.length) return;
+      l.value = names.join('\n'); save();
+    });
   }
   function tat76WrapFinish() {
     if (typeof finishTest !== 'function' || finishTest._t76) return;
@@ -17341,6 +17440,7 @@ function tat73Init() {
     tat76WrapBanner();
     tat76EnhanceRenderCampaignPaint();
     tat76WrapStartAttack();
+    try { tat76BindMediaUi(); } catch (_) {} // T-CAMP-b2
     tat76WrapFinish();
     tat76WrapUpdateStats();
     tat76WrapOnNodeCleared();
