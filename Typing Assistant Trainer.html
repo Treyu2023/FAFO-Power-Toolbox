@@ -4563,7 +4563,7 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
   // All 18 progress keys (grep of fef30593). Any new aitoolbox.typingTrainer.* progress key MUST be added here.
   var SLOT_KEYS = ['prefs.v3', 'meta.v1', 'keyStats.v1', 'ghostMarks.v1', 'ghostReplay.v1', 'challenges.v1', 'dailySpark.v1', 'look.v1',
     'playerPacks.v1', 'history.v2', 'highscores.v2', 'campaign.v3', 'campaign.v2', 'missLog.v1', 'skinSlots.v1', 'libraryMeta.v1',
-    'playerName', 'roster.v1'].map(function (k) { return NS + k; });
+    'playerName', 'roster.v1', 'chars.v1'].map(function (k) { return NS + k; }); // T-CHAR-a: + chars.v1 (characters are per slot)
   var IDX = NS + 'slots.v1', BAK = NS + 'slots.v1.backup', DATA = function (id) { return NS + 'slotData.' + id + '.v1'; };
   var FIXED = 3, MAX = 8;
   var LS = window.localStorage;
@@ -4647,6 +4647,51 @@ body.tat-rm-on .tat95-card.is-locking{transition:none;transform:none}
       setJ(DATA(id), parsed.data); touch(i, id); saveIdx(i); if (id === i.active) return reloadInto(id, false); return true; }
   };
   window.TATSAVE = API;
+  // T-CHAR-a (Shipwright R-b-1): named characters inside the active slot. NEW key chars.v1; roster.v1 is left alone for the old migrations.
+  // The live "mirrors" are the truth for the ACTIVE character: prefs.v3.character, prefs.v3.prestige.{frame,trail,edge}, meta.v1.prog.{skills,refunded},
+  // meta.v1.charms.loadout, meta.v1.portraits.activeId and look.v1. Everything else (castle, wallet, Glyphs, charm inventory, unlocked classes, gallery,
+  // seals, achievements, campaign, history, options, abilities, sparkXpDay, skinSlots, prefs style fields) stays per slot. A save without chars.v1 reads
+  // as one character c1 = its live mirrors; chars.v1 is only written on the first add/switch. Switching = pending + reload, applied here before any app script.
+  var CK = NS + 'chars.v1', CMAX = 8, CCOL = ['#00f3ff', '#ff4fd8', '#ffd166', '#7cff6b', '#9b8cff', '#ff8c42', '#4dd0e1', '#f2f2f2'];
+  function cobj(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : null; }
+  function cval(o, k) { o = cobj(o); return o && o[k] !== undefined ? JSON.parse(JSON.stringify(o[k])) : null; }
+  function cnew(id, name, color) { return { id: id, name: name, color: color, createdAt: now(), character: null, prog: { skills: null, refunded: null }, look: null,
+    charms: { loadout: null }, cosmetics: { portrait: null, prestige: { frame: null, trail: null, edge: null } } }; }
+  function csnap() { var pr = cobj(getJ(NS + 'prefs.v3')), me = cobj(getJ(NS + 'meta.v1')), ps = pr && pr.prestige, pg = me && me.prog;
+    return { character: cval(pr, 'character'), prog: { skills: cval(pg, 'skills'), refunded: cval(pg, 'refunded') }, look: getJ(NS + 'look.v1'),
+      charms: { loadout: cval(me && me.charms, 'loadout') }, cosmetics: { portrait: cval(me && me.portraits, 'activeId'),
+        prestige: { frame: cval(ps, 'frame'), trail: cval(ps, 'trail'), edge: cval(ps, 'edge') } } }; }
+  function cput(o, k, v) { if (v === null || v === undefined) delete o[k]; else o[k] = v; }
+  function capply(c) { // null = absent, so the app falls back to its own default (new character: no class, Lv 1, starter charm, default look)
+    var pk = NS + 'prefs.v3', mk = NS + 'meta.v1', pr = cobj(getJ(pk)), me = cobj(getJ(mk)), cs = cobj(c.cosmetics) || {}, pp = cobj(cs.prestige) || {}, pg = cobj(c.prog) || {};
+    if (pr || c.character) { pr = pr || {}; cput(pr, 'character', c.character);
+      if (cobj(pr.prestige)) ['frame', 'trail', 'edge'].forEach(function (k) { pr.prestige[k] = typeof pp[k] === 'string' ? pp[k] : ''; }); setJ(pk, pr); }
+    if (me || pg.skills || pg.refunded || (cobj(c.charms) && c.charms.loadout) || cs.portrait) { me = me || {};
+      if (cobj(me.prog) || pg.skills || pg.refunded) { me.prog = cobj(me.prog) || {}; cput(me.prog, 'skills', pg.skills); cput(me.prog, 'refunded', pg.refunded); }
+      if (cobj(me.charms) || (cobj(c.charms) && c.charms.loadout)) { me.charms = cobj(me.charms) || {}; cput(me.charms, 'loadout', cobj(c.charms) ? c.charms.loadout : null); }
+      if (cobj(me.portraits) || cs.portrait) { me.portraits = cobj(me.portraits) || {}; cput(me.portraits, 'activeId', cs.portrait); }
+      setJ(mk, me); }
+    if (c.look == null) LS.removeItem(NS + 'look.v1'); else setJ(NS + 'look.v1', c.look); }
+  function cload() { var r = getJ(CK); return (r && r.schema === 'trainer-chars.v1' && Array.isArray(r.chars) && r.chars.length) ? r : null; }
+  function cidx() { var r = cload(); if (r) return r; var nm = String(LS.getItem(NS + 'playerName') || '').trim().slice(0, 24) || 'Character 1';
+    return { schema: 'trainer-chars.v1', active: 'c1', pending: null, chars: [cnew('c1', nm, CCOL[0])] }; }
+  function cfind(r, id) { return r.chars.filter(function (x) { return x.id === id; })[0] || null; }
+  // Two-step finish so a crash between steps never snapshots the wrong character: 1) snapshot the leaving one + mark, 2) apply the target + clear.
+  function cfinish() { var r = cload(); if (!r || !r.pending) return false; var p = r.pending, from = cfind(r, p.from), to = cfind(r, p.to);
+    if (!to || !from || to === from) { r.pending = null; setJ(CK, r); return false; }
+    if (!p.snapped) { var sn = csnap(); Object.keys(sn).forEach(function (k) { from[k] = sn[k]; }); p.snapped = true; setJ(CK, r); }
+    capply(to); r.active = to.id; r.pending = null; setJ(CK, r); return true; }
+  var cstate = { error: null, finished: false };
+  try { cstate.finished = cfinish(); } catch (e) { cstate.error = String(e && e.message || e); }
+  window.TATCHAR = {
+    KEY: CK, MAX: CMAX, state: cstate, RUN_MSG: RUN_MSG,
+    list: function () { var r = JSON.parse(JSON.stringify(cidx())), a = cfind(r, r.active), sn = csnap(); if (a) Object.keys(sn).forEach(function (k) { a[k] = sn[k]; }); return r; },
+    active: function () { var r = cidx(); var a = cfind(r, r.active); return a ? { id: a.id, name: a.name, color: a.color } : null; },
+    add: function (name) { var r = cidx(); if (r.chars.length >= CMAX) return null; var n = 1; while (cfind(r, 'c' + n)) n++;
+      var id = 'c' + n; r.chars.push(cnew(id, String(name || '').trim().slice(0, 24) || ('Character ' + n), CCOL[(n - 1) % CCOL.length])); setJ(CK, r); return id; },
+    switchTo: function (id) { var r = cidx(); if (!cfind(r, id) || id === r.active) return false; if (blockRun()) return 'running';
+      r.pending = { from: r.active, to: id, at: now() }; setJ(CK, r); location.reload(); return true; }
+  };
 })();
 </script>
 
@@ -19571,6 +19616,7 @@ function tat73Init() {
       }
       if (Array.isArray(raw.history)) d.history = raw.history.slice(-50);
       if (raw.prog && typeof raw.prog === 'object' && !Array.isArray(raw.prog)) d.prog = raw.prog; // T-PROG
+      if (raw.charms && typeof raw.charms === 'object' && !Array.isArray(raw.charms)) d.charms = raw.charms; // T-CHAR-a: keep charms (was dropped on every load)
       d.constants.dailyShardCap = 120;
       d.constants.repeatMult = 0.15;
       d.constants.respecCost = 50;
