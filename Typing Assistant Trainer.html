@@ -983,6 +983,7 @@
       text-align: center;
       white-space: nowrap;
     }
+    #comboToast.tat-cue-top { z-index: 99956; } /* T-CAMP-b1: unqueued first-clear toast sits above #bonusOverlay */
     #comboToast.show {
       opacity: 1;
       transform: translate(-50%, -10px) scale(1);
@@ -3148,6 +3149,9 @@ body.tat-rm-on .tat76-act-toast.show {
   position: relative; z-index: 8;
 }
 .tat76-boss-plate.show { display: block; }
+.tat76-boss-plate.cue { /* T-CAMP-b1 phase cue: out of flow (no prompt shift); tatPlaceFixed puts it at the top of the visible pane */
+  position: fixed; width: min(92vw, 560px); margin: 0; z-index: 44; pointer-events: none;
+}
 .tat76-boss-plate .nm { font-weight: 800; font-size: 15px; margin-bottom: 2px; }
 .tat76-boss-plate .tell { color: #fde68a; font-size: 12px; }
 .tat76-boss-plate.act-1 { border-color: #d4a017; box-shadow: 0 0 0 1px rgba(212,160,23,0.45); }
@@ -11426,7 +11430,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     }
     saveCampaign(data);
     if (rewardXp) {
-      try { const g = tat70AddXp(rewardXp); showComboToast('First clear', '+' + ((g && g.gained) | 0) + ' XP · ' + territory.name); } catch (_) {}
+      try { const g = tat70AddXp(rewardXp); showComboToast('First clear', '+' + ((g && g.gained) | 0) + ' XP · ' + territory.name, { now: true }); } catch (_) {} // T-CAMP-b1: not queued
     }
     try { tat71OnNodeCleared(id, territory); } catch (_) {}
     renderCampaign();
@@ -15178,6 +15182,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       try { document.body.setAttribute('data-tat-boss-phase', String(n + 1)); } catch (_) {}
       if (p.text && $('storyBody')) $('storyBody').textContent = p.text;
       try { tat76QueueToast(function () { tat76ShowActToast(p.title || ('Phase ' + (n + 1)), p.text || ''); }); } catch (_) {}
+      try { tat76ShowBossPlate(t, true, { title: p.title || ('Phase ' + (n + 1)), text: p.text || '' }); } catch (_) {} // T-CAMP-b1: immediate cue in the boss plate
       if (p.pack && running && typeof target === 'string') {
         TAT71.phaseNode = Object.assign({}, t, p.pack);
         var cut = target.indexOf(' ', Math.max(0, index));
@@ -16933,17 +16938,27 @@ function tat73Init() {
       el.appendChild(chip);
     }
   }
-  function tat76ShowBossPlate(t, thenFocus) {
+  function tat76ShowBossPlate(t, thenFocus, cue) { // cue {title, text}: T-CAMP-b1 phase cue in place of name/tell
     var plate = $('tat76BossPlate');
     if (!plate || !t || !t.boss) {
       if (thenFocus) try { typer && typer.focus(); } catch (_) {}
       return;
     }
     var act = tat76ActOf(t);
-    plate.className = 'tat76-boss-plate show act-' + act;
+    plate.className = 'tat76-boss-plate show act-' + act + (cue ? ' cue' : '');
     plate.hidden = false;
-    if ($('tat76BossName')) $('tat76BossName').textContent = (t.emoji || '') + ' ' + (t.name || 'Boss');
-    if ($('tat76BossTell')) $('tat76BossTell').textContent = tat76BossTell(t);
+    if ($('tat76BossName')) $('tat76BossName').textContent = cue ? cue.title : (t.emoji || '') + ' ' + (t.name || 'Boss');
+    if ($('tat76BossTell')) $('tat76BossTell').textContent = cue ? cue.text : tat76BossTell(t);
+    plate.style.left = plate.style.top = ''; // T-CAMP-b1: #mainPanel (contain: layout) is the fixed containing block, so place in viewport px
+    if (cue) (function place() { // re-place each frame while shown: the miss handler re-renders/scrolls the prompt after this call
+      if (plate.hidden || !plate.classList.contains('cue')) return;
+      try { // top of the plate's own pane as seen in the viewport (phone rows put other panels above it), clamped on-screen
+        var pr = plate.parentElement.getBoundingClientRect();
+        var y = Math.min(Math.max(12, Math.round(pr.top) + 8), Math.max(12, window.innerHeight - plate.offsetHeight - 12));
+        tatPlaceFixed(plate, Math.max(0, Math.round(pr.left + (pr.width - plate.offsetWidth) / 2)), y);
+      } catch (_) {}
+      requestAnimationFrame(place);
+    })();
     clearTimeout(TAT76.bossPlateT);
     var ms = tat76Rm() ? 200 : (1000 + Math.floor(Math.random() * 400));
     TAT76.bossPlateT = setTimeout(function () {
@@ -18544,9 +18559,22 @@ function tat73Init() {
   function tat79WrapToasts() {
     if (typeof showComboToast === 'function' && !showComboToast._t79) {
       var _combo = showComboToast;
-      showComboToast = function (text, sub) {
+      showComboToast = function (text, sub, opts) {
         var a = arguments;
-        tat79QueueToast(function () { _combo.apply(null, a); });
+        if (opts && opts.now) { // T-CAMP-b1 bypass: render now, above the bonus box; queued combos wait out its 2.2 s hold
+          TAT79.comboHold = Date.now() + 2200;
+          _combo.apply(null, a);
+          try {
+            comboToast.classList.add('tat-cue-top');
+            clearTimeout(showComboToast._t); showComboToast._t = setTimeout(function () { comboToast.classList.remove('show'); }, 2200);
+            clearTimeout(TAT79.comboTopT); TAT79.comboTopT = setTimeout(function () { comboToast.classList.remove('tat-cue-top'); }, 2500);
+          } catch (_) {}
+          return;
+        }
+        tat79QueueToast(function () {
+          var w = (TAT79.comboHold || 0) - Date.now();
+          if (w > 0) later(function () { _combo.apply(null, a); }, w); else _combo.apply(null, a);
+        });
       };
       showComboToast._t79 = 1;
     }
@@ -18649,7 +18677,8 @@ function tat73Init() {
   function tat79WrapBossTelegraph() {
     if (typeof tat76ShowBossPlate === 'function' && !tat76ShowBossPlate._t79) {
       var _show = tat76ShowBossPlate;
-      tat76ShowBossPlate = function (t, thenFocus) {
+      tat76ShowBossPlate = function (t, thenFocus, cue) {
+        if (cue) return _show(t, thenFocus, cue); // T-CAMP-b1: a mid-run phase cue must not re-arm the intro telegraph
         TAT79.telegraphDone = false;
         TAT79.juiceArmed = false;
         var focus = thenFocus;
