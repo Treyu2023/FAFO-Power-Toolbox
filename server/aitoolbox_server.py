@@ -793,10 +793,7 @@ def toolbox_static(file_path: str, v: str | None = Query(default=None)):
     if not _toolbox_servable(target):               # S-SEC (1): untracked/ignored/secret
         raise HTTPException(404, "Not found")       # same answer whether or not it exists
     if not target.is_file():
-        raise HTTPException(
-            404,
-            f"Not found: {file_path} (root={ROOT})",
-        )
+        raise HTTPException(404, "Not found")       # S-SEC2 (R-SSEC-5): no path/root echo
     # Skip sensitive trees
     blocked = {".git", ".venv", "node_modules", "__pycache__"}
     rel_parts = target.relative_to(ROOT.resolve()).parts
@@ -4297,24 +4294,43 @@ def api_dup_merge(body: DupMerge):
 
 
 def _assert_allowed_file_path(path: str) -> Path:
-    """GET /api/files/* may only read under ROOT or a registered media directory."""
+    """GET /api/files/* may only read (S-SEC2):
+    - under ROOT: the same files /toolbox/ serves (git-tracked or TOOLBOX_PRIVATE_ALLOWLIST,
+      never a secret-looking name); a ROOT path never falls through to the media branch;
+    - outside ROOT: files inside a registered Media Library directory (R-SSEC2-1).
+    The path must be absolute. Refusals and misses share one 404 with no path echoed."""
     raw = str(path or "").strip()
     if not raw:
         raise HTTPException(400, "path required")
+    if "\x00" in raw:
+        raise HTTPException(400, "Invalid path")
     norm = raw.replace("\\", "/")
     if ".." in Path(norm).parts or any(seg == ".." for seg in norm.split("/")):
         raise HTTPException(400, "Invalid path")
+    if not Path(raw).is_absolute():                 # no cwd-relative or drive-relative (C:x) reads
+        raise HTTPException(400, "Invalid path")
     try:
         p = Path(raw).expanduser().resolve()
-    except OSError as e:
+    except (OSError, ValueError) as e:
         raise HTTPException(400, "Invalid path") from e
     name_l = p.name.lower()
     suf = p.suffix.lower()
-    if suf in {".db", ".env"} or name_l == ".env" or name_l.startswith(".env."):
-        raise HTTPException(403, "Forbidden")
+    if suf in {".db", ".env"} or name_l == ".env" or name_l.startswith(".env.") \
+            or _toolbox_name_is_secret(p.name):
+        raise HTTPException(404, "File not found")
+    root = ROOT.resolve()
+    try:
+        p.relative_to(root)
+        under_root = True
+    except ValueError:
+        under_root = False
+    if under_root:
+        if not _toolbox_servable(p) or not p.is_file():
+            raise HTTPException(404, "File not found")
+        return p
     if not p.is_file():
         raise HTTPException(404, "File not found")
-    allowed: list[Path] = [ROOT.resolve()]
+    allowed: list[Path] = []
     try:
         for d in ops.list_directories():
             dp = str(d.get("path") or "").strip()
@@ -4332,7 +4348,7 @@ def _assert_allowed_file_path(path: str) -> Path:
             return p
         except ValueError:
             continue
-    raise HTTPException(403, "Path not under toolbox or a registered media directory")
+    raise HTTPException(404, "File not found")
 
 
 @app.get("/api/files/serve")
@@ -4346,9 +4362,9 @@ def api_files_serve(path: str = Query(...)):
 @app.get("/api/files/preview")
 def api_files_preview(path: str = Query(...), t: float = Query(0.5, ge=0, le=36000)):
     """Still preview for duplicate browser: image as-is, video = first frame (ffmpeg)."""
-    _assert_allowed_file_path(path)
+    p = _assert_allowed_file_path(path)
     try:
-        img_path, media_type = dup.file_preview_image(path, timestamp=float(t or 0.5))
+        img_path, media_type = dup.file_preview_image(str(p), timestamp=float(t or 0.5))
         return FileResponse(
             img_path,
             media_type=media_type,
@@ -4358,11 +4374,11 @@ def api_files_preview(path: str = Query(...), t: float = Query(0.5, ge=0, le=360
             },
         )
     except FileNotFoundError as e:
-        raise HTTPException(404, str(e)) from e
+        raise HTTPException(404, "File not found") from e   # S-SEC2: str(e) was the path
     except ValueError as e:
         raise HTTPException(415, str(e)) from e
     except RuntimeError as e:
-        raise HTTPException(500, str(e)) from e
+        raise HTTPException(500, "Preview failed") from e  # S-SEC2: ffmpeg stderr names the file
 
 
 @app.get("/api/files/info")
@@ -4370,8 +4386,8 @@ def api_files_info(path: str = Query(...)):
     p = _assert_allowed_file_path(path)
     try:
         return dup.file_info(str(p))
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e))
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found")       # S-SEC2: str(e) was the path
 
 
 @app.get("/api/files/text")
@@ -4379,7 +4395,9 @@ def api_files_text(path: str = Query(...), max_bytes: int = 65536):
     p = _assert_allowed_file_path(path)
     try:
         return dup.read_text_preview(str(p), max_bytes=max_bytes)
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found")       # S-SEC2: str(e) was the path
+    except ValueError as e:
         raise HTTPException(400, str(e))
 
 
