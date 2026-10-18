@@ -56,8 +56,27 @@ def read_version() -> str:
         return "0.00.00"
 
 
+S1_NONLOOPBACK_OPT_IN_ENV = "AITOOLBOX_ALLOW_NONLOOPBACK"   # S-SEC (3): "1" = allow a LAN bind
+
+
+def _is_loopback_host(host: str) -> bool:
+    import ipaddress
+    h = str(host or "").strip().lower().rstrip(".")
+    if h.startswith("[") and h.endswith("]"):
+        h = h[1:-1]
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False                                  # any other name could resolve off-box
+
+
 def load_bind() -> tuple[str, int]:
-    """Resolve bind host/port: env override → bind.json → defaults."""
+    """Resolve bind host/port: env override → bind.json → defaults.
+
+    S-SEC (3): a non-loopback host is refused (→ DEFAULT_HOST, one log line)
+    unless AITOOLBOX_ALLOW_NONLOOPBACK=1 is set in the environment."""
     host = os.environ.get("AITOOLBOX_HOST", "").strip()
     port_raw = os.environ.get("AITOOLBOX_PORT", "").strip()
     port: int | None = None
@@ -78,6 +97,10 @@ def load_bind() -> tuple[str, int]:
             pass
 
     if not host:
+        host = DEFAULT_HOST
+    if not _is_loopback_host(host) and os.environ.get(S1_NONLOOPBACK_OPT_IN_ENV, "").strip() != "1":
+        print(f"  S1 bind host refused (not loopback; set {S1_NONLOOPBACK_OPT_IN_ENV}=1 to allow) "
+              f"- using {DEFAULT_HOST}", flush=True)
         host = DEFAULT_HOST
     if port is None or port <= 0 or port > 65535:
         port = DEFAULT_PORT
@@ -119,7 +142,11 @@ def _s1_token_ok(request: Request) -> bool:
         got.encode("utf-8", "replace"), S1_TOKEN.encode("ascii"))
 
 def _s1_gate(request: Request, origin: str | None) -> str | None:
-    """None = allow, else the 403 detail. Table rows 1-9 in the S-1b plan §0(a)."""
+    """None = allow, else the 403 detail. Table rows 1-9 in the S-1b plan §0(a).
+
+    Row 0 (S-SEC): Host is checked first in debug_request_middleware, before the
+    PNA preflight and before this table, so every request (preflights too) is
+    covered; a bad Host gets 421, not a 403 detail."""
     method = request.method
     if method == "OPTIONS" and request.headers.get("access-control-request-method"):
         return None
@@ -142,6 +169,44 @@ def _s1_gate(request: Request, origin: str | None) -> str | None:
                 site is None or request.headers.get("sec-fetch-dest") in S1_MEDIA_DESTS):
             return None
     return None if _s1_token_ok(request) else "bad-token"
+
+S1_FIXED_HOSTS = ("127.0.0.87", "127.0.0.1", "localhost")
+S1_FIXED_PORT = 18765
+
+
+def _s1_host_ok(request: Request) -> bool:
+    """S-SEC (2), gate row 0: Host must name this server. Stops DNS rebinding.
+
+    Allowed: 127.0.0.87 / 127.0.0.1 / localhost on 18765, plus whatever load_bind
+    resolved (BIND_HOST:BIND_PORT, read live so main()'s 127.0.0.1 retry counts).
+    Case-insensitive; one trailing dot on the name is ignored; no port = 80.
+    Missing or malformed Host fails closed."""
+    raw = (request.headers.get("host") or "").strip().lower()
+    if not raw or any(c in raw for c in " /\\@?#"):
+        return False
+    if raw.startswith("["):
+        name, sep, rest = raw[1:].partition("]")
+        if not sep or (rest and not rest.startswith(":")):
+            return False
+        port_s = rest[1:] if rest else "80"
+    else:
+        name, _, port_s = raw.partition(":") if raw.count(":") <= 1 else ("", "", "")
+        port_s = port_s or "80"
+    if not name or not port_s.isdigit():
+        return False
+    name = name[:-1] if name.endswith(".") else name
+    port = int(port_s)
+    if port == S1_FIXED_PORT and name in S1_FIXED_HOSTS:
+        return True
+    bind = str(BIND_HOST or "").strip().lower().strip("[]").rstrip(".")
+    return port == BIND_PORT and name == bind
+
+
+def _s1_misdirected() -> JSONResponse:
+    # 421, fixed body: never echo the Host, path or origin back.
+    return JSONResponse(status_code=421, content={"detail": "misdirected-request"},
+                        headers={"Cache-Control": "no-store"})
+
 
 def _s1_deny(origin: str | None, detail: str) -> JSONResponse:
     headers = {"Vary": "Origin"}
@@ -173,6 +238,9 @@ except Exception:
 
 @app.middleware("http")
 async def debug_request_middleware(request: Request, call_next):
+    if not _s1_host_ok(request):                    # S-SEC (2): gate row 0
+        dbg.log("server", "warn", f"s1-gate misdirected-host: {request.method}")
+        return _s1_misdirected()
     origin = request.headers.get("origin")
     pna_ok = _origin_allows_pna(origin)
     # Chromium Private Network Access preflight (file:// / http → 127.x)
@@ -516,6 +584,8 @@ def _resolve_toolbox_file(file_path: str) -> Path:
         raw = raw[2:]
     if raw.lower().startswith("toolbox/"):
         raw = raw[8:]
+    if "\x00" in raw:                             # S-SEC: NUL crashed resolve() (500)
+        raise HTTPException(400, "Invalid path")
     rel = Path(raw)
     if ".." in rel.parts or rel.is_absolute():
         raise HTTPException(400, "Invalid path")
@@ -526,6 +596,156 @@ def _resolve_toolbox_file(file_path: str) -> Path:
     except ValueError as e:
         raise HTTPException(403, "Path outside toolbox") from e
     return target
+
+
+# --- S-SEC (1): /toolbox/ serves only git-tracked files, never secret-looking names ---
+# Tracked set = `git ls-files -z --cached` run in ROOT once at startup (local git only),
+# re-run at most once per TOOLBOX_TRACKED_REFRESH_S and only when an existing file
+# misses the set (a tool added and committed since start). Never per request.
+# No git / not a checkout / ROOT not the top level: fallback deny-by-default table below.
+TOOLBOX_SECRET_NAMES = frozenset({
+    ".env", "security_config.json", "credentials.json", "token.json", "tokens.json",
+    "local-paths.json", ".npmrc", ".netrc", ".pgpass", ".htpasswd", ".git-credentials",
+})
+TOOLBOX_SECRET_GLOBS = (
+    ".env.*", "*.env", "credentials*", "*.pem", "*.key", "*.p12", "*.pfx", "*.ppk",
+    "*.kdbx", "*.keystore", "*.jks", "*.gpg", "*.asc", "id_rsa*", "id_dsa*", "id_ecdsa*",
+    "id_ed25519*", "*.sqlite", "*.sqlite3",
+)
+# *token* / *secret* / *password* names are refused unless they are a page or an image
+# (tracked: "System Tools/Secrets Presence Console.html", "assets/tool-icons/secrets-presence.png").
+TOOLBOX_SECRETISH_GLOBS = ("*token*", "*secret*", "*password*", "*passwd*", "*apikey*",
+                           "*api_key*", "*api-key*")
+TOOLBOX_SECRETISH_OK_SUFFIXES = frozenset({".html", ".htm", ".png", ".jpg", ".jpeg",
+                                           ".gif", ".svg", ".webp", ".ico"})
+# R-SSEC-1/2: gitignored on purpose but served from S1 to the owner. EXACT repo-relative
+# paths only (no globs/folders); shared with S-SEC2. Secret-name deny still wins.
+TOOLBOX_PRIVATE_ALLOWLIST = frozenset({
+    "private/launcher-private.js",                                   # Launcher L2347 owner tiles
+    "Investor Portal.html",                                          # Launcher L5309 HEAD probe
+    "Business Tax Preparedness/TaxForge Hub.html",                   # Universal Converter L420, Amort. L160
+    "Business Tax Preparedness/Mileage Log.html",                    # Universal Converter L421
+    "Business Tax Preparedness/Quarterly Tracker.html",              # Amoritization loan calculator2 L161
+    "Business Tax Preparedness/LedgerLink Console.html",             # Secrets Presence Console L210
+    "System Tools/PC Reports and Log Viewer/catalog.js",             # PC Reports viewer L1195
+    "System Tools/PC Reports and Log Viewer/logs-data.js",           # PC Reports viewer L1196
+    "System Tools/PC Reports and Log Viewer/reports/pc-health-readable-auto.html",  # Health Dashboard L376
+    "System Tools/PC Reports and Log Viewer/reports/pc-health-readable.html",       # Health Dashboard L377
+})
+_TB_PRIVATE_KEYS = frozenset(p.casefold() if os.name == "nt" else p for p in TOOLBOX_PRIVATE_ALLOWLIST)
+TOOLBOX_TRACKED_REFRESH_S = 60.0
+# Fallback (no usable git): code + assets only, plus the app JSON the tools fetch.
+TOOLBOX_FALLBACK_SUFFIXES = frozenset({
+    ".html", ".htm", ".js", ".mjs", ".css", ".svg", ".png", ".jpg", ".jpeg", ".gif",
+    ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".mp3", ".wav", ".ogg",
+    ".webmanifest",
+})
+TOOLBOX_FALLBACK_JSON = frozenset({
+    "shared/aitoolbox-bind.json", "shared/fafo-drawing-board.json",
+    "shared/songforge-presets.json", "setup/install-catalog.json",
+    "assets/tool-icons/manifest.json",
+})
+TOOLBOX_FALLBACK_DENY_PREFIXES = (                  # mirrors .gitignore data dirs @8cffaa8
+    "private/", "reports/", "logs/", "backups/", "terminals/", "logs gen bank/",
+    "business tax preparedness/", "verifonelibrary/sites/", "verifonelibrary/fafo petro services/",
+    "system tools/pc reports and log viewer/device-local/",
+    "system tools/pc reports and log viewer/reports/",
+    "snapshots/investor portal.html/", "snapshots/business tax preparedness/",
+    "docs/agent-handoff/",
+)
+TOOLBOX_FALLBACK_DENY_FILES = frozenset({
+    "investor portal.html", "shared/fx-probe.html", "_sumran_aside.html",
+    "system tools/pc reports and log viewer/catalog.js",
+    "system tools/pc reports and log viewer/logs-data.js",
+})
+_TB_LOCK = threading.Lock()
+_TB = {"mode": "unbuilt", "files": frozenset(), "at": 0.0}
+
+
+def _tb_key(rel: str) -> str:
+    return rel.casefold() if os.name == "nt" else rel
+
+
+def _tb_git(*args: str) -> bytes | None:
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(ROOT), *args], capture_output=True, timeout=30,
+            stdin=subprocess.DEVNULL, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _toolbox_tracked_build() -> None:
+    top = _tb_git("rev-parse", "--show-toplevel")
+    files = None
+    try:
+        top_ok = bool(top) and Path(top.decode("utf-8", "replace").strip()).resolve() == ROOT.resolve()
+    except OSError:
+        top_ok = False
+    if top_ok:
+        out = _tb_git("ls-files", "-z", "--cached")
+        if out:
+            files = frozenset(_tb_key(p) for p in out.decode("utf-8", "replace").split("\0") if p)
+    prev = _TB["mode"]
+    _TB["at"] = time.time()
+    if files:
+        _TB["mode"], _TB["files"] = "git", files
+        if prev != "git":
+            print(f"  /toolbox/ serves git-tracked files only ({len(files)})", flush=True)
+    else:
+        _TB["mode"], _TB["files"] = "fallback", frozenset()
+        if prev != "fallback":
+            print("  /toolbox/: git ls-files unavailable - fallback allowlist (code/assets only)", flush=True)
+
+
+def _toolbox_name_is_secret(name: str) -> bool:
+    import fnmatch
+    n = name.lower()
+    if n in TOOLBOX_SECRET_NAMES or any(fnmatch.fnmatchcase(n, g) for g in TOOLBOX_SECRET_GLOBS):
+        return True
+    return (Path(n).suffix not in TOOLBOX_SECRETISH_OK_SUFFIXES
+            and any(fnmatch.fnmatchcase(n, g) for g in TOOLBOX_SECRETISH_GLOBS))
+
+
+def _toolbox_fallback_ok(rel: str) -> bool:
+    r = rel.lower()
+    if r in TOOLBOX_FALLBACK_DENY_FILES or r.startswith(TOOLBOX_FALLBACK_DENY_PREFIXES):
+        return False
+    if r in TOOLBOX_FALLBACK_JSON:
+        return True
+    return Path(r).suffix in TOOLBOX_FALLBACK_SUFFIXES
+
+
+def _toolbox_servable(target: Path) -> bool:
+    """S-SEC (1): True only for a non-secret file that is tracked, on the private
+    allowlist, or (no git) fallback-allowed."""
+    try:
+        rel = target.relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return False
+    if ":" in rel or _toolbox_name_is_secret(target.name):
+        return False
+    if _tb_key(rel) in _TB_PRIVATE_KEYS:            # exact path; checked after the secret deny
+        return True
+    with _TB_LOCK:
+        if _TB["mode"] == "unbuilt":
+            _toolbox_tracked_build()
+        hit = _tb_key(rel) in _TB["files"]
+        if (not hit and time.time() - _TB["at"] >= TOOLBOX_TRACKED_REFRESH_S
+                and target.is_file()):
+            _toolbox_tracked_build()
+            hit = _tb_key(rel) in _TB["files"]
+        mode = _TB["mode"]
+    if mode == "git":
+        return hit
+    return _toolbox_fallback_ok(rel)
+
+
+with _TB_LOCK:
+    _toolbox_tracked_build()                        # S-SEC (1): once at startup (import)
 
 
 VAULT_TOKEN_FILE = ROOT / "System Tools" / "ImagineTracker" / ".env.vault-token.js"
@@ -566,10 +786,12 @@ def vault_token_handoff(request: Request):
 
 # Serve toolbox HTML/tools from the same origin as the API so browsers do not
 # block fetch() (file:// → 127.x private network / CORS edge cases).
-@app.get("/toolbox/{file_path:path}")
+@app.api_route("/toolbox/{file_path:path}", methods=["GET", "HEAD"])   # S-SEC: HEAD for probes
 def toolbox_static(file_path: str, v: str | None = Query(default=None)):
     """Read-only static files under the toolbox root (HTML tools + shared JS)."""
     target = _resolve_toolbox_file(file_path)
+    if not _toolbox_servable(target):               # S-SEC (1): untracked/ignored/secret
+        raise HTTPException(404, "Not found")       # same answer whether or not it exists
     if not target.is_file():
         raise HTTPException(
             404,
