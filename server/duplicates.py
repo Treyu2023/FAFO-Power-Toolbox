@@ -84,7 +84,7 @@ _GROK_NUM_RE = re.compile(r"(?<![a-z0-9])grok[-_]?(\d{2,})(?!\d)", re.I)
 _LEADING_NUM_RE = re.compile(r"^(\d{7,})(?:[_-]|$)")
 GROK_ID_SIZE_TOLERANCE = 0.025
 
-DEFAULT_PIPELINE_INBOX = r"D:\OUTPUTS\__X_GROK\NEW DOWNLOADS"
+DEFAULT_PIPELINE_INBOX = r"O:\New Downloads ODrive Media"
 DEFAULT_PIPELINE_BEFORE = r"D:\OUTPUTS\__X_GROK\Upscaled Videos\Pre Scaled videos"
 DEFAULT_PIPELINE_AFTER = r"D:\OUTPUTS\__X_GROK\Upscaled Videos\Current\Ready for CIV"
 
