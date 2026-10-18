@@ -121,7 +121,7 @@ TOOLBOX_HTTP_ORIGINS = frozenset(
 ALLOWED_CORS_ORIGINS = sorted(TOOLBOX_HTTP_ORIGINS) + ["null"]
 
 S1_TOKEN_HEADER = "X-FAFO-S1-Token"
-S1_TOKEN_QUERY = "s1t"
+S1_TOKEN_QUERY = "s1t"   # S-SEC4a: retired - any request carrying ?s1t= gets 401 (debug_request_middleware)
 S1_TOKEN = secrets.token_urlsafe(32)   # new every process start; never logged or returned
 S1_TOKEN_FILE = ROOT / "shared" / ".env.s1-token.js"
 S1_MEDIA_TICKET_HEADER = "X-FAFO-S1-Media-Ticket"   # S-SEC3: fetch callers (info/text) send the ticket here
@@ -131,9 +131,12 @@ S1_MEDIA_READ_PREFIXES = ("/api/icons/file/",)
 S1_MEDIA_DESTS = frozenset({"image", "video", "audio", "track"})
 
 # S-SEC3: every /api/files/* read needs the S1 header token (fetch callers) or a
-# per-path media ticket: ?mt= for <img>/<video>/<audio> (they cannot send headers),
+# media ticket: ?mt= for <img>/<video>/<audio> (they cannot send headers),
 # or the X-FAFO-S1-Media-Ticket header for fetch() callers (keeps it out of URL logs).
-# mt = "<scope>.<exp>.<sig>"; sig = b64url(HMAC-SHA256(scope_key, "s1m1\n<scope>\n<exp>\n<path>"))[:32].
+# S-SEC4a: the same ticket now binds ROUTE + EXACT QUERY and also covers media/thumb and the
+# SSE streams (S1_TICKET_ROUTES), replacing the retired ?s1t= on those URLs.
+# mt = "<scope>.<exp>.<sig>"; sig = b64url(HMAC-SHA256(scope_key,
+#      "s1m2\n<scope>\n<exp>\n<raw path>?<raw query without mt=>"))[:32].
 # scope "s": key was fetched by a same-origin /toolbox/ page; the ticket is then refused
 # on a cross-site / same-site request. scope "x": key was fetched with the S1 header
 # token (file:// pages) or from another toolbox origin; browsers mark file:// subresource
@@ -144,34 +147,67 @@ S1_MEDIA_TICKET_TTL_S = 6 * 3600          # R-SSEC3-1: <video> Range requests re
 S1_MEDIA_TICKET_BUCKET_S = 900            # exp is rounded up to this, so URLs stay cacheable-stable
 _S1_MEDIA_ROOT_KEY = secrets.token_bytes(32)   # new every process start; never logged or returned
 S1_MEDIA_KID = hmac.new(_S1_MEDIA_ROOT_KEY, b"s1-media-kid-v1", "sha256").hexdigest()[:16]
+# S-SEC4a: routes that accept the ticket. "files" = S1_FILES_TICKET_PATHS (ticket or header token
+# ONLY); "media"/"sse" = ticket accepted where the gate would otherwise ask for the S1 token;
+# "action" = side-effect streams: same, but the ticket TTL is minutes (S1_MEDIA_TICKET_SHORT_*).
+S1_TICKET_ROUTES = {
+    **{p: "files" for p in S1_FILES_TICKET_PATHS},
+    "/api/media/file": "media", "/api/thumb": "media",
+    "/api/duplicates/scan/stream": "sse", "/api/disk/scan/stream": "sse", "/api/git/scan/stream": "sse",
+    "/api/security/scan/stream": "action", "/api/convert/stream": "action",
+    "/api/pdf/stream": "action", "/api/git/clone/stream": "action",
+}
+S1_TICKET_ROUTE_RE = re.compile(r"^/api/scan/[^/]+/stream$")   # library scan attach: "sse"
+S1_MEDIA_TICKET_SHORT_TTL_S = 300          # action streams (git clone, convert/pdf writes, security scan)
+S1_MEDIA_TICKET_SHORT_BUCKET_S = 60
+
+
+def _s1_ticket_class(path: str) -> str | None:
+    cls = S1_TICKET_ROUTES.get(path)
+    if cls is None and S1_TICKET_ROUTE_RE.match(path or ""):
+        cls = "sse"
+    return cls
+
+
+def _s1_ticket_binding(request: Request) -> str:
+    """Raw path + '?' + raw query with every mt= component removed (exactly what the page signed)."""
+    raw = request.scope.get("raw_path")
+    rp = raw.decode("latin-1") if isinstance(raw, (bytes, bytearray)) and raw else request.url.path
+    rp = rp.split("?", 1)[0]
+    qs = request.scope.get("query_string", b"")
+    q = qs.decode("latin-1") if isinstance(qs, (bytes, bytearray)) else str(qs or "")
+    return rp + "?" + "&".join(p for p in q.split("&") if p and not p.startswith(S1_MEDIA_TICKET_QUERY + "="))
 
 
 def _s1_media_scope_key(scope: str) -> bytes:
     return hmac.new(_S1_MEDIA_ROOT_KEY, b"s1-media-key-v1|" + scope.encode("ascii"), "sha256").digest()
 
 
-def _s1_media_sig(scope: str, exp: int, path: str) -> str:
-    msg = ("s1m1\n%s\n%d\n" % (scope, exp)).encode("ascii") + path.encode("utf-8", "replace")
+def _s1_media_sig(scope: str, exp: int, binding: str) -> str:
+    msg = ("s1m2\n%s\n%d\n" % (scope, exp)).encode("ascii") + binding.encode("latin-1", "replace")
     dig = hmac.new(_s1_media_scope_key(scope), msg, "sha256").digest()
     return base64.urlsafe_b64encode(dig).rstrip(b"=").decode("ascii")[:32]
 
 
 def _s1_media_ticket_ok(request: Request) -> bool:
+    cls = _s1_ticket_class(request.url.path)
     mt = request.headers.get(S1_MEDIA_TICKET_HEADER) or request.query_params.get(S1_MEDIA_TICKET_QUERY) or ""
-    path = request.query_params.get("path")
     parts = mt.split(".")
-    if path is None or len(parts) != 3:
+    if cls is None or len(parts) != 3:
         return False
     scope, exp_s, sig = parts
     if scope not in ("s", "x") or len(sig) != 32 or not (exp_s.isascii() and exp_s.isdigit()) or len(exp_s) > 12:
         return False
     exp = int(exp_s)
     now = int(time.time())
-    if exp < now or exp > now + S1_MEDIA_TICKET_TTL_S + S1_MEDIA_TICKET_BUCKET_S:
+    cap = (S1_MEDIA_TICKET_SHORT_TTL_S + S1_MEDIA_TICKET_SHORT_BUCKET_S if cls == "action"
+           else S1_MEDIA_TICKET_TTL_S + S1_MEDIA_TICKET_BUCKET_S)
+    if exp < now or exp > now + cap:
         return False
     if scope == "s" and request.headers.get("sec-fetch-site") not in (None, "same-origin"):
         return False
-    return hmac.compare_digest(sig.encode("ascii", "replace"), _s1_media_sig(scope, exp, path).encode("ascii"))
+    return hmac.compare_digest(sig.encode("ascii", "replace"),
+                               _s1_media_sig(scope, exp, _s1_ticket_binding(request)).encode("ascii"))
 
 
 def _s1_files_gate(request: Request, origin: str | None) -> str | None:
@@ -216,11 +252,15 @@ def _origin_allows_pna(origin: str | None) -> bool:
 
 
 def _s1_token_ok(request: Request) -> bool:
+    # S-SEC4a: header only. The ?s1t= query fallback is gone (a leaked URL was a master GET key).
     got = request.headers.get(S1_TOKEN_HEADER) or ""
-    if not got and request.method in ("GET", "HEAD"):
-        got = request.query_params.get(S1_TOKEN_QUERY) or ""
     return bool(got) and hmac.compare_digest(
         got.encode("utf-8", "replace"), S1_TOKEN.encode("ascii"))
+
+
+def _s1_cred_ok(request: Request) -> bool:
+    """S1 header token, or (S-SEC4a) a valid ticket on a ticket route (media/thumb/SSE)."""
+    return _s1_token_ok(request) or _s1_media_ticket_ok(request)
 
 def _s1_gate(request: Request, origin: str | None) -> str | None:
     """None = allow, else the 403 detail. Table rows 1-9 in the S-1b plan §0(a).
@@ -239,7 +279,7 @@ def _s1_gate(request: Request, origin: str | None) -> str | None:
     if origin in TOOLBOX_HTTP_ORIGINS:
         return None
     if origin == "null":
-        return None if _s1_token_ok(request) else "bad-token"
+        return None if _s1_cred_ok(request) else "bad-token"
     site = request.headers.get("sec-fetch-site")
     if site == "same-origin":
         return None
@@ -249,7 +289,7 @@ def _s1_gate(request: Request, origin: str | None) -> str | None:
         if (path in S1_MEDIA_READ_PATHS or path.startswith(S1_MEDIA_READ_PREFIXES)) and (
                 site is None or request.headers.get("sec-fetch-dest") in S1_MEDIA_DESTS):
             return None
-    return None if _s1_token_ok(request) else "bad-token"
+    return None if _s1_cred_ok(request) else "bad-token"
 
 S1_FIXED_HOSTS = ("127.0.0.87", "127.0.0.1", "localhost")
 S1_FIXED_PORT = 18765
@@ -298,14 +338,14 @@ def _s1_deny(origin: str | None, detail: str) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": detail}, headers=headers)
 
 
-def _s1_media_denied(origin: str | None) -> JSONResponse:
+def _s1_media_denied(origin: str | None, detail: str = "media-ticket") -> JSONResponse:
     # S-SEC3: fixed body, no path / ticket echo; toolbox + 'null' origins may read it.
     headers = {"Vary": "Origin", "Cache-Control": "no-store"}
     if origin in ALLOWED_CORS_ORIGINS:
         headers["Access-Control-Allow-Origin"] = origin
     if _origin_allows_pna(origin):
         headers["Access-Control-Allow-Private-Network"] = "true"
-    return JSONResponse(status_code=401, content={"detail": "media-ticket"}, headers=headers)
+    return JSONResponse(status_code=401, content={"detail": detail}, headers=headers)
 
 
 app = FastAPI(title="AI Toolbox Server", version=TOOLBOX_VERSION)
@@ -351,11 +391,17 @@ async def debug_request_middleware(request: Request, call_next):
         if pna_ok:
             headers["Access-Control-Allow-Private-Network"] = "true"
         return Response(status_code=204, headers=headers)
+    if request.method != "OPTIONS" and S1_TOKEN_QUERY in request.query_params:   # S-SEC4a: retired everywhere
+        dbg.log("server", "warn", f"s1-gate s1t-retired: {request.method} {request.url.path}")
+        return _s1_media_denied(origin or None, "s1t-retired")
     files_gated = request.url.path in S1_FILES_TICKET_PATHS and request.method != "OPTIONS"
     if files_gated:                                 # S-SEC3: header token or media ticket
         denied = _s1_files_gate(request, origin or None)
     else:
         denied = _s1_gate(request, origin or None)
+    if denied == "bad-token" and _s1_ticket_class(request.url.path) and (
+            request.headers.get(S1_MEDIA_TICKET_HEADER) or S1_MEDIA_TICKET_QUERY in request.query_params):
+        denied = "media-ticket"                     # S-SEC4a: a presented ticket that fails -> 401
     if denied:
         dbg.log("server", "warn", f"s1-gate {denied}: {request.method} {request.url.path}")
         if denied == "media-ticket":
@@ -4461,8 +4507,10 @@ def api_files_media_key(request: Request):
     scope = "s" if request.headers.get("sec-fetch-site") == "same-origin" else "x"
     key = base64.urlsafe_b64encode(_s1_media_scope_key(scope)).rstrip(b"=").decode("ascii")
     return JSONResponse(
-        {"v": 1, "scope": scope, "key": key, "kid": S1_MEDIA_KID,
-         "ttl": S1_MEDIA_TICKET_TTL_S, "bucket": S1_MEDIA_TICKET_BUCKET_S},
+        {"v": 2, "scope": scope, "key": key, "kid": S1_MEDIA_KID,
+         "ttl": S1_MEDIA_TICKET_TTL_S, "bucket": S1_MEDIA_TICKET_BUCKET_S,
+         "ttl_short": S1_MEDIA_TICKET_SHORT_TTL_S, "bucket_short": S1_MEDIA_TICKET_SHORT_BUCKET_S,
+         "short": sorted(p for p, c in S1_TICKET_ROUTES.items() if c == "action")},
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
 

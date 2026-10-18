@@ -26,6 +26,7 @@
                 try { s.remove(); } catch (_) { /* ignore */ }
                 const t = global.AITOOLBOX_S1_TOKEN;
                 s1Token = (typeof t === 'string' && t) ? t : null;
+                try { delete global.AITOOLBOX_S1_TOKEN; } catch (_) { global.AITOOLBOX_S1_TOKEN = undefined; }   // S-SEC4a: closure only
                 s1TokenAt = Date.now(); s1TokenLoading = null; res(s1Token);
             };
             global.AITOOLBOX_S1_TOKEN = undefined;      // a failed reload must not keep the old value
@@ -49,11 +50,6 @@
             });
             return set.has(o);
         } catch (_) { return false; }
-    }
-
-    function s1WithQuery(u) {
-        if (!S1_IS_FILE || !s1Token || !u || !isS1Url(u)) return u;
-        return u + (String(u).indexOf('?') >= 0 ? '&' : '?') + 's1t=' + encodeURIComponent(s1Token);
     }
 
     if (S1_IS_FILE && typeof global.fetch === 'function' && !global.__aitoolboxS1Fetch) {
@@ -88,25 +84,62 @@
         };
     }
 
+    // S-SEC4a: file:// EventSource to S1 carries a route+query-bound ticket (mt=) instead of
+    // the retired ?s1t=. Until the ticket key is loaded the constructor returns a facade that
+    // opens the real stream once s1MediaLoad() settles (unsigned if the key could not load).
     if (S1_IS_FILE && typeof global.EventSource === 'function' && !global.__aitoolboxS1ES) {
         global.__aitoolboxS1ES = true;
         const NativeES = global.EventSource;
-        global.EventSource = class extends NativeES {
-            constructor(url, cfg) {
-                super(s1WithQuery(String(url)), cfg);
-                if (isS1Url(String(url))) {
-                    this.addEventListener('error', () => { if (this.readyState === 2) s1LoadToken(true); });
-                }
-            }
+        const S1_ES_EVENTS = ['open', 'message', 'error'];
+        const S1DeferredES = function (url, cfg) {
+            const self = this, on = { open: null, message: null, error: null };
+            let es = null, closed = false, queue = [];
+            Object.defineProperty(self, 'url', { get: function () { return String(url); } });
+            Object.defineProperty(self, 'withCredentials', { get: function () { return !!(cfg && cfg.withCredentials); } });
+            Object.defineProperty(self, 'readyState', { get: function () { return es ? es.readyState : (closed ? 2 : 0); } });
+            S1_ES_EVENTS.forEach(function (t) {
+                Object.defineProperty(self, 'on' + t, {
+                    get: function () { return on[t]; },
+                    set: function (f) { on[t] = f; if (es) es['on' + t] = f; },
+                });
+            });
+            self.addEventListener = function () { if (es) es.addEventListener.apply(es, arguments); else queue.push(arguments); };
+            self.removeEventListener = function (t, f) {
+                if (es) es.removeEventListener.apply(es, arguments);
+                else queue = queue.filter(function (a) { return !(a[0] === t && a[1] === f); });
+            };
+            self.dispatchEvent = function (ev) { return es ? es.dispatchEvent(ev) : false; };
+            self.close = function () { closed = true; if (es) es.close(); };
+            const attach = function () {
+                if (closed) return;
+                es = new NativeES(s1WithTicket(String(url)), cfg);
+                S1_ES_EVENTS.forEach(function (t) { if (on[t]) es['on' + t] = on[t]; });
+                queue.forEach(function (a) { es.addEventListener.apply(es, a); });
+                queue = [];
+            };
+            s1MediaLoad(false).then(attach, attach);
         };
+        const S1EventSource = function EventSource(url, cfg) {
+            const u = String(url);
+            if (!isS1Url(u)) return new NativeES(url, cfg);
+            if (s1Media) return new NativeES(s1WithTicket(u), cfg);
+            return new S1DeferredES(u, cfg);
+        };
+        S1EventSource.prototype = NativeES.prototype;
+        S1DeferredES.prototype = NativeES.prototype;
+        S1EventSource.CONNECTING = 0; S1EventSource.OPEN = 1; S1EventSource.CLOSED = 2;
+        global.EventSource = S1EventSource;
     }
 
     if (S1_IS_FILE) s1LoadToken(false);   // start early; first S1 fetch awaits it
 
-    // --- S-SEC3: per-path media tickets for /api/files/* (<img>/<video> can't send headers) ---
+    // --- S-SEC3/S-SEC4a: route+query-bound tickets (<img>/<video>/EventSource can't send headers) ---
     // The key lives in this closure only (never localStorage, URLs or logs). A ticket is
-    // "<scope>.<exp>.<HMAC-SHA256(key, path + exp)>", valid for that one path until exp.
+    // "<scope>.<exp>.<HMAC-SHA256(key, 's1m2', scope, exp, path?query-without-mt)>", valid for
+    // that one exact URL until exp (minutes for side-effect streams, hours otherwise).
     let s1Media = null, s1MediaLoading = null, s1MediaKid = '';
+    const S1_TICKET_PATH_RE = /\/api\/(?:files\/(?:serve|preview|info|text)|media\/file|thumb|scan\/[^/]+\/stream|(?:duplicates|disk|git|security)\/scan\/stream|convert\/stream|pdf\/stream|git\/clone\/stream)$/;
+    const S1_SHORT_DEFAULT = ['/api/convert/stream', '/api/git/clone/stream', '/api/pdf/stream', '/api/security/scan/stream'];
     const S1_SHA_K = new Uint32Array([
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
         0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -161,45 +194,76 @@
         for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
         return out;
     }
-    function s1MediaSig(m, scope, exp, path) {
-        const msg = new TextEncoder().encode('s1m1\n' + scope + '\n' + exp + '\n' + String(path));
+    /** Parsed ticketable S1 URL: {pathname, binding (path?query without mt), mt} or null. */
+    function s1TicketTarget(url) {
+        try {
+            const s = String(url);
+            if (!s || !isS1Url(s)) return null;
+            const u = new URL(s, global.location.href);
+            if (!S1_TICKET_PATH_RE.test(u.pathname)) return null;
+            const q = u.search.replace(/^\?/, '');
+            let mt = '';
+            const rest = q ? q.split('&').filter(function (c) {
+                if (c.indexOf('mt=') === 0) { mt = c.slice(3); return false; }
+                return c !== '';
+            }) : [];
+            return { pathname: u.pathname, binding: u.pathname + '?' + rest.join('&'), mt: mt };
+        } catch (_) { return null; }
+    }
+    function s1MediaSig(m, scope, exp, binding) {
+        const msg = new TextEncoder().encode('s1m2\n' + scope + '\n' + exp + '\n' + String(binding));
         return s1B64u(s1Hmac(m.key, msg)).slice(0, 32);
     }
-    function s1MediaTicket(path) {
+    function s1MediaTicketFor(t) {
         const m = s1Media;
         if (!m) { s1MediaLoad(false); return ''; }   // first use: load, then s1MediaResign() fixes the src
+        const short = m.short.indexOf(t.pathname) >= 0;
+        const ttl = short ? m.ttlShort : m.ttl, bucket = short ? m.bucketShort : m.bucket;
         const now = Math.floor(Date.now() / 1000);
-        const exp = Math.ceil((now + m.ttl) / m.bucket) * m.bucket;
-        return m.scope + '.' + exp + '.' + s1MediaSig(m, m.scope, exp, path);
+        const exp = Math.ceil((now + ttl) / bucket) * bucket;
+        return m.scope + '.' + exp + '.' + s1MediaSig(m, m.scope, exp, t.binding);
     }
-    /** url must already carry ?path=...; the ticket goes last as &mt=. */
-    function s1WithTicket(url, path) {
-        const t = s1MediaTicket(path);
-        return t ? url + '&mt=' + t : url;
+    /** true when url's mt= verifies under the loaded key and has not expired. */
+    function s1TicketValid(url) {
+        const m = s1Media, t = s1TicketTarget(url);
+        if (!m || !t || !t.mt) return false;
+        const p = t.mt.split('.');
+        return p.length === 3 && p[0] === m.scope && Number(p[1]) > Date.now() / 1000 &&
+            s1MediaSig(m, p[0], p[1], t.binding) === p[2];
+    }
+    /** Sign a ticketable S1 URL (any existing mt= is dropped); the ticket goes last as mt=. */
+    function s1WithTicket(url) {
+        const s = String(url), t = s1TicketTarget(s);
+        if (!t) return s;
+        const base = s.replace(/([?&])mt=[^&#]*&?/g, '$1').replace(/[?&]$/, '');
+        const tk = s1MediaTicketFor(s1TicketTarget(base) || t);
+        return tk ? base + (base.indexOf('?') >= 0 ? '&' : '?') + 'mt=' + tk : base;
     }
     /** fetch() callers send the ticket as a header: api() paths reach the debug log. */
-    function s1TicketOpts(path) {
-        const t = s1MediaTicket(path);
-        return t ? { headers: { 'X-FAFO-S1-Media-Ticket': t } } : {};
+    function s1TicketOpts(relPath) {
+        const t = s1TicketTarget(apiBase() + relPath);
+        const tk = t ? s1MediaTicketFor(t) : '';
+        return tk ? { headers: { 'X-FAFO-S1-Media-Ticket': tk } } : {};
     }
-    /** Re-sign /files/serve|preview src/poster values that are unsigned or signed by an old key. */
+    /** Re-sign one src/poster if unsigned, expired or signed by an old key. A playing
+     *  <video>/<audio> is left alone in bulk mode (its own error re-signs it, keeping the time). */
+    function s1ResignEl(el, attr, bulk) {
+        if (!s1Media) return;
+        const v = el.getAttribute(attr);
+        if (!v || !s1TicketTarget(v) || s1TicketValid(v)) return;
+        const av = attr === 'src' && (el.tagName === 'VIDEO' || el.tagName === 'AUDIO');
+        if (bulk && av && !el.paused && !el.ended && !el.error && el.readyState > 1) return;
+        const nv = s1WithTicket(v);
+        if (nv === v) return;
+        const at = av ? Number(el.currentTime) || 0 : 0;
+        if (at > 0) el.addEventListener('loadedmetadata', function () { try { el.currentTime = at; } catch (_) { /* ignore */ } }, { once: true });
+        el.setAttribute(attr, nv);
+    }
     function s1MediaResign() {
-        const m = s1Media;
-        if (!m || typeof document === 'undefined' || !document.querySelectorAll) return;
+        if (!s1Media || typeof document === 'undefined' || !document.querySelectorAll) return;
         document.querySelectorAll('img[src],video[src],audio[src],source[src],video[poster]').forEach(function (el) {
-            ['src', 'poster'].forEach(function (attr) {
-                const v = el.getAttribute(attr);
-                if (!v || !/\/files\/(serve|preview)\?path=/.test(v) || !isS1Url(v)) return;
-                let u;
-                try { u = new URL(v, global.location.href); } catch (_) { return; }
-                const p = u.searchParams.get('path');
-                if (p == null) return;
-                const old = (u.searchParams.get('mt') || '').split('.');
-                if (old.length === 3 && old[0] === m.scope && s1MediaSig(m, old[0], old[1], p) === old[2]) return;
-                const base = v.replace(/&mt=[^&#]*/g, '');
-                const t = s1MediaTicket(p);
-                if (t) el.setAttribute(attr, base + '&mt=' + t);
-            });
+            s1ResignEl(el, 'src', true);
+            s1ResignEl(el, 'poster', true);
         });
     }
     function s1MediaLoad(force) {
@@ -214,6 +278,8 @@
                     s1Media = {
                         scope: j.scope, key: s1B64uDecode(j.key), kid: String(j.kid || ''),
                         ttl: Math.max(60, Number(j.ttl) || 21600), bucket: Math.max(1, Number(j.bucket) || 900),
+                        ttlShort: Math.max(30, Number(j.ttl_short) || 300), bucketShort: Math.max(1, Number(j.bucket_short) || 60),
+                        short: Array.isArray(j.short) ? j.short.map(String) : S1_SHORT_DEFAULT,
                     };
                     s1MediaKid = s1Media.kid;
                     s1MediaResign();
@@ -223,6 +289,50 @@
             return s1Media;
         })();
         return s1MediaLoading;
+    }
+
+    // R-DFM2-2 (b): an <img>/<video>/<audio>/<source> error on a ticketable S1 URL is held back
+    // (capture phase, before the page's own onerror) while the key is loaded or the S1 key id is
+    // re-checked. If that re-signs the element (s1MediaResign) the browser simply loads again;
+    // otherwise the original error is re-dispatched so page one-shot handlers run unchanged.
+    // At most one hold per element per src value.
+    let s1KidProbe = null, s1KidProbeAt = 0;
+    function s1KidCheck() {
+        if (s1KidProbe) return s1KidProbe;
+        if (Date.now() - s1KidProbeAt < 2000) return Promise.resolve(s1Media);
+        s1KidProbeAt = Date.now();
+        s1KidProbe = (async function () {
+            try {
+                const r = await global.fetch(apiBase() + '/health?probe=1', { cache: 'no-store', credentials: 'omit' });
+                const kid = r && r.headers ? r.headers.get('X-FAFO-S1-Media-Kid') : '';
+                if (kid && kid !== s1MediaKid) await s1MediaLoad(true);
+            } catch (_) { /* offline: let the page handler run */ }
+            s1KidProbe = null;
+            return s1Media;
+        })();
+        return s1KidProbe;
+    }
+    if (typeof document !== 'undefined' && typeof global.addEventListener === 'function' && !global.__aitoolboxS1MediaHeal) {
+        global.__aitoolboxS1MediaHeal = true;
+        const held = new WeakMap();
+        const pass = function (el) {
+            el.__s1MediaPass = true;
+            try { el.dispatchEvent(new Event('error')); } finally { el.__s1MediaPass = false; }
+        };
+        global.addEventListener('error', function (ev) {
+            const el = ev.target;
+            if (!el || !el.tagName || el.__s1MediaPass || !/^(IMG|VIDEO|AUDIO|SOURCE)$/.test(el.tagName)) return;
+            const src = el.getAttribute('src') || '';
+            if (!src || held.get(el) === src || !s1TicketTarget(src)) return;
+            held.set(el, src);
+            ev.stopImmediatePropagation();
+            const step = !s1Media ? s1MediaLoad(false)
+                : (!s1TicketValid(src) ? Promise.resolve(s1MediaResign()) : s1KidCheck());
+            step.then(null, function () { /* ignore */ }).then(function () {
+                if ((el.getAttribute('src') || '') === src) s1ResignEl(el, 'src', false);
+                if ((el.getAttribute('src') || '') === src) pass(el);   // not re-signed: a real failure
+            });
+        }, true);
     }
 
     function resolveApiBase() {
@@ -1859,11 +1969,11 @@
         },
 
         mediaFileUrl(mediaId) {
-            return s1WithQuery(`${apiBase()}/media/file?mid=${encodeURIComponent(mediaId)}`);
+            return s1WithTicket(`${apiBase()}/media/file?mid=${encodeURIComponent(mediaId)}`);
         },
 
         thumbUrl(mediaId) {
-            return s1WithQuery(`${apiBase()}/thumb?mid=${encodeURIComponent(mediaId)}`);
+            return s1WithTicket(`${apiBase()}/thumb?mid=${encodeURIComponent(mediaId)}`);
         },
 
         async resolvePaths(ids) {
@@ -1972,7 +2082,7 @@
         /** Stream a local file path through the toolbox server (for dual preview). */
         fileServeUrl(path) {
             if (!path) return '';
-            return s1WithTicket(`${apiBase()}/files/serve?path=${encodeURIComponent(path)}`, path);
+            return s1WithTicket(`${apiBase()}/files/serve?path=${encodeURIComponent(path)}`);
         },
         /**
          * Still preview URL: images pass through; videos use a first-frame JPEG
@@ -1983,7 +2093,7 @@
         filePreviewUrl(path, t = 0.5) {
             if (!path) return '';
             const sec = Number.isFinite(Number(t)) ? Number(t) : 0.5;
-            return s1WithTicket(`${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`, path);
+            return s1WithTicket(`${apiBase()}/files/preview?path=${encodeURIComponent(path)}&t=${encodeURIComponent(String(sec))}`);
         },
 
         async getPairPaths(pairId) {
@@ -2187,7 +2297,7 @@
 
         async getFileInfo(path) {
             await s1MediaLoad(false);
-            return api(`/files/info?path=${encodeURIComponent(path)}`, s1TicketOpts(path));
+            return api(`/files/info?path=${encodeURIComponent(path)}`, s1TicketOpts(`/files/info?path=${encodeURIComponent(path)}`));
         },
 
         /** PC Report Library / system diagnostics (this machine only). */
@@ -2209,7 +2319,8 @@
 
         async getFileText(path, maxBytes = 65536) {
             await s1MediaLoad(false);
-            return api(`/files/text?path=${encodeURIComponent(path)}&max_bytes=${maxBytes}`, s1TicketOpts(path));
+            return api(`/files/text?path=${encodeURIComponent(path)}&max_bytes=${maxBytes}`,
+                s1TicketOpts(`/files/text?path=${encodeURIComponent(path)}&max_bytes=${maxBytes}`));
         },
         async getTagRules() { return api('/tag-rules'); },
         async saveTagRules(rules) { return api('/tag-rules', { method: 'PATCH', body: JSON.stringify(rules) }); },
