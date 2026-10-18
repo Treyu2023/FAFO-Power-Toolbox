@@ -10817,6 +10817,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     const v = loadJson(TAT_CHALLENGES_KEY, {});
     return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   }
+  // T-TIME: ms timestamps (~1.79e12) overflow int32, so `(at | 0) > 0` dropped about half of real dates (sign flips every 2^31 ms).
+  function tatMsNum(v) { const n = +v; return Number.isFinite(n) ? n : 0; }
   function tatChMerge(all, id, rec) {
     if (!rec || typeof rec !== 'object') return false;
     const cur = all[id] || (all[id] = { attempts: 0, bestMs: 0, bestWpm: 0, bestAcc: 0, log: [] });
@@ -10824,8 +10826,8 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     const ms = rec.bestMs | 0;
     if (ms > 0 && (!cur.bestMs || ms < cur.bestMs)) { cur.bestMs = ms; cur.bestWpm = rec.bestWpm | 0; cur.bestAcc = rec.bestAcc | 0; ch = true; }
     const seen = new Set((cur.log || []).map((r) => r && r.at));
-    (Array.isArray(rec.log) ? rec.log : []).forEach((r) => { if (r && (r.at | 0) > 0 && !seen.has(r.at)) { cur.log.push({ at: r.at, ms: r.ms | 0, wpm: r.wpm | 0, acc: r.acc | 0 }); ch = true; } });
-    cur.log = cur.log.sort((a, b) => (a.at | 0) - (b.at | 0)).slice(-60);
+    (Array.isArray(rec.log) ? rec.log : []).forEach((r) => { if (r && tatMsNum(r.at) > 0 && !seen.has(r.at)) { cur.log.push({ at: r.at, ms: r.ms | 0, wpm: r.wpm | 0, acc: r.acc | 0 }); ch = true; } });
+    cur.log = cur.log.sort((a, b) => tatMsNum(a.at) - tatMsNum(b.at)).slice(-60);
     if ((rec.attempts | 0) > (cur.attempts | 0)) { cur.attempts = rec.attempts | 0; ch = true; }
     return ch;
   }
@@ -10885,7 +10887,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
       const prevSt = (archive.players[id] && archive.players[id].stats) || {}; // T-CHAR-b: keyStats delta vs the archived copy (idempotent re-import)
       archive.players[id] = pl;
       (Array.isArray(pl.history) ? pl.history : []).forEach((h) => {
-        if (!h || !((h.at | 0) > 0)) return;
+        if (!h || !(tatMsNum(h.at) > 0)) return;
         const k = h.at + ':' + (h.wpm | 0);
         if (seen.has(k)) return; seen.add(k); nHist++;
         hist.push({ at: h.at, mode: 'imported', bucket: String(h.bucket || 'imported'), score: h.score | 0, wpm: h.wpm | 0, acc: h.acc | 0, errors: h.errors | 0, bestMult: h.bestMult || 1, bestStreak: h.bestStreak | 0, durationMs: h.durationMs | 0 });
@@ -10903,7 +10905,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         tatGmPut(gm, 'roster:' + id, pl.name, board, tatGmTape(g.best, pl.name), false);
       });
     });
-    hist.sort((a, b) => (b.at | 0) - (a.at | 0));
+    hist.sort((a, b) => tatMsNum(b.at) - tatMsNum(a.at));
     if (hist.length > MAX_HISTORY) hist = hist.slice(0, MAX_HISTORY);
     try { // T-CHAR-b: archived players -> characters (once each); ghosts copied to the stable owner char:<id> if that owner has none yet
       const rc = window.TATCHAR ? window.TATCHAR.fromPacks(archive) : null;
@@ -10931,14 +10933,14 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     const svg = $('wpmChart');
     if (!svg) return;
     let pts = loadJson(KEYS.history, []);
-    pts = (Array.isArray(pts) ? pts : []).filter((h) => h && (h.wpm | 0) >= 0 && (h.at | 0) > 0 && h.mode !== 'minigame-challenge');
+    pts = (Array.isArray(pts) ? pts : []).filter((h) => h && (h.wpm | 0) >= 0 && tatMsNum(h.at) > 0 && h.mode !== 'minigame-challenge');
     // T-RESTORE R-h2: challenge clears as a second series (◆ magenta), from challenges.v1 logs
     let chs = [];
     try {
       const all = tatChLoad();
-      Object.keys(all).forEach((id) => (all[id].log || []).forEach((r) => { if (r && (r.at | 0) > 0 && (r.ms | 0) > 0) chs.push({ at: r.at, wpm: r.wpm | 0, ms: r.ms | 0, ch: id }); }));
+      Object.keys(all).forEach((id) => (all[id].log || []).forEach((r) => { if (r && tatMsNum(r.at) > 0 && (r.ms | 0) > 0) chs.push({ at: r.at, wpm: r.wpm | 0, ms: r.ms | 0, ch: id }); }));
     } catch (_) {}
-    const merged = pts.map((x) => ({ at: x.at, wpm: x.wpm | 0 })).concat(chs).sort((a, b) => (a.at | 0) - (b.at | 0)).slice(-24);
+    const merged = pts.map((x) => ({ at: x.at, wpm: x.wpm | 0 })).concat(chs).sort((a, b) => tatMsNum(a.at) - tatMsNum(b.at)).slice(-24);
     pts = merged;
     if ($('chartHint')) {
       $('chartHint').textContent = pts.length
