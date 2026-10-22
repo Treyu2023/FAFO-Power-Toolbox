@@ -1,7 +1,7 @@
 import {
   __commonJS,
   __toESM
-} from "./part-ED4TTFRM.js";
+} from "./part-MA4KR6TC.js";
 
 // node_modules/react/cjs/react.development.js
 var require_react_development = __commonJS({
@@ -511,7 +511,7 @@ var require_react_development = __commonJS({
         }
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, didWarnStateUpdateForUnmountedComponent = {}, ReactNoopUpdateQueue = {
+      var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, didWarnStateUpdateForUnmountedComponent = {}, ReactNoopUpdateQueue = {
         isMounted: function() {
           return false;
         },
@@ -554,7 +554,7 @@ var require_react_development = __commonJS({
       deprecatedAPIs.constructor = PureComponent;
       assign(deprecatedAPIs, Component.prototype);
       deprecatedAPIs.isPureReactComponent = true;
-      var isArrayImpl = Array.isArray, REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = {
+      var isArrayImpl = Array.isArray, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = {
         H: null,
         A: null,
         T: null,
@@ -994,7 +994,7 @@ var require_react_development = __commonJS({
       exports.useTransition = function() {
         return resolveDispatcher().useTransition();
       };
-      exports.version = "19.3.0";
+      exports.version = "19.3.1";
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -1228,7 +1228,7 @@ var require_react_jsx_runtime_development = __commonJS({
       function isValidElement(object) {
         return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
       }
-      var React2 = require_react(), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+      var React2 = require_react(), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
         return null;
       };
       React2 = {
@@ -1566,7 +1566,7 @@ var require_scheduler = __commonJS({
   }
 });
 
-// src/lib/mustang/parts.ts
+// lib/mustang/parts.ts
 function define(list) {
   const out = {};
   for (const item of list) {
@@ -4131,7 +4131,7 @@ function searchParts(q) {
   }).slice(0, 8);
 }
 
-// src/lib/mustang/live.ts
+// lib/mustang/live.ts
 var live = {
   stage: 0,
   targetStage: 0,
@@ -4198,7 +4198,7 @@ function useStore(api, selector = identity) {
   const slice = import_react.default.useSyncExternalStore(
     api.subscribe,
     import_react.default.useCallback(() => selector(api.getState()), [api, selector]),
-    import_react.default.useCallback(() => selector(api.getInitialState()), [api, selector])
+    () => selector(api.getInitialState())
   );
   import_react.default.useDebugValue(slice);
   return slice;
@@ -4211,7 +4211,7 @@ var createImpl = (createState) => {
 };
 var create = ((createState) => createState ? createImpl(createState) : createImpl);
 
-// src/lib/mustang/diagram.ts
+// lib/mustang/diagram.ts
 var NODES = [
   { id: "battery", x: 16, y: 28, w: 132, h: 48, label: "Battery", sub: "BXT-59" },
   { id: "cable-neg", x: 16, y: 92, w: 132, h: 40, label: "Negative", sub: "Body ground" },
@@ -4501,7 +4501,7 @@ function traceOf(id) {
   return [...hit];
 }
 
-// src/lib/mustang/flows.ts
+// lib/mustang/flows.ts
 var FUEL_PUMP_POWER = {
   id: "fuel-pump-power",
   title: "Fuel pump power",
@@ -4759,7 +4759,31 @@ function fuelVerdict(marks) {
   return null;
 }
 
-// src/lib/mustang/store.ts
+// lib/mustang/store.ts
+var WALK_KEY = "mustang.walkthrough.v1";
+function loadWalk() {
+  try {
+    const o = JSON.parse(localStorage.getItem(WALK_KEY) || "null");
+    const flow = o && o.v === 1 ? flowById(o.flowId) : void 0;
+    if (!flow) return {};
+    const marks = {};
+    if (o.marks && typeof o.marks === "object") {
+      for (const [id, mark] of Object.entries(o.marks)) {
+        if (mark === "pass" || mark === "fail") marks[id] = mark;
+      }
+    }
+    const step = Math.min(flow.steps.length - 1, Math.max(0, Math.floor(Number(o.step) || 0)));
+    return { flowId: flow.id, step, marks, reading: String(o.reading ?? "").slice(0, 400) };
+  } catch {
+    return {};
+  }
+}
+function saveWalk(s) {
+  try {
+    localStorage.setItem(WALK_KEY, JSON.stringify({ v: 1, flowId: s.flowId, step: s.step, marks: s.marks, reading: s.reading }));
+  } catch {
+  }
+}
 function framePart(id) {
   const part = PARTS[id];
   const stage = Math.max(live.targetStage, part?.stage ?? 0);
@@ -4798,6 +4822,7 @@ var useMustang = create((set, get) => ({
   step: 0,
   marks: {},
   reading: "",
+  ...loadWalk(),
   select: (id, frame = false) => {
     const mode = get().mode;
     const nextMode = id && frame && mode === "sheet" ? "both" : id && !frame && mode === "car" ? "both" : mode;
@@ -4874,6 +4899,7 @@ var useMustang = create((set, get) => ({
       selected: partId,
       trace: traceOf(partId)
     });
+    saveWalk(get());
   },
   setStep: (step) => {
     const flow = flowById(get().flowId);
@@ -4881,24 +4907,37 @@ var useMustang = create((set, get) => ({
     const next = Math.min(flow.steps.length - 1, Math.max(0, step));
     const partId = flow.steps[next]?.partId ?? null;
     set({ step: next, selected: partId, trace: traceOf(partId) });
+    saveWalk(get());
     if (partId) framePart(partId);
   },
   markStep: (stepId, mark) => {
     const flow = flowById(get().flowId);
     const marks = { ...get().marks, [stepId]: mark };
     set({ marks });
+    saveWalk(get());
     if (!flow) return;
     const index = flow.steps.findIndex((step) => step.id === stepId);
     if (mark === "pass" && index >= 0 && index < flow.steps.length - 1) {
       const partId = flow.steps[index + 1].partId;
       set({ step: index + 1, selected: partId, trace: traceOf(partId) });
+      saveWalk(get());
       framePart(partId);
     }
   },
-  setReading: (reading) => set({ reading })
+  setReading: (reading) => {
+    set({ reading });
+    saveWalk(get());
+  },
+  clearWalk: () => {
+    set({ flowId: null, step: 0, marks: {}, reading: "" });
+    try {
+      localStorage.removeItem(WALK_KEY);
+    } catch {
+    }
+  }
 }));
 
-// src/lib/mustang/types.ts
+// lib/mustang/types.ts
 var PAINTS = [
   { id: "red", name: "Laser Red", hex: "#8f1d22" },
   { id: "black", name: "Black", hex: "#1a1a1e" },

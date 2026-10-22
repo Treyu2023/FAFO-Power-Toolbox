@@ -17,11 +17,11 @@ import {
   searchParts,
   useMustang,
   verdict
-} from "./part-6WYP34DX.js";
+} from "./part-I45L67PK.js";
 import {
   __commonJS,
   __toESM
-} from "./part-ED4TTFRM.js";
+} from "./part-MA4KR6TC.js";
 
 // node_modules/react-dom/cjs/react-dom.development.js
 var require_react_dom_development = __commonJS({
@@ -95,7 +95,7 @@ var require_react_dom_development = __commonJS({
         },
         p: 0,
         findDOMNode: null
-      }, REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      }, REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_RECOVERABLE_TYPE = Symbol.for("react.recoverable"), REACT_OPTIMISTIC_KEY = Symbol.for("react.optimistic_key"), ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       "function" === typeof Map && null != Map.prototype && "function" === typeof Map.prototype.forEach && "function" === typeof Set && null != Set.prototype && "function" === typeof Set.prototype.clear && "function" === typeof Set.prototype.forEach || console.error(
         "React depends on Map and Set built-in types. Make sure that you load a polyfill in older browsers. https://reactjs.org/link/react-polyfills"
       );
@@ -272,7 +272,7 @@ var require_react_dom_development = __commonJS({
       exports.useFormStatus = function() {
         return resolveDispatcher().useHostTransitionStatus();
       };
-      exports.version = "19.3.0";
+      exports.version = "19.3.1";
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -18929,11 +18929,11 @@ var require_react_dom_client_development = __commonJS({
         ));
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var Scheduler = require_scheduler(), React = require_react(), ReactDOM = require_react_dom(), searchTarget = null, searchBoundary = null, assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
-      /* @__PURE__ */ Symbol.for("react.scope");
-      var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
-      /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, NotPending = Object.freeze({
+      var Scheduler = require_scheduler(), React = require_react(), ReactDOM = require_react_dom(), searchTarget = null, searchBoundary = null, assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = Symbol.for("react.element"), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy");
+      Symbol.for("react.scope");
+      var REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = Symbol.for("react.legacy_hidden");
+      Symbol.for("react.tracing_marker");
+      var REACT_MEMO_CACHE_SENTINEL = Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, NotPending = Object.freeze({
         pending: false,
         data: null,
         method: null,
@@ -22126,9 +22126,9 @@ var require_react_dom_client_development = __commonJS({
       };
       (function() {
         var isomorphicReactPackageVersion = React.version;
-        if ("19.3.0" !== isomorphicReactPackageVersion)
+        if ("19.3.1" !== isomorphicReactPackageVersion)
           throw Error(
-            'Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:\n  - react:      ' + (isomorphicReactPackageVersion + "\n  - react-dom:  19.3.0\nLearn more: https://react.dev/warnings/version-mismatch")
+            'Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:\n  - react:      ' + (isomorphicReactPackageVersion + "\n  - react-dom:  19.3.1\nLearn more: https://react.dev/warnings/version-mismatch")
           );
       })();
       "function" === typeof Map && null != Map.prototype && "function" === typeof Map.prototype.forEach && "function" === typeof Set && null != Set.prototype && "function" === typeof Set.prototype.clear && "function" === typeof Set.prototype.forEach || console.error(
@@ -22152,10 +22152,10 @@ var require_react_dom_client_development = __commonJS({
       if (!(function() {
         var internals = {
           bundleType: 1,
-          version: "19.3.0",
+          version: "19.3.1",
           rendererPackageName: "react-dom",
           currentDispatcherRef: ReactSharedInternals,
-          reconcilerVersion: "19.3.0"
+          reconcilerVersion: "19.3.1"
         };
         internals.overrideHookState = overrideHookState;
         internals.overrideHookStateDeletePath = overrideHookStateDeletePath;
@@ -22246,7 +22246,7 @@ var require_react_dom_client_development = __commonJS({
         listenToAllSupportedEvents(container);
         return new ReactDOMHydrationRoot(initialChildren);
       };
-      exports.version = "19.3.0";
+      exports.version = "19.3.1";
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -22265,13 +22265,13 @@ var require_client = __commonJS({
   }
 });
 
-// mustang-entry.tsx
+// entry.tsx
 var import_client = __toESM(require_client(), 1);
 
-// src/components/mustang/app.tsx
+// components/mustang/app.tsx
 var import_react4 = __toESM(require_react(), 1);
 
-// src/components/mustang/diagram.tsx
+// components/mustang/diagram.tsx
 var import_react = __toESM(require_react(), 1);
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var CIRCUITS = ["all", "power", "ground", "start", "ignition", "fuel", "sensor", "lamps"];
@@ -22371,10 +22371,10 @@ function WiringSheet() {
   ] });
 }
 
-// src/components/mustang/inspector.tsx
+// components/mustang/inspector.tsx
 var import_react2 = __toESM(require_react(), 1);
 
-// ../tmp/mustang-bundle/grok.stub.ts
+// grok.stub.ts
 async function askMustang(_input) {
   return {
     ok: false,
@@ -22382,7 +22382,7 @@ async function askMustang(_input) {
   };
 }
 
-// src/components/mustang/inspector.tsx
+// components/mustang/inspector.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var JOBS = [
   { label: "Cranks, no start", id: "inertia-switch", symptom: "Cranks but will not fire" },
@@ -22467,6 +22467,9 @@ function GrokNote({ partId, symptomHint }) {
   const [error, setError] = (0, import_react2.useState)(null);
   const [pending, setPending] = (0, import_react2.useState)(false);
   (0, import_react2.useEffect)(() => {
+    window.FafoChrome?.initFold?.();
+  }, []);
+  (0, import_react2.useEffect)(() => {
     setSymptom(symptomHint);
     setText(null);
     setError(null);
@@ -22502,29 +22505,32 @@ function GrokNote({ partId, symptomHint }) {
       setPending(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "grok", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h3", { children: "Ask Grok" }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "fine", children: "Shop note for this part. Nothing is sent until you ask." }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "field", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "What is it doing?" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        "textarea",
-        {
-          value: symptom,
-          onChange: (e) => setSymptom(e.target.value),
-          rows: 2,
-          maxLength: 400,
-          placeholder: "Optional. Example: ticks when cold, quiet when hot."
-        }
-      )
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "btn btn-solid", onClick: ask, disabled: pending, children: pending ? "Writing the note\u2026" : "Ask Grok" }),
-    error ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "error", children: error }) : null,
-    text ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "note", children: text }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "ask-grok", "data-collapsed-default": true, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("summary", { children: "Ask Grok (offline in toolbox)" }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "grok", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h3", { children: "Ask Grok (offline in toolbox)" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "fine", children: "This toolbox copy never sends anything. Ask Grok works only in the online bay." }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "What is it doing?" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "textarea",
+          {
+            value: symptom,
+            onChange: (e) => setSymptom(e.target.value),
+            rows: 2,
+            maxLength: 400,
+            placeholder: "Optional. Example: ticks when cold, quiet when hot."
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "btn btn-solid", onClick: ask, disabled: pending, children: pending ? "Writing the note\u2026" : "Ask Grok (offline)" }),
+      error ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "error", children: error }) : null,
+      text ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "note", children: text }) : null
+    ] })
   ] });
 }
 
-// src/components/mustang/walk.tsx
+// components/mustang/walk.tsx
 var import_react3 = __toESM(require_react(), 1);
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
 function Walkthrough() {
@@ -22535,6 +22541,7 @@ function Walkthrough() {
   const setReading = useMustang((s) => s.setReading);
   const markStep = useMustang((s) => s.markStep);
   const setStep = useMustang((s) => s.setStep);
+  const clearWalk = useMustang((s) => s.clearWalk);
   const trans = useMustang((s) => s.trans);
   const flow = flowById(flowId);
   if (!flow) {
@@ -22566,6 +22573,7 @@ function Walkthrough() {
       },
       item.id
     )) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: "btn", onClick: clearWalk, children: "Reset walkthrough" }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("article", { className: "step-card", children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { children: step.title }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "step-part", children: partName }),
@@ -22642,7 +22650,7 @@ function Verify({ partId, trans, prompt }) {
   ] });
 }
 
-// src/components/mustang/app.tsx
+// components/mustang/app.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
 var SYSTEMS = [
   "all",
@@ -22944,7 +22952,10 @@ function MustangApp() {
           ),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("aside", { className: railOpen ? "rail rail-open" : "rail rail-shut", children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "rail-toggle", "aria-expanded": railOpen, onClick: () => setRailOpen(!railOpen), children: railOpen ? "Hide" : "Details" }),
-            railOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Inspector, {}) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "rail-peek", children: selected ? PARTS[selected]?.name ?? "Part" : "Fuel pump power" })
+            railOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Inspector, {}),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(VinField, {})
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "rail-peek", children: selected ? PARTS[selected]?.name ?? "Part" : "Fuel pump power" })
           ] })
         ]
       }
@@ -22974,6 +22985,35 @@ function MustangApp() {
     ] }) : null
   ] });
 }
+var VIN_KEY = "mustang.vin.v1";
+function VinField() {
+  const [vin, setVin] = (0, import_react4.useState)(() => {
+    try {
+      return localStorage.getItem(VIN_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  (0, import_react4.useEffect)(() => {
+    window.FafoChrome?.initFold?.();
+  }, []);
+  const save = (next) => {
+    setVin(next);
+    try {
+      if (next) localStorage.setItem(VIN_KEY, next);
+      else localStorage.removeItem(VIN_KEY);
+    } catch {
+    }
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "vehicle", "data-collapsed-default": true, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("summary", { children: "Vehicle" }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "field", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: "VIN (stays on this device)" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { maxLength: 17, autoComplete: "off", spellCheck: false, value: vin, onChange: (e) => save(e.target.value.toUpperCase()) })
+    ] }),
+    vin ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "btn", onClick: () => window.confirm("Clear the VIN from this device?") && save(""), children: "Clear" }) : null
+  ] });
+}
 function dragSplit(event, onDelta) {
   const handle = event.currentTarget;
   const bounds = handle.parentElement?.getBoundingClientRect();
@@ -22995,7 +23035,7 @@ function CarPane() {
   const [Scene, setScene] = (0, import_react4.useState)(null);
   (0, import_react4.useEffect)(() => {
     let live2 = true;
-    import("./part-MEFOEYYU.js").then((mod) => {
+    import("./part-FXUM4V2W.js").then((mod) => {
       if (live2) setScene(() => mod.MustangScene);
     });
     return () => {
@@ -23064,7 +23104,7 @@ function ColorPop({
   ] });
 }
 
-// mustang-entry.tsx
+// entry.tsx
 var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
 var root = document.getElementById("root");
 if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime5.jsx)(MustangApp, {}));

@@ -10,12 +10,12 @@ import {
   require_react,
   require_scheduler,
   useMustang
-} from "./part-6WYP34DX.js";
+} from "./part-I45L67PK.js";
 import {
   __commonJS,
   __export,
   __toESM
-} from "./part-ED4TTFRM.js";
+} from "./part-MA4KR6TC.js";
 
 // node_modules/use-sync-external-store/cjs/use-sync-external-store-shim.development.js
 var require_use_sync_external_store_shim_development = __commonJS({
@@ -44260,7 +44260,7 @@ function m() {
     }
   }, [e2, t2]);
 }
-var w = /* @__PURE__ */ Symbol.for("react.context");
+var w = Symbol.for("react.context");
 var E = (e2) => e2 !== null && typeof e2 == "object" && "$$typeof" in e2 && e2.$$typeof === w;
 function g() {
   const e2 = m(), [t2] = import_react2.default.useState(() => /* @__PURE__ */ new Map());
@@ -49870,7 +49870,7 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
       function ir(e2) {
         e2.flags |= 4;
       }
-      function _a(e2) {
+      function _a2(e2) {
         _n && (e2.flags |= 8);
       }
       function ud(e2, n) {
@@ -49952,7 +49952,7 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
           var s = e2.stateNode, u2 = e2.memoizedProps;
           if ((e2 = ud(e2, n)) || u2 !== i2) {
             var f = Cr();
-            u2 = Pn(s, o2, u2, i2, !e2, null), u2 === s ? n.stateNode = s : (_a(n), ph(u2, o2, i2, f) && ir(n), n.stateNode = u2, e2 && cd(u2, n, false, false));
+            u2 = Pn(s, o2, u2, i2, !e2, null), u2 === s ? n.stateNode = s : (_a2(n), ph(u2, o2, i2, f) && ir(n), n.stateNode = u2, e2 && cd(u2, n, false, false));
           } else n.stateNode = s;
         }
       }
@@ -50043,12 +50043,12 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
               if (u2 = Cr(), Ln(n)) Wf(n, u2), Qt(n.stateNode, s, i2, u2) && (n.flags |= 64);
               else {
                 var f = Uo(ls.current);
-                f = wg(s, i2, f, u2, n), _a(n), cd(f, n, false, false), n.stateNode = f, ph(f, s, i2, u2) && ir(n);
+                f = wg(s, i2, f, u2, n), _a2(n), cd(f, n, false, false), n.stateNode = f, ph(f, s, i2, u2) && ir(n);
               }
             }
             return Fe(n), n.subtreeFlags &= -33554433, fd(n, n.type, e2 === null ? null : e2.memoizedProps, n.pendingProps, o2), null;
           case 6:
-            if (e2 && n.stateNode != null) o2 = e2.memoizedProps, _e ? o2 !== i2 && ir(n) : _n && (o2 !== i2 ? (e2 = Uo(ls.current), o2 = Cr(), _a(n), n.stateNode = _i(i2, e2, o2, n)) : n.stateNode = e2.stateNode);
+            if (e2 && n.stateNode != null) o2 = e2.memoizedProps, _e ? o2 !== i2 && ir(n) : _n && (o2 !== i2 ? (e2 = Uo(ls.current), o2 = Cr(), _a2(n), n.stateNode = _i(i2, e2, o2, n)) : n.stateNode = e2.stateNode);
             else {
               if (typeof i2 != "string" && n.stateNode === null) throw Error("We must have new props for new mounts. This error is likely caused by a bug in React. Please file an issue.");
               if (e2 = Uo(ls.current), o2 = Cr(), Ln(n)) {
@@ -50062,7 +50062,7 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
                     i2 = u2.memoizedProps, s && (s = Yd(e2, o2, i2), s !== null && (Ao(n, 0).serverProps = s));
                 }
                 Zd(e2, o2, n, i2) || Nr(n, true);
-              } else _a(n), n.stateNode = _i(i2, e2, o2, n);
+              } else _a2(n), n.stateNode = _i(i2, e2, o2, n);
             }
             return Fe(n), null;
           case 31:
@@ -52608,9 +52608,9 @@ Check the render method of %s.`, G(Bi) || "Unknown")), i2 = Vo(n), i2.payload = 
       function L0() {
         return Bi;
       }
-      var ce = {}, F0 = import_react3.default, be = import_scheduler.default, Un = Object.assign, D0 = /* @__PURE__ */ Symbol.for("react.element"), xo = /* @__PURE__ */ Symbol.for("react.transitional.element"), Ua = /* @__PURE__ */ Symbol.for("react.portal"), Qr = /* @__PURE__ */ Symbol.for("react.fragment"), Ml = /* @__PURE__ */ Symbol.for("react.strict_mode"), Wa = /* @__PURE__ */ Symbol.for("react.profiler"), Aa = /* @__PURE__ */ Symbol.for("react.consumer"), sn = /* @__PURE__ */ Symbol.for("react.context"), Fd = /* @__PURE__ */ Symbol.for("react.forward_ref"), lh = /* @__PURE__ */ Symbol.for("react.suspense"), Vl = /* @__PURE__ */ Symbol.for("react.suspense_list"), Ei = /* @__PURE__ */ Symbol.for("react.memo"), qn = /* @__PURE__ */ Symbol.for("react.lazy");
-      var $l = /* @__PURE__ */ Symbol.for("react.activity"), sh = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
-      var j0 = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), uh = /* @__PURE__ */ Symbol.for("react.view_transition"), Tt = /* @__PURE__ */ Symbol.for("react.recoverable"), ch = Symbol.iterator, Sg = /* @__PURE__ */ Symbol.for("react.optimistic_key"), dh = /* @__PURE__ */ Symbol.for("react.client.reference"), Gn = Array.isArray, N2 = F0.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, U0 = m2.rendererVersion, Lu = m2.rendererPackageName, It = m2.extraDevToolsConfig, Ql = m2.getPublicInstance, $t = m2.getRootHostContext, kg = m2.getChildHostContext, W0 = m2.prepareForCommit, fh = m2.resetAfterCommit, wg = m2.createInstance;
+      var ce = {}, F0 = import_react3.default, be = import_scheduler.default, Un = Object.assign, D0 = Symbol.for("react.element"), xo = Symbol.for("react.transitional.element"), Ua = Symbol.for("react.portal"), Qr = Symbol.for("react.fragment"), Ml = Symbol.for("react.strict_mode"), Wa = Symbol.for("react.profiler"), Aa = Symbol.for("react.consumer"), sn = Symbol.for("react.context"), Fd = Symbol.for("react.forward_ref"), lh = Symbol.for("react.suspense"), Vl = Symbol.for("react.suspense_list"), Ei = Symbol.for("react.memo"), qn = Symbol.for("react.lazy");
+      var $l = Symbol.for("react.activity"), sh = Symbol.for("react.legacy_hidden");
+      var j0 = Symbol.for("react.memo_cache_sentinel"), uh = Symbol.for("react.view_transition"), Tt = Symbol.for("react.recoverable"), ch = Symbol.iterator, Sg = Symbol.for("react.optimistic_key"), dh = Symbol.for("react.client.reference"), Gn = Array.isArray, N2 = F0.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, U0 = m2.rendererVersion, Lu = m2.rendererPackageName, It = m2.extraDevToolsConfig, Ql = m2.getPublicInstance, $t = m2.getRootHostContext, kg = m2.getChildHostContext, W0 = m2.prepareForCommit, fh = m2.resetAfterCommit, wg = m2.createInstance;
       m2.cloneMutableInstance;
       var Fu = m2.appendInitialChild, ph = m2.finalizeInitialChildren, ea = m2.shouldSetTextContent, _i = m2.createTextInstance;
       m2.cloneMutableTextInstance;
@@ -54618,7 +54618,7 @@ function attempt(step) {
 }
 function unmountComponentAtNode(canvas, callback) {
   const root = _roots.get(canvas);
-  const token = /* @__PURE__ */ Symbol("unmount");
+  const token = Symbol("unmount");
   if (!root || !transitionRoot(root, {
     type: "unmount",
     token
@@ -55454,11 +55454,11 @@ var OrbitControls = class extends EventDispatcher2 {
       scope.domElement.addEventListener("wheel", onMouseWheel);
     };
     this.dispose = () => {
-      var _a, _b, _c, _d, _e, _f;
+      var _a2, _b, _c, _d, _e, _f;
       if (scope.domElement) {
         scope.domElement.style.touchAction = "auto";
       }
-      (_a = scope.domElement) == null ? void 0 : _a.removeEventListener("contextmenu", onContextMenu);
+      (_a2 = scope.domElement) == null ? void 0 : _a2.removeEventListener("contextmenu", onContextMenu);
       (_b = scope.domElement) == null ? void 0 : _b.removeEventListener("pointerdown", onPointerDown);
       (_c = scope.domElement) == null ? void 0 : _c.removeEventListener("pointercancel", onPointerUp);
       (_d = scope.domElement) == null ? void 0 : _d.removeEventListener("wheel", onMouseWheel);
@@ -55762,11 +55762,11 @@ var OrbitControls = class extends EventDispatcher2 {
         handleTouchMoveRotate(event);
     }
     function onPointerDown(event) {
-      var _a, _b;
+      var _a2, _b;
       if (scope.enabled === false)
         return;
       if (pointers.length === 0) {
-        (_a = scope.domElement) == null ? void 0 : _a.ownerDocument.addEventListener("pointermove", onPointerMove);
+        (_a2 = scope.domElement) == null ? void 0 : _a2.ownerDocument.addEventListener("pointermove", onPointerMove);
         (_b = scope.domElement) == null ? void 0 : _b.ownerDocument.addEventListener("pointerup", onPointerUp);
       }
       addPointer(event);
@@ -55786,10 +55786,10 @@ var OrbitControls = class extends EventDispatcher2 {
       }
     }
     function onPointerUp(event) {
-      var _a, _b, _c;
+      var _a2, _b, _c;
       removePointer(event);
       if (pointers.length === 0) {
-        (_a = scope.domElement) == null ? void 0 : _a.releasePointerCapture(event.pointerId);
+        (_a2 = scope.domElement) == null ? void 0 : _a2.releasePointerCapture(event.pointerId);
         (_b = scope.domElement) == null ? void 0 : _b.ownerDocument.removeEventListener("pointermove", onPointerMove);
         (_c = scope.domElement) == null ? void 0 : _c.ownerDocument.removeEventListener("pointerup", onPointerUp);
       }
@@ -56117,8 +56117,9 @@ var ACTION = Object.freeze({
 var PI_2 = Math.PI * 2;
 var PI_HALF = Math.PI / 2;
 var DEG2RAD2 = Math.PI / 180;
+var _a;
 var TOUCH_DOLLY_FACTOR = 1 / 8;
-var isMac = /Mac/.test(globalThis?.navigator?.platform);
+var isMac = /Mac/.test((_a = globalThis === null || globalThis === void 0 ? void 0 : globalThis.navigator) === null || _a === void 0 ? void 0 : _a.platform);
 
 // node_modules/@react-three/drei/core/RoundedBox.js
 var React5 = __toESM(require_react());
@@ -56186,10 +56187,10 @@ var RoundedBoxGeometry = /* @__PURE__ */ React5.forwardRef(function RoundedBoxGe
   }, rest));
 });
 
-// src/components/mustang/scene.tsx
+// components/mustang/scene.tsx
 var import_react5 = __toESM(require_react(), 1);
 
-// src/lib/mustang/harness.ts
+// lib/mustang/harness.ts
 var circuitOf = new Map(WIRES.map((w2) => [w2.id, w2.circuit]));
 function h2(id, radius, runs) {
   return { id, circuit: circuitOf.get(id) ?? "power", radius, runs };
@@ -56350,7 +56351,7 @@ var HARNESS = [
   ])
 ];
 
-// src/lib/mustang/geometry.ts
+// lib/mustang/geometry.ts
 function createCoupeGeometry() {
   const shape = new Shape();
   shape.moveTo(-2.18, 0.2);
@@ -56652,7 +56653,7 @@ function focusPoint(id) {
   return point;
 }
 
-// src/lib/mustang/visual.ts
+// lib/mustang/visual.ts
 function chainOf(id) {
   const out = [];
   let cur = id;
@@ -56688,7 +56689,7 @@ function visualRole(id, selected, system, circuit, section) {
   return "normal";
 }
 
-// src/components/mustang/scene.tsx
+// components/mustang/scene.tsx
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
 var NO_RAYCAST = () => null;
 var gradCache = /* @__PURE__ */ new Map();

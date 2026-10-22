@@ -350,7 +350,10 @@ export function MustangApp() {
             {railOpen ? "Hide" : "Details"}
           </button>
           {railOpen ? (
-            <Inspector />
+            <>
+              <Inspector />
+              <VinField />
+            </>
           ) : (
             <p className="rail-peek">{selected ? (PARTS[selected]?.name ?? "Part") : "Fuel pump power"}</p>
           )}
@@ -388,6 +391,44 @@ export function MustangApp() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+const VIN_KEY = "mustang.vin.v1";
+
+function VinField() {
+  const [vin, setVin] = useState(() => {
+    try {
+      return localStorage.getItem(VIN_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    (window as { FafoChrome?: { initFold?: () => void } }).FafoChrome?.initFold?.();
+  }, []);
+  const save = (next: string) => {
+    setVin(next);
+    try {
+      if (next) localStorage.setItem(VIN_KEY, next);
+      else localStorage.removeItem(VIN_KEY);
+    } catch {
+      /* quota or private mode */
+    }
+  };
+  return (
+    <details className="fafo-fold" data-fafo-fold="vehicle" data-collapsed-default>
+      <summary>Vehicle</summary>
+      <label className="field">
+        <span>VIN (stays on this device)</span>
+        <input maxLength={17} autoComplete="off" spellCheck={false} value={vin} onChange={(e) => save(e.target.value.toUpperCase())} />
+      </label>
+      {vin ? (
+        <button type="button" className="btn" onClick={() => window.confirm("Clear the VIN from this device?") && save("")}>
+          Clear
+        </button>
+      ) : null}
+    </details>
   );
 }
 

@@ -113,7 +113,7 @@ export const VEHICLE = {
   title: "2001 Mustang coupe",
   trim: "Base",
   engine: "3.8L OHV V6",
-  vin: "Engine code 4",
+  vin: "",
   power: "193 hp @ 5,500 · 225 lb-ft @ 2,800",
   trans: "T-5 5-speed, 4R70W optional",
   axle: "7.5-inch open",

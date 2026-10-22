@@ -115,6 +115,10 @@ function GrokNote({ partId, symptomHint }: { partId: string; symptomHint: string
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
+    (window as { FafoChrome?: { initFold?: () => void } }).FafoChrome?.initFold?.();
+  }, []);
+
+  useEffect(() => {
     setSymptom(symptomHint);
     setText(null);
     setError(null);
@@ -155,24 +159,27 @@ function GrokNote({ partId, symptomHint }: { partId: string; symptomHint: string
   }
 
   return (
-    <div className="grok">
-      <h3>Ask Grok</h3>
-      <p className="fine">Shop note for this part. Nothing is sent until you ask.</p>
-      <label className="field">
-        <span>What is it doing?</span>
-        <textarea
-          value={symptom}
-          onChange={(e) => setSymptom(e.target.value)}
-          rows={2}
-          maxLength={400}
-          placeholder="Optional. Example: ticks when cold, quiet when hot."
-        />
-      </label>
-      <button type="button" className="btn btn-solid" onClick={ask} disabled={pending}>
-        {pending ? "Writing the note…" : "Ask Grok"}
-      </button>
-      {error ? <p className="error">{error}</p> : null}
-      {text ? <p className="note">{text}</p> : null}
-    </div>
+    <details className="fafo-fold" data-fafo-fold="ask-grok" data-collapsed-default>
+      <summary>Ask Grok (offline in toolbox)</summary>
+      <div className="grok">
+        <h3>Ask Grok (offline in toolbox)</h3>
+        <p className="fine">This toolbox copy never sends anything. Ask Grok works only in the online bay.</p>
+        <label className="field">
+          <span>What is it doing?</span>
+          <textarea
+            value={symptom}
+            onChange={(e) => setSymptom(e.target.value)}
+            rows={2}
+            maxLength={400}
+            placeholder="Optional. Example: ticks when cold, quiet when hot."
+          />
+        </label>
+        <button type="button" className="btn btn-solid" onClick={ask} disabled={pending}>
+          {pending ? "Writing the note…" : "Ask Grok (offline)"}
+        </button>
+        {error ? <p className="error">{error}</p> : null}
+        {text ? <p className="note">{text}</p> : null}
+      </div>
+    </details>
   );
 }

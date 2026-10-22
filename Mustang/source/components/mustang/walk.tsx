@@ -12,6 +12,7 @@ export function Walkthrough() {
   const setReading = useMustang((s) => s.setReading);
   const markStep = useMustang((s) => s.markStep);
   const setStep = useMustang((s) => s.setStep);
+  const clearWalk = useMustang((s) => s.clearWalk);
   const trans = useMustang((s) => s.trans);
   const flow = flowById(flowId);
 
@@ -47,6 +48,9 @@ export function Walkthrough() {
           />
         ))}
       </div>
+      <button type="button" className="btn" onClick={clearWalk}>
+        Reset walkthrough
+      </button>
       <article className="step-card">
         <h3>{step.title}</h3>
         <p className="step-part">{partName}</p>

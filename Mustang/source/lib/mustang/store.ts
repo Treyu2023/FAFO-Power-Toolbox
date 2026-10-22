@@ -5,6 +5,36 @@ import { live } from "./live";
 import { PARTS } from "./parts";
 import type { Circuit, Mode, System, Trans } from "./types";
 
+const WALK_KEY = "mustang.walkthrough.v1";
+
+type Walk = { flowId: string | null; step: number; marks: Record<string, Mark>; reading: string };
+
+function loadWalk(): Partial<Walk> {
+  try {
+    const o = JSON.parse(localStorage.getItem(WALK_KEY) || "null");
+    const flow = o && o.v === 1 ? flowById(o.flowId) : undefined;
+    if (!flow) return {};
+    const marks: Record<string, Mark> = {};
+    if (o.marks && typeof o.marks === "object") {
+      for (const [id, mark] of Object.entries(o.marks)) {
+        if (mark === "pass" || mark === "fail") marks[id] = mark;
+      }
+    }
+    const step = Math.min(flow.steps.length - 1, Math.max(0, Math.floor(Number(o.step) || 0)));
+    return { flowId: flow.id, step, marks, reading: String(o.reading ?? "").slice(0, 400) };
+  } catch {
+    return {};
+  }
+}
+
+function saveWalk(s: Walk) {
+  try {
+    localStorage.setItem(WALK_KEY, JSON.stringify({ v: 1, flowId: s.flowId, step: s.step, marks: s.marks, reading: s.reading }));
+  } catch {
+    /* quota or private mode */
+  }
+}
+
 type Mark = "pass" | "fail";
 
 type State = {
@@ -69,6 +99,7 @@ type State = {
   setStep: (step: number) => void;
   markStep: (stepId: string, mark: Mark) => void;
   setReading: (reading: string) => void;
+  clearWalk: () => void;
 };
 
 function framePart(id: string) {
@@ -110,6 +141,7 @@ export const useMustang = create<State>((set, get) => ({
   step: 0,
   marks: {},
   reading: "",
+  ...loadWalk(),
   select: (id, frame = false) => {
     const mode = get().mode;
     const nextMode = id && frame && mode === "sheet" ? "both" : id && !frame && mode === "car" ? "both" : mode;
@@ -186,6 +218,7 @@ export const useMustang = create<State>((set, get) => ({
       selected: partId,
       trace: traceOf(partId),
     });
+    saveWalk(get());
   },
   setStep: (step) => {
     const flow = flowById(get().flowId);
@@ -193,19 +226,33 @@ export const useMustang = create<State>((set, get) => ({
     const next = Math.min(flow.steps.length - 1, Math.max(0, step));
     const partId = flow.steps[next]?.partId ?? null;
     set({ step: next, selected: partId, trace: traceOf(partId) });
+    saveWalk(get());
     if (partId) framePart(partId);
   },
   markStep: (stepId, mark) => {
     const flow = flowById(get().flowId);
     const marks = { ...get().marks, [stepId]: mark };
     set({ marks });
+    saveWalk(get());
     if (!flow) return;
     const index = flow.steps.findIndex((step) => step.id === stepId);
     if (mark === "pass" && index >= 0 && index < flow.steps.length - 1) {
       const partId = flow.steps[index + 1].partId;
       set({ step: index + 1, selected: partId, trace: traceOf(partId) });
+      saveWalk(get());
       framePart(partId);
     }
   },
-  setReading: (reading) => set({ reading }),
+  setReading: (reading) => {
+    set({ reading });
+    saveWalk(get());
+  },
+  clearWalk: () => {
+    set({ flowId: null, step: 0, marks: {}, reading: "" });
+    try {
+      localStorage.removeItem(WALK_KEY);
+    } catch {
+      /* private mode */
+    }
+  },
 }));
