@@ -16,8 +16,9 @@ import { useMustang } from "@/lib/mustang/store";
 import type { ConnectorPin, FuseSlot, Seeded } from "@/lib/mustang/types";
 import { ExplodedConnector } from "./exploded";
 import { FuseBoxDiagram } from "./fusebox";
-import { PartPhoto } from "./photo";
+import { PartPhoto, localPhotosOn, setLocalPhotos } from "./photo";
 import { PinoutOverlay } from "./pinout";
+import { WiringMini } from "./wiremini";
 
 type PinField = "color" | "circuit" | "expect" | "cavity";
 type SlotField = "position" | "amps" | "protects";
@@ -31,6 +32,7 @@ export function ConnectorPanel({ partId }: { partId: string }) {
   const [slot, setSlot] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [local, setLocal] = useState(localPhotosOn);
 
   useEffect(() => {
     (window as { FafoChrome?: { initFold?: () => void } }).FafoChrome?.initFold?.();
@@ -96,7 +98,15 @@ export function ConnectorPanel({ partId }: { partId: string }) {
             {conn.stub ? " (generated from the wiring sheet)" : ""}. Pin positions are a layout schematic, not a cavity map.
           </p>
           <PinoutOverlay connector={conn} activePin={pin} onPin={setPin} />
-          <PartPhoto id={conn.id} partId={partId} alt={`${conn.name}, context photo`} />
+          <PartPhoto id={conn.id} partId={partId} alt={`${conn.name}, context photo`} local={local} />
+        </details>
+      ) : null}
+      {connectors.length ? (
+        <details className="fafo-fold" data-fafo-fold="connector-wiring">
+          <summary>Wiring</summary>
+          {connectors.map((c) => (
+            <WiringMini key={c.id} connector={c} onPart={(id) => select(id, true)} />
+          ))}
         </details>
       ) : null}
       {conn ? (
@@ -165,6 +175,20 @@ export function ConnectorPanel({ partId }: { partId: string }) {
           </div>
           {msg ? <p className="error" role="alert">{msg}</p> : null}
         </div>
+      </details>
+      <details className="fafo-fold" data-fafo-fold="connector-advanced" data-collapsed-default>
+        <summary>Advanced</summary>
+        <label className="field">
+          <input
+            type="checkbox"
+            checked={local}
+            onChange={(e) => {
+              setLocalPhotos(e.target.checked);
+              setLocal(e.target.checked);
+            }}
+          />
+          <span>Use my local photos (looks in Mustang/local/photos/)</span>
+        </label>
       </details>
     </section>
   );

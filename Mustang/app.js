@@ -22901,17 +22901,33 @@ function contextPhoto(partId) {
   if (partId === "pdb" || partId === "ccrm") return BAY;
   return PARTS[partId]?.system === "engine" ? ESSEX : null;
 }
-function PartPhoto({ id, partId, alt }) {
+var LOCAL_KEY = "mustang.localPhotos.v1";
+function localPhotosOn() {
+  try {
+    return localStorage.getItem(LOCAL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function setLocalPhotos(on) {
+  try {
+    if (on) localStorage.setItem(LOCAL_KEY, "1");
+    else localStorage.removeItem(LOCAL_KEY);
+  } catch {
+  }
+}
+function PartPhoto({ id, partId, alt, local = false }) {
   const ctx = contextPhoto(partId);
-  const list = [`local/photos/${id.replace(/:/g, "__")}.jpg`, `local/photos/${partId}.jpg`, ...ctx ? [ctx] : []];
-  return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(PhotoChain, { list, ctx, alt }, id);
+  const mine = local ? [`local/photos/${id.replace(/:/g, "__")}.jpg`, `local/photos/${partId}.jpg`] : [];
+  const list = [...mine, ...ctx ? [ctx] : []];
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(PhotoChain, { list, ctx, alt }, `${id}|${local}`);
 }
 function PhotoChain({ list, ctx, alt }) {
   const [i, setI] = (0, import_react2.useState)(0);
   if (i >= list.length) {
     return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("figure", { className: "conn-photo", children: [
       /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(ConnectorSvg, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("figcaption", { className: "fine", children: "Illustration only, not your car\u2019s connector. Add your own photo in Mustang/local/photos/." })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("figcaption", { className: "fine", children: "Illustration only, not your car\u2019s connector. Add your own photo in Mustang/local/photos/ and turn on \u201CUse my local photos\u201D under Advanced." })
     ] });
   }
   const src = list[i];
@@ -22928,8 +22944,57 @@ function ConnectorSvg() {
   ] });
 }
 
-// components/mustang/connectorpanel.tsx
+// components/mustang/wiremini.tsx
 var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+function WiringMini({ connector, onPart }) {
+  const pins = connector.pins;
+  const title = PARTS[connector.partId]?.name ?? connector.partId;
+  if (!pins.length) {
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("figure", { className: "conn-photo wire-mini", "data-wires": "0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("svg", { className: "conn-svg", viewBox: "0 0 320 90", role: "img", "aria-label": `${title}: no wiring recorded`, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("rect", { x: "10", y: "20", width: "120", height: "50", rx: "8", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "70", y: "45", textAnchor: "middle", dominantBaseline: "central", fill: "currentColor", fontSize: "12", children: title.slice(0, 18) }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("line", { x1: "130", y1: "45", x2: "220", y2: "45", stroke: "var(--color-muted)", strokeDasharray: "4 4" }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "226", y: "45", dominantBaseline: "central", fill: "var(--color-muted)", fontSize: "12", children: "?" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("figcaption", { className: "fine unverified", children: [
+        "No wiring recorded, not verified. ",
+        UNVERIFIED,
+        "."
+      ] })
+    ] });
+  }
+  const row = 34;
+  const h = Math.max(90, pins.length * row + 20);
+  const cy = h / 2;
+  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("figure", { className: "conn-photo wire-mini", "data-wires": pins.length, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("svg", { className: "conn-svg", viewBox: `0 0 320 ${h}`, role: "img", "aria-label": `${title} wiring`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("rect", { x: "10", y: cy - 25, width: "110", height: "50", rx: "8", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "65", y: cy, textAnchor: "middle", dominantBaseline: "central", fill: "currentColor", fontSize: "11", children: title.slice(0, 18) }),
+      pins.map((p, i) => {
+        const y = 10 + row / 2 + i * row;
+        const end = p.to ? PARTS[p.to]?.name ?? p.to : null;
+        return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("g", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { d: `M120 ${cy} C160 ${cy} 160 ${y} 200 ${y}`, fill: "none", stroke: ROLE_FILL[p.role], strokeWidth: "2.5", strokeDasharray: end ? void 0 : "4 4" }),
+          end ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("g", { role: "button", tabIndex: 0, "aria-label": `Go to ${end}`, style: { cursor: "pointer" }, onClick: () => onPart(p.to), onKeyDown: (e) => {
+            if (e.key === "Enter" || e.key === " ") onPart(p.to);
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("rect", { x: "200", y: y - 12, width: "112", height: "24", rx: "6", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "256", y, textAnchor: "middle", dominantBaseline: "central", fill: "currentColor", fontSize: "10", children: end.slice(0, 19) })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "204", y, dominantBaseline: "central", fill: "var(--color-muted)", fontSize: "10", children: "end not recorded" })
+        ] }, p.key);
+      })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("ul", { className: "pin-list fine", children: pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("li", { children: [
+      p.label,
+      p.to ? "" : ", other end not verified"
+    ] }, p.key)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("figcaption", { className: "fine", children: "Wiring from the sheet, not a harness route." })
+  ] });
+}
+
+// components/mustang/connectorpanel.tsx
+var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
 function ConnectorPanel({ partId }) {
   const pin2 = useMustang((s) => s.pin);
   const setPin = useMustang((s) => s.setPin);
@@ -22939,6 +23004,7 @@ function ConnectorPanel({ partId }) {
   const [slot, setSlot] = (0, import_react3.useState)(null);
   const [msg, setMsg] = (0, import_react3.useState)(null);
   const fileRef = (0, import_react3.useRef)(null);
+  const [local, setLocal] = (0, import_react3.useState)(localPhotosOn);
   (0, import_react3.useEffect)(() => {
     window.FafoChrome?.initFold?.();
   }, [partId]);
@@ -22990,24 +23056,28 @@ function ConnectorPanel({ partId }) {
   const activePin = conn?.pins.find((p) => p.key === pin2) ?? conn?.pins[0] ?? null;
   const activeSlot = box?.slots.find((s) => s.key === slot) ?? null;
   const editKey = `${conn?.id ?? ""}|${activePin?.key ?? ""}|${activeSlot?.key ?? ""}|${JSON.stringify(user).length}`;
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("section", { className: "conn-panel", "aria-label": "Connectors", children: [
-    conn ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "pinout", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("summary", { children: "Pinout" }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("p", { className: "fine", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "conn-panel", "aria-label": "Connectors", children: [
+    conn ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "pinout", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Pinout" }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "fine", children: [
         conn.name,
         conn.stub ? " (generated from the wiring sheet)" : "",
         ". Pin positions are a layout schematic, not a cavity map."
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(PinoutOverlay, { connector: conn, activePin: pin2, onPin: setPin }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(PartPhoto, { id: conn.id, partId, alt: `${conn.name}, context photo` })
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PinoutOverlay, { connector: conn, activePin: pin2, onPin: setPin }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PartPhoto, { id: conn.id, partId, alt: `${conn.name}, context photo`, local })
     ] }) : null,
-    conn ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-exploded", "data-collapsed-default": true, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("summary", { children: "Exploded view" }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ExplodedConnector, { connector: conn, activePin: pin2, onPin: setPin })
+    connectors.length ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-wiring", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Wiring" }),
+      connectors.map((c) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(WiringMini, { connector: c, onPart: (id) => select(id, true) }, c.id))
     ] }) : null,
-    box ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "fusebox", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("summary", { children: "Fuse map" }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    conn ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-exploded", "data-collapsed-default": true, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Exploded view" }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ExplodedConnector, { connector: conn, activePin: pin2, onPin: setPin })
+    ] }) : null,
+    box ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "fusebox", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Fuse map" }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
         FuseBoxDiagram,
         {
           box,
@@ -23018,43 +23088,60 @@ function ConnectorPanel({ partId }) {
         }
       )
     ] }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-edit", "data-collapsed-default": true, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("summary", { children: "Edit pin/slot data" }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "conn-edit", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "fine", children: "Only type what you read off the EVTM, the box lid or the car. Your entries are marked \u201Cyou entered this\u201D and stay in this browser." }),
-        conn && activePin ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { children: "Pin" }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("select", { value: activePin.key, onChange: (e) => setPin(e.target.value), children: conn.pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("option", { value: p.key, children: p.label }, p.key)) })
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-edit", "data-collapsed-default": true, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Edit pin/slot data" }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "conn-edit", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "fine", children: "Only type what you read off the EVTM, the box lid or the car. Your entries are marked \u201Cyou entered this\u201D and stay in this browser." }),
+        conn && activePin ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Pin" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("select", { value: activePin.key, onChange: (e) => setPin(e.target.value), children: conn.pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("option", { value: p.key, children: p.label }, p.key)) })
           ] }),
-          ["color", "circuit", "expect", "cavity"].map((f) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { children: f === "color" ? "Wire colour" : f === "circuit" ? "Circuit number" : f === "expect" ? "Expected reading" : "Cavity label" }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("input", { type: "text", maxLength: 400, defaultValue: own(activePin[f]), onBlur: (e) => editPin(activePin.key, f, e.target.value) })
+          ["color", "circuit", "expect", "cavity"].map((f) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: f === "color" ? "Wire colour" : f === "circuit" ? "Circuit number" : f === "expect" ? "Expected reading" : "Cavity label" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("input", { type: "text", maxLength: 400, defaultValue: own(activePin[f]), onBlur: (e) => editPin(activePin.key, f, e.target.value) })
           ] }, f))
         ] }) : null,
-        box && activeSlot ? ["position", "amps", "protects"].map((f) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { children: [
+        box && activeSlot ? ["position", "amps", "protects"].map((f) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { children: [
             "Slot ",
             activeSlot.key,
             ": ",
             f === "amps" ? "rating" : f
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("input", { type: "text", maxLength: 400, defaultValue: own(activeSlot[f]), onBlur: (e) => editSlot(activeSlot.key, f, e.target.value) })
-        ] }, f)) : box ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "fine", children: "Pick a slot in the fuse map to edit it." }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "conn-grid", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { type: "button", className: "btn", onClick: () => exportJson(user), children: "Export" }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { type: "button", className: "btn", onClick: () => fileRef.current?.click(), children: "Import" }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { type: "button", className: "btn", onClick: reset, children: "Reset my edits for this connector" }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("input", { ref: fileRef, className: "sr", type: "file", accept: "application/json,.json", "aria-label": "Import connector data", onChange: (e) => onFile(e.target.files?.[0]) })
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("input", { type: "text", maxLength: 400, defaultValue: own(activeSlot[f]), onBlur: (e) => editSlot(activeSlot.key, f, e.target.value) })
+        ] }, f)) : box ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "fine", children: "Pick a slot in the fuse map to edit it." }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "conn-grid", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: () => exportJson(user), children: "Export" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: () => fileRef.current?.click(), children: "Import" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: reset, children: "Reset my edits for this connector" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("input", { ref: fileRef, className: "sr", type: "file", accept: "application/json,.json", "aria-label": "Import connector data", onChange: (e) => onFile(e.target.files?.[0]) })
         ] }),
-        msg ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "error", role: "alert", children: msg }) : null
+        msg ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "error", role: "alert", children: msg }) : null
       ] }, editKey)
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-advanced", "data-collapsed-default": true, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Advanced" }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          "input",
+          {
+            type: "checkbox",
+            checked: local,
+            onChange: (e) => {
+              setLocalPhotos(e.target.checked);
+              setLocal(e.target.checked);
+            }
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Use my local photos (looks in Mustang/local/photos/)" })
+      ] })
     ] })
   ] });
 }
 
 // components/mustang/inspector.tsx
-var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
 var JOBS = [
   { label: "Cranks, no start", id: "inertia-switch", symptom: "Cranks but will not fire" },
   { label: "Milkshake oil", id: "intake-gasket", symptom: "Oil looks like milkshake and coolant is low" },
@@ -23072,64 +23159,64 @@ function Inspector() {
   const showOnCar = useMustang((s) => s.showOnCar);
   const showOnSheet = useMustang((s) => s.showOnSheet);
   if (!selected) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("aside", { className: "inspector", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "eyebrow", children: "FAFO Toolbox" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { className: "inspector-title", children: "2001 Mustang coupe" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "lede", children: "Base car, 3.8L OHV V6, iron heads, EDIS, returnless fuel, disc/drum brakes, 7.5-inch axle. Scroll in and the body comes apart in stages, down to the rotating assembly." }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("dl", { className: "spec-list", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dt", { children: "Power" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dd", { children: "193 hp \xB7 225 lb-ft" })
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("aside", { className: "inspector", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "eyebrow", children: "FAFO Toolbox" }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h2", { className: "inspector-title", children: "2001 Mustang coupe" }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "lede", children: "Base car, 3.8L OHV V6, iron heads, EDIS, returnless fuel, disc/drum brakes, 7.5-inch axle. Scroll in and the body comes apart in stages, down to the rotating assembly." }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("dl", { className: "spec-list", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Power" }),
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "193 hp \xB7 225 lb-ft" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dt", { children: "Oil" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dd", { children: "5W-20 \xB7 5.0 qt with filter" })
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Oil" }),
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "5W-20 \xB7 5.0 qt with filter" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dt", { children: "Plugs" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dd", { children: "AWSF-42EE \xB7 0.052\u20130.056 in" })
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Plugs" }),
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "AWSF-42EE \xB7 0.052\u20130.056 in" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dt", { children: "Order" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dd", { children: "1-4-2-5-3-6" })
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Order" }),
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "1-4-2-5-3-6" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { children: "Start from a complaint" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "job-grid", children: JOBS.map((job) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "job", onClick: () => select(job.id, true), children: job.label }, job.id + job.label)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "fine", children: "Capacities are from the 2001 owner\u2019s manual. Threads are the common sizes for this car. If a torque is missing, that is on purpose \u2014 confirm it in the Ford shop manual. The sheet is a service map, not the EVTM." })
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Start from a complaint" }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "job-grid", children: JOBS.map((job) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "job", onClick: () => select(job.id, true), children: job.label }, job.id + job.label)) }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "fine", children: "Capacities are from the 2001 owner\u2019s manual. Threads are the common sizes for this car. If a torque is missing, that is on purpose \u2014 confirm it in the Ford shop manual. The sheet is a service map, not the EVTM." })
     ] });
   }
   const part = partView(selected, trans);
   const stage = STAGES.find((s) => s.id === part.stage);
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("aside", { className: "inspector", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "eyebrow", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("aside", { className: "inspector", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("p", { className: "eyebrow", children: [
       SYSTEM_LABEL[part.system],
       part.circuit ? ` \xB7 ${CIRCUIT_LABEL[part.circuit]}` : "",
       stage ? ` \xB7 opens at ${stage.name}` : ""
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h2", { className: "inspector-title", children: part.name }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "lede", children: part.blurb }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "row-actions", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: showOnCar, children: "Show on car" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: showOnSheet, children: "Show on sheet" })
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h2", { className: "inspector-title", children: part.name }),
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "lede", children: part.blurb }),
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "row-actions", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: showOnCar, children: "Show on car" }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: showOnSheet, children: "Show on sheet" })
     ] }),
-    part.fasteners.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { children: "Fasteners" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("ul", { className: "fastener-list", children: part.fasteners.map((f) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("li", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "fast-name", children: f.name }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "fast-thread", children: f.thread }),
-        f.torque ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "fast-torque", children: f.torque }) : null,
-        f.qty ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "fast-qty", children: f.qty }) : null
+    part.fasteners.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(import_jsx_runtime8.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Fasteners" }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("ul", { className: "fastener-list", children: part.fasteners.map((f) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("li", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-name", children: f.name }),
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-thread", children: f.thread }),
+        f.torque ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-torque", children: f.torque }) : null,
+        f.qty ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-qty", children: f.qty }) : null
       ] }, f.name)) })
     ] }) : null,
-    part.specs.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dl", { className: "spec-list", children: part.specs.map((s) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dt", { children: s.label }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("dd", { children: s.value })
+    part.specs.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dl", { className: "spec-list", children: part.specs.map((s) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: s.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: s.value })
     ] }, s.label)) }) : null,
-    connectorsFor(selected).length || isBox(selected) ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ConnectorPanel, { partId: selected }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { children: "Check it like this" }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("ol", { className: "checks", children: part.checks.map((c) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("li", { children: c }, c)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(GrokNote, { partId: selected, symptomHint: JOBS.find((j) => j.id === selected)?.symptom ?? "" })
+    connectorsFor(selected).length || isBox(selected) ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ConnectorPanel, { partId: selected }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Check it like this" }),
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("ol", { className: "checks", children: part.checks.map((c) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("li", { children: c }, c)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(GrokNote, { partId: selected, symptomHint: JOBS.find((j) => j.id === selected)?.symptom ?? "" })
   ] });
 }
 function GrokNote({ partId, symptomHint }) {
@@ -23177,14 +23264,14 @@ function GrokNote({ partId, symptomHint }) {
       setPending(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "ask-grok", "data-collapsed-default": true, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Ask Grok (offline in toolbox)" }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "grok", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h3", { children: "Ask Grok (offline in toolbox)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "fine", children: "This toolbox copy never sends anything. Ask Grok works only in the online bay." }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "What is it doing?" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "ask-grok", "data-collapsed-default": true, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("summary", { children: "Ask Grok (offline in toolbox)" }),
+    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "grok", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Ask Grok (offline in toolbox)" }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "fine", children: "This toolbox copy never sends anything. Ask Grok works only in the online bay." }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "What is it doing?" }),
+        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "textarea",
           {
             value: symptom,
@@ -23195,16 +23282,16 @@ function GrokNote({ partId, symptomHint }) {
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn btn-solid", onClick: ask, disabled: pending, children: pending ? "Writing the note\u2026" : "Ask Grok (offline)" }),
-      error ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "error", children: error }) : null,
-      text ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "note", children: text }) : null
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn btn-solid", onClick: ask, disabled: pending, children: pending ? "Writing the note\u2026" : "Ask Grok (offline)" }),
+      error ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "error", children: error }) : null,
+      text ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "note", children: text }) : null
     ] })
   ] });
 }
 
 // components/mustang/walk.tsx
 var import_react5 = __toESM(require_react(), 1);
-var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
 function Walkthrough() {
   const flowId = useMustang((s) => s.flowId);
   const stepIndex = useMustang((s) => s.step);
@@ -23217,25 +23304,25 @@ function Walkthrough() {
   const trans = useMustang((s) => s.trans);
   const flow = flowById(flowId);
   if (!flow) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "walk", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "eyebrow", children: "Reference" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h2", { children: "No walkthrough yet" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "lede", children: "Right-click a part and choose Troubleshoot. Fuel-pump power is the one that is written out wire by wire." })
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "walk", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "eyebrow", children: "Reference" }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h2", { children: "No walkthrough yet" }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "lede", children: "Right-click a part and choose Troubleshoot. Fuel-pump power is the one that is written out wire by wire." })
     ] });
   }
   const step = flow.steps[Math.min(stepIndex, flow.steps.length - 1)];
   const found = verdict(flow, marks);
   const partName = PARTS[step.partId]?.name ?? step.partId;
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "walk", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("p", { className: "eyebrow", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "walk", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "eyebrow", children: [
       "Walkthrough \xB7 step ",
       stepIndex + 1,
       " of ",
       flow.steps.length
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h2", { children: flow.title }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "lede", children: flow.lead }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "step-pips", role: "tablist", "aria-label": "Steps", children: flow.steps.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h2", { children: flow.title }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "lede", children: flow.lead }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "step-pips", role: "tablist", "aria-label": "Steps", children: flow.steps.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       "button",
       {
         type: "button",
@@ -23245,34 +23332,34 @@ function Walkthrough() {
       },
       item.id
     )) }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: clearWalk, children: "Reset walkthrough" }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("article", { className: "step-card", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: step.title }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "step-part", children: partName }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("dl", { className: "step-facts", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Where" }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: step.where })
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: clearWalk, children: "Reset walkthrough" }),
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("article", { className: "step-card", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h3", { children: step.title }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "step-part", children: partName }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("dl", { className: "step-facts", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dt", { children: "Where" }),
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dd", { children: step.where })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Harness" }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: step.harness })
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dt", { children: "Harness" }),
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dd", { children: step.harness })
         ] })
       ] }),
-      step.wires.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("ul", { className: "wire-list", children: step.wires.map((wire) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("li", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-name", children: wire.role }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-thread", children: wire.color })
+      step.wires.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("ul", { className: "wire-list", children: step.wires.map((wire) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("li", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "fast-name", children: wire.role }),
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "fast-thread", children: wire.color })
       ] }, wire.role)) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { children: step.action }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "row-actions", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn btn-solid", onClick: () => markStep(step.id, "pass"), children: "This checks out" }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: () => markStep(step.id, "fail"), children: "This failed" })
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { children: step.action }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "row-actions", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn btn-solid", onClick: () => markStep(step.id, "pass"), children: "This checks out" }),
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: () => markStep(step.id, "fail"), children: "This failed" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "fine", children: marks[step.id] === "fail" ? step.fail : step.pass })
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "fine", children: marks[step.id] === "fail" ? step.fail : step.pass })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("label", { className: "field", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "What you measured" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "What you measured" }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
         "textarea",
         {
           rows: 3,
@@ -23283,11 +23370,11 @@ function Walkthrough() {
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Verify, { partId: step.partId, trans, prompt: verifyPrompt(flow.title, step.title, step.action, reading) }),
-    found ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "note", role: "status", children: found }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "row-actions", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", disabled: stepIndex === 0, onClick: () => setStep(stepIndex - 1), children: "Back" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", disabled: stepIndex >= flow.steps.length - 1, onClick: () => setStep(stepIndex + 1), children: "Next step" })
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Verify, { partId: step.partId, trans, prompt: verifyPrompt(flow.title, step.title, step.action, reading) }),
+    found ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "note", role: "status", children: found }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "row-actions", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", disabled: stepIndex === 0, onClick: () => setStep(stepIndex - 1), children: "Back" }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", disabled: stepIndex >= flow.steps.length - 1, onClick: () => setStep(stepIndex + 1), children: "Next step" })
     ] })
   ] });
 }
@@ -23315,15 +23402,15 @@ function Verify({ partId, trans, prompt }) {
       setPending(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "grok", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: ask, disabled: pending, children: pending ? "Checking the reading\u2026" : "Ask Grok to check this step" }),
-    error ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "error", children: error }) : null,
-    text ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "note", children: text }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "grok", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: ask, disabled: pending, children: pending ? "Checking the reading\u2026" : "Ask Grok to check this step" }),
+    error ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "error", children: error }) : null,
+    text ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "note", children: text }) : null
   ] });
 }
 
 // components/mustang/app.tsx
-var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
 var SYSTEMS = [
   "all",
   "body",
@@ -23461,18 +23548,18 @@ function MustangApp() {
   const stageIndex = Math.round(stage);
   const stageName = STAGES[stageIndex]?.name ?? "Whole";
   const hoverName = hover ? PARTS[hover]?.name ?? null : null;
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "shell", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "stripe" }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("header", { className: "top", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "brand", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "eyebrow", children: "FAFO Toolbox" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h1", { className: "brand-name", children: "Mustang" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "brand-sub", children: "2001 coupe \xB7 3.8 base" })
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "shell", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "stripe" }),
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "top", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "brand", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "eyebrow", children: "FAFO Toolbox" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("h1", { className: "brand-name", children: "Mustang" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "brand-sub", children: "2001 coupe \xB7 3.8 base" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "search", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "sr", children: "Find a part" }),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "search", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "sr", children: "Find a part" }),
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             "input",
             {
               value: query,
@@ -23482,28 +23569,28 @@ function MustangApp() {
             }
           )
         ] }),
-        query && results.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("ul", { className: "results", children: results.map((part) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("button", { type: "button", onClick: () => select(part.id, true), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: part.name }),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "result-meta", children: SYSTEM_LABEL[part.system] })
+        query && results.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("ul", { className: "results", children: results.map((part) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", onClick: () => select(part.id, true), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: part.name }),
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "result-meta", children: SYSTEM_LABEL[part.system] })
         ] }) }, part.id)) }) : null,
-        query && results.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "results empty-results", children: "Nothing on this car by that name." }) : null
+        query && results.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "results empty-results", children: "Nothing on this car by that name." }) : null
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "gear-toggle", role: "group", "aria-label": "Transmission", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: trans === "t5" ? "chip chip-on" : "chip", onClick: () => setTrans("t5"), children: "5-speed" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: trans === "4r70w" ? "chip chip-on" : "chip", onClick: () => setTrans("4r70w"), children: "Automatic" })
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "gear-toggle", role: "group", "aria-label": "Transmission", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: trans === "t5" ? "chip chip-on" : "chip", onClick: () => setTrans("t5"), children: "5-speed" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: trans === "4r70w" ? "chip chip-on" : "chip", onClick: () => setTrans("4r70w"), children: "Automatic" })
       ] })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "toolbar", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "stage-read", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { className: "stage-kicker", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "toolbar", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "stage-read", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "stage-kicker", children: [
           "Stage ",
           stageIndex
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("strong", { children: stageName })
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("strong", { children: stageName })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "stage-slider", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "sr", children: "Explosion stage" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "stage-slider", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "sr", children: "Explosion stage" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
           "input",
           {
             type: "range",
@@ -23523,7 +23610,7 @@ function MustangApp() {
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "chip-row stages", children: STAGES.map((item) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "chip-row stages", children: STAGES.map((item) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
         "button",
         {
           type: "button",
@@ -23536,18 +23623,18 @@ function MustangApp() {
         },
         item.id
       )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "control-note", children: "Wheel zooms. Shift+wheel opens the car." }),
-      hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("button", { type: "button", className: "chip", onClick: showHidden, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "control-note", children: "Wheel zooms. Shift+wheel opens the car." }),
+      hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", className: "chip", onClick: showHidden, children: [
         "Show hidden (",
         hiddenCount,
         ")"
       ] }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "chip-row", role: "group", "aria-label": "View", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "chip-row", role: "group", "aria-label": "View", children: [
         ["car", "Car"],
         ["both", "Both"],
         ["sheet", "Sheet"]
-      ].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: mode === id ? "chip chip-on" : "chip", onClick: () => setMode(id), children: label }, id)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+      ].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: mode === id ? "chip chip-on" : "chip", onClick: () => setMode(id), children: label }, id)) }),
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
         ColorPop,
         {
           label: "Paint",
@@ -23562,7 +23649,7 @@ function MustangApp() {
           presets: PAINTS.map((item) => ({ name: item.name, hex: item.hex }))
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
         ColorPop,
         {
           label: "Bay",
@@ -23577,20 +23664,20 @@ function MustangApp() {
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "filter-row", children: SYSTEMS.map((id) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: system === id ? "chip chip-on" : "chip", onClick: () => setSystem(id), children: id === "all" ? "All systems" : SYSTEM_LABEL[id] }, id)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "filter-row", children: SYSTEMS.map((id) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: system === id ? "chip chip-on" : "chip", onClick: () => setSystem(id), children: id === "all" ? "All systems" : SYSTEM_LABEL[id] }, id)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
       "div",
       {
         className: "workspace",
         style: { ["--car"]: String(mode === "car" ? 1 : mode === "sheet" ? 0.38 : carShare), ["--rail"]: railOpen ? `${railW}px` : "48px" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: `stage mode-${mode}`, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "pane-car", style: { background: bayBackground({ bgHex, bgAlpha, bgGrad, bgTo }) }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(CarPane, {}),
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "bay-hint", children: hoverName ?? (selected ? "Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it or troubleshoot it." : "Drag to orbit. Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it.") })
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: `stage mode-${mode}`, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "pane-car", style: { background: bayBackground({ bgHex, bgAlpha, bgGrad, bgTo }) }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(CarPane, {}),
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "bay-hint", children: hoverName ?? (selected ? "Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it or troubleshoot it." : "Drag to orbit. Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it.") })
             ] }),
-            mode !== "car" ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(import_jsx_runtime9.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+            mode !== "car" ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                 "div",
                 {
                   className: "split split-y",
@@ -23600,16 +23687,16 @@ function MustangApp() {
                   onPointerDown: (e) => dragSplit(e, (dx, width) => setCarShare(carShare + dx / width))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("section", { className: "dock", "aria-label": "Diagram and reference", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "dock-tabs", role: "tablist", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: dock === "sheet" ? "chip chip-on" : "chip", onClick: () => setDock("sheet"), children: "Sheet" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: dock === "walk" ? "chip chip-on" : "chip", onClick: () => setDock("walk"), children: "Walkthrough" })
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("section", { className: "dock", "aria-label": "Diagram and reference", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "dock-tabs", role: "tablist", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: dock === "sheet" ? "chip chip-on" : "chip", onClick: () => setDock("sheet"), children: "Sheet" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: dock === "walk" ? "chip chip-on" : "chip", onClick: () => setDock("walk"), children: "Walkthrough" })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "dock-body", children: dock === "sheet" ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(WiringSheet, {}) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Walkthrough, {}) })
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "dock-body", children: dock === "sheet" ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(WiringSheet, {}) : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Walkthrough, {}) })
               ] })
             ] }) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             "div",
             {
               className: "split split-rail",
@@ -23622,18 +23709,18 @@ function MustangApp() {
               }
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("aside", { className: railOpen ? "rail rail-open" : "rail rail-shut", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "rail-toggle", "aria-expanded": railOpen, onClick: () => setRailOpen(!railOpen), children: railOpen ? "Hide" : "Details" }),
-            railOpen ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(import_jsx_runtime9.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Inspector, {}),
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(VinField, {})
-            ] }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "rail-peek", children: selected ? PARTS[selected]?.name ?? "Part" : "Fuel pump power" })
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("aside", { className: railOpen ? "rail rail-open" : "rail rail-shut", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "rail-toggle", "aria-expanded": railOpen, onClick: () => setRailOpen(!railOpen), children: railOpen ? "Hide" : "Details" }),
+            railOpen ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Inspector, {}),
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VinField, {})
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "rail-peek", children: selected ? PARTS[selected]?.name ?? "Part" : "Fuel pump power" })
           ] })
         ]
       }
     ),
-    menu ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "ctx", style: { left: menu.x, top: menu.y }, role: "menu", children: [
-      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+    menu ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "ctx", style: { left: menu.x, top: menu.y }, role: "menu", children: [
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
         "button",
         {
           type: "button",
@@ -23648,12 +23735,12 @@ function MustangApp() {
           ]
         }
       ) : null,
-      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("button", { type: "button", role: "menuitem", onClick: () => hide(menu.id), children: [
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", role: "menuitem", onClick: () => hide(menu.id), children: [
         "Hide ",
         menuPart?.name ?? "this part"
       ] }) : null,
-      menu.id !== "unibody" && !hidden.unibody ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", role: "menuitem", onClick: () => hide("unibody"), children: "Hide body shell" }) : null,
-      hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", role: "menuitem", onClick: showHidden, children: "Show hidden parts" }) : null
+      menu.id !== "unibody" && !hidden.unibody ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", role: "menuitem", onClick: () => hide("unibody"), children: "Hide body shell" }) : null,
+      hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", role: "menuitem", onClick: showHidden, children: "Show hidden parts" }) : null
     ] }) : null
   ] });
 }
@@ -23677,13 +23764,13 @@ function VinField() {
     } catch {
     }
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "vehicle", "data-collapsed-default": true, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("summary", { children: "Vehicle" }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "VIN (stays on this device)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("input", { maxLength: 17, autoComplete: "off", spellCheck: false, value: vin, onChange: (e) => save(e.target.value.toUpperCase()) })
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "vehicle", "data-collapsed-default": true, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("summary", { children: "Vehicle" }),
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "VIN (stays on this device)" }),
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { maxLength: 17, autoComplete: "off", spellCheck: false, value: vin, onChange: (e) => save(e.target.value.toUpperCase()) })
     ] }),
-    vin ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: () => window.confirm("Clear the VIN from this device?") && save(""), children: "Clear" }) : null
+    vin ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "btn", onClick: () => window.confirm("Clear the VIN from this device?") && save(""), children: "Clear" }) : null
   ] });
 }
 function dragSplit(event, onDelta) {
@@ -23714,8 +23801,8 @@ function CarPane() {
       live2 = false;
     };
   }, []);
-  if (!Scene) return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "bay-fallback", children: "Opening the bay\u2026" });
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Scene, {});
+  if (!Scene) return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "bay-fallback", children: "Opening the bay\u2026" });
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Scene, {});
 }
 function bayBackground(look) {
   const a = cssHex(look.bgHex, look.bgAlpha);
@@ -23744,42 +23831,42 @@ function ColorPop({
 }) {
   const [open, setOpen] = (0, import_react6.useState)(false);
   const chip = grad ? `linear-gradient(90deg, ${hex}, ${gradHex})` : hex;
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "color-pop", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("button", { type: "button", className: "chip color-launch", "aria-expanded": open, onClick: () => setOpen((v) => !v), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "color-dot", style: { background: chip, opacity: Math.max(0.15, alpha) } }),
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "color-pop", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", className: "chip color-launch", "aria-expanded": open, onClick: () => setOpen((v) => !v), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "color-dot", style: { background: chip, opacity: Math.max(0.15, alpha) } }),
       label
     ] }),
-    open ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "color-card", role: "dialog", "aria-label": `${label} color`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Color" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("input", { type: "color", value: hex, onChange: (e) => onHex(e.target.value) })
+    open ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "color-card", role: "dialog", "aria-label": `${label} color`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "Color" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "color", value: hex, onChange: (e) => onHex(e.target.value) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { children: [
           "Transparency ",
           Math.round((1 - alpha) * 100),
           "%"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("input", { type: "range", min: 0, max: 100, value: Math.round((1 - alpha) * 100), onChange: (e) => onAlpha(1 - Number(e.target.value) / 100) })
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "range", min: 0, max: 100, value: Math.round((1 - alpha) * 100), onChange: (e) => onAlpha(1 - Number(e.target.value) / 100) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "check-line", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("input", { type: "checkbox", checked: grad, onChange: (e) => onGrad(e.target.checked) }),
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "check-line", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "checkbox", checked: grad, onChange: (e) => onGrad(e.target.checked) }),
         "Gradient"
       ] }),
-      grad ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Second color" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("input", { type: "color", value: gradHex, onChange: (e) => onGradHex(e.target.value) })
+      grad ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "Second color" }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "color", value: gradHex, onChange: (e) => onGradHex(e.target.value) })
       ] }) : null,
-      presets ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "swatches", children: presets.map((item) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "swatch", style: { background: item.hex }, "aria-label": item.name, onClick: () => onHex(item.hex) }, item.hex)) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: () => setOpen(false), children: "Done" })
+      presets ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "swatches", children: presets.map((item) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "swatch", style: { background: item.hex }, "aria-label": item.name, onClick: () => onHex(item.hex) }, item.hex)) }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "btn", onClick: () => setOpen(false), children: "Done" })
     ] }) : null
   ] });
 }
 
 // entry.tsx
-var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
 var root = document.getElementById("root");
-if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime10.jsx)(MustangApp, {}));
+if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime11.jsx)(MustangApp, {}));
 /*! Bundled license information:
 
 react-dom/cjs/react-dom.development.js:

@@ -10,10 +10,28 @@ export function contextPhoto(partId: string): string | null {
   return PARTS[partId]?.system === "engine" ? ESSEX : null;
 }
 
-export function PartPhoto({ id, partId, alt }: { id: string; partId: string; alt: string }) {
+const LOCAL_KEY = "mustang.localPhotos.v1";
+export function localPhotosOn(): boolean {
+  try {
+    return localStorage.getItem(LOCAL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+export function setLocalPhotos(on: boolean) {
+  try {
+    if (on) localStorage.setItem(LOCAL_KEY, "1");
+    else localStorage.removeItem(LOCAL_KEY);
+  } catch {
+    /* storage blocked: stays off */
+  }
+}
+
+export function PartPhoto({ id, partId, alt, local = false }: { id: string; partId: string; alt: string; local?: boolean }) {
   const ctx = contextPhoto(partId);
-  const list = [`local/photos/${id.replace(/:/g, "__")}.jpg`, `local/photos/${partId}.jpg`, ...(ctx ? [ctx] : [])];
-  return <PhotoChain key={id} list={list} ctx={ctx} alt={alt} />;
+  const mine = local ? [`local/photos/${id.replace(/:/g, "__")}.jpg`, `local/photos/${partId}.jpg`] : [];
+  const list = [...mine, ...(ctx ? [ctx] : [])];
+  return <PhotoChain key={`${id}|${local}`} list={list} ctx={ctx} alt={alt} />;
 }
 
 function PhotoChain({ list, ctx, alt }: { list: string[]; ctx: string | null; alt: string }) {
@@ -22,7 +40,7 @@ function PhotoChain({ list, ctx, alt }: { list: string[]; ctx: string | null; al
     return (
       <figure className="conn-photo">
         <ConnectorSvg />
-        <figcaption className="fine">Illustration only, not your car&rsquo;s connector. Add your own photo in Mustang/local/photos/.</figcaption>
+        <figcaption className="fine">Illustration only, not your car&rsquo;s connector. Add your own photo in Mustang/local/photos/ and turn on &ldquo;Use my local photos&rdquo; under Advanced.</figcaption>
       </figure>
     );
   }
