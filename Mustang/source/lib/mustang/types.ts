@@ -55,6 +55,50 @@ export type PartInfo = {
   };
 };
 
+export const UNVERIFIED = "not verified, see EVTM" as const;
+export type SourceNote = { file: string; line: number; quote: string }; // a quote from app code, never invented
+export type Seeded<T> =
+  | { value: T; source: SourceNote }
+  | { value: null; source: null } // null renders UNVERIFIED
+  | { value: T; source: null; user: true }; // typed in by the owner, never shown as verified
+
+export type PinRole = "power" | "ground" | "signal" | "control" | "unknown";
+export type ConnectorPin = {
+  key: string;               // stable local id, e.g. "p1". NOT a cavity number
+  cavity: Seeded<string>;    // real cavity label, only if verified
+  role: PinRole;
+  label: string;             // e.g. "Relay output"
+  color: Seeded<string>;     // wire colour as text
+  circuit: Seeded<string>;   // Ford circuit number
+  expect: Seeded<string>;    // expected reading, as text
+  to?: string;               // partId at the other end, from the diagram WIRES
+};
+export type ConnectorParts = { shell: Seeded<string>; seal: Seeded<string>; lock: Seeded<string>; terminal: Seeded<string> };
+export type Connector = {
+  id: string;                // `${partId}:main`, or a seeded id
+  partId: string;
+  name: string;
+  cNumber: Seeded<string>;
+  pinCount: Seeded<number>;
+  pins: ConnectorPin[];
+  parts: ConnectorParts;
+  flows: string[];           // flow ids that touch this part
+  stub: boolean;             // true = generated at runtime
+  origin: "seed" | "stub" | "user";
+};
+export type FuseSlot = {
+  key: string;               // grid id, e.g. "r1c1"
+  row: number; col: number;  // layout cell only, not a Ford position number
+  position: Seeded<string>;
+  kind: Seeded<"fuse" | "maxi" | "relay" | "diode">;
+  amps: Seeded<string>;
+  protects: Seeded<string>;
+  connectors: string[];      // Connector ids
+  flows: string[];
+};
+export type FuseBox = { id: "pdb" | "fuse-panel" | "ccrm"; partId: string; name: string; rows: number; cols: number; slots: FuseSlot[]; origin: "stub" | "user" };
+export type UserConnectorData = { v: 1; connectors: Record<string, Connector>; boxes: Record<string, FuseBox> };
+
 export type PaintId = "red" | "black" | "silver" | "white";
 
 export const PAINTS: { id: PaintId; name: string; hex: string }[] = [

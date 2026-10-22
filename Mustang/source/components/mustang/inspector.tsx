@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { connectorsFor, isBox } from "@/lib/mustang/connectors";
 import { askMustang } from "@/lib/mustang/grok.functions";
 import { partView } from "@/lib/mustang/parts";
 import { useMustang } from "@/lib/mustang/store";
 import { CIRCUIT_LABEL, STAGES, SYSTEM_LABEL } from "@/lib/mustang/types";
+import { ConnectorPanel } from "./connectorpanel";
 
 const JOBS: { label: string; id: string; symptom: string }[] = [
   { label: "Cranks, no start", id: "inertia-switch", symptom: "Cranks but will not fire" },
@@ -96,6 +98,7 @@ export function Inspector() {
           ))}
         </dl>
       ) : null}
+      {connectorsFor(selected).length || isBox(selected) ? <ConnectorPanel partId={selected} /> : null}
       <h3>Check it like this</h3>
       <ol className="checks">
         {part.checks.map((c) => (

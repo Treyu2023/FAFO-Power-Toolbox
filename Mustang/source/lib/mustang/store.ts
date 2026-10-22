@@ -67,6 +67,7 @@ type State = {
   step: number;
   marks: Record<string, Mark>;
   reading: string;
+  pin: string | null;
   select: (id: string | null, frame?: boolean) => void;
   setHover: (id: string | null) => void;
   setMode: (mode: Mode) => void;
@@ -93,6 +94,7 @@ type State = {
   showOnSheet: () => void;
   setDock: (dock: "sheet" | "walk") => void;
   setRailOpen: (open: boolean) => void;
+  setPin: (pin: string | null) => void;
   setRailW: (width: number) => void;
   setCarShare: (share: number) => void;
   startFlow: (id: string) => void;
@@ -135,6 +137,7 @@ export const useMustang = create<State>((set, get) => ({
   menu: null,
   dock: "walk",
   railOpen: false,
+  pin: null,
   railW: 340,
   carShare: 0.72,
   flowId: null,
@@ -202,6 +205,7 @@ export const useMustang = create<State>((set, get) => ({
   },
   setDock: (dock) => set({ dock, mode: get().mode === "car" ? "both" : get().mode }),
   setRailOpen: (railOpen) => set({ railOpen }),
+  setPin: (pin) => set({ pin }),
   setRailW: (railW) => set({ railW: Math.min(520, Math.max(260, railW)) }),
   setCarShare: (carShare) => set({ carShare: Math.min(0.86, Math.max(0.42, carShare)) }),
   startFlow: (id) => {

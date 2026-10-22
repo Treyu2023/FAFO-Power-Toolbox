@@ -4816,6 +4816,7 @@ var useMustang = create((set, get) => ({
   menu: null,
   dock: "walk",
   railOpen: false,
+  pin: null,
   railW: 340,
   carShare: 0.72,
   flowId: null,
@@ -4883,6 +4884,7 @@ var useMustang = create((set, get) => ({
   },
   setDock: (dock) => set({ dock, mode: get().mode === "car" ? "both" : get().mode }),
   setRailOpen: (railOpen) => set({ railOpen }),
+  setPin: (pin) => set({ pin }),
   setRailW: (railW) => set({ railW: Math.min(520, Math.max(260, railW)) }),
   setCarShare: (carShare) => set({ carShare: Math.min(0.86, Math.max(0.42, carShare)) }),
   startFlow: (id) => {
@@ -4938,6 +4940,7 @@ var useMustang = create((set, get) => ({
 }));
 
 // lib/mustang/types.ts
+var UNVERIFIED = "not verified, see EVTM";
 var PAINTS = [
   { id: "red", name: "Laser Red", hex: "#8f1d22" },
   { id: "black", name: "Black", hex: "#1a1a1e" },
@@ -5001,6 +5004,7 @@ export {
   openAmount,
   explodeOf,
   useMustang,
+  UNVERIFIED,
   PAINTS,
   STAGES,
   SYSTEM_LABEL,

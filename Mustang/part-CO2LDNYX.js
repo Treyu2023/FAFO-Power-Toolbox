@@ -10,7 +10,7 @@ import {
   require_react,
   require_scheduler,
   useMustang
-} from "./part-I45L67PK.js";
+} from "./part-SREGZBRN.js";
 import {
   __commonJS,
   __export,

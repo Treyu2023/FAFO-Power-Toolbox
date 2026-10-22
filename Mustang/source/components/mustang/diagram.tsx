@@ -82,6 +82,7 @@ export function WiringSheet() {
                 onClick={(e) => {
                   e.stopPropagation();
                   select(node.id, true);
+                  useMustang.getState().setRailOpen(true);
                 }}
               >
                 <rect
