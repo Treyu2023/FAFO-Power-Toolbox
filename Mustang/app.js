@@ -17,7 +17,7 @@ import {
   searchParts,
   useMustang,
   verdict
-} from "./part-NTTKJEIN.js";
+} from "./part-6WYP34DX.js";
 import {
   __commonJS,
   __toESM
@@ -22678,8 +22678,23 @@ function MustangApp() {
   const setMode = useMustang((s) => s.setMode);
   const trans = useMustang((s) => s.trans);
   const setTrans = useMustang((s) => s.setTrans);
-  const paint = useMustang((s) => s.paint);
-  const setPaint = useMustang((s) => s.setPaint);
+  const paintHex = useMustang((s) => s.paintHex);
+  const paintAlpha = useMustang((s) => s.paintAlpha);
+  const paintGrad = useMustang((s) => s.paintGrad);
+  const paintTo = useMustang((s) => s.paintTo);
+  const setPaintHex = useMustang((s) => s.setPaintHex);
+  const setPaintAlpha = useMustang((s) => s.setPaintAlpha);
+  const setPaintGrad = useMustang((s) => s.setPaintGrad);
+  const setPaintTo = useMustang((s) => s.setPaintTo);
+  const bgHex = useMustang((s) => s.bgHex);
+  const bgAlpha = useMustang((s) => s.bgAlpha);
+  const bgGrad = useMustang((s) => s.bgGrad);
+  const bgTo = useMustang((s) => s.bgTo);
+  const setBgHex = useMustang((s) => s.setBgHex);
+  const setBgAlpha = useMustang((s) => s.setBgAlpha);
+  const setBgGrad = useMustang((s) => s.setBgGrad);
+  const setBgTo = useMustang((s) => s.setBgTo);
+  const setSection = useMustang((s) => s.setSection);
   const zoomDrives = useMustang((s) => s.zoomDrives);
   const setZoomDrives = useMustang((s) => s.setZoomDrives);
   const system = useMustang((s) => s.system);
@@ -22712,9 +22727,16 @@ function MustangApp() {
       const raw = localStorage.getItem("fafo-mustang-prefs");
       if (raw) {
         const saved = JSON.parse(raw);
-        if (saved.paint === "red" || saved.paint === "black" || saved.paint === "silver" || saved.paint === "white") {
-          setPaint(saved.paint);
-        }
+        const legacy = { red: "#8f1d22", black: "#1a1a1e", silver: "#c5c8ce", white: "#e4e0d8" };
+        if (saved.paintHex) setPaintHex(saved.paintHex);
+        else if (saved.paint && legacy[saved.paint]) setPaintHex(legacy[saved.paint]);
+        if (typeof saved.paintAlpha === "number") setPaintAlpha(saved.paintAlpha);
+        if (typeof saved.paintGrad === "boolean") setPaintGrad(saved.paintGrad);
+        if (saved.paintTo) setPaintTo(saved.paintTo);
+        if (saved.bgHex) setBgHex(saved.bgHex);
+        if (typeof saved.bgAlpha === "number") setBgAlpha(saved.bgAlpha);
+        if (typeof saved.bgGrad === "boolean") setBgGrad(saved.bgGrad);
+        if (saved.bgTo) setBgTo(saved.bgTo);
         if (saved.trans === "t5" || saved.trans === "4r70w") setTrans(saved.trans);
         if (typeof saved.zoom === "boolean") setZoomDrives(saved.zoom);
       }
@@ -22722,14 +22744,17 @@ function MustangApp() {
     }
     setReady(true);
     startFlow("fuel-pump-power");
-  }, [setPaint, setTrans, setZoomDrives, startFlow]);
+  }, [setPaintHex, setPaintAlpha, setPaintGrad, setPaintTo, setBgHex, setBgAlpha, setBgGrad, setBgTo, setTrans, setZoomDrives, startFlow]);
   (0, import_react4.useEffect)(() => {
     if (!ready) return;
     try {
-      localStorage.setItem("fafo-mustang-prefs", JSON.stringify({ paint, trans, zoom: zoomDrives }));
+      localStorage.setItem(
+        "fafo-mustang-prefs",
+        JSON.stringify({ paintHex, paintAlpha, paintGrad, paintTo, bgHex, bgAlpha, bgGrad, bgTo, trans, zoom: zoomDrives })
+      );
     } catch {
     }
-  }, [paint, trans, zoomDrives, ready]);
+  }, [paintHex, paintAlpha, paintGrad, paintTo, bgHex, bgAlpha, bgGrad, bgTo, trans, zoomDrives, ready]);
   (0, import_react4.useEffect)(() => {
     const onKey = (e) => {
       const tag = e.target?.tagName;
@@ -22823,7 +22848,10 @@ function MustangApp() {
         {
           type: "button",
           className: stageIndex === item.id ? "chip chip-on" : "chip",
-          onClick: () => setStage(item.id),
+          onClick: () => {
+            setStage(item.id);
+            setSection(item.id === 0 ? null : item.id);
+          },
           children: item.name
         },
         item.id
@@ -22839,17 +22867,35 @@ function MustangApp() {
         ["both", "Both"],
         ["sheet", "Sheet"]
       ].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: mode === id ? "chip chip-on" : "chip", onClick: () => setMode(id), children: label }, id)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "swatches", role: "group", "aria-label": "Paint", children: PAINTS.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        "button",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        ColorPop,
         {
-          type: "button",
-          className: paint === item.id ? `swatch swatch-${item.id} swatch-on` : `swatch swatch-${item.id}`,
-          "aria-label": item.name,
-          "aria-pressed": paint === item.id,
-          onClick: () => setPaint(item.id)
-        },
-        item.id
-      )) })
+          label: "Paint",
+          hex: paintHex,
+          alpha: paintAlpha,
+          grad: paintGrad,
+          gradHex: paintTo,
+          onHex: setPaintHex,
+          onAlpha: setPaintAlpha,
+          onGrad: setPaintGrad,
+          onGradHex: setPaintTo,
+          presets: PAINTS.map((item) => ({ name: item.name, hex: item.hex }))
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        ColorPop,
+        {
+          label: "Bay",
+          hex: bgHex,
+          alpha: bgAlpha,
+          grad: bgGrad,
+          gradHex: bgTo,
+          onHex: setBgHex,
+          onAlpha: setBgAlpha,
+          onGrad: setBgGrad,
+          onGradHex: setBgTo
+        }
+      )
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "filter-row", children: SYSTEMS.map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: system === id ? "chip chip-on" : "chip", onClick: () => setSystem(id), children: id === "all" ? "All systems" : SYSTEM_LABEL[id] }, id)) }),
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
@@ -22859,7 +22905,7 @@ function MustangApp() {
         style: { ["--car"]: String(mode === "car" ? 1 : mode === "sheet" ? 0.38 : carShare), ["--rail"]: railOpen ? `${railW}px` : "48px" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: `stage mode-${mode}`, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "pane-car", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "pane-car", style: { background: bayBackground({ bgHex, bgAlpha, bgGrad, bgTo }) }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CarPane, {}),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "bay-hint", children: hoverName ?? (selected ? "Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it or troubleshoot it." : "Drag to orbit. Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it.") })
             ] }),
@@ -22949,7 +22995,7 @@ function CarPane() {
   const [Scene, setScene] = (0, import_react4.useState)(null);
   (0, import_react4.useEffect)(() => {
     let live2 = true;
-    import("./part-MYADAOVQ.js").then((mod) => {
+    import("./part-MEFOEYYU.js").then((mod) => {
       if (live2) setScene(() => mod.MustangScene);
     });
     return () => {
@@ -22958,6 +23004,64 @@ function CarPane() {
   }, []);
   if (!Scene) return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "bay-fallback", children: "Opening the bay\u2026" });
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Scene, {});
+}
+function bayBackground(look) {
+  const a = cssHex(look.bgHex, look.bgAlpha);
+  if (!look.bgGrad) return a;
+  return `linear-gradient(180deg, ${a}, ${cssHex(look.bgTo, look.bgAlpha)})`;
+}
+function cssHex(hex, alpha) {
+  const h = hex.replace("#", "");
+  const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(n.slice(0, 2), 16);
+  const g = parseInt(n.slice(2, 4), 16);
+  const b = parseInt(n.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+function ColorPop({
+  label,
+  hex,
+  alpha,
+  grad,
+  gradHex,
+  onHex,
+  onAlpha,
+  onGrad,
+  onGradHex,
+  presets
+}) {
+  const [open, setOpen] = (0, import_react4.useState)(false);
+  const chip = grad ? `linear-gradient(90deg, ${hex}, ${gradHex})` : hex;
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "color-pop", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", className: "chip color-launch", "aria-expanded": open, onClick: () => setOpen((v) => !v), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "color-dot", style: { background: chip, opacity: Math.max(0.15, alpha) } }),
+      label
+    ] }),
+    open ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "color-card", role: "dialog", "aria-label": `${label} color`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: "Color" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: hex, onChange: (e) => onHex(e.target.value) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { children: [
+          "Transparency ",
+          Math.round((1 - alpha) * 100),
+          "%"
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 0, max: 100, value: Math.round((1 - alpha) * 100), onChange: (e) => onAlpha(1 - Number(e.target.value) / 100) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "check-line", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "checkbox", checked: grad, onChange: (e) => onGrad(e.target.checked) }),
+        "Gradient"
+      ] }),
+      grad ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "field", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: "Second color" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: gradHex, onChange: (e) => onGradHex(e.target.value) })
+      ] }) : null,
+      presets ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "swatches", children: presets.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "swatch", style: { background: item.hex }, "aria-label": item.name, onClick: () => onHex(item.hex) }, item.hex)) }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "btn", onClick: () => setOpen(false), children: "Done" })
+    ] }) : null
+  ] });
 }
 
 // mustang-entry.tsx

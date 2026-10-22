@@ -1,6 +1,5 @@
 import {
   CIRCUIT_COLOR,
-  PAINTS,
   PARTS,
   WIRES,
   createStore,
@@ -11,7 +10,7 @@ import {
   require_react,
   require_scheduler,
   useMustang
-} from "./part-NTTKJEIN.js";
+} from "./part-6WYP34DX.js";
 import {
   __commonJS,
   __export,
@@ -56653,8 +56652,65 @@ function focusPoint(id) {
   return point;
 }
 
+// src/lib/mustang/visual.ts
+function chainOf(id) {
+  const out = [];
+  let cur = id;
+  const seen = /* @__PURE__ */ new Set();
+  while (cur && PARTS[cur] && !seen.has(cur)) {
+    seen.add(cur);
+    out.push(cur);
+    cur = PARTS[cur].parent;
+  }
+  return out;
+}
+function sectionActive(system, section, circuit, selected) {
+  if (system !== "all" || section != null) return true;
+  return circuit !== "all" && !selected;
+}
+function visualRole(id, selected, system, circuit, section) {
+  if (id === "floor") return "hide";
+  const isolate = !!selected && system === "all" && section == null;
+  if (isolate) {
+    if (id === selected) return "neon";
+    if (chainOf(selected).includes(id)) return "parent";
+    return "hide";
+  }
+  if (system !== "all" || section != null || circuit !== "all") {
+    const part = PARTS[id];
+    if (!part) return "ghost";
+    if (system !== "all" && part.system !== system) return "ghost";
+    if (section != null && part.stage !== section) return "ghost";
+    if (circuit !== "all" && part.circuit && part.circuit !== circuit) return "ghost";
+    if (circuit !== "all" && !part.circuit && system === "all" && section == null) return "ghost";
+    return "neon";
+  }
+  return "normal";
+}
+
 // src/components/mustang/scene.tsx
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+var NO_RAYCAST = () => null;
+var gradCache = /* @__PURE__ */ new Map();
+function gradTexture(from, to) {
+  const key = `${from}|${to}`;
+  const hit = gradCache.get(key);
+  if (hit) return hit;
+  const canvas = document.createElement("canvas");
+  canvas.width = 8;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const g3 = ctx.createLinearGradient(0, 0, 0, 128);
+  g3.addColorStop(0, from);
+  g3.addColorStop(1, to);
+  ctx.fillStyle = g3;
+  ctx.fillRect(0, 0, 8, 128);
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  gradCache.set(key, tex);
+  return tex;
+}
 function anchorOf(id) {
   const run2 = HARNESS.find((item) => item.id === id);
   const pts = run2?.runs[0];
@@ -56684,7 +56740,7 @@ function Rig() {
     const part = PARTS[live.focusId];
     const stage = Math.max(live.stage, part?.stage ?? live.targetStage);
     live.targetStage = stage;
-    wantDist.current = Math.min(7.2, Math.max(2.5, 8.2 - stage * 1.05));
+    wantDist.current = Math.min(6.4, Math.max(0.62, 7.4 - stage * 1.2));
     live.focusing = true;
   }, [focusTick]);
   useFrame((_, dt) => {
@@ -56746,29 +56802,65 @@ var TUCKED = /* @__PURE__ */ new Set([
   "glass-door-r"
 ]);
 function Shell() {
-  const paintId = useMustang((s) => s.paint);
+  const paintHex = useMustang((s) => s.paintHex);
+  const paintTo = useMustang((s) => s.paintTo);
+  const paintGrad = useMustang((s) => s.paintGrad);
+  const paintAlpha = useMustang((s) => s.paintAlpha);
   const select = useMustang((s) => s.select);
   const setHover = useMustang((s) => s.setHover);
   const openMenu = useMustang((s) => s.openMenu);
   const selected = useMustang((s) => s.selected);
+  const system = useMustang((s) => s.system);
+  const section = useMustang((s) => s.section);
+  const circuit = useMustang((s) => s.circuit);
   const hidden = useMustang((s) => !!s.hidden.unibody);
-  const paint = PAINTS.find((p3) => p3.id === paintId)?.hex ?? "#8f1d22";
   const body = (0, import_react5.useRef)(null);
   const glass = (0, import_react5.useRef)(null);
+  const flashAt = (0, import_react5.useRef)(-10);
+  const wasHot = (0, import_react5.useRef)(false);
   const geo = (0, import_react5.useMemo)(() => coupeGeometry(), []);
-  useFrame(() => {
-    const t2 = Math.min(live.stage, 1.4) / 1.4;
+  const map = (0, import_react5.useMemo)(() => paintGrad ? gradTexture(paintHex, paintTo) : null, [paintGrad, paintHex, paintTo]);
+  const ghosting = sectionActive(system, section, circuit, selected) || !!selected && system === "all" && section == null;
+  useFrame((state2) => {
+    const hot = selected === "unibody";
+    if (hot && !wasHot.current) flashAt.current = state2.clock.elapsedTime;
+    wasHot.current = hot;
+    const age = state2.clock.elapsedTime - flashAt.current;
     if (body.current) {
-      body.current.opacity = 1 - t2 * 0.88;
-      body.current.transparent = t2 > 0.02;
-      body.current.depthWrite = t2 < 0.55;
+      if (ghosting && !hot) {
+        body.current.color.set("#f4f4f2");
+        body.current.emissive.set("#000000");
+        body.current.emissiveIntensity = 0;
+        body.current.map = null;
+        body.current.opacity = 0.12;
+        body.current.transparent = true;
+        body.current.depthWrite = false;
+      } else if (hot) {
+        const red = age < 0.34;
+        body.current.color.set(red ? "#ff2d2d" : "#39ff6a");
+        body.current.emissive.set(red ? "#ff2d2d" : "#39ff6a");
+        body.current.emissiveIntensity = 0.8;
+        body.current.map = null;
+        body.current.opacity = 0.92;
+        body.current.transparent = true;
+        body.current.depthWrite = false;
+      } else {
+        const t2 = Math.min(live.stage, 1.4) / 1.4;
+        body.current.color.set(map ? "#ffffff" : paintHex);
+        body.current.map = map;
+        body.current.emissive.set("#000000");
+        body.current.emissiveIntensity = 0;
+        body.current.opacity = Math.max(0.04, paintAlpha * (1 - t2 * 0.72));
+        body.current.transparent = body.current.opacity < 0.98;
+        body.current.depthWrite = body.current.opacity > 0.55;
+      }
     }
     if (glass.current) {
-      glass.current.opacity = 0.45 * (1 - Math.min(1, live.stage));
+      glass.current.opacity = ghosting ? 0.04 : 0.45 * (1 - Math.min(1, live.stage)) * paintAlpha;
     }
   });
   if (hidden) return null;
-  const hot = selected === "unibody";
+  const pass = ghosting && selected !== "unibody";
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("group", { children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       "mesh",
@@ -56776,6 +56868,7 @@ function Shell() {
         geometry: geo,
         castShadow: true,
         receiveShadow: true,
+        raycast: pass ? NO_RAYCAST : void 0,
         onClick: (e2) => {
           e2.stopPropagation();
           select("unibody", false);
@@ -56787,6 +56880,7 @@ function Shell() {
           live.menuFromPart = true;
         },
         onPointerOver: (e2) => {
+          if (pass) return;
           e2.stopPropagation();
           setHover("unibody");
           document.body.style.cursor = "pointer";
@@ -56795,84 +56889,141 @@ function Shell() {
           setHover(null);
           document.body.style.cursor = "";
         },
-        children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-          "meshStandardMaterial",
-          {
-            ref: body,
-            color: paint,
-            metalness: 0.62,
-            roughness: 0.34,
-            emissive: hot ? "#f4f4f5" : "#000",
-            emissiveIntensity: hot ? 0.35 : 0,
-            side: DoubleSide
-          }
-        )
+        children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { ref: body, color: paintHex, map, metalness: 0.55, roughness: 0.38, side: DoubleSide, transparent: true, opacity: paintAlpha })
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [0, 1.02, -0.22], rotation: [0.5, 0, 0], children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [0, 1.02, -0.22], rotation: [0.5, 0, 0], raycast: NO_RAYCAST, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("boxGeometry", { args: [1.2, 0.58, 0.02] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { ref: glass, color: "#1c2830", metalness: 0.4, roughness: 0.08, transparent: true, opacity: 0.45 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { ref: glass, color: "#1c2830", metalness: 0.4, roughness: 0.08, transparent: true, opacity: 0.45, depthWrite: false })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [0, 1.04, 0.9], rotation: [-0.55, 0, 0], children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [0, 1.04, 0.9], rotation: [-0.55, 0, 0], raycast: NO_RAYCAST, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("boxGeometry", { args: [1.12, 0.42, 0.02] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#1c2830", metalness: 0.4, roughness: 0.08, transparent: true, opacity: 0.4 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#1c2830", metalness: 0.4, roughness: 0.08, transparent: true, opacity: 0.4, depthWrite: false })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [-0.84, 0.95, 0.15], children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [-0.84, 0.95, 0.15], raycast: NO_RAYCAST, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("boxGeometry", { args: [0.02, 0.28, 0.7] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#1a242c", metalness: 0.3, roughness: 0.12, transparent: true, opacity: 0.55 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#1a242c", metalness: 0.3, roughness: 0.12, transparent: true, opacity: 0.55, depthWrite: false })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [0.84, 0.95, 0.15], children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { position: [0.84, 0.95, 0.15], raycast: NO_RAYCAST, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("boxGeometry", { args: [0.02, 0.28, 0.7] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#1a242c", metalness: 0.3, roughness: 0.12, transparent: true, opacity: 0.55 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#1a242c", metalness: 0.3, roughness: 0.12, transparent: true, opacity: 0.55, depthWrite: false })
     ] })
   ] });
 }
+function RoleMaterial({
+  role,
+  hot,
+  color,
+  map,
+  metal,
+  rough,
+  opacity,
+  emissive,
+  emissiveIntensity,
+  xray
+}) {
+  const ref = (0, import_react5.useRef)(null);
+  const flashAt = (0, import_react5.useRef)(-10);
+  const wasHot = (0, import_react5.useRef)(false);
+  useFrame((state2) => {
+    const mat = ref.current;
+    if (!mat) return;
+    const neon = role === "neon" || !!xray;
+    if (hot && neon && !wasHot.current) flashAt.current = state2.clock.elapsedTime;
+    wasHot.current = hot && neon;
+    const age = state2.clock.elapsedTime - flashAt.current;
+    if (neon) {
+      const red = hot && !xray && age < 0.34;
+      mat.color.set(red ? "#ff2d2d" : "#39ff6a");
+      mat.emissive.set(red ? "#ff2d2d" : "#39ff6a");
+      mat.emissiveIntensity = xray ? 0.7 : 1;
+      mat.map = null;
+      mat.opacity = xray ? 0.55 : 1;
+      mat.transparent = Boolean(xray);
+      mat.depthWrite = !xray;
+      mat.depthTest = !xray;
+    } else if (role === "parent") {
+      mat.color.set("#f7f7f4");
+      mat.emissive.set("#c5d0c4");
+      mat.emissiveIntensity = 0.12;
+      mat.map = null;
+      mat.opacity = 0.24;
+      mat.transparent = true;
+      mat.depthWrite = false;
+      mat.depthTest = true;
+    } else if (role === "ghost") {
+      mat.color.set("#f4f4f2");
+      mat.emissive.set("#000000");
+      mat.emissiveIntensity = 0;
+      mat.map = null;
+      mat.opacity = 0.075;
+      mat.transparent = true;
+      mat.depthWrite = false;
+      mat.depthTest = true;
+    } else {
+      mat.color.set(map ? "#ffffff" : color);
+      mat.map = map;
+      mat.emissive.set(emissive);
+      mat.emissiveIntensity = emissiveIntensity;
+      mat.opacity = opacity;
+      mat.transparent = opacity < 0.98;
+      mat.depthWrite = opacity > 0.85;
+      mat.depthTest = true;
+    }
+  });
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { ref, color, metalness: metal, roughness: rough });
+}
 function PartMeshes({ id, prims }) {
   const ref = (0, import_react5.useRef)(null);
-  const paintId = useMustang((s) => s.paint);
+  const paintHex = useMustang((s) => s.paintHex);
+  const paintTo = useMustang((s) => s.paintTo);
+  const paintGrad = useMustang((s) => s.paintGrad);
+  const paintAlpha = useMustang((s) => s.paintAlpha);
   const selected = useMustang((s) => s.selected);
   const trace = useMustang((s) => s.trace);
   const system = useMustang((s) => s.system);
+  const section = useMustang((s) => s.section);
   const circuit = useMustang((s) => s.circuit);
   const trans = useMustang((s) => s.trans);
   const select = useMustang((s) => s.select);
   const setHover = useMustang((s) => s.setHover);
   const openMenu = useMustang((s) => s.openMenu);
   const hidden = useMustang((s) => !!s.hidden[id]);
-  const paint = PAINTS.find((p3) => p3.id === paintId)?.hex ?? "#8f1d22";
   const part = PARTS[id];
+  const role = visualRole(id, selected, system, circuit, section);
+  const isolate = !!selected && system === "all" && section == null;
   useFrame(() => {
     if (!ref.current) return;
     const [x2, y, z] = explodeOf(id, live.stage);
     ref.current.position.set(x2, y, z);
-    const show = !TUCKED.has(id) || openAmount(live.stage, part?.stage ?? 1) > 0.05;
-    ref.current.visible = show && !hidden;
+    const opened = !TUCKED.has(id) || openAmount(live.stage, part?.stage ?? 1) > 0.05;
+    ref.current.visible = !hidden && role !== "hide" && (role !== "normal" || opened);
   });
   const visible = prims.some((p3) => !p3.only || p3.only === trans);
-  if (!visible || hidden) return null;
+  if (!visible || hidden || role === "hide") return null;
   const hot = selected === id;
   const warm = !hot && trace.includes(id);
-  let fade = 1;
-  if (part && !hot && !warm && system !== "all" && part.system !== system) fade = 0.06;
-  else if (part && !hot && !warm && circuit !== "all" && part.circuit && part.circuit !== circuit) fade = 0.07;
-  else if (part && !hot && !warm && circuit !== "all" && !part.circuit) fade = 0.22;
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { ref, children: prims.map((p3, i2) => {
+  const pass = role === "ghost";
+  const paintMap = paintGrad ? gradTexture(paintHex, paintTo) : null;
+  const draw = (p3, i2, xray) => {
     if (p3.only && p3.only !== trans) return null;
-    const opacity = Math.min(1, (p3.opacity ?? 1) * (p3.opacity != null && fade === 1 ? 1 : fade));
-    const color = p3.paint ? paint : p3.color;
-    const emissive = hot ? "#f4f4f5" : warm ? "#d9dce2" : p3.emissive ?? "#000000";
-    const emissiveIntensity = hot ? 0.62 : warm ? 0.32 : p3.emissiveIntensity ?? 0;
+    const baseOpacity = Math.min(1, (p3.opacity ?? 1) * (p3.paint ? paintAlpha : 1));
+    const color = p3.paint ? paintHex : p3.color;
+    const emissive = warm ? "#d9dce2" : p3.emissive ?? "#000000";
+    const emissiveIntensity = warm ? 0.32 : p3.emissiveIntensity ?? 0;
     const rough = p3.rough ?? 0.55;
     const metal = p3.metal ?? 0.45;
-    const transparent = opacity < 0.98;
     const onOver = (e2) => {
+      if (pass || xray) return;
       e2.stopPropagation();
       setHover(id);
       document.body.style.cursor = "pointer";
     };
     const shared = {
-      castShadow: Boolean(p3.shadow),
-      receiveShadow: true,
+      castShadow: !xray && Boolean(p3.shadow) && role === "normal",
+      receiveShadow: !xray && role === "normal",
+      raycast: pass || xray ? NO_RAYCAST : void 0,
+      renderOrder: xray ? 3 : role === "ghost" ? 0 : 1,
       onPointerOver: onOver,
       onPointerOut: (e2) => {
         e2.stopPropagation();
@@ -56880,11 +57031,13 @@ function PartMeshes({ id, prims }) {
         document.body.style.cursor = "";
       },
       onPointerDown: (e2) => {
+        if (pass || xray) return;
         e2.stopPropagation();
         pointerX = e2.nativeEvent.clientX;
         pointerY = e2.nativeEvent.clientY;
       },
       onClick: (e2) => {
+        if (pass || xray) return;
         e2.stopPropagation();
         const dx = e2.nativeEvent.clientX - pointerX;
         const dy = e2.nativeEvent.clientY - pointerY;
@@ -56892,6 +57045,7 @@ function PartMeshes({ id, prims }) {
         select(id, false);
       },
       onContextMenu: (e2) => {
+        if (pass || xray) return;
         e2.stopPropagation();
         e2.nativeEvent.preventDefault();
         openMenu(id, e2.nativeEvent.clientX, e2.nativeEvent.clientY);
@@ -56899,16 +57053,18 @@ function PartMeshes({ id, prims }) {
       }
     };
     const mat = /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-      "meshStandardMaterial",
+      RoleMaterial,
       {
+        role: xray ? "neon" : role,
+        hot,
+        xray,
         color,
-        metalness: metal,
-        roughness: rough,
+        map: p3.paint ? paintMap : null,
+        metal,
+        rough,
+        opacity: baseOpacity,
         emissive,
-        emissiveIntensity,
-        transparent,
-        opacity: transparent ? opacity : 1,
-        depthWrite: !transparent
+        emissiveIntensity
       }
     );
     if (p3.shape === "box") {
@@ -56939,7 +57095,11 @@ function PartMeshes({ id, prims }) {
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("torusGeometry", { args: [p3.args[0], p3.args[1], p3.args[2] ?? 8, p3.args[3] ?? 18] }),
       mat
     ] }, i2);
-  }) });
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { ref, children: prims.map((p3, i2) => draw(p3, i2, false)) }),
+    isolate && hot ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { children: prims.map((p3, i2) => draw(p3, i2, true)) }) : null
+  ] });
 }
 function WireRun({
   id,
@@ -56951,10 +57111,22 @@ function WireRun({
   const selected = useMustang((s) => s.selected);
   const trace = useMustang((s) => s.trace);
   const circuitFilter = useMustang((s) => s.circuit);
+  const system = useMustang((s) => s.system);
+  const section = useMustang((s) => s.section);
   const select = useMustang((s) => s.select);
   const setHover = useMustang((s) => s.setHover);
   const openMenu = useMustang((s) => s.openMenu);
   const hidden = useMustang((s) => !!s.hidden[id]);
+  const role = PARTS[id] ? visualRole(id, selected, system, circuitFilter, section) : (() => {
+    const isolate = !!selected && system === "all" && section == null;
+    if (isolate) return id === selected || trace.includes(id) ? "neon" : "hide";
+    if (sectionActive(system, section, circuitFilter, selected)) {
+      if (circuitFilter !== "all" && circuitFilter !== circuit) return "ghost";
+      if (system !== "all" && system !== "electrical" && system !== "fuel") return "ghost";
+      return "neon";
+    }
+    return "normal";
+  })();
   const geom = (0, import_react5.useMemo)(() => {
     const v2 = points.map((p3) => new Vector3(p3[0], p3[1], p3[2]));
     const curve = v2.length >= 3 ? new CatmullRomCurve3(v2) : new CatmullRomCurve3([v2[0], v2[0].clone().lerp(v2[1], 0.5), v2[1]]);
@@ -56964,17 +57136,18 @@ function WireRun({
     if (!ref.current) return;
     const [x2, y, z] = explodeOf(id, live.stage);
     ref.current.position.set(x2, y, z);
-    ref.current.visible = !hidden;
+    ref.current.visible = !hidden && role !== "hide";
   });
-  if (hidden) return null;
+  if (hidden || role === "hide") return null;
   const hot = selected === id;
-  const warm = !hot && trace.includes(id);
-  const faded = !hot && !warm && circuitFilter !== "all" && circuitFilter !== circuit;
+  const pass = role === "ghost";
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { ref, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
     "mesh",
     {
       geometry: geom,
+      raycast: pass ? NO_RAYCAST : void 0,
       onPointerOver: (e2) => {
+        if (pass) return;
         e2.stopPropagation();
         setHover(id);
         document.body.style.cursor = "pointer";
@@ -56985,11 +57158,13 @@ function WireRun({
         document.body.style.cursor = "";
       },
       onPointerDown: (e2) => {
+        if (pass) return;
         e2.stopPropagation();
         pointerX = e2.nativeEvent.clientX;
         pointerY = e2.nativeEvent.clientY;
       },
       onClick: (e2) => {
+        if (pass) return;
         e2.stopPropagation();
         const dx = e2.nativeEvent.clientX - pointerX;
         const dy = e2.nativeEvent.clientY - pointerY;
@@ -56997,21 +57172,24 @@ function WireRun({
         select(id, false);
       },
       onContextMenu: (e2) => {
+        if (pass) return;
         e2.stopPropagation();
         e2.nativeEvent.preventDefault();
         openMenu(id, e2.nativeEvent.clientX, e2.nativeEvent.clientY);
         live.menuFromPart = true;
       },
       children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-        "meshStandardMaterial",
+        RoleMaterial,
         {
-          color: hot || warm ? "#f4f4f5" : CIRCUIT_COLOR[circuit],
-          emissive: hot || warm ? "#f4f4f5" : CIRCUIT_COLOR[circuit],
-          emissiveIntensity: hot ? 0.7 : warm ? 0.4 : 0.18,
-          roughness: 0.45,
-          metalness: 0.2,
-          transparent: faded,
-          opacity: faded ? 0.08 : 1
+          role,
+          hot,
+          color: CIRCUIT_COLOR[circuit],
+          map: null,
+          metal: 0.2,
+          rough: 0.45,
+          opacity: 1,
+          emissive: CIRCUIT_COLOR[circuit],
+          emissiveIntensity: 0.18
         }
       )
     }
@@ -57050,18 +57228,32 @@ function Leaders() {
     };
   }, [lines]);
   useFrame(() => {
-    const hidden = useMustang.getState().hidden;
+    const state2 = useMustang.getState();
     for (const line of lines) {
       const id = line.userData.partId;
+      const role = visualRole(id, state2.selected, state2.system, state2.circuit, state2.section);
+      const part = PARTS[id];
       const ex = explodeOf(id, live.stage);
-      const dist = Math.hypot(ex[0], ex[1], ex[2]);
-      const show = dist > 0.05 && !hidden[id];
+      const home = focusPoint(id);
+      const parentId = part?.parent;
+      const parent = parentId ? PARTS[parentId] : void 0;
+      const parentHome = parent ? focusPoint(parentId) : home;
+      const pex = parent ? explodeOf(parentId, live.stage) : [0, 0, 0];
+      const x0 = parent ? parentHome[0] + pex[0] : home[0];
+      const y0 = parent ? parentHome[1] + pex[1] : home[1];
+      const z0 = parent ? parentHome[2] + pex[2] : home[2];
+      const x12 = home[0] + ex[0];
+      const y1 = home[1] + ex[1];
+      const z1 = home[2] + ex[2];
+      const dist = Math.hypot(x12 - x0, y1 - y0, z1 - z0);
+      const show = dist > 0.04 && !state2.hidden[id] && role !== "hide" && role !== "ghost";
       line.visible = show;
       if (!show) continue;
-      const home = focusPoint(id);
+      const mat = line.material;
+      mat.color.set(role === "neon" ? "#39ff6a" : "#f4f4f5");
       const pos = line.geometry.getAttribute("position");
-      pos.setXYZ(0, home[0], home[1], home[2]);
-      pos.setXYZ(1, home[0] + ex[0], home[1] + ex[1], home[2] + ex[2]);
+      pos.setXYZ(0, x0, y0, z0);
+      pos.setXYZ(1, x12, y1, z1);
       pos.needsUpdate = true;
       line.computeLineDistances();
     }
@@ -57114,7 +57306,7 @@ function Car() {
       if (list) list.push(prim);
       else map.set(prim.id, [prim]);
     }
-    return [...map.entries()];
+    return [...map.entries()].filter(([id]) => id !== "floor");
   }, []);
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("group", { children: [
     groups.map(([id, list]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(PartMeshes, { id, prims: list }, id)),
@@ -57125,7 +57317,6 @@ function Car() {
 }
 function Bay() {
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("color", { attach: "background", args: ["#141413"] }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("hemisphereLight", { args: ["#d7dbe2", "#2a2722", 0.55] }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("ambientLight", { intensity: 0.28 }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
@@ -57144,11 +57335,6 @@ function Bay() {
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("directionalLight", { position: [-5, 4, -3], intensity: 0.35, color: "#c9d2dc" }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("mesh", { rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], receiveShadow: true, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("circleGeometry", { args: [7.5, 48] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("meshStandardMaterial", { color: "#121211", roughness: 1, metalness: 0 })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("gridHelper", { args: [24, 24, "#3a3a38", "#262624"], position: [0, 5e-3, 0] }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Car, {}),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Shell, {}),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Leaders, {}),
@@ -57160,9 +57346,9 @@ function Bay() {
         makeDefault: true,
         enableDamping: true,
         dampingFactor: 0.08,
-        minDistance: 2.15,
-        maxDistance: 12,
-        maxPolarAngle: Math.PI * 0.94,
+        minDistance: 0.28,
+        maxDistance: 14,
+        maxPolarAngle: Math.PI * 0.995,
         target: [0, 0.62, 0.05]
       }
     )
@@ -57175,11 +57361,14 @@ function MustangScene() {
       className: "bay-canvas",
       dpr: [1, 1.75],
       shadows: true,
-      camera: { position: [5.5, 1.65, 6.55], fov: 36, near: 0.08, far: 50 },
-      gl: { antialias: true, powerPreference: "high-performance" },
-      onCreated: ({ gl }) => {
+      camera: { position: [5.5, 1.65, 6.55], fov: 36, near: 0.02, far: 50 },
+      gl: { antialias: true, alpha: true, powerPreference: "high-performance" },
+      onPointerMissed: () => useMustang.getState().select(null),
+      onCreated: ({ gl, scene }) => {
         gl.toneMapping = ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.05;
+        gl.setClearColor(0, 0);
+        scene.background = null;
       },
       children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Bay, {})
     }
