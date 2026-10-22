@@ -22751,7 +22751,7 @@ function MustangApp() {
     } catch {
     }
     setReady(true);
-    startFlow("fuel-pump-power");
+    if (!useMustang.getState().flowId) startFlow("fuel-pump-power");
   }, [setPaintHex, setPaintAlpha, setPaintGrad, setPaintTo, setBgHex, setBgAlpha, setBgGrad, setBgTo, setTrans, setZoomDrives, startFlow]);
   (0, import_react4.useEffect)(() => {
     if (!ready) return;
