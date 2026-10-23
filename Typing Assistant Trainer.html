@@ -5156,6 +5156,25 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
 .tat97-sheet{max-height:min(88vh,720px,100%)}
 .tat95-pick3-sheet{max-height:100%;overflow:auto}
 </style>
+<style id="mob1-phone">
+/* MOB-1: phone / coarse-pointer only. 44px targets, nowrap relief (.btn :617, toasts :984 :1399 :2752 :3128), 16px inputs, safe areas */
+@media (max-width: 640px), (pointer: coarse) {
+  .tat83-tabs button { min-height: 44px; padding: 8px 12px; }
+  #coachCard .cc-key { min-width: 44px; min-height: 44px; }
+  .btn { white-space: normal; }
+  #comboToast, .float-react, .tat-level-toast, .tat76-act-toast { white-space: normal; max-width: calc(100vw - 24px); overflow-wrap: anywhere; }
+  input, select, textarea { font-size: max(16px, 1em); }
+  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  #promptWrap.mob1-kbd { scroll-margin-bottom: 16px; }
+  #promptWrap.mob1-pen-hover { outline: 2px dashed var(--accent); outline-offset: 2px; }
+  #promptWrap.mob1-pen-press { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+@media (max-width: 430px) { html, body { overflow-x: hidden; } }
+@media (max-width: 640px) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+  #keyboard .key { min-width: 0; }
+}
+</style>
 <body data-tb-esc="off" data-tat-ver="T95">
   <!-- Soft ambient lighting: drifts + sweeps so static UI chrome doesn’t burn in -->
   <div id="ambient" aria-hidden="true">
@@ -6430,7 +6449,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
 
         <div id="tatGhostCaret" class="tat-ghost-caret" aria-hidden="true" hidden></div>
         <div class="prompt" id="prompt" aria-live="polite"></div>
-        <input class="hidden-input" id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Typing input">
+        <input class="hidden-input" id="typer" type="text" inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Typing input">
       </div>
       <div class="focus-hint" id="focusHint">Click the text (or press a key) to focus and start</div>
           </div>
@@ -8163,6 +8182,17 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', resizeCanvas);
     window.visualViewport.addEventListener('scroll', resizeCanvas);
+  }
+  // MOB-1: keep the prompt above the soft keyboard (no-op on desktop: visual viewport never shrinks)
+  function mob1KeepTypingVisible() {
+    const vv = window.visualViewport, w = $('promptWrap');
+    if (!vv || !w || document.activeElement !== typer) return;
+    const r = w.getBoundingClientRect(), bottom = vv.offsetTop + vv.height;
+    if (r.bottom > bottom - 8 || r.top < vv.offsetTop) window.scrollBy({ top: r.bottom - (bottom - 8), behavior: 'instant' });
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', mob1KeepTypingVisible);
+    window.visualViewport.addEventListener('scroll', mob1KeepTypingVisible);
   }
   resizeCanvas();
 
@@ -10461,6 +10491,9 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   // ——— Typing ———
   function onType(e) {
     if (e.isComposing || e.keyCode === 229 || composing) return;
+    onTypeCore(e);
+  }
+  function onTypeCore(e) {
     lastKeyAt = Date.now();
     if (finished) return;
     if (!target) return;
@@ -10492,7 +10525,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     if (key.length > 1 && key !== 'Enter' && key !== 'Backspace') return;
 
     e.preventDefault();
-    if (typer) typer.value = '';
+    resetTyper();
     try {
       if (!window.__tatCapsNoted && e.getModifierState && e.getModifierState('CapsLock') && !$('optNoCaps')?.checked) {
         window.__tatCapsNoted = true;
@@ -12452,38 +12485,103 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
     if (e.target.closest('button')) return;
     typer && typer.focus();
   });
+  // MOB-1: one counting path per character (desktop keydown | beforeinput | composition diff | input safety net)
+  let mob1Handled = false, mob1WordLen = 0, mob1CompBuf = '';
+  function resetTyper() {
+    if (!typer) return;
+    typer.value = '\u200B';
+    try { typer.setSelectionRange(1, 1); } catch (_) {}
+  }
+  function mob1Feed(str) {
+    if (!str) return;
+    consumeTypedText(str);
+    for (const ch of str) mob1WordLen = (ch === ' ' || ch === '\n') ? 0 : mob1WordLen + 1;
+  }
+  function mob1Back(n) {
+    for (let i = 0; i < n; i++) {
+      onTypeCore({ key: 'Backspace', preventDefault() {} });
+      mob1WordLen = Math.max(0, mob1WordLen - 1);
+    }
+  }
+  let mob1CompAcc = []; // per composed char: did the engine accept (advance) it? Misses don't advance, so only accepted chars are backed out
+  function mob1CompDiff(d) {
+    let p = 0;
+    while (p < mob1CompBuf.length && p < d.length && mob1CompBuf[p] === d[p]) p++;
+    mob1Back(mob1CompAcc.slice(p).filter(Boolean).length);
+    mob1CompAcc.length = Math.min(mob1CompAcc.length, p);
+    for (const ch of d.slice(p)) {
+      const before = index;
+      mob1Feed(ch);
+      mob1CompAcc.push(index > before);
+    }
+    mob1CompBuf = d;
+  }
   function consumeTypedText(str) {
     if (!str || finished) return;
     for (const ch of str) {
       if (ch === '\r') continue;
       const key = ch === '\n' ? 'Enter' : ch;
-      onType({ key, preventDefault() {} });
+      onTypeCore({ key, preventDefault() {} });
     }
   }
   typer?.addEventListener('keydown', onType);
-  typer?.addEventListener('compositionstart', () => { composing = true; });
+  typer?.addEventListener('compositionstart', () => { composing = true; mob1CompBuf = ''; mob1CompAcc = []; });
   typer?.addEventListener('compositionend', (e) => {
+    mob1CompDiff(e.data || '');
     composing = false;
-    const data = e.data || (typer && typer.value) || '';
-    if (typer) typer.value = '';
-    if (data) consumeTypedText(data);
+    mob1CompBuf = '';
+    mob1CompAcc = [];
+    resetTyper();
   });
   typer?.addEventListener('input', (e) => {
+    if (mob1Handled) { mob1Handled = false; return; } // beforeinput already counted it
+    if (e.inputType === 'insertCompositionText') { mob1CompDiff(e.data || ''); return; }
     if (composing) return;
-    const v = typer ? typer.value : '';
-    if (typer) typer.value = '';
-    if (!v) return;
-    if (Date.now() - lastKeyAt < 50) return; // desktop keydown already handled
+    const v = typer ? typer.value.split('\u200B').join('') : '';
     if (e.inputType && e.inputType.startsWith('delete')) {
-      onType({ key: 'Backspace', preventDefault() {} });
+      if (!v) mob1Back(1);
+      resetTyper();
       return;
     }
-    consumeTypedText(v);
+    if (v) mob1Feed(v);
+    resetTyper();
+  });
+  typer?.addEventListener('beforeinput', (e) => {
+    mob1Handled = false;
+    if (e.isComposing || composing) return;
+    const t = e.inputType || '';
+    if (t === 'insertText') {
+      e.preventDefault();
+      mob1Handled = true;
+      mob1Feed(e.data || '');
+    } else if (t === 'insertReplacementText') {
+      e.preventDefault();
+      mob1Handled = true;
+      let n = 0;
+      try {
+        const r = e.getTargetRanges && e.getTargetRanges()[0];
+        if (r) n = Math.max(0, r.endOffset - r.startOffset - (r.startOffset === 0 && typer.value.startsWith('\u200B') ? 1 : 0));
+      } catch (_) { n = 0; }
+      mob1Back(n ? Math.min(n, mob1WordLen) : mob1WordLen);
+      mob1Feed((e.dataTransfer && e.dataTransfer.getData('text/plain')) || e.data || '');
+    } else if (t.startsWith('deleteContent')) {
+      e.preventDefault();
+      mob1Handled = true;
+      mob1Back(1);
+    } else {
+      return;
+    }
+    resetTyper();
+  });
+  typer?.addEventListener('focus', () => {
+    resetTyper();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(mob1KeepTypingVisible);
   });
   typer?.addEventListener('paste', (e) => {
     e.preventDefault();
     const t = (e.clipboardData || window.clipboardData)?.getData('text') || '';
     consumeTypedText(t.slice(0, 4000));
+    resetTyper();
   });
   typer?.addEventListener('focus', () => {
     if (!finished && focusHint) {
@@ -13440,6 +13538,36 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
         TAT62.mx = (e.clientX - r.left) / r.width;
         TAT62.my = (e.clientY - r.top) / r.height;
       }, { passive: true });
+      // MOB-1: stylus — tap-to-focus, pressure/hover feedback, palm rejection while pen active (600 ms)
+      let mob1PenUntil = 0, mob1EatClick = false;
+      wrapEl.addEventListener('pointerdown', (e) => {
+        const now = Date.now();
+        if (e.pointerType === 'pen') {
+          mob1PenUntil = now + 600;
+          typer && typer.focus();
+          const pr = (typeof e.pressure === 'number' && e.pressure > 0) ? e.pressure : 0.5;
+          wrapEl.classList.toggle('mob1-pen-press', pr > 0.6);
+        } else if (e.pointerType === 'touch' && now < mob1PenUntil) {
+          e.preventDefault();
+          e.stopPropagation();
+          mob1EatClick = true;
+        }
+      }, { passive: false });
+      wrapEl.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'pen') return;
+        mob1PenUntil = Date.now() + 600;
+        wrapEl.classList.remove('mob1-pen-press');
+      }, { passive: true });
+      wrapEl.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'pen') wrapEl.classList.toggle('mob1-pen-hover', e.buttons === 0);
+      }, { passive: true });
+      wrapEl.addEventListener('pointerleave', () => wrapEl.classList.remove('mob1-pen-hover'), { passive: true });
+      wrapEl.addEventListener('click', (e) => {
+        if (!mob1EatClick) return;
+        mob1EatClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }, { capture: true });
     }
     const bind = ['skinLive','skinFrame','skinCorners','skinRails','skinBorder','skinDeco','skinTheme','skinBgPattern','skinBgBlend','skinBgTile','skinLighting','skinIdleBreath'];
     bind.forEach((id) => {
