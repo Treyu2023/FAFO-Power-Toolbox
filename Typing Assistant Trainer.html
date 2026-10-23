@@ -5168,6 +5168,7 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   #promptWrap.mob1-kbd { scroll-margin-bottom: 16px; }
   #promptWrap.mob1-pen-hover { outline: 2px dashed var(--accent); outline-offset: 2px; }
   #promptWrap.mob1-pen-press { outline: 2px solid var(--accent); outline-offset: 2px; }
+  html.mob1-kbd #fafo-layout-float-dock, html.mob1-kbd .fafo-layout-dock-toggle, html.mob1-kbd #atx-pro-bar, html.mob1-kbd .atx-chip { display: none !important; }
 }
 @media (max-width: 430px) { html, body { overflow-x: hidden; } }
 @media (max-width: 640px) {
@@ -8186,14 +8187,27 @@ body.atx-pro-pad :is(.bonus-overlay,#tat81ShareSheet,#tat92Hub,#tat93Sphere,#tat
   // MOB-1: keep the prompt above the soft keyboard (no-op on desktop: visual viewport never shrinks)
   function mob1KeepTypingVisible() {
     const vv = window.visualViewport, w = $('promptWrap');
+    const kbd = !!vv && document.activeElement === typer && (vv.height <= 560 || vv.height < 0.8 * window.innerHeight);
+    document.documentElement.classList.toggle('mob1-kbd', kbd); // hides the fixed bottom dock/chips while the soft keyboard is up
     if (!vv || !w || document.activeElement !== typer) return;
     const r = w.getBoundingClientRect(), bottom = vv.offsetTop + vv.height;
     if (r.bottom > bottom - 8 || r.top < vv.offsetTop) window.scrollBy({ top: r.bottom - (bottom - 8), behavior: 'instant' });
+    requestAnimationFrame(() => { // something fixed still on top of the current char? lift it above that element
+      const cur = promptEl && promptEl.querySelector('.current');
+      if (!cur) return;
+      const c = cur.getBoundingClientRect();
+      const hit = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+      if (hit && w.contains(hit)) return;
+      const top = hit ? hit.getBoundingClientRect().top : Infinity;
+      if (top > c.top) window.scrollBy({ top: c.bottom - top + 8, behavior: 'instant' }); // bottom-anchored cover: lift above its top
+      else window.scrollBy({ top: c.top - (vv.offsetTop + vv.height / 3), behavior: 'instant' }); // off-screen or top cover: bring to upper third
+    });
   }
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', mob1KeepTypingVisible);
     window.visualViewport.addEventListener('scroll', mob1KeepTypingVisible);
   }
+  typer?.addEventListener('blur', mob1KeepTypingVisible);
   resizeCanvas();
 
   function heatFromStreak(s) {
