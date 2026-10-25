@@ -1640,6 +1640,9 @@
             s.classList.add('fafo-section-compact');
             s.classList.remove('fafo-section-flex');
             s.style.flexShrink = '0';
+            if (!isCollapsedSection(s) && s.getAttribute('data-fafo-user-sized') !== '1') {
+              s.classList.add('fafo-section-fit');
+            }
             return;
           }
           if (userSized) return;
@@ -1647,8 +1650,9 @@
             s.classList.add('fafo-section-flex');
             s.style.flexShrink = '0';
             flexed = true;
-          } else {
+          }           else {
             s.classList.add('fafo-section-compact');
+            s.classList.add('fafo-section-fit');
             s.style.flexShrink = '0';
           }
         });
@@ -1662,6 +1666,21 @@
         });
       } catch (_) { /* ignore */ }
     });
+    scheduleSectionFit(root);
+  }
+
+  /** Ask shared chrome to drop scroll cages on sections whose content fits. */
+  function scheduleSectionFit(root) {
+    const run = () => {
+      try {
+        if (global.FafoFitSections && typeof global.FafoFitSections.refresh === 'function') {
+          global.FafoFitSections.refresh(root || document);
+        }
+      } catch (_) { /* ignore */ }
+    };
+    run();
+    setTimeout(run, 80);
+    setTimeout(run, 450);
   }
 
   /**
