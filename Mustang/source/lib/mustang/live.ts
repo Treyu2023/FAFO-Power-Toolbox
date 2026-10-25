@@ -32,6 +32,31 @@ export function openAmount(stage: number, partStage: number) {
   return clamp(stage - (partStage - 1), 0, 1);
 }
 
+/** Ease the rig, then land on the target. Closed is exactly 0, so panels cannot sit 5% open. */
+export function settleStage(dt: number) {
+  if (live.targetStage <= 0.001) {
+    live.targetStage = 0;
+    live.stage = 0;
+    return;
+  }
+  const step = 1 - Math.exp(-4.2 * Math.min(Math.max(dt, 0), 0.05));
+  const diff = live.targetStage - live.stage;
+  if (Math.abs(diff) <= 0.05) live.stage = live.targetStage;
+  else live.stage += diff * step;
+}
+
+/** Slider and stage chips set an exact opening. The closed end is fully assembled. */
+export function commitStage(stage: number) {
+  const next = Math.round(clamp(stage, 0, 5) * 100) / 100;
+  if (next <= 0) {
+    live.targetStage = 0;
+    live.stage = 0;
+    return;
+  }
+  live.targetStage = next;
+  live.stage = next;
+}
+
 export function explodeOf(id: string, stage: number): [number, number, number] {
   let x = 0;
   let y = 0;

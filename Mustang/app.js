@@ -18,7 +18,7 @@ import {
   searchParts,
   useMustang,
   verdict
-} from "./part-SREGZBRN.js";
+} from "./part-JKRSEZZ4.js";
 import {
   __commonJS,
   __toESM
@@ -23430,9 +23430,10 @@ function useStage() {
     let last = -1;
     const loop = () => {
       frame = requestAnimationFrame(loop);
-      if (Math.abs(live.stage - last) > 0.012) {
-        last = live.stage;
-        setStage(live.stage);
+      const next = live.targetStage;
+      if (next !== last) {
+        last = next;
+        setStage(next);
       }
     };
     frame = requestAnimationFrame(loop);
@@ -23461,7 +23462,10 @@ function MustangApp() {
   const setBgAlpha = useMustang((s) => s.setBgAlpha);
   const setBgGrad = useMustang((s) => s.setBgGrad);
   const setBgTo = useMustang((s) => s.setBgTo);
+  const section = useMustang((s) => s.section);
+  const circuit = useMustang((s) => s.circuit);
   const setSection = useMustang((s) => s.setSection);
+  const restoreLook = useMustang((s) => s.restoreLook);
   const zoomDrives = useMustang((s) => s.zoomDrives);
   const setZoomDrives = useMustang((s) => s.setZoomDrives);
   const system = useMustang((s) => s.system);
@@ -23510,7 +23514,7 @@ function MustangApp() {
     } catch {
     }
     setReady(true);
-    if (!useMustang.getState().flowId) startFlow("fuel-pump-power");
+    if (!useMustang.getState().flowId) startFlow("fuel-pump-power", false);
   }, [setPaintHex, setPaintAlpha, setPaintGrad, setPaintTo, setBgHex, setBgAlpha, setBgGrad, setBgTo, setTrans, setZoomDrives, startFlow]);
   (0, import_react6.useEffect)(() => {
     if (!ready) return;
@@ -23526,12 +23530,17 @@ function MustangApp() {
     const onKey = (e) => {
       const tag = e.target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key >= "0" && e.key <= "5") setStage(Number(e.key));
-      if (e.key === "Escape") select(null);
+      if (e.key >= "0" && e.key <= "5") {
+        const next = Number(e.key);
+        setStage(next);
+        if (next === 0) restoreLook();
+        else setSection(next);
+      }
+      if (e.key === "Escape") restoreLook();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [select, setStage]);
+  }, [restoreLook, setSection, setStage]);
   (0, import_react6.useEffect)(() => {
     const close = (e) => {
       if (e.button === 2) return;
@@ -23617,13 +23626,24 @@ function MustangApp() {
           className: stageIndex === item.id ? "chip chip-on" : "chip",
           onClick: () => {
             setStage(item.id);
-            setSection(item.id === 0 ? null : item.id);
+            if (item.id === 0) restoreLook();
+            else setSection(item.id);
           },
           children: item.name
         },
         item.id
       )) }),
       /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "control-note", children: "Wheel zooms. Shift+wheel opens the car." }),
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+        "button",
+        {
+          type: "button",
+          className: system !== "all" || section != null || circuit !== "all" || selected ? "chip chip-on" : "chip",
+          title: "Show paint and colors on every part. Leaves the explode slider where it is.",
+          onClick: restoreLook,
+          children: "All textures"
+        }
+      ),
       hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", className: "chip", onClick: showHidden, children: [
         "Show hidden (",
         hiddenCount,
@@ -23794,7 +23814,7 @@ function CarPane() {
   const [Scene, setScene] = (0, import_react6.useState)(null);
   (0, import_react6.useEffect)(() => {
     let live2 = true;
-    import("./part-CO2LDNYX.js").then((mod) => {
+    import("./part-G36XF34T.js").then((mod) => {
       if (live2) setScene(() => mod.MustangScene);
     });
     return () => {

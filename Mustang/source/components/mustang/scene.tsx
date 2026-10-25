@@ -1,9 +1,9 @@
 import { OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { HARNESS } from "@/lib/mustang/harness";
-import { explodeOf, live, openAmount } from "@/lib/mustang/live";
+import { explodeOf, live, openAmount, settleStage } from "@/lib/mustang/live";
 import { PARTS } from "@/lib/mustang/parts";
 import { coupeGeometry, focusPoint, PRIMS, type Prim } from "@/lib/mustang/geometry";
 import { useMustang } from "@/lib/mustang/store";
@@ -11,6 +11,96 @@ import { CIRCUIT_COLOR, type Circuit } from "@/lib/mustang/types";
 import { sectionActive, visualRole, type Role } from "@/lib/mustang/visual";
 
 const NO_RAYCAST = () => null;
+
+function DashedEdges({ geometry, color }: { geometry: THREE.BufferGeometry; color: string }) {
+  const ref = useRef<THREE.LineSegments>(null);
+  useLayoutEffect(() => {
+    const line = ref.current;
+    if (!line) return;
+    geometry.computeBoundingSphere();
+    const radius = geometry.boundingSphere?.radius ?? 0.2;
+    const dash = Math.min(0.055, Math.max(0.007, radius * 0.16));
+    const mat = line.material as THREE.LineDashedMaterial;
+    mat.color.set(color);
+    mat.dashSize = dash;
+    mat.gapSize = dash * 0.62;
+    line.computeLineDistances();
+  }, [geometry, color]);
+  return (
+    <lineSegments ref={ref} geometry={geometry} raycast={NO_RAYCAST} frustumCulled={false} renderOrder={2}>
+      <lineDashedMaterial color={color} depthTest depthWrite={false} toneMapped={false} transparent={false} opacity={1} />
+    </lineSegments>
+  );
+}
+
+function edgesFrom(source: THREE.BufferGeometry) {
+  const edges = new THREE.EdgesGeometry(source, 28);
+  source.dispose();
+  return edges;
+}
+
+function PartOutline({ prim, color }: { prim: Prim; color: string }) {
+  const geom = useMemo(() => {
+    if (prim.shape === "box") {
+      const [w, h, d] = prim.args;
+      return edgesFrom(new THREE.BoxGeometry(w, h, d));
+    }
+    if (prim.shape === "cyl") {
+      const [rt, rb, h, seg] = prim.args;
+      return edgesFrom(new THREE.CylinderGeometry(rt, rb ?? rt, h, Math.min(seg ?? 12, 12)));
+    }
+    if (prim.shape === "sph") return edgesFrom(new THREE.SphereGeometry(prim.args[0], 10, 8));
+    return edgesFrom(new THREE.TorusGeometry(prim.args[0], prim.args[1], 8, 14));
+  }, [prim]);
+  useEffect(() => () => geom.dispose(), [geom]);
+  return <DashedEdges geometry={geom} color={color} />;
+}
+
+function BoxOutline({
+  size,
+  position,
+  rotation,
+  color,
+}: {
+  size: [number, number, number];
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  color: string;
+}) {
+  const geom = useMemo(() => edgesFrom(new THREE.BoxGeometry(size[0], size[1], size[2])), [size[0], size[1], size[2]]);
+  useEffect(() => () => geom.dispose(), [geom]);
+  return (
+    <group position={position} rotation={rotation}>
+      <DashedEdges geometry={geom} color={color} />
+    </group>
+  );
+}
+
+function DashedRun({ points, color }: { points: [number, number, number][]; color: string }) {
+  const geom = useMemo(() => {
+    const v = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+    const curve =
+      v.length >= 3
+        ? new THREE.CatmullRomCurve3(v)
+        : new THREE.CatmullRomCurve3([v[0]!, v[0]!.clone().lerp(v[1] ?? v[0]!, 0.5), v[1] ?? v[0]!]);
+    return new THREE.BufferGeometry().setFromPoints(curve.getPoints(56));
+  }, [points]);
+  const ref = useRef<THREE.Line>(null);
+  useLayoutEffect(() => {
+    const line = ref.current;
+    if (!line) return;
+    const mat = line.material as THREE.LineDashedMaterial;
+    mat.dashSize = 0.05;
+    mat.gapSize = 0.032;
+    line.computeLineDistances();
+  }, [geom]);
+  useEffect(() => () => geom.dispose(), [geom]);
+  return (
+    <line ref={ref} geometry={geom} raycast={NO_RAYCAST} frustumCulled={false} renderOrder={2}>
+      <lineDashedMaterial color={color} depthTest depthWrite={false} toneMapped={false} transparent={false} opacity={1} />
+    </line>
+  );
+}
 
 const gradCache = new Map<string, THREE.CanvasTexture>();
 function gradTexture(from: string, to: string) {
@@ -75,7 +165,7 @@ function Rig() {
 
   useFrame((_, dt) => {
     const step = 1 - Math.exp(-4.2 * Math.min(dt, 0.05));
-    live.stage += (live.targetStage - live.stage) * step;
+    settleStage(dt);
     if (!controls) return;
 
     if (live.dolly != null) {
@@ -155,6 +245,8 @@ function Shell() {
   const flashAt = useRef(-10);
   const wasHot = useRef(false);
   const geo = useMemo(() => coupeGeometry(), []);
+  const shellEdges = useMemo(() => new THREE.EdgesGeometry(geo, 28), [geo]);
+  useEffect(() => () => shellEdges.dispose(), [shellEdges]);
   const map = useMemo(() => (paintGrad ? gradTexture(paintHex, paintTo) : null), [paintGrad, paintHex, paintTo]);
   const ghosting = sectionActive(system, section, circuit, selected) || (!!selected && system === "all" && section == null);
 
@@ -182,31 +274,40 @@ function Shell() {
         body.current.transparent = true;
         body.current.depthWrite = false;
       } else {
-        const t = Math.min(live.stage, 1.4) / 1.4;
         body.current.color.set(map ? "#ffffff" : paintHex);
         body.current.map = map;
         body.current.emissive.set("#000000");
         body.current.emissiveIntensity = 0;
-        body.current.opacity = Math.max(0.04, paintAlpha * (1 - t * 0.72));
-        body.current.transparent = body.current.opacity < 0.98;
-        body.current.depthWrite = body.current.opacity > 0.55;
+        body.current.opacity = paintAlpha;
+        body.current.transparent = paintAlpha < 0.98;
+        body.current.depthWrite = paintAlpha > 0.85;
       }
     }
     if (glass.current) {
-      glass.current.opacity = ghosting ? 0.04 : 0.45 * (1 - Math.min(1, live.stage)) * paintAlpha;
+      glass.current.opacity = 0.45 * paintAlpha;
     }
   });
 
   if (hidden) return null;
 
   const pass = ghosting && selected !== "unibody";
+  if (pass) {
+    return (
+      <group>
+        <DashedEdges geometry={shellEdges} color="#f7f7f5" />
+        <BoxOutline size={[1.2, 0.58, 0.02]} position={[0, 1.02, -0.22]} rotation={[0.5, 0, 0]} color="#f7f7f5" />
+        <BoxOutline size={[1.12, 0.42, 0.02]} position={[0, 1.04, 0.9]} rotation={[-0.55, 0, 0]} color="#f7f7f5" />
+        <BoxOutline size={[0.02, 0.28, 0.7]} position={[-0.84, 0.95, 0.15]} color="#f7f7f5" />
+        <BoxOutline size={[0.02, 0.28, 0.7]} position={[0.84, 0.95, 0.15]} color="#f7f7f5" />
+      </group>
+    );
+  }
   return (
     <group>
       <mesh
         geometry={geo}
         castShadow
         receiveShadow
-        raycast={pass ? NO_RAYCAST : undefined}
         onClick={(e) => {
           e.stopPropagation();
           select("unibody", false);
@@ -218,7 +319,6 @@ function Shell() {
           live.menuFromPart = true;
         }}
         onPointerOver={(e) => {
-          if (pass) return;
           e.stopPropagation();
           setHover("unibody");
           document.body.style.cursor = "pointer";
@@ -349,7 +449,7 @@ function PartMeshes({ id, prims }: { id: string; prims: Prim[] }) {
     if (!ref.current) return;
     const [x, y, z] = explodeOf(id, live.stage);
     ref.current.position.set(x, y, z);
-    const opened = !TUCKED.has(id) || openAmount(live.stage, part?.stage ?? 1) > 0.05;
+    const opened = !TUCKED.has(id) || openAmount(live.stage, part?.stage ?? 1) > 0.001;
     ref.current.visible = !hidden && role !== "hide" && (role !== "normal" || opened);
   });
 
@@ -369,6 +469,13 @@ function PartMeshes({ id, prims }: { id: string; prims: Prim[] }) {
     const emissiveIntensity = warm ? 0.32 : (p.emissiveIntensity ?? 0);
     const rough = p.rough ?? 0.55;
     const metal = p.metal ?? 0.45;
+    if ((role === "ghost" || role === "parent") && !xray) {
+      return (
+        <group key={i} position={p.pos} rotation={p.rot}>
+          <PartOutline prim={p} color={role === "parent" ? "#d5e0d4" : "#f7f7f5"} />
+        </group>
+      );
+    }
     const onOver = (e: { stopPropagation: () => void }) => {
       if (pass || xray) return;
       e.stopPropagation();
@@ -524,7 +631,14 @@ function WireRun({
   if (hidden || role === "hide") return null;
 
   const hot = selected === id;
-  const pass = role === "ghost";
+  const pass = role === "ghost" || role === "parent";
+  if (pass) {
+    return (
+      <group ref={ref}>
+        <DashedRun points={points} color={role === "parent" ? "#d5e0d4" : "#f7f7f5"} />
+      </group>
+    );
+  }
   return (
     <group ref={ref}>
       <mesh
@@ -596,6 +710,7 @@ function Leaders() {
       });
       const line = new THREE.Line(geo, mat);
       line.computeLineDistances();
+      line.raycast = NO_RAYCAST;
       line.userData.partId = id;
       line.frustumCulled = false;
       line.visible = false;

@@ -4148,6 +4148,27 @@ function openAmount(stage, partStage) {
   if (partStage <= 0) return 0;
   return clamp(stage - (partStage - 1), 0, 1);
 }
+function settleStage(dt) {
+  if (live.targetStage <= 1e-3) {
+    live.targetStage = 0;
+    live.stage = 0;
+    return;
+  }
+  const step = 1 - Math.exp(-4.2 * Math.min(Math.max(dt, 0), 0.05));
+  const diff = live.targetStage - live.stage;
+  if (Math.abs(diff) <= 0.05) live.stage = live.targetStage;
+  else live.stage += diff * step;
+}
+function commitStage(stage) {
+  const next = Math.round(clamp(stage, 0, 5) * 100) / 100;
+  if (next <= 0) {
+    live.targetStage = 0;
+    live.stage = 0;
+    return;
+  }
+  live.targetStage = next;
+  live.stage = next;
+}
 function explodeOf(id, stage) {
   let x = 0;
   let y = 0;
@@ -4861,11 +4882,25 @@ var useMustang = create((set, get) => ({
   setCircuit: (circuit) => set({ circuit }),
   setQuery: (query) => set({ query }),
   setStage: (stage) => {
-    live.targetStage = stage;
+    commitStage(stage);
     live.focusing = false;
     live.focusId = null;
     live.recenter = true;
     live.dolly = null;
+  },
+  restoreLook: () => {
+    live.focusing = false;
+    live.focusId = null;
+    live.dolly = null;
+    set({
+      selected: null,
+      hover: null,
+      trace: [],
+      system: "all",
+      section: null,
+      circuit: "all",
+      pin: null
+    });
   },
   hide: (id) => set({ hidden: { ...get().hidden, [id]: true }, menu: null }),
   showHidden: () => set({ hidden: {}, menu: null }),
@@ -4887,7 +4922,7 @@ var useMustang = create((set, get) => ({
   setPin: (pin) => set({ pin }),
   setRailW: (railW) => set({ railW: Math.min(520, Math.max(260, railW)) }),
   setCarShare: (carShare) => set({ carShare: Math.min(0.86, Math.max(0.42, carShare)) }),
-  startFlow: (id) => {
+  startFlow: (id, isolate = true) => {
     const flow = flowById(id) ?? flowForPart(id);
     const partId = flow.steps[0]?.partId ?? null;
     set({
@@ -4897,9 +4932,9 @@ var useMustang = create((set, get) => ({
       reading: "",
       dock: "walk",
       mode: get().mode === "car" ? "both" : get().mode,
-      circuit: flow.circuit,
-      selected: partId,
-      trace: traceOf(partId)
+      circuit: isolate ? flow.circuit : get().circuit,
+      selected: isolate ? partId : get().selected,
+      trace: isolate ? traceOf(partId) : get().trace
     });
     saveWalk(get());
   },
@@ -5002,6 +5037,7 @@ export {
   verdict,
   live,
   openAmount,
+  settleStage,
   explodeOf,
   useMustang,
   UNVERIFIED,

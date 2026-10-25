@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { traceOf } from "./diagram";
 import { flowById, flowForPart } from "./flows";
-import { live } from "./live";
+import { commitStage, live } from "./live";
 import { PARTS } from "./parts";
 import type { Circuit, Mode, System, Trans } from "./types";
 
@@ -86,6 +86,7 @@ type State = {
   setCircuit: (circuit: Circuit | "all") => void;
   setQuery: (query: string) => void;
   setStage: (stage: number) => void;
+  restoreLook: () => void;
   hide: (id: string) => void;
   showHidden: () => void;
   openMenu: (id: string | null, x: number, y: number) => void;
@@ -97,7 +98,7 @@ type State = {
   setPin: (pin: string | null) => void;
   setRailW: (width: number) => void;
   setCarShare: (share: number) => void;
-  startFlow: (id: string) => void;
+  startFlow: (id: string, isolate?: boolean) => void;
   setStep: (step: number) => void;
   markStep: (stepId: string, mark: Mark) => void;
   setReading: (reading: string) => void;
@@ -182,11 +183,25 @@ export const useMustang = create<State>((set, get) => ({
   setCircuit: (circuit) => set({ circuit }),
   setQuery: (query) => set({ query }),
   setStage: (stage) => {
-    live.targetStage = stage;
+    commitStage(stage);
     live.focusing = false;
     live.focusId = null;
     live.recenter = true;
     live.dolly = null;
+  },
+  restoreLook: () => {
+    live.focusing = false;
+    live.focusId = null;
+    live.dolly = null;
+    set({
+      selected: null,
+      hover: null,
+      trace: [],
+      system: "all",
+      section: null,
+      circuit: "all",
+      pin: null,
+    });
   },
   hide: (id) => set({ hidden: { ...get().hidden, [id]: true }, menu: null }),
   showHidden: () => set({ hidden: {}, menu: null }),
@@ -208,7 +223,7 @@ export const useMustang = create<State>((set, get) => ({
   setPin: (pin) => set({ pin }),
   setRailW: (railW) => set({ railW: Math.min(520, Math.max(260, railW)) }),
   setCarShare: (carShare) => set({ carShare: Math.min(0.86, Math.max(0.42, carShare)) }),
-  startFlow: (id) => {
+  startFlow: (id, isolate = true) => {
     const flow = flowById(id) ?? flowForPart(id);
     const partId = flow.steps[0]?.partId ?? null;
     set({
@@ -218,9 +233,9 @@ export const useMustang = create<State>((set, get) => ({
       reading: "",
       dock: "walk",
       mode: get().mode === "car" ? "both" : get().mode,
-      circuit: flow.circuit,
-      selected: partId,
-      trace: traceOf(partId),
+      circuit: isolate ? flow.circuit : get().circuit,
+      selected: isolate ? partId : get().selected,
+      trace: isolate ? traceOf(partId) : get().trace,
     });
     saveWalk(get());
   },

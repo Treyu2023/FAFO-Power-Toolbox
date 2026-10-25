@@ -9,8 +9,9 @@ import {
   require_jsx_runtime,
   require_react,
   require_scheduler,
+  settleStage,
   useMustang
-} from "./part-SREGZBRN.js";
+} from "./part-JKRSEZZ4.js";
 import {
   __commonJS,
   __export,
@@ -40,7 +41,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
           inst: { value, getSnapshot }
         });
         var inst = cachedValue[0].inst, forceUpdate = cachedValue[1];
-        useLayoutEffect3(
+        useLayoutEffect4(
           function() {
             inst.value = value;
             inst.getSnapshot = getSnapshot;
@@ -74,7 +75,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return getSnapshot();
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React6 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is2, useState3 = React6.useState, useEffect5 = React6.useEffect, useLayoutEffect3 = React6.useLayoutEffect, useDebugValue = React6.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      var React6 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is2, useState3 = React6.useState, useEffect5 = React6.useEffect, useLayoutEffect4 = React6.useLayoutEffect, useDebugValue = React6.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
       exports.useSyncExternalStore = void 0 !== React6.useSyncExternalStore ? React6.useSyncExternalStore : shim;
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
@@ -49870,7 +49871,7 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
       function ir(e2) {
         e2.flags |= 4;
       }
-      function _a2(e2) {
+      function _a(e2) {
         _n && (e2.flags |= 8);
       }
       function ud(e2, n) {
@@ -49952,7 +49953,7 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
           var s = e2.stateNode, u2 = e2.memoizedProps;
           if ((e2 = ud(e2, n)) || u2 !== i2) {
             var f = Cr();
-            u2 = Pn(s, o2, u2, i2, !e2, null), u2 === s ? n.stateNode = s : (_a2(n), ph(u2, o2, i2, f) && ir(n), n.stateNode = u2, e2 && cd(u2, n, false, false));
+            u2 = Pn(s, o2, u2, i2, !e2, null), u2 === s ? n.stateNode = s : (_a(n), ph(u2, o2, i2, f) && ir(n), n.stateNode = u2, e2 && cd(u2, n, false, false));
           } else n.stateNode = s;
         }
       }
@@ -50043,12 +50044,12 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
               if (u2 = Cr(), Ln(n)) Wf(n, u2), Qt(n.stateNode, s, i2, u2) && (n.flags |= 64);
               else {
                 var f = Uo(ls.current);
-                f = wg(s, i2, f, u2, n), _a2(n), cd(f, n, false, false), n.stateNode = f, ph(f, s, i2, u2) && ir(n);
+                f = wg(s, i2, f, u2, n), _a(n), cd(f, n, false, false), n.stateNode = f, ph(f, s, i2, u2) && ir(n);
               }
             }
             return Fe(n), n.subtreeFlags &= -33554433, fd(n, n.type, e2 === null ? null : e2.memoizedProps, n.pendingProps, o2), null;
           case 6:
-            if (e2 && n.stateNode != null) o2 = e2.memoizedProps, _e ? o2 !== i2 && ir(n) : _n && (o2 !== i2 ? (e2 = Uo(ls.current), o2 = Cr(), _a2(n), n.stateNode = _i(i2, e2, o2, n)) : n.stateNode = e2.stateNode);
+            if (e2 && n.stateNode != null) o2 = e2.memoizedProps, _e ? o2 !== i2 && ir(n) : _n && (o2 !== i2 ? (e2 = Uo(ls.current), o2 = Cr(), _a(n), n.stateNode = _i(i2, e2, o2, n)) : n.stateNode = e2.stateNode);
             else {
               if (typeof i2 != "string" && n.stateNode === null) throw Error("We must have new props for new mounts. This error is likely caused by a bug in React. Please file an issue.");
               if (e2 = Uo(ls.current), o2 = Cr(), Ln(n)) {
@@ -50062,7 +50063,7 @@ https://react.dev/link/unsafe-component-lifecycles`, u2, b2, f !== null ? `
                     i2 = u2.memoizedProps, s && (s = Yd(e2, o2, i2), s !== null && (Ao(n, 0).serverProps = s));
                 }
                 Zd(e2, o2, n, i2) || Nr(n, true);
-              } else _a2(n), n.stateNode = _i(i2, e2, o2, n);
+              } else _a(n), n.stateNode = _i(i2, e2, o2, n);
             }
             return Fe(n), null;
           case 31:
@@ -55454,11 +55455,11 @@ var OrbitControls = class extends EventDispatcher2 {
       scope.domElement.addEventListener("wheel", onMouseWheel);
     };
     this.dispose = () => {
-      var _a2, _b, _c, _d, _e, _f;
+      var _a, _b, _c, _d, _e, _f;
       if (scope.domElement) {
         scope.domElement.style.touchAction = "auto";
       }
-      (_a2 = scope.domElement) == null ? void 0 : _a2.removeEventListener("contextmenu", onContextMenu);
+      (_a = scope.domElement) == null ? void 0 : _a.removeEventListener("contextmenu", onContextMenu);
       (_b = scope.domElement) == null ? void 0 : _b.removeEventListener("pointerdown", onPointerDown);
       (_c = scope.domElement) == null ? void 0 : _c.removeEventListener("pointercancel", onPointerUp);
       (_d = scope.domElement) == null ? void 0 : _d.removeEventListener("wheel", onMouseWheel);
@@ -55762,11 +55763,11 @@ var OrbitControls = class extends EventDispatcher2 {
         handleTouchMoveRotate(event);
     }
     function onPointerDown(event) {
-      var _a2, _b;
+      var _a, _b;
       if (scope.enabled === false)
         return;
       if (pointers.length === 0) {
-        (_a2 = scope.domElement) == null ? void 0 : _a2.ownerDocument.addEventListener("pointermove", onPointerMove);
+        (_a = scope.domElement) == null ? void 0 : _a.ownerDocument.addEventListener("pointermove", onPointerMove);
         (_b = scope.domElement) == null ? void 0 : _b.ownerDocument.addEventListener("pointerup", onPointerUp);
       }
       addPointer(event);
@@ -55786,10 +55787,10 @@ var OrbitControls = class extends EventDispatcher2 {
       }
     }
     function onPointerUp(event) {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       removePointer(event);
       if (pointers.length === 0) {
-        (_a2 = scope.domElement) == null ? void 0 : _a2.releasePointerCapture(event.pointerId);
+        (_a = scope.domElement) == null ? void 0 : _a.releasePointerCapture(event.pointerId);
         (_b = scope.domElement) == null ? void 0 : _b.ownerDocument.removeEventListener("pointermove", onPointerMove);
         (_c = scope.domElement) == null ? void 0 : _c.ownerDocument.removeEventListener("pointerup", onPointerUp);
       }
@@ -56117,9 +56118,8 @@ var ACTION = Object.freeze({
 var PI_2 = Math.PI * 2;
 var PI_HALF = Math.PI / 2;
 var DEG2RAD2 = Math.PI / 180;
-var _a;
 var TOUCH_DOLLY_FACTOR = 1 / 8;
-var isMac = /Mac/.test((_a = globalThis === null || globalThis === void 0 ? void 0 : globalThis.navigator) === null || _a === void 0 ? void 0 : _a.platform);
+var isMac = /Mac/.test(globalThis?.navigator?.platform);
 
 // node_modules/@react-three/drei/core/RoundedBox.js
 var React5 = __toESM(require_react());
@@ -56692,6 +56692,71 @@ function visualRole(id, selected, system, circuit, section) {
 // components/mustang/scene.tsx
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
 var NO_RAYCAST = () => null;
+function DashedEdges({ geometry, color }) {
+  const ref = (0, import_react5.useRef)(null);
+  (0, import_react5.useLayoutEffect)(() => {
+    const line = ref.current;
+    if (!line) return;
+    geometry.computeBoundingSphere();
+    const radius = geometry.boundingSphere?.radius ?? 0.2;
+    const dash = Math.min(0.055, Math.max(7e-3, radius * 0.16));
+    const mat = line.material;
+    mat.color.set(color);
+    mat.dashSize = dash;
+    mat.gapSize = dash * 0.62;
+    line.computeLineDistances();
+  }, [geometry, color]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("lineSegments", { ref, geometry, raycast: NO_RAYCAST, frustumCulled: false, renderOrder: 2, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("lineDashedMaterial", { color, depthTest: true, depthWrite: false, toneMapped: false, transparent: false, opacity: 1 }) });
+}
+function edgesFrom(source) {
+  const edges = new EdgesGeometry(source, 28);
+  source.dispose();
+  return edges;
+}
+function PartOutline({ prim, color }) {
+  const geom = (0, import_react5.useMemo)(() => {
+    if (prim.shape === "box") {
+      const [w2, h3, d] = prim.args;
+      return edgesFrom(new BoxGeometry(w2, h3, d));
+    }
+    if (prim.shape === "cyl") {
+      const [rt, rb, h3, seg] = prim.args;
+      return edgesFrom(new CylinderGeometry(rt, rb ?? rt, h3, Math.min(seg ?? 12, 12)));
+    }
+    if (prim.shape === "sph") return edgesFrom(new SphereGeometry(prim.args[0], 10, 8));
+    return edgesFrom(new TorusGeometry(prim.args[0], prim.args[1], 8, 14));
+  }, [prim]);
+  (0, import_react5.useEffect)(() => () => geom.dispose(), [geom]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DashedEdges, { geometry: geom, color });
+}
+function BoxOutline({
+  size,
+  position,
+  rotation,
+  color
+}) {
+  const geom = (0, import_react5.useMemo)(() => edgesFrom(new BoxGeometry(size[0], size[1], size[2])), [size[0], size[1], size[2]]);
+  (0, import_react5.useEffect)(() => () => geom.dispose(), [geom]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { position, rotation, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DashedEdges, { geometry: geom, color }) });
+}
+function DashedRun({ points, color }) {
+  const geom = (0, import_react5.useMemo)(() => {
+    const v2 = points.map((p3) => new Vector3(p3[0], p3[1], p3[2]));
+    const curve = v2.length >= 3 ? new CatmullRomCurve3(v2) : new CatmullRomCurve3([v2[0], v2[0].clone().lerp(v2[1] ?? v2[0], 0.5), v2[1] ?? v2[0]]);
+    return new BufferGeometry().setFromPoints(curve.getPoints(56));
+  }, [points]);
+  const ref = (0, import_react5.useRef)(null);
+  (0, import_react5.useLayoutEffect)(() => {
+    const line = ref.current;
+    if (!line) return;
+    const mat = line.material;
+    mat.dashSize = 0.05;
+    mat.gapSize = 0.032;
+    line.computeLineDistances();
+  }, [geom]);
+  (0, import_react5.useEffect)(() => () => geom.dispose(), [geom]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("line", { ref, geometry: geom, raycast: NO_RAYCAST, frustumCulled: false, renderOrder: 2, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("lineDashedMaterial", { color, depthTest: true, depthWrite: false, toneMapped: false, transparent: false, opacity: 1 }) });
+}
 var gradCache = /* @__PURE__ */ new Map();
 function gradTexture(from, to) {
   const key = `${from}|${to}`;
@@ -56746,7 +56811,7 @@ function Rig() {
   }, [focusTick]);
   useFrame((_, dt) => {
     const step = 1 - Math.exp(-4.2 * Math.min(dt, 0.05));
-    live.stage += (live.targetStage - live.stage) * step;
+    settleStage(dt);
     if (!controls) return;
     if (live.dolly != null) {
       const offset = camera.position.clone().sub(controls.target);
@@ -56820,6 +56885,8 @@ function Shell() {
   const flashAt = (0, import_react5.useRef)(-10);
   const wasHot = (0, import_react5.useRef)(false);
   const geo = (0, import_react5.useMemo)(() => coupeGeometry(), []);
+  const shellEdges = (0, import_react5.useMemo)(() => new EdgesGeometry(geo, 28), [geo]);
+  (0, import_react5.useEffect)(() => () => shellEdges.dispose(), [shellEdges]);
   const map = (0, import_react5.useMemo)(() => paintGrad ? gradTexture(paintHex, paintTo) : null, [paintGrad, paintHex, paintTo]);
   const ghosting = sectionActive(system, section, circuit, selected) || !!selected && system === "all" && section == null;
   useFrame((state2) => {
@@ -56846,22 +56913,30 @@ function Shell() {
         body.current.transparent = true;
         body.current.depthWrite = false;
       } else {
-        const t2 = Math.min(live.stage, 1.4) / 1.4;
         body.current.color.set(map ? "#ffffff" : paintHex);
         body.current.map = map;
         body.current.emissive.set("#000000");
         body.current.emissiveIntensity = 0;
-        body.current.opacity = Math.max(0.04, paintAlpha * (1 - t2 * 0.72));
-        body.current.transparent = body.current.opacity < 0.98;
-        body.current.depthWrite = body.current.opacity > 0.55;
+        body.current.opacity = paintAlpha;
+        body.current.transparent = paintAlpha < 0.98;
+        body.current.depthWrite = paintAlpha > 0.85;
       }
     }
     if (glass.current) {
-      glass.current.opacity = ghosting ? 0.04 : 0.45 * (1 - Math.min(1, live.stage)) * paintAlpha;
+      glass.current.opacity = 0.45 * paintAlpha;
     }
   });
   if (hidden) return null;
   const pass = ghosting && selected !== "unibody";
+  if (pass) {
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("group", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DashedEdges, { geometry: shellEdges, color: "#f7f7f5" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BoxOutline, { size: [1.2, 0.58, 0.02], position: [0, 1.02, -0.22], rotation: [0.5, 0, 0], color: "#f7f7f5" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BoxOutline, { size: [1.12, 0.42, 0.02], position: [0, 1.04, 0.9], rotation: [-0.55, 0, 0], color: "#f7f7f5" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BoxOutline, { size: [0.02, 0.28, 0.7], position: [-0.84, 0.95, 0.15], color: "#f7f7f5" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BoxOutline, { size: [0.02, 0.28, 0.7], position: [0.84, 0.95, 0.15], color: "#f7f7f5" })
+    ] });
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("group", { children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       "mesh",
@@ -56869,7 +56944,6 @@ function Shell() {
         geometry: geo,
         castShadow: true,
         receiveShadow: true,
-        raycast: pass ? NO_RAYCAST : void 0,
         onClick: (e2) => {
           e2.stopPropagation();
           select("unibody", false);
@@ -56881,7 +56955,6 @@ function Shell() {
           live.menuFromPart = true;
         },
         onPointerOver: (e2) => {
-          if (pass) return;
           e2.stopPropagation();
           setHover("unibody");
           document.body.style.cursor = "pointer";
@@ -56997,7 +57070,7 @@ function PartMeshes({ id, prims }) {
     if (!ref.current) return;
     const [x2, y, z] = explodeOf(id, live.stage);
     ref.current.position.set(x2, y, z);
-    const opened = !TUCKED.has(id) || openAmount(live.stage, part?.stage ?? 1) > 0.05;
+    const opened = !TUCKED.has(id) || openAmount(live.stage, part?.stage ?? 1) > 1e-3;
     ref.current.visible = !hidden && role !== "hide" && (role !== "normal" || opened);
   });
   const visible = prims.some((p3) => !p3.only || p3.only === trans);
@@ -57014,6 +57087,9 @@ function PartMeshes({ id, prims }) {
     const emissiveIntensity = warm ? 0.32 : p3.emissiveIntensity ?? 0;
     const rough = p3.rough ?? 0.55;
     const metal = p3.metal ?? 0.45;
+    if ((role === "ghost" || role === "parent") && !xray) {
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { position: p3.pos, rotation: p3.rot, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(PartOutline, { prim: p3, color: role === "parent" ? "#d5e0d4" : "#f7f7f5" }) }, i2);
+    }
     const onOver = (e2) => {
       if (pass || xray) return;
       e2.stopPropagation();
@@ -57141,7 +57217,10 @@ function WireRun({
   });
   if (hidden || role === "hide") return null;
   const hot = selected === id;
-  const pass = role === "ghost";
+  const pass = role === "ghost" || role === "parent";
+  if (pass) {
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { ref, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DashedRun, { points, color: role === "parent" ? "#d5e0d4" : "#f7f7f5" }) });
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("group", { ref, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
     "mesh",
     {
@@ -57213,6 +57292,7 @@ function Leaders() {
       });
       const line = new Line(geo, mat);
       line.computeLineDistances();
+      line.raycast = NO_RAYCAST;
       line.userData.partId = id;
       line.frustumCulled = false;
       line.visible = false;
