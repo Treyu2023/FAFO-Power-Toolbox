@@ -18,16 +18,18 @@
     'body.atx-pro-pad{padding-bottom:var(--atx-pro-h,48px)!important}',
     'body.atx-pro-min #atx-pro-bar{transform:translateY(calc(100% - 8px))!important}',
     'body.atx-pro-min.atx-pro-pad{padding-bottom:8px!important}',
-    '.fafo-layout-float-dock{left:10px!important;bottom:calc(var(--atx-pro-h,48px) + 10px)!important;max-height:min(42vh,280px)!important;pointer-events:none}',
+    '.fafo-layout-float-dock{left:10px!important;bottom:calc(var(--atx-pro-h,48px) + 10px)!important;max-height:none!important;overflow:visible!important;pointer-events:none}',
     'body.tb-has-companion-bar .fafo-layout-float-dock,body.atx-pro-pad .fafo-layout-float-dock{bottom:calc(var(--atx-pro-h,48px) + 10px)!important}',
     'body.atx-pro-min .fafo-layout-float-dock{bottom:12px!important}',
-    '.fafo-layout-float-host{resize:both!important;overflow:auto!important;min-width:160px!important;min-height:32px!important;max-width:min(72vw,760px)!important;max-height:min(42vh,280px)!important}',
+    '.fafo-layout-float-host{resize:both!important;overflow:auto!important;min-width:160px!important;min-height:32px!important;max-width:min(72vw,760px)!important;max-height:min(70vh,560px)!important}',
     '.tb-companion-bar,#tbSharedServerBar{flex-wrap:nowrap!important;max-height:42px!important;overflow-x:auto!important;overflow-y:hidden!important;padding:4px 10px!important}',
     '.tb-companion-bar .tb-pill,.tb-companion-bar .tb-btn,.tb-companion-bar .tb-bar-back{flex:0 0 auto!important}',
     '.fafo-layout-rows > .fafo-layout-panel[data-fafo-flex="1"],',
     '.fafo-layout-panel[data-fafo-flex="1"]{flex:1 1 auto!important;min-height:0!important}',
-    '.fafo-body-split > [data-fafo-section].fafo-section-flex{flex:1 1 auto!important;min-height:0!important}',
-    '[data-fafo-section][data-fafo-resizable="1"]{min-height:36px!important}',
+    '.fafo-body-split > [data-fafo-section].fafo-section-flex:not(.fafo-section-fit){flex:1 0 auto!important;min-height:0!important}',
+    '.fafo-body-split > [data-fafo-section].fafo-section-fit,[data-fafo-section].fafo-section-fit{flex:0 0 auto!important;height:auto!important;max-height:none!important;overflow:visible!important}',
+    '[data-fafo-section][data-fafo-resizable="1"]:not([data-fafo-user-sized="1"]){min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important}',
+    '[data-fafo-section][data-fafo-resizable="1"][data-fafo-user-sized="1"]{min-height:36px!important}',
     '@media (max-width:720px){',
     'html,body{max-width:100%!important;overflow-x:clip!important}',
     'html:not(:has(body.run-active)),html:not(:has(body.run-active)) body{height:auto!important;max-height:none!important;overflow-y:auto!important}',
@@ -62,7 +64,12 @@
     '}',
     '#tbSharedServerBar .tb-bar-hint,.tb-companion-bar .tb-bar-hint{min-width:min(100%,200px)!important}',
     '#tbSharedServerBar .tb-bar-actions,.tb-companion-bar .tb-bar-actions{flex-wrap:wrap!important;min-width:0!important;max-width:100%!important}',
-    '#fafoSkillCtl{flex-wrap:wrap!important;max-width:100%!important;min-width:0!important}'
+    '#fafoSkillCtl{flex-wrap:wrap!important;max-width:100%!important;min-width:0!important}',
+    /* Short sections show in full. Tall ones that have no parent scroller scroll once at 70vh. */
+    '.fafo-fit-content{max-height:none!important;height:auto!important;flex:0 0 auto!important;min-height:0!important;min-width:0!important;overflow:auto!important;overflow-wrap:break-word}',
+    'pre.fafo-fit-content,.fafo-fit-content pre{white-space:pre-wrap!important;overflow-wrap:anywhere!important}',
+    '.fafo-scroll-cap{max-height:min(70dvh,720px)!important;height:auto!important;flex:0 0 auto!important;overflow:auto!important}',
+    '[data-fafo-section].fafo-section-collapsed>.fafo-section-body{display:none!important;overflow:hidden!important;height:0!important;max-height:0!important}'
   ].join('\n');
 
   function injectCss() {
@@ -94,9 +101,193 @@
     cap('--fafo-chrome-bottom', bottom);
   }
 
+  /**
+   * Section scroll fit.
+   * If a section's content is small enough to show fully (about 70% of the
+   * viewport), drop its scroll cage so it grows. A tall block with no parent
+   * scroller keeps one scrollbar at 70vh. Opt out with data-fafo-keep-scroll="1".
+   * Collapsed sections stay collapsed. User-dragged sizes (data-fafo-user-sized)
+   * are left alone.
+   */
+  var FIT_SKIP = '[data-fafo-keep-scroll], dialog, [role="dialog"], [role="menu"], [role="listbox"], .ui-modal, .modal, .modal-bg, .atx-pick-list, #autocomplete-menu, .command-palette, .command-palette-list, .dbg-panel, #atx-pro-bar, .tb-companion-bar, #tbSharedServerBar, .menu-pop, .tag-suggestions, .fafo-layout-float-dock, .fafo-layout-float-host, textarea, select, canvas, svg, .fafo-section-collapsed';
+  var FIT_NODES = 'div, section, aside, ul, ol, pre, main, article, nav, form, fieldset, li, details';
+  var fitTimer = 0;
+  var fitObs = null;
+
+  function fitCapPx() {
+    var vh = window.innerHeight || 800;
+    return Math.max(480, Math.round(vh * 0.7));
+  }
+
+  function hasLargeScrollParent(el) {
+    var p = el.parentElement;
+    while (p && p !== document.body && p !== document.documentElement) {
+      if (p.classList.contains('fafo-scroll-cap') || p.classList.contains('fafo-fit-content')) return true;
+      if (p.classList.contains('fafo-panel-body') || p.classList.contains('fafo-viewport-pin')) {
+        try {
+          var cs = getComputedStyle(p);
+          var oy = cs.overflowY;
+          if ((oy === 'auto' || oy === 'scroll' || oy === 'hidden') && p.clientHeight >= 240) return true;
+        } catch (e) { /* ignore */ }
+      }
+      p = p.parentElement;
+    }
+    return false;
+  }
+
+  function markSectionFit(el) {
+    var sec = el.closest && el.closest('[data-fafo-section]');
+    if (!sec || sec.getAttribute('data-fafo-user-sized') === '1') return;
+    if (sec.getAttribute('data-fafo-collapsed') === '1' || sec.classList.contains('fafo-section-collapsed')) return;
+    if (el === sec || el.classList.contains('fafo-section-body')) sec.classList.add('fafo-section-fit');
+  }
+
+  function tuneScrollBox(el) {
+    if (!el || el.nodeType !== 1) return;
+    if (el === document.body || el === document.documentElement) return;
+    try { if (el.closest(FIT_SKIP)) return; } catch (e) { return; }
+    var cs;
+    try { cs = getComputedStyle(el); } catch (e2) { return; }
+    if (cs.display === 'none' || cs.visibility === 'hidden') return;
+    if (cs.position === 'fixed' || cs.position === 'absolute') return;
+    var oy = cs.overflowY;
+    if (oy !== 'auto' && oy !== 'scroll') {
+      if (!el.classList.contains('fafo-fit-content') && !el.classList.contains('fafo-scroll-cap')) return;
+      el.classList.remove('fafo-fit-content', 'fafo-scroll-cap');
+      return;
+    }
+    if (el.getAttribute('data-fafo-user-sized') === '1') return;
+    if (el.classList.contains('fafo-section-body')) {
+      var parentSec = el.parentElement;
+      if (parentSec && parentSec.getAttribute('data-fafo-user-sized') === '1') return;
+    }
+    var natural = el.scrollHeight;
+    var visible = el.clientHeight;
+    if (visible <= 0 || natural <= 0) return;
+    // A column / pinned panel body that already has room is the one scroller.
+    if (el.classList.contains('fafo-panel-body') && visible >= 240) {
+      el.classList.remove('fafo-fit-content', 'fafo-scroll-cap');
+      return;
+    }
+    var capPx = fitCapPx();
+    var inPort = hasLargeScrollParent(el);
+    if (el.classList.contains('fafo-fit-content') && (natural <= capPx + 8 || inPort)) return;
+    if (el.classList.contains('fafo-scroll-cap') && natural > capPx) return;
+    if (natural <= visible + 4) return;
+    var maxPx = cs.maxHeight === 'none' ? 0 : (parseFloat(cs.maxHeight) || 0);
+    if (natural <= capPx || inPort) {
+      el.classList.add('fafo-fit-content');
+      el.classList.remove('fafo-scroll-cap');
+      markSectionFit(el);
+      return;
+    }
+    var smallCage = (maxPx > 0 && maxPx < Math.min(capPx - 8, 480)) || visible < 240;
+    if (smallCage && !inPort) {
+      el.classList.add('fafo-scroll-cap');
+      el.classList.remove('fafo-fit-content');
+    }
+  }
+
+  function refreshFit(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var nodes;
+    try { nodes = scope.querySelectorAll(FIT_NODES); }
+    catch (e) { return; }
+    var list = [];
+    for (var i = 0; i < nodes.length; i++) list.push(nodes[i]);
+    if (scope.nodeType === 1) list.push(scope);
+    list.sort(function (a, b) {
+      var da = 0;
+      var db = 0;
+      var n = a;
+      while (n) { da++; n = n.parentElement; }
+      n = b;
+      while (n) { db++; n = n.parentElement; }
+      return db - da;
+    });
+    for (var j = 0; j < list.length; j++) tuneScrollBox(list[j]);
+  }
+
+  function scheduleFit(root) {
+    if (fitTimer) clearTimeout(fitTimer);
+    var target = root || document;
+    fitTimer = setTimeout(function () {
+      fitTimer = 0;
+      try {
+        if (fitObs) fitObs.disconnect();
+        refreshFit(target);
+      } catch (e) { /* ignore */ }
+      try {
+        if (fitObs && document.documentElement) {
+          fitObs.observe(document.documentElement, { childList: true, subtree: true });
+        }
+      } catch (e2) { /* ignore */ }
+    }, 200);
+  }
+
+  function foldAppId(el) {
+    var host = el.closest ? el.closest('[data-fafo-layout-app],[data-fafo-app]') : null;
+    var id = host ? (host.getAttribute('data-fafo-layout-app') || host.getAttribute('data-fafo-app')) : '';
+    if (!id && document.documentElement) id = document.documentElement.getAttribute('data-fafo-app') || '';
+    if (!id) {
+      try {
+        var p = String((location && location.pathname) || '');
+        id = decodeURIComponent(p.split('/').pop() || '').replace(/\.html?$/i, '');
+      } catch (e) { id = ''; }
+    }
+    return id || 'app';
+  }
+
+  function bindFolds(root) {
+    if (global.FafoChrome && typeof global.FafoChrome.initFold === 'function') {
+      try { global.FafoChrome.initFold(root || document); return; } catch (e) { /* own binder */ }
+    }
+    var scope = root && root.querySelectorAll ? root : document;
+    var list;
+    try { list = scope.querySelectorAll('details.fafo-fold:not(.fafo-collapse):not(.ui-advanced)'); }
+    catch (e2) { return; }
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (el.getAttribute('data-fafo-fold-bound') === '1') continue;
+      el.setAttribute('data-fafo-fold-bound', '1');
+      if (!el.getAttribute('data-fafo-fold') && !el.id) el.setAttribute('data-fafo-fold', 'i' + i);
+      var section = el.getAttribute('data-fafo-fold') || el.id;
+      var key = 'fafo-fold:' + foldAppId(el) + ':' + section;
+      var defOpen = !el.hasAttribute('data-collapsed-default');
+      var saved = null;
+      try { saved = localStorage.getItem(key); } catch (e3) { saved = null; }
+      var open = saved === '1' ? true : (saved === '0' ? false : defOpen);
+      if (open) el.setAttribute('open', '');
+      else el.removeAttribute('open');
+      var summary = el.querySelector('summary');
+      if (summary) summary.setAttribute('aria-expanded', open ? 'true' : 'false');
+      el.addEventListener('toggle', function onFoldToggle() {
+        var s = this.querySelector('summary');
+        if (s) s.setAttribute('aria-expanded', this.open ? 'true' : 'false');
+        var sec = this.getAttribute('data-fafo-fold') || this.id;
+        var k = 'fafo-fold:' + foldAppId(this) + ':' + sec;
+        var def = !this.hasAttribute('data-collapsed-default');
+        try {
+          if (!!this.open === def) localStorage.removeItem(k);
+          else localStorage.setItem(k, this.open ? '1' : '0');
+        } catch (err) { /* quota */ }
+        scheduleFit(this);
+      });
+    }
+  }
+
+  global.FafoFitSections = {
+    refresh: refreshFit,
+    schedule: scheduleFit,
+    bindFolds: bindFolds
+  };
+
   function boot() {
     injectCss();
     measure();
+    bindFolds(document);
+    refreshFit(document);
+    scheduleFit(document);
     try {
       if (typeof ResizeObserver === 'function') {
         var pro = document.getElementById('atx-pro-bar');
@@ -104,8 +295,22 @@
       }
     } catch (_) {}
     window.addEventListener('resize', measure);
+    window.addEventListener('resize', function () { scheduleFit(document); });
+    document.addEventListener('toggle', function (ev) { scheduleFit(ev.target); }, true);
+    try {
+      fitObs = new MutationObserver(function (records) {
+        var scope = document;
+        if (records && records.length === 1 && records[0].target && records[0].target.querySelectorAll) {
+          scope = records[0].target;
+        }
+        scheduleFit(scope);
+      });
+      fitObs.observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) { /* ignore */ }
     setTimeout(measure, 50);
     setTimeout(measure, 400);
+    setTimeout(function () { refreshFit(document); }, 350);
+    setTimeout(function () { refreshFit(document); }, 1200);
   }
 
   if (document.readyState === 'loading') {

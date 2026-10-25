@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pair Review Queue — AI HTML Toolbox</title>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a28;
+      --border: rgba(0, 243, 255, 0.22);
+      --accent: #00f3ff;
+      --accent2: #e879f9;
+      --gold: #f5d76e;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --text: #e8eef8;
+      --muted: #94a3b8;
+      /* PET-UI-12 / PAIR REVIEW: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-danger: var(--danger);
+      --fafo-border: var(--border);
+      --fafo-radius: 12px;
+    }
+    :focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: radial-gradient(ellipse at 50% -15%, #132033, var(--bg) 55%);
+      color: var(--text); min-height: 100vh;
+    }
+    .top {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 12px 18px; border-bottom: 1px solid var(--border);
+      background: rgba(11, 18, 32, 0.96); position: sticky; top: 0; z-index: 20;
+    }
+    .top h1 { font-size: 16px; font-weight: 600; color: var(--accent); letter-spacing: 0.04em; margin-right: 6px; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 18px 18px 48px; }
+    .source-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px;
+    }
+    .source-bar select, .source-bar .ui-btn { font-size: 12px; }
+    .source-bar select {
+      background: rgba(0,0,0,.4); border: 1px solid var(--border); color: var(--text);
+      padding: 8px 12px; border-radius: 8px;
+    }
+    .progress-wrap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 16px; margin-bottom: 16px;
+    }
+    .progress-meta {
+      display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;
+      font-size: 12px; color: var(--muted); margin-bottom: 8px;
+    }
+    .progress-meta strong { color: var(--text); }
+    .stat-ok { color: var(--ok); }
+    .stat-no { color: var(--danger); }
+    .stat-skip { color: var(--warn); }
+    .bar-track {
+      height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden;
+      display: flex;
+    }
+    .bar-track span { display: block; height: 100%; transition: width .25s; }
+    .bar-ok { background: var(--ok); }
+    .bar-no { background: var(--danger); }
+    .bar-left { background: rgba(0,243,255,.25); }
+
+    .stage {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;
+    }
+    @media (max-width: 900px) {
+      /* UI-M: stack Before/After */
+      .stage[data-fafo-primary], .stage { grid-template-columns: 1fr; }
+    }
+    .pane {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      display: flex; flex-direction: column; min-height: 280px;
+    }
+    .pane-h {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+      display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    }
+    .pane-h .name { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600;
+      max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-box {
+      flex: 1; background: #000; display: flex; align-items: center; justify-content: center;
+      min-height: 220px; max-height: 42vh; position: relative;
+    }
+    .media-box video, .media-box img {
+      max-width: 100%; max-height: 42vh; width: 100%; height: 100%; object-fit: contain;
+    }
+    .media-box .empty-media { color: var(--muted); font-size: 12px; padding: 24px; text-align: center; }
+
+    .card-info {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 16px 18px; margin-bottom: 14px;
+    }
+    .card-info h2 { font-size: 15px; margin-bottom: 8px; }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
+      font-size: 12px;
+    }
+    .meta-grid .lbl { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .meta-grid .val { margin-top: 2px; word-break: break-all; font-family: Consolas, monospace; font-size: 11px; }
+    .score-pill {
+      display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 12px;
+      border: 1px solid var(--border);
+    }
+    .score-pill.high { color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .score-pill.mid { color: var(--warn); border-color: rgba(251,191,36,.4); }
+    .score-pill.low { color: var(--danger); border-color: rgba(248,113,113,.4); }
+    .rename-line {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+      background: rgba(0,0,0,.3); border: 1px solid var(--border); font-size: 12px;
+    }
+    .rename-line .from { color: var(--muted); }
+    .rename-line .to { color: var(--accent); font-weight: 700; }
+    .decision {
+      display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    .decision.accept { color: var(--ok); }
+    .decision.reject { color: var(--danger); }
+    .decision.skip { color: var(--warn); }
+
+    .actions {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px;
+    }
+    .actions .ui-btn.primary-ok {
+      border-color: var(--ok); color: var(--ok); background: rgba(74,222,128,.12);
+    }
+    .actions .ui-btn.primary-ok:hover { background: var(--ok); color: #04120a; }
+    .actions .ui-btn.danger {
+      border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,.1);
+    }
+    .actions .ui-btn.danger:hover { background: var(--danger); color: #1a0505; }
+
+    .keys {
+      font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 6px;
+    }
+    .keys kbd {
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
+      border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.35);
+      font-family: Consolas, monospace; font-size: 10px; color: var(--accent);
+    }
+    .queue-list {
+      display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow: auto; margin-top: 10px;
+    }
+    .q-dot {
+      width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+      font-size: 10px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--muted); background: rgba(0,0,0,.25);
+    }
+    .q-dot.current { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(0,243,255,.25); }
+    .q-dot.accept { background: rgba(74,222,128,.2); color: var(--ok); border-color: rgba(74,222,128,.4); }
+    .q-dot.reject { background: rgba(248,113,113,.15); color: var(--danger); border-color: rgba(248,113,113,.35); }
+    .q-dot.skip { background: rgba(251,191,36,.12); color: var(--warn); }
+
+    .empty-state {
+      text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; line-height: 1.6;
+    }
+    .empty-state strong { color: var(--text); }
+    .footer-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
+      padding-top: 14px; border-top: 1px solid var(--border);
+    }
+
+    /* PET-UI-12 / PAIR REVIEW: More tools + Queue filters + review primary */
+    .top.fafo-toolbar { align-items: center; }
+    .top.fafo-toolbar details.fafo-collapse {
+      position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+    }
+    .top.fafo-toolbar details.fafo-collapse > summary {
+      padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none; min-height: 0;
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; color: var(--muted);
+    }
+    .top.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+    .top.fafo-toolbar details.fafo-collapse[open] > summary {
+      border-color: var(--fafo-accent, var(--accent)); color: var(--fafo-accent, var(--accent));
+    }
+    .top.fafo-toolbar details.fafo-collapse > :not(summary) {
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+      min-width: 240px; max-width: min(360px, 92vw); padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+      border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    .prq-more-body {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .ui-btn.fafo-btn { text-decoration: none; }
+    .ui-btn.primary.fafo-btn-primary { /* CTA alias — keep ui-btn primary look */ }
+    .prq-primary-row {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%;
+    }
+    .prq-primary-row #btnLoad { flex: 0 1 auto; }
+    details.ui-advanced#prqQueueFilters {
+      width: 100%; margin-top: 8px;
+    }
+    .prq-filters-body {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 6px 2px 2px;
+    }
+    #activeReview[data-fafo-primary],
+    .stage[data-fafo-primary],
+    .pane[data-fafo-primary] { min-width: 0; }
+    @media (max-width: 900px) {
+      /* UI-M: keep Load + action keys reachable */
+      .top.fafo-toolbar { flex-wrap: wrap; gap: 8px; }
+      .top.fafo-toolbar h1 { width: 100%; margin-right: 0; }
+      .source-bar {
+        flex-direction: column; align-items: stretch;
+      }
+      .prq-primary-row {
+        position: sticky; top: 42px; z-index: 25;
+        background: color-mix(in srgb, var(--fafo-panel, var(--panel)) 92%, transparent);
+        padding: 6px 0; margin-bottom: 2px;
+        border-bottom: 1px solid color-mix(in srgb, var(--fafo-border, var(--border)) 70%, transparent);
+      }
+      .prq-primary-row #btnLoad {
+        flex: 1 1 auto; min-width: 160px;
+      }
+      #activeReview[data-fafo-primary] { min-height: 40vh; }
+      #activeReview[data-fafo-primary] .actions {
+        position: sticky; bottom: 0; z-index: 22;
+        background: color-mix(in srgb, var(--fafo-panel, var(--panel)) 94%, transparent);
+        padding: 8px 0 6px;
+        border-top: 1px solid color-mix(in srgb, var(--fafo-border, var(--border)) 70%, transparent);
+      }
+      #activeReview[data-fafo-primary] .keys {
+        font-size: 11px; line-height: 1.5;
+      }
+    }
+    @media (max-width: 640px) {
+      .prq-primary-row #btnLoad { width: 100%; }
+      #activeReview[data-fafo-primary] { min-height: 48vh; }
+    }
+  </style>
+</head>
+<body>
+<div style="padding:6px 10px;display:flex;justify-content:flex-end"><span data-fafo-layout-toolbar></span></div>
+  <!-- PET-UI-12 / PAIR REVIEW: primary chrome + More tools overflow -->
+  <div class="top fafo-toolbar" data-fafo-toolbar>
+    <h1>🔎 Pair Review Queue</h1>
+    <span id="serverPill" class="status-pill warn" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">Server…</span>
+    <button class="ui-btn primary fafo-btn fafo-btn-primary" id="btnStartServer" type="button">▶ Start Server</button>
+    <button class="ui-btn ghost fafo-btn" type="button" id="btnExportReview" title="Copy review session report">📋 Export</button>
+    <details class="fafo-collapse" id="prqMoreTools" data-fafo-collapse-key="prq-more-tools">
+      <summary>More tools</summary>
+      <div class="prq-more-body">
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Media Hub.html'" title="Library · Duplicates · Organizer">🗂️ Media Hub</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Guided Pair Match.html'" title="Process-of-elimination matching">🎯 Guided Match</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Compare Hub.html#pairs'" title="Compare Hub pair review tab">⇄ Compare Hub</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='VSR Pipeline Manager.html'">VSR</button>
+        <button class="ui-btn ghost fafo-btn" type="button" onclick="location.href='Media Library Manager.html'">Library</button>
+      </div>
+    </details>
+    <span id="modeHint" style="margin-left:auto;font-size:11px;color:var(--muted)"></span>
+  </div>
+
+  <div class="wrap" data-fafo-layout-root data-fafo-layout-app="movie-file-manager-pair-review-queue" data-fafo-layout-type="columns">
+    <div class="source-bar" data-fafo-panel="main" data-fafo-panel-title="Main" data-fafo-flex="1" data-fafo-panel-min="120">
+      <div class="prq-primary-row">
+        <label style="font-size:11px;color:var(--muted)">Queue source</label>
+        <select id="sourceSelect">
+        <option value="vsr1">VSR Stage I — upscale matches</option>
+        <option value="vsr2">VSR Stage II — interp matches</option>
+        <option value="catalog">Catalog pairs (saved)</option>
+        <option value="suggest">Suggested pairs (unlinked)</option>
+      </select>
+        <button class="ui-btn primary fafo-btn fafo-btn-primary" id="btnLoad" type="button">↻ Load queue</button>
+      </div>
+      <details class="ui-advanced" id="prqQueueFilters" data-fafo-collapse-key="prq-queue-filters">
+        <summary>Queue filters</summary>
+        <div class="prq-filters-body">
+          <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="onlyRename" checked> Only rename-needed (VSR)
+          </label>
+          <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            Min score
+            <input type="number" id="minScore" min="0" max="1" step="0.05" value="0" style="width:64px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text)">
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-meta">
+        <span>Item <strong id="posLabel">0</strong> / <strong id="totalLabel">0</strong></span>
+        <span>
+          <span class="stat-ok" id="nAccept">0 accepted</span> ·
+          <span class="stat-no" id="nReject">0 rejected</span> ·
+          <span class="stat-skip" id="nSkip">0 skipped</span> ·
+          <span id="nLeft">0 left</span>
+        </span>
+      </div>
+      <div class="bar-track">
+        <span class="bar-ok" id="barOk" style="width:0%"></span>
+        <span class="bar-no" id="barNo" style="width:0%"></span>
+        <span class="bar-left" id="barLeft" style="width:0%"></span>
+      </div>
+      <div class="queue-list" id="queueDots"></div>
+    </div>
+
+    <div id="reviewRoot">
+      <div class="empty-state" id="emptyState">
+        <strong>Review matches one-by-one before bulk rename.</strong><br>
+        Load a VSR preview, catalog pairs, or suggestions — then use keyboard shortcuts to accept or reject.<br><br>
+        Needs the toolbox server online (green pill).
+        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px">
+          <button class="ui-btn primary" type="button" id="btnEmptyLoad">↻ Load queue</button>
+          <button class="ui-btn ghost" type="button" id="btnEmptyStartServer">▶ Start Server</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Guided Pair Match.html'">🎯 Guided Match first</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='VSR Pipeline Manager.html'">⚡ Open VSR</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Media Hub.html'">🗂️ Media Hub</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='Compare Hub.html#pairs'">⇄ Compare Hub</button>
+          <button class="ui-btn ghost" type="button" onclick="location.href='../Toolbox Launcher.html'">← Launcher</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="activeReview" class="fafo-primary-surface" data-fafo-primary style="display:none">
+      <div class="stage" data-fafo-primary>
+        <div class="pane" data-fafo-primary>
+          <div class="pane-h"><span>Before / Source</span><span class="name" id="beforeName">—</span></div>
+          <div class="media-box" id="beforeMedia"><div class="empty-media">No preview</div></div>
+        </div>
+        <div class="pane" data-fafo-primary>
+          <div class="pane-h"><span>After / Output</span><span class="name" id="afterName">—</span></div>
+          <div class="media-box" id="afterMedia"><div class="empty-media">No preview</div></div>
+        </div>
+      </div>
+
+      <div class="card-info">
+        <h2 id="itemTitle">—</h2>
+        <div class="meta-grid">
+          <div><div class="lbl">Confidence</div><div class="val"><span class="score-pill" id="scorePill">—</span></div></div>
+          <div><div class="lbl">Kind</div><div class="val" id="kindVal">—</div></div>
+          <div><div class="lbl">Decision</div><div class="val" id="decisionVal">pending</div></div>
+          <div><div class="lbl">Stage / Source</div><div class="val" id="stageVal">—</div></div>
+        </div>
+        <div class="rename-line" id="renameLine" style="display:none">
+          <span class="from" id="renameFrom"></span> → <span class="to" id="renameTo"></span>
+        </div>
+        <div class="keys">
+          <kbd>A</kbd> / <kbd>Enter</kbd> Accept ·
+          <kbd>R</kbd> / <kbd>X</kbd> Reject ·
+          <kbd>S</kbd> Skip ·
+          <kbd>←</kbd> <kbd>→</kbd> Prev / Next ·
+          <kbd>N</kbd> Next + play ·
+          <kbd>Space</kbd> Play/pause both ·
+          <kbd>C</kbd> Open comparator ·
+          <kbd>U</kbd> Undo decision
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="chkAutoNext" checked>
+          Auto-play next pair when the <strong>After</strong> video ends
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted);cursor:pointer;"
+          title="When you go to the next pair, write the previous pair’s tags + star rating into the real files (Windows Explorer)">
+          <input type="checkbox" id="chkUpdateFiles" checked>
+          💾 <strong>Update files</strong> on next — write previous tags + rating to disk
+        </label>
+      </div>
+
+      <div class="actions">
+        <button class="ui-btn primary-ok" id="btnAccept" type="button"
+                data-tip-title="Accept (A / Enter)" data-tip-basic="Yes — this pair is good. Moves to the next item."
+                data-tip-pro="Mark decision accept; optional flush tags to disk.">✓ Accept</button>
+        <button class="ui-btn danger" id="btnReject" type="button"
+                data-tip-title="Reject (R / X)" data-tip="No — wrong match. Will not rename this one.">✗ Reject</button>
+        <button class="ui-btn ghost" id="btnSkip" type="button"
+                data-tip-title="Skip (S)" data-tip="Leave undecided and move on.">Skip</button>
+        <button class="ui-btn ghost" id="btnPrev" type="button" data-tip-title="Previous" data-tip="Go back one queue item.">← Prev</button>
+        <button class="ui-btn ghost" id="btnNext" type="button" data-tip-title="Next" data-tip="Go forward one queue item.">Next →</button>
+        <button class="ui-btn primary" id="btnNextPlay" type="button"
+                data-tip-title="Next + play" data-tip="Advance and start playback on the new pair.">⏭ Next + play</button>
+        <button class="ui-btn ghost" id="btnSwapSides" type="button"
+                data-tip-title="Swap L/R" data-tip="Swap which side is left/right for this review only.">⇄ Swap L/R</button>
+        <button class="ui-btn ghost" id="btnUndo" type="button"
+                data-tip-title="Undo (U)" data-tip="Clear the decision on the current item.">Undo</button>
+        <button class="ui-btn ghost" id="btnCompare" type="button"
+                data-tip-title="Comparator" data-tip="Open the full before/after comparator for this pair.">Open comparator</button>
+      </div>
+
+      <div class="footer-actions">
+        <button class="ui-btn primary" id="btnApplyAccepted" type="button"
+                data-tip-title="Apply accepted renames"
+                data-tip-basic="Rename every accepted file to its proposed name on disk."
+                data-tip-pro="vsrApplySelected for accept+renameNeeded rows."
+                data-tip-efficient="Dry-run first if you are unsure.">Apply accepted renames…</button>
+        <button class="ui-btn ghost" id="btnDryAccepted" type="button"
+                data-tip-title="Dry-run" data-tip="Preview renames without changing files.">Dry-run accepted</button>
+        <button class="ui-btn ghost" id="btnSavePairs" type="button"
+                data-tip-title="Save pairs" data-tip="Store accepted before/after links in the media catalog.">Save accepted as catalog pairs</button>
+        <button class="ui-btn ghost" id="btnDeleteRejected" type="button"
+                data-tip-title="Delete rejected links" data-tip="Remove bad pair links from the catalog (files stay on disk).">Delete rejected catalog pairs</button>
+        <span id="applyStatus" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-version.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-debug.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+  <script src="../shared/fafo-ops-stats.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+  <script>
+    const API = () => window.AIToolboxAPI;
+    const UI = () => window.AIToolboxUI;
+    const esc = (s) => UI()?.escapeHtml?.(s) ?? String(s ?? '').replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    /** @type {{ id: string, mode: string, kind: string, score: number, beforePath?: string, afterPath?: string, beforeName: string, afterName: string, beforeMediaId?: string, afterMediaId?: string, pairId?: string, renamePath?: string, proposedName?: string, currentName?: string, renameNeeded?: boolean, decision: 'pending'|'accept'|'reject'|'skip', label: string }[]} */
+    let queue = [];
+    let index = 0;
+    let busy = false;
+
+    const params = new URLSearchParams(location.search);
+
+    function el(id) {
+      try { return document.getElementById(id); } catch (_) { return null; }
+    }
+    function setText(id, text) {
+      const n = typeof id === 'string' ? el(id) : id;
+      if (n) n.textContent = text == null ? '' : String(text);
+    }
+    function bind(id, ev, fn) {
+      const n = typeof id === 'string' ? el(id) : id;
+      if (!n || !fn) return;
+      n.addEventListener(ev, fn);
+    }
+    function lsGet(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? fallback : v;
+      } catch (_) { return fallback; }
+    }
+    function lsSet(key, val) {
+      try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+    }
+    async function withBusy(fn) {
+      if (busy) return;
+      busy = true;
+      const loadBtn = el('btnLoad');
+      if (loadBtn) loadBtn.disabled = true;
+      try { return await fn(); }
+      finally {
+        busy = false;
+        if (loadBtn) loadBtn.disabled = false;
+      }
+    }
+
+    function toast(msg, type) { UI()?.toast?.(msg, type || ''); }
+
+    function scoreClass(score) {
+      const pct = score <= 1 ? Math.round(score * 100) : Math.round(score);
+      if (pct >= 75) return 'high';
+      if (pct >= 55) return 'mid';
+      return 'low';
+    }
+
+    function scoreLabel(score) {
+      if (score == null || Number.isNaN(score)) return '—';
+      const pct = score <= 1 ? Math.round(score * 100) : Math.round(score);
+      return pct + '%';
+    }
+
+    function current() { return queue[index] || null; }
+
+    function counts() {
+      let accept = 0, reject = 0, skip = 0, left = 0;
+      for (const q of queue) {
+        if (q.decision === 'accept') accept++;
+        else if (q.decision === 'reject') reject++;
+        else if (q.decision === 'skip') skip++;
+        else left++;
+      }
+      return { accept, reject, skip, left, total: queue.length };
+    }
+
+    function updateProgress() {
+      const c = counts();
+      const wrap = el('progressWrap');
+      if (wrap) wrap.style.display = queue.length ? '' : 'none';
+      setText('posLabel', queue.length ? String(index + 1) : '0');
+      setText('totalLabel', String(c.total));
+      setText('nAccept', c.accept + ' accepted');
+      setText('nReject', c.reject + ' rejected');
+      setText('nSkip', c.skip + ' skipped');
+      setText('nLeft', c.left + ' left');
+      const tot = Math.max(1, c.total);
+      const barOk = el('barOk');
+      const barNo = el('barNo');
+      const barLeft = el('barLeft');
+      if (barOk) barOk.style.width = (c.accept / tot * 100) + '%';
+      if (barNo) barNo.style.width = (c.reject / tot * 100) + '%';
+      if (barLeft) barLeft.style.width = (c.left / tot * 100) + '%';
+
+      const dots = el('queueDots');
+      if (!dots) return;
+      dots.innerHTML = queue.map((q, i) => {
+        const cls = ['q-dot', q.decision !== 'pending' ? q.decision : '', i === index ? 'current' : ''].filter(Boolean).join(' ');
+        return '<button type="button" class="' + cls + '" data-i="' + i + '" title="' + esc(q.label) + '">' + (i + 1) + '</button>';
+      }).join('');
+      dots.querySelectorAll('[data-i]').forEach(btn => {
+        btn.onclick = () => {
+          const i = Number(btn.dataset.i);
+          if (!Number.isFinite(i)) return;
+          index = i;
+          renderItem();
+        };
+      });
+    }
+
+    function revokeMediaUrls(box) {
+      if (!box) return;
+      box.querySelectorAll('img,video,source').forEach(m => {
+        const src = m.getAttribute('src') || '';
+        if (src.startsWith('blob:')) {
+          try { URL.revokeObjectURL(src); } catch (_) { /* ignore */ }
+        }
+      });
+    }
+
+    function clearMedia(box) {
+      if (!box) return;
+      revokeMediaUrls(box);
+      box.innerHTML = '<div class="empty-media">No preview</div>';
+    }
+
+    function setMediaFromItem(box, item, side) {
+      if (!box) return;
+      if (!item) { clearMedia(box); return; }
+      const api = API();
+      if (item._useMediaId) {
+        const mid = side === 'before' ? item.beforeMediaId : item.afterMediaId;
+        if (mid && api && api.mediaFileUrl) {
+          const url = api.mediaFileUrl(mid);
+          const isImage = item.kind === 'image';
+          revokeMediaUrls(box);
+          box.innerHTML = isImage
+            ? '<img alt="" src="' + esc(url) + '">'
+            : '<video controls muted playsinline preload="metadata" src="' + esc(url) + '"></video>';
+          const media = box.querySelector('img,video');
+          if (media) media.onerror = () => clearMedia(box);
+          return;
+        }
+      }
+      const path = side === 'before' ? item.beforePath : item.afterPath;
+      const name = side === 'before' ? item.beforeName : item.afterName;
+      if (!path) { clearMedia(box); return; }
+      const url = api && api.fileServeUrl ? api.fileServeUrl(path) : '';
+      if (!url) { clearMedia(box); return; }
+      const isImage = item.kind === 'image' || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(path || name || '');
+      revokeMediaUrls(box);
+      box.innerHTML = isImage
+        ? '<img alt="" src="' + esc(url) + '">'
+        : '<video controls muted playsinline preload="metadata" src="' + esc(url) + '"></video>';
+      const media = box.querySelector('img,video');
+      if (media) media.onerror = () => clearMedia(box);
+    }
+
+    function updateFooterButtons() {
+      const canRename = queue.some(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName);
+      const canSave = queue.some(q => q.decision === 'accept' && ((q.beforeMediaId && q.afterMediaId && !q.pairId) || (q.beforePath && q.afterPath && !q.pairId)));
+      const canDel = queue.some(q => q.decision === 'reject' && q.pairId);
+      const ba = el('btnApplyAccepted'); if (ba) ba.disabled = !canRename;
+      const bd = el('btnDryAccepted'); if (bd) bd.disabled = !canRename;
+      const bs = el('btnSavePairs'); if (bs) bs.disabled = !canSave;
+      const bdel = el('btnDeleteRejected'); if (bdel) bdel.disabled = !canDel;
+    }
+
+    function renderItem() {
+      updateProgress();
+      const item = current();
+      const empty = el('emptyState');
+      const active = el('activeReview');
+
+      if (!item) {
+        if (active) active.style.display = 'none';
+        if (empty) empty.style.display = '';
+        if (empty) empty.innerHTML = queue.length
+          ? ('<strong>Queue finished reviewing.</strong><br>Apply accepted renames or reload.' +
+             '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
+             '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Reload queue</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Media Hub</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Compare Hub.html#video\'">🎬 Video compare</button>' +
+             '</div>')
+          : ('<strong>No items loaded.</strong><br>Choose a source and click Load queue (server required).' +
+             '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px">' +
+             '<button class="ui-btn primary" type="button" id="btnEmptyLoad2">↻ Load queue</button>' +
+             '<button class="ui-btn ghost" type="button" id="btnEmptyStartServer2">▶ Start Server</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Guided Pair Match.html\'">🎯 Guided Match</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'VSR Pipeline Manager.html\'">⚡ VSR</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'Media Hub.html\'">🗂️ Hub</button>' +
+             '<button class="ui-btn ghost" type="button" onclick="location.href=\'../Toolbox Launcher.html\'">← Launcher</button>' +
+             '</div>');
+        bind('btnEmptyLoad2', 'click', () => loadQueue());
+        bind('btnEmptyStartServer2', 'click', () => el('btnStartServer')?.click());
+        updateFooterButtons();
+        return;
+      }
+
+      if (empty) empty.style.display = 'none';
+      if (active) active.style.display = '';
+
+      setText('beforeName', item.beforeName || '—');
+      setText('afterName', item.afterName || '—');
+      setText('itemTitle', item.label || ((item.beforeName || '') + ' ↔ ' + (item.afterName || '')));
+      setText('kindVal', item.kind || 'video');
+      setText('stageVal', item.mode || '—');
+
+      const pill = el('scorePill');
+      if (pill) {
+        pill.textContent = scoreLabel(item.score);
+        pill.className = 'score-pill ' + scoreClass(item.score || 0);
+      }
+
+      const dec = el('decisionVal');
+      if (dec) dec.textContent = '';
+      if (item.decision === 'pending') {
+        dec.textContent = 'pending';
+      } else {
+        const sp = document.createElement('span');
+        sp.className = 'decision ' + item.decision;
+        sp.textContent = item.decision;
+        dec.appendChild(sp);
+      }
+
+      const rl = el('renameLine');
+      if (item.proposedName) {
+        if (rl) rl.style.display = '';
+        setText('renameFrom', item.currentName || item.afterName);
+        setText('renameTo', item.proposedName + (item.renameNeeded === false ? ' (already OK)' : ''));
+      } else if (rl) {
+        rl.style.display = 'none';
+      }
+
+      setMediaFromItem(el('beforeMedia'), item, 'before');
+      setMediaFromItem(el('afterMedia'), item, 'after');
+      wireEndedAdvance();
+      updateFooterButtons();
+    }
+
+    function playCurrentVideos() {
+      document.querySelectorAll('#activeReview video').forEach(v => {
+        try { v.currentTime = 0; } catch { /* ignore */ }
+        v.play().catch(() => {});
+      });
+    }
+
+    const UPDATE_FILES_KEY = 'aitoolbox_update_files_on_next';
+
+    function isUpdateFilesOnNext() {
+      const box = el('chkUpdateFiles');
+      if (box) return !!box.checked;
+      return lsGet(UPDATE_FILES_KEY, '1') !== '0';
+    }
+
+    /**
+     * Write previous pair sides' catalog tags + rating into real files.
+     * Called when advancing (Next / auto-next / accept auto-advance).
+     */
+    async function flushItemFilesToDisk(item) {
+      if (!isUpdateFilesOnNext() || !item) return;
+      if (!API()?.flushMediaTagsToFile) return;
+      const online = await API()?.isOnline?.(false, 800).catch(() => false);
+      if (!online) {
+        toast('Server offline — skipped file tag write', 'warn');
+        return;
+      }
+      const ids = [item.beforeMediaId, item.afterMediaId].filter(Boolean);
+      if (!ids.length) return;
+      let n = 0;
+      for (const id of ids) {
+        try {
+          await API().flushMediaTagsToFile(id);
+          n++;
+        } catch (e) {
+          console.warn('flush', id, e);
+          toast('File write failed: ' + (e.message || e), 'warn');
+        }
+      }
+      if (n) toast(`Updated tags/rating on ${n} file(s)`, 'ok');
+    }
+
+    async function goNextAndPlay() {
+      if (!queue.length) return;
+      const prev = current();
+      await flushItemFilesToDisk(prev);
+      if (index < queue.length - 1) index++;
+      else index = 0;
+      renderItem();
+      setTimeout(playCurrentVideos, 120);
+    }
+
+    function wireEndedAdvance() {
+      const afterBox = el('afterMedia');
+      const beforeBox = el('beforeMedia');
+      const vids = [...document.querySelectorAll('#activeReview video')];
+      vids.forEach(v => { v.onended = null; });
+      if (!el('chkAutoNext')?.checked) return;
+      const afterV = afterBox?.querySelector('video');
+      const beforeV = beforeBox?.querySelector('video');
+      const primary = afterV || beforeV;
+      if (primary) {
+        primary.onended = () => goNextAndPlay();
+      }
+    }
+
+    function swapCurrentSides() {
+      const item = current();
+      if (!item) return;
+      const swap = (a, b) => { const t = item[a]; item[a] = item[b]; item[b] = t; };
+      swap('beforeName', 'afterName');
+      swap('beforePath', 'afterPath');
+      swap('beforeMediaId', 'afterMediaId');
+      item.label = `${item.beforeName} ↔ ${item.afterName}`;
+      renderItem();
+      toast('Swapped left/right for this review item');
+    }
+
+    async function setDecision(dec) {
+      const item = current();
+      if (!item) return;
+      await withBusy(async () => {
+      item.decision = dec;
+      // Write previous (this) pair's tags/rating to files before leaving
+      await flushItemFilesToDisk(item);
+      try {
+        const metrics = {};
+        if (dec === 'accept') metrics.pairMatches = 1;
+        else if (dec === 'reject') metrics.pairRejects = 1;
+        else if (dec === 'skip') metrics.pairSkips = 1;
+        if (Object.keys(metrics).length) {
+          window.FAFOOpsStats?.record({
+            tool: 'pair-review-queue',
+            action: dec,
+            metrics,
+            extra: { label: item.label || item.id },
+          });
+        }
+      } catch (_) { /* stats optional */ }
+      // Auto-advance
+      if (index < queue.length - 1) index++;
+      else {
+        // Jump to first pending if any
+        const next = queue.findIndex(q => q.decision === 'pending');
+        if (next >= 0) index = next;
+      }
+      renderItem();
+      toast(dec === 'accept' ? 'Accepted' : dec === 'reject' ? 'Rejected' : 'Skipped',
+        dec === 'accept' ? 'ok' : 'warn');
+      });
+    }
+
+    function undoDecision() {
+      const item = current();
+      if (!item) return;
+      item.decision = 'pending';
+      renderItem();
+      toast('Decision cleared');
+    }
+
+    function togglePlay() {
+      document.querySelectorAll('#activeReview video').forEach(v => {
+        if (v.paused) v.play().catch(() => {});
+        else v.pause();
+      });
+    }
+
+    async function openComparator() {
+      const item = current();
+      if (!item) return;
+      const api = API();
+      if (!api) { toast('API unavailable', 'warn'); return; }
+      try {
+        let pairId = item.pairId;
+        if (!pairId && item.beforePath && item.afterPath) {
+          const p = await api.savePairFromPaths({
+            beforePath: item.beforePath,
+            afterPath: item.afterPath,
+            name: item.label || '',
+            kind: item.kind || 'video',
+            pinned: false,
+            notes: 'pair-review-temp',
+          });
+          pairId = p && p.id;
+          item.pairId = pairId;
+        }
+        if (!pairId) {
+          toast('No pair id — save as catalog pair first or use VSR paths', 'warn');
+          return;
+        }
+        const url = api.comparatorUrl ? api.comparatorUrl({ id: pairId, kind: item.kind || 'video' }, {}) : '';
+        if (!url) { toast('Comparator URL unavailable', 'warn'); return; }
+        window.open(url, '_blank');
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      }
+    }
+
+    function mapVsrItem(raw, stage) {
+      const score = Number(raw.score) || 0;
+      const source = raw.source || {};
+      const output = raw.output || {};
+      const beforePath = source.path || '';
+      const afterPath = output.path || '';
+      const beforeName = source.name || raw.original_source || '';
+      const afterName = output.name || raw.current_name || '';
+      const proposed = raw.proposed_name || afterName;
+      const current = raw.current_name || afterName;
+      const renameNeeded = !!raw.rename_needed;
+      return {
+        id: `vsr-${stage}-${afterPath || beforePath}-${proposed}`,
+        mode: stage === '1' ? 'vsr-stage1' : 'vsr-stage2',
+        kind: 'video',
+        score,
+        beforePath,
+        afterPath,
+        beforeName,
+        afterName,
+        renamePath: afterPath,
+        proposedName: proposed,
+        currentName: current,
+        renameNeeded,
+        decision: 'pending',
+        label: `${beforeName} → ${proposed}`,
+      };
+    }
+
+    async function loadQueue() {
+      await withBusy(async () => {
+        const st = el('applyStatus');
+        if (st) st.textContent = '';
+        try {
+          const api = API();
+          if (!api || !api.isOnline) throw new Error('API unavailable');
+          const online = await api.isOnline(true);
+          if (!online) throw new Error('Server offline — click ▶ Start Server');
+
+          const source = (el('sourceSelect') && el('sourceSelect').value) || 'vsr1';
+          const onlyRename = !!(el('onlyRename') && el('onlyRename').checked);
+          const minScore = parseFloat((el('minScore') && el('minScore').value) || '') || 0;
+          let items = [];
+
+          if (source === 'vsr1' || source === 'vsr2') {
+            const stage = source === 'vsr1' ? '1' : '2';
+            const data = (api.vsrPreview && await api.vsrPreview()) || {};
+            if (data.error) throw new Error(data.error);
+            const rows = stage === '1' ? (data.stage1 || []) : (data.stage2 || []);
+            items = (Array.isArray(rows) ? rows : []).map(r => mapVsrItem(r || {}, stage));
+            if (onlyRename) items = items.filter(i => i.renameNeeded);
+            setText('modeHint', 'VSR Stage ' + (stage === '1' ? 'I' : 'II') + ' · ' + items.length + ' matches');
+          } else if (source === 'catalog') {
+            const pairs = api.listPairs ? await api.listPairs() : [];
+            for (const pair of (Array.isArray(pairs) ? pairs : [])) {
+              let beforePath = pair.beforePath || '', afterPath = pair.afterPath || '';
+              try {
+                const paths = (api.getPairPaths && await api.getPairPaths(pair.id)) || {};
+                beforePath = paths.before || beforePath;
+                afterPath = paths.after || afterPath;
+              } catch { /* paths optional */ }
+              items.push({
+                id: pair.id,
+                mode: 'catalog',
+                kind: pair.kind || 'video',
+                score: 1,
+                beforePath,
+                afterPath,
+                beforeName: pair.beforeName || 'before',
+                afterName: pair.afterName || 'after',
+                beforeMediaId: pair.beforeMediaId,
+                afterMediaId: pair.afterMediaId,
+                pairId: pair.id,
+                decision: 'pending',
+                label: pair.name || ((pair.beforeName || 'before') + ' ↔ ' + (pair.afterName || 'after')),
+              });
+            }
+            setText('modeHint', 'Catalog · ' + items.length + ' pairs');
+          } else if (source === 'suggest') {
+            const sug = api.suggestPairs ? await api.suggestPairs(120, {
+              minRatio: 0.45,
+              tailLen: 5,
+              useTail: true,
+              useDigits: true,
+              useFuzzy: true,
+              useFolder: true,
+              forcePost: true,
+            }) : [];
+            for (const s of (Array.isArray(sug) ? sug : [])) {
+              items.push({
+                id: 'sug-' + (s.before_id || '') + '-' + (s.after_id || ''),
+                mode: 'suggest',
+                kind: 'video',
+                score: Number(s.confidence) || 0,
+                beforePath: '',
+                afterPath: '',
+                beforeName: s.before_name || '',
+                afterName: s.after_name || '',
+                beforeMediaId: s.before_id,
+                afterMediaId: s.after_id,
+                decision: 'pending',
+                label: (s.before_name || '') + ' ↔ ' + (s.after_name || '') + ' (' + (s.reason || 'suggest') + (s.tail ? ' · tail ' + s.tail : '') + ')',
+              });
+            }
+            items = items.map(it => Object.assign({}, it, { _useMediaId: true }));
+            setText('modeHint', 'Suggestions (multi-signal) · ' + items.length);
+          }
+
+          if (minScore > 0) {
+            items = items.filter(i => (i.score || 0) >= minScore || (i.score > 1 && i.score / 100 >= minScore));
+          }
+
+          queue = items;
+          index = 0;
+          if (!queue.length) toast('No items for this source / filter', 'warn');
+          else toast('Loaded ' + queue.length + ' item(s)', 'ok');
+          renderItem();
+        } catch (e) {
+          toast(e.message || String(e), 'warn');
+          queue = [];
+          renderItem();
+        }
+      });
+    }
+
+    async function applyAccepted(dryRun) {
+      await withBusy(async () => {
+      const renames = queue
+        .filter(q => q.decision === 'accept' && q.renameNeeded && q.renamePath && q.proposedName)
+        .map(q => ({ path: q.renamePath, new_name: q.proposedName }));
+      if (!renames.length) {
+        toast('No accepted renames to apply', 'warn');
+        return;
+      }
+      if (!dryRun) {
+        const conf = await UI()?.confirmAction?.({
+          title: 'Apply accepted renames?',
+          body: `<strong>${renames.length}</strong> file(s) will be renamed on disk. Rejected/skipped items are left alone.`,
+          preview: renames.slice(0, 12).map(r => ({ from: r.path.split(/[/\\]/).pop(), to: r.new_name })),
+          showSafetyNote: true,
+          confirmText: `Rename ${renames.length}`,
+          cancelText: 'Cancel',
+        });
+        if (!conf?.confirmed) return;
+      }
+      try {
+        const r = await API()?.vsrApplySelected?.(renames, dryRun) || {};
+        const msg = dryRun
+          ? `Dry run: ${r.ok || 0}/${r.count || 0} would succeed`
+          : `Renamed ${r.ok || 0}/${r.count || 0}` + (r.failed ? ` · ${r.failed} failed` : '');
+        setText('applyStatus', msg);
+        toast(msg, r.failed ? 'warn' : 'ok');
+        if (!dryRun && r.ok) {
+          try {
+            window.FAFOOpsStats?.record({
+              tool: 'pair-review-queue',
+              action: 'rename',
+              metrics: { renamesApplied: r.ok, syncsCompleted: 1 },
+            });
+          } catch (_) { /* stats optional */ }
+          // Mark applied items as done (no longer rename-needed)
+          for (const q of queue) {
+            if (q.decision === 'accept' && q.renameNeeded) {
+              q.renameNeeded = false;
+              q.currentName = q.proposedName;
+              q.afterName = q.proposedName;
+            }
+          }
+          renderItem();
+        }
+      } catch (e) {
+        toast(e.message || String(e), 'warn');
+      }
+      });
+    }
+
+    async function saveAcceptedPairs() {
+      await withBusy(async () => {
+      const toSave = queue.filter(q => q.decision === 'accept' && q.beforeMediaId && q.afterMediaId && !q.pairId);
+      if (!toSave.length) {
+        // Try path-based for VSR accepts
+        const pathBased = queue.filter(q => q.decision === 'accept' && q.beforePath && q.afterPath && !q.pairId);
+        if (!pathBased.length) {
+          toast('No accepted pairs to save', 'warn');
+          return;
+        }
+        let n = 0;
+        for (const q of pathBased) {
+          try {
+            const p = await API().savePairFromPaths({
+              beforePath: q.beforePath,
+              afterPath: q.afterPath,
+              name: q.label || '',
+              kind: q.kind || 'video',
+              pinned: true,
+              notes: 'pair-review-accepted',
+            });
+            q.pairId = p && p.id;
+            n++;
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+        if (n) {
+          try {
+            window.FAFOOpsStats?.record({
+              tool: 'pair-review-queue',
+              action: 'save-pairs',
+              metrics: { pairsSaved: n, syncsCompleted: 1 },
+            });
+          } catch (_) { /* stats optional */ }
+        }
+        toast(`Saved ${n} pair(s) from paths`, n ? 'ok' : 'warn');
+        renderItem();
+        return;
+      }
+      let n = 0;
+      for (const q of toSave) {
+        try {
+          const p = await API().savePair({
+            beforeMediaId: q.beforeMediaId,
+            afterMediaId: q.afterMediaId,
+            name: q.label || '',
+            kind: q.kind || 'video',
+            pinned: true,
+            notes: 'pair-review-accepted',
+          });
+          q.pairId = p.id;
+          n++;
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+      if (n) {
+        try {
+          window.FAFOOpsStats?.record({
+            tool: 'pair-review-queue',
+            action: 'save-pairs',
+            metrics: { pairsSaved: n, syncsCompleted: 1 },
+          });
+        } catch (_) { /* stats optional */ }
+      }
+      toast(`Saved ${n} catalog pair(s)`, n ? 'ok' : 'warn');
+      renderItem();
+      });
+    }
+
+    async function deleteRejectedPairs() {
+      await withBusy(async () => {
+      const toDel = queue.filter(q => q.decision === 'reject' && q.pairId);
+      if (!toDel.length) {
+        toast('No rejected catalog pairs', 'warn');
+        return;
+      }
+      const conf = await UI()?.confirmAction?.({
+        title: 'Delete rejected pairs?',
+        body: `Removes <strong>${toDel.length}</strong> pair link(s) from the catalog (files stay on disk).`,
+        confirmText: 'Delete pair links',
+        cancelText: 'Cancel',
+      });
+      if (!conf?.confirmed) return;
+      let n = 0;
+      for (const q of toDel) {
+        try {
+          await API().deletePair(q.pairId);
+          q.pairId = null;
+          n++;
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+      if (n) {
+        try {
+          window.FAFOOpsStats?.record({
+            tool: 'pair-review-queue',
+            action: 'delete-pairs',
+            metrics: { pairsDeleted: n },
+          });
+        } catch (_) { /* stats optional */ }
+      }
+      toast(`Deleted ${n} pair link(s)`, 'ok');
+      renderItem();
+      });
+    }
+
+    // Wire buttons
+    bind('btnLoad', 'click', () => loadQueue());
+    bind('btnEmptyLoad', 'click', () => loadQueue());
+    bind('btnEmptyStartServer', 'click', () => el('btnStartServer')?.click());
+    bind('btnAccept', 'click', () => setDecision('accept'));
+    bind('btnReject', 'click', () => setDecision('reject'));
+    bind('btnSkip', 'click', () => setDecision('skip'));
+    bind('btnPrev', 'click', async () => {
+      if (index > 0) {
+        await flushItemFilesToDisk(current());
+        index--;
+        renderItem();
+      }
+    });
+    bind('btnNext', 'click', async () => {
+      if (index < queue.length - 1) {
+        await flushItemFilesToDisk(current());
+        index++;
+        renderItem();
+      }
+    });
+    bind('btnNextPlay', 'click', () => goNextAndPlay());
+    bind('btnSwapSides', 'click', swapCurrentSides);
+    bind('chkAutoNext', 'change', wireEndedAdvance);
+    // Sync Update files toggle (shared with Pair Studio / Comparator)
+    (() => {
+      const box = el('chkUpdateFiles');
+      if (!box) return;
+      box.checked = lsGet(UPDATE_FILES_KEY, '1') !== '0';
+      bind(box, 'change', () => {
+        lsSet(UPDATE_FILES_KEY, box.checked ? '1' : '0');
+      });
+    })();
+    bind('btnUndo', 'click', undoDecision);
+    bind('btnCompare', 'click', openComparator);
+    bind('btnApplyAccepted', 'click', () => applyAccepted(false));
+    bind('btnDryAccepted', 'click', () => applyAccepted(true));
+    bind('btnSavePairs', 'click', saveAcceptedPairs);
+    bind('btnDeleteRejected', 'click', deleteRejectedPairs);
+
+    const LS_REVIEW = 'fafo_pair_review_settings_v1';
+    function saveReviewSettings() {
+      lsSet(LS_REVIEW, JSON.stringify({
+        source: el('sourceSelect') && el('sourceSelect').value,
+        onlyRename: !!(el('onlyRename') && el('onlyRename').checked),
+        minScore: el('minScore') && el('minScore').value,
+        autoNext: el('chkAutoNext') ? el('chkAutoNext').checked !== false : true,
+      }));
+    }
+    function restoreReviewSettings() {
+      try {
+        const raw = JSON.parse(lsGet(LS_REVIEW, 'null') || 'null');
+        if (!raw) return;
+        if (raw.source && el('sourceSelect')) el('sourceSelect').value = raw.source;
+        if (typeof raw.onlyRename === 'boolean' && el('onlyRename')) el('onlyRename').checked = raw.onlyRename;
+        if (raw.minScore != null && el('minScore')) el('minScore').value = raw.minScore;
+        if (el('chkAutoNext') && typeof raw.autoNext === 'boolean')
+          el('chkAutoNext').checked = raw.autoNext;
+      } catch (_) {}
+    }
+    ['sourceSelect', 'onlyRename', 'minScore', 'chkAutoNext'].forEach(id => {
+      bind(id, 'change', saveReviewSettings);
+    });
+
+    async function exportReviewReport() {
+      const c = counts();
+      const cur = current();
+      const lines = [
+        'FAFO Pair Review Queue — session report',
+        'Time: ' + new Date().toISOString(),
+        'Source: ' + ((el('sourceSelect') && el('sourceSelect').value) || ''),
+        'Queue size: ' + c.total,
+        'Accepted: ' + c.accept + ' · Rejected: ' + c.reject + ' · Skipped: ' + c.skip + ' · Left: ' + c.left,
+        'Position: ' + (queue.length ? (index + 1) : 0) + ' / ' + c.total,
+        cur ? ('Current: ' + (cur.label || cur.beforeName + ' ↔ ' + cur.afterName)) : 'Current: —',
+        '',
+        '— Decisions —',
+        ...queue.map((q, i) =>
+          (i + 1) + '. [' + q.decision + '] ' + (q.label || (q.beforeName + ' ↔ ' + q.afterName)) +
+          (q.score != null ? ' · ' + scoreLabel(q.score) : '')
+        ),
+      ];
+      const text = lines.join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('Review report copied', 'ok');
+      } catch (_) { prompt('Copy report:', text); }
+    }
+    bind('btnExportReview', 'click', exportReviewReport);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      if (busy) return;
+      const k = e.key;
+      if (k === 'a' || k === 'A' || k === 'Enter') { e.preventDefault(); setDecision('accept'); }
+      else if (k === 'r' || k === 'R' || k === 'x' || k === 'X') { e.preventDefault(); setDecision('reject'); }
+      else if (k === 's' || k === 'S') { e.preventDefault(); setDecision('skip'); }
+      else if (k === 'n' || k === 'N') { e.preventDefault(); goNextAndPlay(); }
+      else if (k === 'ArrowRight') {
+        e.preventDefault();
+        if (index < queue.length - 1) {
+          flushItemFilesToDisk(current()).then(() => { index++; renderItem(); });
+        }
+      }
+      else if (k === 'ArrowLeft' || k === 'p' || k === 'P') {
+        e.preventDefault();
+        if (index > 0) {
+          flushItemFilesToDisk(current()).then(() => { index--; renderItem(); });
+        }
+      }
+      else if (k === ' ') { e.preventDefault(); togglePlay(); }
+      else if (k === 'c' || k === 'C') { e.preventDefault(); openComparator(); }
+      else if (k === 'u' || k === 'U') { e.preventDefault(); undoDecision(); }
+      else if ((k === 'e' || k === 'E') && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        exportReviewReport();
+      }
+    });
+
+    // Query params: ?source=vsr&stage=1  or source=catalog|suggest
+    restoreReviewSettings();
+    (function applyQuery() {
+      const src = (params.get('source') || '').toLowerCase();
+      const stage = params.get('stage') || '1';
+      const srcEl = el('sourceSelect');
+      if (src === 'vsr' || src === 'vsr1' || src === 'stage1') {
+        if (srcEl) srcEl.value = stage === '2' || stage === 'II' ? 'vsr2' : 'vsr1';
+      } else if (src === 'vsr2' || src === 'stage2') {
+        if (srcEl) srcEl.value = 'vsr2';
+      } else if (src === 'catalog' || src === 'pairs') {
+        if (srcEl) srcEl.value = 'catalog';
+      } else if (src === 'suggest' || src === 'suggestions') {
+        if (srcEl) srcEl.value = 'suggest';
+      }
+      if (params.get('min') != null && el('minScore')) el('minScore').value = params.get('min');
+      if (params.get('all') === '1' && el('onlyRename')) el('onlyRename').checked = false;
+    })();
+
+    if (UI()?.bindServerControls) {
+      UI().bindServerControls({
+        statusEl: '#serverPill',
+        startBtn: '#btnStartServer',
+        onOnline: () => {
+          // Auto-load if navigated with source query
+          if (params.get('source') || params.get('autoload') === '1') loadQueue();
+        },
+      });
+    } else {
+      bind('btnStartServer', 'click', async () => {
+        await API()?.startServer?.({ mode: 'tray' });
+      });
+    }
+
+    // mediaFileUrl helper if missing
+    if (API() && !API().mediaFileUrl) {
+      API().mediaFileUrl = (mid) => API().getApiBase() + '/media/file?mid=' + encodeURIComponent(mid);
+    }
+  </script>
+<script data-extra-polish="pairs">
+(function(){
+  // Tip once per session
+  try {
+    if (!sessionStorage.getItem('pair_hub_tip') && window.AIToolboxUI?.toast) {
+      sessionStorage.setItem('pair_hub_tip','1');
+      AIToolboxUI.toast('Tip: Compare Hub groups Pair Review + sliders', 'ok');
+    }
+  } catch(_){}
+})();
+</script>
+</body>
+</html>

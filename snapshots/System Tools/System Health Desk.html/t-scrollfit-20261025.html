@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Health Desk — FAFO Ops</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+  <script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+  <script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+  <style>
+    :root {
+      --bg: #070b12; --panel: #0c1220; --panel2: #141c2c;
+      --accent: #00f3ff; --accent2: #f5c542; --gold: #f5c542; --magenta: #e879f9;
+      --warn: #fbbf24; --err: #f43f5e; --ok: #34d399;
+      --text: #f1f5f9; --muted: #b6c4d8; --border: rgba(0, 243, 255, 0.24);
+      --font: "Segoe UI", system-ui, sans-serif;
+      /* SIE-UI-21 PREP folded: kit+layout data-fafo-layout-app=system-health-desk */
+      /* PET-UI-21 / SYSTEM HEALTH DESK: kit aliases only — no second theme */
+      --fafo-bg: var(--bg);
+      --fafo-panel: var(--panel);
+      --fafo-panel-2: var(--panel2);
+      --fafo-text: var(--text);
+      --fafo-muted: var(--muted);
+      --fafo-accent: var(--accent);
+      --fafo-danger: var(--err);
+      --fafo-border: var(--border);
+      --fafo-radius: 12px;
+      --fafo-touch-min: 44px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100%; color: var(--text); font-family: var(--font);
+      background:
+        radial-gradient(ellipse at 10% -10%, rgba(0, 243, 255, 0.10), transparent 45%),
+        radial-gradient(ellipse at 90% 100%, rgba(232, 121, 249, 0.08), transparent 40%),
+        radial-gradient(ellipse at 50% -20%, #0f172a, var(--bg) 60%);
+      padding: 18px 18px 40px; overflow-x: hidden;
+    }
+    a.back {
+      position: fixed; top: 12px; left: 14px; z-index: 100;
+      color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 700;
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px;
+      background: rgba(7, 11, 18, 0.92);
+    }
+    a.back:hover { background: rgba(0, 243, 255, 0.12); }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    header { text-align: center; padding: 40px 12px 16px; }
+    header h1 {
+      font-size: clamp(22px, 4vw, 30px); font-weight: 800; letter-spacing: 2px;
+      background: linear-gradient(100deg, var(--accent), var(--gold), var(--magenta));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .badge {
+      display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 999px;
+      border: 1px solid var(--border); font-size: 11px; font-weight: 700;
+      color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .panel {
+      background: linear-gradient(155deg, rgba(12, 18, 32, 0.96), rgba(7, 11, 18, 0.98));
+      border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; margin-bottom: 14px;
+    }
+    .panel h2 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px;
+      color: var(--accent); font-weight: 700; margin-bottom: 12px;
+    }
+    .grid { display: grid; gap: 12px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 900px) { .grid-2, .grid-4 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } }
+    .stat {
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px; text-align: center;
+    }
+    .stat .val { font-size: 22px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .stat .val.warn { color: var(--warn); }
+    .stat .val.err { color: var(--err); }
+    .stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-top: 4px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    button, a.btn {
+      background: transparent; border: 1px solid var(--border); color: var(--accent);
+      padding: 8px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 12px;
+      text-decoration: none; display: inline-block;
+    }
+    button.primary {
+      background: linear-gradient(135deg, #00f3ff, #0891b2); color: #041018; border-color: #00f3ff;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .muted { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 700;
+    }
+    .pill.ok { background: rgba(52, 211, 153, 0.15); color: var(--ok); }
+    .pill.warn { background: rgba(251, 191, 36, 0.15); color: var(--warn); }
+    .pill.err { background: rgba(244, 63, 94, 0.15); color: var(--err); }
+    .pill.info { background: rgba(232, 121, 249, 0.15); color: var(--magenta); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 8px 6px; border-bottom: 1px solid rgba(0, 243, 255, 0.15); }
+    td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .scroll { max-height: 260px; overflow: auto; }
+    .footer { text-align: center; font-size: 11px; color: var(--muted); margin-top: 12px; }
+    .err-box { color: var(--warn); font-size: 12px; margin-top: 8px; }
+    .nav-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+    .nav-chip {
+      font-size: 11px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+      color: var(--accent); text-decoration: none; font-weight: 700; background: rgba(0, 243, 255, .06);
+    }
+    .nav-chip:hover { background: rgba(0, 243, 255, .14); }
+    .nav-chip.primary { border-color: rgba(232, 121, 249, .45); color: var(--magenta); }
+    label.auto { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+    select, input[type="checkbox"] { accent-color: var(--accent); }
+    select {
+      background: #0a1018; border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 3px 6px;
+    }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--gold); outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --text: #ffffff; --muted: #d5deea; --border: rgba(0, 243, 255, 0.45); }
+    }
+
+    /* PET-UI-21 soft sheen: .stat/.panel only — never cover KPI numbers or primary btns */
+    .stat, .panel {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .stat::before, .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      z-index: 0;
+      background: linear-gradient(
+        125deg,
+        transparent 0%,
+        rgba(0, 243, 255, 0.05) 30%,
+        rgba(232, 121, 249, 0.05) 52%,
+        rgba(245, 197, 66, 0.03) 72%,
+        transparent 100%
+      );
+      opacity: 0.85;
+    }
+    .stat > *, .panel > * { position: relative; z-index: 1; }
+
+    /* PET-UI-21 / SYSTEM HEALTH DESK: More tools collapse + KPIs primary */
+    .toolbar.fafo-toolbar { align-items: center; flex-wrap: wrap; gap: 8px; }
+    .toolbar.fafo-toolbar details.fafo-collapse {
+      position: relative; flex: 0 1 auto; min-width: 0; margin-top: 0; opacity: 1;
+    }
+    .toolbar.fafo-toolbar details.fafo-collapse > summary {
+      padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none; min-height: 0;
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+      color: var(--fafo-muted, var(--muted));
+    }
+    .toolbar.fafo-toolbar details.fafo-collapse > summary::-webkit-details-marker { display: none; }
+    .toolbar.fafo-toolbar details.fafo-collapse[open] > summary {
+      border-color: var(--fafo-accent, var(--accent));
+      color: var(--fafo-accent, var(--accent));
+    }
+    .toolbar.fafo-toolbar details.fafo-collapse > :not(summary) {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+      min-width: 260px; max-width: min(420px, 92vw); padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 35%, transparent);
+      border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    .shd-desk-more-body {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .shd-desk-more-body .fafo-btn, .shd-desk-more-body .btn, .shd-desk-more-body .nav-chip {
+      font-size: 11px; padding: 6px 10px; border-radius: 6px;
+      text-transform: none; font-weight: 600; text-decoration: none;
+    }
+    .toolbar details.ui-advanced {
+      position: relative; flex: 0 1 auto; min-width: 0;
+    }
+    .toolbar details.ui-advanced > summary {
+      padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
+      list-style: none; user-select: none;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+      color: var(--fafo-muted, var(--muted));
+    }
+    .toolbar details.ui-advanced > summary::-webkit-details-marker { display: none; }
+    .toolbar details.ui-advanced[open] > summary {
+      border-color: var(--fafo-accent, var(--accent));
+      color: var(--fafo-accent, var(--accent));
+    }
+    .toolbar details.ui-advanced > :not(summary) {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
+      min-width: 220px; padding: 6px;
+      background: var(--fafo-panel, var(--panel));
+      border: 1px solid color-mix(in srgb, var(--fafo-accent, var(--accent)) 30%, transparent);
+      border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+    }
+    .shd-desk-more-actions {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px;
+    }
+    .wrap.fafo-primary-surface,
+    .wrap[data-fafo-primary],
+    #kpiRow[data-fafo-primary] {
+      flex: 1 1 auto; min-height: 0; min-width: 0;
+    }
+    .wrap.fafo-primary-surface { min-height: 50vh; }
+    @media (max-width: 900px) {
+      /* UI-M: touch-friendly primary desk controls */
+      .toolbar.fafo-toolbar { gap: 8px; }
+      #btnRefresh, #btnStartServer,
+      [data-fafo-primary].btn, [data-fafo-primary].fafo-btn,
+      button.fafo-btn-primary, .fafo-btn.fafo-btn-primary {
+        min-height: var(--fafo-touch-min, 44px);
+        min-width: var(--fafo-touch-min, 44px);
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
+<link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
+</head>
+<body>
+  <a class="back" href="../Toolbox Launcher.html">← Toolbox</a>
+  <div class="wrap fafo-primary-surface" data-fafo-primary data-fafo-layout-root data-fafo-layout-app="system-health-desk" data-fafo-layout-type="rows">
+    <!-- PET-UI-21 / SYSTEM HEALTH DESK: primary chrome + More tools overflow -->
+    <!-- SIE-UI-21 PREP folded: kit+layout data-fafo-layout-app=system-health-desk -->
+    <header data-fafo-panel="header" data-fafo-panel-title="Header" data-fafo-panel-min="60" data-fafo-panel-default="120">
+      <div class="badge">Ops · Admin · Loopback only</div>
+      <h1>🩺 SYSTEM HEALTH DESK</h1>
+      <p>Live-ish metrics for this PC + toolbox server. Privileged data via loopback API — no free-form shell.</p>
+      <span data-fafo-layout-toolbar></span>
+    </header>
+
+    <div class="toolbar fafo-toolbar" data-fafo-toolbar data-fafo-panel="block" data-fafo-panel-title="Block" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <button class="primary fafo-btn fafo-btn-primary" type="button" id="btnRefresh" data-fafo-primary data-tip-title="Refresh" data-tip="Reload health signals for this PC." title="Refresh (R)">Refresh now</button>
+      <button class="fafo-btn" type="button" id="btnStartServer" data-tip-title="Start server" data-tip="Start S1 for live collectors." title="Start S1 if offline">▶ Start Server</button>
+      <span class="muted" id="statusLine">Loading…</span>
+      <details class="fafo-collapse" id="shdDeskMoreTools" data-fafo-collapse-key="system-health-desk-more-tools">
+        <summary>More tools</summary>
+        <div class="shd-desk-more-body">
+          <a class="fafo-btn" href="../Toolbox Launcher.html" data-tip-title="Launcher" data-tip="Return to the main toolbox menu.">← Toolbox</a>
+          <a class="fafo-btn" href="System Health Dashboard.html" data-tip-title="Health Hub" data-tip="System health dashboard.">← Health Hub</a>
+          <a class="fafo-btn" href="Secrets Presence Console.html" data-tip-title="Secrets Presence" data-tip="Secrets presence console (flags only).">Secrets Presence →</a>
+          <a class="fafo-btn" href="PC Diagnostics HUD.html" data-tip-title="PC Diagnostics" data-tip="Diagnostics HUD.">PC Diagnostics</a>
+          <a class="fafo-btn" href="PC Reports and Log Viewer/index.html" data-tip-title="Reports" data-tip="PC Reports and log viewer (link only).">PC Reports</a>
+          <a class="fafo-btn" href="Disk Space Analyzer.html" data-tip-title="Disk Analyzer" data-tip="Disk space analyzer.">Disk Analyzer</a>
+          <a class="fafo-btn" href="Event Viewer.html" data-tip-title="Event Viewer" data-tip="Windows event viewer.">Event Viewer</a>
+        </div>
+      </details>
+      <details class="ui-advanced" id="shdDeskMoreActions" data-fafo-collapse-key="system-health-desk-more-actions">
+        <summary>Advanced</summary>
+        <div class="shd-desk-more-actions">
+          <button class="fafo-btn" type="button" id="btnExport" data-tip-title="Export" data-tip="Export health snapshot.">↓ JSON</button>
+          <button class="fafo-btn" type="button" id="btnCopy" data-tip-title="Copy summary" data-tip="Copy plain-English health summary.">Copy summary</button>
+          <label class="auto"><input type="checkbox" id="autoRefresh" data-tip-title="Auto-refresh" data-tip="Periodically refresh health signals." checked> Auto
+            <select id="autoInterval" data-tip-title="Interval" data-tip="Seconds between auto-refresh ticks.">
+              <option value="15" selected>15s</option>
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+            </select>
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <div class="grid grid-4" id="kpiRow" data-fafo-primary>
+      <div class="stat"><div class="val" id="kCpu">—</div><div class="lbl">CPU</div></div>
+      <div class="stat"><div class="val" id="kMem">—</div><div class="lbl">Memory</div></div>
+      <div class="stat"><div class="val" id="kDisk">—</div><div class="lbl">System disk free</div></div>
+      <div class="stat"><div class="val" id="kUp">—</div><div class="lbl">Uptime</div></div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:14px">
+      <div class="panel">
+        <h2>Host</h2>
+        <p class="muted" id="hostBlock">—</p>
+      </div>
+      <div class="panel">
+        <h2>Toolbox server</h2>
+        <p class="muted" id="tbBlock">—</p>
+      </div>
+    </div>
+
+    <div class="panel" data-fafo-panel="disks" data-fafo-panel-title="Disks" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <h2>Disks</h2>
+      <div class="grid grid-2">
+        <div class="stat"><div class="val" id="dSys">—</div><div class="lbl" id="dSysL">System drive</div></div>
+        <div class="stat"><div class="val" id="dFafo">—</div><div class="lbl" id="dFafoL">FAFO / toolbox data</div></div>
+      </div>
+    </div>
+
+    <div class="panel" data-fafo-panel="xero-proxy-presence-only" data-fafo-panel-title="Xero proxy (presence only)" data-fafo-panel-min="60" data-fafo-panel-default="140">
+      <h2>Xero proxy (presence only)</h2>
+      <p class="muted" id="xeroBlock">—</p>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="panel">
+        <h2>Top CPU</h2>
+        <div class="scroll"><table><thead><tr><th>Name</th><th>PID</th><th>CPU</th><th>Mem</th></tr></thead><tbody id="tbCpu"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <h2>Top memory</h2>
+        <div class="scroll"><table><thead><tr><th>Name</th><th>PID</th><th>CPU</th><th>Mem</th></tr></thead><tbody id="tbMem"></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="err-box" id="errBox"></div>
+    <p class="footer">System Health Desk · Metrics only · No secrets/cmdlines · FAFO Power Toolbox</p>
+  </div>
+  <script>
+    (function () {
+      const UI = () => window.AIToolboxUI;
+      const apiBase = (window.AITOOLBOX_CONFIG && window.AITOOLBOX_CONFIG.API_BASE) || 'http://127.0.0.87:18765/api';
+      const PREF = 'fafo_health_desk_auto_v1';
+      const BUSY_IDS = ['btnRefresh', 'btnStartServer', 'btnExport', 'btnCopy'];
+
+      function el(id) {
+        try { return typeof id === 'string' ? document.getElementById(id) : id; } catch (_) { return null; }
+      }
+      function setText(id, text) {
+        const n = el(id);
+        if (n) n.textContent = text == null ? '' : String(text);
+      }
+      function setHtml(id, html) {
+        const n = el(id);
+        if (n) n.innerHTML = html == null ? '' : String(html);
+      }
+      function bind(id, ev, fn) {
+        const n = el(id);
+        if (!n || !fn) return;
+        n.addEventListener(ev, fn);
+      }
+      function lsGet(key, fallback) {
+        try {
+          const v = localStorage.getItem(key);
+          return v == null ? fallback : v;
+        } catch (_) { return fallback; }
+      }
+      function lsSet(key, val) {
+        try { localStorage.setItem(key, val); return true; } catch (_) { return false; }
+      }
+      function escHtml(str) {
+        const u = UI() && UI().escapeHtml;
+        if (typeof u === 'function') return u(str);
+        return String(str == null ? '' : str)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+      const esc = escHtml;
+      function isTypingTarget(t) {
+        return !!(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable));
+      }
+
+      let lastData = null;
+      let autoTimer = null;
+      let actionBusy = false;
+      const _blobUrls = [];
+      function trackBlob(url) {
+        if (url && String(url).indexOf('blob:') === 0) _blobUrls.push(url);
+        return url;
+      }
+      function revokeBlobs() {
+        while (_blobUrls.length) {
+          try { URL.revokeObjectURL(_blobUrls.pop()); } catch (_) {}
+        }
+      }
+      window.addEventListener('pagehide', revokeBlobs);
+
+      async function withBusy(fn, btnId) {
+        if (actionBusy) return;
+        actionBusy = true;
+        const ids = btnId ? (Array.isArray(btnId) ? btnId : [btnId]) : BUSY_IDS;
+        const btns = ids.map(el).filter(Boolean);
+        btns.forEach(function (b) { b.disabled = true; });
+        try { return await fn(); }
+        finally {
+          actionBusy = false;
+          btns.forEach(function (b) { b.disabled = false; });
+        }
+      }
+
+      function pctClass(n) {
+        if (n == null || isNaN(n)) return '';
+        if (n >= 90) return 'err';
+        if (n >= 75) return 'warn';
+        return '';
+      }
+
+      function rowsHtml(list) {
+        if (!list || !list.length) return '<tr><td colspan="4" class="muted">No process data</td></tr>';
+        return list.map(function (p) {
+          p = p || {};
+          const cpu = p.cpuPercent != null && !isNaN(Number(p.cpuPercent)) ? Number(p.cpuPercent).toFixed(1) + '%' : '—';
+          const mem = p.memoryHuman
+            ? esc(p.memoryHuman)
+            : (p.memoryPercent != null && !isNaN(Number(p.memoryPercent)) ? Number(p.memoryPercent).toFixed(1) + '%' : '—');
+          return '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.pid || '—') + '</td><td>' +
+            esc(cpu) + '</td><td>' + mem + '</td></tr>';
+        }).join('');
+      }
+
+      async function load(force) {
+        return withBusy(async function () {
+          setText('statusLine', 'Refreshing…');
+          try {
+            const r = await fetch(apiBase + '/sys/health' + (force ? '?force=1' : ''), { headers: { Accept: 'application/json' } });
+            let d = null;
+            try { d = await r.json(); } catch (_) { d = null; }
+            if (!d || (d.ok === false && !d.host)) {
+              throw new Error((d && d.error) || ('HTTP ' + r.status));
+            }
+            lastData = d;
+            render(d);
+            setText('statusLine', 'Updated ' + (d.generatedAt || new Date().toLocaleTimeString()) + ' · cache ~' + (d.cacheTtlSec || 10) + 's');
+            setText('errBox', (d.errors && d.errors.length) ? ('Partial: ' + d.errors.join('; ')) : '');
+          } catch (e) {
+            setText('statusLine', 'Failed — start toolbox server (START SERVER.bat · 127.0.0.87:18765)');
+            setText('errBox', (e && e.message) || String(e));
+          }
+        }, 'btnRefresh');
+      }
+
+      function render(d) {
+        d = d || {};
+        const cpu = d.cpu && d.cpu.percent;
+        const mem = d.memory && d.memory.percent;
+        setText('kCpu', cpu != null ? Math.round(cpu) + '%' : '—');
+        const kCpu = el('kCpu'); if (kCpu) kCpu.className = 'val ' + pctClass(cpu);
+        setText('kMem', mem != null ? Math.round(mem) + '%' : '—');
+        const kMem = el('kMem'); if (kMem) kMem.className = 'val ' + pctClass(mem);
+        const free = d.diskSystem && d.diskSystem.freeHuman;
+        setText('kDisk', free || '—');
+        setText('kUp', (d.uptime && d.uptime.human) || '—');
+
+        const h = d.host || {};
+        setHtml('hostBlock',
+          '<strong style="color:var(--text)">' + esc(h.hostname) + '</strong><br>' +
+          esc(h.platform || h.os) + '<br>Python ' + esc(h.python || '—'));
+
+        const tb = d.toolbox || {};
+        const up = tb.serverUp || tb.portListening;
+        setHtml('tbBlock',
+          '<span class="pill ' + (up ? 'ok' : 'err') + '">' + (up ? 'UP' : 'DOWN') + '</span> ' +
+          esc(tb.endpoint || '') + '<br>' +
+          'Port listening: <strong>' + (tb.portListening ? 'yes' : 'no') + '</strong> · ' +
+          'bind ' + esc(tb.bindHost) + ':' + esc(tb.bindPort));
+
+        const ds = d.diskSystem || {};
+        const df = d.diskFafoData || {};
+        setText('dSys', ds.freeHuman || '—');
+        const dSys = el('dSys'); if (dSys) dSys.className = 'val ' + pctClass(ds.percent);
+        setText('dSysL', 'System ' + (ds.path || '') + ' free (' + (ds.percent != null ? Math.round(ds.percent) + '% used' : '—') + ')');
+        setText('dFafo', df.freeHuman || '—');
+        setText('dFafoL', 'Data volume free · ' + ((d.paths && d.paths.fafoLocal) || ''));
+
+        const x = d.xeroPresence || {};
+        setHtml('xeroBlock',
+          '<span class="pill ' + (x.connected ? 'ok' : 'info') + '">' + (x.connected ? 'authorized' : 'not authorized') + '</span> ' +
+          'secret ' + (x.hasClientSecret ? 'yes' : 'no') +
+          ' · refresh ' + (x.hasRefreshToken ? 'yes' : 'no') +
+          ' · access flag ' + (x.hasAccessToken ? 'yes' : 'no') +
+          (x.tenantId ? ' · tenant set' : '') +
+          (x.lastError ? '<br><span class="pill warn">lastError</span> ' + esc(String(x.lastError).slice(0, 120)) : '') +
+          '<br><span class="muted">' + esc(x.bindHint || 'presence only') + '</span>');
+
+        const procs = d.processes || {};
+        setHtml('tbCpu', rowsHtml(procs.topCpu));
+        setHtml('tbMem', rowsHtml(procs.topMemory));
+      }
+
+      function setupAuto() {
+        if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+        const autoEl = el('autoRefresh');
+        const intEl = el('autoInterval');
+        if (!autoEl || !autoEl.checked) {
+          lsSet(PREF, JSON.stringify({ auto: !!(autoEl && autoEl.checked), interval: intEl ? intEl.value : '15' }));
+          return;
+        }
+        const sec = Math.max(10, Number((intEl && intEl.value) || 15) || 15);
+        autoTimer = setInterval(function () { if (!document.hidden) load(false); }, sec * 1000);
+        lsSet(PREF, JSON.stringify({ auto: true, interval: intEl ? intEl.value : String(sec) }));
+      }
+
+      bind('btnRefresh', 'click', function () { load(true); });
+      bind('btnStartServer', 'click', function () {
+        withBusy(async function () {
+          setText('statusLine', 'Starting server…');
+          try {
+            if (window.AIToolboxAPI && window.AIToolboxAPI.startServer) {
+              await window.AIToolboxAPI.startServer({ mode: 'tray', waitMs: 90000 });
+              actionBusy = false;
+              await load(true);
+            } else {
+              location.href = '../Toolbox Launcher.html';
+            }
+          } catch (e) {
+            setText('statusLine', (e && e.message) || 'Start failed');
+          }
+        }, 'btnStartServer');
+      });
+      bind('btnExport', 'click', function () {
+        withBusy(async function () {
+          if (!lastData) { setText('statusLine', 'Nothing to export yet'); return; }
+          revokeBlobs();
+          const blob = new Blob([JSON.stringify(lastData, null, 2)], { type: 'application/json' });
+          const url = trackBlob(URL.createObjectURL(blob));
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'health-desk-' + Date.now() + '.json';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(revokeBlobs, 2000);
+        }, 'btnExport');
+      });
+      bind('btnCopy', 'click', function () {
+        withBusy(async function () {
+          if (!lastData) { setText('statusLine', 'Nothing to copy yet'); return; }
+          const d = lastData;
+          const lines = [
+            'System Health Desk · ' + (d.generatedAt || new Date().toISOString()),
+            'Host: ' + ((d.host && d.host.hostname) || '—'),
+            'CPU: ' + (d.cpu && d.cpu.percent != null ? Math.round(d.cpu.percent) + '%' : '—'),
+            'Mem: ' + (d.memory && d.memory.percent != null ? Math.round(d.memory.percent) + '%' : '—'),
+            'Disk free: ' + ((d.diskSystem && d.diskSystem.freeHuman) || '—'),
+            'Uptime: ' + ((d.uptime && d.uptime.human) || '—'),
+            'Server: ' + ((d.toolbox && (d.toolbox.serverUp || d.toolbox.portListening)) ? 'UP' : 'DOWN'),
+          ];
+          try {
+            await navigator.clipboard.writeText(lines.join('\n'));
+            setText('statusLine', 'Summary copied');
+          } catch (_) {
+            setText('statusLine', 'Copy failed');
+          }
+        }, 'btnCopy');
+      });
+      bind('autoRefresh', 'change', setupAuto);
+      bind('autoInterval', 'change', setupAuto);
+      document.addEventListener('keydown', function (e) {
+        if (isTypingTarget(e.target) && e.key !== 'Escape') return;
+        if (e.key === 'Escape') {
+          setText('errBox', '');
+          if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+          return;
+        }
+        if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(true); }
+      });
+      try {
+        const raw = lsGet(PREF, '{}');
+        const p = JSON.parse(raw || '{}') || {};
+        const autoEl = el('autoRefresh');
+        const intEl = el('autoInterval');
+        if (autoEl && typeof p.auto === 'boolean') autoEl.checked = p.auto;
+        if (intEl && p.interval) intEl.value = p.interval;
+      } catch (_) {}
+      load(false);
+      setupAuto();
+    })();
+  </script>
+</body>
+</html>
