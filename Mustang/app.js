@@ -1,28 +1,1296 @@
 import {
-  CIRCUIT_COLOR,
-  CIRCUIT_LABEL,
-  NODES,
-  PAINTS,
-  PARTS,
-  STAGES,
-  SYSTEM_LABEL,
-  UNVERIFIED,
-  WIRES,
-  flowById,
-  flowForPart,
-  live,
-  partView,
-  require_jsx_runtime,
-  require_react,
-  require_scheduler,
-  searchParts,
-  useMustang,
-  verdict
-} from "./part-JKRSEZZ4.js";
-import {
+  DEFAULT_LOOK,
+  GROUPS,
+  HOSE_KEY,
+  STAGE_NAMES,
+  VACUUM_TREE,
+  WIRE_COLORS,
   __commonJS,
-  __toESM
-} from "./part-MA4KR6TC.js";
+  __toESM,
+  groupIdOf,
+  groupsFor,
+  partBlurb
+} from "./part-25YCC4MA.js";
+
+// node_modules/scheduler/cjs/scheduler.development.js
+var require_scheduler_development = __commonJS({
+  "node_modules/scheduler/cjs/scheduler.development.js"(exports) {
+    "use strict";
+    (function() {
+      function performWorkUntilDeadline() {
+        needsPaint = false;
+        if (isMessageLoopRunning) {
+          var currentTime = exports.unstable_now();
+          startTime = currentTime;
+          var hasMoreWork = true;
+          try {
+            a: {
+              isHostCallbackScheduled = false;
+              isHostTimeoutScheduled && (isHostTimeoutScheduled = false, localClearTimeout(taskTimeoutID), taskTimeoutID = -1);
+              isPerformingWork = true;
+              var previousPriorityLevel = currentPriorityLevel;
+              try {
+                b: {
+                  advanceTimers(currentTime);
+                  for (currentTask = peek(taskQueue); null !== currentTask && !(currentTask.expirationTime > currentTime && shouldYieldToHost()); ) {
+                    var callback = currentTask.callback;
+                    if ("function" === typeof callback) {
+                      currentTask.callback = null;
+                      currentPriorityLevel = currentTask.priorityLevel;
+                      var continuationCallback = callback(
+                        currentTask.expirationTime <= currentTime
+                      );
+                      currentTime = exports.unstable_now();
+                      if ("function" === typeof continuationCallback) {
+                        currentTask.callback = continuationCallback;
+                        advanceTimers(currentTime);
+                        hasMoreWork = true;
+                        break b;
+                      }
+                      currentTask === peek(taskQueue) && pop(taskQueue);
+                      advanceTimers(currentTime);
+                    } else pop(taskQueue);
+                    currentTask = peek(taskQueue);
+                  }
+                  if (null !== currentTask) hasMoreWork = true;
+                  else {
+                    var firstTimer = peek(timerQueue);
+                    null !== firstTimer && requestHostTimeout(
+                      handleTimeout,
+                      firstTimer.startTime - currentTime
+                    );
+                    hasMoreWork = false;
+                  }
+                }
+                break a;
+              } finally {
+                currentTask = null, currentPriorityLevel = previousPriorityLevel, isPerformingWork = false;
+              }
+              hasMoreWork = void 0;
+            }
+          } finally {
+            hasMoreWork ? schedulePerformWorkUntilDeadline() : isMessageLoopRunning = false;
+          }
+        }
+      }
+      function push(heap, node) {
+        var index = heap.length;
+        heap.push(node);
+        a: for (; 0 < index; ) {
+          var parentIndex = index - 1 >>> 1, parent = heap[parentIndex];
+          if (0 < compare(parent, node))
+            heap[parentIndex] = node, heap[index] = parent, index = parentIndex;
+          else break a;
+        }
+      }
+      function peek(heap) {
+        return 0 === heap.length ? null : heap[0];
+      }
+      function pop(heap) {
+        if (0 === heap.length) return null;
+        var first = heap[0], last = heap.pop();
+        if (last !== first) {
+          heap[0] = last;
+          a: for (var index = 0, length = heap.length, halfLength = length >>> 1; index < halfLength; ) {
+            var leftIndex = 2 * (index + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
+            if (0 > compare(left, last))
+              rightIndex < length && 0 > compare(right, left) ? (heap[index] = right, heap[rightIndex] = last, index = rightIndex) : (heap[index] = left, heap[leftIndex] = last, index = leftIndex);
+            else if (rightIndex < length && 0 > compare(right, last))
+              heap[index] = right, heap[rightIndex] = last, index = rightIndex;
+            else break a;
+          }
+        }
+        return first;
+      }
+      function compare(a, b) {
+        var diff = a.sortIndex - b.sortIndex;
+        return 0 !== diff ? diff : a.id - b.id;
+      }
+      function advanceTimers(currentTime) {
+        for (var timer = peek(timerQueue); null !== timer; ) {
+          if (null === timer.callback) pop(timerQueue);
+          else if (timer.startTime <= currentTime)
+            pop(timerQueue), timer.sortIndex = timer.expirationTime, push(taskQueue, timer);
+          else break;
+          timer = peek(timerQueue);
+        }
+      }
+      function handleTimeout(currentTime) {
+        isHostTimeoutScheduled = false;
+        advanceTimers(currentTime);
+        if (!isHostCallbackScheduled)
+          if (null !== peek(taskQueue))
+            isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline());
+          else {
+            var firstTimer = peek(timerQueue);
+            null !== firstTimer && requestHostTimeout(
+              handleTimeout,
+              firstTimer.startTime - currentTime
+            );
+          }
+      }
+      function shouldYieldToHost() {
+        return needsPaint ? true : exports.unstable_now() - startTime < frameInterval ? false : true;
+      }
+      function requestHostTimeout(callback, ms) {
+        taskTimeoutID = localSetTimeout(function() {
+          callback(exports.unstable_now());
+        }, ms);
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      exports.unstable_now = void 0;
+      if ("object" === typeof performance && "function" === typeof performance.now) {
+        var localPerformance = performance;
+        exports.unstable_now = function() {
+          return localPerformance.now();
+        };
+      } else {
+        var localDate = Date, initialTime = localDate.now();
+        exports.unstable_now = function() {
+          return localDate.now() - initialTime;
+        };
+      }
+      var taskQueue = [], timerQueue = [], taskIdCounter = 1, currentTask = null, currentPriorityLevel = 3, isPerformingWork = false, isHostCallbackScheduled = false, isHostTimeoutScheduled = false, needsPaint = false, localSetTimeout = "function" === typeof setTimeout ? setTimeout : null, localClearTimeout = "function" === typeof clearTimeout ? clearTimeout : null, localSetImmediate = "undefined" !== typeof setImmediate ? setImmediate : null, isMessageLoopRunning = false, taskTimeoutID = -1, frameInterval = 5, startTime = -1;
+      if ("function" === typeof localSetImmediate)
+        var schedulePerformWorkUntilDeadline = function() {
+          localSetImmediate(performWorkUntilDeadline);
+        };
+      else if ("undefined" !== typeof MessageChannel) {
+        var channel = new MessageChannel(), port = channel.port2;
+        channel.port1.onmessage = performWorkUntilDeadline;
+        schedulePerformWorkUntilDeadline = function() {
+          port.postMessage(null);
+        };
+      } else
+        schedulePerformWorkUntilDeadline = function() {
+          localSetTimeout(performWorkUntilDeadline, 0);
+        };
+      exports.unstable_IdlePriority = 5;
+      exports.unstable_ImmediatePriority = 1;
+      exports.unstable_LowPriority = 4;
+      exports.unstable_NormalPriority = 3;
+      exports.unstable_Profiling = null;
+      exports.unstable_UserBlockingPriority = 2;
+      exports.unstable_cancelCallback = function(task) {
+        task.callback = null;
+      };
+      exports.unstable_forceFrameRate = function(fps) {
+        0 > fps || 125 < fps ? console.error(
+          "forceFrameRate takes a positive int between 0 and 125, forcing frame rates higher than 125 fps is not supported"
+        ) : frameInterval = 0 < fps ? Math.floor(1e3 / fps) : 5;
+      };
+      exports.unstable_getCurrentPriorityLevel = function() {
+        return currentPriorityLevel;
+      };
+      exports.unstable_next = function(eventHandler) {
+        switch (currentPriorityLevel) {
+          case 1:
+          case 2:
+          case 3:
+            var priorityLevel = 3;
+            break;
+          default:
+            priorityLevel = currentPriorityLevel;
+        }
+        var previousPriorityLevel = currentPriorityLevel;
+        currentPriorityLevel = priorityLevel;
+        try {
+          return eventHandler();
+        } finally {
+          currentPriorityLevel = previousPriorityLevel;
+        }
+      };
+      exports.unstable_requestPaint = function() {
+        needsPaint = true;
+      };
+      exports.unstable_runWithPriority = function(priorityLevel, eventHandler) {
+        switch (priorityLevel) {
+          case 1:
+          case 2:
+          case 3:
+          case 4:
+          case 5:
+            break;
+          default:
+            priorityLevel = 3;
+        }
+        var previousPriorityLevel = currentPriorityLevel;
+        currentPriorityLevel = priorityLevel;
+        try {
+          return eventHandler();
+        } finally {
+          currentPriorityLevel = previousPriorityLevel;
+        }
+      };
+      exports.unstable_scheduleCallback = function(priorityLevel, callback, options) {
+        var currentTime = exports.unstable_now();
+        "object" === typeof options && null !== options ? (options = options.delay, options = "number" === typeof options && 0 < options ? currentTime + options : currentTime) : options = currentTime;
+        switch (priorityLevel) {
+          case 1:
+            var timeout = -1;
+            break;
+          case 2:
+            timeout = 250;
+            break;
+          case 5:
+            timeout = 1073741823;
+            break;
+          case 4:
+            timeout = 1e4;
+            break;
+          default:
+            timeout = 5e3;
+        }
+        timeout = options + timeout;
+        priorityLevel = {
+          id: taskIdCounter++,
+          callback,
+          priorityLevel,
+          startTime: options,
+          expirationTime: timeout,
+          sortIndex: -1
+        };
+        options > currentTime ? (priorityLevel.sortIndex = options, push(timerQueue, priorityLevel), null === peek(taskQueue) && priorityLevel === peek(timerQueue) && (isHostTimeoutScheduled ? (localClearTimeout(taskTimeoutID), taskTimeoutID = -1) : isHostTimeoutScheduled = true, requestHostTimeout(handleTimeout, options - currentTime))) : (priorityLevel.sortIndex = timeout, push(taskQueue, priorityLevel), isHostCallbackScheduled || isPerformingWork || (isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline())));
+        return priorityLevel;
+      };
+      exports.unstable_shouldYield = shouldYieldToHost;
+      exports.unstable_wrapCallback = function(callback) {
+        var parentPriorityLevel = currentPriorityLevel;
+        return function() {
+          var previousPriorityLevel = currentPriorityLevel;
+          currentPriorityLevel = parentPriorityLevel;
+          try {
+            return callback.apply(this, arguments);
+          } finally {
+            currentPriorityLevel = previousPriorityLevel;
+          }
+        };
+      };
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/scheduler/index.js
+var require_scheduler = __commonJS({
+  "node_modules/scheduler/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_scheduler_development();
+    }
+  }
+});
+
+// node_modules/react/cjs/react.development.js
+var require_react_development = __commonJS({
+  "node_modules/react/cjs/react.development.js"(exports, module) {
+    "use strict";
+    (function() {
+      function defineDeprecationWarning(methodName, info) {
+        Object.defineProperty(Component.prototype, methodName, {
+          get: function() {
+            console.warn(
+              "%s(...) is deprecated in plain JavaScript React classes. %s",
+              info[0],
+              info[1]
+            );
+          }
+        });
+      }
+      function getIteratorFn(maybeIterable) {
+        if (null === maybeIterable || "object" !== typeof maybeIterable)
+          return null;
+        maybeIterable = MAYBE_ITERATOR_SYMBOL && maybeIterable[MAYBE_ITERATOR_SYMBOL] || maybeIterable["@@iterator"];
+        return "function" === typeof maybeIterable ? maybeIterable : null;
+      }
+      function warnNoop(publicInstance, callerName) {
+        publicInstance = (publicInstance = publicInstance.constructor) && (publicInstance.displayName || publicInstance.name) || "ReactClass";
+        var warningKey = publicInstance + "." + callerName;
+        didWarnStateUpdateForUnmountedComponent[warningKey] || (console.error(
+          "Can't call %s on a component that is not yet mounted. This is a no-op, but it might indicate a bug in your application. Instead, assign to `this.state` directly or define a `state = {};` class property with the desired state in the %s component.",
+          callerName,
+          publicInstance
+        ), didWarnStateUpdateForUnmountedComponent[warningKey] = true);
+      }
+      function Component(props, context, updater) {
+        this.props = props;
+        this.context = context;
+        this.refs = emptyObject;
+        this.updater = updater || ReactNoopUpdateQueue;
+      }
+      function ComponentDummy() {
+      }
+      function PureComponent(props, context, updater) {
+        this.props = props;
+        this.context = context;
+        this.refs = emptyObject;
+        this.updater = updater || ReactNoopUpdateQueue;
+      }
+      function noop() {
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function checkKeyStringCoercion(value) {
+        try {
+          testStringCoercion(value);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        if (JSCompiler_inline_result) {
+          JSCompiler_inline_result = console;
+          var JSCompiler_temp_const = JSCompiler_inline_result.error;
+          var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+          JSCompiler_temp_const.call(
+            JSCompiler_inline_result,
+            "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+            JSCompiler_inline_result$jscomp$0
+          );
+          return testStringCoercion(value);
+        }
+      }
+      function getComponentNameFromType(type) {
+        if (null == type) return null;
+        if ("function" === typeof type)
+          return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+        if ("string" === typeof type) return type;
+        switch (type) {
+          case REACT_FRAGMENT_TYPE:
+            return "Fragment";
+          case REACT_PROFILER_TYPE:
+            return "Profiler";
+          case REACT_STRICT_MODE_TYPE:
+            return "StrictMode";
+          case REACT_SUSPENSE_TYPE:
+            return "Suspense";
+          case REACT_SUSPENSE_LIST_TYPE:
+            return "SuspenseList";
+          case REACT_ACTIVITY_TYPE:
+            return "Activity";
+          case REACT_VIEW_TRANSITION_TYPE:
+            return "ViewTransition";
+        }
+        if ("object" === typeof type)
+          switch ("number" === typeof type.tag && console.error(
+            "Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."
+          ), type.$$typeof) {
+            case REACT_PORTAL_TYPE:
+              return "Portal";
+            case REACT_CONTEXT_TYPE:
+              return type.displayName || "Context";
+            case REACT_CONSUMER_TYPE:
+              return (type._context.displayName || "Context") + ".Consumer";
+            case REACT_FORWARD_REF_TYPE:
+              var innerType = type.render;
+              type = type.displayName;
+              type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+              return type;
+            case REACT_MEMO_TYPE:
+              return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+            case REACT_LAZY_TYPE:
+              innerType = type._payload;
+              type = type._init;
+              try {
+                return getComponentNameFromType(type(innerType));
+              } catch (x) {
+              }
+          }
+        return null;
+      }
+      function getTaskName(type) {
+        if (type === REACT_FRAGMENT_TYPE) return "<>";
+        if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE)
+          return "<...>";
+        try {
+          var name = getComponentNameFromType(type);
+          return name ? "<" + name + ">" : "<...>";
+        } catch (x) {
+          return "<...>";
+        }
+      }
+      function getOwner() {
+        var dispatcher = ReactSharedInternals.A;
+        return null === dispatcher ? null : dispatcher.getOwner();
+      }
+      function UnknownOwner() {
+        return Error("react-stack-top-frame");
+      }
+      function hasValidKey(config) {
+        if (hasOwnProperty.call(config, "key")) {
+          var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+          if (getter && getter.isReactWarning) return false;
+        }
+        return void 0 !== config.key;
+      }
+      function defineKeyPropWarningGetter(props, displayName) {
+        function warnAboutAccessingKey() {
+          specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
+            "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
+            displayName
+          ));
+        }
+        warnAboutAccessingKey.isReactWarning = true;
+        Object.defineProperty(props, "key", {
+          get: warnAboutAccessingKey,
+          configurable: true
+        });
+      }
+      function elementRefGetterWithDeprecationWarning() {
+        var componentName = getComponentNameFromType(this.type);
+        didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = true, console.error(
+          "Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."
+        ));
+        componentName = this.props.ref;
+        return void 0 !== componentName ? componentName : null;
+      }
+      function ReactElement(type, key, props, owner, debugStack, debugTask) {
+        var refProp = props.ref;
+        type = {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          props,
+          _owner: owner
+        };
+        null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+          enumerable: false,
+          get: elementRefGetterWithDeprecationWarning
+        }) : Object.defineProperty(type, "ref", { enumerable: false, value: null });
+        type._store = {};
+        Object.defineProperty(type._store, "validated", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: 0
+        });
+        Object.defineProperty(type, "_debugInfo", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: null
+        });
+        Object.defineProperty(type, "_debugStack", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugStack
+        });
+        Object.defineProperty(type, "_debugTask", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugTask
+        });
+        Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+        return type;
+      }
+      function cloneAndReplaceKey(oldElement, newKey) {
+        newKey = ReactElement(
+          oldElement.type,
+          newKey,
+          oldElement.props,
+          oldElement._owner,
+          oldElement._debugStack,
+          oldElement._debugTask
+        );
+        oldElement._store && (newKey._store.validated = oldElement._store.validated);
+        return newKey;
+      }
+      function validateChildKeys(node) {
+        isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+      }
+      function isValidElement(object) {
+        return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+      }
+      function escape(key) {
+        var escaperLookup = { "=": "=0", ":": "=2" };
+        return "$" + key.replace(/[=:]/g, function(match) {
+          return escaperLookup[match];
+        });
+      }
+      function getElementKey(element, index) {
+        return "object" === typeof element && null !== element && null != element.key ? (checkKeyStringCoercion(element.key), escape("" + element.key)) : index.toString(36);
+      }
+      function resolveThenable(thenable) {
+        switch (thenable.status) {
+          case "fulfilled":
+            return thenable.value;
+          case "rejected":
+            throw thenable.reason;
+          default:
+            switch ("string" === typeof thenable.status ? thenable.then(noop, noop) : (thenable.status = "pending", thenable.then(
+              function(fulfilledValue) {
+                "pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
+              },
+              function(error) {
+                "pending" === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+              }
+            )), thenable.status) {
+              case "fulfilled":
+                return thenable.value;
+              case "rejected":
+                throw thenable.reason;
+            }
+        }
+        throw thenable;
+      }
+      function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
+        var type = typeof children;
+        if ("undefined" === type || "boolean" === type) children = null;
+        var invokeCallback = false;
+        if (null === children) invokeCallback = true;
+        else
+          switch (type) {
+            case "bigint":
+            case "string":
+            case "number":
+              invokeCallback = true;
+              break;
+            case "object":
+              switch (children.$$typeof) {
+                case REACT_ELEMENT_TYPE:
+                case REACT_PORTAL_TYPE:
+                  invokeCallback = true;
+                  break;
+                case REACT_LAZY_TYPE:
+                  return invokeCallback = children._init, mapIntoArray(
+                    invokeCallback(children._payload),
+                    array,
+                    escapedPrefix,
+                    nameSoFar,
+                    callback
+                  );
+              }
+          }
+        if (invokeCallback) {
+          invokeCallback = children;
+          callback = callback(invokeCallback);
+          var childKey = "" === nameSoFar ? "." + getElementKey(invokeCallback, 0) : nameSoFar;
+          isArrayImpl(callback) ? (escapedPrefix = "", null != childKey && (escapedPrefix = childKey.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
+            return c;
+          })) : null != callback && (isValidElement(callback) && (null != callback.key && (invokeCallback && invokeCallback.key === callback.key || checkKeyStringCoercion(callback.key)), escapedPrefix = cloneAndReplaceKey(
+            callback,
+            escapedPrefix + (null == callback.key || invokeCallback && invokeCallback.key === callback.key ? "" : ("" + callback.key).replace(
+              userProvidedKeyEscapeRegex,
+              "$&/"
+            ) + "/") + childKey
+          ), "" !== nameSoFar && null != invokeCallback && isValidElement(invokeCallback) && null == invokeCallback.key && invokeCallback._store && !invokeCallback._store.validated && (escapedPrefix._store.validated = 2), callback = escapedPrefix), array.push(callback));
+          return 1;
+        }
+        invokeCallback = 0;
+        childKey = "" === nameSoFar ? "." : nameSoFar + ":";
+        if (isArrayImpl(children))
+          for (var i = 0; i < children.length; i++)
+            nameSoFar = children[i], type = childKey + getElementKey(nameSoFar, i), invokeCallback += mapIntoArray(
+              nameSoFar,
+              array,
+              escapedPrefix,
+              type,
+              callback
+            );
+        else if (i = getIteratorFn(children), "function" === typeof i)
+          for (i === children.entries && (didWarnAboutMaps || console.warn(
+            "Using Maps as children is not supported. Use an array of keyed ReactElements instead."
+          ), didWarnAboutMaps = true), children = i.call(children), i = 0; !(nameSoFar = children.next()).done; )
+            nameSoFar = nameSoFar.value, type = childKey + getElementKey(nameSoFar, i++), invokeCallback += mapIntoArray(
+              nameSoFar,
+              array,
+              escapedPrefix,
+              type,
+              callback
+            );
+        else if ("object" === type) {
+          if ("function" === typeof children.then)
+            return mapIntoArray(
+              resolveThenable(children),
+              array,
+              escapedPrefix,
+              nameSoFar,
+              callback
+            );
+          array = String(children);
+          throw Error(
+            "Objects are not valid as a React child (found: " + ("[object Object]" === array ? "object with keys {" + Object.keys(children).join(", ") + "}" : array) + "). If you meant to render a collection of children, use an array instead."
+          );
+        }
+        return invokeCallback;
+      }
+      function mapChildren(children, func, context) {
+        if (null == children) return children;
+        var result = [], count = 0;
+        mapIntoArray(children, result, "", "", function(child) {
+          return func.call(context, child, count++);
+        });
+        return result;
+      }
+      function lazyInitializer(payload) {
+        if (-1 === payload._status) {
+          var resolveDebugValue = null, rejectDebugValue = null, ioInfo = payload._ioInfo;
+          null != ioInfo && (ioInfo.start = ioInfo.end = performance.now(), ioInfo.value = new Promise(function(resolve, reject) {
+            resolveDebugValue = resolve;
+            rejectDebugValue = reject;
+          }));
+          ioInfo = payload._result;
+          var thenable = ioInfo();
+          thenable.then(
+            function(moduleObject) {
+              if (0 === payload._status || -1 === payload._status) {
+                payload._status = 1;
+                payload._result = moduleObject;
+                var _ioInfo = payload._ioInfo;
+                if (null != _ioInfo) {
+                  _ioInfo.end = performance.now();
+                  var debugValue = null == moduleObject ? void 0 : moduleObject.default;
+                  resolveDebugValue(debugValue);
+                  _ioInfo.value.status = "fulfilled";
+                  _ioInfo.value.value = debugValue;
+                }
+                void 0 === thenable.status && (thenable.status = "fulfilled", thenable.value = moduleObject);
+              }
+            },
+            function(error) {
+              if (0 === payload._status || -1 === payload._status) {
+                payload._status = 2;
+                payload._result = error;
+                var _ioInfo2 = payload._ioInfo;
+                null != _ioInfo2 && (_ioInfo2.end = performance.now(), _ioInfo2.value.then(noop, noop), rejectDebugValue(error), _ioInfo2.value.status = "rejected", _ioInfo2.value.reason = error);
+                void 0 === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+              }
+            }
+          );
+          ioInfo = payload._ioInfo;
+          if (null != ioInfo) {
+            var displayName = thenable.displayName;
+            "string" === typeof displayName && (ioInfo.name = displayName);
+          }
+          -1 === payload._status && (payload._status = 0, payload._result = thenable);
+        }
+        if (1 === payload._status)
+          return ioInfo = payload._result, void 0 === ioInfo && console.error(
+            "lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))\n\nDid you accidentally put curly braces around the import?",
+            ioInfo
+          ), "default" in ioInfo || console.error(
+            "lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))",
+            ioInfo
+          ), ioInfo.default;
+        throw payload._result;
+      }
+      function resolveDispatcher() {
+        var dispatcher = ReactSharedInternals.H;
+        null === dispatcher && console.error(
+          "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+        );
+        return dispatcher;
+      }
+      function releaseAsyncTransition() {
+        ReactSharedInternals.asyncTransitions--;
+      }
+      function startTransition(scope) {
+        var prevTransition = ReactSharedInternals.T, currentTransition = {};
+        currentTransition.types = null !== prevTransition ? prevTransition.types : null;
+        currentTransition._updatedFibers = /* @__PURE__ */ new Set();
+        ReactSharedInternals.T = currentTransition;
+        try {
+          var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
+          null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
+          "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && (ReactSharedInternals.asyncTransitions++, returnValue.then(releaseAsyncTransition, releaseAsyncTransition), returnValue.then(noop, reportGlobalError));
+        } catch (error) {
+          reportGlobalError(error);
+        } finally {
+          null === prevTransition && currentTransition._updatedFibers && (scope = currentTransition._updatedFibers.size, currentTransition._updatedFibers.clear(), 10 < scope && console.warn(
+            "Detected a large number of updates inside startTransition. If this is due to a subscription please re-write it to use React provided hooks. Otherwise concurrent mode guarantees are off the table."
+          )), null !== prevTransition && null !== currentTransition.types && (null !== prevTransition.types && prevTransition.types !== currentTransition.types && console.error(
+            "We expected inner Transitions to have transferred the outer types set and that you cannot add to the outer Transition while inside the inner.This is a bug in React."
+          ), prevTransition.types = currentTransition.types), ReactSharedInternals.T = prevTransition;
+        }
+      }
+      function addTransitionType(type) {
+        var transition = ReactSharedInternals.T;
+        if (null !== transition) {
+          var transitionTypes = transition.types;
+          null === transitionTypes ? transition.types = [type] : -1 === transitionTypes.indexOf(type) && transitionTypes.push(type);
+        } else
+          0 === ReactSharedInternals.asyncTransitions && console.error(
+            "addTransitionType can only be called inside a `startTransition()` callback. It must be associated with a specific Transition."
+          ), startTransition(addTransitionType.bind(null, type));
+      }
+      function enqueueTask(task) {
+        if (null === enqueueTaskImpl)
+          try {
+            var requireString = ("require" + Math.random()).slice(0, 7);
+            enqueueTaskImpl = (module && module[requireString]).call(
+              module,
+              "timers"
+            ).setImmediate;
+          } catch (_err) {
+            enqueueTaskImpl = function(callback) {
+              false === didWarnAboutMessageChannel && (didWarnAboutMessageChannel = true, "undefined" === typeof MessageChannel && console.error(
+                "This browser does not have a MessageChannel implementation, so enqueuing tasks via await act(async () => ...) will fail. Please file an issue at https://github.com/facebook/react/issues if you encounter this warning."
+              ));
+              var channel = new MessageChannel();
+              channel.port1.onmessage = callback;
+              channel.port2.postMessage(void 0);
+            };
+          }
+        return enqueueTaskImpl(task);
+      }
+      function aggregateErrors(errors) {
+        return 1 < errors.length && "function" === typeof AggregateError ? new AggregateError(errors) : errors[0];
+      }
+      function popActScope(prevActQueue, prevActScopeDepth) {
+        prevActScopeDepth !== actScopeDepth - 1 && console.error(
+          "You seem to have overlapping act() calls, this is not supported. Be sure to await previous act() calls before making a new one. "
+        );
+        actScopeDepth = prevActScopeDepth;
+      }
+      function recursivelyFlushAsyncActWork(returnValue, resolve, reject) {
+        var queue = ReactSharedInternals.actQueue;
+        if (null !== queue)
+          if (0 !== queue.length)
+            try {
+              flushActQueue(queue);
+              enqueueTask(function() {
+                return recursivelyFlushAsyncActWork(returnValue, resolve, reject);
+              });
+              return;
+            } catch (error) {
+              ReactSharedInternals.thrownErrors.push(error);
+            }
+          else ReactSharedInternals.actQueue = null;
+        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve(returnValue);
+      }
+      function flushActQueue(queue) {
+        if (!isFlushing) {
+          isFlushing = true;
+          var i = 0;
+          try {
+            for (; i < queue.length; i++) {
+              var callback = queue[i];
+              do {
+                ReactSharedInternals.didUsePromise = false;
+                var continuation = callback(false);
+                if (null !== continuation) {
+                  if (ReactSharedInternals.didUsePromise) {
+                    queue[i] = callback;
+                    queue.splice(0, i);
+                    return;
+                  }
+                  callback = continuation;
+                } else break;
+              } while (1);
+            }
+            queue.length = 0;
+          } catch (error) {
+            queue.splice(0, i + 1), ReactSharedInternals.thrownErrors.push(error);
+          } finally {
+            isFlushing = false;
+          }
+        }
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, didWarnStateUpdateForUnmountedComponent = {}, ReactNoopUpdateQueue = {
+        isMounted: function() {
+          return false;
+        },
+        enqueueForceUpdate: function(publicInstance) {
+          warnNoop(publicInstance, "forceUpdate");
+        },
+        enqueueReplaceState: function(publicInstance) {
+          warnNoop(publicInstance, "replaceState");
+        },
+        enqueueSetState: function(publicInstance) {
+          warnNoop(publicInstance, "setState");
+        }
+      }, assign = Object.assign, emptyObject = {};
+      Object.freeze(emptyObject);
+      Component.prototype.isReactComponent = {};
+      Component.prototype.setState = function(partialState, callback) {
+        if ("object" !== typeof partialState && "function" !== typeof partialState && null != partialState)
+          throw Error(
+            "takes an object of state variables to update or a function which returns an object of state variables."
+          );
+        this.updater.enqueueSetState(this, partialState, callback, "setState");
+      };
+      Component.prototype.forceUpdate = function(callback) {
+        this.updater.enqueueForceUpdate(this, callback, "forceUpdate");
+      };
+      var deprecatedAPIs = {
+        isMounted: [
+          "isMounted",
+          "Instead, make sure to clean up subscriptions and pending requests in componentWillUnmount to prevent memory leaks."
+        ],
+        replaceState: [
+          "replaceState",
+          "Refactor your code to use setState instead (see https://github.com/facebook/react/issues/3236)."
+        ]
+      };
+      for (fnName in deprecatedAPIs)
+        deprecatedAPIs.hasOwnProperty(fnName) && defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
+      ComponentDummy.prototype = Component.prototype;
+      deprecatedAPIs = PureComponent.prototype = new ComponentDummy();
+      deprecatedAPIs.constructor = PureComponent;
+      assign(deprecatedAPIs, Component.prototype);
+      deprecatedAPIs.isPureReactComponent = true;
+      var isArrayImpl = Array.isArray, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = {
+        H: null,
+        A: null,
+        T: null,
+        S: null,
+        actQueue: null,
+        asyncTransitions: 0,
+        isBatchingLegacy: false,
+        didScheduleLegacyUpdate: false,
+        didUsePromise: false,
+        thrownErrors: [],
+        getCurrentStack: null,
+        recentlyCreatedOwnerStacks: 0
+      }, hasOwnProperty = Object.prototype.hasOwnProperty, createTask = console.createTask ? console.createTask : function() {
+        return null;
+      };
+      deprecatedAPIs = {
+        react_stack_bottom_frame: function(callStackForError) {
+          return callStackForError();
+        }
+      };
+      var specialPropKeyWarningShown, didWarnAboutOldJSXRuntime;
+      var didWarnAboutElementRef = {};
+      var unknownOwnerDebugStack = deprecatedAPIs.react_stack_bottom_frame.bind(
+        deprecatedAPIs,
+        UnknownOwner
+      )();
+      var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+      var didWarnAboutMaps = false, userProvidedKeyEscapeRegex = /\/+/g, reportGlobalError = "function" === typeof reportError ? reportError : function(error) {
+        if ("object" === typeof window && "function" === typeof window.ErrorEvent) {
+          var event = new window.ErrorEvent("error", {
+            bubbles: true,
+            cancelable: true,
+            message: "object" === typeof error && null !== error && "string" === typeof error.message ? String(error.message) : String(error),
+            error
+          });
+          if (!window.dispatchEvent(event)) return;
+        } else if ("object" === typeof process && "function" === typeof process.emit) {
+          process.emit("uncaughtException", error);
+          return;
+        }
+        console.error(error);
+      }, didWarnAboutMessageChannel = false, enqueueTaskImpl = null, actScopeDepth = 0, didWarnNoAwaitAct = false, isFlushing = false, queueSeveralMicrotasks = "function" === typeof queueMicrotask ? function(callback) {
+        queueMicrotask(function() {
+          return queueMicrotask(callback);
+        });
+      } : enqueueTask;
+      deprecatedAPIs = Object.freeze({
+        __proto__: null,
+        c: function(size) {
+          return resolveDispatcher().useMemoCache(size);
+        }
+      });
+      var fnName = {
+        map: mapChildren,
+        forEach: function(children, forEachFunc, forEachContext) {
+          mapChildren(
+            children,
+            function() {
+              forEachFunc.apply(this, arguments);
+            },
+            forEachContext
+          );
+        },
+        count: function(children) {
+          var n = 0;
+          mapChildren(children, function() {
+            n++;
+          });
+          return n;
+        },
+        toArray: function(children) {
+          return mapChildren(children, function(child) {
+            return child;
+          }) || [];
+        },
+        only: function(children) {
+          if (!isValidElement(children))
+            throw Error(
+              "React.Children.only expected to receive a single React element child."
+            );
+          return children;
+        }
+      };
+      exports.Activity = REACT_ACTIVITY_TYPE;
+      exports.Children = fnName;
+      exports.Component = Component;
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.Profiler = REACT_PROFILER_TYPE;
+      exports.PureComponent = PureComponent;
+      exports.StrictMode = REACT_STRICT_MODE_TYPE;
+      exports.Suspense = REACT_SUSPENSE_TYPE;
+      exports.ViewTransition = REACT_VIEW_TRANSITION_TYPE;
+      exports.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = ReactSharedInternals;
+      exports.__COMPILER_RUNTIME = deprecatedAPIs;
+      exports.act = function(callback) {
+        var prevActQueue = ReactSharedInternals.actQueue, prevActScopeDepth = actScopeDepth;
+        actScopeDepth++;
+        var queue = ReactSharedInternals.actQueue = null !== prevActQueue ? prevActQueue : [], didAwaitActCall = false;
+        try {
+          var result = callback();
+        } catch (error) {
+          ReactSharedInternals.thrownErrors.push(error);
+        }
+        if (0 < ReactSharedInternals.thrownErrors.length)
+          throw popActScope(prevActQueue, prevActScopeDepth), callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+        if (null !== result && "object" === typeof result && "function" === typeof result.then) {
+          var thenable = result;
+          queueSeveralMicrotasks(function() {
+            didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = true, console.error(
+              "You called act(async () => ...) without await. This could lead to unexpected testing behaviour, interleaving multiple act calls and mixing their scopes. You should - await act(async () => ...);"
+            ));
+          });
+          return {
+            then: function(resolve, reject) {
+              didAwaitActCall = true;
+              thenable.then(
+                function(returnValue) {
+                  popActScope(prevActQueue, prevActScopeDepth);
+                  if (0 === prevActScopeDepth) {
+                    try {
+                      flushActQueue(queue), enqueueTask(function() {
+                        return recursivelyFlushAsyncActWork(
+                          returnValue,
+                          resolve,
+                          reject
+                        );
+                      });
+                    } catch (error$0) {
+                      ReactSharedInternals.thrownErrors.push(error$0);
+                    }
+                    if (0 < ReactSharedInternals.thrownErrors.length) {
+                      var _thrownError = aggregateErrors(
+                        ReactSharedInternals.thrownErrors
+                      );
+                      ReactSharedInternals.thrownErrors.length = 0;
+                      reject(_thrownError);
+                    }
+                  } else resolve(returnValue);
+                },
+                function(error) {
+                  popActScope(prevActQueue, prevActScopeDepth);
+                  0 < ReactSharedInternals.thrownErrors.length ? (error = aggregateErrors(
+                    ReactSharedInternals.thrownErrors
+                  ), ReactSharedInternals.thrownErrors.length = 0, reject(error)) : reject(error);
+                }
+              );
+            }
+          };
+        }
+        var returnValue$jscomp$0 = result;
+        popActScope(prevActQueue, prevActScopeDepth);
+        0 === prevActScopeDepth && (flushActQueue(queue), 0 !== queue.length && queueSeveralMicrotasks(function() {
+          didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = true, console.error(
+            "A component suspended inside an `act` scope, but the `act` call was not awaited. When testing React components that depend on asynchronous data, you must await the result:\n\nawait act(() => ...)"
+          ));
+        }), ReactSharedInternals.actQueue = null);
+        if (0 < ReactSharedInternals.thrownErrors.length)
+          throw callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+        return {
+          then: function(resolve, reject) {
+            didAwaitActCall = true;
+            0 === prevActScopeDepth ? (ReactSharedInternals.actQueue = queue, enqueueTask(function() {
+              return recursivelyFlushAsyncActWork(
+                returnValue$jscomp$0,
+                resolve,
+                reject
+              );
+            })) : resolve(returnValue$jscomp$0);
+          }
+        };
+      };
+      exports.addTransitionType = addTransitionType;
+      exports.cache = function(fn) {
+        return function() {
+          return fn.apply(null, arguments);
+        };
+      };
+      exports.cacheSignal = function() {
+        return null;
+      };
+      exports.captureOwnerStack = function() {
+        var getCurrentStack = ReactSharedInternals.getCurrentStack;
+        return null === getCurrentStack ? null : getCurrentStack();
+      };
+      exports.cloneElement = function(element, config, children) {
+        if (null === element || void 0 === element)
+          throw Error(
+            "The argument must be a React element, but you passed " + element + "."
+          );
+        var props = assign({}, element.props), key = element.key, owner = element._owner;
+        if (null != config) {
+          var JSCompiler_inline_result;
+          a: {
+            if (hasOwnProperty.call(config, "ref") && (JSCompiler_inline_result = Object.getOwnPropertyDescriptor(
+              config,
+              "ref"
+            ).get) && JSCompiler_inline_result.isReactWarning) {
+              JSCompiler_inline_result = false;
+              break a;
+            }
+            JSCompiler_inline_result = void 0 !== config.ref;
+          }
+          JSCompiler_inline_result && (owner = getOwner());
+          hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key);
+          for (propName in config)
+            !hasOwnProperty.call(config, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config.ref || (props[propName] = config[propName]);
+        }
+        var propName = arguments.length - 2;
+        if (1 === propName) props.children = children;
+        else if (1 < propName) {
+          JSCompiler_inline_result = Array(propName);
+          for (var i = 0; i < propName; i++)
+            JSCompiler_inline_result[i] = arguments[i + 2];
+          props.children = JSCompiler_inline_result;
+        }
+        props = ReactElement(
+          element.type,
+          key,
+          props,
+          owner,
+          element._debugStack,
+          element._debugTask
+        );
+        for (key = 2; key < arguments.length; key++)
+          validateChildKeys(arguments[key]);
+        return props;
+      };
+      exports.createContext = function(defaultValue) {
+        defaultValue = {
+          $$typeof: REACT_CONTEXT_TYPE,
+          _currentValue: defaultValue,
+          _currentValue2: defaultValue,
+          _threadCount: 0,
+          Provider: null,
+          Consumer: null
+        };
+        defaultValue.Provider = defaultValue;
+        defaultValue.Consumer = {
+          $$typeof: REACT_CONSUMER_TYPE,
+          _context: defaultValue
+        };
+        defaultValue._currentRenderer = null;
+        defaultValue._currentRenderer2 = null;
+        return defaultValue;
+      };
+      exports.createElement = function(type, config, children) {
+        for (var i = 2; i < arguments.length; i++)
+          validateChildKeys(arguments[i]);
+        var propName;
+        i = {};
+        var key = null;
+        if (null != config)
+          for (propName in didWarnAboutOldJSXRuntime || !("__self" in config) || "key" in config || (didWarnAboutOldJSXRuntime = true, console.warn(
+            "Your app (or one of its dependencies) is using an outdated JSX transform. Update to the modern JSX transform for faster performance: https://react.dev/link/new-jsx-transform"
+          )), hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key), config)
+            hasOwnProperty.call(config, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (i[propName] = config[propName]);
+        var childrenLength = arguments.length - 2;
+        if (1 === childrenLength) i.children = children;
+        else if (1 < childrenLength) {
+          for (var childArray = Array(childrenLength), _i = 0; _i < childrenLength; _i++)
+            childArray[_i] = arguments[_i + 2];
+          Object.freeze && Object.freeze(childArray);
+          i.children = childArray;
+        }
+        if (type && type.defaultProps)
+          for (propName in childrenLength = type.defaultProps, childrenLength)
+            void 0 === i[propName] && (i[propName] = childrenLength[propName]);
+        key && defineKeyPropWarningGetter(
+          i,
+          "function" === typeof type ? type.displayName || type.name || "Unknown" : type
+        );
+        (propName = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++) ? (childArray = Error.stackTraceLimit, Error.stackTraceLimit = 10, childrenLength = Error("react-stack-top-frame"), Error.stackTraceLimit = childArray) : childrenLength = unknownOwnerDebugStack;
+        return ReactElement(
+          type,
+          key,
+          i,
+          getOwner(),
+          childrenLength,
+          propName ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+      exports.createRef = function() {
+        var refObject = { current: null };
+        Object.seal(refObject);
+        return refObject;
+      };
+      exports.forwardRef = function(render) {
+        null != render && render.$$typeof === REACT_MEMO_TYPE ? console.error(
+          "forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...))."
+        ) : "function" !== typeof render ? console.error(
+          "forwardRef requires a render function but was given %s.",
+          null === render ? "null" : typeof render
+        ) : 0 !== render.length && 2 !== render.length && console.error(
+          "forwardRef render functions accept exactly two parameters: props and ref. %s",
+          1 === render.length ? "Did you forget to use the ref parameter?" : "Any additional parameter will be undefined."
+        );
+        null != render && null != render.defaultProps && console.error(
+          "forwardRef render functions do not support defaultProps. Did you accidentally pass a React component?"
+        );
+        var elementType = { $$typeof: REACT_FORWARD_REF_TYPE, render }, ownName;
+        Object.defineProperty(elementType, "displayName", {
+          enumerable: false,
+          configurable: true,
+          get: function() {
+            return ownName;
+          },
+          set: function(name) {
+            ownName = name;
+            render.name || render.displayName || (Object.defineProperty(render, "name", { value: name }), render.displayName = name);
+          }
+        });
+        return elementType;
+      };
+      exports.isValidElement = isValidElement;
+      exports.lazy = function(ctor) {
+        ctor = { _status: -1, _result: ctor };
+        var lazyType = {
+          $$typeof: REACT_LAZY_TYPE,
+          _payload: ctor,
+          _init: lazyInitializer
+        }, ioInfo = {
+          name: "lazy",
+          start: -1,
+          end: -1,
+          value: null,
+          owner: null,
+          debugStack: Error("react-stack-top-frame"),
+          debugTask: console.createTask ? console.createTask("lazy()") : null
+        };
+        ctor._ioInfo = ioInfo;
+        lazyType._debugInfo = [{ awaited: ioInfo }];
+        return lazyType;
+      };
+      exports.memo = function(type, compare) {
+        null == type && console.error(
+          "memo: The first argument must be a component. Instead received: %s",
+          null === type ? "null" : typeof type
+        );
+        compare = {
+          $$typeof: REACT_MEMO_TYPE,
+          type,
+          compare: void 0 === compare ? null : compare
+        };
+        var ownName;
+        Object.defineProperty(compare, "displayName", {
+          enumerable: false,
+          configurable: true,
+          get: function() {
+            return ownName;
+          },
+          set: function(name) {
+            ownName = name;
+            type.name || type.displayName || (Object.defineProperty(type, "name", { value: name }), type.displayName = name);
+          }
+        });
+        return compare;
+      };
+      exports.startTransition = startTransition;
+      exports.unstable_useCacheRefresh = function() {
+        return resolveDispatcher().useCacheRefresh();
+      };
+      exports.use = function(usable) {
+        return resolveDispatcher().use(usable);
+      };
+      exports.useActionState = function(action, initialState, permalink) {
+        return resolveDispatcher().useActionState(
+          action,
+          initialState,
+          permalink
+        );
+      };
+      exports.useCallback = function(callback, deps) {
+        return resolveDispatcher().useCallback(callback, deps);
+      };
+      exports.useContext = function(Context) {
+        var dispatcher = resolveDispatcher();
+        Context.$$typeof === REACT_CONSUMER_TYPE && console.error(
+          "Calling useContext(Context.Consumer) is not supported and will cause bugs. Did you mean to call useContext(Context) instead?"
+        );
+        return dispatcher.useContext(Context);
+      };
+      exports.useDebugValue = function(value, formatterFn) {
+        return resolveDispatcher().useDebugValue(value, formatterFn);
+      };
+      exports.useDeferredValue = function(value, initialValue) {
+        return resolveDispatcher().useDeferredValue(value, initialValue);
+      };
+      exports.useEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useEffect(create, deps);
+      };
+      exports.useEffectEvent = function(callback) {
+        return resolveDispatcher().useEffectEvent(callback);
+      };
+      exports.useId = function() {
+        return resolveDispatcher().useId();
+      };
+      exports.useImperativeHandle = function(ref, create, deps) {
+        return resolveDispatcher().useImperativeHandle(ref, create, deps);
+      };
+      exports.useInsertionEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useInsertionEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useInsertionEffect(create, deps);
+      };
+      exports.useLayoutEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useLayoutEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useLayoutEffect(create, deps);
+      };
+      exports.useMemo = function(create, deps) {
+        return resolveDispatcher().useMemo(create, deps);
+      };
+      exports.useOptimistic = function(passthrough, reducer) {
+        return resolveDispatcher().useOptimistic(passthrough, reducer);
+      };
+      exports.useReducer = function(reducer, initialArg, init) {
+        return resolveDispatcher().useReducer(reducer, initialArg, init);
+      };
+      exports.useRef = function(initialValue) {
+        return resolveDispatcher().useRef(initialValue);
+      };
+      exports.useState = function(initialState) {
+        return resolveDispatcher().useState(initialState);
+      };
+      exports.useSyncExternalStore = function(subscribe, getSnapshot, getServerSnapshot) {
+        return resolveDispatcher().useSyncExternalStore(
+          subscribe,
+          getSnapshot,
+          getServerSnapshot
+        );
+      };
+      exports.useTransition = function() {
+        return resolveDispatcher().useTransition();
+      };
+      exports.version = "19.3.1";
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/react/index.js
+var require_react = __commonJS({
+  "node_modules/react/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_react_development();
+    }
+  }
+});
 
 // node_modules/react-dom/cjs/react-dom.development.js
 var require_react_dom_development = __commonJS({
@@ -22266,1628 +23534,2850 @@ var require_client = __commonJS({
   }
 });
 
+// node_modules/react/cjs/react-jsx-runtime.development.js
+var require_react_jsx_runtime_development = __commonJS({
+  "node_modules/react/cjs/react-jsx-runtime.development.js"(exports) {
+    "use strict";
+    (function() {
+      function getComponentNameFromType(type) {
+        if (null == type) return null;
+        if ("function" === typeof type)
+          return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+        if ("string" === typeof type) return type;
+        switch (type) {
+          case REACT_FRAGMENT_TYPE:
+            return "Fragment";
+          case REACT_PROFILER_TYPE:
+            return "Profiler";
+          case REACT_STRICT_MODE_TYPE:
+            return "StrictMode";
+          case REACT_SUSPENSE_TYPE:
+            return "Suspense";
+          case REACT_SUSPENSE_LIST_TYPE:
+            return "SuspenseList";
+          case REACT_ACTIVITY_TYPE:
+            return "Activity";
+          case REACT_VIEW_TRANSITION_TYPE:
+            return "ViewTransition";
+        }
+        if ("object" === typeof type)
+          switch ("number" === typeof type.tag && console.error(
+            "Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."
+          ), type.$$typeof) {
+            case REACT_PORTAL_TYPE:
+              return "Portal";
+            case REACT_CONTEXT_TYPE:
+              return type.displayName || "Context";
+            case REACT_CONSUMER_TYPE:
+              return (type._context.displayName || "Context") + ".Consumer";
+            case REACT_FORWARD_REF_TYPE:
+              var innerType = type.render;
+              type = type.displayName;
+              type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+              return type;
+            case REACT_MEMO_TYPE:
+              return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+            case REACT_LAZY_TYPE:
+              innerType = type._payload;
+              type = type._init;
+              try {
+                return getComponentNameFromType(type(innerType));
+              } catch (x) {
+              }
+          }
+        return null;
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function checkKeyStringCoercion(value) {
+        try {
+          testStringCoercion(value);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        if (JSCompiler_inline_result) {
+          JSCompiler_inline_result = console;
+          var JSCompiler_temp_const = JSCompiler_inline_result.error;
+          var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+          JSCompiler_temp_const.call(
+            JSCompiler_inline_result,
+            "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+            JSCompiler_inline_result$jscomp$0
+          );
+          return testStringCoercion(value);
+        }
+      }
+      function getTaskName(type) {
+        if (type === REACT_FRAGMENT_TYPE) return "<>";
+        if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE)
+          return "<...>";
+        try {
+          var name = getComponentNameFromType(type);
+          return name ? "<" + name + ">" : "<...>";
+        } catch (x) {
+          return "<...>";
+        }
+      }
+      function getOwner() {
+        var dispatcher = ReactSharedInternals.A;
+        return null === dispatcher ? null : dispatcher.getOwner();
+      }
+      function UnknownOwner() {
+        return Error("react-stack-top-frame");
+      }
+      function hasValidKey(config) {
+        if (hasOwnProperty.call(config, "key")) {
+          var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+          if (getter && getter.isReactWarning) return false;
+        }
+        return void 0 !== config.key;
+      }
+      function defineKeyPropWarningGetter(props, displayName) {
+        function warnAboutAccessingKey() {
+          specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
+            "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
+            displayName
+          ));
+        }
+        warnAboutAccessingKey.isReactWarning = true;
+        Object.defineProperty(props, "key", {
+          get: warnAboutAccessingKey,
+          configurable: true
+        });
+      }
+      function elementRefGetterWithDeprecationWarning() {
+        var componentName = getComponentNameFromType(this.type);
+        didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = true, console.error(
+          "Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."
+        ));
+        componentName = this.props.ref;
+        return void 0 !== componentName ? componentName : null;
+      }
+      function ReactElement(type, key, props, owner, debugStack, debugTask) {
+        var refProp = props.ref;
+        type = {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          props,
+          _owner: owner
+        };
+        null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+          enumerable: false,
+          get: elementRefGetterWithDeprecationWarning
+        }) : Object.defineProperty(type, "ref", { enumerable: false, value: null });
+        type._store = {};
+        Object.defineProperty(type._store, "validated", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: 0
+        });
+        Object.defineProperty(type, "_debugInfo", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: null
+        });
+        Object.defineProperty(type, "_debugStack", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugStack
+        });
+        Object.defineProperty(type, "_debugTask", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugTask
+        });
+        Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+        return type;
+      }
+      function jsxDEVImpl(type, config, maybeKey, isStaticChildren, debugStack, debugTask) {
+        var children = config.children;
+        if (void 0 !== children)
+          if (isStaticChildren)
+            if (isArrayImpl(children)) {
+              for (isStaticChildren = 0; isStaticChildren < children.length; isStaticChildren++)
+                validateChildKeys(children[isStaticChildren]);
+              Object.freeze && Object.freeze(children);
+            } else
+              console.error(
+                "React.jsx: Static children should always be an array. You are likely explicitly calling React.jsxs or React.jsxDEV. Use the Babel transform instead."
+              );
+          else validateChildKeys(children);
+        if (hasOwnProperty.call(config, "key")) {
+          children = getComponentNameFromType(type);
+          var keys = Object.keys(config).filter(function(k) {
+            return "key" !== k;
+          });
+          isStaticChildren = 0 < keys.length ? "{key: someKey, " + keys.join(": ..., ") + ": ...}" : "{key: someKey}";
+          didWarnAboutKeySpread[children + isStaticChildren] || (keys = 0 < keys.length ? "{" + keys.join(": ..., ") + ": ...}" : "{}", console.error(
+            'A props object containing a "key" prop is being spread into JSX:\n  let props = %s;\n  <%s {...props} />\nReact keys must be passed directly to JSX without using spread:\n  let props = %s;\n  <%s key={someKey} {...props} />',
+            isStaticChildren,
+            children,
+            keys,
+            children
+          ), didWarnAboutKeySpread[children + isStaticChildren] = true);
+        }
+        children = null;
+        void 0 !== maybeKey && (checkKeyStringCoercion(maybeKey), children = "" + maybeKey);
+        hasValidKey(config) && (checkKeyStringCoercion(config.key), children = "" + config.key);
+        if ("key" in config) {
+          maybeKey = {};
+          for (var propName in config)
+            "key" !== propName && (maybeKey[propName] = config[propName]);
+        } else maybeKey = config;
+        children && defineKeyPropWarningGetter(
+          maybeKey,
+          "function" === typeof type ? type.displayName || type.name || "Unknown" : type
+        );
+        return ReactElement(
+          type,
+          children,
+          maybeKey,
+          getOwner(),
+          debugStack,
+          debugTask
+        );
+      }
+      function validateChildKeys(node) {
+        isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+      }
+      function isValidElement(object) {
+        return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+      }
+      var React = require_react(), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+        return null;
+      };
+      React = {
+        react_stack_bottom_frame: function(callStackForError) {
+          return callStackForError();
+        }
+      };
+      var specialPropKeyWarningShown;
+      var didWarnAboutElementRef = {};
+      var unknownOwnerDebugStack = React.react_stack_bottom_frame.bind(
+        React,
+        UnknownOwner
+      )();
+      var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+      var didWarnAboutKeySpread = {};
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.jsx = function(type, config, maybeKey) {
+        var trackActualOwner = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        if (trackActualOwner) {
+          var previousStackTraceLimit = Error.stackTraceLimit;
+          Error.stackTraceLimit = 10;
+          var debugStackDEV = Error("react-stack-top-frame");
+          Error.stackTraceLimit = previousStackTraceLimit;
+        } else debugStackDEV = unknownOwnerDebugStack;
+        return jsxDEVImpl(
+          type,
+          config,
+          maybeKey,
+          false,
+          debugStackDEV,
+          trackActualOwner ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+      exports.jsxs = function(type, config, maybeKey) {
+        var trackActualOwner = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        if (trackActualOwner) {
+          var previousStackTraceLimit = Error.stackTraceLimit;
+          Error.stackTraceLimit = 10;
+          var debugStackDEV = Error("react-stack-top-frame");
+          Error.stackTraceLimit = previousStackTraceLimit;
+        } else debugStackDEV = unknownOwnerDebugStack;
+        return jsxDEVImpl(
+          type,
+          config,
+          maybeKey,
+          true,
+          debugStackDEV,
+          trackActualOwner ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+    })();
+  }
+});
+
+// node_modules/react/jsx-runtime.js
+var require_jsx_runtime = __commonJS({
+  "node_modules/react/jsx-runtime.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_react_jsx_runtime_development();
+    }
+  }
+});
+
 // entry.tsx
 var import_client = __toESM(require_client(), 1);
 
-// components/mustang/app.tsx
-var import_react6 = __toESM(require_react(), 1);
+// components/auto/auto-tech.tsx
+var import_react4 = __toESM(require_react(), 1);
 
-// components/mustang/diagram.tsx
+// lib/auto/resolve.ts
+var PAINT = {
+  red: "#8f1d22",
+  black: "#16161a",
+  silver: "#c5c8ce",
+  white: "#e4e0d8",
+  yellow: "#c6ad22",
+  blue: "#1e3f73",
+  green: "#1c3a2a"
+};
+function paintChoices(ids) {
+  const labels = {
+    red: "Laser Red",
+    black: "Black",
+    silver: "Silver",
+    white: "Oxford White",
+    yellow: "Zinc Yellow",
+    blue: "True Blue",
+    green: "Dark Highland Green"
+  };
+  return ids.map((id) => ({ id, label: labels[id] ?? id, detail: "" }));
+}
+function chosenPath(pack, answers) {
+  const path = [];
+  const partial = {};
+  for (; ; ) {
+    const question = nextQuestion(pack, partial);
+    if (!question || !answers[question.id]) break;
+    const choice = question.choices.find((item) => item.id === answers[question.id]);
+    path.push({ id: question.id, prompt: question.prompt, label: choice?.label ?? answers[question.id] });
+    partial[question.id] = answers[question.id];
+  }
+  return path;
+}
+function nextQuestion(pack, answers) {
+  if (pack === "common") return commonQuestion(answers);
+  return mustangQuestion(answers);
+}
+function mustangQuestion(answers) {
+  if (!answers.body) {
+    return {
+      id: "body",
+      prompt: "Body",
+      choices: [
+        { id: "coupe", label: "Coupe", detail: "Fixed roof" },
+        { id: "convertible", label: "Convertible", detail: "No coupe roof" }
+      ]
+    };
+  }
+  if (!answers.line) {
+    const choices = [
+      { id: "v6", label: "V6", detail: "3.8L OHV" },
+      { id: "gt", label: "GT", detail: "4.6L 2-valve" },
+      { id: "cobra", label: "Cobra", detail: "4.6L 32-valve" }
+    ];
+    if (answers.body === "coupe") choices.splice(2, 0, { id: "bullitt", label: "Bullitt", detail: "Coupe only" });
+    return { id: "line", prompt: "Model", choices };
+  }
+  if (!answers.trim && (answers.line === "v6" || answers.line === "gt")) {
+    const choices = [
+      { id: "deluxe", label: "Deluxe", detail: "Mid equipment" },
+      { id: "premium", label: "Premium", detail: "Top equipment" }
+    ];
+    if (answers.line === "v6" && answers.body === "coupe") {
+      choices.unshift({ id: "standard", label: "Standard", detail: "Base coupe only" });
+    }
+    return { id: "trim", prompt: "Trim", choices };
+  }
+  if (!answers.paint) {
+    let ids = ["red", "black", "silver", "white", "yellow", "blue"];
+    if (answers.line === "bullitt") ids = ["green", "black", "blue"];
+    if (answers.line === "cobra") ids = ["red", "black", "yellow", "blue"];
+    return { id: "paint", prompt: "Paint", choices: paintChoices(ids) };
+  }
+  if (!answers.trans) {
+    if (answers.line === "bullitt" || answers.line === "cobra") {
+      return {
+        id: "trans",
+        prompt: "Transmission",
+        choices: [{ id: "manual", label: "TR-3650 5-speed", detail: "No automatic on this model" }]
+      };
+    }
+    if (answers.line === "v6") {
+      return {
+        id: "trans",
+        prompt: "Transmission",
+        choices: [
+          { id: "manual", label: "T-5 5-speed", detail: "V6 manual" },
+          { id: "auto", label: "4R70W automatic", detail: "Four-speed" }
+        ]
+      };
+    }
+    return {
+      id: "trans",
+      prompt: "Transmission",
+      choices: [
+        { id: "manual", label: "TR-3650 5-speed", detail: "Early 2001 cars may have a T-45" },
+        { id: "auto", label: "4R70W automatic", detail: "Four-speed" }
+      ]
+    };
+  }
+  if (!answers.abs && answers.line !== "cobra") {
+    return {
+      id: "abs",
+      prompt: "Brakes",
+      choices: [
+        { id: "no", label: answers.line === "v6" ? "Disc / drum" : "Four-wheel disc", detail: "No ABS" },
+        { id: "yes", label: answers.line === "v6" ? "Disc / drum with ABS" : "Four-wheel disc with ABS", detail: "ABS was optional" }
+      ]
+    };
+  }
+  return null;
+}
+function commonQuestion(answers) {
+  if (!answers.body) {
+    return {
+      id: "body",
+      prompt: "Body",
+      choices: [
+        { id: "coupe", label: "Coupe", detail: "Fixed roof" },
+        { id: "convertible", label: "Convertible", detail: "Folding top" }
+      ]
+    };
+  }
+  if (!answers.engine) {
+    return {
+      id: "engine",
+      prompt: "Engine",
+      choices: [
+        { id: "i4", label: "Inline-4", detail: "Common small gas engine" },
+        { id: "v6", label: "V6", detail: "Common six" },
+        { id: "v8", label: "V8", detail: "Common eight" }
+      ]
+    };
+  }
+  if (!answers.fuel) {
+    return {
+      id: "fuel",
+      prompt: "Fuel system",
+      choices: [
+        { id: "return", label: "Return", detail: "Regulator on the rail" },
+        { id: "returnless", label: "Returnless", detail: "Pressure set in the tank" }
+      ]
+    };
+  }
+  if (!answers.ignition) {
+    return {
+      id: "ignition",
+      prompt: "Ignition",
+      choices: [
+        { id: "distributor", label: "Distributor", detail: "One coil, cap, and wires" },
+        { id: "cop", label: "Coil on plug", detail: "A coil at each plug" }
+      ]
+    };
+  }
+  if (!answers.trans) {
+    return {
+      id: "trans",
+      prompt: "Transmission",
+      choices: [
+        { id: "manual", label: "Manual", detail: "Clutch and a shifter" },
+        { id: "auto", label: "Automatic", detail: "No clutch pedal" }
+      ]
+    };
+  }
+  if (!answers.rear) {
+    return {
+      id: "rear",
+      prompt: "Rear brakes",
+      choices: [
+        { id: "drum", label: "Drums", detail: "Common on plain cars" },
+        { id: "disc", label: "Discs", detail: "Common on later cars" }
+      ]
+    };
+  }
+  if (!answers.throttle) {
+    return {
+      id: "throttle",
+      prompt: "Throttle",
+      choices: [
+        { id: "cable", label: "Cable", detail: "A cable from the pedal" },
+        { id: "electronic", label: "Electronic", detail: "A sensor and a motor" }
+      ]
+    };
+  }
+  return null;
+}
+function carSpec(pack, answers) {
+  if (pack === "common") {
+    const engine2 = answers.engine === "v8" ? "v8-2v" : answers.engine === "v6" ? "v6" : "i4";
+    return {
+      pack,
+      body: answers.body === "convertible" ? "convertible" : "coupe",
+      engine: engine2,
+      trans: answers.trans === "auto" ? "auto" : "manual",
+      axle: "solid",
+      scoop: false,
+      paint: "#6e726c"
+    };
+  }
+  const line = answers.line ?? "v6";
+  const engine = line === "cobra" ? "v8-4v" : line === "v6" ? "v6" : "v8-2v";
+  return {
+    pack,
+    body: answers.body === "convertible" ? "convertible" : "coupe",
+    engine,
+    trans: answers.trans === "auto" ? "auto" : "manual",
+    axle: line === "cobra" ? "irs" : "solid",
+    scoop: line === "gt" || line === "bullitt" || line === "cobra",
+    paint: PAINT[answers.paint ?? ""] ?? "#8f1d22"
+  };
+}
+function buildSheet(pack, answers) {
+  const done = nextQuestion(pack, answers) == null;
+  if (pack === "common") return commonSheet(answers, done);
+  return mustangSheet(answers, done);
+}
+function mustangSheet(answers, done) {
+  const line = answers.line ?? "";
+  const engine = line === "cobra" ? "4.6L DOHC 32-valve, 320 hp, 317 lb-ft" : line === "bullitt" ? "4.6L SOHC, 265 hp, 305 lb-ft" : line === "gt" ? "4.6L SOHC 2-valve, 260 hp, 302 lb-ft" : line === "v6" ? "3.8L OHV V6, 193 hp, 225 lb-ft" : "Not chosen";
+  const axle = line === "cobra" ? "8.8-inch independent rear" : line === "v6" ? "7.5-inch solid axle" : line ? "8.8-inch solid axle" : "Not chosen";
+  const brakes = line === "cobra" ? "Four-wheel disc" : line === "v6" ? answers.abs === "yes" ? "Front disc, rear drum, with ABS" : answers.abs === "no" ? "Front disc, rear drum" : "Not chosen" : line ? answers.abs === "yes" ? "Four-wheel disc with ABS" : answers.abs === "no" ? "Four-wheel disc" : "Not chosen" : "Not chosen";
+  const trans = answers.trans === "auto" ? "4R70W automatic" : answers.trans === "manual" && line === "v6" ? "T-5 5-speed" : answers.trans === "manual" && line === "gt" ? "TR-3650 5-speed. Early 2001 cars may have a T-45." : answers.trans === "manual" ? "TR-3650 5-speed" : "Not chosen";
+  return {
+    title: "2001 Mustang",
+    done,
+    check: done ? "This is the build sheet for the picture. It is not a wiring diagram. Confirm the door sticker before you order a part that changes with the axle or the brakes." : null,
+    lines: [
+      { label: "Body", value: answers.body === "convertible" ? "Convertible" : answers.body === "coupe" ? "Coupe" : "Not chosen" },
+      { label: "Model", value: line === "v6" ? "V6" : line === "gt" ? "GT" : line === "bullitt" ? "Bullitt coupe" : line === "cobra" ? "SVT Cobra" : "Not chosen" },
+      { label: "Trim", value: answers.trim ? answers.trim[0].toUpperCase() + answers.trim.slice(1) : line === "bullitt" || line === "cobra" ? "The model is the trim" : "Not chosen" },
+      { label: "Engine", value: engine },
+      { label: "Transmission", value: trans },
+      { label: "Rear", value: axle },
+      { label: "Brakes", value: brakes }
+    ]
+  };
+}
+function commonSheet(answers, done) {
+  const fuel = answers.fuel === "return" ? "Return, regulator on the rail" : answers.fuel === "returnless" ? "Returnless, pressure set in the tank" : "Not chosen";
+  const ignition = answers.ignition === "distributor" ? "Distributor and plug wires" : answers.ignition === "cop" ? "Coil on each plug" : "Not chosen";
+  let check = null;
+  if (done) {
+    const fuelLine = answers.fuel === "return" ? "A return-style car can hold pressure at the rail with the pump off. Do not call the pump dead until you measure that pressure and the regulator." : "A returnless car sets pressure in the tank. There is no rail regulator to replace.";
+    const sparkLine = answers.ignition === "distributor" ? "One dead cylinder is often the wire, the cap, or that plug." : "One dead cylinder is often that coil or that plug, not the whole engine.";
+    check = `${fuelLine} ${sparkLine} This is a common gas car, not the Mustang. Do not use a Ford pin or a Ford torque here.`;
+  }
+  return {
+    title: "Common coupe",
+    done,
+    check,
+    lines: [
+      { label: "Body", value: answers.body === "convertible" ? "Convertible" : answers.body === "coupe" ? "Coupe" : "Not chosen" },
+      { label: "Engine", value: answers.engine === "i4" ? "Inline-4" : answers.engine === "v6" ? "V6" : answers.engine === "v8" ? "V8" : "Not chosen" },
+      { label: "Fuel", value: fuel },
+      { label: "Ignition", value: ignition },
+      { label: "Transmission", value: answers.trans === "auto" ? "Automatic" : answers.trans === "manual" ? "Manual" : "Not chosen" },
+      { label: "Rear brakes", value: answers.rear === "drum" ? "Drums" : answers.rear === "disc" ? "Discs" : "Not chosen" },
+      { label: "Throttle", value: answers.throttle === "cable" ? "Cable" : answers.throttle === "electronic" ? "Electronic" : "Not chosen" }
+    ]
+  };
+}
+
+// lib/auto/flows.ts
+var FUEL_PUMP_POWER = {
+  id: "fuel-pump-power",
+  title: "Fuel pump power",
+  lead: "Cranks and will not fire, or you never hear the pump. This path is battery, the under-hood fuse, the CCRM relay, the inertia switch in the driver-side trunk, then the connector on the tank. This car has no fuel-pump driver module. Do not drop the tank until a step says the pump itself is dead.",
+  circuit: "fuel",
+  steps: [
+    {
+      id: "prime",
+      partId: "fuel-pump",
+      title: "Listen for the prime",
+      where: "At the filler, cap off, or with an ear at the trunk floor.",
+      harness: "Not yet. This step is only the sound.",
+      wires: [],
+      action: "Key to ON. Do not crank. A good circuit runs the pump for about one second, then stops. It runs again while a helper cranks, because the PCM only holds the relay closed once it sees the crank signal.",
+      pass: "You heard it. Power is reaching the pump for the prime. If it still will not start, the miss is spark, pressure, or a pump that quits under load. Say so in the note before you buy parts.",
+      fail: "Silence. Do not buy a pump. The next stop is the inertia switch, and it is free."
+    },
+    {
+      id: "inertia",
+      partId: "inertia-switch",
+      title: "Reset the inertia switch",
+      where: "Driver side of the trunk, behind the liner, ahead of the left tail lamp. It is not in the passenger kick panel.",
+      harness: "Fuel-pump harness in the trunk. Two wires on the switch. The sender wires are not on this switch.",
+      wires: [
+        {
+          role: "Power in, from the CCRM",
+          color: "Dark green / yellow"
+        },
+        {
+          role: "Power out, toward the tank",
+          color: "Read it on your connector and write it in the note. The feed into the switch is dark green/yellow. The wire leaving it is not the same in every book, so the color on the car wins."
+        }
+      ],
+      action: "Press the reset button until it stays down. Key ON again and listen. A bump, a curb, or a hard slam pops this and the car cranks forever.",
+      pass: "The button was up, and now the pump primes. That was the whole job. If it pops again on a smooth road, replace the switch. Do not bypass it.",
+      fail: "The button was already down and the pump is still silent. Leave the switch reset and move to the fuse."
+    },
+    {
+      id: "fuse",
+      partId: "pdb",
+      title: "Fuel-pump fuse",
+      where: "Under-hood power distribution box, passenger side of the radiator support. The lid has the map. Use the lid, not a remembered slot.",
+      harness: "Battery junction box. The fuse feeds the CCRM. It is not the dash fuse panel at the left knee.",
+      wires: [],
+      action: "Key off. Pull the fuel-pump fuse printed on the lid. Look at the element against the light. Reseat it, or replace it with the same amp rating that is printed.",
+      pass: "It was open, and a new fuse of the same amp makes the pump prime. If the new one blows, find the short before you leave. A bigger fuse burns the harness.",
+      fail: "The element is intact. Power is not dying in this fuse. Next is the CCRM."
+    },
+    {
+      id: "ccrm-out",
+      partId: "ccrm",
+      title: "Relay output",
+      where: "CCRM, passenger side of the bay on the radiator support. Black module. The fuel-pump relay is inside it. You do not pry it open.",
+      harness: "Engine harness at the CCRM connector.",
+      wires: [
+        {
+          role: "Relay output, runs back to the inertia switch",
+          color: "Dark green / yellow"
+        },
+        {
+          role: "Battery feed into the fuel-pump relay",
+          color: "Light blue / orange on the 99\u201304 CCRM. Confirm the stripe on your connector before you load it."
+        }
+      ],
+      action: "Backprobe the dark green/yellow. Black lead on battery negative. Key ON. You want battery voltage for about one second, then it falls away. Have a helper crank. It should come back while the engine is turning.",
+      pass: "That pulse is there. The relay closed and the PCM commanded it. The open is downstream: the switch, the wire to the tank, the pump, or the ground.",
+      fail: "It never goes hot, not even for the one-second prime. Stay at the CCRM. Do not drop the tank."
+    },
+    {
+      id: "relay",
+      partId: "ccrm",
+      title: "Feed and the click",
+      where: "Same CCRM connector.",
+      harness: "Engine harness. The PCM grounds the relay coil. That control wire\u2019s color belongs to the EVTM. Do not guess a pin and ground it.",
+      wires: [
+        {
+          role: "Battery feed",
+          color: "Light blue / orange. Hot with the key off. It does not wait for the PCM."
+        }
+      ],
+      action: "Key off, then ON, and listen for a click at the CCRM. Meter the light blue/orange to battery negative. It should be battery voltage whether or not the relay clicks.",
+      pass: "The feed is hot and you hear the click, but the dark green/yellow stayed dead on the last step. The contacts are open. The CCRM is the failed part, not the pump.",
+      fail: "No click, or the light blue/orange is dead. Dead feed: back to the fuse and the wire into the CCRM. Feed is hot and there is no click: the PCM is not grounding the coil, or the coil is open. Still not a pump."
+    },
+    {
+      id: "both-sides",
+      partId: "inertia-switch",
+      title: "Both sides of the switch",
+      where: "Inertia switch connector, driver side of the trunk.",
+      harness: "Trunk harness. Unplug it only if you cannot backprobe. The pins are small.",
+      wires: [
+        { role: "In from the CCRM", color: "Dark green / yellow" },
+        {
+          role: "Out to the tank",
+          color: "Whatever color you wrote down. Both wires should be hot during the prime if the switch is closed."
+        }
+      ],
+      action: "Helper turns the key to ON. During that one second, both wires at the switch should show battery voltage against battery negative. Miss the second and you will call a good switch bad. Do it twice.",
+      pass: "Both sides go hot. Power is through the switch. The loss is between here and the pump, or it is the pump, or it is the ground.",
+      fail: "Only the dark green/yellow goes hot. The switch is open even though the button looks down. Replace the switch. If neither side goes hot, you missed the prime or the CCRM output was never there. Recheck that step with the helper before you condemn the switch."
+    },
+    {
+      id: "hat",
+      partId: "fuel-pump",
+      title: "Voltage at the pump connector",
+      where: "Top of the tank. Fold the rear seat, pull the trunk carpet, four bolts on the access cover. You can unplug the hat without dropping the tank.",
+      harness: "Rear harness at the pump and sender connector. The pump uses two of the pins. The sender uses the others. Do not load-test the sender.",
+      wires: [
+        {
+          role: "Pump power",
+          color: "The same wire that was hot on the output side of the inertia switch. Follow that color. Do not stab a sender wire because it is easier to reach."
+        },
+        {
+          role: "Pump ground",
+          color: "Black, to the body near the tank. Prove it ohms to battery negative. The sender has its own ground and it will lie to you."
+        }
+      ],
+      action: "During the prime, or while cranking, meter from the pump power pin to the pump ground pin. Write the number down, and write the battery voltage next to it.",
+      pass: "Battery voltage, and within about half a volt of the battery. If the pump is silent with that, the last step is the ground drop. A good ground plus this reading is a dead pump.",
+      fail: "Zero volts here, but both sides of the inertia switch were hot. The break is the wire between the trunk switch and this connector. A reading several volts under the battery is a drop in a connector, not a weak pump."
+    },
+    {
+      id: "ground",
+      partId: "fuel-pump",
+      title: "Ground drop",
+      where: "Pump ground pin, and the ground eye on the body near the tank.",
+      harness: "The black ground in the tank harness. Clean the eye if it is green. Do not add a new ground to a painted stud and call it done.",
+      wires: [{ role: "Pump ground", color: "Black" }],
+      action: "Key off. Ohms from the ground pin to battery negative. Then, during the prime, volts from that same pin to battery negative. A good ground is near 0 ohms and under about 0.2 V while the pump is commanded.",
+      pass: "Ground is clean, and the last step had battery voltage at the pump, and it never ran. The pump is the failed part. Then you drop the tank. Replace the sock with it.",
+      fail: "High ohms, or the pin rises off battery negative while the pump is commanded. Fix the ground before you buy a pump. A pump on a bad ground gets returned as defective."
+    }
+  ]
+};
+var EVAP = {
+  id: "evap",
+  title: "Tank vapor valve",
+  lead: "The valve that regulates evaporation is the EVAP purge valve, in the right front inner fender behind the splash shield. It is normally closed. The PCM duty-cycles it and intake vacuum pulls vapor out of the canister. It is not the fuel-pressure regulator. This 3.8 is returnless. Fuel pressure is set in the tank.",
+  circuit: "all",
+  steps: [
+    {
+      id: "purge",
+      partId: "evap-purge",
+      title: "Purge valve",
+      where: "Right front inner fender, behind the splash shield. Right wheel and the shield come off to reach it.",
+      harness: "Engine harness. Two-wire solenoid. One side is power, the other is the PCM driver.",
+      wires: [
+        {
+          role: "Power and PCM driver",
+          color: "Confirm both colors in the 2001 EVTM before you pierce either wire. The test that matters is duty cycle, not a guessed stripe."
+        }
+      ],
+      action: "Key on, engine running after it is warm. A scan tool should show the PCM commanding purge. Unplug the valve at idle. A valve stuck open changes the idle the moment you unplug it. A valve that never clicks and never gets commanded stores vapor until a hose or the cap burps an evap code.",
+      pass: "It clicks when commanded, the idle changes when you unplug a valve that was open, and the hoses hold vacuum on the intake side. The valve is doing its job.",
+      fail: "Stuck open is a vacuum leak. Never opens, with power and a command present, is a bad valve. No command is the PCM input side, not a reason to replace the canister yet."
+    },
+    {
+      id: "vent",
+      partId: "evap-vent",
+      title: "Vent solenoid",
+      where: "On the canister, left rear quarter. Normally open so the canister can breathe. The PCM closes it only to seal the system for the leak test.",
+      harness: "Rear harness at the canister. Separate connector from the purge valve up front.",
+      wires: [
+        {
+          role: "Power and PCM driver",
+          color: "Read them on the connector. Do not copy the purge-valve colors. It is a different circuit."
+        }
+      ],
+      action: "With the connector off, the vent path through the solenoid should be open. You can blow through it. Commanded closed, during a leak test, it should shut. A vent that is stuck closed pressure-locks the tank. A vent that will not close fails the leak test and sets an evap code with a good cap.",
+      pass: "Open at rest, closes when commanded, hoses seated and not cracked.",
+      fail: "Stuck shut: tank pressure and a hard-to-open cap. Stuck open during the test: the leak the PCM sees may be this solenoid, not a hole in the tank."
+    },
+    {
+      id: "tube",
+      partId: "vapor-valve",
+      title: "Vapor valve on the tank",
+      where: "On top of the tank. Ford services the vapor control valve, the vapor vent valve, and the inline tank-pressure sensor as one tube assembly.",
+      harness: "The pressure sensor has its own connector on that tube. The valves themselves are not a solenoid you can duty-cycle.",
+      wires: [
+        {
+          role: "Tank pressure sensor",
+          color: "Reference, signal, and return. Confirm the three colors in the EVTM. A wrong backprobe on the signal wire sets a false leak code."
+        }
+      ],
+      action: "Do not crack these hoses with the tank full and hot. Mark every hose. A liquid-filled line into the canister means this valve is letting fuel over, not just vapor. The sensor should move when you open the cap and the tank pressure equalizes.",
+      pass: "Hoses are dry of liquid fuel, the sensor reads a change when the cap comes off, and the tube is not cracked at the tank nipple.",
+      fail: "Liquid in the vapor hose, or a sensor that stays pegged with the cap off. The tube assembly is the service part. The purge valve up front will not fix that."
+    }
+  ]
+};
+function flowById(id) {
+  if (!id) return null;
+  if (id === FUEL_PUMP_POWER.id) return FUEL_PUMP_POWER;
+  if (id === EVAP.id) return EVAP;
+  if (id.startsWith("part:")) return generic(id.slice(5), { pack: "mustang", body: "coupe", engine: "v6", trans: "manual", axle: "solid", scoop: false, paint: "#8f1d22" });
+  return null;
+}
+function flowFor(spec, partId) {
+  if (spec.pack !== "mustang") return generic(partId, spec);
+  if (partId === "fuel-pump" || partId === "inertia-switch" || partId === "ccrm" || partId === "pdb") {
+    return FUEL_PUMP_POWER;
+  }
+  if (partId === "evap-purge" || partId === "evap-vent" || partId === "vapor-valve" || partId === "tank-pressure" || partId === "evap-canister") {
+    return EVAP;
+  }
+  return generic(partId, spec);
+}
+function generic(partId, spec) {
+  const info = partBlurb(partId, spec);
+  const found = GROUPS.find((item) => item.id === partId);
+  return {
+    id: `part:${partId}`,
+    title: info.name,
+    lead: spec.pack === "common" ? "This is the common car. Do not use a Ford wire color or a Ford torque here." : "Confirm the wire color in the 2001 EVTM before you pierce anything.",
+    circuit: found?.system === "fuel" ? "fuel" : "all",
+    steps: info.checks.map((check, index) => ({
+      id: `${partId}-${index}`,
+      partId,
+      title: `Check ${index + 1}`,
+      where: info.name,
+      harness: "Confirm the color on this car before you load a wire.",
+      wires: [],
+      action: check,
+      pass: "This check is good. Go to the next one.",
+      fail: "This check failed. Write down what you measured before you buy the part."
+    }))
+  };
+}
+function verdict(flow, marks) {
+  const answered = flow.steps.filter((step) => marks[step.id]);
+  if (!answered.length) return null;
+  if (flow.id === "fuel-pump-power") return fuelVerdict(marks);
+  const failed = flow.steps.find((step) => marks[step.id] === "fail");
+  if (failed) return failed.fail;
+  if (flow.steps.every((step) => marks[step.id] === "pass")) return "Every check passed. If the complaint is still there, it is upstream of this part. Ask Grok with the readings you wrote down.";
+  return null;
+}
+function fuelVerdict(marks) {
+  if (marks.inertia === "pass") return "The inertia switch was open. The pump should prime now. Leave the button down. If it pops again with no impact, replace the switch. Do not jumper it.";
+  if (marks.fuse === "pass") return "The fuel-pump fuse was open. Replace it with the amp on the lid. If it blows again, find the short. The pump is not condemned.";
+  if (marks.relay === "pass") return "The CCRM has power and it clicks, and the dark green/yellow output never went hot. Replace the CCRM. Do not drop the tank.";
+  if (marks.relay === "fail" && marks["ccrm-out"] === "fail") {
+    return "The relay is not closing, or the light blue/orange feed is dead. That is the fuse, the feed wire, the relay coil, or the PCM command. It is not the pump.";
+  }
+  if (marks["both-sides"] === "fail") return "Power is not getting through the inertia switch. Replace the switch if only the feed side goes hot. If neither side goes hot, go back to the CCRM output.";
+  if (marks.hat === "fail" && marks["both-sides"] === "pass") {
+    return "Power dies between the inertia switch and the tank connector. Repair that wire. The pump has not been proven bad.";
+  }
+  if (marks.ground === "fail") return "The pump ground is bad. Clean the eye near the tank and retest before you buy a pump.";
+  if (marks.ground === "pass" && marks.hat === "pass") {
+    return "Battery voltage at the pump, ground drop is clean, and it does not run. The pump is the failed part. Drop the tank and replace the sock with it.";
+  }
+  if (marks.prime === "pass" && !marks.hat) {
+    return "The pump does prime. If the car still will not start, leave this circuit and check spark and rail pressure. A pump that only fails hot still needs a gauge, not a guess.";
+  }
+  return null;
+}
+
+// lib/auto/diagram.ts
+var CIRCUIT_LABEL = {
+  power: "Power",
+  ground: "Ground",
+  start: "Start",
+  ignition: "Ignition",
+  fuel: "Fuel",
+  sensor: "Sensors",
+  lamps: "Lamps"
+};
+var CIRCUIT_COLOR = {
+  power: "#e7c07a",
+  ground: "#9aa0a6",
+  start: "#e08a4a",
+  ignition: "#f2efe6",
+  fuel: "#7dcea0",
+  sensor: "#7eb0d6",
+  lamps: "#e07a72"
+};
+var NODES = [
+  { id: "battery", x: 16, y: 28, w: 132, h: 48, label: "Battery", sub: "BXT-59" },
+  { id: "cable-neg", x: 16, y: 92, w: 132, h: 40, label: "Negative", sub: "Body ground" },
+  { id: "ignition-switch", x: 16, y: 168, w: 132, h: 44, label: "Ignition switch", sub: "Column" },
+  { id: "clutch-switch", x: 16, y: 224, w: 132, h: 44, label: "Clutch switch", sub: "Pedal" },
+  { id: "fuse-panel", x: 16, y: 292, w: 132, h: 44, label: "Dash fuses", sub: "Left knee" },
+  { id: "headlamp-switch", x: 16, y: 352, w: 132, h: 44, label: "Lamp switch", sub: "Dash" },
+  { id: "brake-switch", x: 16, y: 412, w: 132, h: 44, label: "Brake switch", sub: "Pedal" },
+  { id: "pdb", x: 196, y: 28, w: 140, h: 48, label: "Power box", sub: "Radiator support" },
+  { id: "starter-relay", x: 196, y: 92, w: 140, h: 40, label: "Starter relay", sub: "In the power box" },
+  { id: "ccrm", x: 196, y: 156, w: 140, h: 48, label: "CCRM", sub: "Pump & PCM relays" },
+  { id: "pcm", x: 196, y: 228, w: 140, h: 56, label: "PCM", sub: "EEC-V, kick panel" },
+  { id: "dpfe", x: 196, y: 304, w: 140, h: 40, label: "DPFE", sub: "EGR hoses" },
+  { id: "maf", x: 196, y: 360, w: 140, h: 40, label: "MAF", sub: "Air duct" },
+  { id: "tps", x: 196, y: 412, w: 140, h: 36, label: "TPS", sub: "Throttle" },
+  { id: "ect", x: 196, y: 458, w: 140, h: 36, label: "ECT", sub: "Coolant" },
+  { id: "alternator", x: 392, y: 28, w: 136, h: 44, label: "Alternator", sub: "B+ stud" },
+  { id: "starter", x: 392, y: 88, w: 136, h: 44, label: "Starter", sub: "Passenger block" },
+  { id: "ckp", x: 392, y: 148, w: 136, h: 40, label: "Crank sensor", sub: "Front cover" },
+  { id: "coil-pack", x: 392, y: 204, w: 136, h: 44, label: "Coil pack", sub: "EDIS" },
+  { id: "inertia-switch", x: 392, y: 268, w: 136, h: 48, label: "Inertia switch", sub: "Trunk, driver" },
+  { id: "fuel-rail", x: 392, y: 332, w: 136, h: 40, label: "Fuel rail", sub: "Schrader" },
+  { id: "o2-up", x: 392, y: 388, w: 136, h: 36, label: "O2 upstream", sub: "M18\xD71.5" },
+  { id: "o2-down", x: 392, y: 434, w: 136, h: 36, label: "O2 downstream", sub: "After the cat" },
+  { id: "fuel-pump", x: 584, y: 268, w: 140, h: 48, label: "Fuel pump", sub: "In the tank" },
+  { id: "plugs-r", x: 584, y: 188, w: 140, h: 40, label: "Plugs 1-2-3", sub: "Passenger bank" },
+  { id: "plugs-l", x: 584, y: 140, w: 140, h: 40, label: "Plugs 4-5-6", sub: "Driver bank" },
+  { id: "injectors", x: 584, y: 332, w: 140, h: 40, label: "Injectors", sub: "Six, sequential" },
+  { id: "iac", x: 584, y: 388, w: 140, h: 36, label: "IAC", sub: "Idle air" },
+  { id: "vss", x: 584, y: 434, w: 140, h: 36, label: "VSS", sub: "Tailshaft" },
+  { id: "headlamp-l", x: 584, y: 28, w: 140, h: 36, label: "Headlamp L", sub: "Driver" },
+  { id: "headlamp-r", x: 740, y: 28, w: 120, h: 36, label: "Headlamp R", sub: "Passenger" },
+  { id: "taillamp-l", x: 584, y: 78, w: 140, h: 36, label: "Tail lamp L", sub: "Tri-bar" },
+  { id: "taillamp-r", x: 740, y: 78, w: 120, h: 36, label: "Tail lamp R", sub: "Tri-bar" },
+  { id: "cluster", x: 740, y: 228, w: 120, h: 44, label: "Cluster", sub: "Gauges" }
+];
+var WIRES = [
+  {
+    id: "cable-pos",
+    circuit: "power",
+    ends: ["battery", "pdb", "alternator"],
+    routes: [
+      [
+        [148, 52],
+        [196, 52]
+      ],
+      [
+        [336, 52],
+        [392, 50]
+      ]
+    ]
+  },
+  {
+    id: "cable-start",
+    circuit: "start",
+    ends: ["pdb", "starter-relay", "starter"],
+    routes: [
+      [
+        [266, 76],
+        [266, 92]
+      ],
+      [
+        [336, 112],
+        [392, 110]
+      ]
+    ]
+  },
+  {
+    id: "cable-neg",
+    circuit: "ground",
+    ends: ["battery", "ground-engine"],
+    routes: [
+      [
+        [82, 76],
+        [82, 92]
+      ]
+    ]
+  },
+  {
+    id: "harness-pcm",
+    circuit: "power",
+    ends: ["ccrm", "pcm"],
+    routes: [
+      [
+        [266, 204],
+        [266, 228]
+      ]
+    ]
+  },
+  {
+    id: "harness-fuel",
+    circuit: "fuel",
+    ends: ["ccrm", "inertia-switch", "fuel-pump"],
+    routes: [
+      [
+        [336, 180],
+        [392, 292]
+      ],
+      [
+        [528, 292],
+        [584, 292]
+      ]
+    ]
+  },
+  {
+    id: "harness-edis",
+    circuit: "ignition",
+    ends: ["pcm", "ckp", "coil-pack"],
+    routes: [
+      [
+        [336, 256],
+        [364, 256],
+        [364, 168],
+        [392, 168]
+      ],
+      [
+        [364, 226],
+        [392, 226]
+      ]
+    ]
+  },
+  {
+    id: "plug-wires",
+    circuit: "ignition",
+    ends: ["coil-pack", "plugs-l", "plugs-r"],
+    routes: [
+      [
+        [528, 220],
+        [556, 220],
+        [556, 160],
+        [584, 160]
+      ],
+      [
+        [556, 208],
+        [584, 208]
+      ]
+    ]
+  },
+  {
+    id: "harness-inj",
+    circuit: "fuel",
+    ends: ["pcm", "fuel-rail", "injectors"],
+    routes: [
+      [
+        [336, 270],
+        [392, 352]
+      ],
+      [
+        [528, 352],
+        [584, 352]
+      ]
+    ]
+  },
+  {
+    id: "harness-sensors",
+    circuit: "sensor",
+    ends: ["pcm", "maf", "tps", "ect", "iac", "o2-up", "o2-down", "dpfe", "vss"],
+    routes: [
+      [
+        [266, 284],
+        [266, 304]
+      ],
+      [
+        [236, 284],
+        [196, 380]
+      ],
+      [
+        [250, 300],
+        [196, 430]
+      ],
+      [
+        [250, 300],
+        [196, 476]
+      ],
+      [
+        [336, 270],
+        [520, 406],
+        [584, 406]
+      ],
+      [
+        [336, 256],
+        [392, 406]
+      ],
+      [
+        [392, 452],
+        [470, 452]
+      ],
+      [
+        [336, 270],
+        [520, 452],
+        [584, 452]
+      ]
+    ]
+  },
+  {
+    id: "harness-start",
+    circuit: "start",
+    ends: ["ignition-switch", "clutch-switch", "starter-relay"],
+    routes: [
+      [
+        [148, 190],
+        [172, 190],
+        [172, 246],
+        [148, 246]
+      ],
+      [
+        [172, 190],
+        [196, 112]
+      ]
+    ]
+  },
+  {
+    id: "harness-lamps",
+    circuit: "lamps",
+    ends: ["headlamp-switch", "fuse-panel", "headlamp-l", "headlamp-r"],
+    routes: [
+      [
+        [82, 336],
+        [82, 352]
+      ],
+      [
+        [148, 374],
+        [760, 374],
+        [760, 64],
+        [654, 46]
+      ],
+      [
+        [760, 46],
+        [740, 46]
+      ]
+    ]
+  },
+  {
+    id: "harness-tails",
+    circuit: "lamps",
+    ends: ["brake-switch", "taillamp-l", "taillamp-r"],
+    routes: [
+      [
+        [148, 434],
+        [760, 434],
+        [760, 114],
+        [654, 96]
+      ],
+      [
+        [760, 96],
+        [740, 96]
+      ]
+    ]
+  },
+  {
+    id: "pigtail-cluster",
+    circuit: "sensor",
+    ends: ["fuse-panel", "cluster"],
+    routes: [
+      [
+        [148, 314],
+        [800, 314],
+        [800, 272]
+      ]
+    ]
+  },
+  {
+    id: "fuel-line",
+    circuit: "fuel",
+    ends: ["fuel-pump", "fuel-filter", "fuel-rail"],
+    routes: [
+      [
+        [654, 316],
+        [654, 332],
+        [528, 352]
+      ]
+    ]
+  }
+];
+var WIRE_BY_ID = new Map(WIRES.map((w) => [w.id, w]));
+function traceOf(id) {
+  if (!id) return [];
+  const hit = /* @__PURE__ */ new Set([id]);
+  const wire = WIRE_BY_ID.get(id);
+  if (wire) {
+    for (const end of wire.ends) hit.add(end);
+    return [...hit];
+  }
+  for (const item of WIRES) {
+    if (item.ends.includes(id)) hit.add(item.id);
+  }
+  return [...hit];
+}
+
+// lib/auto/views.ts
+var VIEWS_KEY = "fafo.auto.views.v1";
+var SHIFTS_KEY = "fafo.auto.shifts.v1";
+function loadViews() {
+  const empty = [null, null, null];
+  try {
+    const raw = localStorage.getItem(VIEWS_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return empty;
+    return [parsed[0] ?? null, parsed[1] ?? null, parsed[2] ?? null];
+  } catch {
+    return empty;
+  }
+}
+function writeViews(views) {
+  const next = [views[0] ?? null, views[1] ?? null, views[2] ?? null];
+  localStorage.setItem(VIEWS_KEY, JSON.stringify(next));
+  return next;
+}
+function loadShifts() {
+  try {
+    const raw = localStorage.getItem(SHIFTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function saveShifts(shifts) {
+  localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts));
+  return shifts;
+}
+function writeShift(id, shift) {
+  const all = loadShifts();
+  all[id] = shift;
+  localStorage.setItem(SHIFTS_KEY, JSON.stringify(all));
+  return all;
+}
+
+// lib/auto/shop.ts
+var KEY = "fafo.auto.shop.v1";
+var DEFAULT_SHOP = {
+  idleMinutes: 3,
+  demoOnOpen: true,
+  idleDemo: true,
+  font: "plain",
+  scale: "100",
+  density: "roomy",
+  accent: "#f3f1ea",
+  ink: "#f3f1ea",
+  paper: "#0e0e0c",
+  unit: "mi",
+  hoverNotes: true,
+  newCarPaint: "#8f1d22",
+  confirmRemove: true,
+  showHoseKey: true,
+  showVacuumOnOpen: false
+};
+function clampMinutes(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return DEFAULT_SHOP.idleMinutes;
+  return Math.min(30, Math.max(1, Math.round(minutes)));
+}
+function oneOf(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
+}
+function sanitizeShop(raw) {
+  const source = raw ?? {};
+  return {
+    idleMinutes: clampMinutes(source.idleMinutes),
+    demoOnOpen: source.demoOnOpen !== false,
+    idleDemo: source.idleDemo !== false,
+    font: oneOf(source.font, ["plain", "serif", "mono"], "plain"),
+    scale: oneOf(source.scale, ["100", "110", "125"], "100"),
+    density: oneOf(source.density, ["roomy", "tight"], "roomy"),
+    accent: typeof source.accent === "string" && source.accent.startsWith("#") ? source.accent : DEFAULT_SHOP.accent,
+    ink: typeof source.ink === "string" && source.ink.startsWith("#") ? source.ink : DEFAULT_SHOP.ink,
+    paper: typeof source.paper === "string" && source.paper.startsWith("#") ? source.paper : DEFAULT_SHOP.paper,
+    unit: source.unit === "km" ? "km" : "mi",
+    hoverNotes: source.hoverNotes !== false,
+    newCarPaint: typeof source.newCarPaint === "string" && source.newCarPaint.startsWith("#") ? source.newCarPaint : DEFAULT_SHOP.newCarPaint,
+    confirmRemove: source.confirmRemove !== false,
+    showHoseKey: source.showHoseKey !== false,
+    showVacuumOnOpen: source.showVacuumOnOpen === true
+  };
+}
+function loadShop() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { ...DEFAULT_SHOP };
+    return sanitizeShop(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_SHOP };
+  }
+}
+function saveShop(next) {
+  const saved = sanitizeShop(next);
+  localStorage.setItem(KEY, JSON.stringify(saved));
+  return saved;
+}
+function mergeShop(shop, override) {
+  if (!override) return shop;
+  return sanitizeShop({ ...shop, ...override });
+}
+function themeStyle(shop) {
+  const font = shop.font === "serif" ? "Georgia, 'Iowan Old Style', serif" : shop.font === "mono" ? "ui-monospace, 'IBM Plex Mono', monospace" : "inherit";
+  const size = shop.scale === "125" ? "1.12rem" : shop.scale === "110" ? "1.06rem" : "1rem";
+  return {
+    fontFamily: font,
+    fontSize: size,
+    color: shop.ink,
+    "--color-bg": shop.paper,
+    "--color-fg": shop.ink,
+    "--color-accent": shop.accent,
+    "--color-accent-fg": shop.paper
+  };
+}
+
+// lib/auto/garage.ts
+var KEY2 = "fafo.auto.garage.v1";
+function loadGarage() {
+  try {
+    const raw = localStorage.getItem(KEY2);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((car) => car && (car.pack === "mustang" || car.pack === "common") && typeof car.name === "string" && typeof car.id === "string").map((car) => ({ ...car, miles: Number(car.miles) || 0, journal: Array.isArray(car.journal) ? car.journal : [], service: car.service ?? {} }));
+  } catch {
+    return [];
+  }
+}
+function saveGarage(cars) {
+  localStorage.setItem(KEY2, JSON.stringify(cars));
+  return cars;
+}
+function newCar(pack, name) {
+  return {
+    id: crypto.randomUUID(),
+    name: name.trim() || (pack === "mustang" ? "Mustang" : "Coupe"),
+    pack,
+    answers: {},
+    miles: 0,
+    journal: [],
+    override: null
+  };
+}
+
+// lib/auto/scan-store.ts
+var DB = "fafo-auto-scan";
+var STORE = "files";
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function saveScanFile(name, data) {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put({ name, data }, "body");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+async function loadScanFile() {
+  const db = await openDb();
+  const row = await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const request = tx.objectStore(STORE).get("body");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return row?.data ? row : null;
+}
+async function clearScanFile() {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete("body");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+// components/auto/front-door.tsx
 var import_react = __toESM(require_react(), 1);
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+var PACKS = [
+  { id: "mustang", name: "2001 Mustang", detail: "Coupe or convertible. V6, GT, Bullitt, or Cobra. You finish the build sheet after it is in the garage." },
+  { id: "common", name: "Common coupe", detail: "A generic gas car for when the Mustang pack is the wrong one. No Ford pins and no Ford torque." }
+];
+function FrontDoor({
+  door,
+  shop,
+  cars,
+  onShop,
+  onCars,
+  onOpen,
+  onDoor
+}) {
+  if (door === "title") {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mx-auto flex min-h-[70vh] w-full max-w-lg flex-col justify-center gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm text-faint", children: "FAFO" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-3xl font-medium tracking-tight text-fg", children: "Auto Tech" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-sm leading-relaxed text-muted", children: "Pick a car you already keep, add a pack from the dealers, or set the shop defaults." })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onDoor("garage"), className: "h-12 rounded-md bg-accent text-sm font-medium text-accent-fg", children: "Garage" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onDoor("dealer"), className: "h-12 rounded-md border border-line text-sm text-fg", children: "The Auto Dealers" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onDoor("options"), className: "h-12 rounded-md border border-line text-sm text-fg", children: "Options" })
+    ] });
+  }
+  if (door === "garage") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Garage, { shop, cars, onCars, onOpen, onDoor });
+  if (door === "dealer") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dealer, { cars, onCars, onOpen, onDoor });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Options, { shop, onShop, onDoor });
+}
+function Back({ onDoor }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onDoor("title"), className: "h-11 self-start rounded-md border border-line px-4 text-sm text-fg", children: "Title" });
+}
+function Garage({ shop, cars, onCars, onOpen, onDoor }) {
+  const [editId, setEditId] = (0, import_react.useState)(null);
+  const [pendingRemove, setPendingRemove] = (0, import_react.useState)(null);
+  const editing = cars.find((car) => car.id === editId) ?? null;
+  function update(next) {
+    onCars(cars.map((car) => car.id === next.id ? next : car));
+  }
+  function remove(id) {
+    if (shop.confirmRemove && pendingRemove !== id) {
+      setPendingRemove(id);
+      return;
+    }
+    onCars(cars.filter((car) => car.id !== id));
+    setPendingRemove(null);
+    if (editId === id) setEditId(null);
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Back, { onDoor }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-xl font-medium text-fg", children: "Garage" }),
+    cars.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm text-muted", children: "No cars yet. The Auto Dealers has the packs on this computer." }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", { className: "flex flex-col gap-2", children: cars.map((car) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { className: "rounded-md border border-line p-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm font-medium text-fg", children: car.name }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-sm text-muted", children: [
+        car.pack === "mustang" ? "2001 Mustang" : "Common coupe",
+        " \xB7 ",
+        car.miles.toLocaleString(),
+        " ",
+        shop.unit,
+        car.override ? " \xB7 own settings" : " \xB7 shop settings"
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onOpen(car), className: "h-11 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg", children: "Open" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => setEditId(editId === car.id ? null : car.id), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Edit" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => remove(car.id), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: pendingRemove === car.id ? "Remove this car" : "Remove" })
+      ] })
+    ] }, car.id)) }),
+    editing ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CarEdit, { car: editing, shop, onChange: update }) : null
+  ] });
+}
+function CarEdit({ car, shop, onChange }) {
+  const [note, setNote] = (0, import_react.useState)("");
+  const [noteMiles, setNoteMiles] = (0, import_react.useState)(String(car.miles || ""));
+  const custom = car.override !== null;
+  function addNote() {
+    const text = note.trim();
+    if (!text) return;
+    const entry = { id: crypto.randomUUID(), miles: Math.max(0, Number(noteMiles) || car.miles), text, at: Date.now() };
+    onChange({ ...car, journal: [entry, ...car.journal] });
+    setNote("");
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "flex flex-col gap-3 rounded-md bg-elevated p-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", { className: "text-sm font-medium text-fg", children: [
+      "Edit ",
+      car.name
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+      "Name",
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: car.name, onChange: (event) => onChange({ ...car, name: event.target.value }), className: "h-11 rounded-md border border-line bg-bg px-3" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+      "Miles on this car",
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", min: 0, value: car.miles || "", onChange: (event) => onChange({ ...car, miles: Math.max(0, Number(event.target.value) || 0) }), className: "h-11 rounded-md border border-line bg-bg px-3" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-sm text-fg", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: custom, onChange: (event) => onChange({ ...car, override: event.target.checked ? { ...shop } : null }) }),
+      "This car overrides the shop"
+    ] }),
+    custom && car.override ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-3 sm:grid-cols-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Body paint", value: car.override.newCarPaint ?? shop.newCarPaint, onChange: (newCarPaint) => onChange({ ...car, override: { ...car.override, newCarPaint } }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Accent", value: car.override.accent ?? shop.accent, onChange: (accent) => onChange({ ...car, override: { ...car.override, accent } }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Ink", value: car.override.ink ?? shop.ink, onChange: (ink) => onChange({ ...car, override: { ...car.override, ink } }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Paper", value: car.override.paper ?? shop.paper, onChange: (paper) => onChange({ ...car, override: { ...car.override, paper } }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+        "Demo minutes",
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", min: 1, max: 30, value: car.override.idleMinutes ?? shop.idleMinutes, onChange: (event) => onChange({ ...car, override: { ...car.override, idleMinutes: Number(event.target.value) } }), className: "h-11 rounded-md border border-line bg-bg px-3" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Choice, { label: "Type", value: car.override.font ?? shop.font, options: [["plain", "Plain"], ["serif", "Serif"], ["mono", "Mono"]], onChange: (font) => onChange({ ...car, override: { ...car.override, font } }) })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm text-muted", children: "Unchecked means this car uses the shop colors, type, and demo timer." }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm font-medium text-fg", children: "Journal" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+        "What you did",
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: note, onChange: (event) => setNote(event.target.value), className: "h-11 rounded-md border border-line bg-bg px-3" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+        "At miles",
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: noteMiles, onChange: (event) => setNoteMiles(event.target.value), className: "h-11 rounded-md border border-line bg-bg px-3" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: addNote, className: "h-11 self-start rounded-md border border-line px-3 text-sm text-fg", children: "Add to this car" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", { className: "flex flex-col gap-2", children: car.journal.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { className: "text-sm text-fg", children: [
+        entry.miles.toLocaleString(),
+        " ",
+        shop.unit,
+        " \xB7 ",
+        entry.text,
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onChange({ ...car, journal: car.journal.filter((item) => item.id !== entry.id) }), className: "ml-2 text-muted", children: "Delete" })
+      ] }, entry.id)) })
+    ] })
+  ] });
+}
+function Dealer({ cars, onCars, onOpen, onDoor }) {
+  const [name, setName] = (0, import_react.useState)("");
+  const [pack, setPack] = (0, import_react.useState)("mustang");
+  const [openNow, setOpenNow] = (0, import_react.useState)(true);
+  function add() {
+    const car = newCar(pack, name);
+    onCars([car, ...cars]);
+    setName("");
+    if (openNow) onOpen(car);
+    else onDoor("garage");
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Back, { onDoor }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-xl font-medium text-fg", children: "The Auto Dealers" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: "These packs are already on this computer. Adding one puts a car in your garage. It does not download a car we do not have." }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "grid gap-2 sm:grid-cols-2", children: PACKS.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => setPack(item.id), className: `rounded-md border p-3 text-left ${pack === item.id ? "border-accent bg-elevated" : "border-line"}`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm font-medium text-fg", children: item.name }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-sm leading-relaxed text-muted", children: item.detail })
+    ] }, item.id)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+      "Name this car",
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: name, onChange: (event) => setName(event.target.value), placeholder: pack === "mustang" ? "Mustang" : "Coupe", className: "h-11 rounded-md border border-line bg-bg px-3" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-sm text-fg", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: openNow, onChange: (event) => setOpenNow(event.target.checked) }),
+      "Open it after adding"
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, className: "h-12 self-start rounded-md bg-accent px-4 text-sm font-medium text-accent-fg", children: "Add to the garage" })
+  ] });
+}
+function Options({ shop, onShop, onDoor }) {
+  function set(key, value) {
+    onShop({ ...shop, [key]: value });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Back, { onDoor }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "text-xl font-medium text-fg", children: "Options" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: "These are the shop defaults. A car can override them from the garage." }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { className: "text-sm font-medium text-fg", children: "Demo" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+        "Comes back after, minutes",
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", min: 1, max: 30, value: shop.idleMinutes, onChange: (event) => set("idleMinutes", Number(event.target.value)), className: "h-11 max-w-40 rounded-md border border-line bg-bg px-3" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { on: shop.demoOnOpen, label: "Play the demo when a car opens", onChange: (demoOnOpen) => set("demoOnOpen", demoOnOpen) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { on: shop.idleDemo, label: "Play it again after you leave the car alone", onChange: (idleDemo) => set("idleDemo", idleDemo) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { className: "text-sm font-medium text-fg", children: "Type" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Choice, { label: "Font", value: shop.font, options: [["plain", "Plain"], ["serif", "Serif"], ["mono", "Mono"]], onChange: (font) => set("font", font) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Choice, { label: "Size", value: shop.scale, options: [["100", "100"], ["110", "110"], ["125", "125"]], onChange: (scale) => set("scale", scale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Choice, { label: "Spacing", value: shop.density, options: [["roomy", "Roomy"], ["tight", "Tight"]], onChange: (density) => set("density", density) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "grid gap-3 sm:grid-cols-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { className: "text-sm font-medium text-fg sm:col-span-2", children: "Color" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Accent", value: shop.accent, onChange: (accent) => set("accent", accent) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Ink", value: shop.ink, onChange: (ink) => set("ink", ink) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "Paper", value: shop.paper, onChange: (paper) => set("paper", paper) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorField, { label: "New car paint", value: shop.newCarPaint, onChange: (newCarPaint) => set("newCarPaint", newCarPaint) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { className: "text-sm font-medium text-fg", children: "Shop" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Choice, { label: "Distance", value: shop.unit, options: [["mi", "Miles"], ["km", "Kilometers"]], onChange: (unit) => set("unit", unit) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { on: shop.hoverNotes, label: "Notes when you hover a part", onChange: (hoverNotes) => set("hoverNotes", hoverNotes) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { on: shop.showHoseKey, label: "Show the hose colors", onChange: (showHoseKey) => set("showHoseKey", showHoseKey) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { on: shop.showVacuumOnOpen, label: "Open the vacuum tree with the car", onChange: (showVacuumOnOpen) => set("showVacuumOnOpen", showVacuumOnOpen) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { on: shop.confirmRemove, label: "Ask again before a car leaves the garage", onChange: (confirmRemove) => set("confirmRemove", confirmRemove) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onShop({ ...DEFAULT_SHOP }), className: "h-11 self-start rounded-md border border-line px-3 text-sm text-fg", children: "Reset shop defaults" })
+    ] })
+  ] });
+}
+function Toggle({ on, label, onChange }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => onChange(!on), className: "flex h-11 items-center justify-between gap-3 rounded-md border border-line px-3 text-left text-sm text-fg", children: [
+    label,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-muted", children: on ? "On" : "Off" })
+  ] });
+}
+function Choice({ label, value, options, onChange }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-1", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm text-fg", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2", children: options.map(([id, name]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => onChange(id), className: `h-11 rounded-md px-3 text-sm ${value === id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: name }, id)) })
+  ] });
+}
+function ColorField({ label, value, onChange }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+    label,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "color", value, onChange: (event) => onChange(event.target.value), className: "h-11 w-full rounded-md border border-line bg-bg" })
+  ] });
+}
+
+// components/auto/shop-desk.tsx
+var import_react2 = __toESM(require_react(), 1);
+
+// lib/auto/shop-ref.ts
+var WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+function vinValue(char) {
+  if (char >= "0" && char <= "9") return Number(char);
+  const map = { A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9, S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9 };
+  return map[char] ?? -1;
+}
+function checkDigit(vin) {
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    const value = vinValue(vin[i] ?? "");
+    if (value < 0) return false;
+    sum += value * WEIGHTS[i];
+  }
+  const mod = sum % 11;
+  const expected = mod === 10 ? "X" : String(mod);
+  return vin[8] === expected;
+}
+var BODY = {
+  P40: { body: "coupe", line: "v6", label: "Coupe" },
+  P42: { body: "coupe", line: "gt", label: "GT coupe" },
+  P44: { body: "convertible", line: "v6", label: "Convertible" },
+  P45: { body: "convertible", line: "gt", label: "GT convertible" },
+  P46: { body: "convertible", line: "cobra", label: "Cobra convertible" },
+  P47: { body: "coupe", line: "cobra", label: "Cobra coupe" }
+};
+var ENGINE = {
+  "4": "3.8L OHV V6",
+  X: "4.6L SOHC V8",
+  V: "4.6L DOHC V8"
+};
+function readVin(raw) {
+  const vin = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const lines = [];
+  if (vin.length !== 17) {
+    return { vin, ok: false, year: null, plant: null, body: null, line: null, engine: null, lines, warning: "A VIN is 17 characters. It is on the dash, seen through the windshield, and on the door sticker." };
+  }
+  const check = checkDigit(vin);
+  const series = vin.slice(4, 7);
+  const body = BODY[series] ?? null;
+  const engineCode = vin[7] ?? "";
+  const yearCode = vin[9] ?? "";
+  const plant = vin[10] === "F" ? "Dearborn" : vin[10] ? `Plant ${vin[10]}` : null;
+  const year = yearCode === "1" ? "2001" : yearCode ? `Year code ${yearCode}, not 2001` : null;
+  lines.push({ label: "Maker", value: vin.startsWith("1FA") ? "Ford, USA, passenger car" : `${vin.slice(0, 3)} is not the 1FA Mustang mark` });
+  lines.push({ label: "Restraint", value: vin[3] === "F" ? "Belts and the second-generation airbags" : `Code ${vin[3]}. The 2001 book uses F.` });
+  lines.push({ label: "Body", value: body?.label ?? `${series} is not a 2001 Mustang body code in this book` });
+  lines.push({ label: "Engine", value: ENGINE[engineCode] ?? `Code ${engineCode} is not 4, X, or V` });
+  lines.push({ label: "Check digit", value: check ? "Matches" : "Does not match. Read it again before you trust the rest." });
+  lines.push({ label: "Year", value: year ?? "Missing" });
+  lines.push({ label: "Plant", value: plant ?? "Missing" });
+  lines.push({ label: "Serial", value: vin.slice(11) });
+  const warning = !check ? "The check digit failed. Do not set the build from this." : yearCode !== "1" ? "This decoder is the 2001 Mustang table. A different year code needs its own book." : !body ? "The body code is not one this book lists for 2001." : null;
+  return {
+    vin,
+    ok: check && yearCode === "1" && !!body && !!ENGINE[engineCode],
+    year,
+    plant,
+    body: body?.body ?? null,
+    line: body?.line ?? null,
+    engine: ENGINE[engineCode] ?? null,
+    lines,
+    warning
+  };
+}
+var CODES = [
+  { code: "P1000", title: "Monitors not complete", means: "The car has not finished its self-tests since the battery or the codes were cleared.", first: "Do not buy a part. Drive it through a complete warm cycle and read the codes again.", parts: [], flow: null },
+  { code: "P0102", title: "MAF signal low", means: "The air-meter signal is lower than the air the engine is using.", first: "Check the connector and the filter before the meter. A loose boot after the meter is unmetered air and often sets a lean code instead.", parts: ["air-element", "maf"], flow: null },
+  { code: "P0103", title: "MAF signal high", means: "The meter is reporting more air than the engine can be using.", first: "Look for oil in the meter and a short to power on the signal wire. Clean is not a calibration.", parts: ["maf"], flow: null },
+  { code: "P0117", title: "Coolant temp low voltage", means: "The coolant sensor is reading very hot, or the signal is shorted.", first: "Compare the gauge, the hose temperatures, and the sensor reading before you replace it. A cold engine that claims to be hot is the sensor or the wire.", parts: ["ect"], flow: null },
+  { code: "P0118", title: "Coolant temp high voltage", means: "The sensor is unplugged, open, or reading very cold.", first: "Seat the connector. An open sensor keeps the fans and the fuel off their normal map.", parts: ["ect"], flow: null },
+  { code: "P0171", title: "Lean, bank 1", means: "Bank 1 is getting more air than the meter and the fuel account for.", first: "If P0174 is set too, look for a vacuum leak, the PCV, or low fuel pressure. One bank alone is that side.", parts: ["hose-booster", "hose-pcv", "intake"], flow: null },
+  { code: "P0174", title: "Lean, bank 2", means: "Bank 2 is lean.", first: "Both lean codes together are a shared leak or a weak pump. One code is that bank.", parts: ["hose-pcv-fresh", "intake"], flow: null },
+  { code: "P0230", title: "Fuel-pump primary", means: "The computer did not see the pump relay circuit behave.", first: "This is the relay and the fuse, not a reason to drop the tank. Walk the pump power path.", parts: ["pdb", "ccrm", "fuel-pump"], flow: "fuel-pump-power" },
+  { code: "P0300", title: "Random misfire", means: "More than one cylinder is missing, or the computer cannot pin it.", first: "Fuel pressure, the coil pack, and a vacuum leak come before six new plugs. A single cylinder code is more useful.", parts: ["coil-pack", "fuel-rail"], flow: null },
+  { code: "P0301", title: "Misfire, cylinder 1", means: "Cylinder 1. On the 3.8 that is the front plug on the passenger bank.", first: "Swap that plug wire with cylinder 2. If the miss moves, the wire is bad. If it stays, the plug or the injector stays.", parts: ["plug-1", "wire-1"], flow: null },
+  { code: "P0302", title: "Misfire, cylinder 2", means: "Cylinder 2. Passenger bank, middle.", first: "Same wire-swap test, against cylinder 1.", parts: ["plug-2", "wire-2"], flow: null },
+  { code: "P0303", title: "Misfire, cylinder 3", means: "Cylinder 3. Passenger bank, rear.", first: "Same wire-swap test.", parts: ["plug-3", "wire-3"], flow: null },
+  { code: "P0304", title: "Misfire, cylinder 4", means: "Cylinder 4. Driver bank, front.", first: "Same wire-swap test.", parts: ["plug-4", "wire-4"], flow: null },
+  { code: "P0305", title: "Misfire, cylinder 5", means: "Cylinder 5. Driver bank, middle.", first: "Same wire-swap test.", parts: ["plug-5", "wire-5"], flow: null },
+  { code: "P0306", title: "Misfire, cylinder 6", means: "Cylinder 6. Driver bank, rear.", first: "Same wire-swap test.", parts: ["plug-6", "wire-6"], flow: null },
+  { code: "P0320", title: "Crank signal", means: "The computer is not seeing a usable crank signal.", first: "The sensor is on the front cover. Check the connector and the gap before the sensor. No crank signal means no spark and no injector pulse.", parts: ["ckp"], flow: null },
+  { code: "P0351", title: "Ignition coil primary", means: "The coil primary circuit failed its test.", first: "On the 3.8 this is the coil pack, not six coil-on-plug coils. Check the connector and the power feed before the pack.", parts: ["coil-pack"], flow: null },
+  { code: "P0401", title: "EGR flow too low", means: "The computer commanded EGR and did not see the flow.", first: "The solenoid fails more often than the valve. Then the red control hose, then the DPFE hoses. HI and REF swapped sets a DPFE code, not a fixed valve.", parts: ["evr", "egr", "hose-egr-control", "dpfe"], flow: null },
+  { code: "P0420", title: "Catalyst efficiency", means: "The downstream oxygen sensor says the catalyst is not cleaning up.", first: "Fix any misfire or lean code first. A misfire will ruin a new catalyst. Then compare the two oxygen sensors.", parts: ["o2-up", "o2-down", "cat"], flow: null },
+  { code: "P0442", title: "EVAP small leak", means: "The vapor system cannot hold a small amount of pressure or vacuum.", first: "Cap, the hose at the purge valve behind the passenger liner, and cracked vapor lines at the tank. Walk the vapor path before a smoke machine guess.", parts: ["evap-purge", "fuel-cap", "evap-canister"], flow: "evap" },
+  { code: "P0443", title: "Purge valve circuit", means: "The electrical test of the purge valve failed.", first: "This is the valve circuit, not a gas cap. Connector first.", parts: ["evap-purge"], flow: "evap" },
+  { code: "P0455", title: "EVAP large leak", means: "The system is wide open.", first: "The cap is the usual one. After that, a hose off the purge valve or a broken line at the tank.", parts: ["fuel-cap", "evap-purge"], flow: "evap" },
+  { code: "P0460", title: "Fuel level sensor", means: "The gauge sender does not match what the computer expects.", first: "The sender is on the pump hat. A gauge problem is not a pump problem until the hat is tested.", parts: ["fuel-pump"], flow: null },
+  { code: "P1131", title: "Upstream oxygen, bank 1, not switching", means: "Ford test. The bank 1 sensor ahead of the catalyst is stuck.", first: "Look for an exhaust leak before the sensor, then the sensor. Do not replace the downstream sensor for this code.", parts: ["o2-up"], flow: null },
+  { code: "P1151", title: "Upstream oxygen, bank 2, not switching", means: "The same test on bank 2.", first: "Same as P1131, the other bank.", parts: ["o2-up"], flow: null },
+  { code: "P1400", title: "DPFE low", means: "The EGR pressure sensor reads too low.", first: "The hoses at the sensor, then the sensor. HI is the larger hose, toward the exhaust.", parts: ["dpfe", "hose-dpfe-hi", "hose-dpfe-ref"], flow: null },
+  { code: "P1401", title: "DPFE high", means: "The EGR pressure sensor reads too high.", first: "Hoses reversed is a common cause. REF is the smaller hose, closer to the intake.", parts: ["dpfe", "hose-dpfe-ref", "hose-dpfe-hi"], flow: null },
+  { code: "P1506", title: "Idle higher than commanded", means: "The engine is idling faster than the air control asked for.", first: "A vacuum leak and a stuck-open idle valve do this. The booster hose is the large one.", parts: ["hose-booster", "iac"], flow: null },
+  { code: "P1507", title: "Idle lower than commanded", means: "The idle cannot come up.", first: "A dirty idle passage or a valve that is not opening. Clean the passage before a new valve.", parts: ["iac"], flow: null }
+];
+function findCode(raw) {
+  const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!code) return [];
+  return CODES.filter((item) => item.code.includes(code) || item.title.toUpperCase().includes(code));
+}
+function bookRows(engine) {
+  const v6 = engine === "v6";
+  const v8 = engine === "v8-2v" || engine === "v8-4v";
+  if (!v6 && !v8) {
+    return [
+      { label: "This car", value: "The part numbers and quart figures below are the 2001 Mustang book. They do not apply to the common car." },
+      { label: "Plugs", value: "Number them from the front. Do not copy the Mustang gap." }
+    ];
+  }
+  const rows = [
+    { label: "Fuel", value: "87 octane. Tank is 15.7 gallons." },
+    { label: "Oil", value: "5W-20, 5.0 quarts with the filter. The 2001 book lists this for the 3.8 and the 4.6 SOHC." },
+    { label: "Coolant", value: v6 ? "11.8 quarts. Green or yellow Motorcraft. Do not add orange extended-life." : engine === "v8-4v" ? "The 14.1 quart line in the 2001 book is the 4.6 SOHC. A Cobra is not that row. Green or yellow still applies. Not orange." : "14.1 quarts on the 4.6 SOHC table. Green or yellow. Not orange." },
+    { label: "Plugs", value: "The gap is on the emissions decal under the hood, not in this list. A plug that comes out goes back in the same hole." },
+    { label: "Firing order", value: v6 ? "1-4-2-5-3-6. Passenger bank is 1, 2, 3 from the front." : "1-3-7-2-6-5-4-8 on the 4.6. Do not use the V6 order on a GT." },
+    { label: "Power steering", value: "MERCON, filled to the mark." },
+    { label: "Manual transmission", value: v6 ? "5.6 pints of MERCON. The fill plug is the level." : "Fill to the plug. Do not use a quart guess from a different transmission." },
+    { label: "Battery", value: "BXT-59." }
+  ];
+  if (v6) {
+    rows.push(
+      { label: "Air filter", value: "FA-1611" },
+      { label: "Fuel filter", value: "FG-986" },
+      { label: "Oil filter", value: "FL-400S" },
+      { label: "PCV", value: "EV-152" },
+      { label: "Plugs, part", value: "AWSF-42EE. Match the suffix on the decal." }
+    );
+  } else if (engine === "v8-2v") {
+    rows.push(
+      { label: "Air filter", value: "FA-1634" },
+      { label: "Fuel filter", value: "FG-986B" },
+      { label: "Oil filter", value: "FL-820S" },
+      { label: "PCV", value: "EV-98" },
+      { label: "Plugs, part", value: "AWSF-32P. Match the suffix on the decal." }
+    );
+  }
+  return rows;
+}
+var SYMPTOMS = [
+  { title: "Cranks, no start", first: "Listen for the one-second prime before you buy a pump.", parts: ["fuel-pump", "inertia-switch"], flow: "fuel-pump-power" },
+  { title: "No pump prime", first: "Inertia switch, then the fuse on the lid, then the CCRM. The tank is last.", parts: ["inertia-switch", "pdb", "ccrm"], flow: "fuel-pump-power" },
+  { title: "Starts, then dies", first: "If it fires and dies as soon as you release the key, the run circuit or the inertia switch is open.", parts: ["inertia-switch", "ccrm"], flow: "fuel-pump-power" },
+  { title: "Miss on one cylinder", first: "Read the cylinder number. Swap that wire with the next plug. The miss moves with a bad wire.", parts: ["coil-pack", "plug-1"], flow: null },
+  { title: "Lean on both banks", first: "A shared vacuum leak or low fuel pressure. One bank is not both banks.", parts: ["hose-booster", "hose-pcv", "fuel-rail"], flow: null },
+  { title: "Gas cap or EVAP light", first: "Cap first, then the purge hose behind the passenger front liner.", parts: ["fuel-cap", "evap-purge"], flow: "evap" },
+  { title: "Runs hot", first: "Do not open the cap hot. Fans, the thermostat, and the coolant level. Orange coolant does not belong in this car.", parts: ["rad-cap", "coolant-tank", "thermostat"], flow: null }
+];
+
+// lib/auto/care.ts
+var KEY3 = "fafo-auto-care";
+function loadCare() {
+  try {
+    const raw = localStorage.getItem(KEY3);
+    if (!raw) return { miles: 0, done: {} };
+    const parsed = JSON.parse(raw);
+    return { miles: Number(parsed.miles) || 0, done: parsed.done ?? {} };
+  } catch {
+    return { miles: 0, done: {} };
+  }
+}
+function saveCare(log) {
+  localStorage.setItem(KEY3, JSON.stringify(log));
+}
+function careJobs(spec) {
+  const v6 = spec.pack === "mustang" && spec.engine === "v6";
+  const v8 = spec.engine === "v8-2v" || spec.engine === "v8-4v";
+  const plugCount = v6 ? 6 : v8 ? 8 : 4;
+  return [
+    { id: "oil", name: "Oil and filter", every: 5e3, parts: ["oil-fill", "oil-filter"], note: "The 2001 book is about 5,000 miles on normal use. Severe use is sooner. Five quarts of 5W-20 with the filter on the Mustang." },
+    { id: "coolant", name: "Coolant", every: 5e4, parts: ["rad-cap", "coolant-tank"], note: "Radiator cap is the pressure cap. The bottle is the reservoir." },
+    {
+      id: "trans",
+      name: "Transmission fluid",
+      every: 3e4,
+      parts: ["trans-fill"],
+      note: spec.trans === "auto" ? "Check hot, idling, in Park." : "The fill plug is the level. There is no dipstick."
+    },
+    { id: "air", name: "Engine air filter", every: 15e3, parts: ["air-element"], note: "In the air box on the driver side. Sooner in dust." },
+    { id: "fuel-filter", name: "Fuel filter", every: 3e4, parts: ["fuel-filter"], note: "Low pressure under load is the reason to change it early." },
+    { id: "tires", name: "Tires and brakes", every: 5e3, parts: ["wheel-fl", "brake-fl"], note: "Pressures are on the door sticker. Look at the tread and the pad thickness." },
+    {
+      id: "cabin",
+      name: "Cabin filter",
+      every: spec.pack === "mustang" ? 0 : 15e3,
+      parts: ["cabin-filter"],
+      note: spec.pack === "mustang" ? "This Mustang has no factory cabin filter." : "Under the cowl."
+    },
+    {
+      id: "plugs",
+      name: "Spark plugs",
+      every: v6 ? 1e5 : 3e4,
+      parts: Array.from({ length: plugCount }, (_, index) => `plug-${index + 1}`),
+      note: v6 ? "Passenger bank 1-2-3, driver bank 4-5-6, front to back." : "Numbered from the front."
+    },
+    { id: "belt", name: "Belt, pulleys, alternator", every: 6e4, parts: ["belt", "alternator"], note: "Inspect the belt, the tensioner, and the alternator. The decal on the radiator support is the routing, if it is still there." },
+    {
+      id: "grease",
+      name: "Boots and fittings",
+      every: 1e4,
+      parts: ["boot-fl", "boot-fr", "boot-tie-l", "boot-tie-r", "ujoint-f", "ujoint-r"],
+      note: "Inspect the boots. Grease a joint only when it actually has a fitting."
+    }
+  ];
+}
+function careState(miles, last, every) {
+  if (every <= 0) return "skip";
+  if (last == null) return "unset";
+  const left = every - (miles - last);
+  if (left <= 0) return "due";
+  if (left <= 500) return "soon";
+  return "ok";
+}
+
+// components/auto/shop-desk.tsx
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+function ShopDesk({
+  engine,
+  miles,
+  jobs,
+  savedVin,
+  onApplyVin,
+  onRememberVin,
+  onShow,
+  onWalk
+}) {
+  const [section, setSection] = (0, import_react2.useState)("job");
+  const [query, setQuery] = (0, import_react2.useState)("");
+  const [picked, setPicked] = (0, import_react2.useState)(null);
+  const [vin, setVin] = (0, import_react2.useState)(savedVin);
+  const decoded = (0, import_react2.useMemo)(() => readVin(vin), [vin]);
+  const matches = query.trim() ? findCode(query) : CODES;
+  const rows = bookRows(engine);
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "flex flex-col gap-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: "A code is a failed test, not a parts order. The book figures are the 2001 Mustang owner's table. A common car does not use these part numbers." }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "flex flex-wrap gap-2", children: [
+      ["job", "What is it doing"],
+      ["code", "Codes"],
+      ["vin", "VIN"],
+      ["book", "Book"],
+      ["miles", "Schedule"]
+    ].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => setSection(id), className: `h-11 rounded-md px-3 text-sm ${section === id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: label }, id)) }),
+    section === "job" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2", children: SYMPTOMS.map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "rounded-md bg-elevated p-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => onShow(item.parts), className: "text-left text-sm font-medium text-fg", children: item.title }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: item.first }),
+      item.flow ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => onWalk(item.flow, item.parts[0] ?? ""), className: "mt-2 h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Walk this" }) : null
+    ] }, item.title)) }) : null,
+    section === "code" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+        "Code",
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { value: query, onChange: (event) => {
+          setQuery(event.target.value);
+          setPicked(null);
+        }, placeholder: "P0301", className: "h-11 rounded-md border border-line bg-bg px-3" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2", children: (picked ? [picked] : matches).slice(0, query.trim() || picked ? 12 : 8).map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "rounded-md bg-elevated p-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", onClick: () => setPicked(picked?.code === item.code ? null : item), className: "text-left text-sm font-medium text-fg", children: [
+          item.code,
+          " \xB7 ",
+          item.title
+        ] }),
+        picked?.code === item.code || query.trim() ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: item.means }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: item.first }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mt-2 flex flex-wrap gap-2", children: [
+            item.parts.length ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => onShow(item.parts), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Show on the car" }) : null,
+            item.flow ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => onWalk(item.flow, item.parts[0] ?? ""), className: "h-11 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg", children: "Walk this" }) : null
+          ] })
+        ] }) : null
+      ] }, item.code)) }),
+      !query.trim() && !picked ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm text-muted", children: "Type a code to narrow this list. Open one to see the first check." }) : null,
+      query.trim() && matches.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm text-muted", children: "That code is not in this list. Write down the freeze frame before you clear it." }) : null
+    ] }) : null,
+    section === "vin" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+        "VIN",
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { value: vin, onChange: (event) => setVin(event.target.value.toUpperCase()), spellCheck: false, className: "h-11 rounded-md border border-line bg-bg px-3 font-mono" })
+      ] }),
+      vin.replace(/[^A-Za-z0-9]/g, "").length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-1", children: decoded.lines.map((line) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "text-sm text-fg", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "text-muted", children: [
+          line.label,
+          ". "
+        ] }),
+        line.value
+      ] }, line.label)) }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm text-muted", children: "Seventeen characters. Position 8 is the engine. Positions 5 through 7 are the body. Position 10 is the year, and 1 means 2001." }),
+      decoded.warning ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm text-fg", children: decoded.warning }) : null,
+      decoded.ok && decoded.body && decoded.line ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: () => {
+            onRememberVin(decoded.vin);
+            onApplyVin(decoded.body, decoded.line);
+          },
+          className: "h-11 self-start rounded-md bg-accent px-3 text-sm font-medium text-accent-fg",
+          children: "Use this build"
+        }
+      ) : null
+    ] }) : null,
+    section === "book" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2", children: rows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "text-sm text-fg", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "font-medium", children: [
+        row.label,
+        ". "
+      ] }),
+      row.value
+    ] }, row.label)) }) : null,
+    section === "miles" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "flex flex-col gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm text-muted", children: miles > 0 ? `Using ${miles.toLocaleString()} miles on this car.` : "No miles yet. Set them under Care. They stay on this garage car." }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2", children: jobs.map((item) => {
+        const state = careState(miles, item.last, item.every);
+        const left = item.last == null || item.every <= 0 ? null : item.every - (miles - item.last);
+        const label = state === "skip" ? "Not on this car" : state === "unset" ? "Not recorded" : state === "due" ? "Due" : state === "soon" ? "Due soon" : "Ok";
+        return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "rounded-md bg-elevated p-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { className: "text-sm font-medium text-fg", children: [
+            item.name,
+            " ",
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "font-normal text-muted", children: [
+              "\xB7 ",
+              label
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: item.note }),
+          left != null && left > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { className: "text-sm text-muted", children: [
+            left.toLocaleString(),
+            " miles until the next one."
+          ] }) : null
+        ] }, item.id);
+      }) })
+    ] }) : null
+  ] });
+}
+
+// components/auto/path-sheet.tsx
+var import_react3 = __toESM(require_react(), 1);
+
+// lib/auto/connectors.ts
+function pin(key, role, label, extra = {}) {
+  return { key, role, label, color: null, expect: null, verified: false, ...extra };
+}
+var SEEDS = [
+  {
+    id: "ccrm:fuel-pump",
+    partId: "ccrm",
+    name: "CCRM fuel-pump relay",
+    stub: false,
+    pins: [
+      pin("p1", "power", "Relay output", { color: "Dark green / yellow", expect: "Battery voltage for about one second, then it falls away.", to: "inertia-switch", verified: true }),
+      pin("p2", "power", "Battery feed", { color: "Light blue / orange on the 99\u201304 CCRM. Confirm the stripe on your connector.", expect: "Hot with the key off.", verified: true }),
+      pin("p3", "control", "Relay coil control", { expect: "The PCM grounds this. Do not guess the pin and ground it.", verified: false })
+    ]
+  },
+  {
+    id: "inertia-switch:main",
+    partId: "inertia-switch",
+    name: "Inertia switch connector",
+    stub: false,
+    pins: [
+      pin("p1", "power", "In from the CCRM", { color: "Dark green / yellow", to: "ccrm", verified: true }),
+      pin("p2", "power", "Out to the tank", { color: null, expect: "Read the color on your car and write it down. Both wires should be hot during the prime if the switch is closed.", to: "fuel-pump", verified: false })
+    ]
+  },
+  {
+    id: "fuel-pump:hat",
+    partId: "fuel-pump",
+    name: "Pump and sender connector",
+    stub: false,
+    pins: [
+      pin("p1", "power", "Pump power", { expect: "During the prime, within about half a volt of the battery. Do not stab a sender wire.", to: "inertia-switch", verified: false }),
+      pin("p2", "ground", "Pump ground", { color: "Black", expect: "Near 0 ohms to battery negative, and under about 0.2 V while the pump is commanded.", verified: true })
+    ]
+  }
+];
+function nameOf(id) {
+  return NODES.find((node) => node.id === id)?.label ?? id;
+}
+function stub(partId) {
+  const pins = [];
+  for (const wire of WIRES) {
+    const index = wire.ends.indexOf(partId);
+    if (index < 0) continue;
+    const to = wire.ends[index + 1] ?? wire.ends[index - 1];
+    const role = wire.circuit === "power" ? "power" : wire.circuit === "ground" ? "ground" : wire.circuit === "fuel" ? "power" : "signal";
+    pins.push(pin(`p${pins.length + 1}`, role, `${nameOf(wire.id)} toward ${nameOf(to ?? wire.id)}`, { to, verified: false }));
+  }
+  return { id: `${partId}:main`, partId, name: `${nameOf(partId)} trace`, pins, stub: true };
+}
+function connectorsFor(partId) {
+  if (!partId) return [];
+  const seeded = SEEDS.filter((item) => item.partId === partId);
+  if (seeded.length) return seeded;
+  if (partId === "pdb") return SEEDS.filter((item) => item.partId === "ccrm");
+  const traced = stub(partId);
+  return traced.pins.length ? [traced] : [];
+}
+
+// components/auto/path-sheet.tsx
+var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
 var CIRCUITS = ["all", "power", "ground", "start", "ignition", "fuel", "sensor", "lamps"];
-function WiringSheet() {
-  const selected = useMustang((s) => s.selected);
-  const trace = useMustang((s) => s.trace);
-  const circuit = useMustang((s) => s.circuit);
-  const select = useMustang((s) => s.select);
-  const setCircuit = useMustang((s) => s.setCircuit);
-  (0, import_react.useEffect)(() => {
+var ROLE = {
+  power: "Power",
+  ground: "Ground",
+  signal: "Signal",
+  control: "Control",
+  unknown: "Unknown"
+};
+var JOBS = [
+  { label: "Cranks, no start", part: "inertia-switch", flow: "fuel-pump-power" },
+  { label: "No pump prime", part: "fuel-pump", flow: "fuel-pump-power" },
+  { label: "EVAP", part: "evap-purge", flow: "evap" },
+  { label: "Miss under load", part: "coil-pack" },
+  { label: "Battery light", part: "alternator" }
+];
+function groupsOnCircuit(circuit) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const wire of WIRES) {
+    if (wire.circuit !== circuit) continue;
+    ids.add(groupIdOf(wire.id));
+    for (const end of wire.ends) ids.add(groupIdOf(end));
+  }
+  return [...ids];
+}
+function PathSheet({
+  selected,
+  circuit,
+  mustang,
+  flow,
+  stepIndex,
+  onCircuit,
+  onPick,
+  onJob,
+  onStep
+}) {
+  const trace = new Set(traceOf(selected));
+  const step = flow?.steps[Math.min(stepIndex, Math.max(flow.steps.length - 1, 0))];
+  const connectors = connectorsFor(selected);
+  (0, import_react3.useEffect)(() => {
     if (!selected) return;
     const node = document.querySelector(`[data-node="${CSS.escape(selected)}"]`);
     node?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selected]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "sheet", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "sheet-head", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "eyebrow", children: "Power map" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Wires, same names as the car" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "sheet-note", children: "Simplified service map for the base 3.8. Not the full Ford EVTM. Click a box or a line and the car opens to that part. Click the same thing on the car and it lights up here." })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "chip-row", role: "tablist", "aria-label": "Circuits", children: CIRCUITS.map((id) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        type: "button",
-        className: circuit === id ? "chip chip-on" : "chip",
-        onClick: () => setCircuit(id),
-        children: id === "all" ? "All circuits" : CIRCUIT_LABEL[id]
-      },
-      id
-    )) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "sheet-scroll", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { viewBox: "0 0 880 520", className: "sheet-svg", role: "img", "aria-label": "Mustang wiring map", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex flex-col gap-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: mustang ? "Service map for the base 3.8. Not the full Ford EVTM. A lit line is the trace for the part you picked." : "This map is the 2001 Mustang 3.8. It is not the wiring for the common car." }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "flex flex-wrap gap-2", children: JOBS.map((job) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", onClick: () => onJob(job.part, "flow" in job ? job.flow : void 0), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: job.label }, job.label)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "flex flex-wrap gap-2", role: "tablist", "aria-label": "Circuits", children: CIRCUITS.map((id) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", onClick: () => onCircuit(id), className: `h-11 rounded-md px-3 text-sm ${circuit === id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: id === "all" ? "All circuits" : CIRCUIT_LABEL[id] }, id)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "overflow-auto rounded-md border border-line bg-bg", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("svg", { viewBox: "0 0 880 520", className: "h-auto min-w-[52rem]", role: "img", "aria-label": "Wiring map", children: [
       WIRES.map((wire) => {
-        const hot = trace.includes(wire.id) || selected === wire.id;
+        const hot = trace.has(wire.id) || selected === wire.id;
         const dim = !hot && circuit !== "all" && circuit !== wire.circuit;
-        return wire.routes.map((route, i) => {
-          const d = route.map((p, n) => `${n === 0 ? "M" : "L"}${p[0]} ${p[1]}`).join(" ");
-          const pick2 = (e) => {
-            e.stopPropagation();
-            select(wire.id, true);
-          };
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d, fill: "none", stroke: "transparent", strokeWidth: 14, className: "wire-path", onClick: pick2 }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "path",
-              {
-                d,
-                fill: "none",
-                stroke: hot ? "#f4f4f5" : CIRCUIT_COLOR[wire.circuit],
-                strokeWidth: hot ? 3.5 : 1.75,
-                strokeLinecap: "round",
-                strokeLinejoin: "round",
-                opacity: dim ? 0.18 : 1,
-                pointerEvents: "none"
-              }
-            )
-          ] }, `${wire.id}-${i}`);
+        return wire.routes.map((route, index) => {
+          const d = route.map((point, n) => `${n === 0 ? "M" : "L"}${point[0]} ${point[1]}`).join(" ");
+          return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("g", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("path", { d, fill: "none", stroke: "transparent", strokeWidth: 14, onClick: () => onPick(wire.id) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("path", { d, fill: "none", stroke: hot ? "#f4f4f2" : CIRCUIT_COLOR[wire.circuit], strokeWidth: hot ? 3.5 : 1.75, strokeLinecap: "round", strokeLinejoin: "round", opacity: dim ? 0.16 : 1, pointerEvents: "none" })
+          ] }, `${wire.id}-${index}`);
         });
       }),
       NODES.map((node) => {
-        const hot = selected === node.id || trace.includes(node.id);
-        const partCircuit = WIRES.find((w) => w.ends.includes(node.id) || w.id === node.id)?.circuit;
+        const hot = selected === node.id || trace.has(node.id);
+        const partCircuit = WIRES.find((wire) => wire.ends.includes(node.id) || wire.id === node.id)?.circuit;
         const dim = !hot && circuit !== "all" && partCircuit && partCircuit !== circuit;
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "g",
-          {
-            "data-node": node.id,
-            className: "wire-node",
-            opacity: dim ? 0.35 : 1,
-            onClick: (e) => {
-              e.stopPropagation();
-              select(node.id, true);
-              useMustang.getState().setRailOpen(true);
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "rect",
-                {
-                  x: node.x,
-                  y: node.y,
-                  width: node.w,
-                  height: node.h,
-                  rx: 8,
-                  fill: hot ? "#2a2a2e" : "#1a1a1d",
-                  stroke: hot ? "#f4f4f5" : "#3a3a40",
-                  strokeWidth: hot ? 1.75 : 1
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x: node.x + 10, y: node.y + 18, className: "node-label", children: node.label }),
-              node.sub ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x: node.x + 10, y: node.y + 34, className: "node-sub", children: node.sub }) : null
-            ]
-          },
-          node.id
-        );
+        return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("g", { "data-node": node.id, opacity: dim ? 0.28 : 1, onClick: () => onPick(node.id), className: "cursor-pointer", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("rect", { x: node.x, y: node.y, width: node.w, height: node.h, rx: 8, fill: hot ? "#2a2a2e" : "#1a1a1d", stroke: hot ? "#f4f4f2" : "#3a3a40", strokeWidth: hot ? 1.75 : 1 }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: node.x + 10, y: node.y + 18, fill: "#f4f4f2", fontSize: "12", children: node.label }),
+          node.sub ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: node.x + 10, y: node.y + 34, fill: "#a1a1aa", fontSize: "10", children: node.sub }) : null
+        ] }, node.id);
       })
-    ] }) })
-  ] });
-}
-
-// components/mustang/inspector.tsx
-var import_react4 = __toESM(require_react(), 1);
-
-// lib/mustang/connectors.ts
-var FLOWS_FILE = "lib/mustang/flows.ts";
-var FLOW_IDS = ["fuel-pump-power", "evap"];
-function q(line, quote) {
-  return { value: quote, source: { file: FLOWS_FILE, line, quote } };
-}
-function nil() {
-  return { value: null, source: null };
-}
-function noParts() {
-  return { shell: nil(), seal: nil(), lock: nil(), terminal: nil() };
-}
-function pin(key, role, label, extra = {}) {
-  return { key, cavity: nil(), role, label, color: nil(), circuit: nil(), expect: nil(), ...extra };
-}
-function flowsFor(partId) {
-  return FLOW_IDS.filter((id) => flowById(id)?.steps.some((s) => s.partId === partId));
-}
-function seed(id, partId, name, pins) {
-  return { id, partId, name, cNumber: nil(), pinCount: nil(), pins, parts: noParts(), flows: flowsFor(partId), stub: false, origin: "seed" };
-}
-var SEEDS = [
-  seed("ccrm:fuel-pump", "ccrm", "CCRM fuel-pump relay", [
-    pin("p1", "power", "Relay output", { color: q(86, "Dark green / yellow"), expect: q(94, "battery voltage for about one second"), to: "inertia-switch" }),
-    pin("p2", "power", "Battery feed", { color: q(90, "Light blue / orange") }),
-    pin("p3", "control", "Relay coil control")
-  ]),
-  seed("inertia-switch:main", "inertia-switch", "Inertia switch connector", [
-    pin("p1", "power", "In from the CCRM", { color: q(122, "Dark green / yellow"), to: "ccrm" }),
-    pin("p2", "power", "Out to the tank", { to: "fuel-pump" })
-  ]),
-  seed("fuel-pump:hat", "fuel-pump", "Pump and sender connector", [
-    pin("p1", "power", "Pump power", { expect: q(151, "within about half a volt of the battery"), to: "inertia-switch" }),
-    pin("p2", "ground", "Pump ground", { color: q(160, "Black") })
-  ])
-];
-function hasWiring(partId) {
-  return WIRES.some((w) => w.ends.includes(partId)) || Boolean(PARTS[partId]?.circuit);
-}
-function stub(partId) {
-  const pins = [];
-  for (const w of WIRES) {
-    const i = w.ends.indexOf(partId);
-    if (i < 0) continue;
-    const to = w.ends[i + 1] ?? w.ends[i - 1];
-    const role = w.circuit === "power" ? "power" : w.circuit === "ground" ? "ground" : "signal";
-    pins.push(pin(`p${pins.length + 1}`, role, `${w.id} to ${PARTS[to]?.name ?? to}`, { to }));
-  }
-  return {
-    id: `${partId}:main`,
-    partId,
-    name: `${PARTS[partId]?.name ?? partId} connector`,
-    cNumber: nil(),
-    pinCount: nil(),
-    pins,
-    parts: noParts(),
-    flows: flowsFor(partId),
-    stub: true,
-    origin: "stub"
-  };
-}
-function baseConnectors(partId) {
-  const seeded = SEEDS.filter((c) => c.partId === partId);
-  if (seeded.length) return seeded;
-  return hasWiring(partId) ? [stub(partId)] : [];
-}
-function connectorsFor(partId, user = loadUser()) {
-  return baseConnectors(partId).map((c) => mergeConnector(c, user.connectors[c.id]));
-}
-var BOXES = { pdb: "pdb", "fuse-panel": "fuse-panel", ccrm: "ccrm" };
-function isBox(partId) {
-  return Boolean(partId && BOXES[partId]);
-}
-function fuseBoxBase(partId) {
-  const id = BOXES[partId];
-  if (!id) return null;
-  const linked = [];
-  for (const w of WIRES) {
-    if (!w.ends.includes(partId)) continue;
-    for (const end of w.ends) {
-      if (end === partId) continue;
-      for (const c of baseConnectors(end)) if (!linked.includes(c.id)) linked.push(c.id);
-    }
-  }
-  const rows = 4;
-  const cols = 6;
-  const slots = [];
-  for (let r = 1; r <= rows; r++) {
-    for (let c = 1; c <= cols; c++) {
-      slots.push({ key: `r${r}c${c}`, row: r, col: c, position: nil(), kind: nil(), amps: nil(), protects: nil(), connectors: linked, flows: flowsFor(partId) });
-    }
-  }
-  return { id, partId, name: PARTS[partId]?.name ?? partId, rows, cols, slots, origin: "stub" };
-}
-function pick(base, mine) {
-  return mine && mine.value !== null ? mine : base;
-}
-function isUser(s) {
-  return s.value !== null && s.source === null;
-}
-function mergeConnector(base, mine) {
-  if (!mine) return base;
-  const pins = base.pins.map((p) => {
-    const u = mine.pins.find((x) => x.key === p.key);
-    if (!u) return p;
-    return { ...p, cavity: pick(p.cavity, u.cavity), color: pick(p.color, u.color), circuit: pick(p.circuit, u.circuit), expect: pick(p.expect, u.expect) };
-  });
-  const parts = {
-    shell: pick(base.parts.shell, mine.parts.shell),
-    seal: pick(base.parts.seal, mine.parts.seal),
-    lock: pick(base.parts.lock, mine.parts.lock),
-    terminal: pick(base.parts.terminal, mine.parts.terminal)
-  };
-  return { ...base, cNumber: pick(base.cNumber, mine.cNumber), pinCount: pick(base.pinCount, mine.pinCount), pins, parts };
-}
-function mergeBox(base, mine) {
-  if (!mine) return base;
-  const slots = base.slots.map((s) => {
-    const u = mine.slots.find((x) => x.key === s.key);
-    if (!u) return s;
-    return { ...s, position: pick(s.position, u.position), kind: pick(s.kind, u.kind), amps: pick(s.amps, u.amps), protects: pick(s.protects, u.protects) };
-  });
-  return { ...base, slots };
-}
-var USER_KEY = "mustang.connectors.v1";
-var MAX_IMPORT_CHARS = 1e6;
-function emptyUser() {
-  return { v: 1, connectors: {}, boxes: {} };
-}
-var isObj = (o) => typeof o === "object" && o !== null && !Array.isArray(o);
-var onlyKeys = (o, keys) => Object.keys(o).every((k) => keys.includes(k));
-var str = (s, max) => typeof s === "string" && s.length <= max;
-function vSeeded(o, kinds = null, num = false) {
-  if (!isObj(o) || !onlyKeys(o, ["value", "source", "user"])) return null;
-  if (o.value === null || o.value === void 0) return { value: null, source: null };
-  if (num) {
-    if (typeof o.value !== "number" || !Number.isInteger(o.value) || o.value < 0 || o.value > 999) return null;
-  } else if (!str(o.value, 400) || kinds && !kinds.includes(o.value)) return null;
-  return { value: o.value, source: null, user: true };
-}
-function vPin(o) {
-  const keys = ["key", "cavity", "role", "label", "color", "circuit", "expect", "to"];
-  if (!isObj(o) || !onlyKeys(o, keys) || !str(o.key, 64) || !str(o.label, 400)) return null;
-  const roles = ["power", "ground", "signal", "control", "unknown"];
-  if (!str(o.role, 16) || !roles.includes(o.role)) return null;
-  if (o.to !== void 0 && !str(o.to, 64)) return null;
-  const cavity = vSeeded(o.cavity), color = vSeeded(o.color), circuit = vSeeded(o.circuit), expect = vSeeded(o.expect);
-  if (!cavity || !color || !circuit || !expect) return null;
-  return { key: o.key, cavity, role: o.role, label: o.label, color, circuit, expect, ...o.to ? { to: o.to } : {} };
-}
-function vIds(o, max) {
-  return Array.isArray(o) && o.length <= max && o.every((x) => str(x, 64)) ? o : null;
-}
-function vConnector(o) {
-  const keys = ["id", "partId", "name", "cNumber", "pinCount", "pins", "parts", "flows", "stub", "origin"];
-  if (!isObj(o) || !onlyKeys(o, keys) || !str(o.id, 64) || !str(o.partId, 64) || !str(o.name, 400)) return null;
-  if (!Array.isArray(o.pins) || o.pins.length > 64) return null;
-  const pins = o.pins.map(vPin);
-  if (pins.some((p2) => !p2)) return null;
-  const p = o.parts;
-  if (!isObj(p) || !onlyKeys(p, ["shell", "seal", "lock", "terminal"])) return null;
-  const shell = vSeeded(p.shell), seal = vSeeded(p.seal), lock = vSeeded(p.lock), terminal = vSeeded(p.terminal);
-  const cNumber = vSeeded(o.cNumber), pinCount = vSeeded(o.pinCount, null, true);
-  const flows = vIds(o.flows ?? [], 16);
-  if (!shell || !seal || !lock || !terminal || !cNumber || !pinCount || !flows) return null;
-  return { id: o.id, partId: o.partId, name: o.name, cNumber, pinCount, pins, parts: { shell, seal, lock, terminal }, flows, stub: false, origin: "user" };
-}
-function vSlot(o) {
-  const keys = ["key", "row", "col", "position", "kind", "amps", "protects", "connectors", "flows"];
-  if (!isObj(o) || !onlyKeys(o, keys) || !str(o.key, 64)) return null;
-  const n = (x) => typeof x === "number" && Number.isInteger(x) && x >= 1 && x <= 64;
-  if (!n(o.row) || !n(o.col)) return null;
-  const position = vSeeded(o.position), amps = vSeeded(o.amps), protects = vSeeded(o.protects);
-  const kind = vSeeded(o.kind, ["fuse", "maxi", "relay", "diode"]);
-  const connectors = vIds(o.connectors ?? [], 64), flows = vIds(o.flows ?? [], 16);
-  if (!position || !amps || !protects || !kind || !connectors || !flows) return null;
-  return { key: o.key, row: o.row, col: o.col, position, kind, amps, protects, connectors, flows };
-}
-function vBox(o) {
-  const keys = ["id", "partId", "name", "rows", "cols", "slots", "origin"];
-  if (!isObj(o) || !onlyKeys(o, keys) || !str(o.id, 64) || !BOXES[o.id] || !str(o.partId, 64) || !str(o.name, 400)) return null;
-  const n = (x) => typeof x === "number" && Number.isInteger(x) && x >= 1 && x <= 64;
-  if (!n(o.rows) || !n(o.cols) || !Array.isArray(o.slots) || o.slots.length > 512) return null;
-  const slots = o.slots.map(vSlot);
-  if (slots.some((s) => !s)) return null;
-  return { id: o.id, partId: o.partId, name: o.name, rows: o.rows, cols: o.cols, slots, origin: "user" };
-}
-function validate(o) {
-  if (!isObj(o) || !onlyKeys(o, ["v", "connectors", "boxes"]) || o.v !== 1) return null;
-  const cs = o.connectors ?? {};
-  const bs = o.boxes ?? {};
-  if (!isObj(cs) || !isObj(bs)) return null;
-  const ck = Object.keys(cs);
-  const bk = Object.keys(bs);
-  if (ck.length > 500 || bk.length > 3) return null;
-  const out = emptyUser();
-  for (const k of ck) {
-    const c = vConnector(cs[k]);
-    if (!str(k, 64) || !c || c.id !== k) return null;
-    out.connectors[k] = c;
-  }
-  for (const k of bk) {
-    const b = vBox(bs[k]);
-    if (!b || b.id !== k) return null;
-    out.boxes[k] = b;
-  }
-  return out;
-}
-function loadUser() {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    if (!raw || raw.length > MAX_IMPORT_CHARS) return emptyUser();
-    return validate(JSON.parse(raw)) ?? emptyUser();
-  } catch {
-    return emptyUser();
-  }
-}
-function saveUser(data) {
-  try {
-    localStorage.setItem(USER_KEY, JSON.stringify(data));
-    return true;
-  } catch {
-    return false;
-  }
-}
-function exportJson(data = loadUser()) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "mustang-connectors.v1.json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-function importJson(text, ask = (m) => window.confirm(m)) {
-  if (text.length > MAX_IMPORT_CHARS) return "That file is too large to be connector data.";
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return "That file is not valid JSON.";
-  }
-  const data = validate(parsed);
-  if (!data) return "That file is not mustang-connectors v1 data.";
-  const n = Object.keys(data.connectors).length;
-  const m = Object.keys(data.boxes).length;
-  if (!ask(`${n} connectors, ${m} boxes. Replace?`)) return "Import cancelled.";
-  return saveUser(data) ? null : "Could not save. Storage is full or blocked.";
-}
-function userEntryFrom(base, existing) {
-  return existing ?? { ...base, cNumber: nil(), pinCount: nil(), pins: base.pins.map((p) => pin(p.key, p.role, p.label, p.to ? { to: p.to } : {})), parts: noParts(), stub: false, origin: "user" };
-}
-function userBoxFrom(base, existing) {
-  return existing ?? { ...base, slots: base.slots.map((s) => ({ ...s, position: nil(), kind: nil(), amps: nil(), protects: nil() })), origin: "user" };
-}
-function typed(value) {
-  const v = value.trim().slice(0, 400);
-  return v ? { value: v, source: null, user: true } : nil();
-}
-
-// grok.stub.ts
-async function askMustang(_input) {
-  return {
-    ok: false,
-    error: "The steps and the wire colors are already on this page. Ask Grok only runs in the online bay, so this toolbox copy does not send your reading anywhere."
-  };
-}
-
-// components/mustang/connectorpanel.tsx
-var import_react3 = __toESM(require_react(), 1);
-
-// components/mustang/pinout.tsx
-var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
-var ROLE_FILL = {
-  power: "#b4463f",
-  ground: "#3f3f46",
-  signal: "#3f6fb4",
-  control: "#b48a3f",
-  unknown: "#52525b"
-};
-function SeededText({ s }) {
-  if (s.value === null) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "unverified", children: UNVERIFIED });
-  if (isUser(s)) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
-      String(s.value),
-      " ",
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "badge-user", children: "you entered this" })
-    ] });
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { title: s.source ? `${s.source.file}:${s.source.line}` : void 0, children: [
-    String(s.value),
-    " ",
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "fine", children: [
-      "(from ",
-      s.source?.file.split("/").pop(),
-      ":",
-      s.source?.line,
-      ")"
-    ] })
-  ] });
-}
-function pinGrid(n, w, h) {
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n * (w / h))));
-  const rows = Math.max(1, Math.ceil(n / cols));
-  const cell = Math.min(w / cols, h / rows);
-  return { cols, rows, cell };
-}
-function PinoutOverlay({ connector, activePin, onPin }) {
-  const pins = connector.pins;
-  const W = 300;
-  const H = 150;
-  const { cols, rows, cell } = pinGrid(pins.length, W, H);
-  const ox = 10 + (W - cols * cell) / 2;
-  const oy = 10 + (H - rows * cell) / 2;
-  const active = pins.find((p) => p.key === activePin) ?? null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "pinout", children: [
-    pins.length ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { className: "conn-svg", viewBox: "0 0 320 200", role: "group", "aria-label": `${connector.name} pins`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("rect", { x: "4", y: "4", width: "312", height: "162", rx: "10", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-      pins.map((p, i) => {
-        const x = ox + i % cols * cell;
-        const y = oy + Math.floor(i / cols) * cell;
-        const pad = cell * 0.12;
-        const on = p.key === activePin;
-        return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-          "g",
-          {
-            role: "button",
-            tabIndex: 0,
-            "aria-label": `${p.label}, ${p.role}`,
-            "aria-pressed": on,
-            className: "pin-cell",
-            onClick: () => onPin(p.key),
-            onKeyDown: (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onPin(p.key);
-              }
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("rect", { x: x + pad, y: y + pad, width: cell - 2 * pad, height: cell - 2 * pad, rx: "6", fill: ROLE_FILL[p.role], stroke: on ? "var(--color-accent)" : "transparent", strokeWidth: "3" }),
-              p.color.value === null ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("text", { x: x + cell / 2, y: y + cell / 2, textAnchor: "middle", dominantBaseline: "central", fill: "#fff", fontSize: Math.min(28, cell * 0.4), children: "?" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("text", { x: x + cell / 2, y: y + cell / 2, textAnchor: "middle", dominantBaseline: "central", fill: "#fff", fontSize: Math.min(12, cell * 0.14), children: p.color.value.slice(0, 14) })
-            ]
-          },
-          p.key
-        );
-      }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("text", { x: "160", y: "188", textAnchor: "middle", fill: "var(--color-muted)", fontSize: "11", children: "layout schematic, not cavity map" })
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { className: "unverified", children: [
-      "Pins ",
-      UNVERIFIED
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "pin-list", children: pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: p.key === activePin ? "on" : void 0, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "chip", "aria-pressed": p.key === activePin, onClick: () => onPin(p.key), children: p.label }),
-      p.key === activePin || !active ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("dl", { className: "spec-list", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dt", { children: "Role" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dd", { children: p.role })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dt", { children: "Colour" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SeededText, { s: p.color }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dt", { children: "Expect" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SeededText, { s: p.expect }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dt", { children: "Circuit" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SeededText, { s: p.circuit }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dt", { children: "Cavity" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SeededText, { s: p.cavity }) })
-        ] }),
-        p.to ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dt", { children: "Runs to" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("dd", { children: p.to })
-        ] }) : null
-      ] }) : null
-    ] }, p.key)) })
-  ] });
-}
-
-// components/mustang/exploded.tsx
-var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
-var LAYERS = [
-  { k: "shell", label: "Shell" },
-  { k: "seal", label: "Seal" },
-  { k: "terminal", label: "Terminals" },
-  { k: "lock", label: "Lock" }
-];
-function ExplodedConnector({ connector, activePin, onPin }) {
-  const pins = connector.pins;
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "exploded", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("svg", { className: "conn-svg", viewBox: "0 0 320 200", role: "group", "aria-label": `${connector.name} exploded view`, children: LAYERS.map((layer, i) => {
-      const y = 10 + i * 46;
-      const val = connector.parts[layer.k].value;
-      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("g", { className: "explode-layer", style: { transform: `translateX(${i * 10}px)` }, children: [
-        layer.k === "terminal" ? pins.length ? pins.map((p, j) => {
-          const w = Math.min(28, 150 / pins.length);
-          const x = 14 + j * (150 / pins.length);
-          return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-            "rect",
-            {
-              role: "button",
-              tabIndex: 0,
-              "aria-label": `Terminal for ${p.label}`,
-              x,
-              y: y + 6,
-              width: w,
-              height: "24",
-              rx: "3",
-              fill: ROLE_FILL[p.role],
-              stroke: p.key === activePin ? "var(--color-accent)" : "transparent",
-              strokeWidth: "3",
-              className: "pin-cell",
-              onClick: () => onPin(p.key),
-              onKeyDown: (e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onPin(p.key);
-                }
-              }
-            },
-            p.key
-          );
-        }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("rect", { x: "14", y: y + 6, width: "150", height: "24", rx: "3", fill: "none", stroke: "var(--color-muted)", strokeDasharray: "4 3" }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("rect", { x: "14", y, width: "150", height: "36", rx: "8", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("line", { x1: "166", y1: y + 18, x2: "182", y2: y + 18, stroke: "var(--color-muted)" }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: "186", y: y + 14, fill: "var(--color-fg)", fontSize: "11", children: layer.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: "186", y: y + 28, fill: "var(--color-muted)", fontSize: "9", children: val === null ? UNVERIFIED : String(val).slice(0, 22) })
-      ] }, layer.k);
-    }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("dl", { className: "spec-list", children: LAYERS.map((layer) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("dt", { children: layer.label }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("dd", { children: connector.parts[layer.k].value ?? UNVERIFIED })
-    ] }, layer.k)) })
-  ] });
-}
-
-// components/mustang/fusebox.tsx
-var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-function FuseBoxDiagram({
-  box,
-  activeSlot,
-  onSlot,
-  onConnector,
-  onFlow
-}) {
-  const cw = 300 / box.cols;
-  const ch = 170 / box.rows;
-  const slot = box.slots.find((s) => s.key === activeSlot) ?? null;
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fusebox", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("svg", { className: "conn-svg", viewBox: "0 0 320 200", role: "group", "aria-label": `${box.name} slots`, children: [
-      box.slots.map((s) => {
-        const x = 10 + (s.col - 1) * cw;
-        const y = 6 + (s.row - 1) * ch;
-        const on = s.key === activeSlot;
-        const label = s.position.value ?? s.amps.value ?? "?";
-        return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-          "g",
-          {
-            role: "button",
-            tabIndex: 0,
-            "aria-label": `Slot ${s.key}, ${s.position.value ?? "position unknown"}`,
-            "aria-pressed": on,
-            className: "pin-cell",
-            onClick: () => onSlot(s.key),
-            onKeyDown: (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onSlot(s.key);
-              }
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("rect", { x: x + 3, y: y + 3, width: cw - 6, height: ch - 6, rx: "4", fill: "var(--color-surface-2)", stroke: on ? "var(--color-accent)" : "var(--color-line)", strokeWidth: on ? 3 : 1 }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("text", { x: x + cw / 2, y: y + ch / 2, textAnchor: "middle", dominantBaseline: "central", fill: "var(--color-muted)", fontSize: "12", children: String(label).slice(0, 8) })
-            ]
-          },
-          s.key
-        );
-      }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("text", { x: "160", y: "192", textAnchor: "middle", fill: "var(--color-muted)", fontSize: "11", children: box.origin === "stub" ? "grid only, not the real box layout" : "layout from your entries" })
-    ] }),
-    slot ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fuse-detail", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("dl", { className: "spec-list", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dt", { children: "Position" }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(SeededText, { s: slot.position }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dt", { children: "Kind" }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(SeededText, { s: slot.kind }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dt", { children: "Rating" }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(SeededText, { s: slot.amps }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dt", { children: "Protects" }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dd", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(SeededText, { s: slot.protects }) })
-        ] })
+    ] }) }),
+    flow && step ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex flex-col gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "text-sm text-fg", children: [
+        flow.title,
+        " \xB7 step ",
+        stepIndex + 1,
+        " of ",
+        flow.steps.length,
+        ": ",
+        step.title
       ] }),
-      slot.connectors.length ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "fine", children: "Connectors wired to this box (not slot-specific):" }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "conn-grid", children: slot.connectors.map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "chip", onClick: () => onConnector(id), children: id }, id)) })
-      ] }) : null,
-      slot.flows.length ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "conn-grid", children: slot.flows.map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", className: "btn", onClick: () => onFlow(id), children: [
-        "Walk: ",
-        flowById(id)?.title ?? id
-      ] }, id)) }) : null
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "fine", children: "Pick a slot." })
-  ] });
-}
-
-// components/mustang/photo.tsx
-var import_react2 = __toESM(require_react(), 1);
-var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
-var BAY = "img/mustang-9904-engine-context.jpg";
-var ESSEX = "img/essex-38-context.jpg";
-function contextPhoto(partId) {
-  if (partId === "pdb" || partId === "ccrm") return BAY;
-  return PARTS[partId]?.system === "engine" ? ESSEX : null;
-}
-var LOCAL_KEY = "mustang.localPhotos.v1";
-function localPhotosOn() {
-  try {
-    return localStorage.getItem(LOCAL_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-function setLocalPhotos(on) {
-  try {
-    if (on) localStorage.setItem(LOCAL_KEY, "1");
-    else localStorage.removeItem(LOCAL_KEY);
-  } catch {
-  }
-}
-function PartPhoto({ id, partId, alt, local = false }) {
-  const ctx = contextPhoto(partId);
-  const mine = local ? [`local/photos/${id.replace(/:/g, "__")}.jpg`, `local/photos/${partId}.jpg`] : [];
-  const list = [...mine, ...ctx ? [ctx] : []];
-  return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(PhotoChain, { list, ctx, alt }, `${id}|${local}`);
-}
-function PhotoChain({ list, ctx, alt }) {
-  const [i, setI] = (0, import_react2.useState)(0);
-  if (i >= list.length) {
-    return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("figure", { className: "conn-photo", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(ConnectorSvg, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("figcaption", { className: "fine", children: "Illustration only, not your car\u2019s connector. Add your own photo in Mustang/local/photos/ and turn on \u201CUse my local photos\u201D under Advanced." })
-    ] });
-  }
-  const src = list[i];
-  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("figure", { className: "conn-photo", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("img", { src, alt, loading: "lazy", decoding: "async", referrerPolicy: "no-referrer", onError: () => setI(i + 1) }),
-    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("figcaption", { className: "fine", children: src === ctx && ctx === BAY ? "Representative: 1999 SVT Cobra V8 bay, not the 3.8 V6" : src === ctx ? "Context only, not your car\u2019s connector. Credits in Mustang/CREDITS.md." : "Your photo, from Mustang/local/photos/." })
-  ] });
-}
-function ConnectorSvg() {
-  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("svg", { className: "conn-svg", viewBox: "0 0 320 120", role: "img", "aria-label": "Generic connector illustration", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("rect", { x: "60", y: "20", width: "200", height: "80", rx: "10", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("rect", { x: "140", y: "8", width: "40", height: "14", rx: "3", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-    [0, 1, 2, 3].map((k) => /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("rect", { x: 84 + k * 42, y: "48", width: "26", height: "26", rx: "4", fill: "none", stroke: "var(--color-muted)" }, k))
-  ] });
-}
-
-// components/mustang/wiremini.tsx
-var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
-function WiringMini({ connector, onPart }) {
-  const pins = connector.pins;
-  const title = PARTS[connector.partId]?.name ?? connector.partId;
-  if (!pins.length) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("figure", { className: "conn-photo wire-mini", "data-wires": "0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("svg", { className: "conn-svg", viewBox: "0 0 320 90", role: "img", "aria-label": `${title}: no wiring recorded`, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("rect", { x: "10", y: "20", width: "120", height: "50", rx: "8", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "70", y: "45", textAnchor: "middle", dominantBaseline: "central", fill: "currentColor", fontSize: "12", children: title.slice(0, 18) }),
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("line", { x1: "130", y1: "45", x2: "220", y2: "45", stroke: "var(--color-muted)", strokeDasharray: "4 4" }),
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "226", y: "45", dominantBaseline: "central", fill: "var(--color-muted)", fontSize: "12", children: "?" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("figcaption", { className: "fine unverified", children: [
-        "No wiring recorded, not verified. ",
-        UNVERIFIED,
-        "."
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", disabled: stepIndex === 0, onClick: () => onStep(stepIndex - 1), className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: "Back" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", disabled: stepIndex >= flow.steps.length - 1, onClick: () => onStep(stepIndex + 1), className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: "Next on the path" })
       ] })
-    ] });
-  }
-  const row = 34;
-  const h = Math.max(90, pins.length * row + 20);
-  const cy = h / 2;
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("figure", { className: "conn-photo wire-mini", "data-wires": pins.length, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("svg", { className: "conn-svg", viewBox: `0 0 320 ${h}`, role: "img", "aria-label": `${title} wiring`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("rect", { x: "10", y: cy - 25, width: "110", height: "50", rx: "8", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "65", y: cy, textAnchor: "middle", dominantBaseline: "central", fill: "currentColor", fontSize: "11", children: title.slice(0, 18) }),
-      pins.map((p, i) => {
-        const y = 10 + row / 2 + i * row;
-        const end = p.to ? PARTS[p.to]?.name ?? p.to : null;
-        return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("g", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { d: `M120 ${cy} C160 ${cy} 160 ${y} 200 ${y}`, fill: "none", stroke: ROLE_FILL[p.role], strokeWidth: "2.5", strokeDasharray: end ? void 0 : "4 4" }),
-          end ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("g", { role: "button", tabIndex: 0, "aria-label": `Go to ${end}`, style: { cursor: "pointer" }, onClick: () => onPart(p.to), onKeyDown: (e) => {
-            if (e.key === "Enter" || e.key === " ") onPart(p.to);
-          }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("rect", { x: "200", y: y - 12, width: "112", height: "24", rx: "6", fill: "var(--color-surface-2)", stroke: "var(--color-line)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "256", y, textAnchor: "middle", dominantBaseline: "central", fill: "currentColor", fontSize: "10", children: end.slice(0, 19) })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("text", { x: "204", y, dominantBaseline: "central", fill: "var(--color-muted)", fontSize: "10", children: "end not recorded" })
-        ] }, p.key);
-      })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("ul", { className: "pin-list fine", children: pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("li", { children: [
-      p.label,
-      p.to ? "" : ", other end not verified"
-    ] }, p.key)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("figcaption", { className: "fine", children: "Wiring from the sheet, not a harness route." })
-  ] });
-}
-
-// components/mustang/connectorpanel.tsx
-var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
-function ConnectorPanel({ partId }) {
-  const pin2 = useMustang((s) => s.pin);
-  const setPin = useMustang((s) => s.setPin);
-  const select = useMustang((s) => s.select);
-  const startFlow = useMustang((s) => s.startFlow);
-  const [user, setUser] = (0, import_react3.useState)(loadUser);
-  const [slot, setSlot] = (0, import_react3.useState)(null);
-  const [msg, setMsg] = (0, import_react3.useState)(null);
-  const fileRef = (0, import_react3.useRef)(null);
-  const [local, setLocal] = (0, import_react3.useState)(localPhotosOn);
-  (0, import_react3.useEffect)(() => {
-    window.FafoChrome?.initFold?.();
-  }, [partId]);
-  (0, import_react3.useEffect)(() => {
-    setSlot(null);
-    setMsg(null);
-  }, [partId]);
-  const bases = baseConnectors(partId);
-  const connectors = bases.map((c) => mergeConnector(c, user.connectors[c.id]));
-  const conn = connectors[0] ?? null;
-  const boxBase = fuseBoxBase(partId);
-  const box = boxBase ? mergeBox(boxBase, user.boxes[boxBase.id]) : null;
-  const commit = (next) => {
-    if (saveUser(next)) {
-      setUser(next);
-      setMsg(null);
-    } else setMsg("Could not save. Storage is full or blocked.");
-  };
-  const editPin = (key, field, value) => {
-    if (!conn) return;
-    const entry = userEntryFrom(bases[0], user.connectors[conn.id]);
-    const pins = entry.pins.map((p) => p.key === key ? { ...p, [field]: typed(value) } : p);
-    commit({ ...user, connectors: { ...user.connectors, [conn.id]: { ...entry, pins } } });
-  };
-  const editSlot = (key, field, value) => {
-    if (!boxBase) return;
-    const entry = userBoxFrom(boxBase, user.boxes[boxBase.id]);
-    const slots = entry.slots.map((s) => s.key === key ? { ...s, [field]: typed(value) } : s);
-    commit({ ...user, boxes: { ...user.boxes, [boxBase.id]: { ...entry, slots } } });
-  };
-  const reset = () => {
-    const connectorsNext = { ...user.connectors };
-    if (conn) delete connectorsNext[conn.id];
-    const boxesNext = { ...user.boxes };
-    if (boxBase) delete boxesNext[boxBase.id];
-    commit({ ...user, connectors: connectorsNext, boxes: boxesNext });
-  };
-  const onFile = async (file) => {
-    if (!file) return;
-    const err = importJson(await file.text());
-    if (err) setMsg(err);
-    else {
-      setUser(loadUser());
-      setMsg(null);
-    }
-    if (fileRef.current) fileRef.current.value = "";
-  };
-  const own = (s) => "user" in s && s.user ? String(s.value) : "";
-  const activePin = conn?.pins.find((p) => p.key === pin2) ?? conn?.pins[0] ?? null;
-  const activeSlot = box?.slots.find((s) => s.key === slot) ?? null;
-  const editKey = `${conn?.id ?? ""}|${activePin?.key ?? ""}|${activeSlot?.key ?? ""}|${JSON.stringify(user).length}`;
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "conn-panel", "aria-label": "Connectors", children: [
-    conn ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "pinout", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Pinout" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "fine", children: [
-        conn.name,
-        conn.stub ? " (generated from the wiring sheet)" : "",
-        ". Pin positions are a layout schematic, not a cavity map."
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PinoutOverlay, { connector: conn, activePin: pin2, onPin: setPin }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(PartPhoto, { id: conn.id, partId, alt: `${conn.name}, context photo`, local })
     ] }) : null,
-    connectors.length ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-wiring", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Wiring" }),
-      connectors.map((c) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(WiringMini, { connector: c, onPart: (id) => select(id, true) }, c.id))
-    ] }) : null,
-    conn ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-exploded", "data-collapsed-default": true, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Exploded view" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ExplodedConnector, { connector: conn, activePin: pin2, onPin: setPin })
-    ] }) : null,
-    box ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "fusebox", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Fuse map" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-        FuseBoxDiagram,
-        {
-          box,
-          activeSlot: slot,
-          onSlot: setSlot,
-          onConnector: (id) => select(id.split(":")[0], true),
-          onFlow: startFlow
-        }
-      )
-    ] }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-edit", "data-collapsed-default": true, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Edit pin/slot data" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "conn-edit", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "fine", children: "Only type what you read off the EVTM, the box lid or the car. Your entries are marked \u201Cyou entered this\u201D and stay in this browser." }),
-        conn && activePin ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Pin" }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("select", { value: activePin.key, onChange: (e) => setPin(e.target.value), children: conn.pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("option", { value: p.key, children: p.label }, p.key)) })
-          ] }),
-          ["color", "circuit", "expect", "cavity"].map((f) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: f === "color" ? "Wire colour" : f === "circuit" ? "Circuit number" : f === "expect" ? "Expected reading" : "Cavity label" }),
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("input", { type: "text", maxLength: 400, defaultValue: own(activePin[f]), onBlur: (e) => editPin(activePin.key, f, e.target.value) })
-          ] }, f))
+    connectors.map((connector) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "flex flex-col gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { className: "text-sm font-medium text-fg", children: connector.name }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "text-sm text-muted", children: connector.stub ? "Trace only. The cavity number is not verified." : "Colors below are the ones written into the fuel-pump walk. A blank color means it was not verified." }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("ul", { className: "flex flex-col gap-2", children: connector.pins.map((pin2) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("li", { className: "rounded-md bg-elevated px-3 py-2 text-sm", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "text-fg", children: [
+          pin2.label,
+          " \xB7 ",
+          ROLE[pin2.role]
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "text-muted", children: [
+          "Color: ",
+          pin2.color ?? "not verified"
+        ] }),
+        pin2.expect ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "text-muted", children: [
+          "Expect: ",
+          pin2.expect
         ] }) : null,
-        box && activeSlot ? ["position", "amps", "protects"].map((f) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { children: [
-            "Slot ",
-            activeSlot.key,
-            ": ",
-            f === "amps" ? "rating" : f
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("input", { type: "text", maxLength: 400, defaultValue: own(activeSlot[f]), onBlur: (e) => editSlot(activeSlot.key, f, e.target.value) })
-        ] }, f)) : box ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "fine", children: "Pick a slot in the fuse map to edit it." }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "conn-grid", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: () => exportJson(user), children: "Export" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: () => fileRef.current?.click(), children: "Import" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { type: "button", className: "btn", onClick: reset, children: "Reset my edits for this connector" }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("input", { ref: fileRef, className: "sr", type: "file", accept: "application/json,.json", "aria-label": "Import connector data", onChange: (e) => onFile(e.target.files?.[0]) })
-        ] }),
-        msg ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { className: "error", role: "alert", children: msg }) : null
-      ] }, editKey)
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "connector-advanced", "data-collapsed-default": true, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { children: "Advanced" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-          "input",
-          {
-            type: "checkbox",
-            checked: local,
-            onChange: (e) => {
-              setLocalPhotos(e.target.checked);
-              setLocal(e.target.checked);
-            }
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Use my local photos (looks in Mustang/local/photos/)" })
-      ] })
-    ] })
+        pin2.to ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "text-muted", children: [
+          "Runs toward ",
+          pin2.to
+        ] }) : null
+      ] }, pin2.key)) })
+    ] }, connector.id))
   ] });
 }
 
-// components/mustang/inspector.tsx
-var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
-var JOBS = [
-  { label: "Cranks, no start", id: "inertia-switch", symptom: "Cranks but will not fire" },
-  { label: "Milkshake oil", id: "intake-gasket", symptom: "Oil looks like milkshake and coolant is low" },
-  { label: "Miss under load", id: "coil-pack", symptom: "Misfire when you ask it for power" },
-  { label: "Battery light", id: "alternator", symptom: "Battery light on, voltage looks low" },
-  { label: "Oil and filter", id: "oil-pan", symptom: "Oil and filter service" },
-  { label: "Hot in traffic", id: "fan-clutch", symptom: "Temperature climbs sitting still, fine on the highway" },
-  { label: "Door sag", id: "door-l", symptom: "Driver door dropped onto the striker" },
-  { label: "Wet carpet", id: "heater-core", symptom: "Sweet smell and a wet passenger floor" }
-];
-function Inspector() {
-  const selected = useMustang((s) => s.selected);
-  const trans = useMustang((s) => s.trans);
-  const select = useMustang((s) => s.select);
-  const showOnCar = useMustang((s) => s.showOnCar);
-  const showOnSheet = useMustang((s) => s.showOnSheet);
-  if (!selected) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("aside", { className: "inspector", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "eyebrow", children: "FAFO Toolbox" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h2", { className: "inspector-title", children: "2001 Mustang coupe" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "lede", children: "Base car, 3.8L OHV V6, iron heads, EDIS, returnless fuel, disc/drum brakes, 7.5-inch axle. Scroll in and the body comes apart in stages, down to the rotating assembly." }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("dl", { className: "spec-list", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Power" }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "193 hp \xB7 225 lb-ft" })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Oil" }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "5W-20 \xB7 5.0 qt with filter" })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Plugs" }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "AWSF-42EE \xB7 0.052\u20130.056 in" })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: "Order" }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: "1-4-2-5-3-6" })
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Start from a complaint" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "job-grid", children: JOBS.map((job) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "job", onClick: () => select(job.id, true), children: job.label }, job.id + job.label)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "fine", children: "Capacities are from the 2001 owner\u2019s manual. Threads are the common sizes for this car. If a torque is missing, that is on purpose \u2014 confirm it in the Ford shop manual. The sheet is a service map, not the EVTM." })
-    ] });
-  }
-  const part = partView(selected, trans);
-  const stage = STAGES.find((s) => s.id === part.stage);
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("aside", { className: "inspector", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("p", { className: "eyebrow", children: [
-      SYSTEM_LABEL[part.system],
-      part.circuit ? ` \xB7 ${CIRCUIT_LABEL[part.circuit]}` : "",
-      stage ? ` \xB7 opens at ${stage.name}` : ""
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h2", { className: "inspector-title", children: part.name }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "lede", children: part.blurb }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "row-actions", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: showOnCar, children: "Show on car" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn", onClick: showOnSheet, children: "Show on sheet" })
-    ] }),
-    part.fasteners.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(import_jsx_runtime8.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Fasteners" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("ul", { className: "fastener-list", children: part.fasteners.map((f) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("li", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-name", children: f.name }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-thread", children: f.thread }),
-        f.torque ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-torque", children: f.torque }) : null,
-        f.qty ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "fast-qty", children: f.qty }) : null
-      ] }, f.name)) })
-    ] }) : null,
-    part.specs.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dl", { className: "spec-list", children: part.specs.map((s) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dt", { children: s.label }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("dd", { children: s.value })
-    ] }, s.label)) }) : null,
-    connectorsFor(selected).length || isBox(selected) ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ConnectorPanel, { partId: selected }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Check it like this" }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("ol", { className: "checks", children: part.checks.map((c) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("li", { children: c }, c)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(GrokNote, { partId: selected, symptomHint: JOBS.find((j) => j.id === selected)?.symptom ?? "" })
-  ] });
-}
-function GrokNote({ partId, symptomHint }) {
-  const trans = useMustang((s) => s.trans);
-  const [symptom, setSymptom] = (0, import_react4.useState)(symptomHint);
-  const [text, setText] = (0, import_react4.useState)(null);
-  const [error, setError] = (0, import_react4.useState)(null);
-  const [pending, setPending] = (0, import_react4.useState)(false);
-  (0, import_react4.useEffect)(() => {
-    window.FafoChrome?.initFold?.();
-  }, []);
-  (0, import_react4.useEffect)(() => {
-    setSymptom(symptomHint);
-    setText(null);
-    setError(null);
-  }, [partId, symptomHint, trans]);
-  async function ask() {
-    const key = `fafo-mustang-note:v1:${trans}:${partId}:${symptom.trim().toLowerCase()}`;
-    try {
-      const cached = localStorage.getItem(key);
-      if (cached) {
-        setText(cached);
-        setError(null);
-        return;
-      }
-    } catch {
-    }
-    setPending(true);
-    setError(null);
-    try {
-      const res = await askMustang({ data: { partId, symptom, trans } });
-      if (!res.ok) {
-        setError(res.error);
-        setText(null);
-      } else {
-        setText(res.text);
-        try {
-          localStorage.setItem(key, res.text);
-        } catch {
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Grok did not answer");
-    } finally {
-      setPending(false);
-    }
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "ask-grok", "data-collapsed-default": true, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("summary", { children: "Ask Grok (offline in toolbox)" }),
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "grok", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h3", { children: "Ask Grok (offline in toolbox)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "fine", children: "This toolbox copy never sends anything. Ask Grok works only in the online bay." }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "What is it doing?" }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-          "textarea",
-          {
-            value: symptom,
-            onChange: (e) => setSymptom(e.target.value),
-            rows: 2,
-            maxLength: 400,
-            placeholder: "Optional. Example: ticks when cold, quiet when hot."
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("button", { type: "button", className: "btn btn-solid", onClick: ask, disabled: pending, children: pending ? "Writing the note\u2026" : "Ask Grok (offline)" }),
-      error ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "error", children: error }) : null,
-      text ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { className: "note", children: text }) : null
-    ] })
-  ] });
-}
-
-// components/mustang/walk.tsx
-var import_react5 = __toESM(require_react(), 1);
-var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
-function Walkthrough() {
-  const flowId = useMustang((s) => s.flowId);
-  const stepIndex = useMustang((s) => s.step);
-  const marks = useMustang((s) => s.marks);
-  const reading = useMustang((s) => s.reading);
-  const setReading = useMustang((s) => s.setReading);
-  const markStep = useMustang((s) => s.markStep);
-  const setStep = useMustang((s) => s.setStep);
-  const clearWalk = useMustang((s) => s.clearWalk);
-  const trans = useMustang((s) => s.trans);
-  const flow = flowById(flowId);
-  if (!flow) {
-    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "walk", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "eyebrow", children: "Reference" }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h2", { children: "No walkthrough yet" }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "lede", children: "Right-click a part and choose Troubleshoot. Fuel-pump power is the one that is written out wire by wire." })
-    ] });
-  }
-  const step = flow.steps[Math.min(stepIndex, flow.steps.length - 1)];
-  const found = verdict(flow, marks);
-  const partName = PARTS[step.partId]?.name ?? step.partId;
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "walk", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "eyebrow", children: [
-      "Walkthrough \xB7 step ",
-      stepIndex + 1,
-      " of ",
-      flow.steps.length
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h2", { children: flow.title }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "lede", children: flow.lead }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "step-pips", role: "tablist", "aria-label": "Steps", children: flow.steps.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-      "button",
-      {
-        type: "button",
-        className: index === stepIndex ? "pip pip-on" : marks[item.id] === "fail" ? "pip pip-bad" : marks[item.id] === "pass" ? "pip pip-good" : "pip",
-        onClick: () => setStep(index),
-        "aria-label": item.title
-      },
-      item.id
-    )) }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: clearWalk, children: "Reset walkthrough" }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("article", { className: "step-card", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h3", { children: step.title }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "step-part", children: partName }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("dl", { className: "step-facts", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dt", { children: "Where" }),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dd", { children: step.where })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dt", { children: "Harness" }),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("dd", { children: step.harness })
-        ] })
-      ] }),
-      step.wires.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("ul", { className: "wire-list", children: step.wires.map((wire) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("li", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "fast-name", children: wire.role }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "fast-thread", children: wire.color })
-      ] }, wire.role)) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { children: step.action }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "row-actions", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn btn-solid", onClick: () => markStep(step.id, "pass"), children: "This checks out" }),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: () => markStep(step.id, "fail"), children: "This failed" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "fine", children: marks[step.id] === "fail" ? step.fail : step.pass })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "field", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "What you measured" }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-        "textarea",
-        {
-          rows: 3,
-          maxLength: 400,
-          value: reading,
-          onChange: (e) => setReading(e.target.value),
-          placeholder: "Example: DG/YE at the CCRM jumps to 12.4 V for a second. Battery is 12.6."
-        }
-      )
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Verify, { partId: step.partId, trans, prompt: verifyPrompt(flow.title, step.title, step.action, reading) }),
-    found ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "note", role: "status", children: found }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "row-actions", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", disabled: stepIndex === 0, onClick: () => setStep(stepIndex - 1), children: "Back" }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", disabled: stepIndex >= flow.steps.length - 1, onClick: () => setStep(stepIndex + 1), children: "Next step" })
-    ] })
-  ] });
-}
-function verifyPrompt(title, step, action, reading) {
-  return `${title}. Step: ${step}. Instruction: ${action}. What I measured: ${reading || "I have not written a reading yet."} Tell me what that means and whether the pump is condemned. Do not invent wire colors or pin numbers.`;
-}
-function Verify({ partId, trans, prompt }) {
-  const [text, setText] = (0, import_react5.useState)(null);
-  const [error, setError] = (0, import_react5.useState)(null);
-  const [pending, setPending] = (0, import_react5.useState)(false);
-  async function ask() {
-    setPending(true);
-    setError(null);
-    try {
-      const res = await askMustang({ data: { partId, symptom: prompt, trans } });
-      if (!res.ok) {
-        setError(res.error);
-        setText(null);
-      } else {
-        setText(res.text);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Grok did not answer");
-    } finally {
-      setPending(false);
-    }
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "grok", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("button", { type: "button", className: "btn", onClick: ask, disabled: pending, children: pending ? "Checking the reading\u2026" : "Ask Grok to check this step" }),
-    error ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "error", children: error }) : null,
-    text ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { className: "note", children: text }) : null
-  ] });
-}
-
-// components/mustang/app.tsx
-var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
+// components/auto/auto-tech.tsx
+var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
 var SYSTEMS = [
-  "all",
-  "body",
-  "engine",
-  "electrical",
-  "fuel",
-  "brake",
-  "suspension",
-  "driveline",
-  "cooling",
-  "interior"
+  { id: "all", label: "All" },
+  { id: "body", label: "Body" },
+  { id: "drivetrain", label: "Drivetrain" },
+  { id: "brakes", label: "Brakes" },
+  { id: "fuel", label: "Fuel" },
+  { id: "electrical", label: "Electrical" }
 ];
-function useStage() {
-  const [stage, setStage] = (0, import_react6.useState)(0);
-  (0, import_react6.useEffect)(() => {
-    let frame = 0;
-    let last = -1;
-    const loop = () => {
-      frame = requestAnimationFrame(loop);
-      const next = live.targetStage;
-      if (next !== last) {
-        last = next;
-        setStage(next);
-      }
-    };
-    frame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frame);
+function AutoTech() {
+  const [pack, setPack] = (0, import_react4.useState)("mustang");
+  const [answers, setAnswers] = (0, import_react4.useState)({});
+  const [stage, setStage] = (0, import_react4.useState)(0);
+  const [selected, setSelected] = (0, import_react4.useState)(null);
+  const [focus, setFocus] = (0, import_react4.useState)("all");
+  const [look, setLook] = (0, import_react4.useState)(DEFAULT_LOOK);
+  const [menu, setMenu] = (0, import_react4.useState)(null);
+  const [tab, setTab] = (0, import_react4.useState)("path");
+  const [circuit, setCircuit] = (0, import_react4.useState)("all");
+  const [sheetId, setSheetId] = (0, import_react4.useState)(null);
+  const [flowId, setFlowId] = (0, import_react4.useState)(null);
+  const [stepIndex, setStepIndex] = (0, import_react4.useState)(0);
+  const [marks, setMarks] = (0, import_react4.useState)({});
+  const [reading, setReading] = (0, import_react4.useState)({});
+  const [partQuery, setPartQuery] = (0, import_react4.useState)("");
+  const [scanName, setScanName] = (0, import_react4.useState)("");
+  const [scanMode, setScanMode] = (0, import_react4.useState)("off");
+  const [scanUpright, setScanUpright] = (0, import_react4.useState)(false);
+  const fileRef = (0, import_react4.useRef)(null);
+  const [views, setViews] = (0, import_react4.useState)([null, null, null]);
+  const [notice, setNotice] = (0, import_react4.useState)("");
+  const [hover, setHover] = (0, import_react4.useState)(null);
+  const [demo, setDemo] = (0, import_react4.useState)(true);
+  const [vacuumOpen, setVacuumOpen] = (0, import_react4.useState)(false);
+  const [door, setDoor] = (0, import_react4.useState)("title");
+  const [shop, setShop] = (0, import_react4.useState)(loadShop());
+  const [cars, setCars] = (0, import_react4.useState)([]);
+  const [carId, setCarId] = (0, import_react4.useState)(null);
+  const shopRef = (0, import_react4.useRef)(shop);
+  const carsRef = (0, import_react4.useRef)(cars);
+  const carIdRef = (0, import_react4.useRef)(carId);
+  shopRef.current = shop;
+  carsRef.current = cars;
+  carIdRef.current = carId;
+  const [care, setCare] = (0, import_react4.useState)({ miles: 0, done: {} });
+  const host = (0, import_react4.useRef)(null);
+  const handle = (0, import_react4.useRef)(null);
+  const rowRefs = (0, import_react4.useRef)({});
+  const question = nextQuestion(pack, answers);
+  const spec = carSpec(pack, answers);
+  const specKey = JSON.stringify(spec);
+  const lookKey = JSON.stringify(look);
+  const path = chosenPath(pack, answers);
+  const groups = groupsFor(spec);
+  const flow = flowById(flowId);
+  const step = flow?.steps[Math.min(stepIndex, flow.steps.length - 1)];
+  const specRef = (0, import_react4.useRef)(spec);
+  const lookRef = (0, import_react4.useRef)(look);
+  specRef.current = spec;
+  lookRef.current = look;
+  (0, import_react4.useEffect)(() => {
+    setShop(loadShop());
+    setCars(loadGarage());
   }, []);
-  return stage;
-}
-function MustangApp() {
-  const mode = useMustang((s) => s.mode);
-  const setMode = useMustang((s) => s.setMode);
-  const trans = useMustang((s) => s.trans);
-  const setTrans = useMustang((s) => s.setTrans);
-  const paintHex = useMustang((s) => s.paintHex);
-  const paintAlpha = useMustang((s) => s.paintAlpha);
-  const paintGrad = useMustang((s) => s.paintGrad);
-  const paintTo = useMustang((s) => s.paintTo);
-  const setPaintHex = useMustang((s) => s.setPaintHex);
-  const setPaintAlpha = useMustang((s) => s.setPaintAlpha);
-  const setPaintGrad = useMustang((s) => s.setPaintGrad);
-  const setPaintTo = useMustang((s) => s.setPaintTo);
-  const bgHex = useMustang((s) => s.bgHex);
-  const bgAlpha = useMustang((s) => s.bgAlpha);
-  const bgGrad = useMustang((s) => s.bgGrad);
-  const bgTo = useMustang((s) => s.bgTo);
-  const setBgHex = useMustang((s) => s.setBgHex);
-  const setBgAlpha = useMustang((s) => s.setBgAlpha);
-  const setBgGrad = useMustang((s) => s.setBgGrad);
-  const setBgTo = useMustang((s) => s.setBgTo);
-  const section = useMustang((s) => s.section);
-  const circuit = useMustang((s) => s.circuit);
-  const setSection = useMustang((s) => s.setSection);
-  const restoreLook = useMustang((s) => s.restoreLook);
-  const zoomDrives = useMustang((s) => s.zoomDrives);
-  const setZoomDrives = useMustang((s) => s.setZoomDrives);
-  const system = useMustang((s) => s.system);
-  const setSystem = useMustang((s) => s.setSystem);
-  const query = useMustang((s) => s.query);
-  const setQuery = useMustang((s) => s.setQuery);
-  const select = useMustang((s) => s.select);
-  const setStage = useMustang((s) => s.setStage);
-  const hover = useMustang((s) => s.hover);
-  const selected = useMustang((s) => s.selected);
-  const menu = useMustang((s) => s.menu);
-  const hidden = useMustang((s) => s.hidden);
-  const hide = useMustang((s) => s.hide);
-  const showHidden = useMustang((s) => s.showHidden);
-  const closeMenu = useMustang((s) => s.closeMenu);
-  const dock = useMustang((s) => s.dock);
-  const setDock = useMustang((s) => s.setDock);
-  const railOpen = useMustang((s) => s.railOpen);
-  const setRailOpen = useMustang((s) => s.setRailOpen);
-  const railW = useMustang((s) => s.railW);
-  const setRailW = useMustang((s) => s.setRailW);
-  const carShare = useMustang((s) => s.carShare);
-  const setCarShare = useMustang((s) => s.setCarShare);
-  const startFlow = useMustang((s) => s.startFlow);
-  const stage = useStage();
-  const [drag, setDrag] = (0, import_react6.useState)(null);
-  const [ready, setReady] = (0, import_react6.useState)(false);
-  (0, import_react6.useEffect)(() => {
-    try {
-      const raw = localStorage.getItem("fafo-mustang-prefs");
-      if (raw) {
-        const saved = JSON.parse(raw);
-        const legacy = { red: "#8f1d22", black: "#1a1a1e", silver: "#c5c8ce", white: "#e4e0d8" };
-        if (saved.paintHex) setPaintHex(saved.paintHex);
-        else if (saved.paint && legacy[saved.paint]) setPaintHex(legacy[saved.paint]);
-        if (typeof saved.paintAlpha === "number") setPaintAlpha(saved.paintAlpha);
-        if (typeof saved.paintGrad === "boolean") setPaintGrad(saved.paintGrad);
-        if (saved.paintTo) setPaintTo(saved.paintTo);
-        if (saved.bgHex) setBgHex(saved.bgHex);
-        if (typeof saved.bgAlpha === "number") setBgAlpha(saved.bgAlpha);
-        if (typeof saved.bgGrad === "boolean") setBgGrad(saved.bgGrad);
-        if (saved.bgTo) setBgTo(saved.bgTo);
-        if (saved.trans === "t5" || saved.trans === "4r70w") setTrans(saved.trans);
-        if (typeof saved.zoom === "boolean") setZoomDrives(saved.zoom);
+  (0, import_react4.useEffect)(() => {
+    if (door !== "bay") return;
+    setViews(loadViews());
+    setCare(loadCare());
+    const el = host.current;
+    if (!el) return;
+    let dead = false;
+    let current = null;
+    void import("./part-DVM2OPWW.js").then(async (mod) => {
+      if (dead) return;
+      current = mod.mountCar(el, {
+        onSelect: (id) => {
+          setSelected(id);
+          setSheetId(id);
+        },
+        onMenu: (next) => setMenu(next),
+        onStage: (next) => setStage(next),
+        onHover: (hit) => setHover(hit),
+        onPaint: (id) => {
+          setLook((currentLook) => ({
+            ...currentLook,
+            partPaints: { ...currentLook.partPaints, [id]: { color: currentLook.paint, to: currentLook.paintTo, gradient: currentLook.gradient } }
+          }));
+          setSelected(id);
+        },
+        onDemo: (on) => setDemo(on),
+        onShift: (id, shift) => writeShift(id, shift)
+      });
+      current.setSpec(specRef.current);
+      current.setLook(lookRef.current);
+      current.applyShifts(loadShifts());
+      const opened2 = carsRef.current.find((car) => car.id === carIdRef.current);
+      const active2 = mergeShop(shopRef.current, opened2?.override ?? null);
+      current.setIdleSeconds(active2.idleMinutes * 60);
+      current.setIdleDemo(active2.idleDemo);
+      if (!active2.demoOnOpen) current.setDemo(false);
+      const saved = await loadScanFile().catch(() => null);
+      if (!dead && saved) {
+        await current.loadScan(saved.data, saved.name);
+        setScanName(saved.name);
+        setScanMode("shell");
+      } else if (!dead && pack === "mustang") {
+        const candidates = ["/models/roush-96-gt.glb", new URL("models/roush-96-gt.glb", document.baseURI).href];
+        let data = null;
+        for (const url of candidates) {
+          const response = await fetch(url);
+          if (response.ok) {
+            data = await response.arrayBuffer();
+            break;
+          }
+        }
+        if (data) {
+          await current.loadScan(data, "1996 Roush Mustang GT.glb");
+          setScanName("1996 Roush Mustang GT");
+          setScanMode("shell");
+        }
       }
-    } catch {
-    }
-    setReady(true);
-    if (!useMustang.getState().flowId) startFlow("fuel-pump-power", false);
-  }, [setPaintHex, setPaintAlpha, setPaintGrad, setPaintTo, setBgHex, setBgAlpha, setBgGrad, setBgTo, setTrans, setZoomDrives, startFlow]);
-  (0, import_react6.useEffect)(() => {
-    if (!ready) return;
-    try {
-      localStorage.setItem(
-        "fafo-mustang-prefs",
-        JSON.stringify({ paintHex, paintAlpha, paintGrad, paintTo, bgHex, bgAlpha, bgGrad, bgTo, trans, zoom: zoomDrives })
-      );
-    } catch {
-    }
-  }, [paintHex, paintAlpha, paintGrad, paintTo, bgHex, bgAlpha, bgGrad, bgTo, trans, zoomDrives, ready]);
-  (0, import_react6.useEffect)(() => {
-    const onKey = (e) => {
-      const tag = e.target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key >= "0" && e.key <= "5") {
-        const next = Number(e.key);
-        setStage(next);
-        if (next === 0) restoreLook();
-        else setSection(next);
+      handle.current = current;
+    });
+    return () => {
+      dead = true;
+      current?.dispose();
+      handle.current = null;
+    };
+  }, [door]);
+  (0, import_react4.useEffect)(() => {
+    const opened2 = cars.find((car) => car.id === carId);
+    const active2 = mergeShop(shop, opened2?.override ?? null);
+    handle.current?.setIdleSeconds(active2.idleMinutes * 60);
+    handle.current?.setIdleDemo(active2.idleDemo);
+  }, [shop, cars, carId]);
+  (0, import_react4.useEffect)(() => {
+    handle.current?.setSpec(specRef.current);
+    setLook((current) => ({ ...current, paint: spec.paint }));
+  }, [specKey, spec.paint]);
+  (0, import_react4.useEffect)(() => {
+    handle.current?.setLook(look);
+  }, [lookKey, look]);
+  (0, import_react4.useEffect)(() => {
+    if (door !== "bay" || !carId) return;
+    const current = carsRef.current.find((car) => car.id === carId);
+    if (!current) return;
+    if (current.pack === pack && JSON.stringify(current.answers) === JSON.stringify(answers)) return;
+    setCars(saveGarage(carsRef.current.map((car) => car.id === carId ? { ...car, pack, answers } : car)));
+  }, [specKey, door, carId, pack, answers]);
+  (0, import_react4.useEffect)(() => {
+    const node = selected ? rowRefs.current[selected] : null;
+    node?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+  function applyVinBuild(body, line) {
+    setPack("mustang");
+    setAnswers({ body, line });
+    setNotice(`${line === "v6" ? "V6" : line === "gt" ? "GT" : "Cobra"} ${body}. Finish trim, paint, and the transmission. The VIN does not say those.`);
+  }
+  function rememberVin(vin) {
+    if (!carId) return;
+    setCars(saveGarage(carsRef.current.map((car) => car.id === carId ? { ...car, vin } : car)));
+  }
+  function choosePack(next) {
+    setPack(next);
+    setAnswers({});
+    setLook((current) => ({ ...current, paint: next === "mustang" ? "#8f1d22" : "#6e726c" }));
+  }
+  function answer(id, choice) {
+    setAnswers((current) => {
+      const order = ["body", "line", "trim", "paint", "trans", "abs", "engine", "fuel", "ignition", "rear", "throttle"];
+      const next = { ...current };
+      if (choice) next[id] = choice;
+      else delete next[id];
+      const index = order.indexOf(id);
+      for (const key of Object.keys(next)) {
+        if (order.indexOf(key) > index) delete next[key];
       }
-      if (e.key === "Escape") restoreLook();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [restoreLook, setSection, setStage]);
-  (0, import_react6.useEffect)(() => {
-    const close = (e) => {
-      if (e.button === 2) return;
-      const target = e.target;
-      if (target?.closest(".ctx")) return;
-      closeMenu();
-    };
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
-  }, [closeMenu]);
-  const hiddenCount = Object.keys(hidden).length;
-  const menuPart = menu?.id ? PARTS[menu.id] : null;
-  const results = searchParts(query);
-  const stageIndex = Math.round(stage);
-  const stageName = STAGES[stageIndex]?.name ?? "Whole";
-  const hoverName = hover ? PARTS[hover]?.name ?? null : null;
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "shell", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "stripe" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "top", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "brand", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "eyebrow", children: "FAFO Toolbox" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("h1", { className: "brand-name", children: "Mustang" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "brand-sub", children: "2001 coupe \xB7 3.8 base" })
+      return next;
+    });
+  }
+  function choosePart(raw) {
+    setSheetId(raw);
+    const id = groups.some((item) => item.id === raw) ? raw : groupIdOf(raw);
+    if (groups.some((item) => item.id === id)) {
+      setSelected(id);
+      handle.current?.select(id);
+    }
+  }
+  function restoreTextures() {
+    setFocus("all");
+    setCircuit("all");
+    handle.current?.restoreTextures();
+  }
+  function paintThese(ids) {
+    setLook((current) => {
+      const partPaints = { ...current.partPaints };
+      for (const id of ids) partPaints[id] = { color: current.paint, to: current.paintTo, gradient: current.gradient };
+      return { ...current, partPaints };
+    });
+  }
+  function pickSystem(id) {
+    if (look.paintMode === "part") {
+      const ids = id === "all" ? groups.map((item) => item.id) : groups.filter((item) => item.system === id || id === "body" && item.id === "unibody").map((item) => item.id);
+      paintThese(ids);
+      setNotice(id === "all" ? "Painted every part." : `Painted ${id}.`);
+      return;
+    }
+    setCircuit("all");
+    setFocus(id);
+    handle.current?.setFocus(id);
+    if (id === "all") handle.current?.restoreTextures();
+  }
+  function pickCircuit(next) {
+    if (look.paintMode === "part" && next !== "all") {
+      paintThese(groupsOnCircuit(next));
+      setNotice(`Painted the ${next} circuit.`);
+      return;
+    }
+    setCircuit(next);
+    if (next === "all") {
+      handle.current?.setIsolate(null);
+      return;
+    }
+    setFocus("all");
+    handle.current?.setIsolate(groupsOnCircuit(next), CIRCUIT_COLOR[next]);
+  }
+  function troubleshoot(id) {
+    const next = flowFor(spec, id);
+    setFlowId(next.id);
+    setStepIndex(0);
+    setMarks({});
+    setTab("walk");
+    choosePart(next.steps[0]?.partId ?? id);
+    setMenu(null);
+  }
+  function saveView(index) {
+    const snap = handle.current?.getSnapshot();
+    if (!snap) return;
+    const next = writeViews(views.map((item, i) => i === index ? { ...snap, look } : item));
+    setViews(next);
+    setNotice(`Saved view ${index + 1}. It stays after a refresh.`);
+  }
+  function goView(index) {
+    const view = views[index];
+    if (!view) return;
+    handle.current?.applyView(view);
+    setLook({ ...DEFAULT_LOOK, ...view.look });
+    setFocus(view.focus);
+    setStage(Math.round(view.stage));
+    setNotice(`View ${index + 1}.`);
+  }
+  function startJob(part, flowId2) {
+    if (flowId2) {
+      const next = flowById(flowId2);
+      setFlowId(flowId2);
+      setStepIndex(0);
+      setMarks({});
+      choosePart(next?.steps[0]?.partId ?? part);
+    } else {
+      choosePart(part);
+    }
+    setTab("path");
+  }
+  function goStep(index) {
+    if (!flow) return;
+    setStepIndex(index);
+    choosePart(flow.steps[index]?.partId ?? sheetId ?? "");
+  }
+  function visibleIds(parts) {
+    const ids = [...new Set(parts.map((id) => groups.some((item) => item.id === id) ? id : groupIdOf(id)))];
+    return ids.filter((id) => groups.some((item) => item.id === id));
+  }
+  function showCare(parts) {
+    const ids = visibleIds(parts);
+    if (!ids.length) {
+      setNotice("Those pieces sit inside a larger part on this model.");
+      return;
+    }
+    setFocus("all");
+    setCircuit("all");
+    handle.current?.setIsolate(ids, "#e7c07a");
+    choosePart(ids[0] ?? "");
+    const stageNow = Math.max(2, ...ids.map((id) => groups.find((item) => item.id === id)?.stage ?? 2));
+    handle.current?.setStage(stageNow);
+  }
+  function writeCare(next) {
+    setCare(next);
+    saveCare(next);
+  }
+  function patchCar(edit) {
+    if (!carId) return;
+    setCars(saveGarage(carsRef.current.map((car) => car.id === carId ? edit(car) : car)));
+  }
+  const opened = cars.find((car) => car.id === carId) ?? null;
+  const active = mergeShop(shop, opened?.override ?? null);
+  const milesNow = opened?.miles ?? care.miles;
+  const serviceDone = opened?.service ?? care.done;
+  function setMiles(next) {
+    if (opened) patchCar((car) => ({ ...car, miles: next }));
+    else writeCare({ ...care, miles: next });
+  }
+  function setService(id, at) {
+    if (opened) {
+      patchCar((car) => {
+        const service = { ...car.service ?? {} };
+        if (at == null) delete service[id];
+        else service[id] = at;
+        return { ...car, service };
+      });
+      return;
+    }
+    const done = { ...care.done };
+    if (at == null) delete done[id];
+    else done[id] = at;
+    writeCare({ ...care, done });
+  }
+  function openCar(car) {
+    setCarId(car.id);
+    setPack(car.pack);
+    setAnswers(car.answers);
+    setLook((current) => ({ ...current, paint: car.override?.newCarPaint || shop.newCarPaint }));
+    setVacuumOpen(mergeShop(shop, car.override).showVacuumOnOpen);
+    setDoor("bay");
+  }
+  if (door !== "bay") {
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: themeStyle(shop), children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(FrontDoor, { door, shop, cars, onShop: (next) => setShop(saveShop(next)), onCars: (next) => setCars(saveGarage(next)), onOpen: openCar, onDoor: setDoor }) });
+  }
+  const diagramSelected = sheetId === "pdb" ? "ccrm" : sheetId;
+  const jobs = careJobs(spec);
+  const due = jobs.filter((job) => careState(milesNow, serviceDone[job.id], job.every) === "due");
+  const found = flow ? verdict(flow, marks) : null;
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: themeStyle(active), className: `flex flex-col ${active.density === "tight" ? "gap-2" : "gap-4"}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: "max-w-2xl text-sm leading-relaxed text-muted", children: [
+      opened ? `${opened.name}. ` : "",
+      "Scroll zooms. Alt and the wheel opens the whole car. Ctrl and the wheel opens only the part you picked, and the pieces attached to it. Right-drag pans."
+    ] }),
+    active.showHoseKey ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
+      HOSE_KEY.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "inline-flex h-8 items-center gap-2 rounded-md border border-line px-2 text-sm text-fg", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "inline-block h-3 w-3 rounded-full", style: { background: item.color } }),
+        item.label
+      ] }, item.kind)),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "inline-flex h-8 items-center gap-1 rounded-md border border-line px-2 text-sm text-fg", children: [
+        WIRE_COLORS.slice(0, 6).map((color, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-black", style: { background: color }, children: index + 1 }, color)),
+        "Plug wires"
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "search", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "sr", children: "Find a part" }),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setVacuumOpen((open) => !open), className: `h-8 rounded-md px-2 text-sm ${vacuumOpen ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Vacuum tree" })
+    ] }) : null,
+    vacuumOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("ol", { className: "flex max-w-2xl flex-col gap-1 text-sm leading-relaxed text-fg", children: [
+      VACUUM_TREE.map((line) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("li", { children: line }, line)),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("li", { className: "text-muted", children: "This is the 3.8 layout from the intake ports and the emissions diagram. It is not the climate-control door chart, and a replaced hose may not still be red." })
+    ] }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => choosePack("mustang"), className: `h-11 rounded-md px-4 text-sm ${pack === "mustang" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "2001 Mustang" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => choosePack("common"), className: `h-11 rounded-md px-4 text-sm ${pack === "common" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Common coupe" })
+    ] }),
+    path.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex flex-wrap gap-2", children: path.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", onClick: () => answer(item.id, ""), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: [
+      item.prompt,
+      ": ",
+      item.label
+    ] }, item.id)) }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "relative", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { ref: host, className: "h-80 w-full rounded-md border border-line lg:h-[32rem]", style: { background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background } }),
+          demo ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "pointer-events-none absolute left-3 top-3 rounded-md bg-elevated px-3 py-2 text-sm text-fg", children: "Demo. Move the mouse or press a key to take over." }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: "text-sm text-fg", children: [
+          "Stage ",
+          stage,
+          " \xB7 ",
+          STAGE_NAMES[stage]
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
+          STAGE_NAMES.map((name, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => handle.current?.setStage(index), className: `h-11 rounded-md px-3 text-sm ${stage === index ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: name }, name)),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                handle.current?.clearShifts();
+                saveShifts({});
+              },
+              className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+              children: "Default positions"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setDoor("title"), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Title" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Import scan" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
             "input",
             {
-              value: query,
-              onChange: (e) => setQuery(e.target.value),
-              placeholder: "Search plugs, inertia switch, 1/2-20\u2026",
-              "aria-label": "Find a part"
-            }
-          )
-        ] }),
-        query && results.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("ul", { className: "results", children: results.map((part) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", onClick: () => select(part.id, true), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: part.name }),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "result-meta", children: SYSTEM_LABEL[part.system] })
-        ] }) }, part.id)) }) : null,
-        query && results.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "results empty-results", children: "Nothing on this car by that name." }) : null
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "gear-toggle", role: "group", "aria-label": "Transmission", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: trans === "t5" ? "chip chip-on" : "chip", onClick: () => setTrans("t5"), children: "5-speed" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: trans === "4r70w" ? "chip chip-on" : "chip", onClick: () => setTrans("4r70w"), children: "Automatic" })
-      ] })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "toolbar", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "stage-read", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "stage-kicker", children: [
-          "Stage ",
-          stageIndex
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("strong", { children: stageName })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "stage-slider", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "sr", children: "Explosion stage" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-          "input",
-          {
-            type: "range",
-            min: 0,
-            max: 5,
-            step: 0.01,
-            value: drag ?? stage,
-            "aria-valuetext": stageName,
-            onPointerDown: () => setDrag(stage),
-            onPointerUp: () => setDrag(null),
-            onPointerCancel: () => setDrag(null),
-            onChange: (e) => {
-              const value = Number(e.target.value);
-              setDrag(value);
-              setStage(value);
-            }
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "chip-row stages", children: STAGES.map((item) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-        "button",
-        {
-          type: "button",
-          className: stageIndex === item.id ? "chip chip-on" : "chip",
-          onClick: () => {
-            setStage(item.id);
-            if (item.id === 0) restoreLook();
-            else setSection(item.id);
-          },
-          children: item.name
-        },
-        item.id
-      )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "control-note", children: "Wheel zooms. Shift+wheel opens the car." }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-        "button",
-        {
-          type: "button",
-          className: system !== "all" || section != null || circuit !== "all" || selected ? "chip chip-on" : "chip",
-          title: "Show paint and colors on every part. Leaves the explode slider where it is.",
-          onClick: restoreLook,
-          children: "All textures"
-        }
-      ),
-      hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", className: "chip", onClick: showHidden, children: [
-        "Show hidden (",
-        hiddenCount,
-        ")"
-      ] }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "chip-row", role: "group", "aria-label": "View", children: [
-        ["car", "Car"],
-        ["both", "Both"],
-        ["sheet", "Sheet"]
-      ].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: mode === id ? "chip chip-on" : "chip", onClick: () => setMode(id), children: label }, id)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-        ColorPop,
-        {
-          label: "Paint",
-          hex: paintHex,
-          alpha: paintAlpha,
-          grad: paintGrad,
-          gradHex: paintTo,
-          onHex: setPaintHex,
-          onAlpha: setPaintAlpha,
-          onGrad: setPaintGrad,
-          onGradHex: setPaintTo,
-          presets: PAINTS.map((item) => ({ name: item.name, hex: item.hex }))
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-        ColorPop,
-        {
-          label: "Bay",
-          hex: bgHex,
-          alpha: bgAlpha,
-          grad: bgGrad,
-          gradHex: bgTo,
-          onHex: setBgHex,
-          onAlpha: setBgAlpha,
-          onGrad: setBgGrad,
-          onGradHex: setBgTo
-        }
-      )
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "filter-row", children: SYSTEMS.map((id) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: system === id ? "chip chip-on" : "chip", onClick: () => setSystem(id), children: id === "all" ? "All systems" : SYSTEM_LABEL[id] }, id)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
-      "div",
-      {
-        className: "workspace",
-        style: { ["--car"]: String(mode === "car" ? 1 : mode === "sheet" ? 0.38 : carShare), ["--rail"]: railOpen ? `${railW}px` : "48px" },
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: `stage mode-${mode}`, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "pane-car", style: { background: bayBackground({ bgHex, bgAlpha, bgGrad, bgTo }) }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(CarPane, {}),
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "bay-hint", children: hoverName ?? (selected ? "Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it or troubleshoot it." : "Drag to orbit. Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it.") })
-            ] }),
-            mode !== "car" ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                "div",
-                {
-                  className: "split split-y",
-                  role: "separator",
-                  "aria-orientation": "vertical",
-                  "aria-label": "Resize the car",
-                  onPointerDown: (e) => dragSplit(e, (dx, width) => setCarShare(carShare + dx / width))
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("section", { className: "dock", "aria-label": "Diagram and reference", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "dock-tabs", role: "tablist", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: dock === "sheet" ? "chip chip-on" : "chip", onClick: () => setDock("sheet"), children: "Sheet" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: dock === "walk" ? "chip chip-on" : "chip", onClick: () => setDock("walk"), children: "Walkthrough" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "dock-body", children: dock === "sheet" ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(WiringSheet, {}) : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Walkthrough, {}) })
-              ] })
-            ] }) : null
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-            "div",
-            {
-              className: "split split-rail",
-              role: "separator",
-              "aria-orientation": "vertical",
-              "aria-label": "Resize details",
-              onPointerDown: (e) => {
-                if (!railOpen) return;
-                dragSplit(e, (dx) => setRailW(railW - dx));
+              ref: fileRef,
+              type: "file",
+              accept: ".glb,.gltf,.stl,.obj",
+              className: "hidden",
+              onChange: (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                void file.arrayBuffer().then(async (data) => {
+                  await saveScanFile(file.name, data);
+                  await handle.current?.loadScan(data, file.name);
+                  setScanName(file.name);
+                  setScanMode("shell");
+                  setNotice(`${file.name} is the body. The engine and the hoses stay the shop parts.`);
+                }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
               }
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("aside", { className: railOpen ? "rail rail-open" : "rail rail-shut", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "rail-toggle", "aria-expanded": railOpen, onClick: () => setRailOpen(!railOpen), children: railOpen ? "Hide" : "Details" }),
-            railOpen ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Inspector, {}),
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VinField, {})
-            ] }) : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "rail-peek", children: selected ? PARTS[selected]?.name ?? "Part" : "Fuel pump power" })
+          scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+            ["shell", "both", "off"].map((mode) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  setScanMode(mode);
+                  handle.current?.setScanMode(mode);
+                },
+                className: `h-11 rounded-md px-3 text-sm ${scanMode === mode ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`,
+                children: mode === "shell" ? "Scan body" : mode === "both" ? "Scan and shop" : "Shop body"
+              },
+              mode
+            )),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  const next = !scanUpright;
+                  setScanUpright(next);
+                  handle.current?.setScanUpright(next);
+                },
+                className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+                children: scanUpright ? "Scan is upright" : "Turn scan upright"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  void clearScanFile();
+                  handle.current?.clearScan();
+                  setScanName("");
+                  setScanMode("off");
+                },
+                className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+                children: "Remove scan"
+              }
+            )
+          ] }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
+          SYSTEMS.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => pickSystem(item.id),
+              className: `h-11 rounded-md px-3 text-sm ${focus === item.id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`,
+              children: item.label
+            },
+            item.id
+          )),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: restoreTextures,
+              className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+              children: "All textures"
+            }
+          )
+        ] }),
+        look.paintMode === "part" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: "Right-click one part to paint it. Body, Fuel, and the other categories paint every part in that group." }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Bay",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.background, onChange: (event) => setLook({ ...look, background: event.target.value }), className: "h-9 w-12 bg-transparent", "aria-label": "Background color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Bay to",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.backgroundTo, onChange: (event) => setLook({ ...look, backgroundTo: event.target.value, backgroundGradient: true }), className: "h-9 w-12 bg-transparent", "aria-label": "Background gradient color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, backgroundGradient: !look.backgroundGradient }), className: `h-11 rounded-md px-3 text-sm ${look.backgroundGradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Bay gradient" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, bayDirection: look.bayDirection === "height" ? "length" : "height" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: look.bayDirection === "height" ? "Bay up" : "Bay across" }),
+          ["color", "garage", "showroom"].map((place) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, place }), className: `h-11 rounded-md px-3 text-sm capitalize ${look.place === place ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: place === "color" ? "Open bay" : place }, place)),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Light",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 0, max: 360, value: look.light, "aria-label": "Light angle", onChange: (event) => setLook({ ...look, light: Number(event.target.value) }), className: "w-28" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, paintMode: look.paintMode === "part" ? "car" : "part" }), className: `h-11 rounded-md px-3 text-sm ${look.paintMode === "part" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: look.paintMode === "part" ? "Painting parts" : "Paint the car" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, partPaints: {} }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Clear part colors" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => handle.current?.setDemo(true), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Play demo" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Paint",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.paint, onChange: (event) => setLook({ ...look, paint: event.target.value }), className: "h-9 w-12 bg-transparent", "aria-label": "Paint color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "To",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.paintTo, onChange: (event) => setLook({ ...look, paintTo: event.target.value, gradient: true }), className: "h-9 w-12 bg-transparent" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, gradient: !look.gradient }), className: `h-11 rounded-md px-3 text-sm ${look.gradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Gradient" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, direction: look.direction === "length" ? "height" : "length" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: look.direction === "length" ? "Along the car" : "Up the car" }),
+          ["gloss", "satin", "metal"].map((finish) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, finish }), className: `h-11 rounded-md px-3 text-sm capitalize ${look.finish === finish ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: finish }, finish)),
+          ["wire", "translucent", "both"].map((ghost) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, ghost }), className: `h-11 rounded-md px-3 text-sm ${look.ghost === ghost ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: ghost === "wire" ? "Dotted ghost" : ghost === "translucent" ? "Clear ghost" : "Both ghosts" }, ghost))
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex flex-wrap gap-2", children: [0, 1, 2].map((index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", disabled: !views[index], onClick: () => goView(index), className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: [
+            "View ",
+            index + 1
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", onClick: () => saveView(index), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: [
+            "Save ",
+            index + 1
           ] })
-        ]
-      }
-    ),
-    menu ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "ctx", style: { left: menu.x, top: menu.y }, role: "menu", children: [
-      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+        ] }, index)) }),
+        notice ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: notice }) : null
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex max-h-[32rem] flex-col gap-3 overflow-auto", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex flex-wrap gap-2", children: ["path", "shop", "parts", "walk", "care", "build"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setTab(id), className: `h-11 rounded-md px-3 text-sm capitalize ${tab === id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: id === "walk" ? "Walkthrough" : id === "parts" ? "Parts" : id === "path" ? "Path" : id === "care" ? "Care" : id === "shop" ? "Shop" : "Build" }, id)) }),
+        tab === "shop" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          ShopDesk,
+          {
+            engine: spec.engine,
+            miles: milesNow,
+            jobs: jobs.map((job) => ({ ...job, last: serviceDone[job.id] })),
+            savedVin: opened?.vin ?? "",
+            onApplyVin: applyVinBuild,
+            onRememberVin: rememberVin,
+            onShow: (ids) => {
+              const real = visibleIds(ids);
+              if (!real.length) {
+                setNotice("Those pieces sit inside a larger part on this model.");
+                return;
+              }
+              const stageNow = Math.max(2, ...real.map((id) => groups.find((item) => item.id === id)?.stage ?? 2));
+              handle.current?.setStage(stageNow);
+              handle.current?.setIsolate(real, "#e7c07a");
+              choosePart(real[0] ?? "");
+            },
+            onWalk: (flowId2, partId) => {
+              const next = flowById(flowId2);
+              setFlowId(flowId2);
+              setStepIndex(0);
+              setMarks({});
+              setTab("walk");
+              choosePart(next?.steps[0]?.partId ?? partId);
+            }
+          }
+        ) : null,
+        tab === "path" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          PathSheet,
+          {
+            selected: diagramSelected,
+            circuit,
+            mustang: pack === "mustang",
+            flow,
+            stepIndex,
+            onCircuit: pickCircuit,
+            onPick: choosePart,
+            onJob: startJob,
+            onStep: goStep
+          }
+        ) : null,
+        tab === "care" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: opened ? `This stays on ${opened.name}.` : "No garage car is open, so this stays on this computer only." }),
+          due.length ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: "text-sm text-fg", children: [
+            "Due now: ",
+            due.map((job) => job.name).join(", "),
+            "."
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: "Nothing is due from the miles on this car." }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+            "Current miles",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "number", min: 0, value: milesNow || "", onChange: (event) => setMiles(Math.max(0, Number(event.target.value) || 0)), className: "h-11 rounded-md border border-line bg-bg px-3" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { className: "flex flex-col gap-2", children: jobs.map((job) => {
+            const state = careState(milesNow, serviceDone[job.id], job.every);
+            const label = state === "skip" ? "Not on this car" : state === "unset" ? "No mileage yet" : state === "due" ? "Due" : state === "soon" ? "Due soon" : "Ok";
+            const last = serviceDone[job.id];
+            return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("li", { className: "rounded-md bg-elevated p-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => showCare(job.parts), className: "text-left text-sm font-medium text-fg", children: job.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: "text-sm text-muted", children: [
+                label,
+                job.every > 0 ? ` \xB7 every ${job.every.toLocaleString()} miles` : "",
+                last != null ? ` \xB7 last at ${last.toLocaleString()}` : ""
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: job.note }),
+              job.every > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    if (!opened) {
+                      setService(job.id, milesNow);
+                      return;
+                    }
+                    patchCar((car) => ({
+                      ...car,
+                      service: { ...car.service ?? {}, [job.id]: milesNow },
+                      journal: [{ id: crypto.randomUUID(), miles: milesNow, text: `${job.name} marked done`, at: Date.now() }, ...car.journal ?? []]
+                    }));
+                  },
+                  className: "mt-2 h-11 rounded-md border border-line px-3 text-sm text-fg",
+                  children: [
+                    "Mark done at ",
+                    milesNow.toLocaleString()
+                  ]
+                }
+              ) : null
+            ] }, job.id);
+          }) })
+        ] }) : null,
+        tab === "parts" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+            "Find a part",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { value: partQuery, onChange: (event) => setPartQuery(event.target.value), className: "h-11 rounded-md border border-line bg-bg px-3" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { className: "flex flex-col gap-1", children: groups.filter((item) => {
+            const query = partQuery.trim().toLowerCase();
+            return !query || item.name.toLowerCase().includes(query) || item.id.includes(query);
+          }).map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              ref: (node) => {
+                rowRefs.current[item.id] = node;
+              },
+              onClick: () => choosePart(item.id),
+              onContextMenu: (event) => {
+                event.preventDefault();
+                setMenu({ x: event.clientX, y: event.clientY, id: item.id, name: item.name, system: item.system });
+              },
+              className: `w-full rounded-md px-3 py-2 text-left text-sm ${selected === item.id ? "bg-accent font-medium text-accent-fg" : "bg-elevated text-fg"} ${item.parent ? "pl-6" : ""}`,
+              children: item.name
+            }
+          ) }, item.id)) })
+        ] }) : null,
+        tab === "walk" ? flow && step ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("article", { className: "flex flex-col gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("h2", { className: "text-sm font-medium text-fg", children: [
+            flow.title,
+            " \xB7 step ",
+            stepIndex + 1,
+            " of ",
+            flow.steps.length
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: flow.lead }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h3", { className: "text-sm font-medium text-fg", children: step.title }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: groups.find((item) => item.id === step.partId)?.name ?? step.partId }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: step.where }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: step.harness }),
+          step.wires.map((wire) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: "text-sm text-fg", children: [
+            wire.role,
+            ": ",
+            wire.color
+          ] }, wire.role)),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: step.action }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setMarks({ ...marks, [step.id]: "pass" }), className: "h-11 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg", children: "This checks out" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setMarks({ ...marks, [step.id]: "fail" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "This failed" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: marks[step.id] === "fail" ? step.fail : step.pass }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex flex-col gap-1 text-sm text-fg", children: [
+            "What you measured",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("textarea", { value: step ? reading[step.id] ?? "" : "", onChange: (event) => step && setReading((current) => ({ ...current, [step.id]: event.target.value })), rows: 3, className: "rounded-md border border-line bg-bg p-2 text-sm" })
+          ] }),
+          opened && step && (reading[step.id] ?? "").trim() ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                const text = (reading[step.id] ?? "").trim();
+                const result = marks[step.id] === "fail" ? "failed" : marks[step.id] === "pass" ? "checked out" : "noted";
+                patchCar((car) => ({
+                  ...car,
+                  journal: [{ id: crypto.randomUUID(), miles: car.miles, text: `${flow.title}, ${step.title} ${result}: ${text}`, at: Date.now() }, ...car.journal ?? []]
+                }));
+                setNotice("Saved on this car.");
+              },
+              className: "h-11 self-start rounded-md border border-line px-3 text-sm text-fg",
+              children: "Save on this car"
+            }
+          ) : null,
+          found ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-fg", children: found }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: stepIndex === 0, onClick: () => {
+              const next = stepIndex - 1;
+              setStepIndex(next);
+              choosePart(flow.steps[next].partId);
+            }, className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: "Back" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: stepIndex >= flow.steps.length - 1, onClick: () => {
+              const next = stepIndex + 1;
+              setStepIndex(next);
+              choosePart(flow.steps[next].partId);
+            }, className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: "Next step" })
+          ] })
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm leading-relaxed text-muted", children: "Pick a job under Shop, or right-click a part and choose Troubleshoot. What you measure can be saved on the garage car." }) : null,
+        tab === "build" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-3", children: [
+          question ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h2", { className: "mb-2 text-sm font-medium text-fg", children: question.prompt }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { className: "flex flex-col gap-2", children: question.choices.map((choice) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", onClick: () => answer(question.id, choice.id), className: "w-full rounded-md bg-elevated px-3 py-3 text-left", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "block text-sm text-fg", children: choice.label }),
+              choice.detail ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "block text-sm text-muted", children: choice.detail }) : null
+            ] }) }, choice.id)) })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: "That is the car. Change a choice above if it is wrong." }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { className: "flex flex-col gap-1", children: buildSheet(pack, answers).lines.map((line) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("li", { className: "flex items-start justify-between gap-3 text-sm", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-faint", children: line.label }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-right text-fg", children: line.value })
+          ] }, line.label)) })
+        ] }) : null
+      ] })
+    ] }),
+    hover && !menu && active.hoverNotes ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "pointer-events-none fixed z-40 w-64 rounded-md border border-line bg-elevated p-3", style: { left: Math.min(hover.x + 16, window.innerWidth - 280), top: Math.min(hover.y + 16, window.innerHeight - 160) }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm font-medium text-fg", children: partBlurb(hover.id, spec).name }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm capitalize text-muted", children: hover.system }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "mt-1 text-sm leading-relaxed text-fg", children: partBlurb(hover.id, spec).checks[0] })
+    ] }) : null,
+    menu ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fixed z-30 w-56 rounded-md border border-line bg-elevated p-1", style: { left: Math.min(menu.x, window.innerWidth - 240), top: Math.min(menu.y, window.innerHeight - 180) }, role: "menu", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => troubleshoot(menu.id), children: [
+        "Troubleshoot ",
+        menu.name
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
         "button",
         {
           type: "button",
           role: "menuitem",
+          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
           onClick: () => {
-            startFlow(menu.id === "fuel-pump" || menu.id === "inertia-switch" || menu.id === "ccrm" || menu.id === "pdb" ? "fuel-pump-power" : flowForPart(menu.id).id);
-            closeMenu();
+            handle.current?.hide(menu.id);
+            setMenu(null);
           },
           children: [
-            "Troubleshoot ",
-            menuPart?.name ?? "this"
+            "Hide ",
+            menu.name
           ]
         }
-      ) : null,
-      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", role: "menuitem", onClick: () => hide(menu.id), children: [
-        "Hide ",
-        menuPart?.name ?? "this part"
-      ] }) : null,
-      menu.id !== "unibody" && !hidden.unibody ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", role: "menuitem", onClick: () => hide("unibody"), children: "Hide body shell" }) : null,
-      hiddenCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", role: "menuitem", onClick: showHidden, children: "Show hidden parts" }) : null
-    ] }) : null
-  ] });
-}
-var VIN_KEY = "mustang.vin.v1";
-function VinField() {
-  const [vin, setVin] = (0, import_react6.useState)(() => {
-    try {
-      return localStorage.getItem(VIN_KEY) ?? "";
-    } catch {
-      return "";
-    }
-  });
-  (0, import_react6.useEffect)(() => {
-    window.FafoChrome?.initFold?.();
-  }, []);
-  const save = (next) => {
-    setVin(next);
-    try {
-      if (next) localStorage.setItem(VIN_KEY, next);
-      else localStorage.removeItem(VIN_KEY);
-    } catch {
-    }
-  };
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("details", { className: "fafo-fold", "data-fafo-fold": "vehicle", "data-collapsed-default": true, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("summary", { children: "Vehicle" }),
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "VIN (stays on this device)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { maxLength: 17, autoComplete: "off", spellCheck: false, value: vin, onChange: (e) => save(e.target.value.toUpperCase()) })
-    ] }),
-    vin ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "btn", onClick: () => window.confirm("Clear the VIN from this device?") && save(""), children: "Clear" }) : null
-  ] });
-}
-function dragSplit(event, onDelta) {
-  const handle = event.currentTarget;
-  const bounds = handle.parentElement?.getBoundingClientRect();
-  const width = bounds?.width || 1;
-  handle.setPointerCapture(event.pointerId);
-  let last = event.clientX;
-  const move = (ev) => {
-    onDelta(ev.clientX - last, width);
-    last = ev.clientX;
-  };
-  const up = () => {
-    handle.removeEventListener("pointermove", move);
-    handle.removeEventListener("pointerup", up);
-  };
-  handle.addEventListener("pointermove", move);
-  handle.addEventListener("pointerup", up);
-}
-function CarPane() {
-  const [Scene, setScene] = (0, import_react6.useState)(null);
-  (0, import_react6.useEffect)(() => {
-    let live2 = true;
-    import("./part-G36XF34T.js").then((mod) => {
-      if (live2) setScene(() => mod.MustangScene);
-    });
-    return () => {
-      live2 = false;
-    };
-  }, []);
-  if (!Scene) return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "bay-fallback", children: "Opening the bay\u2026" });
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Scene, {});
-}
-function bayBackground(look) {
-  const a = cssHex(look.bgHex, look.bgAlpha);
-  if (!look.bgGrad) return a;
-  return `linear-gradient(180deg, ${a}, ${cssHex(look.bgTo, look.bgAlpha)})`;
-}
-function cssHex(hex, alpha) {
-  const h = hex.replace("#", "");
-  const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const r = parseInt(n.slice(0, 2), 16);
-  const g = parseInt(n.slice(2, 4), 16);
-  const b = parseInt(n.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-function ColorPop({
-  label,
-  hex,
-  alpha,
-  grad,
-  gradHex,
-  onHex,
-  onAlpha,
-  onGrad,
-  onGradHex,
-  presets
-}) {
-  const [open, setOpen] = (0, import_react6.useState)(false);
-  const chip = grad ? `linear-gradient(90deg, ${hex}, ${gradHex})` : hex;
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "color-pop", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("button", { type: "button", className: "chip color-launch", "aria-expanded": open, onClick: () => setOpen((v) => !v), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "color-dot", style: { background: chip, opacity: Math.max(0.15, alpha) } }),
-      label
-    ] }),
-    open ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "color-card", role: "dialog", "aria-label": `${label} color`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "Color" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "color", value: hex, onChange: (e) => onHex(e.target.value) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { children: [
-          "Transparency ",
-          Math.round((1 - alpha) * 100),
-          "%"
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "range", min: 0, max: 100, value: Math.round((1 - alpha) * 100), onChange: (e) => onAlpha(1 - Number(e.target.value) / 100) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "check-line", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "checkbox", checked: grad, onChange: (e) => onGrad(e.target.checked) }),
-        "Gradient"
-      ] }),
-      grad ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("label", { className: "field", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "Second color" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("input", { type: "color", value: gradHex, onChange: (e) => onGradHex(e.target.value) })
-      ] }) : null,
-      presets ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "swatches", children: presets.map((item) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "swatch", style: { background: item.hex }, "aria-label": item.name, onClick: () => onHex(item.hex) }, item.hex)) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { type: "button", className: "btn", onClick: () => setOpen(false), children: "Done" })
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
+          onClick: () => {
+            const shift = handle.current?.shiftOf(menu.id);
+            if (shift) writeShift(menu.id, shift);
+            setNotice(`Saved where ${menu.name} sits.`);
+            setMenu(null);
+          },
+          children: "Save exploded position"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
+          onClick: () => {
+            handle.current?.showHidden();
+            setMenu(null);
+          },
+          children: "Show hidden parts"
+        }
+      )
     ] }) : null
   ] });
 }
 
 // entry.tsx
-var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
 var root = document.getElementById("root");
-if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime11.jsx)(MustangApp, {}));
+if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime5.jsx)(AutoTech, {}));
 /*! Bundled license information:
+
+scheduler/cjs/scheduler.development.js:
+  (**
+   * @license React
+   * scheduler.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react/cjs/react.development.js:
+  (**
+   * @license React
+   * react.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
 
 react-dom/cjs/react-dom.development.js:
   (**
@@ -23904,6 +26394,17 @@ react-dom/cjs/react-dom-client.development.js:
   (**
    * @license React
    * react-dom-client.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react/cjs/react-jsx-runtime.development.js:
+  (**
+   * @license React
+   * react-jsx-runtime.development.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *

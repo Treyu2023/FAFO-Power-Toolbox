@@ -1,24 +1,13 @@
-# 2001 Mustang shop tool
+# FAFO Auto Tech in the toolbox
 
-The page you open from the toolbox is [index.html](index.html). It is already built. No install is required to use it.
+Open `Toolbox Launcher.html` and choose Mustang. The tile loads `Mustang/index.html`.
 
-The files you edit are in [source](source). This sandbox copy was not its own git repo. The source and the built page both live in this repo:
-
-https://github.com/Treyu2023/FAFO-Power-Toolbox
-
-Open `Toolbox Launcher.html` (or `Phone Launcher.html`) and choose Mustang. The tile loads `Mustang/index.html`.
-
-## Rebuild after you change the source
-
-From `Mustang/source`, with Node installed:
+The shop bay source is not edited here. It lives in [FAFO-Auto-Tech](https://github.com/Treyu2023/FAFO-Auto-Tech) under `src/components/auto` and `src/lib/auto`. `Mustang/source/components/auto` and `Mustang/source/lib/auto` are a copy. After a change on either side, run the sync from the Auto Tech repo so the two do not drift:
 
 ```
-npm install
-npm run build
+TOOLBOX=/path/to/FAFO-Power-Toolbox node scripts/sync-mustang.mjs
 ```
 
-That rewrites `../mustang.css`, `../app.js`, and the `part-*.js` chunks. Commit those with your source changes or the launcher will still be on the old bundle.
+That copies the source, the Roush body, and rebuilds `app.js`. Use `--pull` only when the toolbox copy is the one you just edited and Auto Tech should take it.
 
-`source/grok.stub.ts` is what the toolbox build calls. It does not send symptoms anywhere. `source/lib/mustang/grok.functions.ts` is the online-bay version and is not wired into this static build.
-
-Wheel zooms. Shift+wheel opens the car. Right-click a part to hide it or start the fuel-pump power walkthrough.
+The body file is `Mustang/models/roush-96-gt.glb`. It is a 1996 Roush GT. The trouble paths are the 2001 shop car.

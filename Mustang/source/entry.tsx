@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { MustangApp } from "./components/mustang/app";
+import { AutoTech } from "./components/auto/auto-tech";
 
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<MustangApp />);
+if (root) createRoot(root).render(<AutoTech />);
