@@ -167,7 +167,12 @@
     'pc diagnostics': {
       id: 'pc-diagnostics', title: 'PC Diagnostics HUD', emoji: '🩺',
       path: 'System Tools/PC Diagnostics HUD.html',
-      counterparts: ['health-dashboard', 'hardware-board', 'disk-analyzer'],
+      counterparts: ['health-dashboard', 'hardware-board', 'disk-analyzer', 'power-history'],
+    },
+    'power history': {
+      id: 'power-history', title: 'Power History', emoji: '🔋',
+      path: 'System Tools/Power History.html',
+      counterparts: ['pc-diagnostics', 'health-dashboard', 'fafo-task-pro'],
     },
     'hardware board': {
       id: 'hardware-board', title: 'Hardware Board Map', emoji: '🔌',

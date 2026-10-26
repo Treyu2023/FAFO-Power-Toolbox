@@ -1166,6 +1166,35 @@ def _collect_power(components: list, findings: list) -> dict:
                 }
             )
     simple = f"Windows power plan: {label}."
+    battery_info: dict = {"present": False}
+    try:
+        bat = psutil.sensors_battery()
+    except Exception:
+        bat = None
+    if bat is not None:
+        pct = round(float(bat.percent), 1)
+        plugged = bool(bat.power_plugged)
+        battery_info = {"present": True, "percent": pct, "charging": plugged}
+        simple += f" Battery {pct:.0f}% {'plugged in' if plugged else 'on battery'}."
+        findings.append(
+            {
+                "severity": "info",
+                "area": "Power",
+                "message": f"Battery {pct:.0f}% {'plugged in' if plugged else 'on battery'}",
+            }
+        )
+        if not plugged and pct < 20:
+            status = "warn"
+            suggestions.append(
+                {
+                    "priority": "medium",
+                    "title": "Battery is low",
+                    "why": "Under 20% while unplugged. The PC may throttle or sleep mid-task.",
+                    "how": "Plug in, or open Power History and sample every 15 minutes to see the drain.",
+                }
+            )
+    else:
+        simple += " No battery on this PC. Power History can still record which programs are busy. It will not invent watt-hours."
 
     components.append(
         {
@@ -1176,12 +1205,12 @@ def _collect_power(components: list, findings: list) -> dict:
             "status": status,
             "summary": simple,
             "simple": simple,
-            "details": {"activeScheme": scheme, "label": label},
+            "details": {"activeScheme": scheme, "label": label, "battery": battery_info},
             "links": ["cpu", "gpu"],
             "suggestions": suggestions,
         }
     )
-    return {"label": label, "raw": scheme}
+    return {"label": label, "raw": scheme, "battery": battery_info}
 
 
 def _collect_problem_devices(components: list, findings: list) -> dict:

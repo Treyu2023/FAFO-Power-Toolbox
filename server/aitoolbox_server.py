@@ -685,6 +685,7 @@ def health(probe: int = 0):
             "tool_icons",
             "commander_sites",
             "pc_diagnostics",
+            "device_power",
             "debris_tle",
         ],
         "commanderConsole": f"http://{BIND_HOST}:{BIND_PORT}/toolbox/Verifone%20Tools/Commander%20Site%20Console.html",
@@ -5981,6 +5982,56 @@ def api_pc_diag_undismiss_suggestion(key: str = "", title: str = ""):
     rows = pc_diag.undismiss_suggestion(key=key, title=title)
     report = pc_diag.load_latest()
     return {"ok": True, "dismissedSuggestions": rows, "report": report, "prefs": pc_diag.load_prefs()}
+
+
+def _device_diag_mods():
+    import device_diag_bridge as bridge
+
+    try:
+        return bridge.load()
+    except FileNotFoundError as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.get("/api/device-diagnostics/status")
+def api_device_diag_status():
+    collect, _history, diag_server, _store = _device_diag_mods()
+    return {"ok": True, "watch": diag_server.watch_status(), "adb": collect.list_adb_devices()}
+
+
+@app.get("/api/device-diagnostics/devices")
+def api_device_diag_devices():
+    _collect, _history, _diag_server, store = _device_diag_mods()
+    return {"ok": True, "devices": store.list_devices()}
+
+
+@app.get("/api/device-diagnostics/history")
+def api_device_diag_history(kind: str = "pc", device_id: str = "", hours: float = 24):
+    _collect, history, _diag_server, store = _device_diag_mods()
+    samples = store.load_samples(kind, device_id, hours) if device_id else []
+    return {"ok": True, "view": history.build_view(samples)}
+
+
+@app.post("/api/device-diagnostics/scan")
+def api_device_diag_scan():
+    collect, _history, _diag_server, _store = _device_diag_mods()
+    try:
+        return collect.scan_all()
+    except Exception as e:
+        raise HTTPException(500, f"Device scan failed: {e}") from e
+
+
+@app.post("/api/device-diagnostics/watch")
+def api_device_diag_watch(body: dict | None = None):
+    body = body or {}
+    _collect, _history, diag_server, _store = _device_diag_mods()
+    return diag_server.start_watch(float(body.get("every_min") or 15))
+
+
+@app.post("/api/device-diagnostics/watch/stop")
+def api_device_diag_watch_stop():
+    _collect, _history, diag_server, _store = _device_diag_mods()
+    return diag_server.stop_watch()
 
 
 @app.post("/api/pc-diagnostics/run")

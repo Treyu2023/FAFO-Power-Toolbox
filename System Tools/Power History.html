@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#071018">
+<title>Device power history</title>
+<style>
+  :root {
+    --bg: #071018;
+    --card: #101a26;
+    --text: #e8eef6;
+    --muted: #8ea0b5;
+    --line: rgba(120, 170, 210, .28);
+    --accent: #3ee0c5;
+    --warn: #f5c542;
+    --bad: #fb7185;
+    --touch: 44px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; max-width: 100%; overflow-x: hidden; }
+  body {
+    min-height: 100dvh;
+    color: var(--text);
+    font: 16px/1.45 "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    padding:
+      max(14px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(24px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+  }
+  h1 { font-size: 1.35rem; font-weight: 650; margin: 0 0 4px; }
+  p { margin: 0; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  button, select {
+    min-height: var(--touch);
+    font: 600 16px/1 system-ui;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #0c1520;
+    color: var(--text);
+    padding: 10px 14px;
+  }
+  button.primary { background: var(--accent); color: #04221c; border-color: transparent; }
+  button:disabled { opacity: .55; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px;
+    margin: 10px 0;
+  }
+  .stat { font-size: 1.8rem; font-weight: 700; letter-spacing: -.03em; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .chip {
+    min-height: var(--touch);
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    padding: 8px 14px;
+    white-space: nowrap;
+  }
+  .chip.on { border-color: var(--accent); color: var(--accent); }
+  canvas { width: 100%; height: 180px; display: block; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .note { font-size: 14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <h1>Power history</h1>
+  <p id="lead">PC programs, laptop battery, and Android drain.</p>
+  <div class="row">
+    <button class="primary" id="scan" type="button">Scan now</button>
+    <button id="watch" type="button">Sample every 15 min</button>
+    <button id="stop" type="button">Stop</button>
+    <select id="hours" aria-label="History window">
+      <option value="6">6 hours</option>
+      <option value="24" selected>24 hours</option>
+      <option value="72">3 days</option>
+      <option value="168">7 days</option>
+    </select>
+  </div>
+  <p class="note" id="status">Checking this PC…</p>
+  <div class="chips" id="devices"></div>
+  <section class="card">
+    <div class="stat" id="now">—</div>
+    <p class="note" id="nowSub"></p>
+  </section>
+  <section class="card">
+    <canvas id="chart" width="640" height="180" aria-label="History chart"></canvas>
+  </section>
+  <section class="card">
+    <p class="note" id="tableNote"></p>
+    <table>
+      <thead><tr><th>Using power</th><th class="num">Amount</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+<script>
+const ROOT = location.port === "18766" ? "/api" : "/api/device-diagnostics";
+const el = (id) => document.getElementById(id);
+let current = null;
+
+async function api(path, opts) {
+  const res = await fetch(ROOT + path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function selectedHours() { return el("hours").value; }
+
+async function refreshStatus() {
+  try {
+    const data = await api("/status");
+    const adb = data.adb || {};
+    const watch = data.watch && data.watch.running ? " Sampling is on." : "";
+    el("status").textContent = (adb.message || "Ready.") + watch;
+  } catch (err) {
+    el("status").textContent = "The diagnostics service is not running. Start the toolbox server, or run Launch-Device-Diagnostics.bat.";
+  }
+}
+
+async function loadDevices() {
+  const data = await api("/devices");
+  const box = el("devices");
+  box.innerHTML = "";
+  const devices = data.devices || [];
+  if (!devices.length) {
+    current = null;
+    el("now").textContent = "No samples yet";
+    el("nowSub").textContent = "Scan now takes one reading of this PC and any phone adb can see.";
+    draw([]);
+    el("rows").innerHTML = "";
+    return;
+  }
+  if (!current || !devices.some((d) => d.kind === current.kind && d.device_id === current.device_id)) {
+    current = devices[0];
+  }
+  devices.forEach((device) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip" + (device.device_id === current.device_id && device.kind === current.kind ? " on" : "");
+    btn.textContent = (device.name || device.device_id) + (device.kind === "android" ? " · phone" : " · PC");
+    btn.addEventListener("click", () => { current = device; loadDevices(); });
+    box.appendChild(btn);
+  });
+  await loadHistory();
+}
+
+async function loadHistory() {
+  if (!current) return;
+  const q = `?kind=${encodeURIComponent(current.kind)}&device_id=${encodeURIComponent(current.device_id)}&hours=${selectedHours()}`;
+  const data = await api("/history" + q);
+  const view = data.view || {};
+  const series = view.series || [];
+  const last = series[series.length - 1] || {};
+  if (view.has_battery && last.percent != null) {
+    const charge = last.charging ? "plugged in" : "on battery";
+    el("now").textContent = `${Math.round(last.percent)}%`;
+    const drain = view.drain_percent_per_hour != null ? ` About ${view.drain_percent_per_hour}% per hour while unplugged.` : "";
+    const amps = last.current_ma != null ? ` Current ${last.current_ma} mA.` : "";
+    el("nowSub").textContent = `${charge}.${amps}${drain}`;
+  } else if (current.kind === "pc") {
+    el("now").textContent = "No battery";
+    el("nowSub").textContent = last.busy_cpu != null ? `Top programs used about ${last.busy_cpu}% processor on the last sample.` : "Desktop activity only.";
+  } else {
+    el("now").textContent = "Phone";
+    el("nowSub").textContent = "Waiting for a battery reading.";
+  }
+  el("tableNote").textContent = view.note || "";
+  draw(series, view.has_battery);
+  const rows = el("rows");
+  rows.innerHTML = "";
+  const consumers = view.consumers || [];
+  const busy = view.busy || [];
+  const unit = view.basis === "since_last_charge" ? "mAh since charge" : "mAh in this window";
+  if (consumers.length) {
+    consumers.forEach((row) => {
+      rows.appendChild(tr(row.name, `${row.mah} ${unit}`));
+    });
+  } else if (busy.length) {
+    busy.forEach((row) => rows.appendChild(tr(row.name, `${row.cpu_percent}% CPU`)));
+  } else {
+    rows.appendChild(tr("Nothing recorded", "—"));
+  }
+}
+
+function tr(name, amount) {
+  const row = document.createElement("tr");
+  row.innerHTML = `<td></td><td class="num"></td>`;
+  row.children[0].textContent = name;
+  row.children[1].textContent = amount;
+  return row;
+}
+
+function draw(series, hasBattery) {
+  const canvas = el("chart");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#101a26";
+  ctx.fillRect(0, 0, w, h);
+  const key = hasBattery ? "percent" : "busy_cpu";
+  const pts = series.map((row) => row[key]).filter((n) => n != null);
+  ctx.strokeStyle = "#3ee0c5";
+  ctx.lineWidth = 2;
+  if (pts.length < 2) {
+    ctx.fillStyle = "#8ea0b5";
+    ctx.font = "16px Segoe UI, sans-serif";
+    ctx.fillText(pts.length ? "One sample. Sample again to draw a line." : "No history in this window.", 16, h / 2);
+    return;
+  }
+  const min = hasBattery ? 0 : Math.min(...pts);
+  const max = hasBattery ? 100 : Math.max(...pts, 1);
+  ctx.beginPath();
+  pts.forEach((value, i) => {
+    const x = 16 + (i / (pts.length - 1)) * (w - 32);
+    const y = h - 16 - ((value - min) / (max - min || 1)) * (h - 32);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+async function scan() {
+  el("scan").disabled = true;
+  el("status").textContent = "Scanning this PC and any authorized phone…";
+  try {
+    const data = await api("/scan", { method: "POST" });
+    const phones = (data.phones || []).filter(Boolean);
+    el("status").textContent = [data.pc, ...phones].filter(Boolean).join(" ") || "Scan finished.";
+    await loadDevices();
+  } catch (err) {
+    el("status").textContent = String(err.message || err);
+  } finally {
+    el("scan").disabled = false;
+  }
+}
+
+el("scan").addEventListener("click", scan);
+el("watch").addEventListener("click", async () => {
+  await api("/watch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ every_min: 15 }) });
+  el("status").textContent = "Sampling every 15 minutes. Leave this app running.";
+});
+el("stop").addEventListener("click", async () => {
+  await api("/watch/stop", { method: "POST" });
+  refreshStatus();
+});
+el("hours").addEventListener("change", loadHistory);
+refreshStatus().then(loadDevices);
+</script>
+</body>
+</html>
