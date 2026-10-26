@@ -6012,6 +6012,23 @@ def api_device_diag_history(kind: str = "pc", device_id: str = "", hours: float 
     return {"ok": True, "view": history.build_view(samples)}
 
 
+@app.post("/api/device-diagnostics/pair")
+def api_device_diag_pair(body: dict | None = None):
+    body = body or {}
+    collect, _history, _diag_server, _store = _device_diag_mods()
+    try:
+        return collect.pair_phone(
+            str(body.get("host") or ""),
+            int(body.get("pair_port") or 0),
+            str(body.get("code") or ""),
+            int(body.get("connect_port") or 0),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        raise HTTPException(500, f"Pairing failed: {e}") from e
+
+
 @app.post("/api/device-diagnostics/scan")
 def api_device_diag_scan():
     collect, _history, _diag_server, _store = _device_diag_mods()

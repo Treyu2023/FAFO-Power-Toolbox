@@ -70,6 +70,30 @@
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .note { font-size: 14px; }
   a { color: var(--accent); }
+  details.guide { margin: 12px 0; }
+  details.guide > summary {
+    min-height: var(--touch);
+    display: flex; align-items: center;
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .guide h2 { font-size: 1rem; margin: 14px 0 6px; }
+  .guide ol, .guide ul { margin: 6px 0 0 1.1rem; padding: 0; }
+  .guide li { margin: 6px 0; }
+  .guide code, .fields input {
+    font: 16px/1.3 ui-monospace, Consolas, monospace;
+  }
+  .fields { display: grid; gap: 8px; margin-top: 10px; }
+  .fields label { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
+  .fields input {
+    min-height: var(--touch);
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #0c1520;
+    color: var(--text);
+    padding: 10px 12px;
+  }
 </style>
 </head>
 <body>
@@ -87,6 +111,63 @@
     </select>
   </div>
   <p class="note" id="status">Checking this PC…</p>
+  <details class="card guide" id="phoneGuide" open>
+    <summary>Connect a phone on current Android</summary>
+    <p>Android 11 and newer, including Android 16 and 17, hide developer options and use a pairing code. The pairing port and the connection port are two different numbers. This PC already has platform-tools 37, which is the version Android 17 expects.</p>
+    <h2>1. Turn on developer options</h2>
+    <ol>
+      <li>Open Settings and find the build number. Pixel: About phone, then tap Build number 7 times. Samsung: About phone, Software information, then Build number. Xiaomi / POCO: My device, All specs, then tap OS version. Oppo, OnePlus, and realme: About device, Version, then Build number.</li>
+      <li>Enter the phone lock PIN if it asks.</li>
+      <li>Open Developer options. Pixel: System, Developer options. Samsung: search Settings for Developer options. Xiaomi: Additional settings. Oppo and realme: System &amp; update, or Additional settings.</li>
+    </ol>
+    <h2>2. Turn on the two debugging switches</h2>
+    <ol>
+      <li>Turn on USB debugging.</li>
+      <li>On Xiaomi, Redmi, and POCO also turn on USB debugging (Security settings). That second switch is what lets a PC read battery stats.</li>
+      <li>Turn on Wireless debugging. When it asks about this Wi-Fi, allow it and check Always allow on this network. The phone and this PC must be on that same Wi-Fi. Guest Wi-Fi and a VPN on either side block it.</li>
+    </ol>
+    <h2>3. USB, the first time</h2>
+    <ol>
+      <li>Unlock the phone. The allow dialog does not appear on the lock screen.</li>
+      <li>Plug it into this PC. If Windows only charges the phone, pull down the USB notification and choose File transfer / Android Auto, not Charging only.</li>
+      <li>On the phone tap Allow, and check Always allow from this computer.</li>
+      <li>Come back here and press Scan now. If the status stays unauthorized, in Developer options tap Revoke USB debugging authorizations, unplug, plug back in, and allow it again.</li>
+    </ol>
+    <h2>4. Wireless, when you do not want the cable</h2>
+    <ol>
+      <li>On the phone tap the Wireless debugging row itself, not only the switch.</li>
+      <li>Write down the IP address and port on that page. That port is the connection port.</li>
+      <li>Tap Pair device with pairing code. A new dialog shows a 6-digit code, the same IP, and a different port. That port is the pairing port. It expires in about a minute.</li>
+      <li>Type those four values below and press Pair. Leave the code dialog open until this page says the phone is connected.</li>
+      <li>Then press Scan now.</li>
+    </ol>
+    <form class="fields" id="pairForm">
+      <label>Phone IP address
+        <input id="pairHost" name="host" inputmode="decimal" autocomplete="off" placeholder="192.168.1.20" required>
+      </label>
+      <label>Pairing port, from the code dialog
+        <input id="pairPort" name="pair_port" inputmode="numeric" autocomplete="off" placeholder="37123" required>
+      </label>
+      <label>6-digit pairing code
+        <input id="pairCode" name="code" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="123456" required>
+      </label>
+      <label>Connection port, from the Wireless debugging page
+        <input id="connectPort" name="connect_port" inputmode="numeric" autocomplete="off" placeholder="41555" required>
+      </label>
+      <button class="primary" id="pairBtn" type="submit">Pair phone</button>
+    </form>
+    <p class="note" id="pairStatus"></p>
+    <h2>5. After the first pair</h2>
+    <p>On Android 17, with platform-tools 37, a phone that you paired and set to always allow this network reconnects by itself the next time it joins that Wi-Fi. You only press Scan now. Android 11 through 16 stay paired, but you may need to open Wireless debugging again and press Pair if the status says no phone.</p>
+    <h2>6. What the scan can see</h2>
+    <ul>
+      <li>One scan is the battery percent plus Android’s total since the last full charge. It is not “the last hour” until you sample more than once.</li>
+      <li>Press Sample every 15 min and leave this page’s server running. The table then shows what increased between samples.</li>
+      <li>Screen, phone radio, and each app are listed in milliamp-hours. A desktop PC with no battery still lists busy programs, not watt-hours.</li>
+      <li>Some Samsung and Xiaomi builds connect and still omit the per-app list. Percent, temperature, and current are still recorded.</li>
+      <li>A system update can turn Developer options off. If Scan now stops seeing the phone, check the two switches again.</li>
+    </ul>
+  </details>
   <div class="chips" id="devices"></div>
   <section class="card">
     <div class="stat" id="now">—</div>
@@ -254,6 +335,34 @@ el("stop").addEventListener("click", async () => {
   refreshStatus();
 });
 el("hours").addEventListener("change", loadHistory);
+el("pairForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  el("pairBtn").disabled = true;
+  el("pairStatus").textContent = "Pairing. Keep the code dialog open on the phone.";
+  try {
+    const res = await fetch(ROOT + "/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        host: el("pairHost").value.trim(),
+        pair_port: Number(el("pairPort").value),
+        code: el("pairCode").value.trim(),
+        connect_port: Number(el("connectPort").value)
+      })
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(text);
+    const data = JSON.parse(text);
+    el("pairStatus").textContent = data.ok
+      ? "Phone connected. Press Scan now."
+      : (data.output || data.connect || data.pair || "Pairing did not finish.");
+    if (data.ok) await loadDevices();
+  } catch (err) {
+    el("pairStatus").textContent = String(err.message || err);
+  } finally {
+    el("pairBtn").disabled = false;
+  }
+});
 refreshStatus().then(loadDevices);
 </script>
 </body>
