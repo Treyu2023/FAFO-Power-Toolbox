@@ -165,6 +165,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   let idleLimit = 180;
   const scanHolder = new THREE.Group();
   scanHolder.name = "scan";
+  const scanRest = new THREE.Vector3();
   let scanMode: "off" | "shell" | "both" = "off";
   let scanUpright = false;
   let spec: CarSpec = {
@@ -331,17 +332,6 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       }
       for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent";
     }
-    if (scanMode === "shell") {
-      const skin = new Set(["hood", "fender-fl", "fender-fr", "door-l", "door-r", "quarter-l", "quarter-r", "roof", "trunk", "bumper-f", "bumper-r", "mirror-l", "mirror-r", "rocker-l", "rocker-r", "interior"]);
-      for (const node of nodes.values()) {
-        if (node.info.id === "unibody") {
-          node.group.visible = true;
-          for (const mesh of node.meshes) mesh.visible = false;
-          continue;
-        }
-        if (skin.has(node.info.id)) node.group.visible = false;
-      }
-    }
     scanHolder.visible = scanMode !== "off" && scanHolder.children.length > 0;
     scanHolder.traverse((child) => {
       const mesh = child as THREE.Mesh;
@@ -363,9 +353,25 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     });
   }
 
+  function lead() {
+    return scanMode === "shell" && scanHolder.children.length > 0 ? 1 : 0;
+  }
+
+  function maxStage() {
+    return 4 + lead();
+  }
+
+  function unit(t: number) {
+    const u = Math.min(1, Math.max(0, t));
+    return u * u * (3 - 2 * u);
+  }
+
+  const shopSkin = new Set(["hood", "fender-fl", "fender-fr", "door-l", "door-r", "quarter-l", "quarter-r", "roof", "trunk", "bumper-f", "bumper-r", "mirror-l", "mirror-r", "rocker-l", "rocker-r", "interior"]);
+
   function localAt(node: Node, t: number, out: THREE.Vector3, live = false) {
-    const amt = live ? Math.max(smooth(t, node.info.stage), node.boost) : smooth(t, node.info.stage);
-    const extra = live ? Math.max(smooth(t, 4), node.boost > 0.85 ? 1 : 0) : smooth(t, 4);
+    const start = node.info.stage + lead();
+    const amt = live ? Math.max(smooth(t, start), node.boost) : smooth(t, start);
+    const extra = live ? Math.max(smooth(t, 4 + lead()), node.boost > 0.85 ? 1 : 0) : smooth(t, 4 + lead());
     out.copy(node.rest);
     out.x += node.info.explode[0] * amt + node.info.extra[0] * extra;
     out.y += node.info.explode[1] * amt + node.info.extra[1] * extra;
@@ -386,8 +392,28 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     return out;
   }
 
+  function placeScan(t: number) {
+    if (!scanHolder.children.length) return;
+    scanHolder.position.copy(scanRest);
+    if (!lead()) return;
+    const lift = unit(Math.min(t, 1) / 0.5);
+    const back = unit(Math.max(0, Math.min(t, 1) - 0.5) / 0.5);
+    scanHolder.position.y += 1.85 * lift;
+    scanHolder.position.z += 5.6 * back;
+    const covered = lift < 0.45;
+    for (const node of nodes.values()) {
+      if (node.hidden) continue;
+      if (node.info.id === "unibody") {
+        for (const mesh of node.meshes) mesh.visible = !covered;
+        continue;
+      }
+      if (shopSkin.has(node.info.id)) node.group.visible = !covered;
+    }
+  }
+
   function place(t: number) {
     for (const node of nodes.values()) node.group.position.copy(localAt(node, t, _b, true));
+    placeScan(t);
     if (t < 0.08 && ![...nodes.values()].some((node) => node.boost > 0.05)) {
       for (const node of nodes.values()) node.line.visible = false;
       return;
@@ -594,6 +620,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     scanHolder.position.x -= center.x;
     scanHolder.position.z -= center.z;
     scanHolder.position.y -= fitted.min.y;
+    scanRest.copy(scanHolder.position);
   }
 
   function disposeScanContents() {
@@ -815,7 +842,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     stopDemo();
     event.preventDefault();
     if (event.altKey) {
-      targetStage = Math.min(4, Math.max(0, targetStage + (event.deltaY > 0 ? 0.55 : -0.55)));
+      targetStage = Math.min(maxStage(), Math.max(0, targetStage + (event.deltaY > 0 ? 0.55 : -0.55)));
       return;
     }
     if ((event.ctrlKey || event.metaKey) && selected) {
@@ -929,8 +956,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
         if (shotI >= reel.length) rollReel();
       }
       const currentShot = reel[shotI]!;
-      stage += (currentShot.stage - stage) * Math.min(1, dt * 1.2);
-      targetStage = currentShot.stage;
+      stage += (currentShot.stage + lead() - stage) * Math.min(1, dt * 1.2);
+      targetStage = currentShot.stage + lead();
       const focusPoint = tourTarget(stage);
       const angle = demoT * currentShot.orbit + shotI;
       desired.set(focusPoint.x + Math.sin(angle) * currentShot.dist, focusPoint.y + currentShot.height + Math.sin(shotT * 0.6) * currentShot.tilt, focusPoint.z + Math.cos(angle) * currentShot.dist);
@@ -950,7 +977,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     const az = demo ? demoT * 0.45 : ((look?.light ?? 40) * Math.PI) / 180;
     sun.position.set(Math.sin(az) * 8, 5.2, Math.cos(az) * 8);
     place(stage);
-    const nameIndex = Math.round(Math.max(0, Math.min(4, stage)));
+    const nameIndex = Math.round(Math.max(0, Math.min(maxStage(), stage)));
     if (nameIndex !== reported) {
       reported = nameIndex;
       events.onStage(nameIndex);
@@ -970,7 +997,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       applyEnvironment();
     },
     setStage(next) {
-      targetStage = Math.max(0, Math.min(4, next));
+      targetStage = Math.max(0, Math.min(maxStage(), next));
     },
     setFocus(next) {
       focus = next;
@@ -986,7 +1013,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     select(id) {
       selected = id;
       const node = id ? nodes.get(id) : undefined;
-      if (node && targetStage < node.info.stage) targetStage = node.info.stage;
+      if (node && targetStage < node.info.stage + lead()) targetStage = node.info.stage + lead();
       events.onSelect(id);
       applyLook();
     },
@@ -1073,6 +1100,9 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     loadScan,
     setScanMode(mode) {
       scanMode = mode;
+      const cap = maxStage();
+      if (targetStage > cap) targetStage = cap;
+      if (stage > cap) stage = cap;
       applyLook();
     },
     setScanUpright(on) {

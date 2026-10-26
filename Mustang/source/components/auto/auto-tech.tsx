@@ -42,6 +42,7 @@ export function AutoTech() {
   const [partQuery, setPartQuery] = useState("");
   const [scanName, setScanName] = useState("");
   const [scanMode, setScanMode] = useState<"off" | "shell" | "both">("off");
+  const stageNames = scanMode === "shell" && scanName ? ["Together", "Scan", "Panels", "Assemblies", "Parts", "Detail"] : [...STAGE_NAMES];
   const [scanUpright, setScanUpright] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [views, setViews] = useState<(SavedView | null)[]>([null, null, null]);
@@ -320,7 +321,7 @@ export function AutoTech() {
     setCircuit("all");
     handle.current?.setIsolate(ids, "#e7c07a");
     choosePart(ids[0] ?? "");
-    const stageNow = Math.max(2, ...ids.map((id) => groups.find((item) => item.id === id)?.stage ?? 2));
+    const stageNow = Math.max(2, ...ids.map((id) => groups.find((item) => item.id === id)?.stage ?? 2)) + (scanMode === "shell" && scanName ? 1 : 0);
     handle.current?.setStage(stageNow);
   }
 
@@ -439,10 +440,10 @@ export function AutoTech() {
             {demo ? <p className="pointer-events-none absolute left-3 top-3 rounded-md bg-elevated px-3 py-2 text-sm text-fg">Demo. Move the mouse or press a key to take over.</p> : null}
           </div>
           <p className="text-sm text-fg">
-            Stage {stage} · {STAGE_NAMES[stage]}
+            Stage {stage} · {stageNames[stage] ?? "Detail"}
           </p>
           <div className="flex flex-wrap gap-2">
-            {STAGE_NAMES.map((name, index) => (
+            {stageNames.map((name, index) => (
               <button key={name} type="button" onClick={() => handle.current?.setStage(index)} className={`h-11 rounded-md px-3 text-sm ${stage === index ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
                 {name}
               </button>
@@ -636,7 +637,7 @@ export function AutoTech() {
                   setNotice("Those pieces sit inside a larger part on this model.");
                   return;
                 }
-                const stageNow = Math.max(2, ...real.map((id) => groups.find((item) => item.id === id)?.stage ?? 2));
+                const stageNow = Math.max(2, ...real.map((id) => groups.find((item) => item.id === id)?.stage ?? 2)) + (scanMode === "shell" && scanName ? 1 : 0);
                 handle.current?.setStage(stageNow);
                 handle.current?.setIsolate(real, "#e7c07a");
                 choosePart(real[0] ?? "");

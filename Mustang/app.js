@@ -25609,6 +25609,7 @@ function AutoTech() {
   const [partQuery, setPartQuery] = (0, import_react4.useState)("");
   const [scanName, setScanName] = (0, import_react4.useState)("");
   const [scanMode, setScanMode] = (0, import_react4.useState)("off");
+  const stageNames = scanMode === "shell" && scanName ? ["Together", "Scan", "Panels", "Assemblies", "Parts", "Detail"] : [...STAGE_NAMES];
   const [scanUpright, setScanUpright] = (0, import_react4.useState)(false);
   const fileRef = (0, import_react4.useRef)(null);
   const [views, setViews] = (0, import_react4.useState)([null, null, null]);
@@ -25654,7 +25655,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-RQS3ACNU.js").then(async (mod) => {
+    void import("./part-JIDBQGDS.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -25864,7 +25865,7 @@ function AutoTech() {
     setCircuit("all");
     handle.current?.setIsolate(ids, "#e7c07a");
     choosePart(ids[0] ?? "");
-    const stageNow = Math.max(2, ...ids.map((id) => groups.find((item) => item.id === id)?.stage ?? 2));
+    const stageNow = Math.max(2, ...ids.map((id) => groups.find((item) => item.id === id)?.stage ?? 2)) + (scanMode === "shell" && scanName ? 1 : 0);
     handle.current?.setStage(stageNow);
   }
   function writeCare(next) {
@@ -25952,10 +25953,10 @@ function AutoTech() {
           "Stage ",
           stage,
           " \xB7 ",
-          STAGE_NAMES[stage]
+          stageNames[stage] ?? "Detail"
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
-          STAGE_NAMES.map((name, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => handle.current?.setStage(index), className: `h-11 rounded-md px-3 text-sm ${stage === index ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: name }, name)),
+          stageNames.map((name, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => handle.current?.setStage(index), className: `h-11 rounded-md px-3 text-sm ${stage === index ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: name }, name)),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
             "button",
             {
@@ -26117,7 +26118,7 @@ function AutoTech() {
                 setNotice("Those pieces sit inside a larger part on this model.");
                 return;
               }
-              const stageNow = Math.max(2, ...real.map((id) => groups.find((item) => item.id === id)?.stage ?? 2));
+              const stageNow = Math.max(2, ...real.map((id) => groups.find((item) => item.id === id)?.stage ?? 2)) + (scanMode === "shell" && scanName ? 1 : 0);
               handle.current?.setStage(stageNow);
               handle.current?.setIsolate(real, "#e7c07a");
               choosePart(real[0] ?? "");
