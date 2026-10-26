@@ -25654,7 +25654,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-DVM2OPWW.js").then(async (mod) => {
+    void import("./part-RQS3ACNU.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {

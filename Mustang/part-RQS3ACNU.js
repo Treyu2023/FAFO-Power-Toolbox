@@ -4874,24 +4874,14 @@ function mountCar(host, events) {
       for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent";
     }
     if (scanMode === "shell") {
-      const shown = /* @__PURE__ */ new Set();
-      for (const node of nodes.values()) {
-        if (node.info.id === "unibody") continue;
-        if (selected === node.info.id || keptOf(node)) {
-          let id = node.info.id;
-          while (id) {
-            shown.add(id);
-            id = nodes.get(id)?.info.parent ?? null;
-          }
-        }
-      }
+      const skin = /* @__PURE__ */ new Set(["hood", "fender-fl", "fender-fr", "door-l", "door-r", "quarter-l", "quarter-r", "roof", "trunk", "bumper-f", "bumper-r", "mirror-l", "mirror-r", "rocker-l", "rocker-r", "interior"]);
       for (const node of nodes.values()) {
         if (node.info.id === "unibody") {
           node.group.visible = true;
           for (const mesh of node.meshes) mesh.visible = false;
           continue;
         }
-        node.group.visible = shown.has(node.info.id);
+        if (skin.has(node.info.id)) node.group.visible = false;
       }
     }
     scanHolder.visible = scanMode !== "off" && scanHolder.children.length > 0;
@@ -4900,11 +4890,17 @@ function mountCar(host, events) {
       if (!mesh.isMesh) return;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const mat of mats) {
-        const std = mat;
-        if (!std) continue;
-        std.transparent = scanMode === "both";
-        std.opacity = scanMode === "both" ? 0.38 : 1;
-        std.depthWrite = scanMode !== "both";
+        const saved = mat.userData.scanSaved;
+        if (!saved) continue;
+        if (scanMode === "both") {
+          mat.transparent = true;
+          mat.opacity = 0.42;
+          mat.depthWrite = false;
+        } else {
+          mat.transparent = saved.transparent;
+          mat.opacity = saved.opacity;
+          mat.depthWrite = saved.depthWrite;
+        }
       }
     });
   }
@@ -5110,11 +5106,12 @@ function mountCar(host, events) {
       const parent = node.info.parent ? nodes.get(node.info.parent)?.group : root;
       parent?.add(node.group);
     }
-    nodes.get("unibody")?.group.add(scanHolder);
+    root.add(scanHolder);
     applyLook();
     place(stage);
   }
   function fitScan() {
+    root.add(scanHolder);
     scanHolder.position.set(0, 0, 0);
     scanHolder.rotation.set(0, 0, 0);
     scanHolder.scale.set(1, 1, 1);
@@ -5124,7 +5121,7 @@ function mountCar(host, events) {
     scanHolder.rotation.x = rotX;
     scanHolder.updateMatrixWorld(true);
     const turned = new Box3().setFromObject(scanHolder).getSize(new Vector3());
-    if (turned.x > turned.z) scanHolder.rotation.y = Math.PI / 2;
+    scanHolder.rotation.y = (turned.x > turned.z ? Math.PI / 2 : 0) + Math.PI;
     scanHolder.updateMatrixWorld(true);
     const before = new Box3().setFromObject(scanHolder).getSize(new Vector3());
     scanHolder.scale.setScalar(4.35 / Math.max(before.x, before.z, 1e-3));
@@ -5163,12 +5160,18 @@ function mountCar(host, events) {
     scanHolder.traverse((child) => {
       const mesh = child;
       if (!mesh.isMesh) return;
+      mesh.raycast = () => null;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const mat of mats) mat.side = DoubleSide;
+      for (const mat of mats) {
+        if (!mat) continue;
+        mat.side = DoubleSide;
+        if (!mat.userData.scanSaved) {
+          mat.userData.scanSaved = { transparent: mat.transparent, opacity: mat.opacity, depthWrite: mat.depthWrite };
+        }
+      }
     });
     if (scanMode === "off") scanMode = "shell";
     fitScan();
-    nodes.get("unibody")?.group.add(scanHolder);
     applyLook();
   }
   function roomBox(w, h, d, x, y, z, color, role, extra) {
