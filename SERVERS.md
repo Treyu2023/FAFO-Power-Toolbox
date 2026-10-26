@@ -9,8 +9,8 @@
 
 | Server | Starts when | Stops when |
 |--------|-------------|------------|
-| **S1** | You open **AI HTML Toolbox** | 8 min after last Toolbox use, or tray **Sleep S1** |
-| **S2** | FAFO new tab / tagging is actually using it | 8 min after last FAFO ping (Chrome can stay open), or **Sleep S2** |
+| **S1** | You open **AI HTML Toolbox** | About 3 min after the toolbox stops pinging, or tray **Sleep S1**. Chrome alone does not keep it up. |
+| **S2** | Chrome is open, or the toolbox is open | When **both** Chrome and the toolbox are closed, or tray **Sleep S2** |
 
 ## Manual (any Start button)
 
@@ -53,8 +53,9 @@ Python is the toolbox `.venv` next to this repo (`INSTALL-PYTHON.bat`). There is
 ## One-liners
 
 ```text
-S1 auto  = Toolbox open (parks after idle)
-S2 auto  = FAFO new tab / tags in use (not merely Chrome open)
+S1 auto  = Toolbox open only (stops when the toolbox closes)
+S2 auto  = Chrome open, or toolbox open. Stops when both are closed.
+Watchdog = not a resident background app. A 2-minute check starts S2 when Chrome opens, then exits.
 Any Start button = run that server now, no host app required
 Imagine Vault = grok.com/imagine overlay on :18767, parks after 8 min idle
 ```

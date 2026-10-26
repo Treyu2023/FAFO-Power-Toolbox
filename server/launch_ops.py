@@ -724,27 +724,50 @@ def set_manual_hold(
     return save_prefs({"manualHold": updates})
 
 
-def should_auto_run_s1(prefs: dict[str, Any] | None = None) -> bool:
-    """S1 while the Toolbox is in use, a browser just opened, or the boot delay ended.
+def _lease_wants(prefs: dict[str, Any] | None = None) -> tuple[bool, bool]:
+    """S1 only while the toolbox is open. S2 while Chrome or the toolbox is open."""
+    import presence_lease
 
-    A sticky session or manual hold does not keep it up. Idle is 5 minutes.
-    """
-    reason = _auto_reason("s1", prefs)
-    if reason == "unknown":
-        return _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
-    return bool(reason)
+    prefs = prefs or get_prefs()
+    sleep = servers_sleeping(prefs)
+    now = time.time()
+
+    def _age(which: str) -> float | None:
+        stamp = demand_at(which)
+        if not stamp:
+            return None
+        return now - float(stamp)
+
+    return presence_lease.decide(
+        chrome=host_browser_running(),
+        toolbox_active=bool(get_sessions(prefs).get("toolboxActive")),
+        s1_sleeping=bool(sleep.get("toolboxServer")),
+        s2_sleeping=bool(sleep.get("fafoMetaServer")),
+        s1_demand_age=_age("s1"),
+        s2_demand_age=_age("s2"),
+    )
+
+
+def should_auto_run_s1(prefs: dict[str, Any] | None = None) -> bool:
+    """S1 only while the toolbox page is open or pinged in the last 3 minutes."""
+    try:
+        return _lease_wants(prefs)[0]
+    except Exception:
+        reason = _auto_reason("s1", prefs)
+        if reason == "unknown":
+            return _port_open(TOOLBOX_HOST, TOOLBOX_PORT)
+        return bool(reason)
 
 
 def should_auto_run_s2(prefs: dict[str, Any] | None = None) -> bool:
-    """S2 for a real FAFO ping, a browser open, or the delayed boot start.
-
-    Chrome left open all day is not a reason to keep scanning. After a user
-    close, only a browser process that starts later turns S2 back on.
-    """
-    reason = _auto_reason("s2", prefs)
-    if reason == "unknown":
-        return _port_open(META_HOST, META_PORT)
-    return bool(reason)
+    """S2 while Chrome is open, or the toolbox is open. Stops when both are closed."""
+    try:
+        return _lease_wants(prefs)[1]
+    except Exception:
+        reason = _auto_reason("s2", prefs)
+        if reason == "unknown":
+            return _port_open(META_HOST, META_PORT)
+        return bool(reason)
 
 
 def _release_close_for_reason(which: str, reason: str) -> None:
@@ -782,8 +805,11 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
     s2_up = _port_open(META_HOST, META_PORT)
     browser = host_browser_running()
     actions: list[str] = []
-    want_s1 = s1_up if r1 == "unknown" else bool(r1)
-    want_s2 = s2_up if r2 == "unknown" else bool(r2)
+    try:
+        want_s1, want_s2 = _lease_wants(prefs)
+    except Exception:
+        want_s1 = s1_up if r1 == "unknown" else bool(r1)
+        want_s2 = s2_up if r2 == "unknown" else bool(r2)
 
     _release_close_for_reason("s1", r1)
     _release_close_for_reason("s2", r2)
@@ -827,10 +853,14 @@ def apply_lifecycle(*, ensure_tray: bool = True) -> dict[str, Any]:
         actions.append(f"stop_s2_idle:killed={killed.get('killed')}")
 
     tray_info: dict[str, Any] = {}
-    if ensure_tray:
+    if ensure_tray and (want_s1 or want_s2):
         tray_info = start_tray()
         if tray_info.get("started"):
             actions.append("start_tray")
+    elif not want_s1 and not want_s2:
+        tray_info = stop_tray()
+        if tray_info.get("stopped"):
+            actions.append("stop_tray")
 
     return {
         "ok": True,
@@ -1408,6 +1438,31 @@ def _tray_running() -> bool:
     except Exception:
         pass
     return False
+
+
+def stop_tray() -> dict[str, Any]:
+    """Quit the tray helper so it is not left running after both apps close."""
+    if not IS_WINDOWS:
+        return {"ok": True, "stopped": 0, "id": "tray"}
+    stopped = 0
+    try:
+        import psutil  # type: ignore
+
+        for proc in psutil.process_iter(["name", "cmdline"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                if name not in ("python.exe", "pythonw.exe"):
+                    continue
+                joined = " ".join(str(x) for x in (proc.info.get("cmdline") or [])).lower()
+                if "tray_launcher.py" not in joined:
+                    continue
+                proc.terminate()
+                stopped += 1
+            except Exception:
+                continue
+    except Exception as exc:
+        return {"ok": False, "id": "tray", "error": str(exc)}
+    return {"ok": True, "stopped": stopped, "id": "tray"}
 
 
 def start_tray() -> dict[str, Any]:

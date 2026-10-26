@@ -1334,7 +1334,7 @@ def _install_startup_shortcut(exe: Path, script: Path) -> dict[str, Any]:
 
 
 def install_task() -> dict[str, Any]:
-    """Register keep-alive: Startup folder (logon) + 5-minute Scheduled Task poll."""
+    """Register a 2-minute --once check. Do not leave a resident watchdog at logon."""
     if sys.platform != "win32":
         return {"ok": False, "error": "Windows only"}
     py = launch_ops._server_python() or Path(sys.executable)
@@ -1344,8 +1344,15 @@ def install_task() -> dict[str, Any]:
     tr = f'"{exe}" "{script}"'
     import subprocess
 
-    # Logon via Startup folder (no admin; ONLOGON schtasks often Access Denied for limited users)
-    startup_info = _install_startup_shortcut(exe, script)
+    # Do not install a logon shortcut. A resident watchdog is what stayed in the background.
+    startup = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    for name in ("FAFO Server Watchdog.cmd", "FAFO Server Watchdog.lnk", "FAFO Toolbox Servers.lnk"):
+        try:
+            (startup / name).unlink(missing_ok=True)
+        except OSError:
+            pass
+    startup_info = {"ok": True, "removedLogon": True, "path": str(startup)}
+    tr = f'"{exe}" "{script}" --once'
 
     # Delete old logon task if present (optional)
     subprocess.run(
@@ -1370,7 +1377,7 @@ def install_task() -> dict[str, Any]:
             "/SC",
             "MINUTE",
             "/MO",
-            "5",
+            "2",
             "/RL",
             "LIMITED",
             "/F",
@@ -1379,7 +1386,7 @@ def install_task() -> dict[str, Any]:
         text=True,
     )
     try:
-        launch_ops.save_prefs({"windowsStartup": {"servers": True}})
+        launch_ops.save_prefs({"windowsStartup": {"servers": False}})
     except Exception:
         pass
     ok = bool(startup_info.get("ok")) and r2.returncode == 0
@@ -1457,12 +1464,26 @@ def run_loop() -> int:
     except Exception as e:
         log(f"first cycle error: {e}\n{traceback.format_exc()}", "ERROR")
 
+    quiet = 0
     while True:
         time.sleep(POLL_SEC)
         try:
             cycle(session)
         except Exception as e:
             log(f"cycle error: {e}\n{traceback.format_exc()}", "ERROR")
+            continue
+        try:
+            needed = launch_ops.should_auto_run_s1() or launch_ops.should_auto_run_s2()
+        except Exception:
+            needed = True
+        quiet = 0 if needed else quiet + 1
+        if quiet >= 2:
+            log("Chrome and the toolbox are both closed — watchdog exiting")
+            try:
+                launch_ops.stop_tray()
+            except Exception:
+                pass
+            return 0
 
 
 def main(argv: list[str] | None = None) -> int:
