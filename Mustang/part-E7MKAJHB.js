@@ -5784,7 +5784,6 @@ function mountCar(host, events) {
     requestAnimationFrame(frame);
   }
   frame();
-  startDemo();
   return {
     setSpec(next) {
       rebuild(next);

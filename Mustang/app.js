@@ -25820,6 +25820,25 @@ function PathSheet({
 
 // components/auto/auto-tech.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+var WHERE_KEY = "fafo.auto.where.v1";
+function readWhere() {
+  const empty = { door: "title", carId: null, pack: "mustang", answers: {} };
+  try {
+    const raw = sessionStorage.getItem(WHERE_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    const door = parsed.door;
+    if (door !== "title" && door !== "garage" && door !== "dealer" && door !== "options" && door !== "bay") return empty;
+    return {
+      door,
+      carId: typeof parsed.carId === "string" ? parsed.carId : null,
+      pack: parsed.pack === "common" ? "common" : "mustang",
+      answers: parsed.answers && typeof parsed.answers === "object" ? parsed.answers : {}
+    };
+  } catch {
+    return empty;
+  }
+}
 var SYSTEMS = [
   { id: "all", label: "All" },
   { id: "body", label: "Body" },
@@ -25829,8 +25848,9 @@ var SYSTEMS = [
   { id: "electrical", label: "Electrical" }
 ];
 function AutoTech() {
-  const [pack, setPack] = (0, import_react4.useState)("mustang");
-  const [answers, setAnswers] = (0, import_react4.useState)({});
+  const where = (0, import_react4.useRef)(readWhere());
+  const [pack, setPack] = (0, import_react4.useState)(where.current.pack);
+  const [answers, setAnswers] = (0, import_react4.useState)(where.current.answers);
   const [lookOpen, setLookOpen] = (0, import_react4.useState)(true);
   const [libraryOpen, setLibraryOpen] = (0, import_react4.useState)(true);
   const [libraryTarget, setLibraryTarget] = (0, import_react4.useState)(null);
@@ -25878,10 +25898,10 @@ function AutoTech() {
   const [hover, setHover] = (0, import_react4.useState)(null);
   const [demo, setDemo] = (0, import_react4.useState)(true);
   const [vacuumOpen, setVacuumOpen] = (0, import_react4.useState)(false);
-  const [door, setDoor] = (0, import_react4.useState)("title");
+  const [door, setDoor] = (0, import_react4.useState)(where.current.door);
   const [shop, setShop] = (0, import_react4.useState)(loadShop());
   const [cars, setCars] = (0, import_react4.useState)([]);
-  const [carId, setCarId] = (0, import_react4.useState)(null);
+  const [carId, setCarId] = (0, import_react4.useState)(where.current.carId);
   const shopRef = (0, import_react4.useRef)(shop);
   const carsRef = (0, import_react4.useRef)(cars);
   const carIdRef = (0, import_react4.useRef)(carId);
@@ -25906,6 +25926,9 @@ function AutoTech() {
   specRef.current = spec;
   lookRef.current = look;
   (0, import_react4.useEffect)(() => {
+    sessionStorage.setItem(WHERE_KEY, JSON.stringify({ door, carId, pack, answers }));
+  }, [door, carId, pack, answers]);
+  (0, import_react4.useEffect)(() => {
     setShop(loadShop());
     setCars(loadGarage());
   }, []);
@@ -25929,7 +25952,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-4A2ONRQR.js").then(async (mod) => {
+    void import("./part-E7MKAJHB.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -25982,7 +26005,7 @@ function AutoTech() {
       const active2 = mergeShop(shopRef.current, opened2?.override ?? null);
       current.setIdleSeconds(active2.idleMinutes * 60);
       current.setIdleDemo(active2.idleDemo);
-      if (!active2.demoOnOpen) current.setDemo(false);
+      if (active2.demoOnOpen) current.setDemo(true);
       const saved = await loadScanFile().catch(() => null);
       let loaded = false;
       if (!dead && saved) {

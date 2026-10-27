@@ -16,6 +16,27 @@ import { HOSE_KEY, VACUUM_TREE, WIRE_COLORS } from "@/lib/auto/hoses";
 import { careJobs, careState, loadCare, saveCare, type CareLog } from "@/lib/auto/care";
 import type { CarHandle, MenuHit } from "@/components/auto/car-scene";
 
+const WHERE_KEY = "fafo.auto.where.v1";
+
+function readWhere(): { door: "title" | "garage" | "dealer" | "options" | "bay"; carId: string | null; pack: PackId; answers: Answers } {
+  const empty = { door: "title" as const, carId: null, pack: "mustang" as const, answers: {} };
+  try {
+    const raw = sessionStorage.getItem(WHERE_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as { door?: string; carId?: unknown; pack?: string; answers?: Answers };
+    const door = parsed.door;
+    if (door !== "title" && door !== "garage" && door !== "dealer" && door !== "options" && door !== "bay") return empty;
+    return {
+      door,
+      carId: typeof parsed.carId === "string" ? parsed.carId : null,
+      pack: parsed.pack === "common" ? "common" : "mustang",
+      answers: parsed.answers && typeof parsed.answers === "object" ? parsed.answers : {},
+    };
+  } catch {
+    return empty;
+  }
+}
+
 const SYSTEMS: { id: SystemId; label: string }[] = [
   { id: "all", label: "All" },
   { id: "body", label: "Body" },
@@ -26,8 +47,9 @@ const SYSTEMS: { id: SystemId; label: string }[] = [
 ];
 
 export function AutoTech() {
-  const [pack, setPack] = useState<PackId>("mustang");
-  const [answers, setAnswers] = useState<Answers>({});
+  const where = useRef(readWhere());
+  const [pack, setPack] = useState<PackId>(where.current.pack);
+  const [answers, setAnswers] = useState<Answers>(where.current.answers);
   const [lookOpen, setLookOpen] = useState(true);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [libraryTarget, setLibraryTarget] = useState<string | null>(null);
@@ -74,10 +96,10 @@ export function AutoTech() {
   const [hover, setHover] = useState<MenuHit | null>(null);
   const [demo, setDemo] = useState(true);
   const [vacuumOpen, setVacuumOpen] = useState(false);
-  const [door, setDoor] = useState<"title" | "garage" | "dealer" | "options" | "bay">("title");
+  const [door, setDoor] = useState<"title" | "garage" | "dealer" | "options" | "bay">(where.current.door);
   const [shop, setShop] = useState<ShopOptions>(loadShop());
   const [cars, setCars] = useState<GarageCar[]>([]);
-  const [carId, setCarId] = useState<string | null>(null);
+  const [carId, setCarId] = useState<string | null>(where.current.carId);
   const shopRef = useRef(shop);
   const carsRef = useRef(cars);
   const carIdRef = useRef(carId);
@@ -101,6 +123,10 @@ export function AutoTech() {
   const lookRef = useRef(look);
   specRef.current = spec;
   lookRef.current = look;
+
+  useEffect(() => {
+    sessionStorage.setItem(WHERE_KEY, JSON.stringify({ door, carId, pack, answers }));
+  }, [door, carId, pack, answers]);
 
   useEffect(() => {
     setShop(loadShop());
@@ -183,7 +209,7 @@ export function AutoTech() {
       const active = mergeShop(shopRef.current, opened?.override ?? null);
       current.setIdleSeconds(active.idleMinutes * 60);
       current.setIdleDemo(active.idleDemo);
-      if (!active.demoOnOpen) current.setDemo(false);
+      if (active.demoOnOpen) current.setDemo(true);
       const saved = await loadScanFile().catch(() => null);
       let loaded = false;
       if (!dead && saved) {

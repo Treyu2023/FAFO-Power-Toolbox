@@ -1301,7 +1301,6 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     requestAnimationFrame(frame);
   }
   frame();
-  startDemo();
 
   return {
     setSpec(next) {
