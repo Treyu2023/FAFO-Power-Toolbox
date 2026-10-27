@@ -24687,6 +24687,27 @@ function saveShifts(shifts) {
   localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts));
   return shifts;
 }
+var HOMES_KEY = "fafo.auto.homes.v1";
+function loadHomes() {
+  try {
+    const raw = localStorage.getItem(HOMES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function saveHomes(homes) {
+  localStorage.setItem(HOMES_KEY, JSON.stringify(homes));
+  return homes;
+}
+function writeHome(id, home) {
+  const all = loadHomes();
+  all[id] = home;
+  localStorage.setItem(HOMES_KEY, JSON.stringify(all));
+  return all;
+}
 function writeShift(id, shift) {
   const all = loadShifts();
   all[id] = shift;
@@ -24861,6 +24882,48 @@ async function loadScanFile() {
   });
   db.close();
   return row?.data ? row : null;
+}
+async function savePartFile(id, name, data) {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put({ name, data }, `part:${id}`);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+async function loadPartFiles() {
+  const db = await openDb();
+  const rows = await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const request = tx.objectStore(STORE).openCursor();
+    const found = [];
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(found);
+        return;
+      }
+      const key = String(cursor.key);
+      const value = cursor.value;
+      if (key.startsWith("part:") && value?.data) found.push({ id: key.slice(5), name: value.name || "model", data: value.data });
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return rows;
+}
+async function clearPartFile(id) {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(`part:${id}`);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
 }
 async function clearScanFile() {
   const db = await openDb();
@@ -25648,6 +25711,8 @@ function AutoTech() {
   const [pack, setPack] = (0, import_react4.useState)("mustang");
   const [answers, setAnswers] = (0, import_react4.useState)({});
   const [lookOpen, setLookOpen] = (0, import_react4.useState)(true);
+  const [editing, setEditing] = (0, import_react4.useState)(false);
+  const [partNames, setPartNames] = (0, import_react4.useState)({});
   const [stage, setStage] = (0, import_react4.useState)(0);
   const [explode, setExplode] = (0, import_react4.useState)(0);
   const explodeDrag = (0, import_react4.useRef)(false);
@@ -25675,6 +25740,8 @@ function AutoTech() {
   const [pickOpen, setPickOpen] = (0, import_react4.useState)(false);
   const [sectionMarks, setSectionMarks] = (0, import_react4.useState)({});
   const fileRef = (0, import_react4.useRef)(null);
+  const partFileRef = (0, import_react4.useRef)(null);
+  const replaceId = (0, import_react4.useRef)(null);
   const orbitRef = (0, import_react4.useRef)(null);
   const deskDrag = (0, import_react4.useRef)(null);
   const framedIds = (0, import_react4.useRef)(null);
@@ -25737,7 +25804,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-WNGVRVK5.js").then(async (mod) => {
+    void import("./part-CDL6MMST.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -25760,6 +25827,7 @@ function AutoTech() {
         },
         onDemo: (on) => setDemo(on),
         onShift: (id, shift) => writeShift(id, shift),
+        onHome: (id, home) => writeHome(id, home),
         onDistance: (distance) => {
           if (!zoomDrag.current) setZoom(distance);
         }
@@ -25767,6 +25835,14 @@ function AutoTech() {
       current.setSpec(specRef.current);
       current.setLook(lookRef.current);
       current.applyShifts(loadShifts());
+      current.applyHomes(loadHomes());
+      const partFiles = await loadPartFiles().catch(() => []);
+      const names = {};
+      for (const file of partFiles) {
+        await current.replacePart(file.id, file.data, file.name);
+        names[file.id] = file.name;
+      }
+      if (Object.keys(names).length) setPartNames(names);
       const opened2 = carsRef.current.find((car) => car.id === carIdRef.current);
       const active2 = mergeShop(shopRef.current, opened2?.override ?? null);
       current.setIdleSeconds(active2.idleMinutes * 60);
@@ -26041,10 +26117,13 @@ function AutoTech() {
   const milesNow = opened?.miles ?? care.miles;
   const serviceDone = opened?.service ?? care.done;
   (0, import_react4.useEffect)(() => {
-    if (door !== "bay" || !selected) return;
+    if (door !== "bay" || !selected || editing) {
+      if (editing) handle.current?.framePart("", null);
+      return;
+    }
     const ids = framedIds.current && framedIds.current.includes(selected) ? framedIds.current : void 0;
     applyFrame(selected, ids);
-  }, [door, selected, active.framePick, active.frameMode, active.frameDistance, active.frameOrbit, active.frameTransit, active.markColor, active.markTo, active.markGradient, sectionMarks]);
+  }, [door, selected, editing, active.framePick, active.frameMode, active.frameDistance, active.frameOrbit, active.frameTransit, active.markColor, active.markTo, active.markGradient, sectionMarks]);
   function setPref(key, value) {
     if (opened?.override) {
       setCars(saveGarage(cars.map((item) => item.id === carId ? { ...item, override: { ...item.override, [key]: value } } : item)));
@@ -26084,6 +26163,33 @@ function AutoTech() {
     else done[id] = at;
     writeCare({ ...care, done });
   }
+  function beginEdit(on) {
+    setEditing(on);
+    handle.current?.setEditing(on);
+    if (!on) return;
+    setExplode(0);
+    handle.current?.setStage(0);
+    handle.current?.setDemo(false);
+    handle.current?.framePart("", null);
+    setNotice("Editing the model. Drag a part to move where it sits when the car is together.");
+  }
+  function askReplace(id) {
+    replaceId.current = id;
+    partFileRef.current?.click();
+  }
+  function defaultHome(id) {
+    if (id) {
+      handle.current?.clearHome(id);
+      const homes = loadHomes();
+      delete homes[id];
+      saveHomes(homes);
+      setNotice("That part is back on the shop spot.");
+      return;
+    }
+    handle.current?.clearHomes();
+    saveHomes({});
+    setNotice("Every part is back on the shop spot.");
+  }
   function openCar(car) {
     setCarId(car.id);
     setPack(car.pack);
@@ -26105,6 +26211,28 @@ function AutoTech() {
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex shrink-0 flex-col gap-2 border-b border-line bg-bg px-3 py-2", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setDoor("title"), className: "h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg", children: "Title" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => beginEdit(!editing), className: `h-11 rounded-md px-4 text-sm font-medium ${editing ? "bg-amber-500 text-black" : "border border-line text-fg"}`, children: editing ? "Done editing" : "Edit the model" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          "input",
+          {
+            ref: partFileRef,
+            type: "file",
+            accept: ".glb,.gltf,.stl,.obj",
+            className: "hidden",
+            onChange: (event) => {
+              const file = event.target.files?.[0];
+              const id = replaceId.current ?? selected;
+              event.target.value = "";
+              if (!file || !id) return;
+              void file.arrayBuffer().then(async (data) => {
+                await savePartFile(id, file.name, data);
+                await handle.current?.replacePart(id, data, file.name);
+                setPartNames((names) => ({ ...names, [id]: file.name }));
+                setNotice(`${file.name} is on that part, at the shop spot. Drag it if the spot is wrong.`);
+              }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
+            }
+          }
+        ),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLookOpen((open) => !open), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models" }),
         scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: scanName }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "No model loaded" })
       ] }),
@@ -26226,7 +26354,23 @@ function AutoTech() {
               children: "Default positions"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Drag a part. Pieces on it move with it, and it comes back to that spot at the same stage until you default it." })
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: editing ? "Editing. Drag moves the part, and the pieces on it, where the car is together." : "Drag a part. Pieces on it move with it, and it comes back to that spot at the same stage until you default it." }),
+          editing ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => selected ? askReplace(selected) : setNotice("Select a part, then bring in its model."), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: selected ? `Replace ${partBlurb(selected, spec).name}` : "Replace a part" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: !selected || !partNames[selected], onClick: () => {
+              if (!selected) return;
+              void clearPartFile(selected);
+              handle.current?.clearPartModel(selected);
+              setPartNames((names) => {
+                const next = { ...names };
+                delete next[selected];
+                return next;
+              });
+              setNotice("The shop part is back.");
+            }, className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: "Shop part" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => selected ? defaultHome(selected) : setNotice("Select a part first."), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Default place" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => defaultHome(null), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Default every place" })
+          ] }) : null
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Camera" }),
@@ -26282,7 +26426,8 @@ function AutoTech() {
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: phone ? "relative min-h-0 flex-1" : "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: phone ? "absolute inset-0" : "flex flex-col gap-3", children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: phone ? "absolute inset-0" : "relative", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { ref: host, className: phone ? "h-full w-full" : "h-80 w-full rounded-md border border-line lg:h-[32rem]", style: { background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background } }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { ref: host, className: phone ? "h-full w-full" : `h-80 w-full rounded-md border lg:h-[32rem] ${editing ? "border-amber-500" : "border-line"}`, style: { background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background } }),
+          editing ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "pointer-events-none absolute left-3 top-3 max-w-sm rounded-md bg-amber-500 px-3 py-2 text-sm text-black", children: "Editing the model. Drag a part to move where it sits. A model file starts on the shop spot." }) : null,
           demo ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "pointer-events-none absolute left-3 top-3 rounded-md bg-elevated px-3 py-2 text-sm text-fg", children: "Demo. Move the mouse or press a key to take over." }) : null,
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "absolute left-3 right-28 z-10 flex flex-col gap-2 rounded-md bg-bg/80 p-2", style: { bottom: phone ? `calc(${deskOpen ? deskHeight : 48}px + 0.5rem)` : "0.75rem" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex items-center gap-2 text-sm text-fg", children: [
@@ -26747,6 +26892,30 @@ function AutoTech() {
           ]
         }
       ),
+      editing ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+          askReplace(menu.id);
+          setMenu(null);
+        }, children: "Replace with a model" }),
+        partNames[menu.id] ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+          void clearPartFile(menu.id);
+          handle.current?.clearPartModel(menu.id);
+          setPartNames((names) => {
+            const next = { ...names };
+            delete next[menu.id];
+            return next;
+          });
+          setMenu(null);
+        }, children: "Use the shop part" }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+          defaultHome(menu.id);
+          setMenu(null);
+        }, children: "Default place" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+          defaultHome(null);
+          setMenu(null);
+        }, children: "Default every place" })
+      ] }) : null,
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
         "button",
         {

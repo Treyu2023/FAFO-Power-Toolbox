@@ -38,6 +38,33 @@ export function saveShifts(shifts: Record<string, Shift>) {
   return shifts;
 }
 
+const HOMES_KEY = "fafo.auto.homes.v1";
+
+export type Home = { x: number; y: number; z: number };
+
+export function loadHomes(): Record<string, Home> {
+  try {
+    const raw = localStorage.getItem(HOMES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, Home>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveHomes(homes: Record<string, Home>) {
+  localStorage.setItem(HOMES_KEY, JSON.stringify(homes));
+  return homes;
+}
+
+export function writeHome(id: string, home: Home) {
+  const all = loadHomes();
+  all[id] = home;
+  localStorage.setItem(HOMES_KEY, JSON.stringify(all));
+  return all;
+}
+
 export function writeShift(id: string, shift: Shift) {
   const all = loadShifts();
   all[id] = shift;

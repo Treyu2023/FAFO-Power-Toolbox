@@ -20,6 +20,7 @@ type Node = {
   centroid: THREE.Vector3;
   shift: THREE.Vector3;
   shiftFrom: number;
+  home: THREE.Vector3;
   boost: number;
   hidden: boolean;
   line: THREE.Line;
@@ -37,6 +38,7 @@ export type CarEvents = {
   onPaint: (id: string) => void;
   onDemo: (on: boolean) => void;
   onShift: (id: string, shift: Shift) => void;
+  onHome: (id: string, home: { x: number; y: number; z: number }) => void;
   onDistance: (distance: number) => void;
 };
 
@@ -62,6 +64,12 @@ export type CarHandle = {
   setIdleSeconds: (seconds: number) => void;
   clearShifts: () => void;
   clearShift: (id: string) => void;
+  setEditing: (on: boolean) => void;
+  applyHomes: (homes: Record<string, { x: number; y: number; z: number }>) => void;
+  clearHome: (id: string) => void;
+  clearHomes: () => void;
+  replacePart: (id: string, data: ArrayBuffer, name: string) => Promise<void>;
+  clearPartModel: (id: string) => void;
   loadScan: (data: ArrayBuffer, name: string) => Promise<void>;
   setScanMode: (mode: "off" | "shell" | "both") => void;
   setScanUpright: (on: boolean) => void;
@@ -156,6 +164,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   scene.add(room);
 
   const nodes = new Map<string, Node>();
+  const holders = new Map<string, THREE.Group>();
+  let editing = false;
   let stage = 0;
   let stageVel = 0;
   let targetStage = 0;
@@ -212,6 +222,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   backdropTex.colorSpace = THREE.SRGBColorSpace;
 
   function clearNodes() {
+    for (const holder of holders.values()) holder.removeFromParent();
     scanHolder.removeFromParent();
     for (const node of nodes.values()) {
       node.group.traverse((child) => {
@@ -296,6 +307,11 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       const custom = look?.partPaints?.[node.info.id];
       node.group.visible = !node.hidden;
       for (const mesh of node.meshes) {
+        if (mesh.userData.swapped) {
+          mesh.visible = false;
+          mesh.raycast = () => null;
+          continue;
+        }
         const mat = mesh.material as THREE.MeshStandardMaterial;
         const base = (mesh.userData.base as string) || "#888888";
         const opaque = (mesh.userData.opacity ?? 1) > 0.9;
@@ -365,7 +381,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
         mesh.visible = true;
         mesh.raycast = node.hidden ? () => null : THREE.Mesh.prototype.raycast;
       }
-      for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent";
+      for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent" && !node.meshes.some((mesh) => mesh.userData.swapped);
     }
     scanHolder.visible = scanMode !== "off" && scanHolder.children.length > 0;
     scanHolder.traverse((child) => {
@@ -408,6 +424,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     const amt = live ? Math.max(smooth(t, start), node.boost) : smooth(t, start);
     const extra = live ? Math.max(smooth(t, 4 + lead()), node.boost > 0.85 ? 1 : 0) : smooth(t, 4 + lead());
     out.copy(node.rest);
+    out.add(node.home);
     out.x += node.info.explode[0] * amt + node.info.extra[0] * extra;
     out.y += node.info.explode[1] * amt + node.info.extra[1] * extra;
     out.z += node.info.explode[2] * amt + node.info.extra[2] * extra;
@@ -441,10 +458,14 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       const skin = node.info.id === "unibody" || shopSkin.has(node.info.id);
       if (!skin) continue;
       node.group.visible = true;
-      const lit = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 0.0004;
+      const lit = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 0.0004 || node.home.lengthSq() > 0.0004;
       if (lit || !covered) {
         if (lit) {
           for (const mesh of node.meshes) {
+            if (mesh.userData.swapped) {
+              mesh.visible = false;
+              continue;
+            }
             mesh.visible = true;
             const mat = mesh.material as THREE.MeshStandardMaterial;
             const back = (mesh.userData.opacity as number | undefined) ?? 1;
@@ -458,6 +479,10 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
         continue;
       }
       for (const mesh of node.meshes) {
+        if (mesh.userData.swapped) {
+          mesh.visible = false;
+          continue;
+        }
         mesh.visible = true;
         if (!covered) continue;
         const mat = mesh.material as THREE.MeshStandardMaterial;
@@ -499,10 +524,14 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   }
 
   function rebuild(next: CarSpec) {
+    const homes = new Map<string, THREE.Vector3>();
     const shifts = new Map<string, { shift: THREE.Vector3; from: number; hidden: boolean }>();
     const boosts = new Map<string, number>();
-    for (const [id, node] of nodes) shifts.set(id, { shift: node.shift.clone(), from: node.shiftFrom, hidden: node.hidden });
-    for (const [id, node] of nodes) boosts.set(id, node.boost);
+    for (const [id, node] of nodes) {
+      shifts.set(id, { shift: node.shift.clone(), from: node.shiftFrom, hidden: node.hidden });
+      homes.set(id, node.home.clone());
+      boosts.set(id, node.boost);
+    }
     clearNodes();
     spec = next;
     const groups = groupsFor(next);
@@ -642,6 +671,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
         centroid,
         shift: kept?.shift ?? new THREE.Vector3(),
         shiftFrom: kept?.from ?? 0,
+        home: homes.get(info.id)?.clone() ?? new THREE.Vector3(),
         boost: boosts.get(info.id) ?? 0,
         hidden: kept?.hidden ?? false,
         line,
@@ -650,6 +680,12 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     for (const node of nodes.values()) {
       const parent = node.info.parent ? nodes.get(node.info.parent)?.group : root;
       parent?.add(node.group);
+    }
+    for (const [id, holder] of holders) {
+      const node = nodes.get(id);
+      if (!node) continue;
+      for (const mesh of node.meshes) mesh.userData.swapped = true;
+      node.group.add(holder);
     }
     root.add(scanHolder);
     applyLook();
@@ -690,6 +726,112 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       else material?.dispose();
     });
     scanHolder.clear();
+  }
+
+  function markSwapped(node: Node) {
+    for (const mesh of node.meshes) {
+      mesh.userData.swapped = true;
+      mesh.visible = false;
+      mesh.raycast = () => null;
+    }
+    for (const edge of node.edges) edge.visible = false;
+  }
+
+  function fitHolder(holder: THREE.Object3D, worldBox: THREE.Box3, parent: THREE.Object3D) {
+    holder.position.set(0, 0, 0);
+    holder.rotation.set(0, 0, 0);
+    holder.scale.set(1, 1, 1);
+    holder.updateMatrixWorld(true);
+    const raw = new THREE.Box3().setFromObject(holder);
+    const size = raw.getSize(new THREE.Vector3());
+    const want = worldBox.getSize(new THREE.Vector3());
+    const maxIn = Math.max(size.x, size.y, size.z, 0.0001);
+    const maxOut = Math.max(want.x, want.y, want.z, 0.05);
+    holder.scale.setScalar(maxOut / maxIn);
+    holder.updateMatrixWorld(true);
+    const fitted = new THREE.Box3().setFromObject(holder);
+    parent.updateMatrixWorld(true);
+    const localFrom = parent.worldToLocal(fitted.getCenter(new THREE.Vector3()));
+    const localTo = parent.worldToLocal(worldBox.getCenter(new THREE.Vector3()));
+    holder.position.add(localTo.sub(localFrom));
+  }
+
+  function shopBox(node: Node) {
+    const box = new THREE.Box3();
+    node.group.updateWorldMatrix(true, true);
+    for (const mesh of node.meshes) {
+      if (!mesh.geometry) continue;
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      const local = mesh.geometry.boundingBox;
+      if (!local || local.isEmpty()) continue;
+      box.union(local.clone().applyMatrix4(mesh.matrixWorld));
+    }
+    if (!box.isEmpty()) return box;
+    const center = new THREE.Vector3();
+    node.group.getWorldPosition(center);
+    return new THREE.Box3(center.clone().addScalar(-0.08), center.clone().addScalar(0.08));
+  }
+
+  async function parseModel(data: ArrayBuffer, name: string) {
+    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    if (ext === "stl") {
+      const geo = new STLLoader().parse(data);
+      return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: "#8a8680", metalness: 0.55, roughness: 0.4, side: THREE.DoubleSide }));
+    }
+    if (ext === "obj") return new OBJLoader().parse(new TextDecoder().decode(data));
+    if (ext === "glb" || ext === "gltf") {
+      const gltf = await new GLTFLoader().parseAsync(data, "");
+      return gltf.scene;
+    }
+    throw new Error("Use a .glb, .gltf, .stl, or .obj file.");
+  }
+
+  function disposeHolder(holder: THREE.Object3D) {
+    holder.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const material = mesh.material;
+      if (Array.isArray(material)) material.forEach((item) => item.dispose());
+      else material?.dispose();
+    });
+  }
+
+  async function replacePart(id: string, data: ArrayBuffer, name: string) {
+    const node = nodes.get(id);
+    if (!node) return;
+    const box = shopBox(node);
+    const previous = holders.get(id);
+    if (previous) {
+      previous.removeFromParent();
+      disposeHolder(previous);
+    }
+    const holder = new THREE.Group();
+    holder.name = `${id}-model`;
+    holder.userData.replacementHolder = true;
+    holder.add(await parseModel(data, name));
+    node.group.add(holder);
+    fitHolder(holder, box, node.group);
+    holders.set(id, holder);
+    markSwapped(node);
+    applyLook();
+  }
+
+  function clearPartModel(id: string) {
+    const holder = holders.get(id);
+    if (holder) {
+      holder.removeFromParent();
+      disposeHolder(holder);
+      holders.delete(id);
+    }
+    const node = nodes.get(id);
+    if (!node) return;
+    for (const mesh of node.meshes) {
+      mesh.userData.swapped = false;
+      mesh.visible = true;
+      mesh.raycast = THREE.Mesh.prototype.raycast;
+    }
+    applyLook();
   }
 
   async function loadScan(data: ArrayBuffer, name: string) {
@@ -783,7 +925,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       }
       scene.background = backdropTex;
     } else scene.background = new THREE.Color(current.background);
-    renderer.domElement.style.cursor = current.paintMode === "part" ? "crosshair" : "";
+    renderer.domElement.style.cursor = editing ? "grab" : current.paintMode === "part" ? "crosshair" : "";
     applyLook();
   }
 
@@ -940,7 +1082,9 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     if (!raycaster.ray.intersectPlane(plane, hit)) return;
-    dragging.shift.add(hit.clone().sub(lastHit));
+    const delta = hit.clone().sub(lastHit);
+    if (editing) dragging.home.add(delta);
+    else dragging.shift.add(delta);
     lastHit.copy(hit);
   }
 
@@ -958,7 +1102,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       else events.onMenu(node ? { x: event.clientX, y: event.clientY, id: node.info.id, name: node.info.name, system: node.info.system } : null);
     }
     if (event.button === 0 && left && !dragging && Math.hypot(event.clientX - left.x, event.clientY - left.y) <= 5) select(left.node?.info.id ?? null);
-    if (dragging && dragging.shift.lengthSq() > 0.0001) {
+    if (dragging && editing) events.onHome(dragging.info.id, { x: dragging.home.x, y: dragging.home.y, z: dragging.home.z });
+    else if (dragging && dragging.shift.lengthSq() > 0.0001) {
       events.onShift(dragging.info.id, { x: dragging.shift.x, y: dragging.shift.y, z: dragging.shift.z, from: dragging.shiftFrom });
     }
     dragging = null;
@@ -1098,7 +1243,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       camera.lookAt(controls.target);
     } else {
       idle += dt;
-      if (idle > idleLimit && allowIdle) startDemo();
+      if (idle > idleLimit && allowIdle && !editing) startDemo();
       const pull = (targetStage - stage) * 22 * dt;
       stageVel = (stageVel + pull) * Math.exp(-7 * dt);
       stage += stageVel * dt;
@@ -1255,6 +1400,27 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       node.shift.set(0, 0, 0);
       node.shiftFrom = 0;
     },
+    setEditing(on) {
+      editing = on;
+      if (on) stopDemo();
+      renderer.domElement.style.cursor = on ? "grab" : "";
+    },
+    applyHomes(homes) {
+      for (const node of nodes.values()) {
+        const saved = homes[node.info.id];
+        node.home.set(saved?.x ?? 0, saved?.y ?? 0, saved?.z ?? 0);
+      }
+    },
+    clearHome(id) {
+      const node = nodes.get(id);
+      if (!node) return;
+      node.home.set(0, 0, 0);
+    },
+    clearHomes() {
+      for (const node of nodes.values()) node.home.set(0, 0, 0);
+    },
+    replacePart,
+    clearPartModel,
     loadScan,
     setScanMode(mode) {
       scanMode = mode;
@@ -1276,6 +1442,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     dispose() {
       disposed = true;
       disposeScanContents();
+      for (const holder of holders.values()) disposeHolder(holder);
+      holders.clear();
       observer.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointermove", onPointerMove);

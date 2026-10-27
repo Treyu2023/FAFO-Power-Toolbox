@@ -4,10 +4,10 @@ import { flowById, flowFor, verdict } from "@/lib/auto/flows";
 import { groupIdOf, groupsFor, partBlurb } from "@/lib/auto/model";
 import { DEFAULT_LOOK, STAGE_NAMES, type Look, type SavedView, type SystemId } from "@/lib/auto/scene-types";
 import { WIRES, type Circuit } from "@/lib/auto/diagram";
-import { loadShifts, loadViews, saveShifts, writeShift, writeViews } from "@/lib/auto/views";
+import { loadHomes, loadShifts, loadViews, saveHomes, saveShifts, writeHome, writeShift, writeViews } from "@/lib/auto/views";
 import { loadShop, mergeShop, saveShop, themeStyle, type ShopOptions } from "@/lib/auto/shop";
 import { loadGarage, saveGarage, type GarageCar } from "@/lib/auto/garage";
-import { clearScanFile, loadScanFile, saveScanFile } from "@/lib/auto/scan-store";
+import { clearPartFile, clearScanFile, loadPartFiles, loadScanFile, savePartFile, saveScanFile } from "@/lib/auto/scan-store";
 import { FrontDoor } from "@/components/auto/front-door";
 import { ShopDesk } from "@/components/auto/shop-desk";
 import { PathSheet, groupsOnCircuit } from "@/components/auto/path-sheet";
@@ -28,6 +28,8 @@ export function AutoTech() {
   const [pack, setPack] = useState<PackId>("mustang");
   const [answers, setAnswers] = useState<Answers>({});
   const [lookOpen, setLookOpen] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [partNames, setPartNames] = useState<Record<string, string>>({});
   const [stage, setStage] = useState(0);
   const [explode, setExplode] = useState(0);
   const explodeDrag = useRef(false);
@@ -55,6 +57,8 @@ export function AutoTech() {
   const [pickOpen, setPickOpen] = useState(false);
   const [sectionMarks, setSectionMarks] = useState<Record<string, { color: string; to: string; gradient: boolean }>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const partFileRef = useRef<HTMLInputElement>(null);
+  const replaceId = useRef<string | null>(null);
   const orbitRef = useRef<{ x: number; y: number } | null>(null);
   const deskDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
   const framedIds = useRef<string[] | null>(null);
@@ -143,6 +147,7 @@ export function AutoTech() {
         },
         onDemo: (on) => setDemo(on),
         onShift: (id, shift) => writeShift(id, shift),
+        onHome: (id, home) => writeHome(id, home),
         onDistance: (distance) => {
           if (!zoomDrag.current) setZoom(distance);
         },
@@ -150,6 +155,14 @@ export function AutoTech() {
       current.setSpec(specRef.current);
       current.setLook(lookRef.current);
       current.applyShifts(loadShifts());
+      current.applyHomes(loadHomes());
+      const partFiles = await loadPartFiles().catch(() => []);
+      const names: Record<string, string> = {};
+      for (const file of partFiles) {
+        await current.replacePart(file.id, file.data, file.name);
+        names[file.id] = file.name;
+      }
+      if (Object.keys(names).length) setPartNames(names);
       const opened = carsRef.current.find((car) => car.id === carIdRef.current);
       const active = mergeShop(shopRef.current, opened?.override ?? null);
       current.setIdleSeconds(active.idleMinutes * 60);
@@ -455,10 +468,13 @@ export function AutoTech() {
   const serviceDone = opened?.service ?? care.done;
 
   useEffect(() => {
-    if (door !== "bay" || !selected) return;
+    if (door !== "bay" || !selected || editing) {
+      if (editing) handle.current?.framePart("", null);
+      return;
+    }
     const ids = framedIds.current && framedIds.current.includes(selected) ? framedIds.current : undefined;
     applyFrame(selected, ids);
-  }, [door, selected, active.framePick, active.frameMode, active.frameDistance, active.frameOrbit, active.frameTransit, active.markColor, active.markTo, active.markGradient, sectionMarks]);
+  }, [door, selected, editing, active.framePick, active.frameMode, active.frameDistance, active.frameOrbit, active.frameTransit, active.markColor, active.markTo, active.markGradient, sectionMarks]);
 
   function setPref<K extends keyof ShopOptions>(key: K, value: ShopOptions[K]) {
     if (opened?.override) {
@@ -504,6 +520,36 @@ export function AutoTech() {
     writeCare({ ...care, done });
   }
 
+  function beginEdit(on: boolean) {
+    setEditing(on);
+    handle.current?.setEditing(on);
+    if (!on) return;
+    setExplode(0);
+    handle.current?.setStage(0);
+    handle.current?.setDemo(false);
+    handle.current?.framePart("", null);
+    setNotice("Editing the model. Drag a part to move where it sits when the car is together.");
+  }
+
+  function askReplace(id: string) {
+    replaceId.current = id;
+    partFileRef.current?.click();
+  }
+
+  function defaultHome(id: string | null) {
+    if (id) {
+      handle.current?.clearHome(id);
+      const homes = loadHomes();
+      delete homes[id];
+      saveHomes(homes);
+      setNotice("That part is back on the shop spot.");
+      return;
+    }
+    handle.current?.clearHomes();
+    saveHomes({});
+    setNotice("Every part is back on the shop spot.");
+  }
+
   function openCar(car: GarageCar) {
     setCarId(car.id);
     setPack(car.pack);
@@ -534,6 +580,27 @@ export function AutoTech() {
           <button type="button" onClick={() => setDoor("title")} className="h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg">
             Title
           </button>
+          <button type="button" onClick={() => beginEdit(!editing)} className={`h-11 rounded-md px-4 text-sm font-medium ${editing ? "bg-amber-500 text-black" : "border border-line text-fg"}`}>
+            {editing ? "Done editing" : "Edit the model"}
+          </button>
+          <input
+            ref={partFileRef}
+            type="file"
+            accept=".glb,.gltf,.stl,.obj"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              const id = replaceId.current ?? selected;
+              event.target.value = "";
+              if (!file || !id) return;
+              void file.arrayBuffer().then(async (data) => {
+                await savePartFile(id, file.name, data);
+                await handle.current?.replacePart(id, data, file.name);
+                setPartNames((names) => ({ ...names, [id]: file.name }));
+                setNotice(`${file.name} is on that part, at the shop spot. Drag it if the spot is wrong.`);
+              }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
+            }}
+          />
           <button type="button" onClick={() => setLookOpen((open) => !open)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
             {lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models"}
           </button>
@@ -679,7 +746,33 @@ export function AutoTech() {
               >
                 Default positions
               </button>
-              <span className="text-sm text-muted">Drag a part. Pieces on it move with it, and it comes back to that spot at the same stage until you default it.</span>
+              <span className="text-sm text-muted">{editing ? "Editing. Drag moves the part, and the pieces on it, where the car is together." : "Drag a part. Pieces on it move with it, and it comes back to that spot at the same stage until you default it."}</span>
+              {editing ? (
+                <>
+                  <button type="button" onClick={() => (selected ? askReplace(selected) : setNotice("Select a part, then bring in its model."))} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                    {selected ? `Replace ${partBlurb(selected, spec).name}` : "Replace a part"}
+                  </button>
+                  <button type="button" disabled={!selected || !partNames[selected]} onClick={() => {
+                    if (!selected) return;
+                    void clearPartFile(selected);
+                    handle.current?.clearPartModel(selected);
+                    setPartNames((names) => {
+                      const next = { ...names };
+                      delete next[selected];
+                      return next;
+                    });
+                    setNotice("The shop part is back.");
+                  }} className="h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40">
+                    Shop part
+                  </button>
+                  <button type="button" onClick={() => (selected ? defaultHome(selected) : setNotice("Select a part first."))} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                    Default place
+                  </button>
+                  <button type="button" onClick={() => defaultHome(null)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                    Default every place
+                  </button>
+                </>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-muted">Camera</span>
@@ -760,7 +853,8 @@ export function AutoTech() {
       <div className={phone ? "relative min-h-0 flex-1" : "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]"}>
         <div className={phone ? "absolute inset-0" : "flex flex-col gap-3"}>
           <div className={phone ? "absolute inset-0" : "relative"}>
-            <div ref={host} className={phone ? "h-full w-full" : "h-80 w-full rounded-md border border-line lg:h-[32rem]"} style={{ background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background }} />
+            <div ref={host} className={phone ? "h-full w-full" : `h-80 w-full rounded-md border lg:h-[32rem] ${editing ? "border-amber-500" : "border-line"}`} style={{ background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background }} />
+            {editing ? <p className="pointer-events-none absolute left-3 top-3 max-w-sm rounded-md bg-amber-500 px-3 py-2 text-sm text-black">Editing the model. Drag a part to move where it sits. A model file starts on the shop spot.</p> : null}
             {demo ? <p className="pointer-events-none absolute left-3 top-3 rounded-md bg-elevated px-3 py-2 text-sm text-fg">Demo. Move the mouse or press a key to take over.</p> : null}
             <div className="absolute left-3 right-28 z-10 flex flex-col gap-2 rounded-md bg-bg/80 p-2" style={{ bottom: phone ? `calc(${deskOpen ? deskHeight : 48}px + 0.5rem)` : "0.75rem" }}>
               <label className="flex items-center gap-2 text-sm text-fg">
@@ -1254,6 +1348,33 @@ export function AutoTech() {
           >
             Hide {menu.name}
           </button>
+          {editing ? (
+            <>
+              <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { askReplace(menu.id); setMenu(null); }}>
+                Replace with a model
+              </button>
+              {partNames[menu.id] ? (
+                <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => {
+                  void clearPartFile(menu.id);
+                  handle.current?.clearPartModel(menu.id);
+                  setPartNames((names) => {
+                    const next = { ...names };
+                    delete next[menu.id];
+                    return next;
+                  });
+                  setMenu(null);
+                }}>
+                  Use the shop part
+                </button>
+              ) : null}
+              <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { defaultHome(menu.id); setMenu(null); }}>
+                Default place
+              </button>
+              <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { defaultHome(null); setMenu(null); }}>
+                Default every place
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             role="menuitem"
