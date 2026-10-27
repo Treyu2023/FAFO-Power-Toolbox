@@ -119,7 +119,9 @@ function numberBadge(text: string, color: string) {
 export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(host.clientWidth || 1, host.clientHeight || 1);
+  renderer.setSize(host.clientWidth || 1, host.clientHeight || 1, false);
+  renderer.domElement.style.width = "100%";
+  renderer.domElement.style.height = "100%";
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.domElement.style.touchAction = "none";
@@ -287,6 +289,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     for (const node of nodes.values()) {
       const ghost = ghostOf(node);
       const hot = selected === node.info.id;
+      const hovered = hoverId === node.info.id && !hot;
       const kept = keptOf(node);
       const style = look?.ghost ?? "wire";
       const custom = look?.partPaints?.[node.info.id];
@@ -300,17 +303,20 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
         const from = custom?.color ?? (paintable ? paint : base);
         const to = custom?.to ?? look?.paintTo ?? from;
         if (ghost && (style === "translucent" || style === "both")) {
-          mat.color.set("#f4f4f2");
+          mat.color.set(hot ? "#39ff6a" : "#f4f4f2");
           mat.map = null;
-          mat.opacity = 0.12;
+          mat.opacity = hot || hovered ? 0.45 : 0.12;
           mat.transparent = true;
           mat.depthWrite = false;
-          mat.emissive.set("#000000");
-          mat.emissiveIntensity = 0;
+          mat.emissive.set(hot ? "#39ff6a" : hovered ? "#f4f4f2" : "#000000");
+          mat.emissiveIntensity = hot || hovered ? 0.55 : 0;
         } else if (ghost) {
-          mat.opacity = 0;
+          mat.color.set(hot ? "#39ff6a" : "#f4f4f2");
+          mat.opacity = hot || hovered ? 0.5 : 0;
           mat.transparent = true;
           mat.depthWrite = false;
+          mat.emissive.set(hot ? "#39ff6a" : hovered ? "#f4f4f2" : "#000000");
+          mat.emissiveIntensity = hot || hovered ? 0.6 : 0;
         } else if (paintable || custom) {
           mat.color.set(gradientOn ? "#ffffff" : from);
           mat.map = null;
@@ -327,8 +333,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
           grad.a.set(from);
           grad.b.set(to);
           grad.rest.copy((mesh.userData.rest as THREE.Vector3 | undefined) ?? _a.set(0, 0, 0));
-          mat.emissive.set(hot ? "#39ff6a" : kept ? isolateColor : "#000000");
-          mat.emissiveIntensity = hot ? 0.35 : kept ? 0.22 : 0;
+          mat.emissive.set(hot ? "#39ff6a" : hovered ? "#f4f4f2" : kept ? isolateColor : "#000000");
+          mat.emissiveIntensity = hot ? 0.35 : hovered ? 0.5 : kept ? 0.22 : 0;
         } else {
           mat.color.set(base);
           mat.map = null;
@@ -337,8 +343,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
           mat.depthWrite = true;
           const grad = mat.userData.grad as Grad | undefined;
           if (grad) grad.on.value = 0;
-          mat.emissive.set(hot ? "#39ff6a" : kept ? isolateColor : (mesh.userData.emissive as string) || "#000000");
-          mat.emissiveIntensity = hot ? 0.45 : kept ? 0.28 : (mesh.userData.emissiveIntensity as number) || 0;
+          mat.emissive.set(hot ? "#39ff6a" : hovered ? "#f4f4f2" : kept ? isolateColor : (mesh.userData.emissive as string) || "#000000");
+          mat.emissiveIntensity = hot ? 0.45 : hovered ? 0.5 : kept ? 0.28 : (mesh.userData.emissiveIntensity as number) || 0;
         }
         if (kept && isolateTo && !ghost) {
           mat.color.set("#ffffff");
@@ -355,8 +361,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
           mat.emissiveIntensity = 0;
           mesh.visible = true;
         }
-        mesh.visible = !(ghost && style === "wire");
-        mesh.raycast = ghost || node.hidden ? () => null : THREE.Mesh.prototype.raycast;
+        mesh.visible = true;
+        mesh.raycast = node.hidden ? () => null : THREE.Mesh.prototype.raycast;
       }
       for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent";
     }
@@ -431,11 +437,19 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     const covered = lift < 0.45;
     for (const node of nodes.values()) {
       if (node.hidden) continue;
-      if (node.info.id === "unibody") {
-        for (const mesh of node.meshes) mesh.visible = !covered;
-        continue;
+      const skin = node.info.id === "unibody" || shopSkin.has(node.info.id);
+      if (!skin) continue;
+      node.group.visible = true;
+      const lit = node.info.id === selected || node.info.id === hoverId;
+      if (lit) continue;
+      for (const mesh of node.meshes) {
+        mesh.visible = true;
+        if (!covered) continue;
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        mat.opacity = 0;
+        mat.transparent = true;
+        mat.depthWrite = false;
       }
-      if (shopSkin.has(node.info.id)) node.group.visible = !covered;
     }
   }
 
@@ -768,7 +782,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       let current: THREE.Object3D | null = item.object;
       while (current) {
         const found = [...nodes.values()].find((node) => node.group === current);
-        if (found && !found.hidden && !ghostOf(found)) return found;
+        if (found && !found.hidden) return found;
         current = current.parent;
       }
     }
@@ -881,16 +895,18 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     if (right && Math.hypot(event.clientX - right.x, event.clientY - right.y) > 5) right.moved = true;
     const rect = renderer.domElement.getBoundingClientRect();
     const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-    if (!dragging && !left && inside && !demo) {
+    if (!dragging && !left && inside) {
       const node = pick(event);
       const id = node?.info.id ?? null;
       if (id !== hoverId) {
         hoverId = id;
+        applyLook();
         events.onHover(node ? { x: event.clientX, y: event.clientY, id: node.info.id, name: node.info.name, system: node.info.system } : null);
       }
     }
     if (!inside && hoverId) {
       hoverId = null;
+      applyLook();
       events.onHover(null);
     }
     if (!left?.node) return;
@@ -980,11 +996,13 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   renderer.domElement.addEventListener("contextmenu", (event) => event.preventDefault());
 
   function resize() {
-    const width = host.clientWidth || 1;
-    const height = host.clientHeight || 1;
+    const width = Math.max(1, host.clientWidth);
+    const height = Math.max(1, host.clientHeight);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, height);
+    renderer.setSize(width, height, false);
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
   }
   const observer = new ResizeObserver(resize);
   observer.observe(host);
@@ -1109,7 +1127,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     },
     setFocus(next) {
       focus = next;
-      if (next !== "all") isolate = null;
+      isolate = null;
       applyLook();
     },
     setIsolate(ids, color, to) {

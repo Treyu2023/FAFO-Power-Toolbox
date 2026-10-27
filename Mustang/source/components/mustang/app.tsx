@@ -337,7 +337,9 @@ export function MustangApp() {
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize the car"
-                onPointerDown={(e) => dragSplit(e, (dx, width) => setCarShare(carShare + dx / width))}
+                onPointerDown={(e) =>
+                  dragSplit(e, (dx, width) => setCarShare(useMustang.getState().carShare + dx / width))
+                }
               />
               <section className="dock" aria-label="Diagram and reference">
                 <div className="dock-tabs" role="tablist">
@@ -360,7 +362,7 @@ export function MustangApp() {
           aria-label="Resize details"
           onPointerDown={(e) => {
             if (!railOpen) return;
-            dragSplit(e, (dx) => setRailW(railW - dx));
+            dragSplit(e, (dx) => setRailW(useMustang.getState().railW - dx));
           }}
         />
         <aside className={railOpen ? "rail rail-open" : "rail rail-shut"}>

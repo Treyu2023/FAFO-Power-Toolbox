@@ -28,6 +28,9 @@ export function AutoTech() {
   const [pack, setPack] = useState<PackId>("mustang");
   const [answers, setAnswers] = useState<Answers>({});
   const [stage, setStage] = useState(0);
+  const [explode, setExplode] = useState(0);
+  const explodeDrag = useRef(false);
+  const zoomDrag = useRef(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<SystemId>("all");
   const [look, setLook] = useState<Look>(DEFAULT_LOOK);
@@ -125,7 +128,10 @@ export function AutoTech() {
           frameRef.current(id);
         },
         onMenu: (next) => setMenu(next),
-        onStage: (next) => setStage(next),
+        onStage: (next) => {
+          setStage(Math.round(next));
+          if (!explodeDrag.current) setExplode(next);
+        },
         onHover: (hit) => setHover(hit),
         onPaint: (id) => {
           setLook((currentLook) => ({
@@ -136,7 +142,9 @@ export function AutoTech() {
         },
         onDemo: (on) => setDemo(on),
         onShift: (id, shift) => writeShift(id, shift),
-        onDistance: (distance) => setZoom(distance),
+        onDistance: (distance) => {
+          if (!zoomDrag.current) setZoom(distance);
+        },
       });
       current.setSpec(specRef.current);
       current.setLook(lookRef.current);
@@ -147,18 +155,35 @@ export function AutoTech() {
       current.setIdleDemo(active.idleDemo);
       if (!active.demoOnOpen) current.setDemo(false);
       const saved = await loadScanFile().catch(() => null);
+      let loaded = false;
       if (!dead && saved) {
-        await current.loadScan(saved.data, saved.name);
-        setScanName(saved.name);
-        setScanMode("shell");
-      } else if (!dead && pack === "mustang") {
-        const candidates = ["/models/roush-96-gt.glb", new URL("models/roush-96-gt.glb", document.baseURI).href];
+        try {
+          await current.loadScan(saved.data, saved.name);
+          setScanName(saved.name);
+          setScanMode("shell");
+          loaded = true;
+        } catch {
+          /* a saved file that no longer parses should not hide the bundled body */
+        }
+      }
+      if (!dead && !loaded && pack === "mustang") {
+        const candidates = [
+          new URL("models/roush-96-gt.glb", document.baseURI).href,
+          new URL("./models/roush-96-gt.glb", document.baseURI).href,
+        ];
         let data: ArrayBuffer | null = null;
         for (const url of candidates) {
-          const response = await fetch(url);
-          if (response.ok) {
-            data = await response.arrayBuffer();
+          try {
+            const response = await fetch(url);
+            if (!response.ok) continue;
+            const buffer = await response.arrayBuffer();
+            const head = new Uint8Array(buffer, 0, 4);
+            const magic = String.fromCharCode(head[0] ?? 0, head[1] ?? 0, head[2] ?? 0, head[3] ?? 0);
+            if (magic !== "glTF") continue;
+            data = buffer;
             break;
+          } catch {
+            /* try the next path */
           }
         }
         if (data) {
@@ -252,8 +277,9 @@ export function AutoTech() {
   function applyFrame(id: string, ids?: string[], circuitId?: string, shopNow = prefs()) {
     const circuitForPart = circuitId ?? WIRES.find((wire) => wire.ends.includes(id) || wire.id === id)?.circuit;
     const mark = markFor(circuitForPart, shopNow);
-    const paint = ids && ids.length ? ids : [id];
-    handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
+    const paint = ids && ids.length > 1 ? ids : null;
+    if (paint) handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
+    else handle.current?.setIsolate(null);
     if (!shopNow.framePick) {
       handle.current?.framePart(id, null);
       return;
@@ -288,8 +314,12 @@ export function AutoTech() {
   }
 
   function restoreTextures() {
+    framedIds.current = null;
     setFocus("all");
     setCircuit("all");
+    setSelected(null);
+    handle.current?.select(null);
+    handle.current?.framePart("", null);
     handle.current?.restoreTextures();
   }
 
@@ -302,13 +332,21 @@ export function AutoTech() {
   }
 
   function pickSystem(id: SystemId) {
-    if (look.paintMode === "part") {
+    if (look.paintMode === "part" && focus !== id) {
       const ids = id === "all" ? groups.map((item) => item.id) : groups.filter((item) => item.system === id || (id === "body" && item.id === "unibody")).map((item) => item.id);
       paintThese(ids);
       setNotice(id === "all" ? "Painted every part." : `Painted ${id}.`);
       return;
     }
+    if (focus === id && id !== "all") {
+      framedIds.current = null;
+      setFocus("all");
+      handle.current?.setFocus("all");
+      handle.current?.restoreTextures();
+      return;
+    }
     setCircuit("all");
+    framedIds.current = null;
     setFocus(id);
     handle.current?.setFocus(id);
     if (id === "all") handle.current?.restoreTextures();
@@ -547,11 +585,51 @@ export function AutoTech() {
             <div className="absolute left-3 right-28 z-10 flex flex-col gap-2 rounded-md bg-bg/80 p-2" style={{ bottom: phone ? `calc(${deskOpen ? deskHeight : 48}px + 0.5rem)` : "0.75rem" }}>
               <label className="flex items-center gap-2 text-sm text-fg">
                 Explode
-                <input type="range" min={0} max={Math.max(1, stageNames.length - 1)} step={0.01} value={Math.min(stage, stageNames.length - 1)} aria-label="Explosion" onChange={(event) => handle.current?.setStage(Number(event.target.value))} className="h-11 min-w-0 flex-1" />
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(1, stageNames.length - 1)}
+                  step={0.01}
+                  value={explode}
+                  aria-label="Explosion"
+                  onPointerDown={() => {
+                    explodeDrag.current = true;
+                    handle.current?.framePart("", null);
+                  }}
+                  onPointerUp={() => {
+                    explodeDrag.current = false;
+                  }}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setExplode(next);
+                    handle.current?.setStage(next);
+                  }}
+                  className="h-11 min-w-0 flex-1"
+                />
               </label>
               <label className="flex items-center gap-2 text-sm text-fg">
                 Zoom
-                <input type="range" min={1.6} max={14} step={0.05} value={Math.min(14, Math.max(1.6, zoom))} aria-label="Zoom" onChange={(event) => handle.current?.dollyTo(Number(event.target.value))} className="h-11 min-w-0 flex-1" />
+                <input
+                  type="range"
+                  min={0.16}
+                  max={42}
+                  step={0.05}
+                  value={Math.min(42, Math.max(0.16, zoom))}
+                  aria-label="Zoom"
+                  onPointerDown={() => {
+                    zoomDrag.current = true;
+                    handle.current?.framePart("", null);
+                  }}
+                  onPointerUp={() => {
+                    zoomDrag.current = false;
+                  }}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setZoom(next);
+                    handle.current?.dollyTo(next);
+                  }}
+                  className="h-11 min-w-0 flex-1"
+                />
                 <span className="w-10 text-right text-muted">{zoom < 1.6 ? "Near" : zoom.toFixed(1)}</span>
               </label>
             </div>
@@ -582,7 +660,7 @@ export function AutoTech() {
           </p>
           <div className="flex flex-wrap gap-2">
             {stageNames.map((name, index) => (
-              <button key={name} type="button" onClick={() => handle.current?.setStage(index)} className={`h-11 rounded-md px-3 text-sm ${stage === index ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+              <button key={name} type="button" onClick={() => { setExplode(index); handle.current?.setStage(index); }} className={`h-11 rounded-md px-3 text-sm ${stage === index ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
                 {name}
               </button>
             ))}
