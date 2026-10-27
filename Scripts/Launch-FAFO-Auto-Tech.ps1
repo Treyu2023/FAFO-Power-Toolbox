@@ -39,12 +39,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $Repo 'package.json'))) {
 }
 
 Set-Location -LiteralPath $Repo
-# Toolbox shop edits land here. A newer standalone tree is left as it is.
-$env:TOOLBOX = 'C:\_Git\repos\html\HTML Toolbox AI tools\production'
-& node .\scripts\sync-mustang.mjs --land
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Could not fold a toolbox upgrade into FAFO Auto Tech. Opening the standalone copy."
-}
 
 if (-not (Test-Path -LiteralPath (Join-Path $Repo 'node_modules'))) {
     Write-Host "First launch: installing FAFO Auto Tech."
