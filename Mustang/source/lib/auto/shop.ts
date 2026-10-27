@@ -16,6 +16,14 @@ export type ShopOptions = {
   confirmRemove: boolean;
   showHoseKey: boolean;
   showVacuumOnOpen: boolean;
+  framePick: boolean;
+  frameMode: "still" | "orbit";
+  frameDistance: number;
+  frameOrbit: number;
+  frameTransit: number;
+  markColor: string;
+  markTo: string;
+  markGradient: boolean;
 };
 
 export const DEFAULT_SHOP: ShopOptions = {
@@ -34,7 +42,25 @@ export const DEFAULT_SHOP: ShopOptions = {
   confirmRemove: true,
   showHoseKey: true,
   showVacuumOnOpen: false,
+  framePick: true,
+  frameMode: "orbit",
+  frameDistance: 2.4,
+  frameOrbit: 0.55,
+  frameTransit: 4,
+  markColor: "#e7c07a",
+  markTo: "#8f1d22",
+  markGradient: false,
 };
+
+function clampNum(value: unknown, min: number, max: number, fallback: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function hex(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
 
 function clampMinutes(value: unknown) {
   const minutes = Number(value);
@@ -64,6 +90,14 @@ export function sanitizeShop(raw: Partial<ShopOptions> | null | undefined): Shop
     confirmRemove: source.confirmRemove !== false,
     showHoseKey: source.showHoseKey !== false,
     showVacuumOnOpen: source.showVacuumOnOpen === true,
+    framePick: source.framePick !== false,
+    frameMode: source.frameMode === "still" ? "still" : "orbit",
+    frameDistance: clampNum(source.frameDistance, 0.4, 8, DEFAULT_SHOP.frameDistance),
+    frameOrbit: clampNum(source.frameOrbit, 0.1, 2.5, DEFAULT_SHOP.frameOrbit),
+    frameTransit: clampNum(source.frameTransit, 1, 14, DEFAULT_SHOP.frameTransit),
+    markColor: hex(source.markColor, DEFAULT_SHOP.markColor),
+    markTo: hex(source.markTo, DEFAULT_SHOP.markTo),
+    markGradient: source.markGradient === true,
   };
 }
 
@@ -85,7 +119,11 @@ export function saveShop(next: ShopOptions): ShopOptions {
 
 export function mergeShop(shop: ShopOptions, override: Partial<ShopOptions> | null): ShopOptions {
   if (!override) return shop;
-  return sanitizeShop({ ...shop, ...override });
+  const next: ShopOptions = { ...shop };
+  for (const [key, value] of Object.entries(override)) {
+    if (value !== undefined) next[key as keyof ShopOptions] = value as never;
+  }
+  return sanitizeShop(next);
 }
 
 export function themeStyle(shop: ShopOptions): Record<string, string> {

@@ -37,6 +37,7 @@ export type CarEvents = {
   onPaint: (id: string) => void;
   onDemo: (on: boolean) => void;
   onShift: (id: string, shift: Shift) => void;
+  onDistance: (distance: number) => void;
 };
 
 export type CarHandle = {
@@ -44,8 +45,11 @@ export type CarHandle = {
   setLook: (look: Look) => void;
   setStage: (stage: number) => void;
   setFocus: (focus: SystemId) => void;
-  setIsolate: (ids: string[] | null, color?: string) => void;
+  setIsolate: (ids: string[] | null, color?: string, to?: string | null) => void;
   select: (id: string | null) => void;
+  framePart: (id: string, frame: { mode: "still" | "orbit"; distance: number; orbit: number; transit: number } | null) => void;
+  dollyTo: (distance: number) => void;
+  orbitBy: (dx: number, dy: number) => void;
   hide: (id: string) => void;
   showHidden: () => void;
   restoreTextures: () => void;
@@ -118,13 +122,14 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   renderer.setSize(host.clientWidth || 1, host.clientHeight || 1);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
+  renderer.domElement.style.touchAction = "none";
   host.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 80);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.04, 80);
   camera.position.set(6.4, 2.15, -6.6);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0.62, 0);
@@ -132,8 +137,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   controls.enableZoom = false;
   controls.enablePan = true;
   controls.screenSpacePanning = true;
-  controls.minDistance = 1.6;
-  controls.maxDistance = 22;
+  controls.minDistance = 0.16;
+  controls.maxDistance = 42;
   controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
   controls.update();
@@ -154,6 +159,14 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   let focus: SystemId = "all";
   let isolate: Set<string> | null = null;
   let isolateColor = "#f4f4f2";
+  let isolateTo: string | null = null;
+  const fingers = new Map<number, { x: number; y: number }>();
+  let pinch: number | null = null;
+  let penSpin = false;
+  const gaze = new THREE.Vector3();
+  let framing: { id: string; mode: "still" | "orbit"; distance: number; orbit: number; transit: number } | null = null;
+  let frameAngle = 0.9;
+  let framePhi = 1.15;
   let selected: string | null = null;
   let look: Look | null = null;
   let disposed = false;
@@ -326,6 +339,21 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
           if (grad) grad.on.value = 0;
           mat.emissive.set(hot ? "#39ff6a" : kept ? isolateColor : (mesh.userData.emissive as string) || "#000000");
           mat.emissiveIntensity = hot ? 0.45 : kept ? 0.28 : (mesh.userData.emissiveIntensity as number) || 0;
+        }
+        if (kept && isolateTo && !ghost) {
+          mat.color.set("#ffffff");
+          mat.opacity = 1;
+          mat.transparent = false;
+          mat.depthWrite = true;
+          const grad = attachGradient(mat);
+          grad.on.value = 1;
+          grad.dir.value = 1;
+          grad.a.set(isolateColor);
+          grad.b.set(isolateTo);
+          grad.rest.copy((mesh.userData.rest as THREE.Vector3 | undefined) ?? _a.set(0, 0, 0));
+          mat.emissive.set("#000000");
+          mat.emissiveIntensity = 0;
+          mesh.visible = true;
         }
         mesh.visible = !(ghost && style === "wire");
         mesh.raycast = ghost || node.hidden ? () => null : THREE.Mesh.prototype.raycast;
@@ -757,6 +785,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
 
   function startDemo() {
     if (demo) return;
+    framing = null;
     for (const node of nodes.values()) node.boost = 0;
     rollReel();
     demo = true;
@@ -767,20 +796,84 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     events.onDemo(true);
   }
 
+  function select(id: string | null) {
+    selected = id;
+    const node = id ? nodes.get(id) : undefined;
+    if (node && targetStage < node.info.stage + lead()) targetStage = node.info.stage + lead();
+    events.onSelect(id);
+    applyLook();
+  }
+
   function onPointerDown(event: PointerEvent) {
     idle = 0;
     stopDemo();
+    fingers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (fingers.size >= 2) {
+      pinch = fingerSpan();
+      controls.enabled = false;
+      left = null;
+      dragging = null;
+      return;
+    }
+    if (event.pointerType === "pen" && (event.button === 5 || event.button === 2)) {
+      penSpin = true;
+      controls.enabled = false;
+      return;
+    }
     if (event.button === 2) {
       right = { x: event.clientX, y: event.clientY, moved: false };
       return;
     }
     if (event.button !== 0) return;
+    framing = null;
     const node = pick(event);
     left = { x: event.clientX, y: event.clientY, node };
     if (node) controls.enabled = false;
   }
 
+  function fingerSpan() {
+    const pts = [...fingers.values()];
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+  }
+
+  function orbitBy(dx: number, dy: number) {
+    if (framing) {
+      frameAngle -= dx * 0.01;
+      framePhi = Math.min(Math.PI - 0.08, Math.max(0.08, framePhi + dy * 0.01));
+      return;
+    }
+    const offset = camera.position.clone().sub(controls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    spherical.theta -= dx * 0.01;
+    spherical.phi = Math.min(Math.PI - 0.05, Math.max(0.05, spherical.phi + dy * 0.01));
+    offset.setFromSpherical(spherical);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+  }
+
+  function applyDistance(next: number) {
+    const dist = Math.min(42, Math.max(0.16, next));
+    if (framing) framing.distance = dist;
+    const offset = camera.position.clone().sub(controls.target);
+    offset.setLength(dist || 0.16);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+    events.onDistance(camera.position.distanceTo(controls.target));
+  }
+
   function onPointerMove(event: PointerEvent) {
+    if (fingers.has(event.pointerId)) fingers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (fingers.size >= 2 && pinch) {
+      const next = fingerSpan();
+      if (pinch > 12 && next > 12) applyDistance(camera.position.distanceTo(controls.target) * (pinch / next));
+      pinch = next;
+      return;
+    }
+    if (penSpin) {
+      orbitBy(event.movementX, event.movementY);
+      return;
+    }
     if (demo && demoT > 1.2 && Math.hypot(event.movementX, event.movementY) > 6) {
       idle = 0;
       stopDemo();
@@ -818,16 +911,19 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   }
 
   function onPointerUp(event: PointerEvent) {
-    if (event.button === 2 && right && !right.moved) {
+    fingers.delete(event.pointerId);
+    if (fingers.size < 2) pinch = null;
+    if (penSpin) {
+      penSpin = false;
+      if (!demo) controls.enabled = true;
+      return;
+    }
+    if (event.button === 2 && right && !right.moved && event.pointerType !== "pen") {
       const node = pick(event);
       if (look?.paintMode === "part" && node) events.onPaint(node.info.id);
       else events.onMenu(node ? { x: event.clientX, y: event.clientY, id: node.info.id, name: node.info.name, system: node.info.system } : null);
     }
-    if (event.button === 0 && left && !dragging) {
-      selected = left.node?.info.id ?? null;
-      events.onSelect(selected);
-      applyLook();
-    }
+    if (event.button === 0 && left && !dragging && Math.hypot(event.clientX - left.x, event.clientY - left.y) <= 5) select(left.node?.info.id ?? null);
     if (dragging && dragging.shift.lengthSq() > 0.0001) {
       events.onShift(dragging.info.id, { x: dragging.shift.x, y: dragging.shift.y, z: dragging.shift.z, from: dragging.shiftFrom });
     }
@@ -861,9 +957,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       return;
     }
     const offset = camera.position.clone().sub(controls.target);
-    const next = Math.min(22, Math.max(1.6, offset.length() * (event.deltaY > 0 ? 1.08 : 0.92)));
-    offset.setLength(next);
-    camera.position.copy(controls.target).add(offset);
+    const next = Math.min(42, Math.max(0.16, offset.length() * (event.deltaY > 0 ? 1.08 : 0.92)));
+    applyDistance(next);
   }
 
   function onKey() {
@@ -972,6 +1067,19 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       stageVel = (stageVel + pull) * Math.exp(-7 * dt);
       stage += stageVel * dt;
       if (Math.abs(targetStage - stage) < 0.001 && Math.abs(stageVel) < 0.001) stage = targetStage;
+      if (framing) {
+        const node = nodes.get(framing.id);
+        if (node) {
+          const focusPoint = worldAt(node, stage, gaze);
+          if (framing.mode === "orbit") frameAngle += dt * framing.orbit;
+          const dist = framing.distance;
+          const horiz = Math.sin(framePhi) * dist;
+          desired.set(focusPoint.x + Math.sin(frameAngle) * horiz, focusPoint.y + Math.cos(framePhi) * dist, focusPoint.z + Math.cos(frameAngle) * horiz);
+          const k = Math.min(1, 1 - Math.exp(-dt * framing.transit));
+          camera.position.lerp(desired, k);
+          controls.target.lerp(focusPoint, k);
+        }
+      }
       controls.update();
     }
     const az = demo ? demoT * 0.45 : ((look?.light ?? 40) * Math.PI) / 180;
@@ -1004,19 +1112,27 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       if (next !== "all") isolate = null;
       applyLook();
     },
-    setIsolate(ids, color) {
+    setIsolate(ids, color, to) {
       isolate = ids && ids.length ? new Set(ids) : null;
       if (color) isolateColor = color;
+      isolateTo = to || null;
       if (isolate) focus = "all";
       applyLook();
     },
-    select(id) {
-      selected = id;
-      const node = id ? nodes.get(id) : undefined;
-      if (node && targetStage < node.info.stage + lead()) targetStage = node.info.stage + lead();
-      events.onSelect(id);
-      applyLook();
+    framePart(id, frame) {
+      if (!frame) {
+        framing = null;
+        return;
+      }
+      stopDemo();
+      framing = { id, ...frame };
     },
+    dollyTo(distance) {
+      stopDemo();
+      applyDistance(distance);
+    },
+    orbitBy,
+    select,
     hide(id) {
       const node = nodes.get(id);
       if (node) node.hidden = true;

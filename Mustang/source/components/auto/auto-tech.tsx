@@ -3,7 +3,7 @@ import { buildSheet, carSpec, chosenPath, nextQuestion, type Answers, type PackI
 import { flowById, flowFor, verdict } from "@/lib/auto/flows";
 import { groupIdOf, groupsFor, partBlurb } from "@/lib/auto/model";
 import { DEFAULT_LOOK, STAGE_NAMES, type Look, type SavedView, type SystemId } from "@/lib/auto/scene-types";
-import { CIRCUIT_COLOR, type Circuit } from "@/lib/auto/diagram";
+import { WIRES, type Circuit } from "@/lib/auto/diagram";
 import { loadShifts, loadViews, saveShifts, writeShift, writeViews } from "@/lib/auto/views";
 import { loadShop, mergeShop, saveShop, themeStyle, type ShopOptions } from "@/lib/auto/shop";
 import { loadGarage, saveGarage, type GarageCar } from "@/lib/auto/garage";
@@ -44,7 +44,18 @@ export function AutoTech() {
   const [scanMode, setScanMode] = useState<"off" | "shell" | "both">("off");
   const stageNames = scanMode === "shell" && scanName ? ["Together", "Scan", "Panels", "Assemblies", "Parts", "Detail"] : [...STAGE_NAMES];
   const [scanUpright, setScanUpright] = useState(false);
+  const [zoom, setZoom] = useState(9);
+  const [phone, setPhone] = useState(false);
+  const [deskOpen, setDeskOpen] = useState(false);
+  const [deskHeight, setDeskHeight] = useState(320);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [sectionMarks, setSectionMarks] = useState<Record<string, { color: string; to: string; gradient: boolean }>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const orbitRef = useRef<{ x: number; y: number } | null>(null);
+  const deskDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
+  const framedIds = useRef<string[] | null>(null);
+  const frameRef = useRef<(id: string | null) => void>(() => {});
+  const selectedRef = useRef<string | null>(null);
   const [views, setViews] = useState<(SavedView | null)[]>([null, null, null]);
   const [notice, setNotice] = useState("");
   const [hover, setHover] = useState<MenuHit | null>(null);
@@ -60,6 +71,7 @@ export function AutoTech() {
   shopRef.current = shop;
   carsRef.current = cars;
   carIdRef.current = carId;
+  selectedRef.current = selected;
   const [care, setCare] = useState<CareLog>({ miles: 0, done: {} });
   const host = useRef<HTMLDivElement>(null);
   const handle = useRef<CarHandle | null>(null);
@@ -83,6 +95,20 @@ export function AutoTech() {
   }, []);
 
   useEffect(() => {
+    const query = window.matchMedia("(max-width: 800px)");
+    const apply = () => setPhone(query.matches);
+    apply();
+    query.addEventListener("change", apply);
+    try {
+      const raw = localStorage.getItem("fafo.auto.section-marks.v1");
+      if (raw) setSectionMarks(JSON.parse(raw) as Record<string, { color: string; to: string; gradient: boolean }>);
+    } catch {
+      /* keep the defaults */
+    }
+    return () => query.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
     if (door !== "bay") return;
     setViews(loadViews());
     setCare(loadCare());
@@ -96,6 +122,7 @@ export function AutoTech() {
         onSelect: (id) => {
           setSelected(id);
           setSheetId(id);
+          frameRef.current(id);
         },
         onMenu: (next) => setMenu(next),
         onStage: (next) => setStage(next),
@@ -109,6 +136,7 @@ export function AutoTech() {
         },
         onDemo: (on) => setDemo(on),
         onShift: (id, shift) => writeShift(id, shift),
+        onDistance: (distance) => setZoom(distance),
       });
       current.setSpec(specRef.current);
       current.setLook(lookRef.current);
@@ -140,6 +168,8 @@ export function AutoTech() {
         }
       }
       handle.current = current;
+      const picked = selectedRef.current;
+      if (picked) current.select(picked);
     });
     return () => {
       dead = true;
@@ -208,13 +238,53 @@ export function AutoTech() {
     });
   }
 
+  function prefs() {
+    const car = cars.find((item) => item.id === carId);
+    return mergeShop(shop, car?.override ?? null);
+  }
+
+  function markFor(circuitId?: string, shopNow = prefs()) {
+    const saved = circuitId ? sectionMarks[circuitId] : undefined;
+    if (saved) return saved;
+    return { color: shopNow.markColor, to: shopNow.markTo, gradient: shopNow.markGradient };
+  }
+
+  function applyFrame(id: string, ids?: string[], circuitId?: string, shopNow = prefs()) {
+    const circuitForPart = circuitId ?? WIRES.find((wire) => wire.ends.includes(id) || wire.id === id)?.circuit;
+    const mark = markFor(circuitForPart, shopNow);
+    const paint = ids && ids.length ? ids : [id];
+    handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
+    if (!shopNow.framePick) {
+      handle.current?.framePart(id, null);
+      return;
+    }
+    handle.current?.framePart(id, {
+      mode: shopNow.frameMode,
+      distance: shopNow.frameDistance,
+      orbit: shopNow.frameOrbit,
+      transit: shopNow.frameTransit,
+    });
+  }
+
+  frameRef.current = (id) => {
+    if (!id) {
+      framedIds.current = null;
+      handle.current?.setIsolate(null);
+      handle.current?.framePart("", null);
+      return;
+    }
+    const ids = framedIds.current && framedIds.current.includes(id) ? framedIds.current : [id];
+    framedIds.current = ids;
+    applyFrame(id, ids);
+  };
+
   function choosePart(raw: string) {
     setSheetId(raw);
     const id = groups.some((item) => item.id === raw) ? raw : groupIdOf(raw);
-    if (groups.some((item) => item.id === id)) {
-      setSelected(id);
-      handle.current?.select(id);
-    }
+    if (!groups.some((item) => item.id === id)) return;
+    framedIds.current = [id];
+    setSelected(id);
+    handle.current?.select(id);
   }
 
   function restoreTextures() {
@@ -252,11 +322,16 @@ export function AutoTech() {
     }
     setCircuit(next);
     if (next === "all") {
+      framedIds.current = null;
       handle.current?.setIsolate(null);
+      handle.current?.framePart("", null);
       return;
     }
     setFocus("all");
-    handle.current?.setIsolate(groupsOnCircuit(next), CIRCUIT_COLOR[next]);
+    const ids = groupsOnCircuit(next);
+    framedIds.current = ids;
+    const first = ids[0];
+    if (first) handle.current?.select(first);
   }
 
   function troubleshoot(id: string) {
@@ -319,10 +394,10 @@ export function AutoTech() {
     }
     setFocus("all");
     setCircuit("all");
-    handle.current?.setIsolate(ids, "#e7c07a");
-    choosePart(ids[0] ?? "");
+    framedIds.current = ids;
     const stageNow = Math.max(2, ...ids.map((id) => groups.find((item) => item.id === id)?.stage ?? 2)) + (scanMode === "shell" && scanName ? 1 : 0);
     handle.current?.setStage(stageNow);
+    if (ids[0]) handle.current?.select(ids[0]);
   }
 
   function writeCare(next: CareLog) {
@@ -339,6 +414,35 @@ export function AutoTech() {
   const active = mergeShop(shop, opened?.override ?? null);
   const milesNow = opened?.miles ?? care.miles;
   const serviceDone = opened?.service ?? care.done;
+
+  useEffect(() => {
+    if (door !== "bay" || !selected) return;
+    const ids = framedIds.current && framedIds.current.includes(selected) ? framedIds.current : undefined;
+    applyFrame(selected, ids);
+  }, [door, selected, active.framePick, active.frameMode, active.frameDistance, active.frameOrbit, active.frameTransit, active.markColor, active.markTo, active.markGradient, sectionMarks]);
+
+  function setPref<K extends keyof ShopOptions>(key: K, value: ShopOptions[K]) {
+    if (opened?.override) {
+      setCars(saveGarage(cars.map((item) => (item.id === carId ? { ...item, override: { ...item.override, [key]: value } } : item))));
+      return;
+    }
+    setShop(saveShop({ ...shop, [key]: value }));
+  }
+
+  function writeSectionMarks(next: Record<string, { color: string; to: string; gradient: boolean }>) {
+    setSectionMarks(next);
+    localStorage.setItem("fafo.auto.section-marks.v1", JSON.stringify(next));
+  }
+
+  function setMark(key: "color" | "to" | "gradient", value: string | boolean) {
+    if (circuit !== "all" && sectionMarks[circuit]) {
+      writeSectionMarks({ ...sectionMarks, [circuit]: { ...sectionMarks[circuit], [key]: value } });
+      return;
+    }
+    if (key === "color") setPref("markColor", String(value));
+    else if (key === "to") setPref("markTo", String(value));
+    else setPref("markGradient", Boolean(value));
+  }
 
   function setMiles(next: number) {
     if (opened) patchCar((car) => ({ ...car, miles: next }));
@@ -381,14 +485,16 @@ export function AutoTech() {
   const jobs = careJobs(spec);
   const due = jobs.filter((job) => careState(milesNow, serviceDone[job.id], job.every) === "due");
   const found = flow ? verdict(flow, marks) : null;
+  const pickedMark = circuit !== "all" ? sectionMarks[circuit] : undefined;
+  const markNow = pickedMark ?? { color: active.markColor, to: active.markTo, gradient: active.markGradient };
 
   return (
-    <div style={themeStyle(active)} className={`flex flex-col ${active.density === "tight" ? "gap-2" : "gap-4"}`}>
-      <p className="max-w-2xl text-sm leading-relaxed text-muted">
-        {opened ? `${opened.name}. ` : ""}Scroll zooms. Alt and the wheel opens the whole car. Ctrl and the wheel opens only the part you picked, and the pieces attached to it. Right-drag pans.
+    <div style={themeStyle(active)} className={phone ? "fixed inset-0 z-30 flex h-[100dvh] flex-col overflow-hidden bg-bg" : `flex flex-col ${active.density === "tight" ? "gap-2" : "gap-4"}`}>
+      <p className={phone ? "hidden" : "max-w-2xl text-sm leading-relaxed text-muted"}>
+        {opened ? `${opened.name}. ` : ""}Pick a part and it opens to that step, in your highlight color. Options can orbit that part, hold still on it, or leave the camera where it is. The wheel zooms closer than the zoom bar. Alt and the wheel opens the whole car. A pen button turns the view, and hovering the pen reads a part.
       </p>
       {active.showHoseKey ? (
-        <div className="flex flex-wrap gap-2">
+        <div className={phone ? "hidden" : "flex flex-wrap gap-2"}>
         {HOSE_KEY.map((item) => (
           <span key={item.kind} className="inline-flex h-8 items-center gap-2 rounded-md border border-line px-2 text-sm text-fg">
             <span className="inline-block h-3 w-3 rounded-full" style={{ background: item.color }} />
@@ -408,7 +514,7 @@ export function AutoTech() {
         </button>
         </div>
       ) : null}
-      {vacuumOpen ? (
+      {vacuumOpen && !phone ? (
         <ol className="flex max-w-2xl flex-col gap-1 text-sm leading-relaxed text-fg">
           {VACUUM_TREE.map((line) => (
             <li key={line}>{line}</li>
@@ -416,7 +522,7 @@ export function AutoTech() {
           <li className="text-muted">This is the 3.8 layout from the intake ports and the emissions diagram. It is not the climate-control door chart, and a replaced hose may not still be red.</li>
         </ol>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className={phone ? "hidden" : "flex flex-wrap gap-2"}>
         <button type="button" onClick={() => choosePack("mustang")} className={`h-11 rounded-md px-4 text-sm ${pack === "mustang" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
           2001 Mustang
         </button>
@@ -425,7 +531,7 @@ export function AutoTech() {
         </button>
       </div>
       {path.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <div className={phone ? "hidden" : "flex flex-wrap gap-2"}>
           {path.map((item) => (
             <button key={item.id} type="button" onClick={() => answer(item.id, "")} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
               {item.prompt}: {item.label}
@@ -433,12 +539,44 @@ export function AutoTech() {
           ))}
         </div>
       ) : null}
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="flex flex-col gap-3">
-          <div className="relative">
-            <div ref={host} className="h-80 w-full rounded-md border border-line lg:h-[32rem]" style={{ background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background }} />
+      <div className={phone ? "relative min-h-0 flex-1" : "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]"}>
+        <div className={phone ? "absolute inset-0" : "flex flex-col gap-3"}>
+          <div className={phone ? "absolute inset-0" : "relative"}>
+            <div ref={host} className={phone ? "h-full w-full" : "h-80 w-full rounded-md border border-line lg:h-[32rem]"} style={{ background: look.place !== "color" ? "#12110f" : look.backgroundGradient ? `linear-gradient(${look.bayDirection === "height" ? "to top" : "to right"}, ${look.background}, ${look.backgroundTo})` : look.background }} />
             {demo ? <p className="pointer-events-none absolute left-3 top-3 rounded-md bg-elevated px-3 py-2 text-sm text-fg">Demo. Move the mouse or press a key to take over.</p> : null}
+            <div className="absolute left-3 right-28 z-10 flex flex-col gap-2 rounded-md bg-bg/80 p-2" style={{ bottom: phone ? `calc(${deskOpen ? deskHeight : 48}px + 0.5rem)` : "0.75rem" }}>
+              <label className="flex items-center gap-2 text-sm text-fg">
+                Explode
+                <input type="range" min={0} max={Math.max(1, stageNames.length - 1)} step={0.01} value={Math.min(stage, stageNames.length - 1)} aria-label="Explosion" onChange={(event) => handle.current?.setStage(Number(event.target.value))} className="h-11 min-w-0 flex-1" />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-fg">
+                Zoom
+                <input type="range" min={1.6} max={14} step={0.05} value={Math.min(14, Math.max(1.6, zoom))} aria-label="Zoom" onChange={(event) => handle.current?.dollyTo(Number(event.target.value))} className="h-11 min-w-0 flex-1" />
+                <span className="w-10 text-right text-muted">{zoom < 1.6 ? "Near" : zoom.toFixed(1)}</span>
+              </label>
+            </div>
+            <div
+              className={`absolute z-10 h-24 w-24 touch-none rounded-full border border-line bg-bg/80 ${phone ? "right-3 top-3" : "right-3"}`}
+              style={phone ? { touchAction: "none" } : { bottom: "6rem", touchAction: "none" }}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                orbitRef.current = { x: event.clientX, y: event.clientY };
+              }}
+              onPointerMove={(event) => {
+                const last = orbitRef.current;
+                if (!last || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                handle.current?.orbitBy(event.clientX - last.x, event.clientY - last.y);
+                orbitRef.current = { x: event.clientX, y: event.clientY };
+              }}
+              onPointerUp={() => {
+                orbitRef.current = null;
+              }}
+              aria-label="Orbit"
+            >
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">Orbit</span>
+            </div>
           </div>
+          <div className={phone ? "hidden" : "flex flex-col gap-3"}>
           <p className="text-sm text-fg">
             Stage {stage} · {stageNames[stage] ?? "Detail"}
           </p>
@@ -615,13 +753,127 @@ export function AutoTech() {
           </div>
           {notice ? <p className="text-sm text-muted">{notice}</p> : null}
         </div>
-        <div className="flex max-h-[32rem] flex-col gap-3 overflow-auto">
+        </div>
+        <div
+          className={phone ? "absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-line bg-bg" : "flex max-h-[32rem] flex-col gap-3 overflow-auto"}
+          style={phone ? { height: deskOpen ? deskHeight : 48, paddingBottom: "env(safe-area-inset-bottom)" } : undefined}
+        >
+          {phone ? (
+            <button
+              type="button"
+              className="flex h-12 w-full shrink-0 touch-none items-center justify-between px-3 text-sm text-fg"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                deskDrag.current = { y: event.clientY, h: deskOpen ? deskHeight : 320, moved: false };
+              }}
+              onPointerMove={(event) => {
+                const drag = deskDrag.current;
+                if (!drag || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const dy = drag.y - event.clientY;
+                if (Math.abs(dy) > 6) drag.moved = true;
+                if (!drag.moved) return;
+                const max = Math.round(window.innerHeight * 0.78);
+                setDeskOpen(true);
+                setDeskHeight(Math.min(max, Math.max(168, drag.h + dy)));
+              }}
+              onPointerUp={() => {
+                const drag = deskDrag.current;
+                deskDrag.current = null;
+                if (!drag?.moved) setDeskOpen((open) => !open);
+              }}
+            >
+              <span>Desk</span>
+              <span className="text-muted">{deskOpen ? "Hide" : "Show"}</span>
+            </button>
+          ) : null}
+          <div className={phone ? (deskOpen ? "flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 pb-3" : "hidden") : "contents"}>
+          {phone ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => choosePack("mustang")} className={`h-11 rounded-md px-3 text-sm ${pack === "mustang" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Mustang
+              </button>
+              <button type="button" onClick={() => choosePack("common")} className={`h-11 rounded-md px-3 text-sm ${pack === "common" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Common coupe
+              </button>
+              {path.map((item) => (
+                <button key={item.id} type="button" onClick={() => answer(item.id, "")} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {(["path", "shop", "parts", "walk", "care", "build"] as const).map((id) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={`h-11 rounded-md px-3 text-sm capitalize ${tab === id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
                 {id === "walk" ? "Walkthrough" : id === "parts" ? "Parts" : id === "path" ? "Path" : id === "care" ? "Care" : id === "shop" ? "Shop" : "Build"}
               </button>
             ))}
+          </div>
+          <div className="flex flex-col gap-2 rounded-md border border-line p-3">
+            <button type="button" onClick={() => setPickOpen((open) => !open)} className="flex h-11 items-center justify-between gap-3 text-left text-sm text-fg">
+              When you pick a part
+              <span className="text-muted">{active.framePick ? (active.frameMode === "orbit" ? "Orbit" : "Hold still") : "Camera stays"}</span>
+            </button>
+            {pickOpen ? (
+            <>
+            <button type="button" onClick={() => setPref("framePick", !active.framePick)} className="flex h-11 items-center justify-between gap-3 rounded-md border border-line px-3 text-left text-sm text-fg">
+              Move the camera
+              <span className="text-muted">{active.framePick ? "On" : "Off"}</span>
+            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setPref("frameMode", "orbit")} className={`h-11 rounded-md px-3 text-sm ${active.frameMode === "orbit" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Orbit the part
+              </button>
+              <button type="button" onClick={() => setPref("frameMode", "still")} className={`h-11 rounded-md px-3 text-sm ${active.frameMode === "still" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Hold still
+              </button>
+            </div>
+            <label className="flex flex-col gap-1 text-sm text-fg">
+              Distance {active.frameDistance.toFixed(1)}
+              <input type="range" min={0.4} max={8} step={0.1} value={active.frameDistance} aria-label="Distance from the part" onChange={(event) => setPref("frameDistance", Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-fg">
+              Orbit speed {active.frameOrbit.toFixed(2)}
+              <input type="range" min={0.1} max={2.5} step={0.05} value={active.frameOrbit} aria-label="Orbit speed" onChange={(event) => setPref("frameOrbit", Number(event.target.value))} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-fg">
+              Travel speed {active.frameTransit.toFixed(1)}
+              <input type="range" min={1} max={14} step={0.1} value={active.frameTransit} aria-label="Camera travel speed" onChange={(event) => setPref("frameTransit", Number(event.target.value))} />
+            </label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex flex-col gap-1 text-sm text-fg">
+                Highlight
+                <input type="color" value={markNow.color} aria-label="Highlight color" onChange={(event) => setMark("color", event.target.value)} className="h-11 w-16 rounded-md border border-line bg-bg" />
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-fg">
+                Highlight to
+                <input type="color" value={markNow.to} aria-label="Highlight gradient color" onChange={(event) => setMark("to", event.target.value)} className="h-11 w-16 rounded-md border border-line bg-bg" />
+              </label>
+            </div>
+            <button type="button" onClick={() => setMark("gradient", !markNow.gradient)} className={`h-11 rounded-md px-3 text-sm ${markNow.gradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+              {markNow.gradient ? "Gradient on" : "Gradient off"}
+            </button>
+            {circuit !== "all" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (sectionMarks[circuit]) {
+                    const next = { ...sectionMarks };
+                    delete next[circuit];
+                    writeSectionMarks(next);
+                    return;
+                  }
+                  writeSectionMarks({ ...sectionMarks, [circuit]: { color: active.markColor, to: active.markTo, gradient: active.markGradient } });
+                }}
+                className="h-11 rounded-md border border-line px-3 text-left text-sm text-fg"
+              >
+                {sectionMarks[circuit] ? `Use the shop color on ${circuit}` : `Keep this color on ${circuit}`}
+              </button>
+            ) : (
+              <p className="text-sm text-muted">Pick a circuit on the path if that section should keep its own color.</p>
+            )}
+            </>
+            ) : null}
           </div>
           {tab === "shop" ? (
             <ShopDesk
@@ -639,8 +891,8 @@ export function AutoTech() {
                 }
                 const stageNow = Math.max(2, ...real.map((id) => groups.find((item) => item.id === id)?.stage ?? 2)) + (scanMode === "shell" && scanName ? 1 : 0);
                 handle.current?.setStage(stageNow);
-                handle.current?.setIsolate(real, "#e7c07a");
-                choosePart(real[0] ?? "");
+                framedIds.current = real;
+                if (real[0]) handle.current?.select(real[0]);
               }}
               onWalk={(flowId, partId) => {
                 const next = flowById(flowId);
@@ -837,6 +1089,7 @@ export function AutoTech() {
               </ul>
             </div>
           ) : null}
+          </div>
         </div>
       </div>
       {hover && !menu && active.hoverNotes ? (

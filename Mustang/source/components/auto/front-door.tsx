@@ -262,6 +262,28 @@ function Options({ shop, onShop, onDoor }: { shop: ShopOptions; onShop: (next: S
         <Toggle on={shop.showHoseKey} label="Show the hose colors" onChange={(showHoseKey) => set("showHoseKey", showHoseKey)} />
         <Toggle on={shop.showVacuumOnOpen} label="Open the vacuum tree with the car" onChange={(showVacuumOnOpen) => set("showVacuumOnOpen", showVacuumOnOpen)} />
         <Toggle on={shop.confirmRemove} label="Ask again before a car leaves the garage" onChange={(confirmRemove) => set("confirmRemove", confirmRemove)} />
+      </section>
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-fg">When you pick a part</h3>
+        <Toggle on={shop.framePick} label="Move the camera to the part" onChange={(framePick) => set("framePick", framePick)} />
+        <Choice label="View" value={shop.frameMode} options={[["orbit", "Orbit the part"], ["still", "Hold still"]]} onChange={(frameMode) => set("frameMode", frameMode as ShopOptions["frameMode"])} />
+        <label className="flex flex-col gap-1 text-sm text-fg">
+          Distance from the part · {shop.frameDistance.toFixed(1)}
+          <input type="range" min={0.4} max={8} step={0.1} value={shop.frameDistance} onChange={(event) => set("frameDistance", Number(event.target.value))} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-fg">
+          Orbit speed · {shop.frameOrbit.toFixed(2)}
+          <input type="range" min={0.1} max={2.5} step={0.05} value={shop.frameOrbit} onChange={(event) => set("frameOrbit", Number(event.target.value))} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-fg">
+          How fast the camera travels · {shop.frameTransit.toFixed(1)}
+          <input type="range" min={1} max={14} step={0.1} value={shop.frameTransit} onChange={(event) => set("frameTransit", Number(event.target.value))} />
+        </label>
+        <div className="flex flex-wrap gap-3">
+          <ColorField label="Highlight" value={shop.markColor} onChange={(markColor) => set("markColor", markColor)} />
+          <ColorField label="Highlight to" value={shop.markTo} onChange={(markTo) => set("markTo", markTo)} />
+        </div>
+        <Toggle on={shop.markGradient} label="Highlight with a gradient" onChange={(markGradient) => set("markGradient", markGradient)} />
         <button type="button" onClick={() => onShop({ ...DEFAULT_SHOP })} className="h-11 self-start rounded-md border border-line px-3 text-sm text-fg">
           Reset shop defaults
         </button>
