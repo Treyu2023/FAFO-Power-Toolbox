@@ -5174,6 +5174,25 @@ def api_tools_launch(body: ToolsLaunchBody):
             return {"ok": ok, "launched": "imagine-tracker" if ok else None, "via": "Launch-ImagineVault.ps1", "rc": rc}
         raise HTTPException(404, "Imagine Vault scripts missing")
 
+    if tid in ("fafo-auto-tech", "fafo-auto-technician", "auto-tech", "mustang"):
+        # Standalone shop: C:\_Git\repos\html\FAFO-Auto-Tech via Launch-FAFO-Auto-Tech.bat
+        bat = ROOT / "Launch-FAFO-Auto-Tech.bat"
+        if not bat.is_file():
+            raise HTTPException(404, "Launch-FAFO-Auto-Tech.bat missing")
+        creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen(
+            ["cmd.exe", "/c", str(bat)],
+            cwd=str(ROOT),
+            shell=False,
+            creationflags=creation,
+        )
+        return {
+            "ok": True,
+            "launched": "fafo-auto-tech",
+            "opened": True,
+            "url": "http://127.0.0.1:8080/?shop=1",
+        }
+
     if tid == "transfer-helper":
         # Read-only loopback helper for the Transfer Monitor page (127.0.0.1:18769). No request data reaches argv.
         folder = ROOT / "System Tools" / "TransferMonitor"

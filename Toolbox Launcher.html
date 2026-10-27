@@ -2350,9 +2350,10 @@
             {
                 id: 'mustang',
                 name: 'Mustang',
-                desc: 'Shop bay. Roush body, codes, service log, and a scan you can drop in',
-                tip: 'Opens on the 1996 Roush GT body. The trouble paths are the 2001 car. Shop has the codes and the service log. Import scan replaces the body with your own file. Nothing leaves this PC.',
-                path: 'Mustang/index.html',
+                desc: 'FAFO Auto Technician. The standalone shop bay on this PC.',
+                tip: 'Opens the FAFO Auto Tech repo (C:\\_Git\\repos\\html\\FAFO-Auto-Tech), not the old bundled page. Desktop shortcut: FAFO Auto Technician. Change its icon from the shortcut Properties, or run Change-FAFO-Auto-Tech-Icon.bat.',
+                path: 'Mustang/launch.html',
+                nativeLaunch: 'fafo-auto-tech',
                 category: 'Garage',
                 emoji: '🚘',
                 featured: true
@@ -3764,7 +3765,8 @@
             if (tool.needsServer) parts.push('Best with ▶ Start Server (S1) for full features.');
             if (tool.offlineOk) parts.push('Works offline in the browser.');
             if (tool.localOnly) parts.push('Local desktop toolbox — not a Chrome Web Store extension.');
-            if (tool.nativeLaunch) parts.push('Launches a Windows desktop helper (UAC may prompt).');
+            if (tool.nativeLaunch === 'fafo-auto-tech') parts.push('Opens the standalone FAFO Auto Technician app. Desktop shortcut: FAFO Auto Technician.');
+            else if (tool.nativeLaunch) parts.push('Launches a Windows desktop helper (UAC may prompt).');
             return parts.join('\n');
         }
 
@@ -3959,11 +3961,17 @@
 
                 if (tool.nativeLaunch && window.AIToolboxAPI?.launchLocalTool) {
                     try {
-                        AIToolboxUI.toast('Launching ' + tool.name + '… approve UAC if prompted', 'ok');
+                        AIToolboxUI.toast(
+                            tool.nativeLaunch === 'fafo-auto-tech'
+                                ? 'Opening FAFO Auto Technician…'
+                                : ('Launching ' + tool.name + '… approve UAC if prompted'),
+                            'ok'
+                        );
                     } catch (_) { /* ignore */ }
                     try {
                         const r = await AIToolboxAPI.launchLocalTool(tool.nativeLaunch, { action: 'run' });
                         console.info('[Launcher] native launch', tool.id, r);
+                        if (r && r.opened) return;
                         try {
                             let dest = tool.path;
                             if (window.AIToolboxAPI?.isOnline) {
@@ -3977,10 +3985,13 @@
                         console.warn('[Launcher] native launch failed, opening page', ne);
                         try {
                             AIToolboxUI.toast(
-                                tool.name + ': auto-launch failed — use Run on the next page (or Start Server + retry)',
+                                tool.nativeLaunch === 'fafo-auto-tech'
+                                    ? 'FAFO Auto Technician did not start from the tile. Use the desktop shortcut, or start the toolbox server and try again.'
+                                    : tool.name + ': auto-launch failed — use Run on the next page (or Start Server + retry)',
                                 'warn'
                             );
                         } catch (_) { /* ignore */ }
+                        if (tool.nativeLaunch === 'fafo-auto-tech') return;
                     }
                 }
 
