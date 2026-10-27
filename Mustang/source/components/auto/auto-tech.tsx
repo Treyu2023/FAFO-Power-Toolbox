@@ -27,6 +27,7 @@ const SYSTEMS: { id: SystemId; label: string }[] = [
 export function AutoTech() {
   const [pack, setPack] = useState<PackId>("mustang");
   const [answers, setAnswers] = useState<Answers>({});
+  const [lookOpen, setLookOpen] = useState(true);
   const [stage, setStage] = useState(0);
   const [explode, setExplode] = useState(0);
   const explodeDrag = useRef(false);
@@ -528,7 +529,186 @@ export function AutoTech() {
 
   return (
     <div style={themeStyle(active)} className={phone ? "fixed inset-0 z-30 flex h-[100dvh] flex-col overflow-hidden bg-bg" : `flex flex-col ${active.density === "tight" ? "gap-2" : "gap-4"}`}>
-      <p className={phone ? "hidden" : "max-w-2xl text-sm leading-relaxed text-muted"}>
+      <div className="flex shrink-0 flex-col gap-2 border-b border-line bg-bg px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setDoor("title")} className="h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg">
+            Title
+          </button>
+          <button type="button" onClick={() => setLookOpen((open) => !open)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+            {lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models"}
+          </button>
+          {scanName ? <span className="text-sm text-muted">{scanName}</span> : <span className="text-sm text-muted">No model loaded</span>}
+        </div>
+        {lookOpen ? (
+          <div className="flex max-h-80 flex-col gap-2 overflow-auto">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted">Colors</span>
+              <label className="flex h-11 items-center gap-2 text-sm text-fg">
+                Paint
+                <input type="color" value={look.paint} onChange={(event) => setLook({ ...look, paint: event.target.value })} className="h-9 w-12 bg-transparent" aria-label="Paint color" />
+              </label>
+              <label className="flex h-11 items-center gap-2 text-sm text-fg">
+                To
+                <input type="color" value={look.paintTo} onChange={(event) => setLook({ ...look, paintTo: event.target.value, gradient: true })} className="h-9 w-12 bg-transparent" aria-label="Paint gradient color" />
+              </label>
+              <button type="button" onClick={() => setLook({ ...look, gradient: !look.gradient })} className={`h-11 rounded-md px-3 text-sm ${look.gradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Gradient
+              </button>
+              <button type="button" onClick={() => setLook({ ...look, direction: look.direction === "length" ? "height" : "length" })} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                {look.direction === "length" ? "Along the car" : "Up the car"}
+              </button>
+              {(["gloss", "satin", "metal"] as const).map((finish) => (
+                <button key={finish} type="button" onClick={() => setLook({ ...look, finish })} className={`h-11 rounded-md px-3 text-sm capitalize ${look.finish === finish ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                  {finish}
+                </button>
+              ))}
+              <button type="button" onClick={() => setLook({ ...look, paintMode: look.paintMode === "part" ? "car" : "part" })} className={`h-11 rounded-md px-3 text-sm ${look.paintMode === "part" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                {look.paintMode === "part" ? "Painting parts" : "Paint the car"}
+              </button>
+              <button type="button" onClick={() => setLook({ ...look, partPaints: {} })} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                Clear part colors
+              </button>
+              <label className="flex h-11 items-center gap-2 text-sm text-fg">
+                Bay
+                <input type="color" value={look.background} onChange={(event) => setLook({ ...look, background: event.target.value })} className="h-9 w-12 bg-transparent" aria-label="Background color" />
+              </label>
+              <label className="flex h-11 items-center gap-2 text-sm text-fg">
+                Bay to
+                <input type="color" value={look.backgroundTo} onChange={(event) => setLook({ ...look, backgroundTo: event.target.value, backgroundGradient: true })} className="h-9 w-12 bg-transparent" aria-label="Background gradient color" />
+              </label>
+              <button type="button" onClick={() => setLook({ ...look, backgroundGradient: !look.backgroundGradient })} className={`h-11 rounded-md px-3 text-sm ${look.backgroundGradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Bay gradient
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted">Pictures</span>
+              {(["color", "garage", "showroom"] as const).map((place) => (
+                <button key={place} type="button" onClick={() => setLook({ ...look, place })} className={`h-11 rounded-md px-3 text-sm capitalize ${look.place === place ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                  {place === "color" ? "Open bay" : place}
+                </button>
+              ))}
+              <button type="button" onClick={() => setLook({ ...look, bayDirection: look.bayDirection === "height" ? "length" : "height" })} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                {look.bayDirection === "height" ? "Bay up" : "Bay across"}
+              </button>
+              <label className="flex h-11 items-center gap-2 text-sm text-fg">
+                Light
+                <input type="range" min={0} max={360} value={look.light} aria-label="Light angle" onChange={(event) => setLook({ ...look, light: Number(event.target.value) })} className="w-28" />
+              </label>
+              {(["wire", "translucent", "both"] as const).map((ghost) => (
+                <button key={ghost} type="button" onClick={() => setLook({ ...look, ghost })} className={`h-11 rounded-md px-3 text-sm ${look.ghost === ghost ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                  {ghost === "wire" ? "Dotted ghost" : ghost === "translucent" ? "Clear ghost" : "Both ghosts"}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted">Models</span>
+              <button type="button" onClick={() => fileRef.current?.click()} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                Import model
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".glb,.gltf,.stl,.obj"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  void file.arrayBuffer().then(async (data) => {
+                    await saveScanFile(file.name, data);
+                    await handle.current?.loadScan(data, file.name);
+                    setScanName(file.name);
+                    setScanMode("shell");
+                    setNotice(`${file.name} is the body. The engine and the hoses stay the shop parts.`);
+                  }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
+                }}
+              />
+              {scanName ? (
+                <>
+                  {(["shell", "both", "off"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setScanMode(mode);
+                        handle.current?.setScanMode(mode);
+                      }}
+                      className={`h-11 rounded-md px-3 text-sm ${scanMode === mode ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}
+                    >
+                      {mode === "shell" ? "Scan body" : mode === "both" ? "Scan and shop" : "Shop body"}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !scanUpright;
+                      setScanUpright(next);
+                      handle.current?.setScanUpright(next);
+                    }}
+                    className="h-11 rounded-md border border-line px-3 text-sm text-fg"
+                  >
+                    {scanUpright ? "Scan is upright" : "Turn scan upright"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void clearScanFile();
+                      handle.current?.clearScan();
+                      setScanName("");
+                      setScanMode("off");
+                    }}
+                    className="h-11 rounded-md border border-line px-3 text-sm text-fg"
+                  >
+                    Remove model
+                  </button>
+                </>
+              ) : (
+                <span className="text-sm text-muted">The shop loads the Roush body from Mustang/models when you are in the bay.</span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted">Parts</span>
+              <button
+                type="button"
+                onClick={() => {
+                  handle.current?.clearShifts();
+                  saveShifts({});
+                  setNotice("Parts are back on their default positions.");
+                }}
+                className="h-11 rounded-md border border-line px-3 text-sm text-fg"
+              >
+                Default positions
+              </button>
+              <span className="text-sm text-muted">Drag a part. Pieces on it move with it, and it comes back to that spot at the same stage until you default it.</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted">Camera</span>
+              <button type="button" onClick={() => setPref("framePick", !active.framePick)} className={`h-11 rounded-md px-3 text-sm ${active.framePick ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                {active.framePick ? "Moves to the part" : "Stays where it is"}
+              </button>
+              <button type="button" onClick={() => setPref("frameMode", "orbit")} className={`h-11 rounded-md px-3 text-sm ${active.frameMode === "orbit" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Orbit
+              </button>
+              <button type="button" onClick={() => setPref("frameMode", "still")} className={`h-11 rounded-md px-3 text-sm ${active.frameMode === "still" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+                Hold still
+              </button>
+              <label className="flex min-w-40 flex-1 items-center gap-2 text-sm text-fg">
+                Distance {active.frameDistance.toFixed(1)}
+                <input type="range" min={0.4} max={8} step={0.1} value={active.frameDistance} aria-label="Distance from the part" onChange={(event) => setPref("frameDistance", Number(event.target.value))} className="min-w-0 flex-1" />
+              </label>
+              <label className="flex min-w-40 flex-1 items-center gap-2 text-sm text-fg">
+                Orbit speed {active.frameOrbit.toFixed(2)}
+                <input type="range" min={0.1} max={2.5} step={0.05} value={active.frameOrbit} aria-label="Orbit speed" onChange={(event) => setPref("frameOrbit", Number(event.target.value))} className="min-w-0 flex-1" />
+              </label>
+              <label className="flex min-w-40 flex-1 items-center gap-2 text-sm text-fg">
+                Travel speed {active.frameTransit.toFixed(1)}
+                <input type="range" min={1} max={14} step={0.1} value={active.frameTransit} aria-label="Camera travel speed" onChange={(event) => setPref("frameTransit", Number(event.target.value))} className="min-w-0 flex-1" />
+              </label>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <p className={phone ? "hidden" : "max-w-2xl px-3 text-sm leading-relaxed text-muted"}>
         {opened ? `${opened.name}. ` : ""}Pick a part and it opens to that step, in your highlight color. Options can orbit that part, hold still on it, or leave the camera where it is. The wheel zooms closer than the zoom bar. Alt and the wheel opens the whole car. A pen button turns the view, and hovering the pen reads a part.
       </p>
       {active.showHoseKey ? (
@@ -674,70 +854,9 @@ export function AutoTech() {
             >
               Default positions
             </button>
-            <button type="button" onClick={() => setDoor("title")} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
-              Title
+            <button type="button" onClick={() => handle.current?.setDemo(true)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+              Play demo
             </button>
-            <button type="button" onClick={() => fileRef.current?.click()} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
-              Import scan
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".glb,.gltf,.stl,.obj"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (!file) return;
-                void file.arrayBuffer().then(async (data) => {
-                  await saveScanFile(file.name, data);
-                  await handle.current?.loadScan(data, file.name);
-                  setScanName(file.name);
-                  setScanMode("shell");
-                  setNotice(`${file.name} is the body. The engine and the hoses stay the shop parts.`);
-                }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
-              }}
-            />
-            {scanName ? (
-              <>
-                {(["shell", "both", "off"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => {
-                      setScanMode(mode);
-                      handle.current?.setScanMode(mode);
-                    }}
-                    className={`h-11 rounded-md px-3 text-sm ${scanMode === mode ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}
-                  >
-                    {mode === "shell" ? "Scan body" : mode === "both" ? "Scan and shop" : "Shop body"}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !scanUpright;
-                    setScanUpright(next);
-                    handle.current?.setScanUpright(next);
-                  }}
-                  className="h-11 rounded-md border border-line px-3 text-sm text-fg"
-                >
-                  {scanUpright ? "Scan is upright" : "Turn scan upright"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void clearScanFile();
-                    handle.current?.clearScan();
-                    setScanName("");
-                    setScanMode("off");
-                  }}
-                  className="h-11 rounded-md border border-line px-3 text-sm text-fg"
-                >
-                  Remove scan
-                </button>
-              </>
-            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {SYSTEMS.map((item) => (
@@ -759,64 +878,6 @@ export function AutoTech() {
             </button>
           </div>
           {look.paintMode === "part" ? <p className="text-sm text-muted">Right-click one part to paint it. Body, Fuel, and the other categories paint every part in that group.</p> : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex h-11 items-center gap-2 text-sm text-fg">
-              Bay
-              <input type="color" value={look.background} onChange={(event) => setLook({ ...look, background: event.target.value })} className="h-9 w-12 bg-transparent" aria-label="Background color" />
-            </label>
-            <label className="flex h-11 items-center gap-2 text-sm text-fg">
-              Bay to
-              <input type="color" value={look.backgroundTo} onChange={(event) => setLook({ ...look, backgroundTo: event.target.value, backgroundGradient: true })} className="h-9 w-12 bg-transparent" aria-label="Background gradient color" />
-            </label>
-            <button type="button" onClick={() => setLook({ ...look, backgroundGradient: !look.backgroundGradient })} className={`h-11 rounded-md px-3 text-sm ${look.backgroundGradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
-              Bay gradient
-            </button>
-            <button type="button" onClick={() => setLook({ ...look, bayDirection: look.bayDirection === "height" ? "length" : "height" })} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
-              {look.bayDirection === "height" ? "Bay up" : "Bay across"}
-            </button>
-            {(["color", "garage", "showroom"] as const).map((place) => (
-              <button key={place} type="button" onClick={() => setLook({ ...look, place })} className={`h-11 rounded-md px-3 text-sm capitalize ${look.place === place ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
-                {place === "color" ? "Open bay" : place}
-              </button>
-            ))}
-            <label className="flex h-11 items-center gap-2 text-sm text-fg">
-              Light
-              <input type="range" min={0} max={360} value={look.light} aria-label="Light angle" onChange={(event) => setLook({ ...look, light: Number(event.target.value) })} className="w-28" />
-            </label>
-            <button type="button" onClick={() => setLook({ ...look, paintMode: look.paintMode === "part" ? "car" : "part" })} className={`h-11 rounded-md px-3 text-sm ${look.paintMode === "part" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
-              {look.paintMode === "part" ? "Painting parts" : "Paint the car"}
-            </button>
-            <button type="button" onClick={() => setLook({ ...look, partPaints: {} })} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
-              Clear part colors
-            </button>
-            <button type="button" onClick={() => handle.current?.setDemo(true)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
-              Play demo
-            </button>
-            <label className="flex h-11 items-center gap-2 text-sm text-fg">
-              Paint
-              <input type="color" value={look.paint} onChange={(event) => setLook({ ...look, paint: event.target.value })} className="h-9 w-12 bg-transparent" aria-label="Paint color" />
-            </label>
-            <label className="flex h-11 items-center gap-2 text-sm text-fg">
-              To
-              <input type="color" value={look.paintTo} onChange={(event) => setLook({ ...look, paintTo: event.target.value, gradient: true })} className="h-9 w-12 bg-transparent" />
-            </label>
-            <button type="button" onClick={() => setLook({ ...look, gradient: !look.gradient })} className={`h-11 rounded-md px-3 text-sm ${look.gradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
-              Gradient
-            </button>
-            <button type="button" onClick={() => setLook({ ...look, direction: look.direction === "length" ? "height" : "length" })} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
-              {look.direction === "length" ? "Along the car" : "Up the car"}
-            </button>
-            {(["gloss", "satin", "metal"] as const).map((finish) => (
-              <button key={finish} type="button" onClick={() => setLook({ ...look, finish })} className={`h-11 rounded-md px-3 text-sm capitalize ${look.finish === finish ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
-                {finish}
-              </button>
-            ))}
-            {(["wire", "translucent", "both"] as const).map((ghost) => (
-              <button key={ghost} type="button" onClick={() => setLook({ ...look, ghost })} className={`h-11 rounded-md px-3 text-sm ${look.ghost === ghost ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
-                {ghost === "wire" ? "Dotted ghost" : ghost === "translucent" ? "Clear ghost" : "Both ghosts"}
-              </button>
-            ))}
-          </div>
           <div className="flex flex-wrap gap-2">
             {[0, 1, 2].map((index) => (
               <div key={index} className="flex gap-2">
@@ -1178,7 +1239,7 @@ export function AutoTech() {
         </div>
       ) : null}
       {menu ? (
-        <div className="fixed z-30 w-56 rounded-md border border-line bg-elevated p-1" style={{ left: Math.min(menu.x, window.innerWidth - 240), top: Math.min(menu.y, window.innerHeight - 180) }} role="menu">
+        <div className="fixed z-30 max-h-[70vh] w-64 overflow-auto rounded-md border border-line bg-elevated p-1" style={{ left: Math.min(menu.x, window.innerWidth - 272), top: Math.max(8, Math.min(menu.y, window.innerHeight - 320)) }} role="menu">
           <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => troubleshoot(menu.id)}>
             Troubleshoot {menu.name}
           </button>
@@ -1198,13 +1259,28 @@ export function AutoTech() {
             role="menuitem"
             className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg"
             onClick={() => {
-              const shift = handle.current?.shiftOf(menu.id);
-              if (shift) writeShift(menu.id, shift);
-              setNotice(`Saved where ${menu.name} sits.`);
+              handle.current?.clearShift(menu.id);
+              const all = loadShifts();
+              delete all[menu.id];
+              saveShifts(all);
+              setNotice(`${menu.name} is back on its default position. Pieces on it come with it.`);
               setMenu(null);
             }}
           >
-            Save exploded position
+            Default this part
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg"
+            onClick={() => {
+              handle.current?.clearShifts();
+              saveShifts({});
+              setNotice("Every part is back on its default position.");
+              setMenu(null);
+            }}
+          >
+            Default all parts
           </button>
           <button
             type="button"

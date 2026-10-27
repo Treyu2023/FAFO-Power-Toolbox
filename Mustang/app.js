@@ -25647,6 +25647,7 @@ var SYSTEMS = [
 function AutoTech() {
   const [pack, setPack] = (0, import_react4.useState)("mustang");
   const [answers, setAnswers] = (0, import_react4.useState)({});
+  const [lookOpen, setLookOpen] = (0, import_react4.useState)(true);
   const [stage, setStage] = (0, import_react4.useState)(0);
   const [explode, setExplode] = (0, import_react4.useState)(0);
   const explodeDrag = (0, import_react4.useRef)(false);
@@ -25736,7 +25737,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-IOUZI6WB.js").then(async (mod) => {
+    void import("./part-WNGVRVK5.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -26101,7 +26102,156 @@ function AutoTech() {
   const pickedMark = circuit !== "all" ? sectionMarks[circuit] : void 0;
   const markNow = pickedMark ?? { color: active.markColor, to: active.markTo, gradient: active.markGradient };
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: themeStyle(active), className: phone ? "fixed inset-0 z-30 flex h-[100dvh] flex-col overflow-hidden bg-bg" : `flex flex-col ${active.density === "tight" ? "gap-2" : "gap-4"}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: phone ? "hidden" : "max-w-2xl text-sm leading-relaxed text-muted", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex shrink-0 flex-col gap-2 border-b border-line bg-bg px-3 py-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setDoor("title"), className: "h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg", children: "Title" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLookOpen((open) => !open), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models" }),
+        scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: scanName }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "No model loaded" })
+      ] }),
+      lookOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex max-h-80 flex-col gap-2 overflow-auto", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Colors" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Paint",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.paint, onChange: (event) => setLook({ ...look, paint: event.target.value }), className: "h-9 w-12 bg-transparent", "aria-label": "Paint color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "To",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.paintTo, onChange: (event) => setLook({ ...look, paintTo: event.target.value, gradient: true }), className: "h-9 w-12 bg-transparent", "aria-label": "Paint gradient color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, gradient: !look.gradient }), className: `h-11 rounded-md px-3 text-sm ${look.gradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Gradient" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, direction: look.direction === "length" ? "height" : "length" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: look.direction === "length" ? "Along the car" : "Up the car" }),
+          ["gloss", "satin", "metal"].map((finish) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, finish }), className: `h-11 rounded-md px-3 text-sm capitalize ${look.finish === finish ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: finish }, finish)),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, paintMode: look.paintMode === "part" ? "car" : "part" }), className: `h-11 rounded-md px-3 text-sm ${look.paintMode === "part" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: look.paintMode === "part" ? "Painting parts" : "Paint the car" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, partPaints: {} }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Clear part colors" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Bay",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.background, onChange: (event) => setLook({ ...look, background: event.target.value }), className: "h-9 w-12 bg-transparent", "aria-label": "Background color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Bay to",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.backgroundTo, onChange: (event) => setLook({ ...look, backgroundTo: event.target.value, backgroundGradient: true }), className: "h-9 w-12 bg-transparent", "aria-label": "Background gradient color" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, backgroundGradient: !look.backgroundGradient }), className: `h-11 rounded-md px-3 text-sm ${look.backgroundGradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Bay gradient" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Pictures" }),
+          ["color", "garage", "showroom"].map((place) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, place }), className: `h-11 rounded-md px-3 text-sm capitalize ${look.place === place ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: place === "color" ? "Open bay" : place }, place)),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, bayDirection: look.bayDirection === "height" ? "length" : "height" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: look.bayDirection === "height" ? "Bay up" : "Bay across" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
+            "Light",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 0, max: 360, value: look.light, "aria-label": "Light angle", onChange: (event) => setLook({ ...look, light: Number(event.target.value) }), className: "w-28" })
+          ] }),
+          ["wire", "translucent", "both"].map((ghost) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, ghost }), className: `h-11 rounded-md px-3 text-sm ${look.ghost === ghost ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: ghost === "wire" ? "Dotted ghost" : ghost === "translucent" ? "Clear ghost" : "Both ghosts" }, ghost))
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Models" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Import model" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "input",
+            {
+              ref: fileRef,
+              type: "file",
+              accept: ".glb,.gltf,.stl,.obj",
+              className: "hidden",
+              onChange: (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                void file.arrayBuffer().then(async (data) => {
+                  await saveScanFile(file.name, data);
+                  await handle.current?.loadScan(data, file.name);
+                  setScanName(file.name);
+                  setScanMode("shell");
+                  setNotice(`${file.name} is the body. The engine and the hoses stay the shop parts.`);
+                }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
+              }
+            }
+          ),
+          scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+            ["shell", "both", "off"].map((mode) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  setScanMode(mode);
+                  handle.current?.setScanMode(mode);
+                },
+                className: `h-11 rounded-md px-3 text-sm ${scanMode === mode ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`,
+                children: mode === "shell" ? "Scan body" : mode === "both" ? "Scan and shop" : "Shop body"
+              },
+              mode
+            )),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  const next = !scanUpright;
+                  setScanUpright(next);
+                  handle.current?.setScanUpright(next);
+                },
+                className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+                children: scanUpright ? "Scan is upright" : "Turn scan upright"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  void clearScanFile();
+                  handle.current?.clearScan();
+                  setScanName("");
+                  setScanMode("off");
+                },
+                className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+                children: "Remove model"
+              }
+            )
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "The shop loads the Roush body from Mustang/models when you are in the bay." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Parts" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                handle.current?.clearShifts();
+                saveShifts({});
+                setNotice("Parts are back on their default positions.");
+              },
+              className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
+              children: "Default positions"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Drag a part. Pieces on it move with it, and it comes back to that spot at the same stage until you default it." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Camera" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setPref("framePick", !active.framePick), className: `h-11 rounded-md px-3 text-sm ${active.framePick ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: active.framePick ? "Moves to the part" : "Stays where it is" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setPref("frameMode", "orbit"), className: `h-11 rounded-md px-3 text-sm ${active.frameMode === "orbit" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Orbit" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setPref("frameMode", "still"), className: `h-11 rounded-md px-3 text-sm ${active.frameMode === "still" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Hold still" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex min-w-40 flex-1 items-center gap-2 text-sm text-fg", children: [
+            "Distance ",
+            active.frameDistance.toFixed(1),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 0.4, max: 8, step: 0.1, value: active.frameDistance, "aria-label": "Distance from the part", onChange: (event) => setPref("frameDistance", Number(event.target.value)), className: "min-w-0 flex-1" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex min-w-40 flex-1 items-center gap-2 text-sm text-fg", children: [
+            "Orbit speed ",
+            active.frameOrbit.toFixed(2),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 0.1, max: 2.5, step: 0.05, value: active.frameOrbit, "aria-label": "Orbit speed", onChange: (event) => setPref("frameOrbit", Number(event.target.value)), className: "min-w-0 flex-1" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex min-w-40 flex-1 items-center gap-2 text-sm text-fg", children: [
+            "Travel speed ",
+            active.frameTransit.toFixed(1),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 1, max: 14, step: 0.1, value: active.frameTransit, "aria-label": "Camera travel speed", onChange: (event) => setPref("frameTransit", Number(event.target.value)), className: "min-w-0 flex-1" })
+          ] })
+        ] })
+      ] }) : null
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { className: phone ? "hidden" : "max-w-2xl px-3 text-sm leading-relaxed text-muted", children: [
       opened ? `${opened.name}. ` : "",
       "Pick a part and it opens to that step, in your highlight color. Options can orbit that part, hold still on it, or leave the camera where it is. The wheel zooms closer than the zoom bar. Alt and the wheel opens the whole car. A pen button turns the view, and hovering the pen reads a part."
     ] }),
@@ -26238,71 +26388,7 @@ function AutoTech() {
                 children: "Default positions"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setDoor("title"), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Title" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Import scan" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-              "input",
-              {
-                ref: fileRef,
-                type: "file",
-                accept: ".glb,.gltf,.stl,.obj",
-                className: "hidden",
-                onChange: (event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (!file) return;
-                  void file.arrayBuffer().then(async (data) => {
-                    await saveScanFile(file.name, data);
-                    await handle.current?.loadScan(data, file.name);
-                    setScanName(file.name);
-                    setScanMode("shell");
-                    setNotice(`${file.name} is the body. The engine and the hoses stay the shop parts.`);
-                  }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
-                }
-              }
-            ),
-            scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-              ["shell", "both", "off"].map((mode) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                "button",
-                {
-                  type: "button",
-                  onClick: () => {
-                    setScanMode(mode);
-                    handle.current?.setScanMode(mode);
-                  },
-                  className: `h-11 rounded-md px-3 text-sm ${scanMode === mode ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`,
-                  children: mode === "shell" ? "Scan body" : mode === "both" ? "Scan and shop" : "Shop body"
-                },
-                mode
-              )),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                "button",
-                {
-                  type: "button",
-                  onClick: () => {
-                    const next = !scanUpright;
-                    setScanUpright(next);
-                    handle.current?.setScanUpright(next);
-                  },
-                  className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
-                  children: scanUpright ? "Scan is upright" : "Turn scan upright"
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                "button",
-                {
-                  type: "button",
-                  onClick: () => {
-                    void clearScanFile();
-                    handle.current?.clearScan();
-                    setScanName("");
-                    setScanMode("off");
-                  },
-                  className: "h-11 rounded-md border border-line px-3 text-sm text-fg",
-                  children: "Remove scan"
-                }
-              )
-            ] }) : null
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => handle.current?.setDemo(true), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Play demo" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
             SYSTEMS.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
@@ -26326,38 +26412,6 @@ function AutoTech() {
             )
           ] }),
           look.paintMode === "part" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: "Right-click one part to paint it. Body, Fuel, and the other categories paint every part in that group." }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
-              "Bay",
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.background, onChange: (event) => setLook({ ...look, background: event.target.value }), className: "h-9 w-12 bg-transparent", "aria-label": "Background color" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
-              "Bay to",
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.backgroundTo, onChange: (event) => setLook({ ...look, backgroundTo: event.target.value, backgroundGradient: true }), className: "h-9 w-12 bg-transparent", "aria-label": "Background gradient color" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, backgroundGradient: !look.backgroundGradient }), className: `h-11 rounded-md px-3 text-sm ${look.backgroundGradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Bay gradient" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, bayDirection: look.bayDirection === "height" ? "length" : "height" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: look.bayDirection === "height" ? "Bay up" : "Bay across" }),
-            ["color", "garage", "showroom"].map((place) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, place }), className: `h-11 rounded-md px-3 text-sm capitalize ${look.place === place ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: place === "color" ? "Open bay" : place }, place)),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
-              "Light",
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "range", min: 0, max: 360, value: look.light, "aria-label": "Light angle", onChange: (event) => setLook({ ...look, light: Number(event.target.value) }), className: "w-28" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, paintMode: look.paintMode === "part" ? "car" : "part" }), className: `h-11 rounded-md px-3 text-sm ${look.paintMode === "part" ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: look.paintMode === "part" ? "Painting parts" : "Paint the car" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, partPaints: {} }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Clear part colors" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => handle.current?.setDemo(true), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Play demo" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
-              "Paint",
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.paint, onChange: (event) => setLook({ ...look, paint: event.target.value }), className: "h-9 w-12 bg-transparent", "aria-label": "Paint color" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "flex h-11 items-center gap-2 text-sm text-fg", children: [
-              "To",
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "color", value: look.paintTo, onChange: (event) => setLook({ ...look, paintTo: event.target.value, gradient: true }), className: "h-9 w-12 bg-transparent" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, gradient: !look.gradient }), className: `h-11 rounded-md px-3 text-sm ${look.gradient ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: "Gradient" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, direction: look.direction === "length" ? "height" : "length" }), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: look.direction === "length" ? "Along the car" : "Up the car" }),
-            ["gloss", "satin", "metal"].map((finish) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, finish }), className: `h-11 rounded-md px-3 text-sm capitalize ${look.finish === finish ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: finish }, finish)),
-            ["wire", "translucent", "both"].map((ghost) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLook({ ...look, ghost }), className: `h-11 rounded-md px-3 text-sm ${look.ghost === ghost ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: ghost === "wire" ? "Dotted ghost" : ghost === "translucent" ? "Clear ghost" : "Both ghosts" }, ghost))
-          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex flex-wrap gap-2", children: [0, 1, 2].map((index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex gap-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", disabled: !views[index], onClick: () => goView(index), className: "h-11 rounded-md border border-line px-3 text-sm text-fg disabled:opacity-40", children: [
               "View ",
@@ -26672,7 +26726,7 @@ function AutoTech() {
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm capitalize text-muted", children: hover.system }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "mt-1 text-sm leading-relaxed text-fg", children: partBlurb(hover.id, spec).checks[0] })
     ] }) : null,
-    menu ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fixed z-30 w-56 rounded-md border border-line bg-elevated p-1", style: { left: Math.min(menu.x, window.innerWidth - 240), top: Math.min(menu.y, window.innerHeight - 180) }, role: "menu", children: [
+    menu ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fixed z-30 max-h-[70vh] w-64 overflow-auto rounded-md border border-line bg-elevated p-1", style: { left: Math.min(menu.x, window.innerWidth - 272), top: Math.max(8, Math.min(menu.y, window.innerHeight - 320)) }, role: "menu", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => troubleshoot(menu.id), children: [
         "Troubleshoot ",
         menu.name
@@ -26700,12 +26754,29 @@ function AutoTech() {
           role: "menuitem",
           className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
           onClick: () => {
-            const shift = handle.current?.shiftOf(menu.id);
-            if (shift) writeShift(menu.id, shift);
-            setNotice(`Saved where ${menu.name} sits.`);
+            handle.current?.clearShift(menu.id);
+            const all = loadShifts();
+            delete all[menu.id];
+            saveShifts(all);
+            setNotice(`${menu.name} is back on its default position. Pieces on it come with it.`);
             setMenu(null);
           },
-          children: "Save exploded position"
+          children: "Default this part"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
+          onClick: () => {
+            handle.current?.clearShifts();
+            saveShifts({});
+            setNotice("Every part is back on its default position.");
+            setMenu(null);
+          },
+          children: "Default all parts"
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(

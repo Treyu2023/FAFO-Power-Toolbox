@@ -61,6 +61,7 @@ export type CarHandle = {
   setIdleDemo: (on: boolean) => void;
   setIdleSeconds: (seconds: number) => void;
   clearShifts: () => void;
+  clearShift: (id: string) => void;
   loadScan: (data: ArrayBuffer, name: string) => Promise<void>;
   setScanMode: (mode: "off" | "shell" | "both") => void;
   setScanUpright: (on: boolean) => void;
@@ -440,8 +441,22 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       const skin = node.info.id === "unibody" || shopSkin.has(node.info.id);
       if (!skin) continue;
       node.group.visible = true;
-      const lit = node.info.id === selected || node.info.id === hoverId;
-      if (lit) continue;
+      const lit = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 0.0004;
+      if (lit || !covered) {
+        if (lit) {
+          for (const mesh of node.meshes) {
+            mesh.visible = true;
+            const mat = mesh.material as THREE.MeshStandardMaterial;
+            const back = (mesh.userData.opacity as number | undefined) ?? 1;
+            if (mat.opacity < 0.2) {
+              mat.opacity = back;
+              mat.transparent = back < 0.98;
+              mat.depthWrite = back > 0.85;
+            }
+          }
+        }
+        continue;
+      }
       for (const mesh of node.meshes) {
         mesh.visible = true;
         if (!covered) continue;
@@ -842,7 +857,10 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     framing = null;
     const node = pick(event);
     left = { x: event.clientX, y: event.clientY, node };
-    if (node) controls.enabled = false;
+    if (node) {
+      controls.enabled = false;
+      event.stopPropagation();
+    }
   }
 
   function fingerSpan() {
@@ -1230,6 +1248,12 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
         node.shift.set(0, 0, 0);
         node.shiftFrom = 0;
       }
+    },
+    clearShift(id) {
+      const node = nodes.get(id);
+      if (!node) return;
+      node.shift.set(0, 0, 0);
+      node.shiftFrom = 0;
     },
     loadScan,
     setScanMode(mode) {
