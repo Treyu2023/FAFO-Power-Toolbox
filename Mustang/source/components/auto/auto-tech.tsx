@@ -332,6 +332,7 @@ export function AutoTech() {
     setFocus("all");
     setCircuit("all");
     setSelected(null);
+    setSheetId(null);
     handle.current?.select(null);
     handle.current?.framePart("", null);
     handle.current?.restoreTextures();
@@ -355,6 +356,9 @@ export function AutoTech() {
     if (focus === id && id !== "all") {
       framedIds.current = null;
       setFocus("all");
+      setSelected(null);
+      setSheetId(null);
+      handle.current?.select(null);
       handle.current?.setFocus("all");
       handle.current?.restoreTextures();
       return;
@@ -367,6 +371,15 @@ export function AutoTech() {
   }
 
   function pickCircuit(next: Circuit | "all") {
+    if (circuit === next && next !== "all") {
+      framedIds.current = null;
+      setCircuit("all");
+      setSelected(null);
+      setSheetId(null);
+      handle.current?.select(null);
+      handle.current?.restoreTextures();
+      return;
+    }
     if (look.paintMode === "part" && next !== "all") {
       paintThese(groupsOnCircuit(next));
       setNotice(`Painted the ${next} circuit.`);
@@ -605,6 +618,21 @@ export function AutoTech() {
             {lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models"}
           </button>
           {scanName ? <span className="text-sm text-muted">{scanName}</span> : <span className="text-sm text-muted">No model loaded</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {SYSTEMS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => pickSystem(item.id)}
+              className={`h-11 rounded-md px-3 text-sm ${focus === item.id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+          <button type="button" onClick={restoreTextures} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+            All textures
+          </button>
         </div>
         {lookOpen ? (
           <div className="flex max-h-80 flex-col gap-2 overflow-auto">
@@ -1333,85 +1361,71 @@ export function AutoTech() {
         </div>
       ) : null}
       {menu ? (
-        <div className="fixed z-30 max-h-[70vh] w-64 overflow-auto rounded-md border border-line bg-elevated p-1" style={{ left: Math.min(menu.x, window.innerWidth - 272), top: Math.max(8, Math.min(menu.y, window.innerHeight - 320)) }} role="menu">
-          <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => troubleshoot(menu.id)}>
-            Troubleshoot {menu.name}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg"
-            onClick={() => {
-              handle.current?.hide(menu.id);
-              setMenu(null);
-            }}
-          >
-            Hide {menu.name}
-          </button>
-          {editing ? (
-            <>
-              <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { askReplace(menu.id); setMenu(null); }}>
-                Replace with a model
-              </button>
-              {partNames[menu.id] ? (
-                <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => {
-                  void clearPartFile(menu.id);
-                  handle.current?.clearPartModel(menu.id);
-                  setPartNames((names) => {
-                    const next = { ...names };
-                    delete next[menu.id];
-                    return next;
-                  });
-                  setMenu(null);
-                }}>
-                  Use the shop part
-                </button>
-              ) : null}
-              <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { defaultHome(menu.id); setMenu(null); }}>
-                Default place
-              </button>
-              <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { defaultHome(null); setMenu(null); }}>
-                Default every place
-              </button>
-            </>
+        <div className="fixed z-40 max-h-[70vh] w-64 overflow-auto rounded-md border border-line bg-elevated p-1" style={{ left: Math.min(menu.x, window.innerWidth - 272), top: Math.max(8, Math.min(menu.y, window.innerHeight - 360)) }} role="menu">
+          {menu.id ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => troubleshoot(menu.id)}>
+              Troubleshoot {menu.name}
+            </button>
           ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg"
-            onClick={() => {
+          {menu.id && look.paintMode === "part" ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { handle.current && setLook((current) => ({ ...current, partPaints: { ...current.partPaints, [menu.id]: { color: current.paint, to: current.paintTo, gradient: current.gradient } } })); setMenu(null); }}>
+              Paint {menu.name}
+            </button>
+          ) : null}
+          {menu.id ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { handle.current?.hide(menu.id); setMenu(null); }}>
+              Hide {menu.name}
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { handle.current?.hide("unibody"); setMenu(null); }}>
+            Hide body shell
+          </button>
+          <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { restoreTextures(); setMenu(null); }}>
+            All textures
+          </button>
+          {menu.id ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { askReplace(menu.id); setMenu(null); }}>
+              Replace with a model
+            </button>
+          ) : null}
+          {menu.id && partNames[menu.id] ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => {
+              void clearPartFile(menu.id);
+              handle.current?.clearPartModel(menu.id);
+              setPartNames((names) => {
+                const next = { ...names };
+                delete next[menu.id];
+                return next;
+              });
+              setMenu(null);
+            }}>
+              Use the shop part
+            </button>
+          ) : null}
+          {menu.id ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => {
               handle.current?.clearShift(menu.id);
               const all = loadShifts();
               delete all[menu.id];
               saveShifts(all);
-              setNotice(`${menu.name} is back on its default position. Pieces on it come with it.`);
+              setNotice(`${menu.name} is back on its exploded spot.`);
               setMenu(null);
-            }}
-          >
-            Default this part
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg"
-            onClick={() => {
-              handle.current?.clearShifts();
-              saveShifts({});
-              setNotice("Every part is back on its default position.");
-              setMenu(null);
-            }}
-          >
+            }}>
+              Default this part
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { handle.current?.clearShifts(); saveShifts({}); setNotice("Every part is back on its exploded spot."); setMenu(null); }}>
             Default all parts
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg"
-            onClick={() => {
-              handle.current?.showHidden();
-              setMenu(null);
-            }}
-          >
+          {menu.id ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { defaultHome(menu.id); setMenu(null); }}>
+              Default place
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { defaultHome(null); setMenu(null); }}>
+            Default every place
+          </button>
+          <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { handle.current?.showHidden(); setMenu(null); }}>
             Show hidden parts
           </button>
         </div>

@@ -25804,7 +25804,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-CDL6MMST.js").then(async (mod) => {
+    void import("./part-TOM7DUNY.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -25995,6 +25995,7 @@ function AutoTech() {
     setFocus("all");
     setCircuit("all");
     setSelected(null);
+    setSheetId(null);
     handle.current?.select(null);
     handle.current?.framePart("", null);
     handle.current?.restoreTextures();
@@ -26016,6 +26017,9 @@ function AutoTech() {
     if (focus === id && id !== "all") {
       framedIds.current = null;
       setFocus("all");
+      setSelected(null);
+      setSheetId(null);
+      handle.current?.select(null);
       handle.current?.setFocus("all");
       handle.current?.restoreTextures();
       return;
@@ -26027,6 +26031,15 @@ function AutoTech() {
     if (id === "all") handle.current?.restoreTextures();
   }
   function pickCircuit(next) {
+    if (circuit === next && next !== "all") {
+      framedIds.current = null;
+      setCircuit("all");
+      setSelected(null);
+      setSheetId(null);
+      handle.current?.select(null);
+      handle.current?.restoreTextures();
+      return;
+    }
     if (look.paintMode === "part" && next !== "all") {
       paintThese(groupsOnCircuit(next));
       setNotice(`Painted the ${next} circuit.`);
@@ -26235,6 +26248,19 @@ function AutoTech() {
         ),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLookOpen((open) => !open), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models" }),
         scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: scanName }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "No model loaded" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+        SYSTEMS.map((item) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          "button",
+          {
+            type: "button",
+            onClick: () => pickSystem(item.id),
+            className: `h-11 rounded-md px-3 text-sm ${focus === item.id ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`,
+            children: item.label
+          },
+          item.id
+        )),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: restoreTextures, className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "All textures" })
       ] }),
       lookOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex max-h-80 flex-col gap-2 overflow-auto", children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
@@ -26871,96 +26897,73 @@ function AutoTech() {
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm capitalize text-muted", children: hover.system }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "mt-1 text-sm leading-relaxed text-fg", children: partBlurb(hover.id, spec).checks[0] })
     ] }) : null,
-    menu ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fixed z-30 max-h-[70vh] w-64 overflow-auto rounded-md border border-line bg-elevated p-1", style: { left: Math.min(menu.x, window.innerWidth - 272), top: Math.max(8, Math.min(menu.y, window.innerHeight - 320)) }, role: "menu", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => troubleshoot(menu.id), children: [
+    menu ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fixed z-40 max-h-[70vh] w-64 overflow-auto rounded-md border border-line bg-elevated p-1", style: { left: Math.min(menu.x, window.innerWidth - 272), top: Math.max(8, Math.min(menu.y, window.innerHeight - 360)) }, role: "menu", children: [
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => troubleshoot(menu.id), children: [
         "Troubleshoot ",
         menu.name
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
-          onClick: () => {
-            handle.current?.hide(menu.id);
-            setMenu(null);
-          },
-          children: [
-            "Hide ",
-            menu.name
-          ]
-        }
-      ),
-      editing ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
-          askReplace(menu.id);
-          setMenu(null);
-        }, children: "Replace with a model" }),
-        partNames[menu.id] ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
-          void clearPartFile(menu.id);
-          handle.current?.clearPartModel(menu.id);
-          setPartNames((names) => {
-            const next = { ...names };
-            delete next[menu.id];
-            return next;
-          });
-          setMenu(null);
-        }, children: "Use the shop part" }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
-          defaultHome(menu.id);
-          setMenu(null);
-        }, children: "Default place" }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
-          defaultHome(null);
-          setMenu(null);
-        }, children: "Default every place" })
       ] }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
-          onClick: () => {
-            handle.current?.clearShift(menu.id);
-            const all = loadShifts();
-            delete all[menu.id];
-            saveShifts(all);
-            setNotice(`${menu.name} is back on its default position. Pieces on it come with it.`);
-            setMenu(null);
-          },
-          children: "Default this part"
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
-          onClick: () => {
-            handle.current?.clearShifts();
-            saveShifts({});
-            setNotice("Every part is back on its default position.");
-            setMenu(null);
-          },
-          children: "Default all parts"
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg",
-          onClick: () => {
-            handle.current?.showHidden();
-            setMenu(null);
-          },
-          children: "Show hidden parts"
-        }
-      )
+      menu.id && look.paintMode === "part" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        handle.current && setLook((current) => ({ ...current, partPaints: { ...current.partPaints, [menu.id]: { color: current.paint, to: current.paintTo, gradient: current.gradient } } }));
+        setMenu(null);
+      }, children: [
+        "Paint ",
+        menu.name
+      ] }) : null,
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        handle.current?.hide(menu.id);
+        setMenu(null);
+      }, children: [
+        "Hide ",
+        menu.name
+      ] }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        handle.current?.hide("unibody");
+        setMenu(null);
+      }, children: "Hide body shell" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        restoreTextures();
+        setMenu(null);
+      }, children: "All textures" }),
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        askReplace(menu.id);
+        setMenu(null);
+      }, children: "Replace with a model" }) : null,
+      menu.id && partNames[menu.id] ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        void clearPartFile(menu.id);
+        handle.current?.clearPartModel(menu.id);
+        setPartNames((names) => {
+          const next = { ...names };
+          delete next[menu.id];
+          return next;
+        });
+        setMenu(null);
+      }, children: "Use the shop part" }) : null,
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        handle.current?.clearShift(menu.id);
+        const all = loadShifts();
+        delete all[menu.id];
+        saveShifts(all);
+        setNotice(`${menu.name} is back on its exploded spot.`);
+        setMenu(null);
+      }, children: "Default this part" }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        handle.current?.clearShifts();
+        saveShifts({});
+        setNotice("Every part is back on its exploded spot.");
+        setMenu(null);
+      }, children: "Default all parts" }),
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        defaultHome(menu.id);
+        setMenu(null);
+      }, children: "Default place" }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        defaultHome(null);
+        setMenu(null);
+      }, children: "Default every place" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        handle.current?.showHidden();
+        setMenu(null);
+      }, children: "Show hidden parts" })
     ] }) : null
   ] });
 }

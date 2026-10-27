@@ -165,7 +165,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
 
   const nodes = new Map<string, Node>();
   const holders = new Map<string, THREE.Group>();
-  let editing = false;
+  let bodyHidden = false;
   let stage = 0;
   let stageVel = 0;
   let targetStage = 0;
@@ -283,6 +283,23 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     return { metal: 0.5, rough: 0.32 };
   }
 
+  function armClicks() {
+    for (const node of nodes.values()) {
+      const ghost = ghostOf(node);
+      const solid = !node.hidden && !ghost;
+      for (const mesh of node.meshes) {
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        const clear = solid && !mesh.userData.swapped && mat.opacity > 0.04;
+        mesh.raycast = clear ? THREE.Mesh.prototype.raycast : () => null;
+      }
+      const holder = holders.get(node.info.id);
+      holder?.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.isMesh) mesh.raycast = solid ? THREE.Mesh.prototype.raycast : () => null;
+      });
+    }
+  }
+
   function ghostOf(node: Node) {
     if (node.hidden) return false;
     if (isolate) return !isolate.has(node.info.id);
@@ -383,7 +400,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       }
       for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent" && !node.meshes.some((mesh) => mesh.userData.swapped);
     }
-    scanHolder.visible = scanMode !== "off" && scanHolder.children.length > 0;
+    scanHolder.visible = !bodyHidden && scanMode !== "off" && scanHolder.children.length > 0;
     scanHolder.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -1098,8 +1115,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     }
     if (event.button === 2 && right && !right.moved && event.pointerType !== "pen") {
       const node = pick(event);
-      if (look?.paintMode === "part" && node) events.onPaint(node.info.id);
-      else events.onMenu(node ? { x: event.clientX, y: event.clientY, id: node.info.id, name: node.info.name, system: node.info.system } : null);
+      events.onMenu({ x: event.clientX, y: event.clientY, id: node?.info.id ?? "", name: node?.info.name ?? "Bay", system: node?.info.system ?? "all" });
     }
     if (event.button === 0 && left && !dragging && Math.hypot(event.clientX - left.x, event.clientY - left.y) <= 5) select(left.node?.info.id ?? null);
     if (dragging && editing) events.onHome(dragging.info.id, { x: dragging.home.x, y: dragging.home.y, z: dragging.home.z });
@@ -1266,6 +1282,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     const az = demo ? demoT * 0.45 : ((look?.light ?? 40) * Math.PI) / 180;
     sun.position.set(Math.sin(az) * 8, 5.2, Math.cos(az) * 8);
     place(stage);
+    armClicks();
     const nameIndex = Math.round(Math.max(0, Math.min(maxStage(), stage)));
     if (nameIndex !== reported) {
       reported = nameIndex;
@@ -1317,9 +1334,11 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     hide(id) {
       const node = nodes.get(id);
       if (node) node.hidden = true;
+      if (id === "unibody") bodyHidden = true;
       applyLook();
     },
     showHidden() {
+      bodyHidden = false;
       for (const node of nodes.values()) node.hidden = false;
       applyLook();
     },
