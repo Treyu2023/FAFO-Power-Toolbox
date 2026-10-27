@@ -24936,6 +24936,127 @@ async function clearScanFile() {
   db.close();
 }
 
+// lib/auto/library.ts
+var KEY3 = "fafo.auto.library.v1";
+var WHEEL_IDS = ["wheel-fl", "wheel-fr", "wheel-rl", "wheel-rr"];
+var BRAKE_IDS = ["brake-fl", "brake-fr", "brake-rl", "brake-rr"];
+var LIBRARY = [
+  {
+    file: "oil-filter.glb",
+    title: "Oil filter",
+    credit: "nodelet, CC-BY-NC-4.0",
+    pieces: [{ id: "filter", label: "Filter", pieces: [], fits: "filter" }]
+  },
+  {
+    file: "spoon-sw388.glb",
+    title: "Spoon SW388",
+    credit: "Martin Trafas, CC-BY-4.0",
+    pieces: [
+      { id: "high", label: "Wheel and tire", pieces: ["HighPolySpoon", "HighPolyTire"], fits: "wheel" },
+      { id: "low", label: "Wheel, low detail", pieces: ["LowPolySpoon"], fits: "wheel" },
+      { id: "tire", label: "Spare tire", pieces: ["HighPolyTire.001"], fits: "wheel" },
+      { id: "stand", label: "Display stand", pieces: ["Stand"], fits: "any" }
+    ]
+  },
+  {
+    file: "rays-57dr.glb",
+    title: "RAYS Gram Lights 57DR",
+    credit: "ilvskf, CC-BY-4.0",
+    pieces: [
+      {
+        id: "wheel",
+        label: "Wheel",
+        pieces: ["DISK.001_1", "Sticker_Black.001_3", "Sticker_RED_5", "NAT.001_7", "valve_cap.001_9"],
+        fits: "wheel"
+      },
+      { id: "cap", label: "Valve cap", pieces: ["valve_cap.001_9"], fits: "any" }
+    ]
+  },
+  {
+    file: "brake-assembly.glb",
+    title: "Brake assembly",
+    credit: "Nieve5677, CC-BY-4.0",
+    pieces: [
+      { id: "all", label: "Disc, caliper, and hardware", pieces: [], fits: "brake" },
+      { id: "disc", label: "Disc", pieces: ["0-_BrakeAssembly_Disc"], fits: "brake" },
+      { id: "caliper", label: "Caliper", pieces: ["2-_BrakeAssembly_Cali"], fits: "brake" },
+      { id: "hardware", label: "Hardware", pieces: ["3-_"], fits: "brake" }
+    ]
+  },
+  {
+    file: "kralz-wheel.glb",
+    title: "Kralz wheel",
+    credit: "Dave Love, CC-BY-4.0",
+    pieces: [
+      { id: "all", label: "Whole model", pieces: [], fits: "any" },
+      { id: "wheel", label: "Wheel", pieces: ["wheel_1"], fits: "wheel" },
+      { id: "carbon", label: "Carbon", pieces: ["carbon.001_2"], fits: "any" },
+      { id: "base", label: "Base", pieces: ["base_0"], fits: "any" }
+    ]
+  },
+  {
+    file: "lotus-emira-gt4.glb",
+    title: "2022 Lotus Emira GT4",
+    credit: "Kaleemullah, CC-BY-4.0",
+    pieces: [
+      { id: "car", label: "Whole car", pieces: [], fits: "body" },
+      { id: "paint", label: "Paint", pieces: ["CarPaint"], fits: "body" },
+      { id: "glass", label: "Glass", pieces: ["GLASS"], fits: "body" },
+      { id: "tires", label: "Tires", pieces: ["Tires"], fits: "wheel" },
+      { id: "rims", label: "Rims", pieces: ["Rims1"], fits: "wheel" },
+      { id: "rotors", label: "Rotors", pieces: ["Rotors"], fits: "brake" },
+      { id: "lugs", label: "Lug nuts", pieces: ["Lugnuts"], fits: "wheel" },
+      { id: "lights", label: "Lights", pieces: ["LGT"], fits: "body" },
+      { id: "fan", label: "Fan", pieces: ["Fan"], fits: "any" },
+      { id: "grille", label: "Grille", pieces: ["Grid"], fits: "body" },
+      { id: "carbon", label: "Carbon", pieces: ["CARBON"], fits: "body" },
+      { id: "decals", label: "Decals", pieces: ["Decals"], fits: "body" },
+      { id: "metal", label: "Metal", pieces: ["CommonMetal"], fits: "any" }
+    ]
+  }
+];
+function loadLibrary() {
+  try {
+    const raw = localStorage.getItem(KEY3);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function writeLibrary(id, assignment) {
+  const all = loadLibrary();
+  all[id] = assignment;
+  localStorage.setItem(KEY3, JSON.stringify(all));
+  return all;
+}
+async function fetchLibraryFile(file) {
+  const urls = [
+    new URL(`models/library/${file}`, document.baseURI).href,
+    new URL(`Mustang/models/library/${file}`, document.baseURI).href,
+    `/models/library/${file}`,
+    `/Mustang/models/library/${file}`
+  ];
+  let last = "That model file was not next to the page.";
+  for (const url of urls) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return await response.arrayBuffer();
+      last = `${response.status}`;
+    } catch (error) {
+      last = error instanceof Error ? error.message : last;
+    }
+  }
+  throw new Error(last);
+}
+function clearLibrary(id) {
+  const all = loadLibrary();
+  delete all[id];
+  localStorage.setItem(KEY3, JSON.stringify(all));
+  return all;
+}
+
 // components/auto/front-door.tsx
 var import_react = __toESM(require_react(), 1);
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
@@ -25339,10 +25460,10 @@ var SYMPTOMS = [
 ];
 
 // lib/auto/care.ts
-var KEY3 = "fafo-auto-care";
+var KEY4 = "fafo-auto-care";
 function loadCare() {
   try {
-    const raw = localStorage.getItem(KEY3);
+    const raw = localStorage.getItem(KEY4);
     if (!raw) return { miles: 0, done: {} };
     const parsed = JSON.parse(raw);
     return { miles: Number(parsed.miles) || 0, done: parsed.done ?? {} };
@@ -25351,7 +25472,7 @@ function loadCare() {
   }
 }
 function saveCare(log) {
-  localStorage.setItem(KEY3, JSON.stringify(log));
+  localStorage.setItem(KEY4, JSON.stringify(log));
 }
 function careJobs(spec) {
   const v6 = spec.pack === "mustang" && spec.engine === "v6";
@@ -25711,6 +25832,8 @@ function AutoTech() {
   const [pack, setPack] = (0, import_react4.useState)("mustang");
   const [answers, setAnswers] = (0, import_react4.useState)({});
   const [lookOpen, setLookOpen] = (0, import_react4.useState)(true);
+  const [libraryOpen, setLibraryOpen] = (0, import_react4.useState)(true);
+  const [libraryTarget, setLibraryTarget] = (0, import_react4.useState)(null);
   const [editing, setEditing] = (0, import_react4.useState)(false);
   const [partNames, setPartNames] = (0, import_react4.useState)({});
   const [stage, setStage] = (0, import_react4.useState)(0);
@@ -25806,7 +25929,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-RYLKAFFC.js").then(async (mod) => {
+    void import("./part-4A2ONRQR.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -25845,6 +25968,16 @@ function AutoTech() {
         names[file.id] = file.name;
       }
       if (Object.keys(names).length) setPartNames(names);
+      const assigned = loadLibrary();
+      for (const [id, item] of Object.entries(assigned)) {
+        try {
+          const data = await fetchLibraryFile(item.file);
+          await current.replacePart(id, data, item.file, item.pieces);
+          names[id] = item.label;
+        } catch {
+        }
+      }
+      if (Object.keys(names).length) setPartNames({ ...names });
       const opened2 = carsRef.current.find((car) => car.id === carIdRef.current);
       const active2 = mergeShop(shopRef.current, opened2?.override ?? null);
       current.setIdleSeconds(active2.idleMinutes * 60);
@@ -26182,6 +26315,7 @@ function AutoTech() {
     writeCare({ ...care, done });
   }
   function beginEdit(on) {
+    editingRef.current = on;
     setEditing(on);
     handle.current?.setEditing(on);
     if (!on) return;
@@ -26190,6 +26324,50 @@ function AutoTech() {
     handle.current?.setDemo(false);
     handle.current?.framePart("", null);
     setNotice("Editing the model. Drag a part to move where it sits when the car is together.");
+  }
+  function forgetPart(id) {
+    void clearPartFile(id);
+    clearLibrary(id);
+    handle.current?.clearPartModel(id);
+    setPartNames((names) => {
+      const next = { ...names };
+      delete next[id];
+      return next;
+    });
+  }
+  async function placePiece(ids, modelFile, piece) {
+    const targets = ids.filter(Boolean);
+    if (!targets.length) {
+      setNotice("Select a part first, or use one of the corner buttons.");
+      return;
+    }
+    if (!editingRef.current) beginEdit(true);
+    setNotice(`Loading ${piece.label}\u2026`);
+    try {
+      const data = await fetchLibraryFile(modelFile);
+      for (const id of targets) {
+        await handle.current?.replacePart(id, data.slice(0), modelFile, piece.pieces);
+        writeLibrary(id, { file: modelFile, pieces: piece.pieces, label: piece.label });
+        setPartNames((names) => ({ ...names, [id]: piece.label }));
+      }
+      setNotice(`${piece.label} is on the shop spot. Drag it if that spot is wrong.`);
+    } catch {
+      setNotice("That model did not load.");
+    }
+  }
+  async function useLibraryBody(modelFile, label) {
+    setNotice(`Loading ${label}\u2026`);
+    try {
+      const data = await fetchLibraryFile(modelFile);
+      await saveScanFile(label, data);
+      await handle.current?.loadScan(data, modelFile);
+      handle.current?.setScanMode("shell");
+      setScanName(label);
+      setScanMode("shell");
+      setNotice(`${label} is the body. The shop parts stay.`);
+    } catch {
+      setNotice("That model did not load.");
+    }
   }
   function askReplace(id) {
     replaceId.current = id;
@@ -26251,6 +26429,7 @@ function AutoTech() {
             }
           }
         ),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLibraryOpen((open) => !open), className: `h-11 rounded-md px-3 text-sm ${libraryOpen ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`, children: libraryOpen ? "Hide part library" : "Part library" }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => setLookOpen((open) => !open), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models" }),
         scanName ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: scanName }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "No model loaded" })
       ] }),
@@ -26267,6 +26446,26 @@ function AutoTech() {
         )),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: restoreTextures, className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "All textures" })
       ] }),
+      libraryOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex max-h-80 flex-col gap-3 overflow-auto rounded-md border border-line p-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: libraryTarget || selected ? `Selected: ${partBlurb(libraryTarget || selected || "", spec).name}. A file with more than one piece is split below.` : "Select a part, then put a model on it. Files with more than one piece are split." }),
+        LIBRARY.map((model) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "flex flex-col gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm font-medium text-fg", children: model.title }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-sm text-muted", children: model.credit })
+          ] }),
+          model.pieces.map((piece) => {
+            const target = libraryTarget || selected;
+            return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "min-w-32 text-sm text-fg", children: piece.label }),
+              piece.fits === "body" && piece.pieces.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => void useLibraryBody(model.file, model.title), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "Use as the body" }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => void placePiece(target ? [target] : [], model.file, piece), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "On this part" }),
+              piece.fits === "wheel" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => void placePiece([...WHEEL_IDS], model.file, piece), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "All four wheels" }) : null,
+              piece.fits === "brake" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => void placePiece([...BRAKE_IDS], model.file, piece), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "All four brakes" }) : null,
+              piece.fits === "filter" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => void placePiece(["oil-filter"], model.file, piece), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "On the oil filter" }) : null,
+              piece.fits === "body" && piece.pieces.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => void placePiece(["unibody"], model.file, piece), className: "h-11 rounded-md border border-line px-3 text-sm text-fg", children: "On the body shell" }) : null
+            ] }, piece.id);
+          })
+        ] }, model.file))
+      ] }) : null,
       lookOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex max-h-80 flex-col gap-2 overflow-auto", children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-sm text-muted", children: "Colors" }),
@@ -26391,6 +26590,7 @@ function AutoTech() {
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: !selected || !partNames[selected], onClick: () => {
               if (!selected) return;
               void clearPartFile(selected);
+              clearLibrary(selected);
               handle.current?.clearPartModel(selected);
               setPartNames((names) => {
                 const next = { ...names };
@@ -26930,17 +27130,13 @@ function AutoTech() {
         setMenu(null);
       }, children: "All textures" }),
       menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
-        askReplace(menu.id);
+        setLibraryTarget(menu.id);
+        setLibraryOpen(true);
         setMenu(null);
-      }, children: "Replace with a model" }) : null,
+      }, children: "Part library" }) : null,
       menu.id && partNames[menu.id] ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
-        void clearPartFile(menu.id);
-        handle.current?.clearPartModel(menu.id);
-        setPartNames((names) => {
-          const next = { ...names };
-          delete next[menu.id];
-          return next;
-        });
+        forgetPart(menu.id);
+        setNotice("The shop part is back.");
         setMenu(null);
       }, children: "Use the shop part" }) : null,
       menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {

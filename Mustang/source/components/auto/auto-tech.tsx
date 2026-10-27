@@ -8,6 +8,7 @@ import { loadHomes, loadShifts, loadViews, saveHomes, saveShifts, writeHome, wri
 import { loadShop, mergeShop, saveShop, themeStyle, type ShopOptions } from "@/lib/auto/shop";
 import { loadGarage, saveGarage, type GarageCar } from "@/lib/auto/garage";
 import { clearPartFile, clearScanFile, loadPartFiles, loadScanFile, savePartFile, saveScanFile } from "@/lib/auto/scan-store";
+import { BRAKE_IDS, LIBRARY, WHEEL_IDS, clearLibrary, fetchLibraryFile, loadLibrary, writeLibrary, type LibraryPiece } from "@/lib/auto/library";
 import { FrontDoor } from "@/components/auto/front-door";
 import { ShopDesk } from "@/components/auto/shop-desk";
 import { PathSheet, groupsOnCircuit } from "@/components/auto/path-sheet";
@@ -28,6 +29,8 @@ export function AutoTech() {
   const [pack, setPack] = useState<PackId>("mustang");
   const [answers, setAnswers] = useState<Answers>({});
   const [lookOpen, setLookOpen] = useState(true);
+  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [libraryTarget, setLibraryTarget] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [partNames, setPartNames] = useState<Record<string, string>>({});
   const [stage, setStage] = useState(0);
@@ -165,6 +168,17 @@ export function AutoTech() {
         names[file.id] = file.name;
       }
       if (Object.keys(names).length) setPartNames(names);
+      const assigned = loadLibrary();
+      for (const [id, item] of Object.entries(assigned)) {
+        try {
+          const data = await fetchLibraryFile(item.file);
+          await current.replacePart(id, data, item.file, item.pieces);
+          names[id] = item.label;
+        } catch {
+          /* a library file that is not next to the page is skipped */
+        }
+      }
+      if (Object.keys(names).length) setPartNames({ ...names });
       const opened = carsRef.current.find((car) => car.id === carIdRef.current);
       const active = mergeShop(shopRef.current, opened?.override ?? null);
       current.setIdleSeconds(active.idleMinutes * 60);
@@ -539,6 +553,7 @@ export function AutoTech() {
   }
 
   function beginEdit(on: boolean) {
+    editingRef.current = on;
     setEditing(on);
     handle.current?.setEditing(on);
     if (!on) return;
@@ -547,6 +562,53 @@ export function AutoTech() {
     handle.current?.setDemo(false);
     handle.current?.framePart("", null);
     setNotice("Editing the model. Drag a part to move where it sits when the car is together.");
+  }
+
+  function forgetPart(id: string) {
+    void clearPartFile(id);
+    clearLibrary(id);
+    handle.current?.clearPartModel(id);
+    setPartNames((names) => {
+      const next = { ...names };
+      delete next[id];
+      return next;
+    });
+  }
+
+  async function placePiece(ids: string[], modelFile: string, piece: LibraryPiece) {
+    const targets = ids.filter(Boolean);
+    if (!targets.length) {
+      setNotice("Select a part first, or use one of the corner buttons.");
+      return;
+    }
+    if (!editingRef.current) beginEdit(true);
+    setNotice(`Loading ${piece.label}…`);
+    try {
+      const data = await fetchLibraryFile(modelFile);
+      for (const id of targets) {
+        await handle.current?.replacePart(id, data.slice(0), modelFile, piece.pieces);
+        writeLibrary(id, { file: modelFile, pieces: piece.pieces, label: piece.label });
+        setPartNames((names) => ({ ...names, [id]: piece.label }));
+      }
+      setNotice(`${piece.label} is on the shop spot. Drag it if that spot is wrong.`);
+    } catch {
+      setNotice("That model did not load.");
+    }
+  }
+
+  async function useLibraryBody(modelFile: string, label: string) {
+    setNotice(`Loading ${label}…`);
+    try {
+      const data = await fetchLibraryFile(modelFile);
+      await saveScanFile(label, data);
+      await handle.current?.loadScan(data, modelFile);
+      handle.current?.setScanMode("shell");
+      setScanName(label);
+      setScanMode("shell");
+      setNotice(`${label} is the body. The shop parts stay.`);
+    } catch {
+      setNotice("That model did not load.");
+    }
   }
 
   function askReplace(id: string) {
@@ -619,6 +681,9 @@ export function AutoTech() {
               }).catch(() => setNotice("That file did not load. Use a .glb, .gltf, .stl, or .obj."));
             }}
           />
+          <button type="button" onClick={() => setLibraryOpen((open) => !open)} className={`h-11 rounded-md px-3 text-sm ${libraryOpen ? "bg-accent font-medium text-accent-fg" : "border border-line text-fg"}`}>
+            {libraryOpen ? "Hide part library" : "Part library"}
+          </button>
           <button type="button" onClick={() => setLookOpen((open) => !open)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
             {lookOpen ? "Hide colors, pictures, models" : "Colors, pictures, models"}
           </button>
@@ -639,6 +704,60 @@ export function AutoTech() {
             All textures
           </button>
         </div>
+        {libraryOpen ? (
+          <div className="flex max-h-80 flex-col gap-3 overflow-auto rounded-md border border-line p-3">
+            <p className="text-sm text-muted">
+              {libraryTarget || selected
+                ? `Selected: ${partBlurb(libraryTarget || selected || "", spec).name}. A file with more than one piece is split below.`
+                : "Select a part, then put a model on it. Files with more than one piece are split."}
+            </p>
+            {LIBRARY.map((model) => (
+              <section key={model.file} className="flex flex-col gap-2">
+                <div>
+                  <p className="text-sm font-medium text-fg">{model.title}</p>
+                  <p className="text-sm text-muted">{model.credit}</p>
+                </div>
+                {model.pieces.map((piece) => {
+                  const target = libraryTarget || selected;
+                  return (
+                    <div key={piece.id} className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-32 text-sm text-fg">{piece.label}</span>
+                      {piece.fits === "body" && piece.pieces.length === 0 ? (
+                        <button type="button" onClick={() => void useLibraryBody(model.file, model.title)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                          Use as the body
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => void placePiece(target ? [target] : [], model.file, piece)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                          On this part
+                        </button>
+                      )}
+                      {piece.fits === "wheel" ? (
+                        <button type="button" onClick={() => void placePiece([...WHEEL_IDS], model.file, piece)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                          All four wheels
+                        </button>
+                      ) : null}
+                      {piece.fits === "brake" ? (
+                        <button type="button" onClick={() => void placePiece([...BRAKE_IDS], model.file, piece)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                          All four brakes
+                        </button>
+                      ) : null}
+                      {piece.fits === "filter" ? (
+                        <button type="button" onClick={() => void placePiece(["oil-filter"], model.file, piece)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                          On the oil filter
+                        </button>
+                      ) : null}
+                      {piece.fits === "body" && piece.pieces.length > 0 ? (
+                        <button type="button" onClick={() => void placePiece(["unibody"], model.file, piece)} className="h-11 rounded-md border border-line px-3 text-sm text-fg">
+                          On the body shell
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
+          </div>
+        ) : null}
         {lookOpen ? (
           <div className="flex max-h-80 flex-col gap-2 overflow-auto">
             <div className="flex flex-wrap items-center gap-2">
@@ -788,6 +907,7 @@ export function AutoTech() {
                   <button type="button" disabled={!selected || !partNames[selected]} onClick={() => {
                     if (!selected) return;
                     void clearPartFile(selected);
+                    clearLibrary(selected);
                     handle.current?.clearPartModel(selected);
                     setPartNames((names) => {
                       const next = { ...names };
@@ -1389,19 +1509,14 @@ export function AutoTech() {
             All textures
           </button>
           {menu.id ? (
-            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { askReplace(menu.id); setMenu(null); }}>
-              Replace with a model
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => { setLibraryTarget(menu.id); setLibraryOpen(true); setMenu(null); }}>
+              Part library
             </button>
           ) : null}
           {menu.id && partNames[menu.id] ? (
             <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => {
-              void clearPartFile(menu.id);
-              handle.current?.clearPartModel(menu.id);
-              setPartNames((names) => {
-                const next = { ...names };
-                delete next[menu.id];
-                return next;
-              });
+              forgetPart(menu.id);
+              setNotice("The shop part is back.");
               setMenu(null);
             }}>
               Use the shop part

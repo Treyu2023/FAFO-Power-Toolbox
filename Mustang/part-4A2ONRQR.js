@@ -5298,7 +5298,40 @@ function mountCar(host, events) {
       else material?.dispose();
     });
   }
-  async function replacePart(id, data, name) {
+  function matchesPiece(name, piece) {
+    if (!name || !piece) return false;
+    if (name === piece || name.startsWith(`${piece}_`)) return true;
+    let from = 0;
+    while (from < name.length) {
+      const at = name.indexOf(piece, from);
+      if (at < 0) return false;
+      const before = at === 0 ? "_" : name[at - 1];
+      const after = name[at + piece.length] ?? "_";
+      if ((before === "_" || before === "-" || before === ".") && (after === "_" || after === "-" || after === void 0)) return true;
+      from = at + 1;
+    }
+    return false;
+  }
+  function keepPieces(root2, pieces) {
+    if (!pieces.length) return root2;
+    const hits = [];
+    root2.traverse((obj) => {
+      if (pieces.some((piece) => matchesPiece(obj.name, piece))) hits.push(obj);
+    });
+    const tops = hits.filter((obj) => !hits.some((other) => other !== obj && isUnder(other, obj)));
+    const group = new Group();
+    for (const obj of tops) group.add(obj.clone(true));
+    return group.children.length ? group : root2;
+  }
+  function isUnder(ancestor, obj) {
+    let parent = obj.parent;
+    while (parent) {
+      if (parent === ancestor) return true;
+      parent = parent.parent;
+    }
+    return false;
+  }
+  async function replacePart(id, data, name, pieces = []) {
     const node = nodes.get(id);
     if (!node) return;
     const box = shopBox(node);
@@ -5310,7 +5343,7 @@ function mountCar(host, events) {
     const holder = new Group();
     holder.name = `${id}-model`;
     holder.userData.replacementHolder = true;
-    holder.add(await parseModel(data, name));
+    holder.add(keepPieces(await parseModel(data, name), pieces));
     node.group.add(holder);
     fitHolder(holder, box, node.group);
     holders.set(id, holder);

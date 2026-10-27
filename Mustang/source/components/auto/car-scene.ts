@@ -68,7 +68,7 @@ export type CarHandle = {
   applyHomes: (homes: Record<string, { x: number; y: number; z: number }>) => void;
   clearHome: (id: string) => void;
   clearHomes: () => void;
-  replacePart: (id: string, data: ArrayBuffer, name: string) => Promise<void>;
+  replacePart: (id: string, data: ArrayBuffer, name: string, pieces?: string[]) => Promise<void>;
   clearPartModel: (id: string) => void;
   loadScan: (data: ArrayBuffer, name: string) => Promise<void>;
   setScanMode: (mode: "off" | "shell" | "both") => void;
@@ -787,7 +787,43 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     });
   }
 
-  async function replacePart(id: string, data: ArrayBuffer, name: string) {
+  function matchesPiece(name: string, piece: string) {
+    if (!name || !piece) return false;
+    if (name === piece || name.startsWith(`${piece}_`)) return true;
+    let from = 0;
+    while (from < name.length) {
+      const at = name.indexOf(piece, from);
+      if (at < 0) return false;
+      const before = at === 0 ? "_" : name[at - 1];
+      const after = name[at + piece.length] ?? "_";
+      if ((before === "_" || before === "-" || before === ".") && (after === "_" || after === "-" || after === undefined)) return true;
+      from = at + 1;
+    }
+    return false;
+  }
+
+  function keepPieces(root: THREE.Object3D, pieces: string[]) {
+    if (!pieces.length) return root;
+    const hits: THREE.Object3D[] = [];
+    root.traverse((obj) => {
+      if (pieces.some((piece) => matchesPiece(obj.name, piece))) hits.push(obj);
+    });
+    const tops = hits.filter((obj) => !hits.some((other) => other !== obj && isUnder(other, obj)));
+    const group = new THREE.Group();
+    for (const obj of tops) group.add(obj.clone(true));
+    return group.children.length ? group : root;
+  }
+
+  function isUnder(ancestor: THREE.Object3D, obj: THREE.Object3D) {
+    let parent = obj.parent;
+    while (parent) {
+      if (parent === ancestor) return true;
+      parent = parent.parent;
+    }
+    return false;
+  }
+
+  async function replacePart(id: string, data: ArrayBuffer, name: string, pieces: string[] = []) {
     const node = nodes.get(id);
     if (!node) return;
     const box = shopBox(node);
@@ -799,7 +835,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
     const holder = new THREE.Group();
     holder.name = `${id}-model`;
     holder.userData.replacementHolder = true;
-    holder.add(await parseModel(data, name));
+    holder.add(keepPieces(await parseModel(data, name), pieces));
     node.group.add(holder);
     fitHolder(holder, box, node.group);
     holders.set(id, holder);
