@@ -56,6 +56,8 @@ export function AutoTech() {
   const [deskHeight, setDeskHeight] = useState(320);
   const [pickOpen, setPickOpen] = useState(false);
   const [sectionMarks, setSectionMarks] = useState<Record<string, { color: string; to: string; gradient: boolean }>>({});
+  const editingRef = useRef(false);
+  editingRef.current = editing;
   const fileRef = useRef<HTMLInputElement>(null);
   const partFileRef = useRef<HTMLInputElement>(null);
   const replaceId = useRef<string | null>(null);
@@ -291,9 +293,8 @@ export function AutoTech() {
   function applyFrame(id: string, ids?: string[], circuitId?: string, shopNow = prefs()) {
     const circuitForPart = circuitId ?? WIRES.find((wire) => wire.ends.includes(id) || wire.id === id)?.circuit;
     const mark = markFor(circuitForPart, shopNow);
-    const paint = ids && ids.length > 1 ? ids : null;
-    if (paint) handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
-    else handle.current?.setIsolate(null);
+    const paint = ids && ids.length ? ids : [id];
+    handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
     if (!shopNow.framePick) {
       handle.current?.framePart(id, null);
       return;
@@ -307,6 +308,10 @@ export function AutoTech() {
   }
 
   frameRef.current = (id) => {
+    if (editingRef.current) {
+      handle.current?.framePart("", null);
+      return;
+    }
     if (!id) {
       framedIds.current = null;
       handle.current?.setIsolate(null);
@@ -1400,6 +1405,16 @@ export function AutoTech() {
               setMenu(null);
             }}>
               Use the shop part
+            </button>
+          ) : null}
+          {menu.id ? (
+            <button type="button" role="menuitem" className="block h-11 w-full rounded-md px-3 text-left text-sm text-fg" onClick={() => {
+              const shift = handle.current?.shiftOf(menu.id);
+              if (shift) writeShift(menu.id, shift);
+              setNotice(`Saved where ${menu.name} sits.`);
+              setMenu(null);
+            }}>
+              Save exploded position
             </button>
           ) : null}
           {menu.id ? (

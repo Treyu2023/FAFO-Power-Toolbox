@@ -4923,8 +4923,8 @@ function mountCar(host, events) {
           mat.emissiveIntensity = 0;
           mesh.visible = true;
         }
-        mesh.visible = true;
-        mesh.raycast = node.hidden ? () => null : Mesh.prototype.raycast;
+        mesh.visible = !(ghost && (look?.ghost ?? "wire") === "wire");
+        mesh.raycast = ghost || node.hidden || mesh.userData.swapped ? () => null : Mesh.prototype.raycast;
       }
       for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent" && !node.meshes.some((mesh) => mesh.userData.swapped);
     }
@@ -4983,7 +4983,7 @@ function mountCar(host, events) {
     return out;
   }
   function placeScan(t) {
-    if (!scanHolder.children.length) return;
+    if (!scanHolder.children.length || bodyHidden) return;
     scanHolder.position.copy(scanRest);
     if (!lead()) return;
     const lift = unit(Math.min(t, 1) / 0.5);
@@ -4995,39 +4995,12 @@ function mountCar(host, events) {
       if (node.hidden) continue;
       const skin = node.info.id === "unibody" || shopSkin.has(node.info.id);
       if (!skin) continue;
-      node.group.visible = true;
-      const lit = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 4e-4 || node.home.lengthSq() > 4e-4;
-      if (lit || !covered) {
-        if (lit) {
-          for (const mesh of node.meshes) {
-            if (mesh.userData.swapped) {
-              mesh.visible = false;
-              continue;
-            }
-            mesh.visible = true;
-            const mat = mesh.material;
-            const back2 = mesh.userData.opacity ?? 1;
-            if (mat.opacity < 0.2) {
-              mat.opacity = back2;
-              mat.transparent = back2 < 0.98;
-              mat.depthWrite = back2 > 0.85;
-            }
-          }
-        }
+      const keep = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 4e-4 || node.home.lengthSq() > 4e-4;
+      if (node.info.id === "unibody") {
+        for (const mesh of node.meshes) mesh.visible = mesh.userData.swapped ? false : !covered || keep;
         continue;
       }
-      for (const mesh of node.meshes) {
-        if (mesh.userData.swapped) {
-          mesh.visible = false;
-          continue;
-        }
-        mesh.visible = true;
-        if (!covered) continue;
-        const mat = mesh.material;
-        mat.opacity = 0;
-        mat.transparent = true;
-        mat.depthWrite = false;
-      }
+      node.group.visible = !covered || keep;
     }
   }
   function place(t) {

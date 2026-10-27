@@ -395,8 +395,8 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
           mat.emissiveIntensity = 0;
           mesh.visible = true;
         }
-        mesh.visible = true;
-        mesh.raycast = node.hidden ? () => null : THREE.Mesh.prototype.raycast;
+        mesh.visible = !(ghost && (look?.ghost ?? "wire") === "wire");
+        mesh.raycast = ghost || node.hidden || mesh.userData.swapped ? () => null : THREE.Mesh.prototype.raycast;
       }
       for (const edge of node.edges) edge.visible = ghost && !node.hidden && style !== "translucent" && !node.meshes.some((mesh) => mesh.userData.swapped);
     }
@@ -462,7 +462,7 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
   }
 
   function placeScan(t: number) {
-    if (!scanHolder.children.length) return;
+    if (!scanHolder.children.length || bodyHidden) return;
     scanHolder.position.copy(scanRest);
     if (!lead()) return;
     const lift = unit(Math.min(t, 1) / 0.5);
@@ -474,39 +474,12 @@ export function mountCar(host: HTMLElement, events: CarEvents): CarHandle {
       if (node.hidden) continue;
       const skin = node.info.id === "unibody" || shopSkin.has(node.info.id);
       if (!skin) continue;
-      node.group.visible = true;
-      const lit = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 0.0004 || node.home.lengthSq() > 0.0004;
-      if (lit || !covered) {
-        if (lit) {
-          for (const mesh of node.meshes) {
-            if (mesh.userData.swapped) {
-              mesh.visible = false;
-              continue;
-            }
-            mesh.visible = true;
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            const back = (mesh.userData.opacity as number | undefined) ?? 1;
-            if (mat.opacity < 0.2) {
-              mat.opacity = back;
-              mat.transparent = back < 0.98;
-              mat.depthWrite = back > 0.85;
-            }
-          }
-        }
+      const keep = node.info.id === selected || node.info.id === hoverId || node === dragging || node.shift.lengthSq() > 0.0004 || node.home.lengthSq() > 0.0004;
+      if (node.info.id === "unibody") {
+        for (const mesh of node.meshes) mesh.visible = mesh.userData.swapped ? false : !covered || keep;
         continue;
       }
-      for (const mesh of node.meshes) {
-        if (mesh.userData.swapped) {
-          mesh.visible = false;
-          continue;
-        }
-        mesh.visible = true;
-        if (!covered) continue;
-        const mat = mesh.material as THREE.MeshStandardMaterial;
-        mat.opacity = 0;
-        mat.transparent = true;
-        mat.depthWrite = false;
-      }
+      node.group.visible = !covered || keep;
     }
   }
 

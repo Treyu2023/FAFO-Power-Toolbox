@@ -25739,6 +25739,8 @@ function AutoTech() {
   const [deskHeight, setDeskHeight] = (0, import_react4.useState)(320);
   const [pickOpen, setPickOpen] = (0, import_react4.useState)(false);
   const [sectionMarks, setSectionMarks] = (0, import_react4.useState)({});
+  const editingRef = (0, import_react4.useRef)(false);
+  editingRef.current = editing;
   const fileRef = (0, import_react4.useRef)(null);
   const partFileRef = (0, import_react4.useRef)(null);
   const replaceId = (0, import_react4.useRef)(null);
@@ -25804,7 +25806,7 @@ function AutoTech() {
     if (!el) return;
     let dead = false;
     let current = null;
-    void import("./part-TOM7DUNY.js").then(async (mod) => {
+    void import("./part-RYLKAFFC.js").then(async (mod) => {
       if (dead) return;
       current = mod.mountCar(el, {
         onSelect: (id) => {
@@ -25957,9 +25959,8 @@ function AutoTech() {
   function applyFrame(id, ids, circuitId, shopNow = prefs()) {
     const circuitForPart = circuitId ?? WIRES.find((wire) => wire.ends.includes(id) || wire.id === id)?.circuit;
     const mark = markFor(circuitForPart, shopNow);
-    const paint = ids && ids.length > 1 ? ids : null;
-    if (paint) handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
-    else handle.current?.setIsolate(null);
+    const paint = ids && ids.length ? ids : [id];
+    handle.current?.setIsolate(paint, mark.color, mark.gradient ? mark.to : null);
     if (!shopNow.framePick) {
       handle.current?.framePart(id, null);
       return;
@@ -25972,6 +25973,10 @@ function AutoTech() {
     });
   }
   frameRef.current = (id) => {
+    if (editingRef.current) {
+      handle.current?.framePart("", null);
+      return;
+    }
     if (!id) {
       framedIds.current = null;
       handle.current?.setIsolate(null);
@@ -26938,6 +26943,12 @@ function AutoTech() {
         });
         setMenu(null);
       }, children: "Use the shop part" }) : null,
+      menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
+        const shift = handle.current?.shiftOf(menu.id);
+        if (shift) writeShift(menu.id, shift);
+        setNotice(`Saved where ${menu.name} sits.`);
+        setMenu(null);
+      }, children: "Save exploded position" }) : null,
       menu.id ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", role: "menuitem", className: "block h-11 w-full rounded-md px-3 text-left text-sm text-fg", onClick: () => {
         handle.current?.clearShift(menu.id);
         const all = loadShifts();
