@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<!-- S7-N7 Parts Bin Counter: local nut/parts inventory. No network, no CDN, no auto-reorder. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=auto">
+  <title>Parts Bin Counter — FAFO Power Toolbox</title>
+  <style>
+    :root {
+      --bg: #050508; --panel: rgba(16,16,28,.72); --panel-solid: #0e0e18;
+      --line: rgba(255,255,255,.12); --text: #e8e8f0; --muted: #9a9ab0;
+      --accent: #f59e0b; --ok: #34d399; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    nav.top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 14px;
+      background: var(--panel-solid); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; }
+    nav.top a { color: var(--accent); text-decoration: none; font-weight: 700; }
+    .nav-title { font-weight: 800; letter-spacing: .02em; }
+    .app-layout { max-width: 960px; margin: 0 auto; padding: 12px; }
+    .app-main { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    /* Page scroll under the sticky nav. Folds stay fully visible — no inner scroll cage. */
+    main .fafo-panel-body,
+    details.fafo-fold,
+    details.fafo-fold .fold-body {
+      overflow: visible !important;
+      max-height: none !important;
+      height: auto !important;
+    }
+    details.fafo-fold { overflow: visible; max-height: none; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 12px; padding: 0 0 12px; min-width: 0; }
+    details.fafo-fold > summary { font-size: 14px; font-weight: 800; }
+    .fold-body { margin: 0 12px; min-width: 0; }
+    label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
+    input, select, textarea { font: inherit; color: var(--text); background: #0a0a14; border: 1px solid var(--line);
+      border-radius: 8px; padding: 6px 8px; min-width: 0; width: 100%; }
+    .scan { font-size: 18px; min-height: 44px; }
+    .btn { cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; border: 1px solid var(--line);
+      padding: 6px 10px; border-radius: 999px; background: transparent; color: var(--accent); min-height: 32px; }
+    .btn.danger { color: var(--bad); border-color: rgba(248,113,113,.35); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; margin-top: 8px; }
+    .grow { flex: 1 1 160px; min-width: 0; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .status { min-height: 1.2em; color: var(--ok); font-size: 12px; }
+    .pending { border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin-top: 8px; }
+    .table-wrap { overflow-x: auto; overflow-y: visible; max-width: 100%; max-height: none; }
+    table.lines { width: 100%; border-collapse: collapse; }
+    table.lines th, table.lines td { padding: 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    table.lines th { font-size: 11px; color: var(--muted); font-weight: 700; }
+    table.lines td.num, table.lines th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .low { color: var(--bad); font-weight: 800; }
+    .print-head { display: none; }
+    @media (max-width: 640px) { .nav-title { flex: 1 1 auto; } }
+    @media print {
+      @page { margin: 12mm; }
+      body { background: #fff; color: #000; font-size: 11pt; }
+      nav.top, .no-print, [data-fafo-layout-toolbar], .fafo-layout-dock, button,
+      #tbSharedServerBar, .fafo-panel-chrome, .fafo-corner-resize, .fafo-split-handle,
+      html body #atx-pro-bar, .ui-tooltip,
+      details.fafo-fold:not([data-fafo-fold="reorder"]) { display: none !important; }
+      .print-head { display: block; margin: 0 0 8pt; }
+      .app-layout { max-width: none; padding: 0; }
+      details.fafo-fold[data-fafo-fold="reorder"] {
+        display: block !important; background: none; border: 0; overflow: visible; max-height: none;
+      }
+      details.fafo-fold[data-fafo-fold="reorder"] > summary { list-style: none; }
+      details.fafo-fold[data-fafo-fold="reorder"] > summary::-webkit-details-marker { display: none; }
+      details.fafo-fold[data-fafo-fold="reorder"]::details-content { content-visibility: visible; display: block; }
+      table.lines th, table.lines td { border-color: #999; color: #000; }
+      .low, .muted, .status { color: #000; }
+      .table-wrap { overflow: visible; }
+      html body.atx-pro-pad, html body.atx-pro-pad:not(.run-active):not(.tat-stage):not(.atx-pro-min) { padding-bottom: 0 !important; }
+    }
+  </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
+  <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
+</head>
+<body>
+  <nav class="top">
+    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <span class="nav-title">Parts Bin Counter</span>
+    <span data-fafo-layout-toolbar></span>
+  </nav>
+
+  <div class="app-layout" data-fafo-layout-root data-fafo-layout-app="verifone-tools-parts-bin-counter" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
+    <main class="app-main fafo-resp" data-fafo-resp data-fafo-panel="main" data-fafo-panel-title="Parts bin" data-fafo-flex="1" data-fafo-primary>
+      <p class="status" id="pbStatus" role="status" aria-live="polite"></p>
+
+      <details class="fafo-fold" data-fafo-fold="scan" open>
+        <summary>Scan / adjust</summary>
+        <div class="fold-body">
+          <p class="muted">Keyboard wedge: leave this box focused. A scan plus Enter matches SKU, then name, and adds 1. Unknown codes wait here until you add the type. Nothing is ordered.</p>
+          <label>Scan
+            <input id="pbScan" class="scan" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Scan or type SKU, then Enter">
+          </label>
+          <div id="pbPending" class="pending" hidden>
+            <p id="pbPendingText"></p>
+            <div class="btn-row" data-no-scan-lock>
+              <label class="grow">Name
+                <input id="pbNewName" maxlength="120" autocomplete="off">
+              </label>
+              <label class="grow">SKU
+                <input id="pbNewSku" maxlength="80" autocomplete="off">
+              </label>
+              <label>Min
+                <input id="pbNewMin" type="number" min="0" step="1" value="1">
+              </label>
+              <button type="button" class="btn" id="pbNewAdd">Add type and count 1</button>
+              <button type="button" class="btn" id="pbNewCancel">Cancel</button>
+            </div>
+          </div>
+          <div class="btn-row">
+            <label class="grow">Type
+              <select id="pbAdjust"></select>
+            </label>
+            <button type="button" class="btn" id="pbMinus">−1</button>
+            <button type="button" class="btn" id="pbPlus">+1</button>
+            <label>Set qty
+              <input id="pbSetQty" type="number" min="0" step="1">
+            </label>
+            <button type="button" class="btn" id="pbApply">Apply qty</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="types" open>
+        <summary>Types</summary>
+        <div class="fold-body" data-no-scan-lock>
+          <p class="muted">You add the types. Counts change only when you scan, apply, or press + / − / Add / Save / Delete.</p>
+          <div class="btn-row">
+            <label class="grow">Name
+              <input id="pbName" maxlength="120" autocomplete="off">
+            </label>
+            <label class="grow">SKU
+              <input id="pbSku" maxlength="80" autocomplete="off">
+            </label>
+            <label>Qty
+              <input id="pbQty" type="number" min="0" step="1" value="0">
+            </label>
+            <label>Min
+              <input id="pbMin" type="number" min="0" step="1" value="0">
+            </label>
+            <label class="grow">Notes
+              <input id="pbNotes" maxlength="500" autocomplete="off">
+            </label>
+            <button type="button" class="btn" id="pbSaveType">Add type</button>
+            <button type="button" class="btn" id="pbCancelEdit" hidden>Cancel edit</button>
+          </div>
+          <div class="table-wrap">
+            <table class="lines">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>SKU</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Min</th>
+                  <th>Notes</th>
+                  <th class="no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="pbTypes"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="low" open>
+        <summary>Low stock</summary>
+        <div class="fold-body">
+          <p class="muted">Types where qty is under min. This list does not place an order.</p>
+          <div class="table-wrap">
+            <table class="lines">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>SKU</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Min</th>
+                  <th class="num">Short</th>
+                </tr>
+              </thead>
+              <tbody id="pbLow"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="reorder" data-collapsed-default>
+        <summary>Print reorder</summary>
+        <div class="fold-body">
+          <p class="print-head"><strong>FAFO parts bin — reorder by hand</strong></p>
+          <p class="muted no-print">Print stylesheet only. Low-stock lines for you to reorder yourself. No email, no cart, no vendor.</p>
+          <div class="table-wrap">
+            <table class="lines">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>SKU</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Min</th>
+                  <th class="num">Short</th>
+                </tr>
+              </thead>
+              <tbody id="pbPrint"></tbody>
+            </table>
+          </div>
+          <div class="btn-row no-print">
+            <button type="button" class="btn" id="pbPrintBtn">Print reorder sheet</button>
+          </div>
+        </div>
+      </details>
+    </main>
+  </div>
+
+<script id="pb-app">
+(function () {
+  'use strict';
+  var KEY = 'fafo-parts-bin.v1';
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { types: [] };
+  var editingId = '';
+
+  function uid(prefix) {
+    return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+  function el(tag, attrs, text) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        if (attrs[k] != null) node.setAttribute(k, String(attrs[k]));
+      });
+    }
+    if (text != null) node.textContent = String(text);
+    return node;
+  }
+  function intQty(value, fallback) {
+    var n = parseInt(value, 10);
+    if (!isFinite(n) || n < 0) return fallback;
+    if (n > 1000000) return 1000000;
+    return n;
+  }
+  function saneState(raw) {
+    var list = raw && Array.isArray(raw.types) ? raw.types : [];
+    return {
+      types: list.slice(0, 500).map(function (item) {
+        return {
+          id: String((item && item.id) || uid('part')),
+          name: String((item && item.name) || '').trim().slice(0, 120),
+          sku: String((item && item.sku) || '').trim().slice(0, 80),
+          qty: intQty(item && item.qty, 0),
+          min: intQty(item && item.min, 0),
+          notes: String((item && item.notes) || '').slice(0, 500)
+        };
+      }).filter(function (item) { return item.name; })
+    };
+  }
+  function readState() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw == null || raw === '') return { types: [] };
+      return saneState(JSON.parse(raw));
+    } catch (e) { return { types: [] }; }
+  }
+  function writeState() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ types: state.types }));
+      return true;
+    } catch (e) { return false; }
+  }
+  function setStatus(msg) { $('pbStatus').textContent = msg || ''; }
+  function norm(value) { return String(value || '').trim().toLowerCase(); }
+  function byId(id) {
+    for (var i = 0; i < state.types.length; i++) if (state.types[i].id === id) return state.types[i];
+    return null;
+  }
+  function lowTypes() {
+    return state.types.filter(function (item) { return item.qty < item.min; });
+  }
+  function focusScan() {
+    var scan = $('pbScan');
+    if (scan) scan.focus();
+  }
+  function editingElsewhere() {
+    var ae = document.activeElement;
+    if (!ae || ae === $('pbScan')) return false;
+    if (ae.closest && ae.closest('[data-no-scan-lock]')) return true;
+    var tag = ae.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A';
+  }
+  function hidePending() {
+    $('pbPending').hidden = true;
+    $('pbNewName').value = '';
+    $('pbNewSku').value = '';
+    $('pbNewMin').value = '1';
+  }
+  function showPending(code) {
+    $('pbPending').hidden = false;
+    $('pbPendingText').textContent = 'No type matches "' + code + '". Add it to count 1, or cancel. This does not order anything.';
+    $('pbNewSku').value = code;
+    if (!$('pbNewName').value) $('pbNewName').focus();
+  }
+  function renderAdjust() {
+    var sel = $('pbAdjust');
+    var cur = sel.value;
+    sel.textContent = '';
+    if (!state.types.length) {
+      sel.appendChild(el('option', { value: '' }, 'No types yet'));
+      return;
+    }
+    state.types.forEach(function (item) {
+      var label = item.name + (item.sku ? ' · ' + item.sku : '') + ' · ' + item.qty;
+      sel.appendChild(el('option', { value: item.id }, label));
+    });
+    if (cur && byId(cur)) sel.value = cur;
+  }
+  function fillLow(body) {
+    body.textContent = '';
+    var rows = lowTypes();
+    if (!rows.length) {
+      var tr = document.createElement('tr');
+      var td = el('td', { colspan: '5' }, 'Nothing under minimum.');
+      td.className = 'muted';
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
+    }
+    rows.forEach(function (item) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', null, item.name));
+      tr.appendChild(el('td', null, item.sku || '—'));
+      tr.appendChild(el('td', { 'class': 'num low' }, String(item.qty)));
+      tr.appendChild(el('td', { 'class': 'num' }, String(item.min)));
+      tr.appendChild(el('td', { 'class': 'num' }, String(item.min - item.qty)));
+      body.appendChild(tr);
+    });
+  }
+  function clearEditor() {
+    editingId = '';
+    $('pbName').value = '';
+    $('pbSku').value = '';
+    $('pbQty').value = '0';
+    $('pbMin').value = '0';
+    $('pbNotes').value = '';
+    $('pbSaveType').textContent = 'Add type';
+    $('pbCancelEdit').hidden = true;
+  }
+  function renderTypes() {
+    var body = $('pbTypes');
+    body.textContent = '';
+    if (!state.types.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', { colspan: '6' }, 'No types yet. Add one above.');
+      td0.className = 'muted';
+      tr0.appendChild(td0);
+      body.appendChild(tr0);
+      return;
+    }
+    state.types.forEach(function (item) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', null, item.name));
+      tr.appendChild(el('td', null, item.sku || '—'));
+      var qtyCell = el('td', { 'class': 'num' }, String(item.qty));
+      if (item.qty < item.min) qtyCell.className = 'num low';
+      tr.appendChild(qtyCell);
+      tr.appendChild(el('td', { 'class': 'num' }, String(item.min)));
+      tr.appendChild(el('td', null, item.notes || ''));
+      var actions = el('td', { 'class': 'no-print' });
+      var minus = el('button', { type: 'button', 'class': 'btn', 'aria-label': 'Decrease ' + item.name }, '−');
+      var plus = el('button', { type: 'button', 'class': 'btn', 'aria-label': 'Increase ' + item.name }, '+');
+      var edit = el('button', { type: 'button', 'class': 'btn' }, 'Edit');
+      var del = el('button', { type: 'button', 'class': 'btn danger' }, 'Delete');
+      minus.addEventListener('click', function () { adjust(item.id, -1); });
+      plus.addEventListener('click', function () { adjust(item.id, 1); });
+      edit.addEventListener('click', function () {
+        editingId = item.id;
+        $('pbName').value = item.name;
+        $('pbSku').value = item.sku;
+        $('pbQty').value = String(item.qty);
+        $('pbMin').value = String(item.min);
+        $('pbNotes').value = item.notes;
+        $('pbSaveType').textContent = 'Save type';
+        $('pbCancelEdit').hidden = false;
+        $('pbName').focus();
+        setStatus('Editing ' + item.name + '. Save type to store the change.');
+      });
+      del.addEventListener('click', function () {
+        if (!confirm('Delete type "' + item.name + '" from this browser?')) return;
+        state.types = state.types.filter(function (row) { return row.id !== item.id; });
+        if (!writeState()) { state = readState(); setStatus('Could not delete the type'); renderAll(); return; }
+        if (editingId === item.id) clearEditor();
+        renderAll();
+        setStatus('Type deleted');
+        focusScan();
+      });
+      actions.appendChild(minus);
+      actions.appendChild(document.createTextNode(' '));
+      actions.appendChild(plus);
+      actions.appendChild(document.createTextNode(' '));
+      actions.appendChild(edit);
+      actions.appendChild(document.createTextNode(' '));
+      actions.appendChild(del);
+      tr.appendChild(actions);
+      body.appendChild(tr);
+    });
+  }
+  function renderAll() {
+    renderAdjust();
+    renderTypes();
+    fillLow($('pbLow'));
+    fillLow($('pbPrint'));
+  }
+  function persistRender(msg) {
+    if (!writeState()) { state = readState(); setStatus('Save failed (storage full or blocked)'); renderAll(); return false; }
+    renderAll();
+    setStatus(msg);
+    return true;
+  }
+  function adjust(id, delta) {
+    var item = byId(id);
+    if (!item) { setStatus('Pick a type first'); return; }
+    item.qty = intQty(item.qty + delta, 0);
+    persistRender(item.name + ' is now ' + item.qty);
+    focusScan();
+  }
+  function selectedId() { return $('pbAdjust').value; }
+  function handleScan(code) {
+    var text = String(code || '').trim();
+    if (!text) return;
+    var key = norm(text);
+    var skuHits = state.types.filter(function (item) { return item.sku && norm(item.sku) === key; });
+    if (skuHits.length > 1) { setStatus('More than one type uses that SKU. Edit the types so the SKU is unique.'); return; }
+    var hit = skuHits[0];
+    if (!hit) {
+      var nameHits = state.types.filter(function (item) { return norm(item.name) === key; });
+      if (nameHits.length > 1) { setStatus('More than one type is named that. Scan the SKU instead.'); return; }
+      hit = nameHits[0];
+    }
+    if (!hit) { showPending(text.slice(0, 80)); setStatus('No match. Confirm a new type or cancel.'); return; }
+    hidePending();
+    hit.qty = intQty(hit.qty + 1, 1);
+    persistRender('Counted +1 for ' + hit.name + ' (now ' + hit.qty + ')');
+    focusScan();
+  }
+  function addFromScan() {
+    var name = $('pbNewName').value.trim().slice(0, 120);
+    var sku = $('pbNewSku').value.trim().slice(0, 80);
+    var min = intQty($('pbNewMin').value, 1);
+    if (!name) { setStatus('Enter a name for the new type'); $('pbNewName').focus(); return; }
+    if (sku && state.types.some(function (item) { return norm(item.sku) === norm(sku); })) {
+      setStatus('That SKU is already on a type');
+      return;
+    }
+    state.types.push({ id: uid('part'), name: name, sku: sku, qty: 1, min: min, notes: '' });
+    if (!persistRender('Added ' + name + ' with qty 1')) return;
+    hidePending();
+    focusScan();
+  }
+  function saveType() {
+    var name = $('pbName').value.trim().slice(0, 120);
+    var sku = $('pbSku').value.trim().slice(0, 80);
+    var qty = intQty($('pbQty').value, 0);
+    var min = intQty($('pbMin').value, 0);
+    var notes = $('pbNotes').value.slice(0, 500);
+    if (!name) { setStatus('Enter a type name'); return; }
+    var skuClash = state.types.some(function (item) {
+      return item.id !== editingId && sku && norm(item.sku) === norm(sku);
+    });
+    if (skuClash) { setStatus('That SKU is already on another type'); return; }
+    if (editingId) {
+      var item = byId(editingId);
+      if (!item) { setStatus('That type is gone'); clearEditor(); return; }
+      item.name = name;
+      item.sku = sku;
+      item.qty = qty;
+      item.min = min;
+      item.notes = notes;
+      if (!persistRender('Saved ' + name)) return;
+      clearEditor();
+      focusScan();
+      return;
+    }
+    state.types.push({ id: uid('part'), name: name, sku: sku, qty: qty, min: min, notes: notes });
+    if (!persistRender('Added ' + name)) return;
+    clearEditor();
+    focusScan();
+  }
+
+  $('pbScan').addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    var code = $('pbScan').value;
+    $('pbScan').value = '';
+    handleScan(code);
+  });
+  $('pbScan').addEventListener('blur', function () {
+    setTimeout(function () { if (!editingElsewhere()) focusScan(); }, 30);
+  });
+  document.addEventListener('toggle', function () {
+    setTimeout(function () { if (!editingElsewhere()) focusScan(); }, 0);
+  }, true);
+  $('pbNewAdd').addEventListener('click', addFromScan);
+  $('pbNewCancel').addEventListener('click', function () {
+    hidePending();
+    setStatus('New type cancelled');
+    focusScan();
+  });
+  $('pbMinus').addEventListener('click', function () { adjust(selectedId(), -1); });
+  $('pbPlus').addEventListener('click', function () { adjust(selectedId(), 1); });
+  $('pbApply').addEventListener('click', function () {
+    var item = byId(selectedId());
+    if (!item) { setStatus('Pick a type first'); return; }
+    item.qty = intQty($('pbSetQty').value, item.qty);
+    persistRender(item.name + ' qty set to ' + item.qty);
+    focusScan();
+  });
+  $('pbSaveType').addEventListener('click', saveType);
+  $('pbCancelEdit').addEventListener('click', function () {
+    clearEditor();
+    setStatus('Edit cancelled');
+    focusScan();
+  });
+  $('pbPrintBtn').addEventListener('click', function () { window.print(); });
+
+  state = readState();
+  renderAll();
+  setStatus('Ready. Counts stay in this browser until you change them.');
+  focusScan();
+})();
+</script>
+<script id="pb-print">
+(function () {
+  'use strict';
+  var fold = null, wasOpen = null, keys = null, guard = false, releaseTimer = 0;
+  function snapKeys() {
+    var o = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('fafo-fold:') === 0) o[k] = localStorage.getItem(k);
+      }
+    } catch (e) {}
+    return o;
+  }
+  function putKeys(o) {
+    try {
+      var now = snapKeys(), k;
+      for (k in now) if (!(k in o)) localStorage.removeItem(k);
+      for (k in o) if (now[k] !== o[k]) localStorage.setItem(k, o[k]);
+    } catch (e) {}
+  }
+  window.addEventListener('toggle', function (ev) {
+    var t = ev.target;
+    if (guard && t && t.matches && t.matches('details.fafo-fold')) ev.stopImmediatePropagation();
+  }, true);
+  function before() {
+    if (wasOpen !== null) return;
+    clearTimeout(releaseTimer);
+    guard = true;
+    keys = snapKeys();
+    fold = document.querySelector('details.fafo-fold[data-fafo-fold="reorder"]');
+    if (!fold) return;
+    wasOpen = fold.open;
+    if (!fold.open) fold.open = true;
+  }
+  function after() {
+    if (wasOpen === null) return;
+    if (fold && fold.open !== wasOpen) fold.open = wasOpen;
+    wasOpen = null;
+    var k = keys;
+    releaseTimer = setTimeout(function () {
+      requestAnimationFrame(function () {
+        setTimeout(function () { putKeys(k); guard = false; }, 0);
+      });
+    }, 0);
+  }
+  window.addEventListener('beforeprint', before);
+  window.addEventListener('afterprint', after);
+  try {
+    var mq = window.matchMedia && window.matchMedia('print');
+    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { if (e.matches) before(); else after(); });
+  } catch (e) {}
+})();
+</script>
+<script src="../shared/fafo-chrome.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-version.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+</body>
+</html>
