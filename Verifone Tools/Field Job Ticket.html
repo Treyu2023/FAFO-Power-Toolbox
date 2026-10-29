@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<!-- S7-N2 Field Job Ticket: local mileage/punch log. No network, no CDN. localStorage only. No site credentials. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=auto">
+  <title>Field Job Ticket — FAFO Power Toolbox</title>
+  <style>
+    :root {
+      --bg: #050508; --panel: rgba(16,16,28,.72); --panel-solid: #0e0e18;
+      --line: rgba(255,255,255,.12); --text: #e8e8f0; --muted: #9a9ab0;
+      --accent: #f59e0b; --ok: #34d399; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    nav.top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 14px;
+      background: var(--panel-solid); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; }
+    nav.top a { color: var(--accent); text-decoration: none; font-weight: 700; }
+    .nav-title { font-weight: 800; letter-spacing: .02em; }
+    .nav-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto; min-width: 0; }
+    .btn { cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; border: 1px solid var(--line);
+      padding: 6px 10px; border-radius: 999px; background: transparent; color: var(--accent); min-height: 32px; }
+    .btn.danger { color: var(--bad); border-color: rgba(248,113,113,.35); }
+    .app-layout { max-width: 880px; margin: 0 auto; padding: 12px; }
+    .app-main { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    /* Page scroll under the sticky nav. Folds stay fully visible — no inner scroll cage. */
+    main .fafo-panel-body,
+    details.fafo-fold,
+    details.fafo-fold .fold-body {
+      overflow: visible !important;
+      max-height: none !important;
+      height: auto !important;
+    }
+    details.fafo-fold { overflow: visible; max-height: none; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 12px; padding: 0 0 12px; min-width: 0; }
+    details.fafo-fold > summary { font-size: 14px; font-weight: 800; }
+    .fold-body { margin: 0 12px; min-width: 0; }
+    label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
+    input, select, textarea { font: inherit; color: var(--text); background: #0a0a14; border: 1px solid var(--line);
+      border-radius: 8px; padding: 6px 8px; min-width: 0; width: 100%; }
+    textarea { min-height: 90px; resize: vertical; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between;
+      padding: 4px 0; border-bottom: 1px solid var(--line); }
+    .row .grow { flex: 1 1 160px; min-width: 0; }
+    .miles { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--accent); font-size: 18px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .status { min-height: 1.2em; color: var(--ok); font-size: 12px; }
+    .table-wrap { overflow-x: auto; overflow-y: visible; max-width: 100%; max-height: none; }
+    table.lines { width: 100%; border-collapse: collapse; }
+    table.lines th, table.lines td { padding: 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    table.lines th { font-size: 11px; color: var(--muted); font-weight: 700; }
+    .chk { width: auto; }
+    @media (max-width: 640px) { .nav-actions { margin-left: 0; } }
+    @media print {
+      @page { margin: 12mm; }
+      body { background: #fff; color: #000; font-size: 11pt; }
+      nav.top, .no-print, [data-fafo-layout-toolbar], .fafo-layout-dock, button,
+      #tbSharedServerBar, .fafo-panel-chrome, .fafo-corner-resize, .fafo-split-handle,
+      html body #atx-pro-bar, .ui-tooltip,
+      details.fafo-fold[data-fafo-fold="sites"],
+      details.fafo-fold[data-fafo-fold="saved"] { display: none !important; }
+      .app-layout { max-width: none; padding: 0; }
+      details.fafo-fold { display: block; background: none; border: 0; overflow: visible; max-height: none; break-inside: avoid; }
+      details.fafo-fold > summary { list-style: none; }
+      details.fafo-fold > summary::-webkit-details-marker { display: none; }
+      details.fafo-fold::details-content { content-visibility: visible; display: block; }
+      textarea { height: auto; min-height: 0; field-sizing: content; resize: none; }
+      input, select, textarea { border: 0; background: none; color: #000; padding: 0; }
+      .miles, .status { color: #000; }
+      .table-wrap { overflow: visible; }
+      html body.atx-pro-pad, html body.atx-pro-pad:not(.run-active):not(.tat-stage):not(.atx-pro-min) { padding-bottom: 0 !important; }
+    }
+  </style>
+  <link rel="stylesheet" href="../shared/aitoolbox-ui.css?v=3.5.06">
+  <link rel="stylesheet" href="../shared/aitoolbox-layout.css?v=3.5.06">
+</head>
+<body>
+  <nav class="top">
+    <a href="../Toolbox Launcher.html">← Toolbox</a>
+    <span class="nav-title">Field Job Ticket</span>
+    <div class="nav-actions">
+      <button type="button" class="btn" id="ftNew">New ticket</button>
+      <button type="button" class="btn" id="ftSave">Save ticket</button>
+      <button type="button" class="btn no-print" id="ftPrint">Print</button>
+    </div>
+    <span data-fafo-layout-toolbar></span>
+  </nav>
+
+  <div class="app-layout" data-fafo-layout-root data-fafo-layout-app="verifone-tools-field-job-ticket" data-fafo-layout-type="rows" data-fafo-layout-page-scroll="1">
+    <main class="app-main fafo-resp" data-fafo-resp data-fafo-panel="main" data-fafo-panel-title="Field ticket" data-fafo-flex="1" data-fafo-primary>
+      <p class="status" id="ftStatus" role="status" aria-live="polite"></p>
+
+      <details class="fafo-fold" data-fafo-fold="sites" data-collapsed-default>
+        <summary>Sites</summary>
+        <div class="fold-body">
+          <p class="muted">Names only. This page does not store passwords, hosts, or tokens.</p>
+          <div class="btn-row">
+            <label class="grow">Site name
+              <input id="ftSiteName" maxlength="120" autocomplete="off" placeholder="Store name">
+            </label>
+            <button type="button" class="btn" id="ftAddSite">Add site</button>
+          </div>
+          <div id="ftSiteList"></div>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="active" open>
+        <summary>Active ticket</summary>
+        <div class="fold-body">
+          <div class="grid2">
+            <label>Site
+              <select id="ftSite"></select>
+            </label>
+            <label>Arrive
+              <input id="ftArrive" type="datetime-local">
+            </label>
+            <label>Leave
+              <input id="ftLeave" type="datetime-local">
+            </label>
+            <label>Odometer start
+              <input id="ftOdoStart" inputmode="decimal" autocomplete="off" placeholder="0">
+            </label>
+            <label>Odometer end
+              <input id="ftOdoEnd" inputmode="decimal" autocomplete="off" placeholder="0">
+            </label>
+            <label>Miles
+              <span class="miles" id="ftMiles">—</span>
+            </label>
+          </div>
+          <p class="muted">Miles are end minus start when both odometers are numbers and end is not lower. Nothing is stored until you Save ticket.</p>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="punch" open>
+        <summary>Punch list</summary>
+        <div class="fold-body">
+          <p class="muted">Lines closed on this visit. Local only — this does not change Pre-Reload.</p>
+          <div class="btn-row">
+            <label class="grow">Closed item
+              <input id="ftPunchText" maxlength="240" autocomplete="off" placeholder="What you closed">
+            </label>
+            <button type="button" class="btn" id="ftAddPunch">Add line</button>
+          </div>
+          <div id="ftPunch"></div>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="parts" open>
+        <summary>Parts used</summary>
+        <div class="fold-body">
+          <div class="btn-row">
+            <label class="grow">Part
+              <input id="ftPartName" maxlength="120" autocomplete="off" placeholder="Type or description">
+            </label>
+            <label>Qty
+              <input id="ftPartQty" inputmode="decimal" autocomplete="off" placeholder="1">
+            </label>
+            <button type="button" class="btn" id="ftAddPart">Add part</button>
+          </div>
+          <div id="ftParts"></div>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="notes" open>
+        <summary>Notes</summary>
+        <div class="fold-body">
+          <label>Visit notes
+            <textarea id="ftNotes" maxlength="4000" placeholder="What happened on site"></textarea>
+          </label>
+        </div>
+      </details>
+
+      <details class="fafo-fold" data-fafo-fold="saved" open>
+        <summary>Saved tickets</summary>
+        <div class="fold-body">
+          <p class="muted">Saved in this browser only. Export CSV uses the date range (arrive date, or the save date when arrive is empty).</p>
+          <div class="btn-row no-print">
+            <label>From
+              <input id="ftFrom" type="date">
+            </label>
+            <label>To
+              <input id="ftTo" type="date">
+            </label>
+            <button type="button" class="btn" id="ftWeek">This week</button>
+            <button type="button" class="btn" id="ftMonth">This month</button>
+            <button type="button" class="btn" id="ftExport">Export CSV</button>
+          </div>
+          <div class="table-wrap">
+            <table class="lines">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Site</th>
+                  <th>Miles</th>
+                  <th class="no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ftSaved"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </main>
+  </div>
+
+<script id="ft-app">
+(function () {
+  'use strict';
+  var KEY_TICKETS = 'fafo-field-ticket.v1';
+  var KEY_SITES = 'fafo-field-ticket.sites.v1';
+  /* Site Console keys are host/user, not a name-only list. Do not read them. */
+  var $ = function (id) { return document.getElementById(id); };
+  var ticket = blankTicket();
+  var sites = [];
+
+  function uid(prefix) {
+    return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+  function el(tag, attrs, text) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        if (attrs[k] != null) node.setAttribute(k, String(attrs[k]));
+      });
+    }
+    if (text != null) node.textContent = String(text);
+    return node;
+  }
+  function readJSON(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw == null || raw === '') return fallback;
+      return JSON.parse(raw);
+    } catch (e) { return fallback; }
+  }
+  function writeJSON(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) { return false; }
+  }
+  function blankTicket() {
+    return {
+      id: uid('tkt'), site: '', arrive: '', leave: '', odoStart: '', odoEnd: '', miles: '',
+      punch: [], parts: [], notes: '', savedAt: ''
+    };
+  }
+  function saneTicket(raw) {
+    var o = blankTicket();
+    if (!raw || typeof raw !== 'object') return o;
+    o.id = String(raw.id || o.id);
+    o.site = String(raw.site || '').slice(0, 120);
+    o.arrive = String(raw.arrive || '').slice(0, 40);
+    o.leave = String(raw.leave || '').slice(0, 40);
+    o.odoStart = String(raw.odoStart || '').slice(0, 20);
+    o.odoEnd = String(raw.odoEnd || '').slice(0, 20);
+    o.notes = String(raw.notes || '').slice(0, 4000);
+    o.savedAt = String(raw.savedAt || '');
+    o.punch = Array.isArray(raw.punch) ? raw.punch.slice(0, 200).map(function (line) {
+      return {
+        id: String((line && line.id) || uid('punch')),
+        text: String((line && line.text) || '').slice(0, 240),
+        closed: !(line && line.closed === false)
+      };
+    }).filter(function (line) { return line.text; }) : [];
+    o.parts = Array.isArray(raw.parts) ? raw.parts.slice(0, 200).map(function (line) {
+      return {
+        id: String((line && line.id) || uid('used')),
+        name: String((line && line.name) || '').slice(0, 120),
+        qty: String((line && line.qty) || '').slice(0, 20)
+      };
+    }).filter(function (line) { return line.name; }) : [];
+    o.miles = milesBetween(o.odoStart, o.odoEnd);
+    return o;
+  }
+  function saneSites(raw) {
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    var seen = {};
+    raw.slice(0, 300).forEach(function (name) {
+      var s = String(name == null ? '' : name).trim().slice(0, 120);
+      var key = s.toLowerCase();
+      if (!s || seen[key]) return;
+      seen[key] = 1;
+      out.push(s);
+    });
+    return out;
+  }
+  function readTickets() {
+    var raw = readJSON(KEY_TICKETS, []);
+    return Array.isArray(raw) ? raw.slice(0, 500).map(saneTicket) : [];
+  }
+  function setStatus(msg) { $('ftStatus').textContent = msg || ''; }
+  function scaled(parts, scale) {
+    var ip = parts[0] || '0';
+    var fp = (parts[1] || '').slice(0, scale);
+    while (fp.length < scale) fp += '0';
+    var n = Number(ip);
+    if (!isFinite(n)) return null;
+    return n * Math.pow(10, scale) + (scale ? Number(fp) : 0);
+  }
+  function milesBetween(start, end) {
+    var a = String(start == null ? '' : start).trim();
+    var b = String(end == null ? '' : end).trim();
+    if (!/^\d+(\.\d+)?$/.test(a) || !/^\d+(\.\d+)?$/.test(b)) return '';
+    var as = a.split('.');
+    var bs = b.split('.');
+    var scale = Math.max((as[1] || '').length, (bs[1] || '').length);
+    var diff = scaled(bs, scale) - scaled(as, scale);
+    if (!isFinite(diff) || diff < 0) return '';
+    if (!scale) return String(diff);
+    var s = String(Math.round(diff));
+    while (s.length <= scale) s = '0' + s;
+    var whole = s.slice(0, s.length - scale);
+    var frac = s.slice(s.length - scale).replace(/0+$/, '');
+    return frac ? whole + '.' + frac : whole;
+  }
+  function dateOf(t) {
+    var arrive = String(t.arrive || '');
+    if (/^\d{4}-\d{2}-\d{2}/.test(arrive)) return arrive.slice(0, 10);
+    var saved = String(t.savedAt || '');
+    if (/^\d{4}-\d{2}-\d{2}/.test(saved)) return saved.slice(0, 10);
+    return '';
+  }
+  function ymd(d) {
+    var z = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+  }
+  function readForm() {
+    ticket.site = $('ftSite').value;
+    ticket.arrive = $('ftArrive').value;
+    ticket.leave = $('ftLeave').value;
+    ticket.odoStart = $('ftOdoStart').value.trim();
+    ticket.odoEnd = $('ftOdoEnd').value.trim();
+    ticket.notes = $('ftNotes').value;
+    ticket.miles = milesBetween(ticket.odoStart, ticket.odoEnd);
+    $('ftMiles').textContent = ticket.miles === '' ? '—' : ticket.miles;
+  }
+  function renderSiteSelect() {
+    var sel = $('ftSite');
+    var cur = ticket.site || '';
+    var names = sites.slice();
+    if (cur && !names.some(function (n) { return n === cur; })) names.push(cur);
+    sel.textContent = '';
+    sel.appendChild(el('option', { value: '' }, 'Select site'));
+    names.forEach(function (name) {
+      sel.appendChild(el('option', { value: name }, name));
+    });
+    sel.value = cur;
+  }
+  function renderSites() {
+    var host = $('ftSiteList');
+    host.textContent = '';
+    if (!sites.length) {
+      host.appendChild(el('p', { 'class': 'muted' }, 'No sites yet. Add a name to use it on a ticket.'));
+      return;
+    }
+    sites.forEach(function (name) {
+      var row = el('div', { 'class': 'row' });
+      row.appendChild(el('span', { 'class': 'grow' }, name));
+      var rename = el('button', { type: 'button', 'class': 'btn' }, 'Rename');
+      var remove = el('button', { type: 'button', 'class': 'btn danger' }, 'Remove');
+      rename.addEventListener('click', function () {
+        var next = prompt('Rename site (name only)', name);
+        if (next == null) return;
+        next = String(next).trim().slice(0, 120);
+        if (!next) { setStatus('Site name is empty'); return; }
+        if (next.toLowerCase() !== name.toLowerCase() && sites.some(function (s) { return s.toLowerCase() === next.toLowerCase(); })) {
+          setStatus('That site name is already in the list');
+          return;
+        }
+        var prior = sites.slice();
+        sites = sites.map(function (s) { return s === name ? next : s; });
+        if (!writeJSON(KEY_SITES, sites)) { sites = prior; setStatus('Could not save the site list'); return; }
+        if (ticket.site === name) ticket.site = next;
+        renderSites();
+        renderSiteSelect();
+        setStatus('Site renamed in the list. Saved tickets keep the name they were stored with until you save them again.');
+      });
+      remove.addEventListener('click', function () {
+        if (!confirm('Remove "' + name + '" from the site list? Saved tickets stay as they are.')) return;
+        var prior = sites.slice();
+        sites = sites.filter(function (s) { return s !== name; });
+        if (!writeJSON(KEY_SITES, sites)) { sites = prior; setStatus('Could not save the site list'); return; }
+        renderSites();
+        renderSiteSelect();
+        setStatus('Site removed from the list');
+      });
+      row.appendChild(rename);
+      row.appendChild(remove);
+      host.appendChild(row);
+    });
+  }
+  function renderPunch() {
+    var host = $('ftPunch');
+    host.textContent = '';
+    if (!ticket.punch.length) {
+      host.appendChild(el('p', { 'class': 'muted' }, 'No punch lines on this ticket.'));
+      return;
+    }
+    ticket.punch.forEach(function (line, index) {
+      var row = el('div', { 'class': 'row' });
+      var chk = el('input', { type: 'checkbox', 'class': 'chk', 'aria-label': 'Closed' });
+      chk.checked = !!line.closed;
+      var text = el('input', { type: 'text', maxlength: '240', 'aria-label': 'Punch line' });
+      text.value = line.text;
+      var del = el('button', { type: 'button', 'class': 'btn danger' }, 'Delete');
+      chk.addEventListener('change', function () { line.closed = chk.checked; });
+      text.addEventListener('input', function () { line.text = text.value; });
+      del.addEventListener('click', function () {
+        ticket.punch.splice(index, 1);
+        renderPunch();
+        setStatus('Punch line removed — Save ticket to store it');
+      });
+      row.appendChild(chk);
+      var wrap = el('div', { 'class': 'grow' });
+      wrap.appendChild(text);
+      row.appendChild(wrap);
+      row.appendChild(del);
+      host.appendChild(row);
+    });
+  }
+  function renderParts() {
+    var host = $('ftParts');
+    host.textContent = '';
+    if (!ticket.parts.length) {
+      host.appendChild(el('p', { 'class': 'muted' }, 'No parts on this ticket.'));
+      return;
+    }
+    ticket.parts.forEach(function (line, index) {
+      var row = el('div', { 'class': 'row' });
+      var name = el('input', { type: 'text', maxlength: '120', 'aria-label': 'Part name' });
+      name.value = line.name;
+      var qty = el('input', { type: 'text', maxlength: '20', 'aria-label': 'Part qty' });
+      qty.value = line.qty;
+      var del = el('button', { type: 'button', 'class': 'btn danger' }, 'Delete');
+      name.addEventListener('input', function () { line.name = name.value; });
+      qty.addEventListener('input', function () { line.qty = qty.value; });
+      del.addEventListener('click', function () {
+        ticket.parts.splice(index, 1);
+        renderParts();
+        setStatus('Part line removed — Save ticket to store it');
+      });
+      var nameWrap = el('div', { 'class': 'grow' });
+      nameWrap.appendChild(name);
+      var qtyWrap = el('div', { 'class': 'grow' });
+      qtyWrap.appendChild(qty);
+      row.appendChild(nameWrap);
+      row.appendChild(qtyWrap);
+      row.appendChild(del);
+      host.appendChild(row);
+    });
+  }
+  function renderSaved() {
+    var body = $('ftSaved');
+    body.textContent = '';
+    var list = readTickets();
+    if (!list.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', { colspan: '4' }, 'No saved tickets yet.');
+      td0.className = 'muted';
+      tr0.appendChild(td0);
+      body.appendChild(tr0);
+      return;
+    }
+    list.forEach(function (saved) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', null, dateOf(saved) || '—'));
+      tr.appendChild(el('td', null, saved.site || '—'));
+      tr.appendChild(el('td', null, saved.miles === '' ? '—' : saved.miles));
+      var actions = el('td', { 'class': 'no-print' });
+      var openBtn = el('button', { type: 'button', 'class': 'btn' }, 'Open');
+      var delBtn = el('button', { type: 'button', 'class': 'btn danger' }, 'Delete');
+      openBtn.addEventListener('click', function () {
+        if (!confirm('Open this saved ticket? Unsaved edits on the current visit are dropped.')) return;
+        ticket = saneTicket(saved);
+        fillForm();
+        setStatus('Opened saved ticket');
+      });
+      delBtn.addEventListener('click', function () {
+        if (!confirm('Delete this saved ticket from this browser?')) return;
+        var next = readTickets().filter(function (item) { return item.id !== saved.id; });
+        if (!writeJSON(KEY_TICKETS, next)) { setStatus('Could not delete the ticket'); return; }
+        if (ticket.id === saved.id) { ticket = blankTicket(); fillForm(); }
+        renderSaved();
+        setStatus('Ticket deleted');
+      });
+      actions.appendChild(openBtn);
+      actions.appendChild(document.createTextNode(' '));
+      actions.appendChild(delBtn);
+      tr.appendChild(actions);
+      body.appendChild(tr);
+    });
+  }
+  function fillForm() {
+    renderSiteSelect();
+    $('ftArrive').value = ticket.arrive || '';
+    $('ftLeave').value = ticket.leave || '';
+    $('ftOdoStart').value = ticket.odoStart || '';
+    $('ftOdoEnd').value = ticket.odoEnd || '';
+    $('ftNotes').value = ticket.notes || '';
+    $('ftMiles').textContent = ticket.miles === '' ? '—' : ticket.miles;
+    renderPunch();
+    renderParts();
+  }
+  function addSite() {
+    var name = $('ftSiteName').value.trim().slice(0, 120);
+    if (!name) { setStatus('Enter a site name'); return; }
+    if (sites.some(function (s) { return s.toLowerCase() === name.toLowerCase(); })) {
+      setStatus('That site is already listed');
+      return;
+    }
+    sites.push(name);
+    if (!writeJSON(KEY_SITES, sites)) { sites.pop(); setStatus('Could not save the site list'); return; }
+    $('ftSiteName').value = '';
+    if (!ticket.site) ticket.site = name;
+    renderSites();
+    renderSiteSelect();
+    setStatus('Site added');
+  }
+  function addPunch() {
+    var text = $('ftPunchText').value.trim().slice(0, 240);
+    if (!text) { setStatus('Enter a punch line'); return; }
+    ticket.punch.push({ id: uid('punch'), text: text, closed: true });
+    $('ftPunchText').value = '';
+    renderPunch();
+    setStatus('Punch line added — Save ticket to store it');
+  }
+  function addPart() {
+    var name = $('ftPartName').value.trim().slice(0, 120);
+    var qty = String($('ftPartQty').value || '').trim().slice(0, 20);
+    if (!name) { setStatus('Enter a part'); return; }
+    if (qty && !/^\d+(\.\d+)?$/.test(qty)) { setStatus('Part qty must be a number'); return; }
+    ticket.parts.push({ id: uid('used'), name: name, qty: qty || '1' });
+    $('ftPartName').value = '';
+    $('ftPartQty').value = '';
+    renderParts();
+    setStatus('Part line added — Save ticket to store it');
+  }
+  function saveTicket() {
+    readForm();
+    ticket.savedAt = new Date().toISOString();
+    var stored = saneTicket(ticket);
+    var list = readTickets().filter(function (item) { return item.id !== stored.id; });
+    list.unshift(stored);
+    if (!writeJSON(KEY_TICKETS, list)) { setStatus('Save failed (storage full or blocked)'); return; }
+    ticket = saneTicket(stored);
+    renderSaved();
+    setStatus('Ticket saved in this browser');
+  }
+  function csvCell(value) {
+    var text = String(value == null ? '' : value);
+    if (/^[=+\-@\t\r]/.test(text)) text = "'" + text;
+    if (/[",\n\r]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+    return text;
+  }
+  function exportCsv() {
+    var from = $('ftFrom').value;
+    var to = $('ftTo').value;
+    if (from && to && from > to) { setStatus('The From date is after the To date'); return; }
+    var rows = readTickets().filter(function (item) {
+      var day = dateOf(item);
+      if (!day) return !from && !to;
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    });
+    var header = ['date', 'site', 'arrive', 'leave', 'odo_start', 'odo_end', 'miles', 'punch_closed', 'parts', 'notes'];
+    var lines = [header.join(',')];
+    rows.forEach(function (item) {
+      var punch = item.punch.filter(function (line) { return line.closed; }).map(function (line) { return line.text; }).join('; ');
+      var parts = item.parts.map(function (line) { return line.name + ' x ' + (line.qty || '1'); }).join('; ');
+      lines.push([
+        dateOf(item), item.site, item.arrive, item.leave, item.odoStart, item.odoEnd, item.miles, punch, parts, item.notes
+      ].map(csvCell).join(','));
+    });
+    var blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'field-ticket-' + (from || to || ymd(new Date())) + '.csv';
+    a.setAttribute('download', a.download);
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    setStatus(rows.length ? ('Exported ' + rows.length + ' ticket' + (rows.length === 1 ? '' : 's')) : 'Exported a header-only CSV — no tickets in that range');
+  }
+  function setRange(from, to) {
+    $('ftFrom').value = from;
+    $('ftTo').value = to;
+  }
+
+  $('ftAddSite').addEventListener('click', addSite);
+  $('ftSiteName').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); addSite(); } });
+  $('ftAddPunch').addEventListener('click', addPunch);
+  $('ftPunchText').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); addPunch(); } });
+  $('ftAddPart').addEventListener('click', addPart);
+  $('ftPartName').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); addPart(); } });
+  $('ftPartQty').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); addPart(); } });
+  ['ftSite', 'ftArrive', 'ftLeave', 'ftOdoStart', 'ftOdoEnd', 'ftNotes'].forEach(function (id) {
+    var node = $(id);
+    node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', readForm);
+  });
+  $('ftNew').addEventListener('click', function () {
+    if (!confirm('Start a new ticket? Unsaved edits on this visit are dropped.')) return;
+    ticket = blankTicket();
+    fillForm();
+    setStatus('New ticket');
+  });
+  $('ftSave').addEventListener('click', saveTicket);
+  $('ftPrint').addEventListener('click', function () { readForm(); window.print(); });
+  $('ftExport').addEventListener('click', exportCsv);
+  $('ftWeek').addEventListener('click', function () {
+    var now = new Date();
+    var monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+    var sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+    setRange(ymd(monday), ymd(sunday));
+    setStatus('Date range set to this week. Export CSV when you want the file.');
+  });
+  $('ftMonth').addEventListener('click', function () {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), now.getMonth(), 1);
+    var end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setRange(ymd(start), ymd(end));
+    setStatus('Date range set to this month. Export CSV when you want the file.');
+  });
+
+  sites = saneSites(readJSON(KEY_SITES, []));
+  renderSites();
+  fillForm();
+  renderSaved();
+  setStatus('Ready. Site list and tickets stay in this browser.');
+})();
+</script>
+<script id="ft-print">
+(function () {
+  'use strict';
+  var FOLDS = 'details.fafo-fold';
+  var saved = null, keys = null, guard = false, releaseTimer = 0;
+  function snapKeys() {
+    var o = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('fafo-fold:') === 0) o[k] = localStorage.getItem(k);
+      }
+    } catch (e) {}
+    return o;
+  }
+  function putKeys(o) {
+    try {
+      var now = snapKeys(), k;
+      for (k in now) if (!(k in o)) localStorage.removeItem(k);
+      for (k in o) if (now[k] !== o[k]) localStorage.setItem(k, o[k]);
+    } catch (e) {}
+  }
+  window.addEventListener('toggle', function (ev) {
+    var t = ev.target;
+    if (guard && t && t.matches && t.matches(FOLDS)) ev.stopImmediatePropagation();
+  }, true);
+  function before() {
+    if (saved) return;
+    clearTimeout(releaseTimer);
+    guard = true;
+    keys = snapKeys();
+    saved = [];
+    document.querySelectorAll(FOLDS).forEach(function (d) {
+      if (d.getAttribute('data-fafo-fold') === 'sites' || d.getAttribute('data-fafo-fold') === 'saved') return;
+      saved.push([d, d.open]);
+      if (!d.open) d.open = true;
+    });
+  }
+  function after() {
+    if (!saved) return;
+    saved.forEach(function (pair) { if (pair[0].open !== pair[1]) pair[0].open = pair[1]; });
+    saved = null;
+    var k = keys;
+    releaseTimer = setTimeout(function () {
+      requestAnimationFrame(function () {
+        setTimeout(function () { putKeys(k); guard = false; }, 0);
+      });
+    }, 0);
+  }
+  window.addEventListener('beforeprint', before);
+  window.addEventListener('afterprint', after);
+  try {
+    var mq = window.matchMedia && window.matchMedia('print');
+    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { if (e.matches) before(); else after(); });
+  } catch (e) {}
+})();
+</script>
+<script src="../shared/fafo-chrome.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-layout.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-config.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-version.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-runtime.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-api.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-ui.js?v=3.5.06"></script>
+<script src="../shared/aitoolbox-pro.js?v=3.5.06"></script>
+</body>
+</html>
