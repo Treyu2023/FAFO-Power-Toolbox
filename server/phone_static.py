@@ -37,6 +37,7 @@ EXACT = {
     "Solar System Debris Tracker.html",
     "Songforge.html",
     "manifest.webmanifest",
+    "Mustang/launch.html",
     "sw.js",
     "VERSION",
 }

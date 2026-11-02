@@ -5174,8 +5174,8 @@ def api_tools_launch(body: ToolsLaunchBody):
             return {"ok": ok, "launched": "imagine-tracker" if ok else None, "via": "Launch-ImagineVault.ps1", "rc": rc}
         raise HTTPException(404, "Imagine Vault scripts missing")
 
-    if tid in ("fafo-auto-tech", "fafo-auto-technician", "auto-tech", "mustang"):
-        # Standalone shop: C:\_Git\repos\html\FAFO-Auto-Tech via Launch-FAFO-Auto-Tech.bat
+    if tid in ("fafo-auto-tech", "fafo-auto-technician", "fafo-auto-mechanic", "auto-tech", "auto-mechanic", "mustang"):
+        # FAFO Auto Mechanic: C:\_Git\repos\html\FAFO-Auto-Tech via Launch-FAFO-Auto-Tech.bat
         bat = ROOT / "Launch-FAFO-Auto-Tech.bat"
         if not bat.is_file():
             raise HTTPException(404, "Launch-FAFO-Auto-Tech.bat missing")

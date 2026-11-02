@@ -1,9 +1,9 @@
 @echo off
-:: Pick a PNG, JPG, WEBP, GIF, BMP, or ICO for the FAFO Auto Technician desktop shortcut.
+:: Pick a PNG, JPG, WEBP, GIF, BMP, or ICO for the FAFO Auto Mechanic desktop shortcut.
 cd /d "%~dp0"
 set "LIB=C:\Users\rkey2\OneDrive\Custom Icons and Theme\Completed ICO\Custom"
 echo.
-echo  FAFO Auto Technician icon
+echo  FAFO Auto Mechanic icon
 echo  Folder: %LIB%
 echo  The desktop shortcut is a normal shortcut. You can also right-click it,
 echo  open Properties, and choose Change Icon.

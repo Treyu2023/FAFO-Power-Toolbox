@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FAFO Auto Technician</title>
+  <title>FAFO Auto Mechanic</title>
   <style>
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #10161c; color: #f2efe6; font: 18px/1.45 Segoe UI, sans-serif; }
     main { max-width: 34rem; padding: 24px; }
@@ -12,25 +12,45 @@
 </head>
 <body>
   <main>
-    <p id="m">Starting FAFO Auto Technician…</p>
+    <p id="m">Starting FAFO Auto Mechanic…</p>
   </main>
   <script>
     (function () {
       var msg = document.getElementById('m');
       var host = location.hostname;
-      var onLan = location.protocol.indexOf('http') === 0 && host && host !== '127.0.0.1' && host !== 'localhost';
+      var onLan = location.protocol.indexOf('http') === 0 && host && host !== '127.0.0.1' && host !== 'localhost' && host !== '127.0.0.87';
       var shop = onLan ? (location.protocol + '//' + host + ':8080/?shop=1') : 'http://127.0.0.1:8080/?shop=1';
+
+      function openShop() {
+        msg.textContent = 'FAFO Auto Mechanic is opening.';
+        location.href = shop;
+      }
+
+      function showManual() {
+        msg.innerHTML = 'FAFO Auto Mechanic did not start. On this PC, open the <strong>FAFO Auto Mechanic</strong> shortcut on the Desktop. To change that shortcut icon, right-click it, choose Properties, then Change Icon. Or run Change-FAFO-Auto-Tech-Icon.bat in the toolbox folder.';
+      }
+
+      if (onLan) {
+        fetch(shop.replace('/?shop=1', '/fafo-app.txt'), { cache: 'no-store' }).then(function (r) {
+          if (!r.ok) throw new Error('down');
+          return r.text();
+        }).then(function (body) {
+          if ((body || '').trim() !== 'fafo-auto-tech') throw new Error('wrong app');
+          openShop();
+        }).catch(function () {
+          msg.textContent = 'Start FAFO Auto Mechanic on the PC, then open this tile again.';
+        });
+        return;
+      }
+
       fetch('http://127.0.0.87:18765/api/tools/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: 'fafo-auto-tech', action: 'run' })
       }).then(function (r) {
         if (!r.ok) throw new Error('launch failed');
-        msg.textContent = 'FAFO Auto Technician is opening.';
-        if (onLan) location.href = shop;
-      }).catch(function () {
-        msg.innerHTML = 'The toolbox server did not start it. On this PC, open the <strong>FAFO Auto Technician</strong> shortcut on the Desktop. To change that shortcut icon, right-click it, choose Properties, then Change Icon. Or run Change-FAFO-Auto-Tech-Icon.bat in the toolbox folder.';
-      });
+        openShop();
+      }).catch(showManual);
     })();
   </script>
 </body>

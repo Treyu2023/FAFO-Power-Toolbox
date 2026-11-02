@@ -1,4 +1,4 @@
-# Point the FAFO Auto Technician desktop shortcut at an icon you pick.
+# Point the FAFO Auto Mechanic desktop shortcut at an icon you pick.
 # The shortcut stays a normal .lnk, so Properties, Change Icon still works.
 param(
     [string]$SourcePath = ''
@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Drawing
 $ToolboxRoot = Split-Path -Parent $PSScriptRoot
 $IconDir = 'C:\Users\rkey2\OneDrive\Custom Icons and Theme\Completed ICO\Custom'
 $IconPath = Join-Path $IconDir 'FAFO-Auto-Tech.ico'
-$ShortcutName = 'FAFO Auto Technician.lnk'
+$ShortcutName = 'FAFO Auto Mechanic.lnk'
 $Bat = Join-Path $ToolboxRoot 'Launch-FAFO-Auto-Tech.bat'
 
 function Write-PngIco {
@@ -117,9 +117,13 @@ function Update-ShortcutIcon {
     $link.TargetPath = $Bat
     $link.WorkingDirectory = $ToolboxRoot
     $link.WindowStyle = 1
-    $link.Description = 'FAFO Auto Technician. Standalone shop. Right-click, Properties, Change Icon, or run Change-FAFO-Auto-Tech-Icon.bat.'
+    $link.Description = 'FAFO Auto Mechanic. Replaces the old Mustang page. Right-click, Properties, Change Icon, or run Change-FAFO-Auto-Tech-Icon.bat.'
     $link.IconLocation = "$Ico,0"
     $link.Save()
+    foreach ($old in @('FAFO Auto Technician.lnk', 'FAFO Auto Tech.lnk', 'Mustang.lnk')) {
+        $oldPath = Join-Path $desktop $old
+        if (Test-Path -LiteralPath $oldPath) { Remove-Item -LiteralPath $oldPath -Force }
+    }
     Write-Host "Shortcut: $linkPath"
     Write-Host "Icon:     $Ico"
 }
