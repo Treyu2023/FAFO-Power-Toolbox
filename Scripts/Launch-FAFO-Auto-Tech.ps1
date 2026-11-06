@@ -105,9 +105,15 @@ if (Test-PortOpen) {
 }
 
 $waiter = Join-Path $PSScriptRoot 'Open-FAFO-Auto-Tech-When-Ready.ps1'
-Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $waiter
-) -WindowStyle Hidden
+# Start-Process -ArgumentList splits paths at spaces, so the waiter never ran
+# (the shop came up, and Chrome did not). ProcessStartInfo keeps the path whole.
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+$psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$waiter`""
+$psi.WorkingDirectory = $ToolboxRoot
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
+[System.Diagnostics.Process]::Start($psi) | Out-Null
 
 Write-Host "FAFO Auto Mechanic stays up while this window is open. Close the window to stop it."
 & node .\scripts\with-app-env.mjs node .\node_modules\vite\bin\vite.js dev --host 0.0.0.0 --port 8080

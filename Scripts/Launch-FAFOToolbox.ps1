@@ -54,17 +54,19 @@ function Start-ToolboxServer {
     # S1 only — HTML Toolbox lifecycle. S2 (Ultimate Tab) starts with Chrome, not here.
     $multi = Join-Path $PSScriptRoot 'Start-FAFOServers.ps1'
     if (Test-Path -LiteralPath $multi) {
-        $p = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
-            '-NoProfile', '-ExecutionPolicy', 'Bypass',
-            '-File', $multi,
-            '-ToolboxRoot', $ToolboxRoot,
-            '-NoFafoMeta',
-            '-Force',
-            '-HealthTimeoutSec', ([Math]::Max(8, [int]($HealthTimeoutSec / 2))),
-            '-Quiet'
-        ) -Wait -PassThru -WindowStyle Hidden
-        if ($p.ExitCode -ne 0) {
-            Write-Launch " [i] S1 start helper exit $($p.ExitCode) — falling back to toolbox-only" 'DarkGray'
+        $timeout = [Math]::Max(8, [int]($HealthTimeoutSec / 2))
+        # Same space-in-path bug as the Auto Mechanic waiter: an argument array
+        # cuts -File and -ToolboxRoot off at "HTML".
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$multi`" -ToolboxRoot `"$ToolboxRoot`" -NoFafoMeta -Force -HealthTimeoutSec $timeout -Quiet"
+        $psi.WorkingDirectory = $ToolboxRoot
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $proc.WaitForExit()
+        if ($proc.ExitCode -ne 0) {
+            Write-Launch " [i] S1 start helper exit $($proc.ExitCode) — falling back to toolbox-only" 'DarkGray'
         } else {
             return
         }
