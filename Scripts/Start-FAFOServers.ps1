@@ -137,6 +137,11 @@ function Resolve-FafoMetaRoot([string]$Preferred) {
     return $null
 }
 
+function Write-Utf8NoBom([string]$Path, [string]$Text) {
+    $enc = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Text, $enc)
+}
+
 function Save-MetaRootHint([string]$Path) {
     if (-not $Path) { return }
     $prefsPath = Join-Path $env:LOCALAPPDATA 'FAFO\launch-prefs.json'
@@ -165,7 +170,7 @@ function Save-MetaRootHint([string]$Path) {
             if ($existing.version) { $obj.version = $existing.version }
         } catch {}
     }
-    ($obj | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $prefsPath -Encoding UTF8
+    Write-Utf8NoBom $prefsPath ($obj | ConvertTo-Json -Depth 6)
     $lpPath = Join-Path $env:LOCALAPPDATA 'FAFO\local-paths.json'
     try {
         $lp = @{}
@@ -176,7 +181,7 @@ function Save-MetaRootHint([string]$Path) {
         $lp['ExplorerMetaRoot'] = $Path
         $lp['UpdatedAt'] = (Get-Date).ToString('o')
         $lp['Machine'] = $env:COMPUTERNAME
-        ($lp | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $lpPath -Encoding UTF8
+        Write-Utf8NoBom $lpPath ($lp | ConvertTo-Json -Depth 6)
     } catch {}
 }
 
