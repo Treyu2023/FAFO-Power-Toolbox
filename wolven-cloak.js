@@ -157,7 +157,7 @@
       var d = distToPolylineM(c.lat, c.lon, coords);
       if (minD == null || d < minD) minD = d;
       if (d <= bufferM) {
-        hits.push({ id: c.id, d: d, lat: c.lat, lon: c.lon, flock: !!c.flock, name: c.name || '' });
+        hits.push({ id: c.id, d: d, lat: c.lat, lon: c.lon, flock: !!c.flock, name: c.name || '', dir: c.dir || '' });
       }
     }
     var flockHits = 0;
@@ -329,6 +329,191 @@
       ');out center tags;';
   }
 
+  var CARDINAL = {
+    n: 0, nne: 22.5, ne: 45, ene: 67.5, e: 90, ese: 112.5, se: 135, sse: 157.5,
+    s: 180, ssw: 202.5, sw: 225, wsw: 247.5, w: 270, wnw: 292.5, nw: 315, nnw: 337.5
+  };
+
+  function oneBearing(token) {
+    var t = String(token || '').trim().toLowerCase();
+    if (!t) return null;
+    if (Object.prototype.hasOwnProperty.call(CARDINAL, t)) return CARDINAL[t];
+    if (/^-?\d+(?:\.\d+)?$/.test(t)) {
+      var n = Number(t);
+      if (n >= 0 && n <= 360) return n % 360;
+    }
+    return null;
+  }
+
+  /** Mapped camera facing. Bearing is degrees clockwise from north. Null when the tag has no direction. */
+  function parseFacing(dir) {
+    if (dir == null) return null;
+    var raw = String(dir).trim();
+    if (!raw || /forward|backward|both|all/i.test(raw)) return null;
+    var parts = raw.split(/\s*(?:-|;|–|to)\s*/i).filter(Boolean);
+    var a = oneBearing(parts[0]);
+    if (a == null) return null;
+    if (parts.length < 2) {
+      return { bearing: a, span: 50, label: compass(a) };
+    }
+    var b = oneBearing(parts[1]);
+    if (b == null) return { bearing: a, span: 50, label: compass(a) };
+    var cw = (b - a + 360) % 360;
+    var start = a;
+    var span = cw;
+    if (cw > 180) {
+      start = b;
+      span = 360 - cw;
+    }
+    if (span < 16) span = 16;
+    return { bearing: (start + span / 2) % 360, span: span, label: compass((start + span / 2) % 360) };
+  }
+
+  /** Geographic wedge in front of a camera. Ring is [lat, lon] for a map polygon. */
+  function wedgeRing(lat, lon, bearing, span, lengthM) {
+    var wide = span == null ? 50 : span;
+    if (wide < 16) wide = 16;
+    if (wide > 120) wide = 120;
+    var reach = lengthM || 90;
+    var steps = Math.max(2, Math.round(wide / 14));
+    var begin = bearing - wide / 2;
+    var ring = [[lat, lon]];
+    for (var i = 0; i <= steps; i++) {
+      var p = offsetPoint(lat, lon, begin + wide * (i / steps), reach);
+      ring.push([p.lat, p.lon]);
+    }
+    ring.push([lat, lon]);
+    return ring;
+  }
+
+  function junctionKind(type) {
+    if (type === 'merge') return 'merge';
+    if (type === 'turn' || type === 'end of road' || type === 'fork' ||
+        type === 'roundabout' || type === 'rotary' || type === 'exit roundabout' ||
+        type === 'exit rotary' || type === 'on ramp' || type === 'off ramp') return 'turn';
+    return '';
+  }
+
+  function junctionLabel(step) {
+    var kind = junctionKind(step && step.type);
+    if (!kind) return '';
+    var mod = String((step && step.modifier) || '').replace(/_/g, ' ');
+    if (kind === 'merge') return mod ? ('Merge ' + mod) : 'Merge';
+    if (step.type === 'roundabout' || step.type === 'rotary' || step.type === 'exit roundabout' || step.type === 'exit rotary') return 'Roundabout';
+    if (step.type === 'on ramp') return 'On ramp';
+    if (step.type === 'off ramp') return 'Off ramp';
+    return mod ? ('Turn ' + mod) : 'Turn';
+  }
+
+  function buildAnchors(start, end, rawSteps) {
+    var mids = [];
+    var steps = rawSteps || [];
+    for (var i = 0; i < steps.length; i++) {
+      var step = steps[i];
+      var kind = junctionKind(step.type);
+      if (!kind || step.lat == null || step.lon == null) continue;
+      var last = mids[mids.length - 1];
+      if (last && haversineM(last.lat, last.lon, step.lat, step.lon) < 35) continue;
+      mids.push({
+        lat: step.lat,
+        lon: step.lon,
+        kind: kind,
+        label: junctionLabel(step)
+      });
+    }
+    if (mids.length > 40) {
+      var trimmed = [];
+      for (var k = 0; k < 40; k++) {
+        trimmed.push(mids[Math.round(k * (mids.length - 1) / 39)]);
+      }
+      mids = trimmed;
+    }
+    return [{ lat: start.lat, lon: start.lon, kind: 'start', label: 'Start' }]
+      .concat(mids)
+      .concat([{ lat: end.lat, lon: end.lon, kind: 'end', label: 'End' }]);
+  }
+
+  function closestIndex(coords, lat, lon, from) {
+    var bestI = from;
+    var best = Infinity;
+    for (var i = from; i < coords.length; i++) {
+      var d = haversineM(lat, lon, coords[i][1], coords[i][0]);
+      if (d < best) {
+        best = d;
+        bestI = i;
+      }
+    }
+    return bestI;
+  }
+
+  /** Split a [lon, lat] line at anchors. Legs between unmoved anchors stay intact when one pin is swapped. */
+  function sliceLegs(coords, anchors) {
+    var legs = [];
+    if (!coords || coords.length < 2 || !anchors || anchors.length < 2) return legs;
+    var idxs = [0];
+    var from = 0;
+    for (var a = 1; a < anchors.length - 1; a++) {
+      var idx = closestIndex(coords, anchors[a].lat, anchors[a].lon, from);
+      if (idx <= from) idx = Math.min(coords.length - 1, from + 1);
+      idxs.push(idx);
+      from = idx;
+    }
+    idxs.push(coords.length - 1);
+    for (var i = 0; i < idxs.length - 1; i++) {
+      var slice = coords.slice(idxs[i], idxs[i + 1] + 1);
+      if (slice.length < 2) {
+        var p = coords[idxs[i]] || coords[0];
+        var q = coords[Math.min(coords.length - 1, idxs[i + 1])] || p;
+        slice = [p, q];
+      }
+      legs.push(slice);
+    }
+    return legs;
+  }
+
+  function joinLegs(legs) {
+    var out = [];
+    for (var i = 0; i < (legs || []).length; i++) {
+      var leg = legs[i] || [];
+      for (var j = (i === 0 ? 0 : 1); j < leg.length; j++) out.push(leg[j]);
+    }
+    return out;
+  }
+
+  function pathLengthM(coords) {
+    var meters = 0;
+    if (!coords || coords.length < 2) return 0;
+    for (var i = 1; i < coords.length; i++) {
+      meters += haversineM(coords[i - 1][1], coords[i - 1][0], coords[i][1], coords[i][0]);
+    }
+    return meters;
+  }
+
+  function flockAlong(coords, cameras, radiusM) {
+    var hits = [];
+    if (!coords || coords.length < 2) return hits;
+    var pad = Math.max(0.02, (radiusM || 400) / 111320 * 4);
+    var box = routeBBox(coords, pad);
+    for (var i = 0; i < (cameras || []).length; i++) {
+      var c = cameras[i];
+      if (!c.flock || !inBBox(c.lat, c.lon, box)) continue;
+      var d = distToPolylineM(c.lat, c.lon, coords);
+      if (d > radiusM) continue;
+      hits.push({
+        id: c.id,
+        lat: c.lat,
+        lon: c.lon,
+        flock: true,
+        name: c.name || 'Flock Safety',
+        dir: c.dir || '',
+        d: d,
+        facing: parseFacing(c.dir)
+      });
+    }
+    hits.sort(function (a, b) { return a.d - b.d; });
+    return hits;
+  }
+
   function formatKm(meters) {
     if (meters == null || !isFinite(meters)) return '—';
     if (meters < 1000) return Math.round(meters) + ' m';
@@ -426,7 +611,53 @@
     check('km format', formatKm(180) === '180 m' && formatKm(14100) === '14.1 km');
     check('compass', compass(0) === 'N' && compass(45) === 'NE');
 
-    return { ok: failures.length === 0, failures: failures, checks: 20 };
+    var faceN = parseFacing('N');
+    var face90 = parseFacing('90');
+    var faceSpan = parseFacing('0-90');
+    check('facing north', faceN && faceN.bearing === 0 && faceN.label === 'N');
+    check('facing degrees', face90 && face90.bearing === 90);
+    check('facing span', faceSpan && Math.abs(faceSpan.bearing - 45) < 0.01 && faceSpan.span === 90);
+    check('facing unknown', parseFacing('') === null && parseFacing('forward') === null);
+    var wedge = wedgeRing(30.27, -97.74, 90, 50, 90);
+    var east = offsetPoint(30.27, -97.74, 90, 90);
+    var wedgeEast = false;
+    for (var w = 0; w < wedge.length; w++) {
+      if (Math.abs(wedge[w][0] - east.lat) < 0.0004 && Math.abs(wedge[w][1] - east.lon) < 0.0004) wedgeEast = true;
+    }
+    check('wedge points east', wedge.length >= 4 && wedgeEast);
+
+    var line = [[-97.80, 30.20], [-97.79, 30.21], [-97.78, 30.22], [-97.77, 30.23], [-97.76, 30.24]];
+    var anchors = buildAnchors(
+      { lat: 30.20, lon: -97.80 },
+      { lat: 30.24, lon: -97.76 },
+      [
+        { type: 'depart', lat: 30.20, lon: -97.80 },
+        { type: 'continue', modifier: 'straight', lat: 30.21, lon: -97.79 },
+        { type: 'turn', modifier: 'right', lat: 30.22, lon: -97.78 },
+        { type: 'new name', lat: 30.225, lon: -97.775 },
+        { type: 'merge', modifier: 'left', lat: 30.23, lon: -97.77 },
+        { type: 'arrive', lat: 30.24, lon: -97.76 }
+      ]
+    );
+    check('turn and merge pins', anchors.length === 4 && anchors[1].kind === 'turn' && anchors[2].kind === 'merge');
+    var legs = sliceLegs(line, anchors);
+    var joined = joinLegs(legs);
+    check('legs join back', legs.length === 3 && joined.length === line.length && joined[2][0] === line[2][0]);
+    var kept = legs[1].slice();
+    var keptLast = legs[2].slice();
+    legs[0] = [[-97.80, 30.20], [-97.785, 30.215], [-97.78, 30.22]];
+    var swapped = joinLegs(legs);
+    check('pin swap keeps later legs', legs[1].length === kept.length && legs[1][0][0] === kept[0][0] &&
+      legs[2][legs[2].length - 1][0] === keptLast[keptLast.length - 1][0] && swapped[0][0] === -97.80);
+
+    var along = flockAlong(through, [
+      { id: 'flock', lat: 30.27, lon: -97.74, flock: true, dir: 'E', name: 'Flock Safety' },
+      { id: 'other', lat: 30.2702, lon: -97.74, flock: false, dir: 'N' },
+      { id: 'far', lat: 30.30, lon: -97.74, flock: true, dir: 'S' }
+    ], 400);
+    check('flock along route', along.length === 1 && along[0].id === 'flock' && along[0].facing && along[0].facing.label === 'E');
+
+    return { ok: failures.length === 0, failures: failures, checks: 28 };
   }
 
   return {
@@ -453,6 +684,14 @@
     overpassQuery: overpassQuery,
     formatKm: formatKm,
     formatMin: formatMin,
+    parseFacing: parseFacing,
+    wedgeRing: wedgeRing,
+    junctionKind: junctionKind,
+    buildAnchors: buildAnchors,
+    sliceLegs: sliceLegs,
+    joinLegs: joinLegs,
+    pathLengthM: pathLengthM,
+    flockAlong: flockAlong,
     selfTest: selfTest
   };
 });

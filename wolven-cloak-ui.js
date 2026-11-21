@@ -27,7 +27,9 @@
   var nextGeoAt = 0;
   var buffer = 250;
   var routeHits = [];
-  var map, puck, startMark, endMark, cloakLine, directLine, bufferRing, camLayer;
+  var routeEdit = null;
+  var pinBusy = false;
+  var map, puck, startMark, endMark, cloakLine, directLine, bufferRing, camLayer, flockLayer, editLayer;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
@@ -97,6 +99,13 @@
     }
     savePrefs();
     if (armed && fix) drawBuffer();
+    if (routeEdit && map) {
+      var coords = W.joinLegs(routeEdit.legs);
+      var avoid = W.camerasForAvoidance(cameras, avoidAll());
+      routeHits = W.scoreRoute(coords, avoid.cameras, bufferM()).hits;
+      showAlong(coords);
+      drawCameras();
+    }
   }
 
   function showBanner(html) {
@@ -121,6 +130,8 @@
       maxZoom: 19
     }).addTo(map);
     camLayer = L.layerGroup().addTo(map);
+    flockLayer = L.layerGroup().addTo(map);
+    editLayer = L.layerGroup().addTo(map);
     map.on('click', onMapClick);
     map.on('moveend', drawCameras);
     setTimeout(function () { map.invalidateSize(); }, 200);
@@ -233,6 +244,7 @@
     }
     for (var j = 0; j < rows.length; j++) {
       var pin = rows[j];
+      if (pin.flock && routeEdit && routeEdit.alongIds && routeEdit.alongIds[pin.id]) continue;
       L.circleMarker([pin.lat, pin.lon], {
         radius: pin.flock ? 6 : 4,
         color: pin.flock ? '#f5c542' : '#8b9bb0',
@@ -256,7 +268,7 @@
         weight: 2,
         fillColor: h.flock ? '#f5c542' : '#ff4d6a',
         fillOpacity: 0.95
-      }).bindTooltip(esc((h.flock ? 'Flock' : 'ALPR') + ' on the route · ' + W.formatKm(h.d)), { direction: 'top' })
+      }).bindTooltip(esc(hitTip(h)), { direction: 'top' })
         .addTo(camLayer);
     }
   }
@@ -350,8 +362,9 @@
     return { s: s - padLat, w: w - padLon, n: n + padLat, e: e + padLon };
   }
 
-  function flattenSteps(route) {
-    var steps = [];
+  function collectSteps(route) {
+    var text = [];
+    var raw = [];
     var legs = route.legs || [];
     for (var i = 0; i < legs.length; i++) {
       var list = legs[i].steps || [];
@@ -359,12 +372,23 @@
         var step = list[j];
         var man = (step.maneuver && step.maneuver.type) || 'continue';
         var mod = (step.maneuver && step.maneuver.modifier) || '';
+        var loc = step.maneuver && step.maneuver.location;
+        raw.push({
+          type: man,
+          modifier: mod,
+          name: step.name || '',
+          lat: loc ? loc[1] : null,
+          lon: loc ? loc[0] : null,
+          distanceM: step.distance || 0
+        });
         if (man === 'arrive' || man === 'depart') continue;
-        var text = (mod ? mod.replace(/_/g, ' ') + ' · ' : '') + (step.name || man.replace(/_/g, ' '));
-        steps.push({ text: text, distanceM: step.distance || 0 });
+        text.push({
+          text: (mod ? mod.replace(/_/g, ' ') + ' · ' : '') + (step.name || man.replace(/_/g, ' ')),
+          distanceM: step.distance || 0
+        });
       }
     }
-    return steps.slice(0, 10);
+    return { text: text.slice(0, 10), raw: raw };
   }
 
   async function osrm(points, alternatives, signal) {
@@ -386,11 +410,13 @@
           throw new Error(data.message || 'No driving route between those points.');
         }
         return data.routes.map(function (route) {
+          var packed = collectSteps(route);
           return {
             coords: route.geometry.coordinates,
             distanceM: route.distance,
             durationS: route.duration,
-            steps: flattenSteps(route)
+            steps: packed.text,
+            rawSteps: packed.raw
           };
         });
       } catch (e) {
@@ -409,11 +435,24 @@
       distanceM: route.distanceM,
       durationS: route.durationS,
       steps: route.steps,
+      rawSteps: route.rawSteps || [],
       hits: score.hits,
       hitCount: score.hitCount,
       flockHits: score.flockHits,
       minD: score.minD
     };
+  }
+
+  function hitTip(h) {
+    var face = h.flock ? W.parseFacing(h.dir) : null;
+    var label = h.flock ? 'Flock' : 'ALPR';
+    if (face) label += ' · faces ' + face.label;
+    else if (h.flock) label += ' · facing not mapped';
+    return label + ' on the route · ' + W.formatKm(h.d);
+  }
+
+  function alongRadius() {
+    return Math.max(bufferM(), 400);
   }
 
   function lineFrom(coords, style) {
@@ -435,6 +474,254 @@
     routeHits = chosen.hits || [];
     drawCameras();
     map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
+  }
+
+  function flockIcon(bearing, label) {
+    return L.divIcon({
+      className: 'flock-icon',
+      html: '<div class="flock-arrow" style="transform:rotate(' + Number(bearing).toFixed(1) + 'deg)"></div><b>' + esc(label) + '</b>',
+      iconSize: [36, 46],
+      iconAnchor: [18, 28]
+    });
+  }
+
+  function editIcon(anchor, n) {
+    return L.divIcon({
+      className: 'edit-pin' + (anchor.kind === 'merge' ? ' merge' : ''),
+      html: '<span>' + (anchor.kind === 'merge' ? 'M' : 'T') + n + '</span>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  }
+
+  function drawFlockAlong(list) {
+    if (!flockLayer) flockLayer = L.layerGroup().addTo(map);
+    flockLayer.clearLayers();
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var face = item.facing || W.parseFacing(item.dir);
+      var tip = 'Flock';
+      if (item.name && item.name !== 'Flock Safety') tip += ' · ' + item.name;
+      tip += face ? (' · faces ' + face.label) : ' · facing not mapped';
+      tip += ' · ' + W.formatKm(item.d) + ' from this route';
+      if (face) {
+        var ring = W.wedgeRing(item.lat, item.lon, face.bearing, face.span, 90);
+        L.polygon(ring, {
+          color: '#f5c542',
+          weight: 1,
+          fillColor: '#f5c542',
+          fillOpacity: 0.38
+        }).bindTooltip(esc(tip), { direction: 'top' }).addTo(flockLayer);
+        L.marker([item.lat, item.lon], {
+          icon: flockIcon(face.bearing, face.label),
+          interactive: true,
+          keyboard: false,
+          zIndexOffset: 450
+        }).bindTooltip(esc(tip), { direction: 'top' }).addTo(flockLayer);
+      } else {
+        L.circleMarker([item.lat, item.lon], {
+          radius: 8,
+          color: '#041018',
+          weight: 2,
+          fillColor: '#f5c542',
+          fillOpacity: 1
+        }).bindTooltip(esc(tip), { direction: 'top' }).addTo(flockLayer);
+      }
+    }
+  }
+
+  function fillFlockList(list) {
+    var ul = document.getElementById('flockList');
+    if (!ul) return;
+    ul.textContent = '';
+    if (!list.length) {
+      var empty = document.createElement('li');
+      empty.textContent = 'No mapped Flock camera within ' + W.formatKm(alongRadius()) + ' of this line.';
+      ul.appendChild(empty);
+      return;
+    }
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var face = item.facing || W.parseFacing(item.dir);
+      var li = document.createElement('li');
+      li.textContent = 'Flock · ' + (face ? ('faces ' + face.label) : 'facing not mapped') +
+        ' · ' + W.formatKm(item.d) + ' off the line';
+      ul.appendChild(li);
+    }
+  }
+
+  function showAlong(coords) {
+    var along = W.flockAlong(coords, cameras, alongRadius());
+    var shown = along.slice(0, 80);
+    if (routeEdit) {
+      routeEdit.alongIds = {};
+      for (var i = 0; i < shown.length; i++) routeEdit.alongIds[shown[i].id] = true;
+    }
+    drawFlockAlong(shown);
+    fillFlockList(shown);
+    if (along.length > shown.length) {
+      var ul = document.getElementById('flockList');
+      if (ul) {
+        var more = document.createElement('li');
+        more.textContent = 'Showing the nearest 80 of ' + along.length + ' Flock cameras on this line.';
+        ul.appendChild(more);
+      }
+    }
+    return along;
+  }
+
+  function clearEdit() {
+    routeEdit = null;
+    pinBusy = false;
+    if (editLayer) editLayer.clearLayers();
+    if (flockLayer) flockLayer.clearLayers();
+    var hint = document.getElementById('editHint');
+    if (hint) {
+      hint.hidden = true;
+      hint.textContent = '';
+    }
+    var ul = document.getElementById('flockList');
+    if (ul) ul.textContent = '';
+  }
+
+  function drawEditPins() {
+    if (!routeEdit) return;
+    if (!editLayer) editLayer = L.layerGroup().addTo(map);
+    editLayer.clearLayers();
+    routeEdit.markers = [];
+    var n = 0;
+    for (var i = 0; i < routeEdit.anchors.length; i++) {
+      var anchor = routeEdit.anchors[i];
+      if (anchor.kind !== 'turn' && anchor.kind !== 'merge') {
+        routeEdit.markers.push(null);
+        continue;
+      }
+      n += 1;
+      var marker = L.marker([anchor.lat, anchor.lon], {
+        draggable: true,
+        autoPan: true,
+        icon: editIcon(anchor, n),
+        zIndexOffset: 700
+      });
+      marker.bindTooltip(anchor.label + ' · drag to move this corner', { direction: 'top' });
+      marker.on('dragend', (function (index, pin) {
+        return function () {
+          applyPinMove(index, pin.getLatLng(), pin);
+        };
+      })(i, marker));
+      marker.addTo(editLayer);
+      routeEdit.markers.push(marker);
+    }
+  }
+
+  function installEdit(route) {
+    var start = currentStart();
+    var end = endPin;
+    if (!start || !end || !route) return;
+    var anchors = W.buildAnchors(start, end, route.rawSteps || []);
+    var legs = W.sliceLegs(route.coords, anchors);
+    var speed = route.durationS > 0 ? route.distanceM / route.durationS : 12;
+    routeEdit = {
+      anchors: anchors,
+      legs: legs,
+      markers: [],
+      distanceM: route.distanceM,
+      durationS: route.durationS,
+      speed: speed > 1 ? speed : 12
+    };
+    drawEditPins();
+    var along = showAlong(W.joinLegs(legs));
+    drawCameras();
+    var hint = document.getElementById('editHint');
+    var turns = 0;
+    for (var i = 0; i < anchors.length; i++) {
+      if (anchors[i].kind === 'turn' || anchors[i].kind === 'merge') turns++;
+    }
+    if (hint) {
+      hint.hidden = false;
+      hint.textContent = turns
+        ? 'Drag a T or M pin. That corner changes, the other pins stay, and the Flock arrows redraw on the new line. ' +
+          along.length + ' Flock camera' + (along.length === 1 ? '' : 's') + ' along this route.'
+        : 'This drive has no turn or merge pin. Flock arrows still mark cameras along the line.';
+    }
+  }
+
+  function refreshEditedLine(refit) {
+    if (!routeEdit) return;
+    var coords = W.joinLegs(routeEdit.legs);
+    var avoid = W.camerasForAvoidance(cameras, avoidAll());
+    var score = W.scoreRoute(coords, avoid.cameras, bufferM());
+    var latlngs = [];
+    for (var i = 0; i < coords.length; i++) latlngs.push([coords[i][1], coords[i][0]]);
+    if (!cloakLine) {
+      cloakLine = lineFrom(coords, { color: '#2ef5c9', weight: 5, opacity: 0.95 }).addTo(map);
+    } else {
+      cloakLine.setLatLngs(latlngs);
+    }
+    routeHits = score.hits;
+    var along = showAlong(coords);
+    drawCameras();
+    var body = document.getElementById('resultBody');
+    var extra = document.getElementById('resultDirect');
+    if (body) {
+      body.textContent = W.formatKm(routeEdit.distanceM) + ' · ' + W.formatMin(routeEdit.durationS) + '. ' +
+        hitPhrase({ hitCount: score.hitCount, flockHits: score.flockHits, minD: score.minD }) +
+        ' ' + along.length + ' Flock camera' + (along.length === 1 ? '' : 's') + ' marked along this line.';
+    }
+    if (extra) extra.textContent = 'Edited at one corner. The other turn and merge pins stayed where they were.';
+    if (refit && cloakLine) map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
+    return { score: score, along: along };
+  }
+
+  function boxAroundAnchors(points) {
+    var box = corridorBox(points[0], points[points.length - 1]);
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].lat < box.s) box.s = points[i].lat;
+      if (points[i].lat > box.n) box.n = points[i].lat;
+      if (points[i].lon < box.w) box.w = points[i].lon;
+      if (points[i].lon > box.e) box.e = points[i].lon;
+    }
+    return box;
+  }
+
+  async function applyPinMove(index, latlng, marker) {
+    if (!routeEdit || pinBusy) {
+      if (marker && routeEdit && routeEdit.anchors[index]) {
+        marker.setLatLng([routeEdit.anchors[index].lat, routeEdit.anchors[index].lon]);
+      }
+      return;
+    }
+    if (index <= 0 || index >= routeEdit.anchors.length - 1) return;
+    var anchor = routeEdit.anchors[index];
+    var prev = { lat: anchor.lat, lon: anchor.lon };
+    anchor.lat = latlng.lat;
+    anchor.lon = latlng.lng;
+    pinBusy = true;
+    say('Moving the ' + anchor.label + ' pin. The other corners stay.');
+    try {
+      var before = routeEdit.anchors[index - 1];
+      var after = routeEdit.anchors[index + 1];
+      var oldInLen = W.pathLengthM(routeEdit.legs[index - 1]);
+      var oldOutLen = W.pathLengthM(routeEdit.legs[index]);
+      await ensureCameras(boxAroundAnchors([before, anchor, after]));
+      var inbound = await osrm([before, anchor], false);
+      var outbound = await osrm([anchor, after], false);
+      routeEdit.legs[index - 1] = inbound[0].coords;
+      routeEdit.legs[index] = outbound[0].coords;
+      var speed = routeEdit.speed || 12;
+      routeEdit.distanceM = Math.max(0, routeEdit.distanceM - oldInLen - oldOutLen + inbound[0].distanceM + outbound[0].distanceM);
+      routeEdit.durationS = Math.max(0, routeEdit.durationS - (oldInLen / speed) - (oldOutLen / speed) + inbound[0].durationS + outbound[0].durationS);
+      var fresh = refreshEditedLine(false);
+      var n = fresh && fresh.along ? fresh.along.length : 0;
+      say(anchor.label + ' moved. ' + n + ' Flock camera' + (n === 1 ? '' : 's') + ' along the new route. The other pins stayed.');
+    } catch (err) {
+      anchor.lat = prev.lat;
+      anchor.lon = prev.lon;
+      if (marker) marker.setLatLng([prev.lat, prev.lon]);
+      say(err && err.message ? err.message : 'Could not route through that pin. It is back where it was.');
+    } finally {
+      pinBusy = false;
+    }
   }
 
   function hitPhrase(route) {
@@ -494,6 +781,7 @@
     planAbort = new AbortController();
     var signal = planAbort.signal;
     planning = true;
+    clearEdit();
     document.getElementById('btnPlan').disabled = true;
     say('Loading mapped cameras for the corridor…');
     try {
@@ -521,6 +809,7 @@
       var direct = scored[0];
       drawRoutes(direct, best);
       showResult(direct, best, avoid, scored.length);
+      installEdit(best);
       say(best.hitCount
         ? 'Cloak route still meets ' + best.hitCount + ' mapped pin' + (best.hitCount === 1 ? '' : 's') + ' inside the buffer.'
         : 'Cloak route stays outside the buffer for the pins loaded in this corridor.');
