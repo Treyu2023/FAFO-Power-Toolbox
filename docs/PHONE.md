@@ -130,6 +130,7 @@ On phone-width (≤640px), the Launcher skips the full-screen cinematic intro an
 | **Phone Launcher** (this home) | Media Library, VSR, most System Tools |
 | Phone Assist Navigator, punch list | Verifone live probes, diagnostics HUD |
 | Drawing Board, converter, loan calc | Anything that talks to `127.0.0.87:18765` |
+| Wolven-cloak (GPS needs the HTTPS Pages copy) | |
 | Typing Trainer / KEYFLARE, games | |
 
 Phone Chrome cannot reach `127.0.0.87` on the PC. Treat LAN :18780 or Pages as the **Phone Launcher + offline tools** path.
