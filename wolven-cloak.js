@@ -528,6 +528,123 @@
     return h + ' h ' + (m % 60) + ' min';
   }
 
+  function wrapBearing(deg) {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  /** Signed shortest turn, degrees in (-180, 180]. */
+  function turnToward(from, to) {
+    var d = wrapBearing(to) - wrapBearing(from);
+    if (d > 180) d -= 360;
+    if (d <= -180) d += 360;
+    return d;
+  }
+
+  /** Ease a heading so a noisy fix does not spin the map. alpha is 0..1. */
+  function smoothBearing(prev, next, alpha) {
+    if (next == null || isNaN(next)) {
+      return prev == null || isNaN(prev) ? 0 : wrapBearing(prev);
+    }
+    if (prev == null || isNaN(prev)) return wrapBearing(next);
+    var a = alpha == null ? 0.45 : alpha;
+    if (a < 0) a = 0;
+    if (a > 1) a = 1;
+    return wrapBearing(prev + turnToward(prev, next) * a);
+  }
+
+  function projectSeg(lat, lon, lat1, lon1, lat2, lon2) {
+    var mLat = 111132;
+    var mLon = 111320 * Math.cos(lat * Math.PI / 180);
+    if (Math.abs(mLon) < 1) mLon = 1;
+    var x = (lon - lon1) * mLon;
+    var y = (lat - lat1) * mLat;
+    var dx = (lon2 - lon1) * mLon;
+    var dy = (lat2 - lat1) * mLat;
+    var len2 = dx * dx + dy * dy;
+    var t = len2 > 0 ? (x * dx + y * dy) / len2 : 0;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+    var px = t * dx;
+    var py = t * dy;
+    return {
+      t: t,
+      d: Math.sqrt((x - px) * (x - px) + (y - py) * (y - py)),
+      lat: lat1 + (py / mLat),
+      lon: lon1 + (px / mLon)
+    };
+  }
+
+  /** Where a phone sits on a [lon, lat] line: distance along, distance off, and the travel bearing. */
+  function progressOnLine(lat, lon, coords) {
+    if (!coords || coords.length < 2 || lat == null || lon == null) return null;
+    var bestI = 0;
+    var best = Infinity;
+    var step = coords.length > 1600 ? 4 : 1;
+    for (var i = 0; i < coords.length; i += step) {
+      var d = haversineM(lat, lon, coords[i][1], coords[i][0]);
+      if (d < best) {
+        best = d;
+        bestI = i;
+      }
+    }
+    var i0 = Math.max(0, bestI - step);
+    var i1 = Math.min(coords.length - 2, bestI + step);
+    var seg = i0;
+    var proj = null;
+    var off = Infinity;
+    for (var s = i0; s <= i1; s++) {
+      var hit = projectSeg(lat, lon, coords[s][1], coords[s][0], coords[s + 1][1], coords[s + 1][0]);
+      if (hit.d < off) {
+        off = hit.d;
+        seg = s;
+        proj = hit;
+      }
+    }
+    if (!proj) return null;
+    var cum = 0;
+    var atSeg = 0;
+    for (var k = 1; k < coords.length; k++) {
+      cum += haversineM(coords[k - 1][1], coords[k - 1][0], coords[k][1], coords[k][0]);
+      if (k === seg) atSeg = cum;
+    }
+    var along = atSeg + haversineM(coords[seg][1], coords[seg][0], proj.lat, proj.lon);
+    var bearing = bearingDeg(proj.lat, proj.lon, coords[seg + 1][1], coords[seg + 1][0]);
+    if (proj.t > 0.98 && seg + 2 < coords.length) {
+      bearing = bearingDeg(coords[seg + 1][1], coords[seg + 1][0], coords[seg + 2][1], coords[seg + 2][0]);
+    }
+    return {
+      index: seg,
+      t: proj.t,
+      alongM: along,
+      remainM: Math.max(0, cum - along),
+      totalM: cum,
+      offM: off,
+      bearing: bearing,
+      lat: proj.lat,
+      lon: proj.lon
+    };
+  }
+
+  /** Next cue whose along-distance is still ahead. cues are {alongM, label}. */
+  function nextCue(alongM, cues) {
+    if (!cues || !cues.length || alongM == null || !isFinite(alongM)) return null;
+    var best = null;
+    for (var i = 0; i < cues.length; i++) {
+      var c = cues[i];
+      if (!c || c.alongM == null || !isFinite(c.alongM)) continue;
+      if (c.alongM < alongM + 25) continue;
+      if (!best || c.alongM < best.alongM) best = c;
+    }
+    var cue = best;
+    var passed = false;
+    if (!cue) {
+      cue = cues[cues.length - 1];
+      passed = true;
+    }
+    if (!cue) return null;
+    return { cue: cue, distanceM: Math.max(0, cue.alongM - alongM), passed: passed };
+  }
+
   function selfTest() {
     var failures = [];
     function check(name, cond) {
@@ -657,7 +774,22 @@
     ], 400);
     check('flock along route', along.length === 1 && along[0].id === 'flock' && along[0].facing && along[0].facing.label === 'E');
 
-    return { ok: failures.length === 0, failures: failures, checks: 28 };
+    check('short turn across north', turnToward(350, 10) === 20 && turnToward(10, 350) === -20);
+    var eased = smoothBearing(350, 10, 0.5);
+    check('smooth heading across north', eased < 1 || eased > 359);
+    check('smooth heading from empty', smoothBearing(null, 90, 1) === 90);
+    var mid = progressOnLine(30.27, -97.74, [[-97.76, 30.27], [-97.72, 30.27]]);
+    check('progress halfway', mid && Math.abs(mid.alongM - mid.remainM) < 40 && mid.offM < 5 && angleDelta(mid.bearing, 90) < 5);
+    var side = progressOnLine(30.27 + (120 / 111132), -97.74, [[-97.76, 30.27], [-97.72, 30.27]]);
+    check('progress offset', side && Math.abs(side.offM - 120) < 25);
+    var cue = nextCue(100, [
+      { alongM: 40, label: 'behind' },
+      { alongM: 400, label: 'Turn right' },
+      { alongM: 900, label: 'End' }
+    ]);
+    check('next cue', cue && cue.cue.label === 'Turn right' && Math.abs(cue.distanceM - 300) < 0.1 && !cue.passed);
+
+    return { ok: failures.length === 0, failures: failures, checks: 34 };
   }
 
   return {
@@ -692,6 +824,11 @@
     joinLegs: joinLegs,
     pathLengthM: pathLengthM,
     flockAlong: flockAlong,
+    wrapBearing: wrapBearing,
+    turnToward: turnToward,
+    smoothBearing: smoothBearing,
+    progressOnLine: progressOnLine,
+    nextCue: nextCue,
     selfTest: selfTest
   };
 });

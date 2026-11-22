@@ -29,7 +29,29 @@
   var routeHits = [];
   var routeEdit = null;
   var pinBusy = false;
-  var map, puck, startMark, endMark, cloakLine, directLine, bufferRing, camLayer, flockLayer, editLayer;
+  var map, puck, accuracyRing, startMark, endMark, cloakLine, directLine, bufferRing, camLayer, flockLayer, editLayer;
+  var bases = {};
+  var hillLayer = null;
+  var baseName = 'street';
+  var layers = { hill: false, flock: true, other: true, turns: true, route: true, buffer: true };
+  var screenMode = 'split';
+  var orientMode = 'auto';
+  var driving = false;
+  var followHold = false;
+  var driveFramed = false;
+  var driveBearing = 0;
+  var bearingQueued = false;
+  var screenBeforeDrive = null;
+  var orientLockNoted = false;
+  var speedKmh = null;
+  var speedAt = 0;
+  var lastCamAt = 0;
+  var lastFollowLat = 0;
+  var lastFollowLon = 0;
+  var lastNearAt = 0;
+  var lastDrawAt = 0;
+  var lastDrawZoom = null;
+  var puckShown = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
@@ -51,7 +73,20 @@
       if (avoid && typeof p.avoidAll === 'boolean') avoid.checked = p.avoidAll;
       if (vib && typeof p.vibrate === 'boolean') vib.checked = p.vibrate;
       if (speak && typeof p.speak === 'boolean') speak.checked = p.speak;
+      if (p.base === 'street' || p.base === 'sat' || p.base === 'terrain') baseName = p.base;
+      if (p.layers && typeof p.layers === 'object') {
+        ['hill', 'flock', 'other', 'turns', 'route', 'buffer'].forEach(function (key) {
+          if (typeof p.layers[key] === 'boolean') layers[key] = p.layers[key];
+        });
+      }
+      if (p.screen === 'full' || p.screen === 'split') screenMode = p.screen;
+      if (p.orient === 'auto' || p.orient === 'portrait' || p.orient === 'landscape') orientMode = p.orient;
     } catch (e) { /* keep defaults */ }
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      if (qs.get('screen') === 'full' || qs.get('screen') === 'split') screenMode = qs.get('screen');
+      if (qs.get('orient') === 'auto' || qs.get('orient') === 'portrait' || qs.get('orient') === 'landscape') orientMode = qs.get('orient');
+    } catch (e2) { /* keep saved layout */ }
   }
 
   function savePrefs() {
@@ -60,7 +95,11 @@
         buffer: buffer,
         avoidAll: document.getElementById('avoidAll').checked,
         vibrate: document.getElementById('vibrate').checked,
-        speak: document.getElementById('speak').checked
+        speak: document.getElementById('speak').checked,
+        base: baseName,
+        layers: layers,
+        screen: screenMode,
+        orient: orientMode
       }));
     } catch (e) { /* private mode */ }
   }
@@ -124,20 +163,69 @@
   }
 
   function initMap() {
-    map = L.map('map', { zoomControl: true, attributionControl: true }).setView([39.8, -98.6], 4);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19
-    }).addTo(map);
+    map = L.map('map', {
+      zoomControl: true,
+      attributionControl: true,
+      zoomSnap: 0.5,
+      zoomDelta: 0.5
+    }).setView([39.8, -98.6], 4);
+    map.createPane('baseStreet');
+    map.createPane('baseSat');
+    map.createPane('baseTerrain');
+    map.createPane('overlayHill');
+    map.getPane('baseStreet').style.zIndex = 200;
+    map.getPane('baseSat').style.zIndex = 201;
+    map.getPane('baseTerrain').style.zIndex = 202;
+    map.getPane('overlayHill').style.zIndex = 350;
+    bases.street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      pane: 'baseStreet',
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+    bases.sat = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'baseSat',
+      maxZoom: 19,
+      maxNativeZoom: 18,
+      attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community'
+    });
+    bases.terrain = L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png', {
+      pane: 'baseTerrain',
+      maxZoom: 19,
+      maxNativeZoom: 17,
+      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
+    });
+    hillLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'overlayHill',
+      maxZoom: 19,
+      maxNativeZoom: 16,
+      opacity: 0.62,
+      attribution: 'Hillshade &copy; <a href="https://www.esri.com/">Esri</a>, USGS, NOAA'
+    });
+    setBase(baseName, true);
+    if (layers.hill) hillLayer.addTo(map);
     camLayer = L.layerGroup().addTo(map);
     flockLayer = L.layerGroup().addTo(map);
     editLayer = L.layerGroup().addTo(map);
     map.on('click', onMapClick);
-    map.on('moveend', drawCameras);
+    map.on('moveend', onMapMoveEnd);
+    map.on('move zoom viewreset', queueBearing);
+    map.on('dragstart', onMapDragStart);
     setTimeout(function () { map.invalidateSize(); }, 200);
   }
 
+  function onMapMoveEnd() {
+    if (driving) {
+      var z = Math.round(map.getZoom());
+      var now = Date.now();
+      if (now - lastDrawAt < 1800 && lastDrawZoom === z) return;
+      lastDrawAt = now;
+      lastDrawZoom = z;
+    }
+    drawCameras();
+  }
+
   function onMapClick(ev) {
+    if (driving) return;
     if (dropMode === 'start') {
       startPin = { lat: ev.latlng.lat, lon: ev.latlng.lng, label: 'Dropped start' };
       drawEnds();
@@ -162,7 +250,7 @@
   function setEnd(lat, lon, label) {
     endPin = { lat: lat, lon: lon, label: label || 'End' };
     drawEnds();
-    map.setView([lat, lon], Math.max(map.getZoom(), 13));
+    if (!driving) map.setView([lat, lon], Math.max(map.getZoom(), 13));
     say('End set. Plan cloak when the start looks right.');
     refreshNear(lat, lon);
   }
@@ -184,21 +272,59 @@
     }
   }
 
+  function puckIcon(bearing) {
+    var known = bearing != null && !isNaN(bearing);
+    var rot = known ? Number(bearing) : 0;
+    return L.divIcon({
+      className: 'puck-icon',
+      html: '<div class="' + (known ? 'puck-chev' : 'puck-dot') + '" style="transform:rotate(' + rot.toFixed(1) + 'deg)"></div>',
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
+    });
+  }
+
   function drawPuck() {
-    if (!fix) return;
+    if (!fix || !map) return;
     var ll = [fix.lat, fix.lon];
+    var bearing = driving ? driveBearing : (fix.heading != null && !isNaN(fix.heading) ? fix.heading : null);
+    var bucket = bearing == null ? 'dot' : Math.round(bearing / 12);
     if (!puck) {
-      puck = L.circleMarker(ll, {
-        radius: 8, color: '#041018', weight: 2, fillColor: '#00f3ff', fillOpacity: 1
+      puck = L.marker(ll, {
+        icon: puckIcon(bearing),
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 800
       }).addTo(map);
+      puckShown = bucket;
     } else {
       puck.setLatLng(ll);
+      if (bucket !== puckShown) {
+        puck.setIcon(puckIcon(bearing));
+        puckShown = bucket;
+      }
     }
-    if (armed) drawBuffer();
+    if (fix.accuracy && fix.accuracy >= 5 && fix.accuracy <= 80) {
+      if (!accuracyRing) {
+        accuracyRing = L.circle(ll, {
+          radius: fix.accuracy, color: '#00f3ff', weight: 1, fillColor: '#00f3ff', fillOpacity: 0.05
+        }).addTo(map);
+      } else {
+        accuracyRing.setLatLng(ll);
+        accuracyRing.setRadius(fix.accuracy);
+      }
+    } else if (accuracyRing) {
+      map.removeLayer(accuracyRing);
+      accuracyRing = null;
+    }
+    if ((armed || driving) && layers.buffer) drawBuffer();
   }
 
   function drawBuffer() {
-    if (!fix) return;
+    if (!fix || !map) return;
+    if (!layers.buffer || (!armed && !driving)) {
+      clearBuffer();
+      return;
+    }
     var ll = [fix.lat, fix.lon];
     if (!bufferRing) {
       bufferRing = L.circle(ll, {
@@ -227,6 +353,11 @@
   function drawCameras() {
     if (!camLayer || !map) return;
     camLayer.clearLayers();
+    if (!layers.flock && !layers.other) {
+      if (map.hasLayer(camLayer)) map.removeLayer(camLayer);
+      return;
+    }
+    if (!map.hasLayer(camLayer)) camLayer.addTo(map);
     var bounds = map.getBounds();
     var center = map.getCenter();
     var rows = [];
@@ -244,6 +375,8 @@
     }
     for (var j = 0; j < rows.length; j++) {
       var pin = rows[j];
+      if (pin.flock && !layers.flock) continue;
+      if (!pin.flock && !layers.other) continue;
       if (pin.flock && routeEdit && routeEdit.alongIds && routeEdit.alongIds[pin.id]) continue;
       L.circleMarker([pin.lat, pin.lon], {
         radius: pin.flock ? 6 : 4,
@@ -473,7 +606,9 @@
     cloakLine = lineFrom(chosen.coords, { color: '#2ef5c9', weight: 5, opacity: 0.95 }).addTo(map);
     routeHits = chosen.hits || [];
     drawCameras();
-    map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
+    applyRouteVisibility();
+    if (driving) followDrive();
+    else map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
   }
 
   function flockIcon(bearing, label) {
@@ -630,8 +765,11 @@
       speed: speed > 1 ? speed : 12
     };
     drawEditPins();
-    var along = showAlong(W.joinLegs(legs));
+    var joined = W.joinLegs(legs);
+    routeEdit.cues = cuesFromAnchors(routeEdit.anchors, joined);
+    var along = showAlong(joined);
     drawCameras();
+    applyRouteVisibility();
     var hint = document.getElementById('editHint');
     var turns = 0;
     for (var i = 0; i < anchors.length; i++) {
@@ -649,6 +787,7 @@
   function refreshEditedLine(refit) {
     if (!routeEdit) return;
     var coords = W.joinLegs(routeEdit.legs);
+    routeEdit.cues = cuesFromAnchors(routeEdit.anchors, coords);
     var avoid = W.camerasForAvoidance(cameras, avoidAll());
     var score = W.scoreRoute(coords, avoid.cameras, bufferM());
     var latlngs = [];
@@ -669,7 +808,9 @@
         ' ' + along.length + ' Flock camera' + (along.length === 1 ? '' : 's') + ' marked along this line.';
     }
     if (extra) extra.textContent = 'Edited at one corner. The other turn and merge pins stayed where they were.';
-    if (refit && cloakLine) map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
+    applyRouteVisibility();
+    if (refit && cloakLine && !driving) map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
+    if (driving && !followHold) followDrive();
     return { score: score, along: along };
   }
 
@@ -910,17 +1051,22 @@
     chip.classList.add('live');
     drawPuck();
     if (first) {
-      map.setView([fix.lat, fix.lon], 14);
+      if (!driving) map.setView([fix.lat, fix.lon], 14);
       ensureCameras(W.bboxAround(fix.lat, fix.lon, 8)).then(function () {
         refreshNear(fix.lat, fix.lon);
       }).catch(function (e) {
         say(e && e.message ? e.message : 'Could not load cameras around this phone.');
         refreshNear(fix.lat, fix.lon);
       });
-    } else {
+    } else if (!driving || Date.now() - lastNearAt > 5000) {
+      lastNearAt = Date.now();
       refreshNear(fix.lat, fix.lon);
     }
-    if (armed) checkAhead();
+    if (armed || driving) checkAhead();
+    if (driving) followDrive();
+    if (first && driving && statusEl && statusEl.textContent.indexOf('Waiting for this phone') >= 0) {
+      say(routeEdit ? 'Drive is following the cloak line.' : 'Drive is following this phone.');
+    }
   }
 
   function onFixErr(err) {
@@ -934,7 +1080,7 @@
     say('This phone has not returned a fix yet.');
   }
 
-  function startWatch() {
+  function startWatch(quiet) {
     if (!secureEnough()) {
       showBanner('Live GPS needs a secure page. On the phone open <a href="' + PAGES + '">Wolven-cloak on GitHub Pages</a>. This address can still search places, take coordinates, and plan from pins you drop.');
       say('GPS stays off on a plain http link. Drop pins or paste coordinates.');
@@ -945,7 +1091,7 @@
       return;
     }
     if (watchId != null) {
-      say('Already watching this phone.');
+      if (!quiet) say('Already watching this phone.');
       return;
     }
     chip.textContent = 'GPS…';
@@ -974,14 +1120,18 @@
     }
     insideIds = nowInside;
     if (!rows.length) {
-      chip.textContent = 'Watch clear';
+      if (armed && !driving) chip.textContent = 'Watch clear';
       return;
     }
     var top = rows[0];
     var name = top.camera.flock ? 'Flock pin' : 'ALPR pin';
-    chip.textContent = top.inBuffer ? 'Inside buffer' : 'Pin ahead';
-    chip.classList.toggle('live', !top.inBuffer);
-    say(name + ' ' + W.formatKm(top.d) + (top.inBuffer ? ' — inside the buffer.' : ' ahead.'));
+    if (!driving) {
+      chip.textContent = top.inBuffer ? 'Inside buffer' : 'Pin ahead';
+      chip.classList.toggle('live', !top.inBuffer);
+    }
+    if (!driving || fresh) {
+      say(name + ' ' + W.formatKm(top.d) + (top.inBuffer ? ' — inside the buffer.' : ' ahead.'));
+    }
     if (fresh) {
       var vib = document.getElementById('vibrate');
       if (vib && vib.checked && navigator.vibrate) navigator.vibrate([80, 40, 120]);
@@ -1023,6 +1173,442 @@
     checkAhead();
   }
 
+  function cuesFromAnchors(anchors, coords) {
+    var cues = [];
+    var list = anchors || [];
+    for (var i = 0; i < list.length; i++) {
+      var anchor = list[i];
+      if (!anchor || anchor.kind === 'start') continue;
+      var prog = W.progressOnLine(anchor.lat, anchor.lon, coords);
+      if (!prog) continue;
+      cues.push({ alongM: prog.alongM, kind: anchor.kind, label: anchor.label || anchor.kind });
+    }
+    cues.sort(function (a, b) { return a.alongM - b.alongM; });
+    return cues;
+  }
+
+  function setGroup(group, on) {
+    if (!group || !map) return;
+    if (on && !map.hasLayer(group)) group.addTo(map);
+    if (!on && map.hasLayer(group)) map.removeLayer(group);
+  }
+
+  function applyRouteVisibility() {
+    setGroup(flockLayer, layers.flock);
+    setGroup(editLayer, layers.turns && (!driving || followHold));
+    if (cloakLine) {
+      if (layers.route && !map.hasLayer(cloakLine)) cloakLine.addTo(map);
+      if (!layers.route && map.hasLayer(cloakLine)) map.removeLayer(cloakLine);
+    }
+    if (directLine) {
+      if (layers.route && !map.hasLayer(directLine)) directLine.addTo(map);
+      if (!layers.route && map.hasLayer(directLine)) map.removeLayer(directLine);
+    }
+    if (!layers.buffer) clearBuffer();
+    else if ((armed || driving) && fix) drawBuffer();
+    setPinsDraggable(layers.turns && (!driving || followHold));
+  }
+
+  function setPinsDraggable(on) {
+    if (!routeEdit || !routeEdit.markers) return;
+    for (var i = 0; i < routeEdit.markers.length; i++) {
+      var marker = routeEdit.markers[i];
+      if (!marker || !marker.dragging) continue;
+      if (on) marker.dragging.enable();
+      else marker.dragging.disable();
+    }
+  }
+
+  function setBase(name, skipSave) {
+    if (!bases[name]) name = 'street';
+    baseName = name;
+    var keys = ['street', 'sat', 'terrain'];
+    for (var i = 0; i < keys.length; i++) {
+      var layer = bases[keys[i]];
+      if (!layer || !map) continue;
+      if (keys[i] === name) {
+        if (!map.hasLayer(layer)) layer.addTo(map);
+      } else if (map.hasLayer(layer)) {
+        map.removeLayer(layer);
+      }
+    }
+    document.body.classList.remove('base-street', 'base-sat', 'base-terrain');
+    document.body.classList.add('base-' + name);
+    var buttons = document.querySelectorAll('#baseSeg button');
+    for (var b = 0; b < buttons.length; b++) {
+      buttons[b].classList.toggle('on', buttons[b].getAttribute('data-base') === name);
+    }
+    paintCredit();
+    if (!skipSave) savePrefs();
+  }
+
+  function setLayerFlag(key, on) {
+    layers[key] = !!on;
+    if (key === 'hill' && hillLayer && map) {
+      if (layers.hill && !map.hasLayer(hillLayer)) hillLayer.addTo(map);
+      if (!layers.hill && map.hasLayer(hillLayer)) map.removeLayer(hillLayer);
+    }
+    applyRouteVisibility();
+    drawCameras();
+    paintCredit();
+    savePrefs();
+  }
+
+  function syncLayerChecks() {
+    var ids = {
+      hill: 'layerHill',
+      flock: 'layerFlock',
+      other: 'layerOther',
+      turns: 'layerTurns',
+      route: 'layerRoute',
+      buffer: 'layerBuffer'
+    };
+    Object.keys(ids).forEach(function (key) {
+      var el = document.getElementById(ids[key]);
+      if (el) el.checked = !!layers[key];
+    });
+  }
+
+  function paintCredit() {
+    var el = document.getElementById('mapCredit');
+    if (!el) return;
+    var show = driving && !followHold;
+    el.hidden = !show;
+    if (!show) return;
+    if (baseName === 'sat') {
+      el.innerHTML = 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics';
+    } else if (baseName === 'terrain') {
+      el.innerHTML = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM &middot; &copy; <a href="https://opentopomap.org">OpenTopoMap</a>';
+    } else {
+      el.innerHTML = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+    }
+    if (layers.hill) el.innerHTML += ' &middot; Hillshade &copy; Esri, USGS, NOAA';
+  }
+
+  function markPressed(id, on) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('on', !!on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  function applyChrome() {
+    document.body.classList.toggle('screen-full', screenMode === 'full');
+    document.body.classList.toggle('screen-split', screenMode !== 'full');
+    document.body.classList.remove('orient-auto', 'orient-portrait', 'orient-landscape');
+    document.body.classList.add('orient-' + orientMode);
+    markPressed('btnSplit', screenMode !== 'full');
+    markPressed('btnFull', screenMode === 'full');
+    markPressed('btnOrientAuto', orientMode === 'auto');
+    markPressed('btnOrientPort', orientMode === 'portrait');
+    markPressed('btnOrientLand', orientMode === 'landscape');
+  }
+
+  function settleMap() {
+    setTimeout(function () {
+      if (map) map.invalidateSize();
+      if (driving && fix && !followHold) followDrive();
+    }, 240);
+  }
+
+  function setScreen(mode, skipSave, quiet) {
+    screenMode = mode === 'full' ? 'full' : 'split';
+    applyChrome();
+    if (!quiet) {
+      try {
+        var root = document.documentElement;
+        if (screenMode === 'full' && root.requestFullscreen && !document.fullscreenElement) {
+          var req = root.requestFullscreen();
+          if (req && req.catch) req.catch(function () { /* the map still fills the page */ });
+        } else if (screenMode !== 'full' && document.fullscreenElement && document.exitFullscreen) {
+          var exit = document.exitFullscreen();
+          if (exit && exit.catch) exit.catch(function () {});
+        }
+      } catch (e) { /* the map still fills the page */ }
+    }
+    if (!skipSave) savePrefs();
+    settleMap();
+  }
+
+  function setOrient(mode, skipSave, quiet) {
+    if (mode !== 'portrait' && mode !== 'landscape') mode = 'auto';
+    orientMode = mode;
+    applyChrome();
+    var scr = window.screen && screen.orientation;
+    try {
+      if (!quiet && mode === 'auto' && scr && typeof scr.unlock === 'function') {
+        Promise.resolve(scr.unlock()).catch(function () {});
+      } else if (!quiet && mode !== 'auto' && scr && typeof scr.lock === 'function') {
+        Promise.resolve(scr.lock(mode)).catch(function () {
+          if (!orientLockNoted) {
+            orientLockNoted = true;
+            say('This browser kept the phone’s rotation. The layout is still ' + mode + '.');
+          }
+        });
+      } else if (!quiet && mode !== 'auto' && !orientLockNoted) {
+        orientLockNoted = true;
+        say('This browser cannot rotate the phone. The layout is still ' + mode + '.');
+      }
+    } catch (e) {
+      if (!quiet && mode !== 'auto' && !orientLockNoted) {
+        orientLockNoted = true;
+        say('This browser kept the phone’s rotation. The layout is still ' + mode + '.');
+      }
+    }
+    if (!skipSave) savePrefs();
+    settleMap();
+  }
+
+  function queueBearing() {
+    if (!driving || followHold || bearingQueued || !map) return;
+    bearingQueued = true;
+    requestAnimationFrame(function () {
+      bearingQueued = false;
+      applyBearing();
+    });
+  }
+
+  function applyBearing() {
+    if (!map || !map._mapPane) return;
+    var pane = map._mapPane;
+    var pos = L.DomUtil.getPosition(pane) || L.point(0, 0);
+    if (!driving || followHold) {
+      pane.style.transformOrigin = '';
+      L.DomUtil.setPosition(pane, pos);
+      return;
+    }
+    var size = map.getSize();
+    pane.style.transformOrigin = (size.x * 0.5 - pos.x) + 'px ' + (size.y * 0.72 - pos.y) + 'px';
+    var scale = '';
+    var cur = pane.style.transform || '';
+    var found = cur.match(/scale\([^)]+\)/);
+    if (found) scale = ' ' + found[0];
+    pane.style.transform = 'translate3d(' + pos.x + 'px,' + pos.y + 'px,0)' + scale + ' rotateZ(' + (-driveBearing).toFixed(2) + 'deg)';
+  }
+
+  function driveCenter(lat, lon, zoom) {
+    var size = map.getSize();
+    var dy = size.y * 0.22;
+    var projected = map.project([lat, lon], zoom);
+    return map.unproject(L.point(projected.x, projected.y - dy), zoom);
+  }
+
+  function pickDriveBearing() {
+    var routeBearing = null;
+    var off = null;
+    if (routeEdit && routeEdit.legs) {
+      var prog = W.progressOnLine(fix.lat, fix.lon, W.joinLegs(routeEdit.legs));
+      if (prog) {
+        routeBearing = prog.bearing;
+        off = prog.offM;
+      }
+    }
+    var gps = (fix.heading != null && !isNaN(fix.heading) && fix.speed != null && fix.speed > 1) ? fix.heading : null;
+    if (routeBearing != null && (off == null || off < 70)) return routeBearing;
+    if (gps != null) return gps;
+    if (routeBearing != null) return routeBearing;
+    return driveBearing;
+  }
+
+  function smoothedSpeed() {
+    var box = document.getElementById('hudSpeed');
+    if (!fix || fix.speed == null || !isFinite(fix.speed) || fix.speed < 0) {
+      if (!(speedKmh != null && Date.now() - speedAt < 4000)) speedKmh = null;
+    } else {
+      var next = fix.speed * 3.6;
+      speedAt = Date.now();
+      speedKmh = speedKmh == null ? next : (speedKmh * 0.65 + next * 0.35);
+    }
+    if (!box) return;
+    var kmh = speedKmh == null ? null : Math.round(speedKmh);
+    var strong = box.querySelector('b');
+    if (strong) strong.textContent = kmh == null ? '—' : String(kmh);
+    var small = box.querySelector('small');
+    if (small) small.textContent = kmh == null ? '' : (Math.round(kmh / 1.609344) + ' mph');
+  }
+
+  function flockAheadPhrase() {
+    if (!fix) return '';
+    var heading = driving ? driveBearing : (fix.heading != null && !isNaN(fix.heading) ? fix.heading : null);
+    var moving = fix.speed != null && fix.speed > 1.5 && heading != null;
+    var avoid = W.camerasForAvoidance(cameras, avoidAll());
+    var rows = W.aheadCameras(fix.lat, fix.lon, moving ? heading : null, avoid.cameras, bufferM(), moving ? 800 : bufferM());
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].camera || !rows[i].camera.flock) continue;
+      return rows[i].inBuffer
+        ? ('Flock pin inside the buffer · ' + W.formatKm(rows[i].d))
+        : ('Flock pin ' + W.formatKm(rows[i].d) + ' ahead');
+    }
+    return '';
+  }
+
+  function paintHud() {
+    var cueEl = document.getElementById('hudCue');
+    var distEl = document.getElementById('hudDist');
+    var metaEl = document.getElementById('hudMeta');
+    smoothedSpeed();
+    if (!cueEl || !distEl || !metaEl) return;
+    if (!routeEdit || !routeEdit.legs) {
+      cueEl.textContent = 'Following this phone';
+      distEl.textContent = 'No cloak line yet';
+      metaEl.textContent = fix && fix.accuracy ? ('GPS ± ' + Math.round(fix.accuracy) + ' m') : '';
+      return;
+    }
+    var coords = W.joinLegs(routeEdit.legs);
+    if (!routeEdit.cues) routeEdit.cues = cuesFromAnchors(routeEdit.anchors, coords);
+    var prog = fix ? W.progressOnLine(fix.lat, fix.lon, coords) : null;
+    var nxt = prog ? W.nextCue(prog.alongM, routeEdit.cues) : null;
+    if (!prog) {
+      cueEl.textContent = 'Drive';
+      distEl.textContent = '';
+    } else if (prog.offM > 80) {
+      cueEl.textContent = 'Off the planned line';
+      distEl.textContent = W.formatKm(prog.offM) + ' off';
+    } else if (nxt && nxt.cue) {
+      cueEl.textContent = nxt.cue.label || 'Continue';
+      distEl.textContent = nxt.passed ? 'Arriving' : (nxt.distanceM < 35 ? 'Now' : W.formatKm(nxt.distanceM));
+    } else {
+      cueEl.textContent = 'Continue on the line';
+      distEl.textContent = '';
+    }
+    var bits = [];
+    if (prog) bits.push(W.formatKm(prog.remainM) + ' left');
+    if (prog && fix && fix.speed > 2) bits.push(W.formatMin(prog.remainM / fix.speed));
+    var ahead = flockAheadPhrase();
+    if (ahead) bits.push(ahead);
+    if (fix && fix.accuracy) bits.push('GPS ± ' + Math.round(fix.accuracy) + ' m');
+    metaEl.textContent = bits.join(' · ');
+  }
+
+  function followDrive() {
+    if (!driving || !fix || followHold || !map) return;
+    var target = pickDriveBearing();
+    var delta = Math.abs(W.turnToward(driveBearing, target));
+    driveBearing = W.smoothBearing(driveBearing, target, delta > 45 ? 0.85 : 0.5);
+    var zoom = driveFramed ? map.getZoom() : 17;
+    driveFramed = true;
+    var center = driveCenter(fix.lat, fix.lon, zoom);
+    var now = Date.now();
+    var moved = lastCamAt ? W.haversineM(fix.lat, fix.lon, lastFollowLat, lastFollowLon) : Infinity;
+    if (!lastCamAt || now - lastCamAt >= 380 || moved > 8 || Math.abs(map.getZoom() - zoom) > 0.2) {
+      lastCamAt = now;
+      lastFollowLat = fix.lat;
+      lastFollowLon = fix.lon;
+      if (Math.abs(map.getZoom() - zoom) > 0.2) map.setView(center, zoom, { animate: true, duration: 0.4 });
+      else map.panTo(center, { animate: true, duration: 0.45, easeLinearity: 0.25 });
+    }
+    queueBearing();
+    drawPuck();
+    paintHud();
+  }
+
+  function onMapDragStart() {
+    if (driving && !followHold) holdLook();
+  }
+
+  function holdLook() {
+    if (!driving) return;
+    followHold = true;
+    var stage = document.getElementById('stage');
+    if (stage) stage.classList.add('drive-look');
+    applyBearing();
+    applyRouteVisibility();
+    if (map) map.dragging.enable();
+    var btn = document.getElementById('btnLook');
+    if (btn) btn.textContent = 'Recenter';
+    paintCredit();
+    say('Look around. Recenter returns to the drive view.');
+  }
+
+  function resumeFollow() {
+    if (!driving) return;
+    followHold = false;
+    var stage = document.getElementById('stage');
+    if (stage) stage.classList.remove('drive-look');
+    if (map) map.dragging.disable();
+    applyRouteVisibility();
+    var btn = document.getElementById('btnLook');
+    if (btn) btn.textContent = 'Look';
+    lastCamAt = 0;
+    paintCredit();
+    if (fix) followDrive();
+  }
+
+  function setDriveButtons(on) {
+    ['btnDrive', 'btnDriveMap'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('on', on);
+      el.textContent = on ? 'Driving' : 'Drive';
+    });
+  }
+
+  function enterDrive() {
+    if (driving) return;
+    if (!secureEnough()) {
+      showBanner('Live GPS needs a secure page. On the phone open <a href="' + PAGES + '">Wolven-cloak on GitHub Pages</a>. This address can still search places, take coordinates, and plan from pins you drop.');
+      say('Drive follows this phone, so it needs the secure page.');
+      return;
+    }
+    driving = true;
+    followHold = false;
+    driveFramed = false;
+    lastCamAt = 0;
+    document.body.classList.add('driving');
+    var stage = document.getElementById('stage');
+    if (stage) {
+      stage.classList.add('drive-tilt');
+      stage.classList.remove('drive-look');
+    }
+    var hud = document.getElementById('hud');
+    if (hud) hud.hidden = false;
+    setDriveButtons(true);
+    var look = document.getElementById('btnLook');
+    if (look) look.textContent = 'Look';
+    dropMode = null;
+    markDropButtons();
+    if (map) map.dragging.disable();
+    applyRouteVisibility();
+    if (screenMode !== 'full') {
+      screenBeforeDrive = screenMode;
+      setScreen('full', true);
+    } else {
+      screenBeforeDrive = null;
+    }
+    startWatch(true);
+    paintCredit();
+    paintHud();
+    if (fix) followDrive();
+    else say('Drive is on. Waiting for this phone’s location.');
+  }
+
+  function exitDrive() {
+    if (!driving) return;
+    driving = false;
+    followHold = false;
+    document.body.classList.remove('driving');
+    var stage = document.getElementById('stage');
+    if (stage) stage.classList.remove('drive-tilt', 'drive-look');
+    var hud = document.getElementById('hud');
+    if (hud) hud.hidden = true;
+    applyBearing();
+    if (map) map.dragging.enable();
+    setDriveButtons(false);
+    applyRouteVisibility();
+    paintCredit();
+    var restore = screenBeforeDrive;
+    screenBeforeDrive = null;
+    if (restore && screenMode === 'full') setScreen(restore, true);
+    if (cloakLine && map) map.fitBounds(cloakLine.getBounds(), { padding: [28, 28] });
+    say('Drive view off.');
+    settleMap();
+  }
+
+  function toggleDrive() {
+    if (driving) exitDrive();
+    else enterDrive();
+  }
+
   function bootBanner() {
     if (!secureEnough()) {
       showBanner('Live GPS needs a secure page. On the phone open <a href="' + PAGES + '">Wolven-cloak on GitHub Pages</a>. You can still search places, paste coordinates, and drop pins here.');
@@ -1057,7 +1643,41 @@
     document.getElementById('vibrate').addEventListener('change', savePrefs);
     document.getElementById('speak').addEventListener('change', savePrefs);
     document.getElementById('btnPlan').addEventListener('click', plan);
+    document.getElementById('btnDrive').addEventListener('click', toggleDrive);
+    document.getElementById('btnDriveMap').addEventListener('click', toggleDrive);
+    document.getElementById('btnDriveExit').addEventListener('click', exitDrive);
+    document.getElementById('btnLook').addEventListener('click', function () {
+      if (followHold) resumeFollow();
+      else holdLook();
+    });
     document.getElementById('btnArm').addEventListener('click', toggleArm);
+    document.getElementById('btnSplit').addEventListener('click', function () { setScreen('split'); });
+    document.getElementById('btnFull').addEventListener('click', function () { setScreen('full'); });
+    document.getElementById('btnOrientAuto').addEventListener('click', function () { setOrient('auto'); });
+    document.getElementById('btnOrientPort').addEventListener('click', function () { setOrient('portrait'); });
+    document.getElementById('btnOrientLand').addEventListener('click', function () { setOrient('landscape'); });
+    document.getElementById('btnLayers').addEventListener('click', function () {
+      var panel = document.getElementById('layerPanel');
+      panel.hidden = !panel.hidden;
+      this.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+    });
+    document.getElementById('baseSeg').addEventListener('click', function (ev) {
+      var btn = ev.target.closest('button');
+      if (!btn) return;
+      setBase(btn.getAttribute('data-base'));
+    });
+    [
+      ['layerHill', 'hill'],
+      ['layerFlock', 'flock'],
+      ['layerOther', 'other'],
+      ['layerTurns', 'turns'],
+      ['layerRoute', 'route'],
+      ['layerBuffer', 'buffer']
+    ].forEach(function (pair) {
+      document.getElementById(pair[0]).addEventListener('change', function () {
+        setLayerFlag(pair[1], this.checked);
+      });
+    });
     document.getElementById('btnCameras').addEventListener('click', function () {
       var b = map.getBounds();
       var box = { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() };
@@ -1080,6 +1700,7 @@
     });
     window.addEventListener('resize', function () {
       if (map) map.invalidateSize();
+      if (driving && fix && !followHold) followDrive();
     });
   }
 
@@ -1090,12 +1711,17 @@
   }
 
   loadPrefs();
+  syncLayerChecks();
+  applyChrome();
   setBuffer(buffer);
   loadCache();
   initMap();
+  applyRouteVisibility();
   drawCameras();
   bind();
   bootBanner();
+  setOrient(orientMode, true, true);
+  setScreen(screenMode, true, true);
   var orig = onFix;
   onFix = function (pos) {
     var was = fix;

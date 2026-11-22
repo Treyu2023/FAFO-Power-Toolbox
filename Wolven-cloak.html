@@ -31,7 +31,8 @@
       background: var(--bg);
       font-family: "Segoe UI", system-ui, sans-serif;
       display: grid;
-      grid-template-rows: auto auto minmax(180px, 1fr) minmax(200px, 50dvh);
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(38dvh, 1fr) minmax(168px, 46dvh);
       overflow: hidden;
     }
     header {
@@ -78,7 +79,14 @@
     }
     #banner a { color: var(--gold); }
     #banner[hidden] { display: none; }
-    #map { grid-row: 3; min-height: 0; background: #0a1016; }
+    #stage {
+      grid-row: 3;
+      position: relative;
+      min-height: 0;
+      background: #0a1016;
+      overflow: hidden;
+    }
+    #map { height: 100%; width: 100%; background: #0a1016; }
     #sheet {
       grid-row: 4;
       min-height: 0;
@@ -156,9 +164,13 @@
     details summary { color: var(--text); cursor: pointer; min-height: 44px; display: flex; align-items: center; }
     footer.note { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; }
     .leaflet-container { background: #0a1016; font-family: "Segoe UI", system-ui, sans-serif; }
-    .leaflet-tile-pane {
+    .leaflet-baseStreet-pane {
       filter: invert(100%) hue-rotate(180deg) brightness(0.82) contrast(0.95) saturate(0.7);
     }
+    .leaflet-overlayHill-pane { pointer-events: none; }
+    body.base-sat .leaflet-overlayHill-pane { mix-blend-mode: multiply; }
+    body.base-street .leaflet-overlayHill-pane { mix-blend-mode: soft-light; }
+    body.base-terrain .leaflet-overlayHill-pane { mix-blend-mode: multiply; opacity: .4; }
     .leaflet-control-attribution {
       max-width: calc(100% - 8px);
       white-space: normal;
@@ -196,19 +208,188 @@
       box-shadow: 0 0 0 2px rgba(4, 16, 24, .8);
     }
     .edit-pin.merge span { color: #f5c542; border-color: #f5c542; }
-    @media (min-width: 900px) {
-      body {
-        grid-template-columns: 400px minmax(0, 1fr);
+    .screenbar {
+      flex: 1 1 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .screenbar button {
+      flex: 1 1 72px;
+      min-height: 40px;
+      padding: 0 8px;
+      font-size: 12px;
+    }
+    #mapTools, #layerPanel, #hud, #mapCredit { position: absolute; z-index: 620; }
+    #mapTools {
+      top: 8px;
+      right: max(8px, env(safe-area-inset-right));
+      left: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #mapTools button, #hud button {
+      min-height: 40px;
+      background: rgba(4, 8, 12, .88);
+    }
+    #layerPanel {
+      top: 96px;
+      right: max(8px, env(safe-area-inset-right));
+      left: auto;
+      width: min(300px, calc(100% - 16px));
+      max-height: calc(100% - 110px);
+      overflow: auto;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(7, 13, 18, .94);
+    }
+    #layerPanel[hidden] { display: none; }
+    #layerPanel .fine { color: var(--muted); font-size: 12px; line-height: 1.4; margin: 6px 0 0; }
+    #hud {
+      inset: 0;
+      z-index: 640;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    #hud[hidden] { display: none; }
+    #hud .hud-card, #hud button { pointer-events: auto; }
+    .hud-top, .hud-bottom {
+      margin: 8px;
+    }
+    .hud-top {
+      background: rgba(4, 8, 12, .9);
+      border: 1px solid rgba(46, 245, 201, .5);
+      border-radius: 14px;
+      padding: 10px 12px;
+      max-width: min(560px, calc(100% - 78px));
+    }
+    .leaflet-top.leaflet-right { top: 96px; }
+    #hudCue { font-size: 1.2rem; font-weight: 750; line-height: 1.2; }
+    #hudDist { color: var(--gold); font-size: 1.55rem; font-weight: 800; line-height: 1.1; }
+    #hudMeta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .hud-bottom {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      margin-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+    #hudSpeed {
+      min-width: 84px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(4, 8, 12, .9);
+      padding: 6px 10px;
+      text-align: center;
+    }
+    #hudSpeed b { display: block; font-size: 1.45rem; line-height: 1; color: var(--accent); }
+    #hudSpeed span, #hudSpeed small { display: block; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .puck-icon { background: transparent; border: 0; }
+    .puck-chev {
+      width: 0;
+      height: 0;
+      margin: 4px auto 0;
+      border-left: 11px solid transparent;
+      border-right: 11px solid transparent;
+      border-bottom: 24px solid #00f3ff;
+      filter: drop-shadow(0 0 3px #041018);
+    }
+    .puck-dot {
+      width: 16px;
+      height: 16px;
+      margin: 12px auto;
+      border-radius: 50%;
+      background: #00f3ff;
+      border: 2px solid #041018;
+    }
+    #mapCredit {
+      right: 6px;
+      bottom: 4px;
+      z-index: 610;
+      max-width: min(440px, 78%);
+      font-size: 10px;
+      line-height: 1.3;
+      color: #d5dde6;
+      background: rgba(4, 8, 12, .62);
+      padding: 2px 5px;
+      border-radius: 6px;
+    }
+    #mapCredit[hidden] { display: none; }
+    #mapCredit a { color: #d5dde6; }
+    #stage.drive-tilt { perspective: 1100px; }
+    #stage.drive-tilt #map {
+      transform: rotateX(42deg) scale(1.18);
+      transform-origin: 50% 80%;
+    }
+    #stage.drive-tilt.drive-look #map { transform: none; }
+    #stage.drive-tilt:not(.drive-look) .leaflet-control-zoom { visibility: hidden; }
+    #stage.drive-tilt:not(.drive-look) .leaflet-control-attribution { display: none; }
+    body.screen-full {
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+    body.screen-full #sheet { display: none; }
+    body.screen-full header .tag,
+    body.screen-full header .brand { display: none; }
+    body.screen-full #stage { grid-row: 3; grid-column: 1 / -1; }
+    @media (orientation: landscape), (min-width: 900px) {
+      body.screen-split:not(.orient-portrait) {
+        grid-template-columns: minmax(220px, 380px) minmax(0, 1fr);
         grid-template-rows: auto auto minmax(0, 1fr);
-        height: 100dvh;
       }
-      header, #banner { grid-column: 1 / -1; }
-      #sheet { grid-column: 1; grid-row: 3; max-height: none; border-top: 0; border-right: 1px solid var(--line); }
-      #map { grid-column: 2; grid-row: 3; min-height: 0; }
+      body.screen-split:not(.orient-portrait) header,
+      body.screen-split:not(.orient-portrait) #banner { grid-column: 1 / -1; }
+      body.screen-split:not(.orient-portrait) #sheet {
+        grid-column: 1;
+        grid-row: 3;
+        max-height: none;
+        border-top: 0;
+        border-right: 1px solid var(--line);
+      }
+      body.screen-split:not(.orient-portrait) #stage { grid-column: 2; grid-row: 3; }
+    }
+    body.screen-split.orient-landscape {
+      grid-template-columns: minmax(200px, 42vw) minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+    body.screen-split.orient-landscape header,
+    body.screen-split.orient-landscape #banner { grid-column: 1 / -1; }
+    body.screen-split.orient-landscape #sheet {
+      grid-column: 1;
+      grid-row: 3;
+      max-height: none;
+      border-top: 0;
+      border-right: 1px solid var(--line);
+    }
+    body.screen-split.orient-landscape #stage { grid-column: 2; grid-row: 3; }
+    body.orient-portrait.screen-split {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(34dvh, 1fr) minmax(168px, 50dvh);
+    }
+    body.orient-portrait header,
+    body.orient-portrait #banner,
+    body.orient-portrait #sheet,
+    body.orient-portrait #stage { grid-column: 1; }
+    body.orient-portrait.screen-split #sheet {
+      grid-row: 4;
+      border-right: 0;
+      border-top: 1px solid var(--line);
+    }
+    body.orient-portrait.screen-split #stage { grid-row: 3; }
+    @media (orientation: landscape) {
+      .screenbar button { min-height: 36px; }
+      header { padding-top: max(4px, env(safe-area-inset-top)); }
+      #hudCue { font-size: 1.02rem; }
+      #hudDist { font-size: 1.25rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #stage.drive-tilt #map { transform: none; }
     }
   </style>
 </head>
-<body data-boot="loading">
+<body class="screen-split orient-auto base-street" data-boot="loading">
   <header>
     <a href="Phone%20Launcher.html">← Phone</a>
     <div>
@@ -217,9 +398,50 @@
       <p class="tag">Phone location, then a drive that stays farther from mapped Flock cameras.</p>
     </div>
     <div id="gpsChip">GPS off</div>
+    <div class="screenbar" role="toolbar" aria-label="Screen layout">
+      <button type="button" id="btnSplit" class="on" aria-pressed="true">Split</button>
+      <button type="button" id="btnFull" aria-pressed="false">Full</button>
+      <button type="button" id="btnOrientAuto" class="on" aria-pressed="true">Auto</button>
+      <button type="button" id="btnOrientPort" aria-pressed="false">Portrait</button>
+      <button type="button" id="btnOrientLand" aria-pressed="false">Landscape</button>
+    </div>
   </header>
   <p id="banner" hidden></p>
-  <div id="map" role="application" aria-label="Map of the route and mapped cameras"></div>
+  <div id="stage">
+    <div id="map" role="application" aria-label="Map of the route and mapped cameras"></div>
+    <div id="mapTools">
+      <button type="button" id="btnLayers" aria-expanded="false">Layers</button>
+      <button type="button" id="btnDriveMap">Drive</button>
+    </div>
+    <div id="layerPanel" hidden>
+      <label class="field">Basemap</label>
+      <div class="seg" id="baseSeg" role="group" aria-label="Basemap">
+        <button type="button" data-base="street" class="on">Street</button>
+        <button type="button" data-base="sat">Satellite</button>
+        <button type="button" data-base="terrain">Terrain</button>
+      </div>
+      <label class="check"><input type="checkbox" id="layerHill"> Elevation shading</label>
+      <label class="check"><input type="checkbox" id="layerFlock" checked> Flock cameras</label>
+      <label class="check"><input type="checkbox" id="layerOther" checked> Other plate readers</label>
+      <label class="check"><input type="checkbox" id="layerTurns" checked> Turn and merge pins</label>
+      <label class="check"><input type="checkbox" id="layerRoute" checked> Planned route</label>
+      <label class="check"><input type="checkbox" id="layerBuffer" checked> Buffer ring</label>
+      <p class="fine">Street is OpenStreetMap, drawn dark. Satellite is Esri imagery. Terrain is OpenTopoMap, with contours and elevation color. Elevation shading is a hillshade laid on top. The gold arrow is the mapped facing, not a measured read range.</p>
+    </div>
+    <div id="hud" hidden>
+      <div class="hud-top hud-card">
+        <div id="hudCue">Drive</div>
+        <div id="hudDist"></div>
+        <div id="hudMeta"></div>
+      </div>
+      <div class="hud-bottom">
+        <div id="hudSpeed" class="hud-card"><b>—</b><span>km/h</span><small></small></div>
+        <button type="button" id="btnLook">Look</button>
+        <button type="button" id="btnDriveExit">Exit</button>
+      </div>
+    </div>
+    <div id="mapCredit" hidden></div>
+  </div>
   <section id="sheet" aria-label="Route planner">
     <div class="row">
       <button type="button" id="btnGps">Use this phone</button>
@@ -241,6 +463,7 @@
     <label class="check"><input type="checkbox" id="avoidAll" checked> Also step around other plate-reader pins</label>
     <div class="row actions">
       <button type="button" class="primary" id="btnPlan">Plan cloak</button>
+      <button type="button" id="btnDrive">Drive</button>
       <button type="button" id="btnArm">Arm watch</button>
       <button type="button" id="btnCameras">Cameras here</button>
     </div>
@@ -264,12 +487,15 @@
       <p>If those pass inside your buffer, it tries a side street about two buffers off the pin and keeps the drive with the fewest pins. A detour more than about twice as long is dropped.</p>
       <p>Flock cameras along the line get a gold arrow and a wedge. The arrow is the mapped facing, clockwise from north. A camera with no direction tag is a gold dot. Other plate readers stay slate.</p>
       <p>T pins are turns. M pins are merges. Drag one to move that corner. The other pins stay, and the two legs next to the pin are the only part that changes. Flock arrows redraw on the new line.</p>
+      <p>Drive follows this phone in a close view. The road ahead is toward the top, and the map tilts so the next stretch reads larger. It is a follow view, not a 3D city model. Look pauses that frame so you can pan. The other turn pins stay where you left them.</p>
+      <p>Split keeps the planner beside or under the map. Full gives the map the screen. Auto follows how the phone is held. Portrait and Landscape set the layout even when the browser will not rotate the device.</p>
       <p>Volunteers miss cameras. An empty stretch is not a clear road.</p>
       <p><button type="button" id="btnClearCache">Clear saved pins</button></p>
     </details>
     <footer class="note">
-      © OpenStreetMap contributors. Camera tags are the public ALPR map (the same source DeFlock renders). Wolven-cloak is not affiliated with Flock Safety.
-      This phone’s position stays in the browser. Place search and the driving line are sent to public OpenStreetMap services.
+      © OpenStreetMap contributors. Satellite and hillshade © Esri (Maxar, Earthstar Geographics, USGS, NOAA). Terrain © OpenTopoMap (CC-BY-SA), map data © OpenStreetMap and SRTM.
+      Camera tags are the public ALPR map (the same source DeFlock renders). Wolven-cloak is not affiliated with Flock Safety.
+      This phone’s position stays in the browser and is not saved as a trail. Place search and the driving line are sent to public OpenStreetMap services.
       The buffer is a distance you choose. It is not a measured read range.
     </footer>
   </section>
