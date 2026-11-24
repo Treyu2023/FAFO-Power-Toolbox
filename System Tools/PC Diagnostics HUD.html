@@ -896,7 +896,7 @@ details.tech pre{
   const ICONS = {
     identity: '🖥️', cpu: '⚙️', memory: '🧠', gpu: '🎮', storage: '💾',
     network: '📡', power: '⚡', problem_devices: '🔧', event_log: '📋',
-    startup: '🚀', security: '🛡️', compatibility: '🔗', bottlenecks: '⏱️',
+    startup: '🚀', security: '🛡️', exposure: '🔐', compatibility: '🔗', bottlenecks: '⏱️',
   };
 
   let report = null;
@@ -1056,7 +1056,7 @@ details.tech pre{
     // Recommended first-run pack: hardware + analysis, skip slow event_log / startup noise
     const keep = new Set([
       'identity', 'cpu', 'memory', 'gpu', 'storage', 'network', 'power',
-      'problem_devices', 'compatibility', 'bottlenecks', 'friendly_summaries',
+      'problem_devices', 'exposure', 'compatibility', 'bottlenecks', 'friendly_summaries',
     ]);
     document.querySelectorAll('[data-opt]').forEach((el) => {
       el.checked = keep.has(el.getAttribute('data-opt'));
@@ -1494,6 +1494,7 @@ details.tech pre{
       startup: [['Startup Service Manager.html', 'Startup manager']],
       problem_devices: [['GhostDeviceCleaner/Clear-GhostDevices.html', 'Ghost device cleaner']],
       security: [['Malware Defender.html', 'Malware defender']],
+      exposure: [['Malware Defender.html', 'Malware defender'], ['Startup Service Manager.html', 'Startup manager']],
       network: [['LAN Task Manager.html', 'LAN & task manager']],
       memory: [['LAN Task Manager.html', 'Task manager (processes)']],
       cpu: [['LAN Task Manager.html', 'Task manager (processes)']],
@@ -1625,6 +1626,24 @@ details.tech pre{
         ['Intel update', d.lastIntelUpdate || '—'],
         ['Note', d.note || '—'],
       ]);
+    } else if (c.id === 'exposure' && d) {
+      const rows = []
+        .concat(d.shellListeners || [], d.remoteAdmin || [], d.scriptListeners || [], d.shellOutbound || [])
+        .concat(d.otherListeners || [], d.processHits || [], d.iocHits || [], d.persistence || [], d.agentHits || [], d.remoteLogons || []);
+      stats = statPair([
+        ['Verdict', d.verdict || '—'],
+        ['Shell listeners', (d.shellListeners || []).length],
+        ['Remote admin', (d.remoteAdmin || []).length],
+        ['Agent file hits', (d.agentHits || []).length],
+      ]);
+      listHtml = rows.length
+        ? `<ul class="device-list">${rows.slice(0, 24).map((row) =>
+            `<li><span class="kind">${escapeHtml(row.severity || 'info')}</span><span class="nm">${escapeHtml(row.title || '')}${row.detail ? ' · ' + escapeHtml(row.detail) : ''}</span></li>`
+          ).join('')}</ul>`
+        : '<p style="color:var(--ok);font-size:13px">No shell listeners or intrusion indicators in this scan.</p>';
+      if (d.reportPath) {
+        listHtml += `<p class="hint">Report file: ${escapeHtml(d.reportPath)}</p>`;
+      }
     } else if (c.id === 'power' && d) {
       stats = statPair([
         ['Plan', d.label],
@@ -1889,7 +1908,7 @@ details.tech pre{
     defaults: {
       identity: true, cpu: true, memory: true, gpu: true, storage: true, network: true,
       power: true, problem_devices: true, event_log: true, startup: true, security_overview: true,
-      compatibility: true, bottlenecks: true, friendly_summaries: true,
+      exposure: true, compatibility: true, bottlenecks: true, friendly_summaries: true,
     },
     options: [
       { id: 'identity', label: 'PC identity & OS', desc: 'Name, brand, Windows version, uptime' },
@@ -1903,6 +1922,7 @@ details.tech pre{
       { id: 'event_log', label: 'Recent stability log', desc: 'Unexpected restarts (slower)' },
       { id: 'startup', label: 'Startup load', desc: 'Programs at boot' },
       { id: 'security_overview', label: 'Security overview', desc: 'Toolbox threat DB' },
+      { id: 'exposure', label: 'Shell and agent exposure', desc: 'Inbound shells, remote admin, agent-config traps' },
       { id: 'compatibility', label: 'Compatibility notes', desc: 'How parts work together' },
       { id: 'bottlenecks', label: 'Bottleneck analysis', desc: 'Likely speed limits' },
       { id: 'friendly_summaries', label: 'Simple language', desc: 'Plain-English explanations' },

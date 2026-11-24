@@ -36,6 +36,7 @@ DEFAULT_OPTIONS: dict[str, bool] = {
     "event_log": True,
     "startup": True,
     "security_overview": True,
+    "exposure": True,
     "compatibility": True,
     "bottlenecks": True,
     "friendly_summaries": True,
@@ -53,6 +54,7 @@ OPTION_META = [
     {"id": "event_log", "label": "Recent stability log", "desc": "Unexpected restarts & error volume (slower)"},
     {"id": "startup", "label": "Startup load", "desc": "How many programs start with Windows"},
     {"id": "security_overview", "label": "Security overview", "desc": "Threat DB / quarantine (toolbox)"},
+    {"id": "exposure", "label": "Shell and agent exposure", "desc": "Inbound shells, remote admin, agent-config traps"},
     {"id": "compatibility", "label": "Compatibility notes", "desc": "Whether major parts play well together"},
     {"id": "bottlenecks", "label": "Bottleneck analysis", "desc": "Likely speed / capacity limits"},
     {"id": "friendly_summaries", "label": "Simple language", "desc": "Extra plain-English explanations"},
@@ -1481,6 +1483,91 @@ def _collect_security(components: list, findings: list) -> dict:
     return data
 
 
+def _collect_exposure(components: list, findings: list) -> dict:
+    """Inbound shells, remote-admin ports, and published agent-intrusion indicators."""
+    try:
+        import agent_exposure as exposure
+
+        data = exposure.scan()
+    except Exception as exc:
+        data = {
+            "verdict": "review",
+            "headline": f"Exposure check failed: {exc}",
+            "items": [],
+        }
+        findings.append({"severity": "warn", "area": "Exposure", "message": data["headline"]})
+        components.append(
+            {
+                "id": "exposure",
+                "name": "Shell and agent exposure",
+                "friendlyName": "Who can reach a shell on this PC",
+                "category": "Security",
+                "status": "warn",
+                "summary": data["headline"],
+                "simple": data["headline"],
+                "details": data,
+                "links": ["security", "network", "startup"],
+                "suggestions": [],
+            }
+        )
+        return data
+
+    sev = {"alert": "bad", "review": "warn"}.get(str(data.get("verdict")), "ok")
+    headline = str(data.get("headline") or "Exposure check finished.")
+    findings.append({"severity": sev, "area": "Exposure", "message": headline})
+    shown = 0
+    for item in data.get("items") or []:
+        level = item.get("severity")
+        if level not in {"bad", "warn"} or shown >= 8:
+            continue
+        detail = item.get("detail") or ""
+        message = item.get("title") or "Exposure finding"
+        if detail:
+            message = f"{message} — {detail}"
+        if message == headline:
+            continue
+        findings.append({"severity": level, "area": "Exposure", "message": message})
+        shown += 1
+
+    suggestions = []
+    if sev != "ok":
+        suggestions.append(
+            {
+                "priority": "high" if sev == "bad" else "medium",
+                "title": "Review shell and agent exposure",
+                "why": headline,
+                "how": (
+                    "Read the exposure lines below. Leave Remote Desktop, OpenSSH, and WinRM off "
+                    "unless you are using them. Before an agent opens a new repository, read "
+                    "AGENTS.md, CLAUDE.md, MCP config, and any session-start hook."
+                ),
+            }
+        )
+    try:
+        report_path = _pc_reports_dir() / "exposure_latest.md"
+        report_path.write_text(exposure.markdown_report(data), encoding="utf-8")
+        data["reportPath"] = str(report_path)
+    except OSError:
+        pass
+
+    public = {k: v for k, v in data.items() if k != "items"}
+    components.append(
+        {
+            "id": "exposure",
+            "name": "Shell and agent exposure",
+            "friendlyName": "Who can reach a shell on this PC",
+            "category": "Security",
+            "status": sev,
+            "summary": headline,
+            "simple": headline,
+            "details": public,
+            "links": ["security", "network", "startup"],
+            "suggestions": suggestions,
+        }
+    )
+    return data
+
+
 def _analyze_compatibility(cpu: dict | None, memory: dict | None, gpu: dict | None, storage: dict | None) -> list[dict]:
     notes = []
     if memory and (memory.get("totalGb") or 0) < 16 and gpu:
@@ -1619,7 +1706,7 @@ def run_diagnostics(
     raw: dict[str, Any] = {}
 
     identity = cpu = memory = gpu = storage = network = power = None
-    problem = events = startup = security = None
+    problem = events = startup = security = exposure = None
 
     if opts.get("identity"):
         identity = _collect_identity(components, findings)
@@ -1654,6 +1741,9 @@ def run_diagnostics(
     if opts.get("security_overview"):
         security = _collect_security(components, findings)
         raw["security"] = security
+    if opts.get("exposure"):
+        exposure = _collect_exposure(components, findings)
+        raw["exposure"] = {k: v for k, v in (exposure or {}).items() if k != "items"}
 
     compatibility = []
     bottlenecks = []
@@ -1751,6 +1841,8 @@ def run_diagnostics(
         bullets.append(f"Watch: {bottlenecks[0].get('title')}")
     else:
         bullets.append("No severe bottleneck flagged at scan time")
+    if exposure and exposure.get("headline"):
+        bullets.insert(0, exposure.get("headline"))
 
     report = {
         "meta": {

@@ -384,6 +384,43 @@ else {
     Add-Finding info 'EventLog' 'Skipped (-SkipEventLog)'
 }
 
+# Shell listeners and a few published intrusion names. The Python engine
+# (agent_exposure.py) is the full check; this block runs only as the fallback.
+try {
+    $shellNames = @('powershell', 'pwsh', 'cmd', 'wscript', 'cscript', 'mshta', 'bash', 'wsl')
+    $listen = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue)
+    $shellListen = 0
+    foreach ($c in $listen) {
+        $proc = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+        $name = if ($proc) { $proc.ProcessName.ToLowerInvariant() } else { '' }
+        $addr = [string]$c.LocalAddress
+        $loop = $addr -eq '::1' -or $addr -like '127.*'
+        if ($shellNames -contains $name -and -not $loop) {
+            $shellListen++
+            Add-Finding bad 'Exposure' ("Shell {0} is listening on {1}:{2}" -f $name, $addr, $c.LocalPort)
+        }
+        if (-not $loop -and $c.LocalPort -in 22, 3389, 5985, 5986) {
+            Add-Finding warn 'Exposure' ("Remote admin port {0} is listening on {1} ({2})" -f $c.LocalPort, $addr, $name)
+        }
+    }
+    if ($shellListen -eq 0) {
+        Add-Finding ok 'Exposure' 'No shell is listening on a non-loopback address'
+    }
+    foreach ($ioc in @(
+            "$env:SystemRoot\Temp\svchosts.exe",
+            "$env:SystemRoot\Temp\svcmon32.exe",
+            "$env:SystemRoot\svchosts.exe",
+            "$env:TEMP\svchosts.exe"
+        )) {
+        if (Test-Path -LiteralPath $ioc) {
+            Add-Finding bad 'Exposure' "Published beacon path exists: $ioc"
+        }
+    }
+}
+catch {
+    Add-Finding info 'Exposure' "Fallback exposure check limited: $_"
+}
+
 # ---------- Severity rollup ----------
 $badN = @($findings | Where-Object Severity -eq 'bad').Count
 $warnN = @($findings | Where-Object Severity -eq 'warn').Count
